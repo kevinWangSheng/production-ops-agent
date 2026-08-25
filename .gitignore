@@ -1,0 +1,25 @@
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build, test, and local runtime output
+dist/
+build/
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+bin/
+tmp/
+
+# Codex local files
+Codex-progress.txt
+Codex.local.md
