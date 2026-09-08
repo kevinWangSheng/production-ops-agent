@@ -27,7 +27,7 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 
 - [x] Shared project instructions written — 2026-09-08: AGENTS.md is the common source, CLAUDE.md imports it, legacy rules are pointers; static checks and independent persisted-text review passed. No product gate changed. See [migration record](docs/agents/instruction-migration-2026-09-08.md).
 - [x] 公共指令中文化与四条 worktree 生命周期约定 — 2026-09-08；独立实文复核、链接/锚点及验收清单不变检查通过。仅文本验证，未执行合并清理演练。
-- [-] Host loading: reduced-configuration Codex fresh-session probe passed; Claude probe blocked by account session limit. Claude runtime import and later native skill discovery remain unverified.
+- [x] 共享指令加载验证 — 2026-09-08：Codex 已有受限新会话加载证据；Claude 本次新会话正确读取中文规则与最新独立审查/旧 skills 约定，账户限制不再阻断。仅加载与理解验证，不等于完整任务行为验证；旧 skills 原生发现不作为当前收尾条件。
 
 ## Next: M0 validation and acceptance calibration
 
