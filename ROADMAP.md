@@ -17,7 +17,7 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 
 ## Development Agent environment
 
-- [-] GitHub 基础 CI 与 PR 管理 — 2026-09-08：[任务](docs/tasks/2026-09-08-github-ci.md)，[交付与资源后续安排](docs/plans/delivery-and-resources-2026-09-08.md)。本轮无 dataset eval 或 CD；私有仓库分支保护被套餐限制，机器人接入待验证。
+- [-] GitHub 基础 CI 与 PR 管理 — 2026-09-08：PR #1 的 Ubuntu checks 已成功，待合并；[任务](docs/tasks/2026-09-08-github-ci.md)，[交付与资源后续安排](docs/plans/delivery-and-resources-2026-09-08.md)。本轮无 dataset eval 或 CD；私有仓库分支保护被套餐限制，机器人尚未连接 GitHub，接入待授权及真实验证。
 
 - [x] GitHub 私有仓库托管与基础设置 — 2026-09-08：[kevinWangSheng/production-ops-agent](https://github.com/kevinWangSheng/production-ops-agent)，默认 main，合并后自动删除远程任务分支；Actions 默认只读、不允许工作流批准 PR。后续 CI/CD 计划使用 GitHub Actions，workflow、必需检查与部署环境尚未配置。
 
