@@ -17,6 +17,8 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 
 ## Development Agent environment
 
+- [x] GitHub 私有仓库托管与基础设置 — 2026-09-08：[kevinWangSheng/production-ops-agent](https://github.com/kevinWangSheng/production-ops-agent)，默认 main，合并后自动删除远程任务分支；Actions 默认只读、不允许工作流批准 PR。后续 CI/CD 计划使用 GitHub Actions，workflow、必需检查与部署环境尚未配置。
+
 - [x] 当前工程基线检查与本地版本保存 — 2026-09-08；范围、归档哈希、入口链接、开发检查均通过，保留已批准文档及开发工具；无远程发布，产品验收仍为 0/11。
 
 - [x] 独立审查与上下文交接约定 — 2026-09-08；明确触发范围、实现者自测与独立审查职责，旧项目 skills 改为显式按需参考，未删除或新增 skills。仅规则落盘与静态检查，不代表全生命周期行为验证。
