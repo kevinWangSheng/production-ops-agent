@@ -1,0 +1,164 @@
+[
+  {
+    "id": "F1",
+    "feature": "Domain Contracts and Evaluation Harness",
+    "category": "foundation",
+    "description": "Define observable incident outcomes, versioned scenarios, independent scoring and reproducible comparisons.",
+    "priority": "high",
+    "steps": [
+      "Review the IncidentScenario -> IncidentOutcome contract, support matrix, quantitative quality targets and evaluator definitions before implementation",
+      "Run clean, noisy, missing-telemetry, duplicate-event, provider-failure, prompt-injection and wrong-target scenarios against the declared read-only scope",
+      "Verify dataset, code, model, prompt, tool, access-policy, runbook and evaluator versions are recorded for each run",
+      "Compare the pinned upstream baseline and candidate under matched permissions, workload and budgets; publish held-out per-scenario results, repeated runs and failures",
+      "Verify deterministic checks own evidence identity, permission boundaries, task state and recovery observations; calibrate report-quality judging with human review and keep scenario answers inaccessible to the investigator"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F2",
+    "feature": "Durable Incident Runtime",
+    "category": "functional",
+    "description": "Maintain resumable incidents across duplicate signals, concurrent work, cancellation and dependency failures.",
+    "priority": "high",
+    "steps": [
+      "Deliver duplicate alerts and deployment events and verify the declared correlation policy joins related signals while preserving distinct concurrent incidents",
+      "Terminate an investigation worker and verify the same incident resumes with retained evidence and bounded repeated work",
+      "Stall a query and verify bounded timeout, child-work cleanup, preserved partial evidence and explicit retry or handoff status",
+      "Generate an alert storm and verify priority, concurrency limits, backpressure and per-incident budgets bound work",
+      "Cancel or pause an incident while work is in flight and verify late completions cannot overwrite the newer human decision"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F3",
+    "feature": "Evidence-First Read-Only Investigation",
+    "category": "functional",
+    "description": "Actively gather and challenge evidence, maintain hypotheses and make uncertainty visible.",
+    "priority": "high",
+    "steps": [
+      "Trigger an incident and verify every observation carries exact source, query, time window, freshness, target and resolvable evidence reference",
+      "Verify facts, hypotheses, recommendations, counter-evidence and rejected hypotheses remain distinguishable in the report",
+      "Withhold or fail a required source and verify the report names the gap and does not represent unfinished investigation as a supported conclusion",
+      "Inject invalid tool parameters and verify input errors, connectivity failures, timeout and no-data results are distinguished",
+      "Present a recent unrelated deployment and a dependency fault and verify the investigation tests competing causes against the accepted outcome rubric",
+      "Inspect runtime permissions and tool requests and verify investigation cannot mutate the target environment"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F6",
+    "feature": "Independent Recovery Observation",
+    "category": "reliability",
+    "description": "Observe recovery after human handling using independent service evidence; never execute recovery actions.",
+    "priority": "high",
+    "steps": [
+      "After external human remediation, require deployment state, request volume, error, latency, pod health, relevant dependencies and a sustained observation window before reporting recovery",
+      "Remove traffic while error rate falls and verify recovery is not confirmed",
+      "Remove required telemetry and verify an unknown or ambiguous result with human handoff",
+      "Cause continued degradation and verify the incident remains open or is reopened according to the reviewed policy, without deployment, rollback or release-gate changes",
+      "Replay stored observations and reconstruct the basis for the recovery result independently of the investigator narrative"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F7",
+    "feature": "Read-Only Security and Audit",
+    "category": "security",
+    "description": "Enforce target-scoped permissions, query limits, hostile-input handling and reconstructable incident audit.",
+    "priority": "high",
+    "steps": [
+      "Attempt target mutations and release-gate changes through all enabled entry points and verify external authorization denies them",
+      "Inject malicious instructions into logs and runbooks and verify no unauthorized query scope or target mutation follows",
+      "Inspect model inputs, evidence exports and traces and verify execution credentials and access secrets are absent",
+      "Activate global or service-level investigation suspension and verify new queries stop and in-flight work follows the reviewed cancellation policy",
+      "Reconstruct input, queries, evidence, state changes, human corrections, recovery observations and postmortem review from audit records; enforce per-target query and data-volume limits"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F8",
+    "feature": "Continuous Operability",
+    "category": "reliability",
+    "description": "Operate the Agent with external health detection, budgets, durable recovery, version management and sustained evidence.",
+    "priority": "high",
+    "steps": [
+      "Verify service health, traces, metrics, structured logs, queue depth, provider status, tool errors, stuck runs, tokens and cost can be correlated by incident and version",
+      "Simulate provider outage and Agent unavailability and verify external detection plus bounded degradation and human handoff",
+      "Exercise a versioned configuration or state-schema upgrade and its documented rollback or compatible recovery, including in-flight incidents",
+      "Back up Agent state and evidence, restore into an isolated environment and verify integrity and resumability",
+      "Run at least a 72-hour lab soak with background activity, failures and recovery; publish availability, missing observations, stuck work, resource use and cost without claiming production proof"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F9",
+    "feature": "Reproducible Deployment and Delivery",
+    "category": "delivery",
+    "description": "Deliver the complete read-only lifecycle with repeatable installation, versioned releases and operational documentation.",
+    "priority": "high",
+    "steps": [
+      "From a clean supported machine, use the documented automated setup to build the selected real-software environment and connect the Agent",
+      "Generate business traffic and a fault, then observe trigger, investigation, evidence, human handoff, external human handling, recovery observation and incident archive",
+      "Kill a worker during the workflow and verify visible recovery without losing the incident",
+      "Exercise build, CI validation, staging deployment, Agent upgrade and recovery against pinned artifacts and explicit environment configuration",
+      "Verify architecture, threat model, setup, operations, upstream attribution, evaluation results, limitations and portfolio walkthrough are current; distinguish synthetic traffic and injected faults from real production observations"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F11",
+    "feature": "Post-Release Investigation",
+    "category": "functional",
+    "description": "Observe deployed versions and delayed regressions without approving, blocking or executing releases.",
+    "priority": "high",
+    "steps": [
+      "Trigger investigation from an observed rollout and verify exact before/after revisions and service identities are retained",
+      "Compare pre/post-release and old/new-instance evidence under the reviewed traffic policy, including a healthy release and an unrelated concurrent fault",
+      "Introduce a delayed regression and verify scheduled follow-up observes it without endlessly re-investigating healthy releases",
+      "Verify outputs distinguish healthy, degraded and unknown; no result changes a required CI check, deployment gate, rollout or traffic policy"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F12",
+    "feature": "Human Interaction and Incident Follow-Up",
+    "category": "functional",
+    "description": "Provide a usable incident interface for evidence inspection, follow-up, corrections and controlled handoff.",
+    "priority": "high",
+    "steps": [
+      "Use the authenticated interface to inspect progress and evidence, ask a follow-up question, add a fact and receive an updated investigation",
+      "Correct an incorrect incident association or hypothesis and verify the correction and prior history are retained",
+      "Pause, cancel, take over, close and reopen an incident and verify explicit status with authorized actor and timestamps",
+      "After a user takes over, deliver new evidence and verify it respects the incident state and does not erase the handoff"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F13",
+    "feature": "Postmortems and Reviewed Knowledge",
+    "category": "functional",
+    "description": "Produce evidence-linked incident reviews and promote reusable knowledge only after human confirmation.",
+    "priority": "high",
+    "steps": [
+      "Generate a postmortem draft with impact, timeline, evidence-supported findings, uncertainty, recorded human actions and recovery observations",
+      "Verify draft or disputed conclusions cannot silently become trusted runbook knowledge",
+      "Approve or reject a proposed knowledge update and verify provenance, reviewer, version and reversibility are recorded",
+      "Run a later incident against changed or stale knowledge and verify freshness and contradictory evidence are handled according to the reviewed policy"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F14",
+    "feature": "Upstream Baseline and Capability Mapping",
+    "category": "foundation",
+    "description": "Use HolmesGPT as primary reference and preferred reuse candidate; prove actual gaps before committing to custom work.",
+    "priority": "high",
+    "steps": [
+      "Pin actual upstream code, image digest, configuration, license and model; record deployment and baseline investigation evidence",
+      "Map every active feature to upstream reuse, configuration, confirmed defect or required extension with source or runtime evidence",
+      "For each selected issue, inspect current code and related fixes, reproduce through the real entry point and separate reporter claims from local findings",
+      "Compare an adopted fix or extension with the unchanged upstream baseline under matched scenarios; retain provenance and an upstream-update strategy"
+    ],
+    "passes": false
+  }
+]

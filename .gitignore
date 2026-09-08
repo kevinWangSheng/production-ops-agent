@@ -23,3 +23,7 @@ tmp/
 # Codex local files
 Codex-progress.txt
 Codex.local.md
+
+# Python development environment
+.venv/
+.ruff_cache/

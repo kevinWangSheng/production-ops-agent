@@ -1,38 +1,60 @@
 # Roadmap
 
-Status: Specification draft; implementation is blocked on human review.
+Current phase: technical design approved and persisted; M0 validation is next. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Implementation has not started.
 
-## Review Gate
+## Completed decisions and documentation
 
-- [ ] Confirm final project name and target job profile.
-- [ ] Confirm the highest test seam: `IncidentScenario -> IncidentOutcome`.
-- [ ] Confirm the first incident family and sample workload.
-- [ ] Confirm the provisional technology split and dependency budget.
-- [ ] Confirm lab acceptance thresholds and public-release intent.
+- [x] Operating constraints clarified — 2026-09-07: no backup/disk-disaster recovery; retain process/task recovery; CNY 1,000 adjustable initial budget reference; effectiveness first; data-use plan prepared by assistant then reviewed by user. F8 backup step retired with history, not passed.
 
-## High Priority
+- [x] Initial model adaptation targets DeepSeek; future GLM/provider replacement remains possible without committing first-release implementation — 2026-09-07.
 
-- [ ] **F1: Domain Contracts and Evaluation Harness** — Define the acceptance seam, corpus, scoring, and versioned run records.
-- [ ] **F2: Durable Incident Runtime** — Normalize, deduplicate, persist, resume, and budget incident workflows.
-- [ ] **F3: Evidence-First Read-Only Investigation** — Produce an auditable Evidence Packet from real read-only sources.
+- [x] Shared context-driven investigation, on-demand relevant knowledge, system-enforced execution boundaries and separation of test categories from product routing confirmed — 2026-09-07; ADR-0002.
 
-## Medium Priority
+- [x] Read-only incident/post-release investigation, human follow-up, recovery observation and reviewed postmortems confirmed — 2026-09-06.
+- [x] Production writes, release gates, general pre-release review and separate operations Agents excluded — 2026-09-06.
+- [x] Primary comparison direction: HolmesGPT; OpenSRE/K8sGPT supporting references; kagent optional — 2026-09-06.
+- [x] Current specification, decision record, requirements, acceptance inventory and instructions synchronized; original draft archived — 2026-09-06.
 
-- [ ] **F4: Typed Action Proposal and Policy Broker** — Resolve and authorize exact actions outside the model process.
-- [ ] **F5: Deterministic Rollout Execution** — Delegate approved rollback to a versioned rollout controller action.
-- [ ] **F6: Independent Final-State Verification** — Decide recovery from durable system evidence.
-- [ ] **F7: Security, Governance, and Audit** — Enforce least privilege, hostile-input treatment, freeze, and replayable audit.
-- [ ] **F8: 24×7 Operability** — Instrument, recover, degrade, upgrade, and soak the Agent runtime.
+## Development Agent environment
 
-## Low Priority
+- [x] 当前工程基线检查与本地版本保存 — 2026-09-08；范围、归档哈希、入口链接、开发检查均通过，保留已批准文档及开发工具；无远程发布，产品验收仍为 0/11。
 
-- [ ] **F9: Reproducible Portfolio Demo and Delivery** — Package the cluster, scenario, docs, Helm deployment, and videos.
-- [ ] **F10: Narrow L4 Promotion Gate** — Optionally automate one proven stateless rollback scenario.
+- [x] 独立审查与上下文交接约定 — 2026-09-08；明确触发范围、实现者自测与独立审查职责，旧项目 skills 改为显式按需参考，未删除或新增 skills。仅规则落盘与静态检查，不代表全生命周期行为验证。
 
-## Completed
+- [x] Python 3.12 开发入口已验证 — 2026-09-08；锁定依赖、Makefile、只读 doctor、Ruff/pytest 和 5 项测试通过；[任务与证据](docs/tasks/2026-09-08-dev-environment.md)。AGENTS 命令段落已确认写入，实验设施尚未就绪。
 
-- [x] Initial conversation-derived specification and project management skeleton — 2026-08-25.
+- [x] 任务记录与交接约定写入 AGENTS.md — 2026-09-08；明确 ROADMAP、任务记录与本地会话摘要职责，消除旧条款重复；[任务目录](docs/tasks/README.md)已建立；中文模板于 2026-09-08 经独立草案审查和用户确认后写入，静态检查通过。
 
----
+- [x] Shared project instructions written — 2026-09-08: AGENTS.md is the common source, CLAUDE.md imports it, legacy rules are pointers; static checks and independent persisted-text review passed. No product gate changed. See [migration record](docs/agents/instruction-migration-2026-09-08.md).
+- [x] 公共指令中文化与四条 worktree 生命周期约定 — 2026-09-08；独立实文复核、链接/锚点及验收清单不变检查通过。仅文本验证，未执行合并清理演练。
+- [-] Host loading: reduced-configuration Codex fresh-session probe passed; Claude probe blocked by account session limit. Claude runtime import and later native skill discovery remain unverified.
 
-Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed
+## Next: M0 validation and acceptance calibration
+
+- [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
+
+- [x] C3 complete technical design accepted for persistence — 2026-09-07. Three whole-candidate adversarial rounds closed observer/control races, independent release-observation identity and provider-private-field export contradictions. See [technical plan](docs/design/technical-proposal-2026-09-07.md), [review record](docs/reviews/technical-design-c3-review-2026-09-07.md) and [ADR-0003](docs/adr/0003-business-state-recovery-authority.md).
+- [x] Technical direction: Python/FastAPI, PostgreSQL business recovery authority, DeepSeek-compatible adapter, LangSmith, Compose/Helm. LangGraph loop benefit and exact versions remain to be validated; graph checkpoints have no cross-attempt authority.
+- [x] Source-first research for HolmesGPT/OpenSRE/Stratus and runtime/platform comparisons completed as static evidence; not feature completion.
+- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned runtime baseline, real reproductions and measured reuse costs pending.
+- [ ] M0 dependency/model protocol validation, persistent reconstruction, cancellation/lease/observer races, upgrade compatibility and target-scoped identities.
+- [ ] M0 pinned OTel Demo source/permission/label/retention/HealthProfile mapping; normal telemetry prerequisites and measured resource/cost estimates.
+- [ ] F1 detailed IncidentScenario/IncidentOutcome packet, development calibration, frozen sample/repeat/scoring/non-regression thresholds before candidate evaluation. Retain existing acceptance inventory; no passes changed.
+- [ ] Use M0 results to resolve incompatibilities and produce bounded implementation tasks/effort estimates; update the conditional SPEC gate with evidence.
+
+The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historical. Both product entry points remain in one complete release; symptom categories remain testing only.
+
+## Planned delivery sequence
+
+1. **M0 — compatibility and experiment prerequisites:** F14 baseline/reuse evidence and F1 contracts/eval preparation, dependency/model/storage/permissions validation and capacity measurements.
+2. **M1 — complete vertical path:** authenticated intake through investigation, evidence, human handling, independent recovery and reviewed postmortem, with budgets and observability.
+3. **M2 — full lifecycle and failures:** both entries, human control, delayed/duplicate inputs, knowledge versions and recovery; F2/F3/F6/F7/F11/F12/F13 acceptance evidence.
+4. **M3 — complete release evidence:** matched baseline/held-out comparisons, soak, upgrade/recovery and delivery; F1/F8/F9/F14 and every active acceptance check.
+
+F7/F8/F9 requirements apply from the first runnable system. No internal milestone substitutes for the complete product. No V2 scope or delivery date is promised; estimate effort after M0. Architecture is approved, runtime validation and feature implementation have not run.
+
+## Retired scope
+
+F4 action broker, F5 rollout executor and F10 autonomous promotion are retired, not completed. IDs remain reserved. The original steps and migration mapping are in `docs/archive/pre-readonly-scope-2026-09-06/`.
+
+Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has passed its acceptance checks.

@@ -1,5 +1,7 @@
 # Research Basis
 
+> 状态：历史讨论或研究证据，非当前规格。2026-09-06 已确认的产品边界以仓库根目录 SPEC.md 和 docs/adr/0001-readonly-investigation-boundary.md 为准；本文旧的候选、建议及待决表述不覆盖该共识。
+
 This initial specification incorporates the following checked practices and risks from the 2026-08-24 market and engineering research snapshot.
 
 ## Production practices carried into the draft

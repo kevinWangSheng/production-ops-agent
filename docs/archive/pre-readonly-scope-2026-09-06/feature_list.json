@@ -1,0 +1,142 @@
+[
+  {
+    "id": "F1",
+    "feature": "Domain Contracts and Evaluation Harness",
+    "category": "foundation",
+    "description": "Define stable incident, evidence, action, decision, execution, verification, and outcome contracts with a replayable scenario corpus.",
+    "priority": "high",
+    "steps": [
+      "Review and approve the IncidentScenario to IncidentOutcome acceptance seam",
+      "Run at least one clean, noisy, missing-telemetry, duplicate-event, provider-failure, prompt-injection, and wrong-target scenario",
+      "Verify each run records dataset, prompt, model, tool schema, policy, and runbook versions",
+      "Verify deterministic scoring separates diagnosis, evidence, action safety, execution, and final-state verification"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F2",
+    "feature": "Durable Incident Runtime",
+    "category": "functional",
+    "description": "Normalize signals into durable incidents with deduplication, checkpoints, leases, retry budgets, backpressure, and recovery.",
+    "priority": "high",
+    "steps": [
+      "Deliver duplicate Alertmanager and rollout events and verify they join one incident",
+      "Terminate the active worker during investigation and verify the same incident resumes from durable state",
+      "Expire a tool timeout and verify bounded retry followed by the configured terminal state",
+      "Generate an alert storm and verify priority and backpressure prevent unbounded work creation"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F3",
+    "feature": "Evidence-First Read-Only Investigation",
+    "category": "functional",
+    "description": "Gather read-only operational evidence and produce a structured Evidence Packet with hypotheses, counter-evidence, uncertainty, and handoff state.",
+    "priority": "high",
+    "steps": [
+      "Trigger a bad rollout incident and verify every observation contains source, query, time window, freshness, and evidence reference",
+      "Verify facts, inferences, recommendations, supporting evidence, counter-evidence, and rejected hypotheses are distinguishable",
+      "Withhold a required signal and verify the Agent records the gap and abstains from unsupported causality",
+      "Inspect runtime identity and traces and verify no mutation credential is available to the investigator"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F4",
+    "feature": "Typed Action Proposal and Policy Broker",
+    "category": "security",
+    "description": "Resolve and authorize exact actions outside the model process using policy, approval, scoped identity, lease, budget, and blast-radius controls.",
+    "priority": "medium",
+    "steps": [
+      "Submit a valid rollback proposal and verify the dry-run shows immutable target, parameters, preconditions, risk, verification, rollback, and expiry",
+      "Submit a proposal with ambiguous target data and verify the broker denies it without issuing credentials",
+      "Approve one action and verify the approval cannot authorize a different revision, service, incident, or expired request",
+      "Attempt an out-of-scope action class and verify denial is enforced outside the model process"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F5",
+    "feature": "Deterministic Rollout Execution",
+    "category": "functional",
+    "description": "Execute only approved, versioned rollout actions through an existing rollout controller and return a durable receipt.",
+    "priority": "medium",
+    "steps": [
+      "Execute an approved known-good rollback and verify Argo Rollouts owns the state transition",
+      "Retry the same approved action and verify the idempotency key prevents a duplicate mutation",
+      "Run two conflicting actions and verify the service or resource lease permits only one writer",
+      "Submit a free-form or unregistered action and verify the executor rejects it"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F6",
+    "feature": "Independent Final-State Verification",
+    "category": "reliability",
+    "description": "Determine recovery independently using rollout state, traffic, SLI, pod health, dependencies, and a sustained window.",
+    "priority": "medium",
+    "steps": [
+      "Complete a rollback and verify recovery requires rollout state, request volume, error, latency, pod, dependency, and sustained-window checks",
+      "Remove request traffic while error rate falls and verify the verifier does not report success",
+      "Remove required telemetry and verify the result is ambiguous and escalated",
+      "Force post-action health failure and verify the configured rollback, freeze, or escalation path runs"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F7",
+    "feature": "Security, Governance, and Audit",
+    "category": "security",
+    "description": "Enforce hostile-input treatment, least privilege, short-lived identity, freeze controls, and reconstructable audit.",
+    "priority": "medium",
+    "steps": [
+      "Inject malicious instructions into logs and tickets and verify no unauthorized action is approved or executed",
+      "Inspect model inputs and traces and verify execution secrets are absent",
+      "Activate global and per-service freeze controls and verify new mutations are blocked and in-flight policy is enforced",
+      "Reconstruct one incident from input through evidence, proposal, policy, approval, receipt, verification, and rollback using audit records"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F8",
+    "feature": "24x7 Operability",
+    "category": "reliability",
+    "description": "Operate the Agent runtime with health, SLO, cost, queue, provider, stuck-run, upgrade, backup, and recovery controls.",
+    "priority": "medium",
+    "steps": [
+      "Verify traces, metrics, structured logs, queue depth, budgets, provider status, tool errors, and stuck-run signals are observable",
+      "Simulate model-provider outage and verify deterministic degradation and human handoff",
+      "Exercise a versioned configuration or schema upgrade and its documented rollback",
+      "Run a 72-hour lab soak and publish availability, recovery, stuck-run, cost, and failure evidence"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F9",
+    "feature": "Reproducible Portfolio Demo and Delivery",
+    "category": "delivery",
+    "description": "Package a reproducible cluster, incident injector, telemetry stack, Helm deployment, documentation, and review artifacts.",
+    "priority": "low",
+    "steps": [
+      "From a clean supported machine, run one documented command and create the demo environment",
+      "Inject the primary bad-release scenario and observe investigation, Evidence Packet, approval, execution, verification, and audit",
+      "Kill a worker during the demo and verify recovery remains visible",
+      "Verify README, architecture, threat model, operations, evaluation, limitations, and demo media are present and current"
+    ],
+    "passes": false
+  },
+  {
+    "id": "F10",
+    "feature": "Narrow L4 Promotion Gate",
+    "category": "governance",
+    "description": "Promote only one proven stateless rollback scenario from approval-scoped L3 to policy-scoped L4.",
+    "priority": "low",
+    "steps": [
+      "Verify the user-approved replay, adversarial, fault-injection, rollback, verifier, and soak thresholds all pass",
+      "Enable L4 only for the approved incident family, service class, environment policy, and action version",
+      "Raise runtime risk and verify authorization automatically downgrades to L3",
+      "Activate revocation and verify L4 authority is removed without changing Agent prompts"
+    ],
+    "passes": false
+  }
+]

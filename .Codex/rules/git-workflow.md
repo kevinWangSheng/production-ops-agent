@@ -1,20 +1,5 @@
-# Git Workflow
+# Shared project instructions
 
-## Commit Convention
-
-- Format: `{type}: {description} [#{feature-id}]`.
-- Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
-- Example: `feat: persist normalized incident events [#F2]`.
-
-## Commit Rules
-
-- Keep one logical change per commit.
-- Every commit must leave the project runnable or explicitly specification-only.
-- Stage specific files; do not use broad staging that could include secrets or unrelated work.
-- Do not rewrite history, force-push, publish a repository, open a PR, or create a release without explicit authorization.
-
-## Branch Strategy
-
-- Keep `main` stable.
-- Use `feature/{feature-id}-{short-name}` for non-trivial implementation work.
-- Merge only after approved acceptance checks pass.
+This legacy entry is a compatibility pointer, not a separate rule source.
+Read the root [AGENTS.md](../../AGENTS.md#changes-git-and-handoff) for the current project contract.
+Migration and verification: [instruction migration](../../docs/agents/instruction-migration-2026-09-08.md).

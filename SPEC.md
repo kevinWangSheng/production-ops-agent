@@ -1,130 +1,140 @@
-# Production Ops Agent — Initial Specification
+# OpsPilot — Current Specification
 
-Status: **Draft for future discussion**
-Working title: **OpsPilot**
-Initial triage: **ready-for-agent** for specification refinement only
-Implementation gate: **Human review required**
+Product boundary: **confirmed by the user on 2026-09-06**.
+Investigation mechanism: **confirmed by the user on 2026-09-07** (ADR-0002).
+Technical design: **C3 reviewed and approved for persistence by the user on 2026-09-07**. Exact compatibility, capacity and quantitative acceptance calibration remain for M0.
+Feature implementation gate: **not cleared**; M0 compatibility evidence and the corresponding frozen acceptance packet remain prerequisites. The next work is M0 design validation, not another review of the same architecture. No implementation or deployment evidence exists yet.
 
-## Problem Statement
+## Purpose
 
-An engineer who wants to build a production-oriented operations Agent as a high-quality job-search portfolio project needs a scope that demonstrates more than a chat interface or unrestricted tool calling. Existing Agent demos can gather telemetry and call Kubernetes tools, but they often do not prove durable 24×7 operation, evidence-backed diagnosis, least-privilege authorization, idempotent execution, independent recovery verification, replayable evaluation, or safe degradation.
+Build an effective, continuously running read-only operations investigation Agent to demonstrate complete Agent engineering for a job-search portfolio. Real-software simulated environments support this goal; operating an unrelated personal application is not a prerequisite.
 
-The project needs to be small enough for one engineer to complete, while still showing credible SRE, distributed-systems, Agent-runtime, security, evaluation, and product judgment. It must not claim general autonomous production operation without evidence.
+The two entry points are incident alerts and observed releases. Both use the same investigation, evidence, incident state and human interaction capabilities. The product provides investigation and advisory findings, not authority over production releases.
 
-## Solution
+## Confirmed scope
 
-Build an always-on, evidence-first Kubernetes release incident Agent for a single service family and a narrow class of release regressions. It automatically joins alerts and deployment events into a durable incident, gathers read-only evidence from metrics, logs, traces, Kubernetes state, deployment history, and source changes, and renders a structured Evidence Packet containing facts, hypotheses, counter-evidence, uncertainty, and a typed ActionProposal.
+- Incident investigation: receive alerts, correlate signals, resolve exact targets, actively query permitted sources, test competing hypotheses and report evidence-supported findings or explicit uncertainty.
+- Post-release investigation: observe before/after revisions, compare service behavior and follow delayed regressions. Results are advisory and cannot approve, block, promote or revert releases.
+- Ongoing follow-up: update the same incident as evidence changes, avoid duplicate investigations, support pause/cancel/takeover/close/reopen, and preserve human corrections against late task completions.
+- Recovery observation: after a human independently handles an incident, use read-only service evidence and a sustained window to report recovery, continued degradation or unknown state.
+- Postmortems: draft an impact summary, timeline, findings, uncertainty, human handling and recovery evidence; reusable knowledge requires human confirmation and provenance.
+- Full engineering lifecycle: integration, secure tooling, reliable runtime, interaction, software tests, evaluation, deployment, upgrades, recovery, observability, budgets, sustained operation and verified improvements.
 
-The model process never owns production credentials. An external Action Broker resolves targets, applies policy, obtains incident-scoped approval, acquires short-lived identity, and delegates only versioned actions to an existing rollout controller. An Independent Verifier determines success from final state, user-facing SLI, traffic integrity, dependencies, and a sustained observation window. Every input, decision, approval, action, and result is durable, auditable, replayable, and evaluable.
+## First complete release — capabilities and evidence
 
-The first credible product level is L2 always-on investigation plus L3 approval-scoped execution. A later L4 milestone may automate only the rollback of a stateless service when a release-regression scenario has passed explicit replay, adversarial, fault-injection, rollback, and soak gates.
+The complete release includes both incident and post-release entry points and all active PRD/acceptance features. It accepts an investigation request and available context, acquires additional evidence through authorized tools, updates findings, supports human interaction, observes recovery and produces reviewed postmortems. It must not require a caller to select a predefined fault family.
 
-## User Stories
+Product capability boundaries are connected environments/data sources, exact target identity, supported query interfaces, permissions, available context and operational budgets. A new symptom within that boundary is not rejected solely because it is absent from the test catalog. Missing access or evidence is reported explicitly; a general investigation mechanism does not prove universal diagnostic accuracy.
 
-1. As an on-call engineer, I want related alerts and deployment events joined into one incident, so that I am not forced to investigate duplicate pages independently.
-2. As an on-call engineer, I want investigation to start automatically from Alertmanager or rollout events, so that useful evidence is available before I open the incident.
-3. As an on-call engineer, I want the Agent to show user impact, affected service, region, tenant, severity, and data freshness, so that I can quickly judge urgency and scope.
-4. As an on-call engineer, I want a unified incident timeline containing alerts, deployments, configuration changes, traffic changes, dependency failures, scaling events, and human actions, so that event ordering is explicit.
-5. As an on-call engineer, I want every claimed fact linked to its source query, time window, summary, and snapshot, so that I can verify the claim instead of trusting generated prose.
-6. As an on-call engineer, I want supporting and contradicting evidence shown separately, so that correlation is not presented as causation.
-7. As an on-call engineer, I want rejected hypotheses retained, so that the Agent and later responders do not repeat the same investigation.
-8. As an on-call engineer, I want the Agent to state missing telemetry, permission gaps, stale context, and uncertainty, so that I know when human investigation is still required.
-9. As an on-call engineer, I want the Agent to abstain when evidence is insufficient or conflicting, so that confidence is not fabricated under incident pressure.
-10. As an on-call engineer, I want a compact handoff containing current state, strongest evidence, in-flight work, and the next safe decision, so that I can take over immediately.
-11. As an incident commander, I want facts, inferences, and recommendations rendered as distinct sections, so that stakeholders do not confuse an unverified hypothesis with an observed fact.
-12. As an incident commander, I want every proposed mitigation to name an exact immutable resource identity and revision, so that approval cannot accidentally target the wrong environment.
-13. As an incident commander, I want to see action preconditions, expected benefit, risk, blast radius, stop condition, verification window, and rollback behavior, so that approval is informed and bounded.
-14. As an approver, I want approval bound to one incident, action type, target, parameter set, and expiry time, so that approval cannot be reused for a different operation.
-15. As an approver, I want a mandatory dry-run or deterministic plan preview before mutation, so that the concrete production impact is visible.
-16. As an approver, I want high-risk or out-of-scope action classes denied regardless of model confidence, so that a prompt cannot expand authority.
-17. As a platform security engineer, I want read and write identities separated, so that an investigator compromise does not grant mutation privileges.
-18. As a platform security engineer, I want execution credentials injected only by an external broker and never placed in model context, so that secrets are not exfiltrated through prompts or traces.
-19. As a platform security engineer, I want logs, tickets, code, runbooks, and tool output treated as hostile input, so that passive prompt injection cannot directly authorize production changes.
-20. As a platform security engineer, I want global, environment, service, and action-class freeze controls, so that autonomous or approved activity can be stopped immediately.
-21. As a platform engineer, I want each action to carry an idempotency key and resource lease, so that retries, duplicate approvals, or concurrent Agents cannot execute the same rollback twice.
-22. As a platform engineer, I want the deterministic executor to use Argo Rollouts or another existing rollout state machine, so that the Agent does not reimplement traffic shifting, locking, timeout, history, or rollback semantics.
-23. As a platform engineer, I want the workflow to resume from a checkpoint after Agent, model-provider, or worker failure, so that 24×7 incidents do not restart from scratch.
-24. As a platform engineer, I want bounded retries, circuit breakers, dead-letter handling, and investigation budgets, so that outages do not produce infinite loops or unlimited cost.
-25. As a platform engineer, I want alert storms prioritized and backpressured by severity, service, and error-budget impact, so that the Agent does not overload observability systems during the worst incident.
-26. As an SRE, I want the verifier to check rollout state, request volume, error rate, latency, pod health, dependencies, and a sustained window, so that command success is not confused with service recovery.
-27. As an SRE, I want ambiguous or missing verification data to escalate rather than pass, so that traffic disappearance or telemetry failure cannot produce a false recovery claim.
-28. As an SRE, I want the Agent to degrade to deterministic runbooks and human handoff when the model provider is unavailable, so that the operational control plane remains useful.
-29. As an Agent engineer, I want model, prompt, tool schema, policy, runbook, and dataset versions attached to every run, so that regressions can be reproduced.
-30. As an Agent engineer, I want historical incidents and live fault scenarios replayed against new versions, so that quality changes are measured before deployment.
-31. As an evaluator, I want diagnosis, evidence quality, unsupported claims, action safety, execution, and final-state verification scored separately, so that a good narrative cannot hide an unsafe action.
-32. As an evaluator, I want adversarial logs, telemetry manipulation, missing data, stale ownership, wrong targets, duplicate events, and concurrent incidents in the corpus, so that common production failure modes are exercised.
-33. As a maintainer, I want the Agent itself instrumented with traces, metrics, structured logs, costs, queue depth, stuck-run detection, and tool errors, so that its own operational health is visible.
-34. As a maintainer, I want a reproducible local Kubernetes demo that injects a bad release and completes investigation, approval, rollback, and verification, so that the full system can be reviewed without private infrastructure.
-35. As a maintainer, I want Helm-based deployment, versioned configuration, migration rollback, health checks, and upgrade documentation, so that deployment quality is part of the product rather than an afterthought.
-36. As a hiring manager, I want published evaluation methodology, raw results, failure cases, and explicit limitations, so that I can distinguish engineering evidence from a polished demo.
-37. As a hiring manager, I want to see the workflow recover after a worker is killed mid-incident, so that the 24×7 claim has runtime evidence.
-38. As a hiring manager, I want a clear trust-boundary and threat-model explanation, so that the candidate demonstrates production judgment rather than only model integration.
-39. As a hiring manager, I want a five-minute product demo and a deeper architecture walkthrough, so that both product outcome and technical decisions are easy to assess.
-40. As a future contributor, I want domain contracts and project decisions documented with small interfaces, so that modules can evolve without spreading production semantics throughout the codebase.
+The earlier S1/S2/S3 symptom-based support proposal is withdrawn. Startup/availability, request failure and latency are initial evaluation candidates only, maintained in `docs/testing/initial-investigation-coverage.md`. They are not runtime enums, classifier labels, prompt-selection keys or mandatory investigation paths. The earlier one-HTTP-service-pattern restriction had no completed capability analysis and is not a frozen release requirement. The approved technical plan selects OTel Demo as the initial workload; pinned versions, actual source mappings and capacity require M0 evidence.
 
-## Implementation Decisions
+### Investigation design basis
 
-- The initial environment is Kubernetes, not a generic multi-cloud operations platform.
-- The initial incident family is a stateless service regression associated with a recent rollout: elevated 5xx, latency regression, readiness failure, or CrashLoop.
-- The primary event sources are Alertmanager signals and rollout/deployment change events.
-- The initial read adapters cover metrics, logs, traces, Kubernetes state/events, rollout history, and source/configuration change context.
-- The Agent defaults to read-only L2 investigation. L3 allows a human-approved action. L4 is a separately promoted capability for a narrow, pre-proven rollback scenario.
-- The Agent process has no production write credential and cannot submit free-form shell, SQL, or Kubernetes commands for execution.
-- The system uses an Evidence Packet as the durable product record. Chat, Markdown, Slack, and HTML are projections of that record.
-- The Evidence Packet includes incident identity, impact, timeline, evidence ledger, hypotheses, counter-evidence, causality, uncertainty, executed actions, proposed actions, and handoff state.
-- The core module interfaces exchange five domain records: EvidencePacket, ActionProposal, PolicyDecision, ExecutionReceipt, and VerificationResult.
-- Incident Runtime is a deep module responsible for normalization, deduplication, durable workflow state, checkpointing, retry budgets, backpressure, and handoff.
-- Investigation is a deep module responsible for planning read-only queries, collecting evidence, maintaining hypotheses, detecting insufficient evidence, and producing an Evidence Packet.
-- Action Broker is the authority module. Its interface accepts a typed proposal and returns allow, deny, or approval-required decisions. Target resolution, policy, approval, identity, leases, rate limits, and blast-radius enforcement remain inside it.
-- Executor accepts only a broker-approved, versioned action and returns an execution receipt. Argo Rollouts owns rollout state transitions and rollback semantics.
-- Verifier is independent from the investigator and executor. It evaluates final state, SLI, traffic integrity, dependencies, and sustained observation windows.
-- All mutable operations require explicit resource identity, preconditions, idempotency, lease, dry-run, timeout, audit, verification, rollback, and escalation semantics.
-- The provisional implementation split is Python for investigation and evaluation, Go for the security-critical broker/executor, Temporal for durable workflows, PostgreSQL for event/evidence/audit state, OPA for policy, Argo Rollouts for progressive delivery, and OpenTelemetry plus Prometheus/Loki/Tempo/Grafana for observability.
-- The provisional stack is a discussion item, not an authorization to add all dependencies immediately. Each seam becomes real only when at least two adapters or an operational isolation requirement justifies it.
-- PostgreSQL JSONB and append-only events are the initial persistence approach. Kafka, a graph database, and a vector database are not required for the first milestone.
-- Every run records the model, prompt, tool schema, policy, runbook, configuration, and evaluation dataset version.
-- The product uses fail-closed semantics for missing approval, missing policy context, ambiguous target resolution, expired identity, missing verification data, or conflicting concurrent action.
-- The public maturity statement is production-shaped and fault-injection tested. Production-proven remains unavailable until real production operation supplies that evidence.
+Design references are not limited to the preferred implementation base. Source-grounded comparisons of HolmesGPT, OpenSRE, Stratus and K8sGPT are recorded in `docs/research/investigation-design-basis-2026-09-06.md`, with exact revisions, observed mechanisms, trade-offs and proposed validation. HolmesGPT remains a reuse candidate, not an authority that all design choices must follow.
 
-## Testing Decisions
+Confirmed mechanism (2026-09-07): a shared investigation loop with context assembly, authorized tool discovery, tool observations fed back into context, on-demand retrieval of relevant reviewed domain knowledge, and bounded stopping/handoff. See `docs/adr/0002-context-driven-investigation.md` for the decision and trade-offs. The mechanism is accepted; its runtime effectiveness and exact implementation remain unvalidated.
 
-- The proposed highest acceptance seam is **IncidentScenario -> IncidentOutcome**. A scenario supplies system state, events, evidence sources, permissions, failures, and expected allowed outcomes; the result contains the Evidence Packet, decisions, receipts, verification, audit, and final environment state. This seam is pending user confirmation during the next design discussion.
-- Acceptance tests verify externally observable behavior. They do not assert private model reasoning, chain-of-thought, internal prompt ordering, framework-specific graphs, or implementation call counts.
-- Deterministic assertions own identity, target, policy, exact action parameters, idempotency, lease behavior, state transition, final state, and forbidden-action checks.
-- Model-assisted grading may assess report clarity or investigation trajectory, but it cannot be the sole oracle for safety, execution, or recovery.
-- The evaluation corpus separates detection, localization, RCA, evidence quality, mitigation selection, policy decision, execution, and final-state verification.
-- The corpus includes clean and noisy versions of rollout regression, configuration regression, CrashLoop, dependency latency, missing telemetry, telemetry manipulation, concurrent incidents, stale context, and malicious log/ticket content.
-- Prior art for scenario design includes AIOpsLab's capability separation, SREGym's live failures/noise/concurrency/metastability, Evidra Bench's final-state and path verification, Google SRE's golden-data/nightly-eval model, and LogInject-style hostile telemetry.
-- Unit tests cover pure domain validation and policy predicates through module interfaces.
-- Contract tests cover each read adapter, action adapter, policy adapter, approval adapter, identity adapter, and verifier adapter against recorded fixtures and local fakes.
-- Integration tests run the durable workflow, PostgreSQL state, policy engine, and rollout controller together.
-- End-to-end tests deploy a real sample workload in kind or k3d, inject a bad release, generate real telemetry, trigger an incident, require approval, execute rollback, and verify recovery.
-- Fault-injection tests kill workers, interrupt the model provider, duplicate alerts and approvals, delay tools, expire leases, and corrupt or withhold telemetry.
-- Security tests attempt prompt injection, target confusion, approval replay, action substitution, credential exposure, policy bypass, stale data use, and cross-incident action reuse.
-- Soak testing exercises at least 72 hours of triggers, retries, provider degradation, cost budgets, and workflow recovery before making a 24×7 readiness claim.
-- Proposed portfolio acceptance thresholds are tracked as project targets, not industry SLAs: zero forbidden writes in the adversarial suite, zero duplicate actions in idempotency/concurrency tests, complete audit coverage for every action, p95 alert-to-first-useful-evidence at or below two minutes in the lab, and explicitly published RCA/evidence quality results on held-out scenarios.
-- Failed tests and unsupported claims remain publishable evidence; they must not be removed from the corpus to improve headline results.
+No symptom-specific prompt routing is adopted. Task-specific skills or deterministic analyzers are not prohibited: introduce them only for an identified information/accuracy/cost problem, with relevant-source context and evidence from comparisons. They must neither receive hidden test answers nor dictate a conclusion against contradictory observations. Any dynamic routing needs a documented benefit, misrouting/fallback analysis and evaluation before adoption.
 
-## Out of Scope
+The human workflow includes progress/evidence inspection, follow-up, correction, pause/cancel/takeover, close/reopen, recording external human handling, independent recovery observation and explicit review of knowledge updates. These are confirmed product requirements; the research loop does not replace durable state, access enforcement or independent outcome checks.
 
-- Open-ended L5 autonomous operations.
-- Arbitrary shell, SQL, cloud CLI, or unrestricted Kubernetes execution.
-- Database schema or data migrations.
-- Credential, IAM, certificate, secret, network-boundary, firewall, or security-policy mutation.
-- Multi-region failover and broad disaster-recovery actuation.
-- Stateful database recovery.
-- Generic multi-cloud support in the first milestones.
-- Building a replacement observability platform, incident-management platform, workflow engine, policy engine, or rollout controller.
-- An extensive chat or dashboard UI before the evidence and safety loop works end to end.
-- Training a foundation model.
-- Claiming production-proof, universal RCA correctness, or generalized autonomous remediation from a local benchmark.
+### Release evidence
 
-## Further Notes
+All active features remain required: F14 upstream mapping, F1 contracts/evaluation, F2 runtime, F3 investigation, F11 post-release observation, F12 interaction, F6 recovery observation, F13 reviewed knowledge, F7 read-only security, F8 operation and F9 delivery. No acceptance step is removed by moving test categories out of product scope.
 
-- The project is primarily intended to demonstrate AI infrastructure, Agent platform, backend infrastructure, SRE platform, and developer-infrastructure engineering ability.
-- The strongest portfolio narrative is not “the model can use kubectl”; it is “a probabilistic investigator is safely composed with deterministic authorization, execution, verification, and replay.”
-- Current research supports progressive authorization, no ambient access, mandatory dry-run, circuit breakers, independent post-actuation guardians, red-button controls, and rolling evaluation against golden operational data.
-- Live Agent benchmarks show that noise, correlated incidents, concurrent failures, and metastable conditions materially affect end-to-end performance; benchmark results must not be treated as a production SLA.
-- Passive prompt injection and telemetry manipulation are first-class threat scenarios, not optional security extras.
-- Decisions still awaiting future discussion: final project name, target job profile, one-language versus split implementation, exact workflow runtime, UI surface, first demo workload, acceptance thresholds, and whether/when a public GitHub repository should be created.
-- No issue tracker was configured when this draft was created. A local issue packet carries the required `ready-for-agent` label but external publication remains blocked until the user selects a tracker or runs the project skill setup workflow.
+Release evidence includes pinned baseline/candidate comparisons, reproducible real-software environments, independent outcomes, failure and held-out results, deployment/upgrade/process-recovery checks and sustained operation, including the retained minimum 72-hour lab soak. Numeric quality and resource/cost targets still require baseline evidence and technical review. Neither a source reference nor passing three symptom categories establishes universal or production-proven ability.
+
+## Explicit exclusions
+
+- Production mutations, including deployments, pauses, restarts, scaling, automatic repair and rollback, even if a human would approve them.
+- Release gate authority: required CI checks or other mechanisms that automatically approve or block a release based on Agent judgment.
+- General pre-release code/risk review and autonomous test generation/execution products.
+- Independent capacity-planning, cost-optimization, security-audit or backup-management Agents.
+- Arbitrary shell, SQL or cloud-command execution selected by the model; broader clouds, multi-tenancy and multi-cluster orchestration unless a future scope decision explicitly adds them.
+- Database recovery/migration, credentials/IAM, network-boundary changes, destructive operations and regional failover as Agent capabilities.
+- Automatic promotion from investigation to production actuation. It is not a future milestone promised by this project.
+
+The Agent may persist its own incident state, evidence, reports and reviewed knowledge. This does not grant mutation rights over the investigated system. Engineers and isolated test harnesses may perform separately authorized setup, fault injection, deployments and recovery; those are not Agent permissions. Sending messages or opening external issues/PRs is not automatically authorized by this specification.
+
+## Product workflow
+
+Alert -> incident and target resolution -> investigation and human handling -> independent recovery observation -> archive and reviewed postmortem.
+
+Observed rollout -> independent ReleaseObservation and target resolution -> bounded observation/investigation -> healthy completion, unknown handoff, or abnormality linked to a new/existing Incident. Normal releases do not require an Incident. Each subject has its own control version and result ownership; release observation cannot transfer recovery authority to an Incident.
+
+A result must distinguish incomplete investigation from a completed investigation with an uncertain finding. Missing tools, stale data, contradictory evidence and lack of permission are visible to the operator. Healthy periods and healthy releases must not generate unbounded work.
+
+## Evidence and context requirements
+
+Every observation has source, query, target, version where applicable, time window, freshness and an inspectable evidence reference. Facts, hypotheses, recommendations, counter-evidence and rejected hypotheses remain distinguishable. A report link resolves to the actual captured/query evidence; model-generated prose is not its authority.
+
+Supported telemetry, service identity, dependencies, change history and runbooks must be mapped and versioned. Context compression must preserve evidence provenance. Missing instrumentation is an integration gap to expose and resolve, not proof of service health. Investigation knowledge must retain origin, review state and freshness.
+
+## Runtime and human control requirements
+
+Durable incident state, bounded retries, tool/query timeouts and cleanup, deduplication, concurrency control, cancellation, budgets, backpressure, external health detection and explicit handoff are required. Worker restart, model-provider outage, tool failure or late completion must not silently lose work or erase a newer human decision.
+
+A usable authenticated interface supports progress, evidence inspection, follow-up questions, corrections, pause/cancel/takeover and close/reopen. The approved interface is a single-team Jinja/SSE workbench with authenticated incident and release-observation views. Read identity is scoped outside the model's authority; credentials and secret-bearing raw inputs must not enter prompts or exported traces. Query scope, cost, rate and result volume are constrained even for read-only operations.
+
+## Recovery observations
+
+Recovery follows a target-specific, versioned HealthProfile defining required signals, meaningful samples/traffic, freshness and a sustained window. The retained HTTP/Kubernetes acceptance case includes deployment state, request volume, errors/latency, pod health and relevant dependencies; it does not impose HTTP on every target. Missing required signals cannot confirm recovery. No profile still permits investigation but yields unknown recovery. Continued degradation leaves the incident open; new anomalies or human reopen create a new observation stage under the reviewed control policy, without Agent remediation.
+
+Independent deterministic checks own observable recovery facts. Report quality may use calibrated human/model-assisted grading; the investigator does not certify its own correctness.
+
+## Upstream strategy
+
+- HolmesGPT is the primary comparison and preferred code-reuse candidate.
+- OpenSRE supplies secondary product/workflow references; K8sGPT is a simpler analyzer-plus-explanation comparison.
+- kagent is a specialized runtime reference, not a mandated dependency.
+- AIOpsLab/SREGym and other real-software environments are validation candidates, not the product itself.
+
+Fix an upstream version and actual configuration, run the original, reproduce relevant issues and inspect existing fixes, then map requirements to reuse/configuration/fix/extension. Preserve license and provenance, matched baseline comparisons and an upstream-update strategy. An open issue or a source observation is not a locally reproduced defect. See `docs/research/upstream-led-project-plan-2026-09-06.md`.
+
+Reuse may mean implementing an upstream idea, protocol or code logic in our chosen stack; ready-to-import code is not required. This confirms the comparison direction, not an irrevocable fork/API integration choice. The approved technical plan selects Python/FastAPI, PostgreSQL, a DeepSeek-compatible client, LangSmith and Compose/Helm; LangGraph is the loop candidate whose net benefit remains to be validated. Hosting purchases and exact dependency locks are not selected by this decision. Older unselected-technology statements are superseded for selection status only; scope and permission restrictions remain in force.
+
+## Model priority and design ownership
+
+Confirmed user priority on 2026-09-07: adapt the first implementation to DeepSeek. Keep a replaceable model boundary for future GLM or other providers; this does not require implementing those providers in the first release. The initial validation profile is DeepSeek official Chat Completions-compatible service, deepseek-v4-pro, thinking/high; its availability and exact dependency/protocol compatibility require M0 verification and recorded versions.
+
+Approved implementation approach: shared investigation instructions and output/evidence contracts; provider/model-version capability configuration for protocol differences; minimal prompt adjustments only when official requirements or controlled evaluation justify them. Do not fork a complete investigation prompt or workflow for every vendor by default. Record effective prompt, adapter, model, endpoint/mode and tool-schema versions per run. See `docs/research/model-adaptation-and-design-ownership-2026-09-07.md` for current evidence and responsibilities.
+
+The assistant owns routine implementation details and prepares the M0 validation packet from the approved technical plan and inspected sources. The user reviews consequential trade-offs; routine reversible details are owned by the assistant. Evidence, alternatives, cost and validation accompany material custom choices. Deduplication, storage and scheduling reuse standard mechanisms, while incident correlation, time-sensitive evidence, model/tool recovery and human-decision precedence require explicit product semantics. This does not add symptom-specific workflows or clear the implementation gate.
+
+## Operating constraints
+
+User decisions (2026-09-07): no backup or disaster-recovery system for catastrophic disk loss in the first project scope; assume persistent storage survives process/container restarts. Durable state, process interruption recovery and upgrade compatibility remain required. The retired F8 backup check is preserved in `docs/archive/pre-no-backup-scope-2026-09-07/`; it was not completed.
+
+Use CNY 1,000 as an adjustable initial project-budget planning reference, not a monthly commitment or purchasing authorization. Estimate one-off and recurring infrastructure, model and evaluation costs separately; propose additional spend when needed. Investigation effectiveness takes priority over premature cost optimization, while timeouts and loop/budget monitoring prevent unproductive runaway work.
+
+The user-reviewed data-flow contract is recorded in technical plan section 12: authorized business evidence may enter the selected model and isolated eval; private protocol fields only return to the same provider and Run, never reports, knowledge, LangSmith or judge. Credentials remain outside model inputs and traces; trusted clients use credentials only on the appropriate authentication channel. This is not blanket permission to upload future data sources or deploy external services.
+
+## Verification and delivery
+
+The proposed highest acceptance seam remains `IncidentScenario -> IncidentOutcome`, with a read-only outcome contract still to be detailed. Observe inputs, evidence, states, permissions, human interaction and final service observations; never test hidden chain-of-thought.
+
+Use unit/contract/integration/end-to-end tests, real-software fault injection, security checks, offline/live evaluation and sustained operation. Separate development and held-out cases; isolate injected ground truth from the Agent; compare versions under matched data, permissions and budgets; record model, prompt, code, tool, knowledge, policy and evaluator versions. Publish failures and repeat non-deterministic cases.
+
+The acceptance inventory retains a minimum 72-hour lab soak requirement. It alone does not establish 24x7 readiness or production proof. The old p95 alert-to-useful-evidence target of two minutes remains a proposed target, not an achieved result or an accepted SLA. Numeric quality, tail-latency, cost, resource and recovery thresholds must be set before corresponding implementation/evaluation acceptance.
+
+Deployment must be reproducible and versioned, with CI, staging checks, upgrades, in-flight-state compatibility and an explicit application-version rollback or process-recovery path. Business telemetry, Agent execution traces, runtime health and evaluation feedback must be correlated and operable. LangSmith or another vendor is a tooling choice, not the whole lifecycle.
+
+All active features and approved checks must pass before completion. Claims distinguish static inspection, integrated simulation, fault injection, soak and real production observations. No current feature is implemented or production-proven.
+
+## Next validation work and implementation gate
+
+The approved [technical plan](docs/design/technical-proposal-2026-09-07.md) is the current engineering contract. The [C1–C3 full-review record](docs/reviews/technical-design-c3-review-2026-09-07.md) records independent adversarial review; [ADR-0003](docs/adr/0003-business-state-recovery-authority.md) explains the recovery authority decision. PostgreSQL committed business records own cross-process recovery; graph checkpoints are attempt-local rebuildable caches, not accepted cross-epoch recovery pointers.
+
+Next is M0: pin and validate dependencies/model protocol, persistent reconstruction and cancellation/upgrade behavior; establish workload/data-source/permission mappings and measured capacity; calibrate and freeze the eval packet before candidate assessment. F14 baseline execution/reproduction, detailed IncidentScenario/IncidentOutcome schemas, measurable thresholds and task estimates still require this work. They are explicit validation and acceptance deliverables, not unreviewed product scope or an invitation to repeat the same technical selection.
+
+The reviewed [M0 execution plan](docs/plans/m0-validation-plan-2026-09-07.md) now details experiment coverage, evidence, sequence and decision ownership. Its [isolated-context review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md) closed two planning omissions; persistence does not constitute runtime evidence.
+
+### Conditions for entering implementation
+
+The C3 architecture user review is complete. Before starting feature implementation, obtain the relevant M0 evidence, resolve any incompatibility it exposes, and freeze the corresponding acceptance criteria and required environment/resources under this approved design. Low-level reversible implementation details need not all be specified in advance. Design-validation experiments that resolve open questions are separately scoped design work; they do not require the finished product to have already passed acceptance.
+
+When those conditions are met, record the evidence and decision/date, update this document's current gate status and move ROADMAP to implementation. A new material design change requires review; unchanged approved choices do not require repeated user confirmation. Remove obsolete pending/blocking statements; keep the historical decision record. Temporary instructions about when to stop a conversation are not standing project constraints. Working name or public-repository choice need not block local design; external actions retain their existing authorization boundaries.
+
+## Document ownership
+
+`SPEC.md` owns current scope and cross-cutting constraints; ADRs record why a consequential decision was made; `PRD.md` describes user capabilities; `feature_list.json` owns their acceptance steps; `ROADMAP.md` records sequence/status. `CONTEXT.md` is a glossary only. Research/brainstorm/archive files are non-normative evidence/history. See `docs/README.md` for navigation and update rules.

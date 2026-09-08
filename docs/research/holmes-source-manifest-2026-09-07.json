@@ -1,0 +1,289 @@
+{
+  "project": "HolmesGPT/holmesgpt",
+  "revision": "5e983c17f30e93099c7d775167266d4cd1d586c4",
+  "audit_date": "2026-09-07",
+  "retrieval": "fixed-commit raw files plus complete recursive tree; full archive retrieval unavailable",
+  "evidence": "downloaded bytes checked against Git tree blob IDs; does not imply all files fully audited or any runtime test passed",
+  "files": {
+    "holmes/core/config.py": {
+      "git_blob": "24f600c9c070e17a62858fb1cdd7934c98553bcf",
+      "bytes": 113,
+      "lines": 5
+    },
+    "holmes/core/tool_calling_llm.py": {
+      "git_blob": "b0fb7fe59c434565939e6f7e4445f6593cc55daf",
+      "bytes": 67707,
+      "lines": 1550
+    },
+    "holmes/core/prompt.py": {
+      "git_blob": "fc87b4518bcd96454f1acfe4175e3367b02d5753",
+      "bytes": 11506,
+      "lines": 325
+    },
+    "holmes/core/toolset_manager.py": {
+      "git_blob": "b721c3a51d2d7baa9b8155305facbc352323b67d",
+      "bytes": 35931,
+      "lines": 834
+    },
+    "holmes/plugins/prompts/_toolsets_instructions.jinja2": {
+      "git_blob": "2bdb1a7773e211517f25eee4e7cb8e6820dba9a6",
+      "bytes": 2198,
+      "lines": 36
+    },
+    "holmes/plugins/prompts/generic_ask.jinja2": {
+      "git_blob": "71f8baff50e82bc3793eebed6752ea38d9b31f17",
+      "bytes": 9436,
+      "lines": 108
+    },
+    "holmes/plugins/toolsets/skills/skills_fetcher.py": {
+      "git_blob": "c006e02ed84b3bd05799bc332d3c235fe78e3d7f",
+      "bytes": 16571,
+      "lines": 348
+    },
+    "docs/reference/skills.md": {
+      "git_blob": "bc0d374753357e3756a839241d9cf03ea9298055",
+      "bytes": 20690,
+      "lines": 506
+    },
+    "pyproject.toml": {
+      "git_blob": "4ac1a3645abf26f1ada4d86122e0f15ba4a0cbbc",
+      "bytes": 10464,
+      "lines": 245
+    },
+    "holmes_operator/config.py": {
+      "git_blob": "cca7e91b10ee217c6b1b098ee9c2f121c4b3d7ba",
+      "bytes": 1602,
+      "lines": 52
+    },
+    "holmes_operator/models.py": {
+      "git_blob": "07afce3ec80ce900414ad871a8b353e9b1d480a3",
+      "bytes": 7610,
+      "lines": 263
+    },
+    "holmes_operator/log.py": {
+      "git_blob": "fa7a9ad1d20fe8456d74e6fa77c523d6edbd36a1",
+      "bytes": 445,
+      "lines": 15
+    },
+    "holmes_operator/trigger_executor.py": {
+      "git_blob": "24e32b2c36b57430cf2091bde7d12c38a37a30ee",
+      "bytes": 15180,
+      "lines": 473
+    },
+    "holmes_operator/operator.py": {
+      "git_blob": "3236cf87f74f84c97b6b3645ffb9d017670d258e",
+      "bytes": 2352,
+      "lines": 75
+    },
+    "holmes_operator/__init__.py": {
+      "git_blob": "3037cc825b732e519c28b53a8781dff076890238",
+      "bytes": 70,
+      "lines": 1
+    },
+    "holmes_operator/context.py": {
+      "git_blob": "2fc279aee06894a8c699cd25b71e33f81d804077",
+      "bytes": 2657,
+      "lines": 86
+    },
+    "holmes_operator/utils.py": {
+      "git_blob": "a84457ac2c4ff8cdf19a4f4c9ff1a88a3062691a",
+      "bytes": 9198,
+      "lines": 292
+    },
+    "holmes/config.py": {
+      "git_blob": "f61bf9c77a8cc55a792dd0b110ff5aa0c4861867",
+      "bytes": 42089,
+      "lines": 1009
+    },
+    "holmes/interactive.py": {
+      "git_blob": "b55fd76665ca232919d4286c436e65a710c32e45",
+      "bytes": 112877,
+      "lines": 2848
+    },
+    "holmes/main.py": {
+      "git_blob": "bfe924efa8f2833843194bee3304410e460ba0fe",
+      "bytes": 39213,
+      "lines": 1092
+    },
+    "holmes/core/models.py": {
+      "git_blob": "ae33de4bd0d78a8da67ab4db7c3fa63bd5d3cd7d",
+      "bytes": 14279,
+      "lines": 357
+    },
+    "holmes/core/tools.py": {
+      "git_blob": "d0f3d0c2de68a59901c00345d8aaf54804dd4e4c",
+      "bytes": 49818,
+      "lines": 1246
+    },
+    "holmes/core/supabase_dal.py": {
+      "git_blob": "29d1ff7a3a7ac05e888f30aa3ab7b74803682c52",
+      "bytes": 76075,
+      "lines": 1865
+    },
+    "holmes/core/conversations.py": {
+      "git_blob": "698163161e05644c0d3c170867ce00890cc458cd",
+      "bytes": 3124,
+      "lines": 92
+    },
+    "holmes/checks/models.py": {
+      "git_blob": "db376109702114c5c4fce8dc9e7e9f1b19100804",
+      "bytes": 2097,
+      "lines": 76
+    },
+    "holmes/checks/checks.py": {
+      "git_blob": "d83dc6df3e734bdd4a41892274b601f572cee9c3",
+      "bytes": 25211,
+      "lines": 681
+    },
+    "holmes/checks/checks_api.py": {
+      "git_blob": "fa978ce5ba3bf2176692d15b737e02a1c201d626",
+      "bytes": 9499,
+      "lines": 242
+    },
+    "holmes/common/env_vars.py": {
+      "git_blob": "7f6c4a4bc7466db0c5ce6cf1c9fa9aaa92785339",
+      "bytes": 13069,
+      "lines": 295
+    },
+    "holmes/plugins/skills/skill_loader.py": {
+      "git_blob": "500e4b7a879ebbfcf0463a6c9aa2166d0f1f1e90",
+      "bytes": 23332,
+      "lines": 574
+    },
+    "holmes/core/truncation/compaction.py": {
+      "git_blob": "4a5ba569f74b946f89b0ec5195f650b822f5ccaa",
+      "bytes": 14741,
+      "lines": 343
+    },
+    "holmes/core/truncation/input_context_window_limiter.py": {
+      "git_blob": "299828f7e32e3fbfb3f094dd3cca0002f2adc80f",
+      "bytes": 8886,
+      "lines": 200
+    },
+    "holmes/core/tools_utils/frontend_tools.py": {
+      "git_blob": "d4bdaebb393c41d68f00786dbf166a1442ee7ae8",
+      "bytes": 7585,
+      "lines": 204
+    },
+    "holmes/core/tools_utils/tool_context_window_limiter.py": {
+      "git_blob": "f32672578b271df7de0de89a7cb00703ecca84ae",
+      "bytes": 6381,
+      "lines": 144
+    },
+    "holmes/core/tools_utils/filesystem_result_storage.py": {
+      "git_blob": "4279202891efa2b8dfcb59801c7d578f49eb8c63",
+      "bytes": 3530,
+      "lines": 107
+    },
+    "holmes/core/tools_utils/tool_executor.py": {
+      "git_blob": "b1f3d064642bf1286f3f1ea35e800d825fbb0c89",
+      "bytes": 8299,
+      "lines": 193
+    },
+    "holmes/core/scheduled_prompts/executor.py": {
+      "git_blob": "8594bed61b4755c4a65b705c091c5428749eeada",
+      "bytes": 10007,
+      "lines": 276
+    },
+    "holmes/core/conversations_worker/worker.py": {
+      "git_blob": "570db700a6e2d6677e04c5483d34d18c020142de",
+      "bytes": 58244,
+      "lines": 1314
+    },
+    "holmes/core/conversations_worker/models.py": {
+      "git_blob": "2877d1c4ef33f58ba1d0d9fa9c45078f1b4da822",
+      "bytes": 3857,
+      "lines": 108
+    },
+    "holmes/core/conversations_worker/tool_call_worker.py": {
+      "git_blob": "9384dd41c0a67b464192c4a7dca695fb48a3250f",
+      "bytes": 17475,
+      "lines": 434
+    },
+    "docs/reference/context-management.md": {
+      "git_blob": "0e9b9b4f4f1ed9955de515a8e497c516438430b6",
+      "bytes": 4344,
+      "lines": 81
+    },
+    "holmes_operator/scheduler/job_executor.py": {
+      "git_blob": "50851d5d63d99a539d0a31e1dfebef3cf40b14a7",
+      "bytes": 17129,
+      "lines": 529
+    },
+    "holmes_operator/scheduler/__init__.py": {
+      "git_blob": "0596d9aee22a5927814a3243864a6cb5f5f1caa9",
+      "bytes": 160,
+      "lines": 7
+    },
+    "holmes_operator/scheduler/manager.py": {
+      "git_blob": "41ed6c3ef61639fece3b2824fcca417b87b453db",
+      "bytes": 7664,
+      "lines": 220
+    },
+    "holmes_operator/client/__init__.py": {
+      "git_blob": "8929209a49d18bfd3f6100826d012499fab621b4",
+      "bytes": 149,
+      "lines": 5
+    },
+    "holmes_operator/client/holmes_api_client.py": {
+      "git_blob": "56443ea4352b3122c06a91eed34ab62a04c2e187",
+      "bytes": 4047,
+      "lines": 134
+    },
+    "holmes_operator/handlers/triggeredhealthcheck.py": {
+      "git_blob": "4f85bbc55fdae5cf86d5e545415910cda36ddc76",
+      "bytes": 9813,
+      "lines": 306
+    },
+    "holmes_operator/handlers/__init__.py": {
+      "git_blob": "8067601e8ba802e0e9c82aec2621b30288e0f95b",
+      "bytes": 67,
+      "lines": 1
+    },
+    "holmes_operator/handlers/healthcheck.py": {
+      "git_blob": "4de8bd8d5fbd378b580cd3001ac74c78f576605c",
+      "bytes": 7410,
+      "lines": 239
+    },
+    "holmes_operator/handlers/scheduledhealthcheck.py": {
+      "git_blob": "75347e40c5d7b218ca0d647008742dd47959d5b4",
+      "bytes": 10078,
+      "lines": 319
+    },
+    "tests/core/test_tool_executor.py": {
+      "git_blob": "24b6b18559064a47d8bc0b53830a5f88810feba5",
+      "bytes": 4300,
+      "lines": 108
+    },
+    "tests/checks/test_checks_api.py": {
+      "git_blob": "3db9a478c112c78cd7db89c40950e826dfad5d68",
+      "bytes": 1615,
+      "lines": 51
+    },
+    "tests/checks/test_checks_gemini.py": {
+      "git_blob": "88f0349ec9ab335b540adf483d06bc4afbf71661",
+      "bytes": 4200,
+      "lines": 120
+    },
+    "tests/core/truncation/test_compaction.py": {
+      "git_blob": "1a39461ae12526eeea80bb85a323c91da40b5a25",
+      "bytes": 20442,
+      "lines": 557
+    },
+    "tests/core/tools_utils/test_tool_context_window_limiter.py": {
+      "git_blob": "04a32744ff6491489c8e3f77f8eb355ec27d3306",
+      "bytes": 14887,
+      "lines": 374
+    },
+    "tests/llm/fixtures/compaction/007_negative_findings/test_case.yaml": {
+      "git_blob": "3a898dc9aa53b1d827c84dc2760e8b3ce37c968f",
+      "bytes": 1598,
+      "lines": 30
+    },
+    "server.py": {
+      "git_blob": "b309a1d19840e3ca2276d2acb076cdd74e99ecc2",
+      "bytes": 43369,
+      "lines": 1070
+    }
+  }
+}

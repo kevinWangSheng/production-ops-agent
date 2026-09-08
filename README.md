@@ -1,31 +1,19 @@
-# Production Ops Agent
+# OpsPilot — Read-only Operations Investigator
 
-Working title: **OpsPilot**.
+A continuously running Agent for incident and post-release investigation. It gathers and challenges evidence, supports human handoff, observes recovery after human handling, and drafts reviewed postmortems. It does not execute production changes or control release gates.
 
-An evidence-first, always-on Kubernetes release incident agent that investigates production regressions, produces auditable root-cause reports, and performs approval-scoped rollback through an external policy broker, deterministic execution plane, and independent verifier.
+## Status
 
-## Current status
+Product boundary confirmed on 2026-09-06. C3 technical design is reviewed and saved; M0 compatibility/capacity validation and acceptance calibration are next. Implementation has not started. All 11 active feature entries are unpassed. The project targets production engineering standards; it is not production-proven.
 
-This repository is in **specification draft** state. It contains the decisions already discussed and intentionally does not contain an implementation yet.
-
-- The initial product scope is a single Kubernetes service family and release-regression incidents.
-- The default target is L2 investigation plus L3 approval-scoped execution.
-- L4 autonomy is a later, narrowly gated milestone.
-- L5 open-ended autonomous production access is not a goal.
-- The project is production-shaped, not production-proven.
+HolmesGPT is the primary reference and preferred reuse candidate; OpenSRE is a product reference, K8sGPT a simpler comparison, and kagent an optional runtime reference. Baseline deployment and issue reproduction are still pending.
 
 ## Read first
 
-1. `SPEC.md` — conversation-derived product and engineering specification.
-2. `PRD.md` — feature-oriented product requirements.
-3. `ROADMAP.md` — phased work order.
-4. `feature_list.json` — machine-readable acceptance inventory.
-5. `issues/0001-initial-production-ops-agent-spec.md` — local issue packet awaiting tracker publication.
+1. [SPEC.md](SPEC.md) — current boundary, full lifecycle and remaining design work.
+2. [Scope ADR](docs/adr/0001-readonly-investigation-boundary.md) — why production writes and release gates are excluded.
+3. [PRD.md](PRD.md) and [acceptance inventory](feature_list.json) — user capabilities and checks.
+4. [ROADMAP.md](ROADMAP.md) — current work and next design step.
+5. [Documentation guide](docs/README.md) — sources of truth, research and history.
 
-## Proposed product thesis
-
-The Agent investigates and plans. A deterministic control plane owns authorization, execution, rollback, and final-state verification.
-
-## Review gate
-
-No feature implementation should begin until the user reviews the proposed acceptance seam, project name, target role, technology stack, and first milestone scope.
+Next: follow the [approved technical plan](docs/design/technical-proposal-2026-09-07.md) into M0 validation and freeze the corresponding acceptance packet. Architecture approval is not runtime proof; feature entry conditions remain in SPEC.
