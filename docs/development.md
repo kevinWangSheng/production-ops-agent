@@ -31,10 +31,10 @@ Docker 不可用不影响默认基础检查；等对应实验获得准备授权�
 ## 验证证据
 
 在对应任务记录中保存实际命令、工具版本、结果和重要失败。未提交状态下的结果标为 dirty 工作区验证，并保留本次受检脚本、配置、测试及锁文件的哈希或快照，不能只用 HEAD 标识版本。
-临时日志的唯一副本不留在即将删除的 worktree 中。本批没有通用日志 runner、自动结果目录、CI、产品服务或额外 MCP。
+临时日志的唯一副本不留在即将删除的 worktree 中。当前没有通用日志 runner、自动结果目录或产品服务；基础 CI 见下节。
 
 ## GitHub CI
 
 PR 到 main、push main 或手动触发 `.github/workflows/ci.yml`；Ubuntu 24.04、uv 0.10.8 与 Python 3.12.13，执行相同 make setup/check。CI 无业务 Secrets、dataset eval 或部署。setup 尊重 UV_PYTHON，避免安装与后续锁检查选择不同解释器。
 
-PR 通过最新 checks 及适用独立审查后才按授权合并；私有仓库平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
+PR 通过最新 checks 及适用独立审查后才按授权合并；平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
