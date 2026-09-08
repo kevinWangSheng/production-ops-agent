@@ -1,7 +1,7 @@
 .PHONY: setup doctor check test
 
 setup:
-	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python 3.12
+	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
 
 doctor:
 	python3 scripts/doctor.py

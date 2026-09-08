@@ -2,6 +2,8 @@
 
 ## Current sources of truth
 
+- [交付与资源规划](plans/delivery-and-resources-2026-09-08.md)：本轮基础 CI/PR 范围、平台限制及后续资源/凭据/UI/eval/CD；[任务记录](tasks/2026-09-08-github-ci.md)。
+
 - [开发工具说明](development.md)：环境准备、诊断、检查和验证证据；[本批任务记录](tasks/2026-09-08-dev-environment.md)。
 
 - [任务记录](tasks/README.md)：具体任务的执行进展与交接入口；使用约定由 AGENTS.md 维护，本目录提供已确认的中文模板与实验任务填写说明。

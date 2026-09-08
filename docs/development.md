@@ -5,7 +5,7 @@
 
 ## 首次准备
 
-在项目根目录执行 `make setup`。它运行 `uv sync --locked --python 3.12`，可能下载 Python 和依赖到 uv 缓存，并创建或同步项目 `.venv`；不修改系统 Python 或 shell 配置。
+在项目根目录执行 `make setup`。它运行 `uv sync --locked`，解释器优先使用显式的 `UV_PYTHON`（CI 固定版本），未设置时使用 Python 3.12，可能下载 Python 和依赖到 uv 缓存，并创建或同步项目 `.venv`；不修改系统 Python 或 shell 配置。
 已有 `.venv` 会按锁精确同步，不要将其他项目或有独有包的环境放在这里。setup 显式将 `UV_PROJECT_ENVIRONMENT` 固定为当前项目 `.venv`，避免继承其他工作区的目标路径。
 
 `uv.lock` 是实际解析生成的版本清单。锁文件缺失或过期时 setup 失败；有意修改依赖后，显式运行 `uv lock --python 3.12`，审查锁文件差异，再运行 setup。普通检查不会更新锁文件。
@@ -32,3 +32,9 @@ Docker 不可用不影响默认基础检查；等对应实验获得准备授权�
 
 在对应任务记录中保存实际命令、工具版本、结果和重要失败。未提交状态下的结果标为 dirty 工作区验证，并保留本次受检脚本、配置、测试及锁文件的哈希或快照，不能只用 HEAD 标识版本。
 临时日志的唯一副本不留在即将删除的 worktree 中。本批没有通用日志 runner、自动结果目录、CI、产品服务或额外 MCP。
+
+## GitHub CI
+
+PR 到 main、push main 或手动触发 `.github/workflows/ci.yml`；Ubuntu 24.04、uv 0.10.8 与 Python 3.12.13，执行相同 make setup/check。CI 无业务 Secrets、dataset eval 或部署。setup 尊重 UV_PYTHON，避免安装与后续锁检查选择不同解释器。
+
+PR 通过最新 checks 及适用独立审查后才按授权合并；私有仓库平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
