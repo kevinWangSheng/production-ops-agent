@@ -15,7 +15,7 @@
 
 优先使用已有 Codex GitHub code review 集成，不在 CI 中新增模型 API key 或另购审查 SaaS。AGENTS.md 的 Code Review Rules 提供项目边界，机器人意见不能代替检查或用户决定。
 
-启用需 Codex 设置中连接本仓库并开启 code review；自动审查还需相应开关。必须在真实 PR 上观察机器人反应/审查才算接入验证成功。GitHub CLI 当前 OAuth 无权列出 GitHub App installations，不能把查询失败解释成未安装。当前 Codex 设置页面明确显示 GitHub 账号未连接；需要用户完成连接授权，再针对本仓库开启 review 并验证。此项尚未完成，保留独立本地 Agent 审查，不宣称机器人已启用。
+启用需 Codex 设置中连接本仓库并开启 code review；自动审查还需相应开关。必须在真实 PR 上观察机器人反应/审查才算接入验证成功。GitHub CLI 当前 OAuth 无权列出 GitHub App installations，不能把查询失败解释成未安装。初始 GitHub 未连接问题已由用户完成配置。PR #1 上 chatgpt-codex-connector[bot] 已响应手动请求并报告 Code Review / Security Review Running；手动触发已验证，最终审查结果和每次推送自动复审仍待确认，证据见本轮任务记录。
 
 ## 资源与凭据：按阶段提供
 
@@ -34,7 +34,9 @@
 ## 后续完成条件
 
 - [x] 用户授权仓库公开后配置 main 服务端保护；API 回读确认必需 checks、strict、管理员约束和禁止强推/删除。尚未通过故意违规 push 做破坏性探测。
-- [ ] 验证审查机器人对本仓库真实 PR 的响应及复审方式。
+- [x] 审查机器人已在真实 PR #1 响应手动请求。
+- [ ] 等待并处理机器人结果，验证自动复审方式。
+- [ ] 按任务交接清单完成 PR 合并、main CI、本地同步与 worktree 清理。
 - [ ] 测量机器内存和实验资源，准备首个有界 M0 环境及凭据。
 - [ ] 完成真实模型/上下文/恢复/权限实验与 eval 校准，再接入人工触发的评测。
 - [ ] 有运行产品后接入镜像构建、测试环境部署与 smoke 验证。
