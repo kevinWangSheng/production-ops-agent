@@ -66,3 +66,22 @@ SPEC仅修正“完全没有实现/部署证据”的过期泛称，明确无产
 另外，审查者在原环境worktree对**实际保留tar及当前9条bind内容**执行真实脚本 `--check-only` 路径：只用已归档image记录替代Docker inspect，并将Path.write_bytes/write_text拦截为拒绝。26个镜像记录、9条bind和配置核对通过，实际写0。该步骤证明现在保留的源码树/生成配置与固定归档匹配；没有重新检查已停Docker中的镜像，没有重启服务，不追溯认证过去运行时点。
 
 与Git HEAD逐字核对，image-lock、configuration-hashes、source-downloads以及4个runtime-configuration原件共7文件保持不变。最终受检源码SHA-256=`f0d47cba90b0c46239061b0f016564b542a23c0d8218133212c819647cd0702d`；测试=`0541d29c493f34bc7783c0b01d63a777142c0319a088c0c70c62da7efabab222`。本P2本地独立复验通过，没有剩余已定位的覆盖缺口；不声明敌对文件系统并发下的无TOCTOU保证，不扩产品/恢复平台。远端最新提交的复审与CI仍需闭环。
+
+## Code Review comment3972153923：observation摘要及同组出口复核
+
+父执行者在fresh checkout复现：ignored raw目录不存在时，旧observe_window.py可重写已提交recovery-01-observation.json。已独立读取红测：旧入口未抛拒绝，1 failed/1 passed（另2 deselected），覆盖真实runpy入口而非实现内部细节。
+
+修复前置summary.exists()/is_symlink()拒绝，位于raw目录创建和全部query之前；最终使用open("x")防止覆盖已存在摘要。独立运行 `.venv/bin/python -m pytest tests/test_m0_trace_archive.py -q`：**4 passed in 0.02s**，包含export与observation各自既有档案拒绝/新档案正常路径。
+
+另在主worktree用Python CLI/runpy执行实际observe_window.py，参数指向真实recovery-01摘要，HTTP与socket入口均硬拦截；得到Historical observation exists拒绝，network尝试0、摘要字节和raw目录存在状态不变。原摘要SHA-256=`2f36d80afe9b5df50d7d3eeeda2b245d3e143d65c5a841d3e35b377237bf77aa`；受检源码=`39b342870d98f01e0bd8da6810ed8ec7f1210b3ea4672e1c9a34aae664448ceb`。没有任何真实GET、服务或模型调用。
+
+本次同时扫描并核对 `scripts/m0_environment/` 当前全部9个Python脚本的文件写入路径，未再发现同组docs/evidence不可变摘要的相同遗漏：
+
+- capture：写入已跟踪证据label目录；mkdir(exist_ok=False)在HTTP/命令采集前独占目录，已有label拒绝。
+- freeze_images：docs下3份manifest只读，输出仅候选tmp Compose/proxy；全bind输入验证沿用上一项审查。
+- export_traces：manifest前置存在/symlink拒绝，tmp目录独占，最终manifest open("x")。
+- observe_window：本次补齐tracked摘要前置拒绝及最终独占写；raw目录仍独占。
+
+其余prepare仅生成可变tmp配置；Holmes每Run目录独占，Run内观察/共享allocation账本是按设计更新的运行记录（allocation锁与原子保存），不作为新的docs历史摘要入口；development_fault的原始/注入快照有存在拒绝、还原校验注入字节、时间线append；holmes_wire_check只输出离线检查结果，read_proxy不向docs写文件。该扫描限定这些已知脚本，不认证任意外部shell重定向、敌对文件系统竞态或未来新增入口。
+
+此P2本地独立复验通过，原实验成败和档案均保留；仍须等待覆盖最终提交的Code/Security Review与CI，不以本报告替代远端门禁。

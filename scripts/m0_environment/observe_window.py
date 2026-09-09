@@ -16,6 +16,11 @@ parser.add_argument("end", type=float)
 args = parser.parse_args()
 if not args.label.replace("-", "").isalnum() or not args.start < args.end:
     raise SystemExit("invalid label/window")
+summary_path = (
+    ROOT / "docs/evidence/m0-real-environment" / (args.label + "-observation.json")
+)
+if summary_path.exists() or summary_path.is_symlink():
+    raise SystemExit("Historical observation exists; no query or files written.")
 raw_dir = ROOT / "tmp/m0-environment/raw-evidence" / args.label
 raw_dir.mkdir(parents=True, exist_ok=False)
 queries = {
@@ -127,9 +132,8 @@ summary = {
     "boundary": "Developer observations; 5m metric calculations and max20 trace/log samples, not complete product health",
     "observations": records,
 }
-(
-    ROOT / "docs/evidence/m0-real-environment" / (args.label + "-observation.json")
-).write_text(json.dumps(summary, indent=2) + "\n")
+with summary_path.open("x") as stream:
+    stream.write(json.dumps(summary, indent=2) + "\n")
 print(
     json.dumps(
         {

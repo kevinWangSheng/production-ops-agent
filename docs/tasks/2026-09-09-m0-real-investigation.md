@@ -70,3 +70,5 @@ f79e84f两项CI34389374955成功；Code Review与Security Review均已返回，�
 同一保全缺陷检查中又通过真实入口临时树复现export_traces.py在新checkout覆盖旧Jaeger manifest；增加查询/创建输出目录前的旧manifest拒绝，最终用独占创建防覆盖。两条回归红1失败→绿2通过；原归档字节未改、0网络/模型，独立局部复验另记closeout-review。不是追加真实实验或导出，也不修改先前2792trace结果。
 
 1efa66c复审Code Review再指出P2：四个生成配置hash未覆盖全部bind输入；Security Review已完成无新增可见发现。775e51e按原已锁SHA的OTel tar及既有生成文件hash核查全部9bind，目录集合/字节/软链接/未知路径拒绝在写入前完成；未建立事后新基线、未追溯认证原时点。26CLI回归与独立复验、实际当前9bind只读核对通过，原archive/runtime不变。连同同类trace-manifest保护一起推送最终复审；模型仍20/20，服务停止。
+
+6d1b736的Code复审补充P2：observe_window只拒绝ignored raw目录，在干净checkout仍会覆盖已提交summary。按相同原则增加query/mkdir前的旧summary拒绝与最终独占创建；真实runpy临时树回归红1fail→绿，并一并核对本组所有docs/evidence输出：capture已有tracked目录独占、freeze只读、export已保护，observe这次补齐。仅本地保全修复、0模型/网络，不改原调查/还原事实。
