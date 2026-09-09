@@ -44,3 +44,7 @@ A/C 仅短时 Python 测试及公开资料查询；B 独占本批唯一重型环
 新增反例先运行：[修复前失败原始输出](../evidence/m0-c/review-regression-before.txt)。supported 现要求至少一个带引用的 fact，其引用继续通过既有完整证据校验。独立观察现校验所用捕获证据hash并拒绝重复ID；check_outcome对捕获证据独立记录hash错误，即使报告省略也不可绕过。未要求Observer证据进入AgentInput。
 新增合法supported正例、无引用假设/建议/拒绝假设反例、隐藏于报告之外的损坏证据，以及仅Observer拥有完整/缺失/重复证据的边界测试。schema字段未变，序列化JSON Schema对照仍一致，无需更新fixture/hash；源码SHA由Git提交固定。
 第一次修复后make check在reviewer新增Markdown代码块的格式检查处失败，见review-fix-check.txt；文件属reviewer，已联系其自行格式化，没有改审查结论。协调者已格式化审查文件，reviewer确认无需额外修改；定向45 passed，最终make check全仓92 passed、Ruff与锁检查通过，完整重测结果见review-fix-final.txt；仍待同一独立审查者复验关闭发现，不自行记独立通过。
+
+## 独立复验
+
+全新上下文review_c两项P2原反例均复验拒绝；合法supported、独立观察和partial/inconclusive正例通过，定向45 tests/完整92 tests。[报告](../evidence/m0-c/independent-review.md)。7份来源hash及OTel tag独立核查一致。本地实现与本批独立审查完成；PR/CI待协调者回读，未合并，不代表M0退出/正式评测或产品验收。
