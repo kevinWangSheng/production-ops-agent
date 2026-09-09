@@ -43,3 +43,11 @@
 main保护已将现有m0-postgres加入必需检查，API回读确认绑定Actions app15368，全部其他保护保持原值；见[前值](../evidence/pr-review-gate/protection-before.json)及[当前值](../evidence/pr-review-gate/protection-ci-required.json)。review-gate尚未激活。
 
 本任务后续：审核合并PR后，按[首次启用步骤](../development-review-gate.md#首次启用及恢复)验证真实check创建、跨运行更新、撤绿/恢复、HEAD绑定与服务器阻断，再追加review-gate必需检查。检查及review动态结果保留在本任务PR；不将未执行主线步骤勾为完成。本任务不合并#12或修改其工作区；任务worktree保留，未启动后台服务。
+
+## GitHub复审发现及实际接口适配
+
+- #13的455fae1自动Code Review发现[P1公开评论阻塞](https://github.com/kevinWangSheng/production-ops-agent/pull/13#discussion_r3968372495)。4项回归先失败后修复，只认可API认证的OWNER/MEMBER/COLLABORATOR请求；独立44tests及额外身份反例通过。
+- 本次真实PR无双审查汇总，当前账号Plus界面无SecurityReview配置，官方当前范围确认不提供；此前双汇总是历史形状。经独立设计增补审查，增加最新bot正式review完整commit_id校验的code-only入口，仍要求讨论全部处置、最新请求已完成、不使用坏/旧summary回退，不声称Security成功。无SHA的单独点赞保持NO_COMMIT_BOUND_REVIEW，不自动放行；这仍是实际部署的可用性前提。
+- 57项当前门禁测试通过，新入口独立复验进行中。首次适配的40/44项通过及双汇总设计保留为历史，最终运行证据见local-check。
+
+- 当前最终本地`make check`：248 passed、13 PG opt-in skipped。58项门禁测试与新增入口独立复验通过；定向请求迟到关联P1修复，报告保留完整历史。最后API主机固定github.com也经独立只读核查。最新代码/CI/机器人审查见#13，尚未部署主线或激活review-gate。

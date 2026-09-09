@@ -143,7 +143,11 @@ def test_resolution_allows_recheck_and_reopening_blocks(evidence):
 @pytest.mark.parametrize("kind", ["review", "security review"])
 def test_new_review_request_invalidates_completion(evidence, kind):
     evidence["comments"].append(
-        {"body": f"@codex {kind}", "updated_at": "2026-09-09T11:00:00Z"}
+        {
+            "body": f"@codex {kind}",
+            "author_association": "OWNER",
+            "updated_at": "2026-09-09T11:00:00Z",
+        }
     )
     assert gate.verdict(evidence) == "NEW_REVIEW_REQUEST_PENDING"
 
@@ -339,3 +343,110 @@ def test_captured_vendor_summary_format(evidence):
     evidence["pr"]["number"] = 11
     evidence["pr"]["head"]["sha"] = "17d040fd3b5d967340253e532095eb3804a48e46"
     assert gate.verdict(evidence) == "READY"
+
+
+@pytest.mark.parametrize(
+    "association", ["NONE", "CONTRIBUTOR", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"]
+)
+def test_outsider_review_command_does_not_block(evidence, association):
+    evidence["comments"].append(
+        {
+            "body": "@codex review",
+            "author_association": association,
+            "updated_at": "2026-09-09T11:00:00Z",
+        }
+    )
+    assert gate.verdict(evidence) == "READY"
+
+
+@pytest.fixture
+def code_only(evidence):
+    evidence["comments"] = []
+    evidence["reviews"] = [
+        {
+            "id": 123,
+            "user": {"id": gate.BOT_ID, "type": "Bot"},
+            "state": "COMMENTED",
+            "commit_id": SHA,
+            "body": "\n### 💡 Codex Review\n\nHere are some automated review suggestions.",
+            "submitted_at": "2026-09-09T10:00:00Z",
+        }
+    ]
+    return evidence
+
+
+def test_formal_commit_bound_code_only_review(code_only):
+    assert gate.verdict(code_only) == "READY"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "old_sha",
+        "pending",
+        "dismissed",
+        "changes_requested",
+        "wrong_bot",
+        "error_body",
+        "thumbs_only",
+        "unresolved",
+        "same_second_request",
+        "security_request",
+        "scoped_request",
+    ],
+)
+def test_code_only_does_not_accept_missing_or_wrong_proof(code_only, case):
+    review = code_only["reviews"][0]
+    if case == "old_sha":
+        review["commit_id"] = "b" * 40
+    elif case in {"pending", "dismissed", "changes_requested"}:
+        newer = copy.deepcopy(review)
+        newer.update(id=124, state=case.upper())
+        code_only["reviews"].append(newer)
+    elif case == "wrong_bot":
+        review["user"]["id"] = 1
+    elif case == "error_body":
+        review["body"] = "Could not review this PR"
+    elif case == "thumbs_only":
+        code_only["reviews"] = []
+        code_only["reactions"] = [{"content": "+1", "user": review["user"]}]
+    elif case == "unresolved":
+        code_only["threads"] = [{"isResolved": False}]
+    else:
+        commands = {
+            "same_second_request": "@codex review",
+            "security_request": "@codex security review",
+            "scoped_request": "@codex review only README",
+        }
+        code_only["comments"] = [
+            {
+                "body": commands[case],
+                "author_association": "OWNER",
+                "updated_at": "2026-09-09T10:00:00Z"
+                if case == "same_second_request"
+                else "2026-09-09T09:00:00Z",
+            }
+        ]
+    assert gate.verdict(code_only) != "READY"
+
+
+def test_existing_security_summary_cannot_be_bypassed_with_formal_review(
+    evidence, code_only
+):
+    # Both fixtures are the same object under pytest caching; build fresh summary.
+    captured = (
+        Path(__file__).parents[1] / "docs/evidence/pr-review-gate/pr11-summary.json"
+    )
+    code_only["comments"] = [json.loads(captured.read_text())]
+    assert gate.verdict(code_only) != "READY"
+
+
+def test_late_scoped_result_cannot_satisfy_new_full_request(code_only):
+    code_only["comments"] = [
+        {"body": body, "author_association": "OWNER", "updated_at": when}
+        for body, when in [
+            ("@codex review only README", "2026-09-09T08:00:00Z"),
+            ("@codex review", "2026-09-09T09:00:00Z"),
+        ]
+    ]
+    assert gate.verdict(code_only) == "SCOPED_REVIEW_REQUEST"

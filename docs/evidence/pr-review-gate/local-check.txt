@@ -7,7 +7,7 @@ OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '
 基础开发环境：前提可用
 环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
 uv lock --check --offline --no-python-downloads
-Resolved 38 packages in 18ms
+Resolved 38 packages in 20ms
 .venv/bin/ruff check .
 All checks passed!
 .venv/bin/ruff format --check .
@@ -19,19 +19,20 @@ rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-review-gate
 configfile: pyproject.toml
 testpaths: tests
 plugins: anyio-4.15.1
-collected 243 items
+collected 261 items
 
 tests/integration/test_m0_adapter_budget.py sss                          [  1%]
-tests/integration/test_m0_budget_postgres.py ssssssssss                  [  5%]
-tests/test_doctor.py .....                                               [  7%]
-tests/test_m0.py ..................................                      [ 21%]
-tests/test_m0_adapters.py .............................                  [ 33%]
-tests/test_m0_budget.py ........                                         [ 36%]
-tests/test_m0_contracts.py .......                                       [ 39%]
-tests/test_m0_outcomes.py .............................................. [ 58%]
-..................................                                       [ 72%]
-tests/test_m0_trace.py ........                                          [ 75%]
-tests/test_review_gate.py ........................................       [ 92%]
+tests/integration/test_m0_budget_postgres.py ssssssssss                  [  4%]
+tests/test_doctor.py .....                                               [  6%]
+tests/test_m0.py ..................................                      [ 19%]
+tests/test_m0_adapters.py .............................                  [ 31%]
+tests/test_m0_budget.py ........                                         [ 34%]
+tests/test_m0_contracts.py .......                                       [ 36%]
+tests/test_m0_outcomes.py .............................................. [ 54%]
+..................................                                       [ 67%]
+tests/test_m0_trace.py ........                                          [ 70%]
+tests/test_review_gate.py .............................................. [ 88%]
+............                                                             [ 92%]
 tests/test_secret_scan.py ........                                       [ 95%]
 tests/test_setup_docs_mcp.py ...........                                 [100%]
 
@@ -49,4 +50,4 @@ SKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local Pos
 SKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required
 SKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required
 SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required
-======================= 230 passed, 13 skipped in 1.52s ========================
+======================= 248 passed, 13 skipped in 1.47s ========================

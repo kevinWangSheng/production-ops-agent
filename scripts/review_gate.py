@@ -103,6 +103,7 @@ def snapshot(number):
         "pr": {k: pr[k] for k in ("number", "state", "draft", "head", "base")},
         "comments": collection(f"issues/{number}/comments?per_page=100"),
         "threads": threads(number),
+        "reviews": collection(f"pulls/{number}/reviews?per_page=100"),
     }
 
 
@@ -116,6 +117,52 @@ def timestamp(value):
     if parsed.tzinfo is None:
         raise ValueError("timezone missing")
     return parsed
+
+
+def review_requests(data):
+    return [
+        c
+        for c in data["comments"]
+        if c.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"}
+        and re.match(r"^@codex (?:security )?review\b", c.get("body", "").strip())
+    ]
+
+
+def request_time(comment):
+    return max(
+        timestamp(comment["updated_at"]),
+        timestamp(comment.get("created_at", comment["updated_at"])),
+    )
+
+
+def formal_code_review(data):
+    """Code-only installations expose full commit IDs via formal reviews.
+
+    No reaction fallback: a clean thumbs-up without a commit-bound review cannot
+    be certified by this adapter. An explicit security request needs its summary.
+    """
+    requests = review_requests(data)
+    if any(c["body"].strip().startswith("@codex security review") for c in requests):
+        return "SECURITY_COMPLETION_MISSING"
+    reviews = [r for r in data.get("reviews", []) if bot(r)]
+    if not reviews:
+        return "NO_COMMIT_BOUND_REVIEW"
+    # Do not filter bad states first and accidentally fall back to old approval.
+    latest = max(reviews, key=lambda r: r["id"])
+    if latest.get("state") not in {"COMMENTED", "APPROVED"}:
+        return "REVIEW_NOT_COMPLETED"
+    if latest.get("commit_id") != data["pr"]["head"]["sha"]:
+        return "REVIEW_WRONG_HEAD"
+    if not latest.get("body", "").lstrip().startswith("### 💡 Codex Review\n"):
+        return "UNKNOWN_FORMAL_REVIEW"
+    completed = timestamp(latest["submitted_at"])
+    if any(c["body"].strip() != "@codex review" for c in requests):
+        return "SCOPED_REVIEW_REQUEST"
+    if requests:
+        request = max(requests, key=request_time)
+        if request_time(request) >= completed:
+            return "NEW_REVIEW_REQUEST_PENDING"
+    return "READY"
 
 
 def verdict(data):
@@ -135,8 +182,20 @@ def verdict(data):
         if any(t.get("isResolved") is not True for t in data["threads"]):
             return "UNRESOLVED_THREADS"
         summaries = [
-            c for c in data["comments"] if bot(c) and MARKER in c.get("body", "")
+            c
+            for c in data["comments"]
+            if bot(c)
+            and any(
+                marker in c.get("body", "")
+                for marker in (
+                    "codex-pull-request-review-summary",
+                    "codex-security-review:",
+                    "## Codex Review Summary",
+                )
+            )
         ]
+        if not summaries:
+            return formal_code_review(data)
         if len(summaries) != 1:
             return "SUMMARY_MISSING_OR_AMBIGUOUS"
         summary = summaries[0]
@@ -185,12 +244,9 @@ def verdict(data):
         completed = min(timestamp(row[2]) for row in rows)
         if any(timestamp(row[2]) > timestamp(summary["updated_at"]) for row in rows):
             return "INVALID_REVIEW_TIME"
-        for comment in data["comments"]:
-            if re.match(
-                r"^@codex (?:security )?review\b", comment.get("body", "").strip()
-            ):
-                if timestamp(comment["updated_at"]) > completed:
-                    return "NEW_REVIEW_REQUEST_PENDING"
+        for comment in review_requests(data):
+            if request_time(comment) >= completed:
+                return "NEW_REVIEW_REQUEST_PENDING"
         return "READY"
     except (KeyError, TypeError, ValueError, IndexError, AttributeError):
         return "INVALID_EVIDENCE"

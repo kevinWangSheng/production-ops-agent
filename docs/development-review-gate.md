@@ -6,13 +6,20 @@
 
 [工作流](../.github/workflows/review-gate.yml)只运行main中的[标准库脚本](../scripts/review_gate.py)，不执行PR代码、不获取业务Secrets、不调用模型、不自动合并。
 
-脚本读取全部分页的PR评论及review threads，只接受API身份为Bot/199175422的Codex汇总；完整headSha必须等于当前HEAD，Code Review与Security Review两项均为Completed，所有讨论必须resolved（含outdated），汇总完成后的新审查请求仍阻塞。不接受仅点赞、无评论、旧SHA、单独Code Review结果或模型自行声称完成。供应商格式未知时拒绝通过；无稳定官方JSON合同，适配器依赖已捕获的实际汇总格式，变更时需修复及复验。
+脚本读取全部分页的PR评论、正式reviews及review threads，只接受API身份为Bot/199175422的结果，所有讨论必须resolved（含outdated）。有两种已观察的证据入口：
+
+- 存在Codex汇总特征时，只接受严格已知格式、完整headSha等于HEAD、Code Review与Security Review两项Completed。损坏或旧汇总不能退回宽松入口。
+- 没有汇总特征的Code Review单独安装：最新真实bot正式review必须带API完整commit_id等于HEAD、标准Codex Review正文头、已提交的COMMENTED/APPROVED状态；较新pending/dismissed不能回退历史成功。该入口只证明Code Review，不声称Security Review通过。
+
+只将GitHub认证OWNER/MEMBER/COLLABORATOR的请求计入等待；请求创建/修改时间不早于完成时间时阻塞。Code-only入口的显式Security请求无完成汇总时阻塞，任何仍存的受信定向请求均阻塞，防止其迟到结果被后来的全量请求冒用；缺少可验证触发关联时不能假定结果属于后一次请求。当前个人仓库适用；迁移组织后MEMBER并不代表仓库写权限，需重新审查授权映射。
+
+**已知可用性限制：清洁审查可能只给👍，没有绑定完整SHA的正式review或汇总。此时返回NO_COMMIT_BOUND_REVIEW，不能自动通过。** 已捕获正式COMMENTED只证明机器人提交了标准审查，不能证明其阅读覆盖率或诊断正确性；最终人审仍必要。供应商格式未知时拒绝通过，适配器变化需修复及复验。
 
 运行 `python3 scripts/review_gate.py --pr <编号>` 只读判定；退出0才是就绪，其他结果列明原因。没有参数时检查全部开放main PR。
 
 workflow在PR打开/推送等事件、issue评论变更和手动触发时重算，并以5分钟cron补偿。cron可能延迟，不能承诺固定处理时间；线程重开即时合并阻断由原生讨论解决规则负责。全局串行，复用同SHA的单个check-run（避免commit status历史上限），先in_progress再查询，成功前重读证据；同SHA多PR拒绝成功。API或发布失败必须检查运行日志，不能把旧成功视作新证据。
 
-2026-09-09本仓库Codex设置已从On PR open改为On every push，Review all PRs保持启用，未改个人默认或开启credits。配置已回读；每次push的实际完成需以真实PR验证。官方[Code Review说明](https://learn.chatgpt.com/docs/third-party/github)支持自动审查，但规则文字不能替代分支保护。
+2026-09-09本仓库Codex设置已从On PR open改为On every push，Review all PRs保持启用，未改个人默认或开启credits。配置已回读；#13初始自动正式Code Review已返回，推送后的最新提交覆盖仍需验证。当前账号UI为Plus，没有SecurityReview配置项；[官方范围](https://learn.chatgpt.com/docs/security/security-review)明确Plus不提供。旧PR双汇总不能当作本账号当前可用性的证明，没有升级或新增费用。官方[Code Review说明](https://learn.chatgpt.com/docs/third-party/github)支持自动审查，但规则文字不能替代分支保护。
 
 ## 强制范围与局限
 
