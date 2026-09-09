@@ -1,0 +1,9 @@
+{
+  "version": "m0-protocol-v1",
+  "target": "m0-target-a",
+  "messages": [{"role": "user", "content": "Call read_fixture for m0-target-a. Return JSON with target and evidence_id from its result. This is synthetic protocol testing."}],
+  "tools": [{"type": "function", "function": {"name": "read_fixture", "description": "Read fixed synthetic evidence only.", "parameters": {"type": "object", "properties": {"target": {"type": "string", "enum": ["m0-target-a"]}}, "required": ["target"], "additionalProperties": false}}}],
+  "evidence": {"target": "m0-target-a", "evidence_id": "m0-evidence-a", "source": "synthetic/read_fixture/v1", "window_start": "2026-09-08T00:00:00Z", "window_end": "2026-09-08T00:01:00Z", "observed_at": "2026-09-08T00:01:00Z", "synthetic": true},
+  "assistant": {"role": "assistant", "content": "", "reasoning_content": "SYNTHETIC_PRIVATE_PROTOCOL_SENTINEL", "tool_calls": [{"id": "call_m0_a", "type": "function", "function": {"name": "read_fixture", "arguments": "{\"target\":\"m0-target-a\"}"}}]},
+  "contaminants": {"api_key": "SYNTHETIC_KEY_DO_NOT_EXPORT", "metadata": {"provider_private": "SYNTHETIC_PRIVATE_PROTOCOL_SENTINEL"}}
+}

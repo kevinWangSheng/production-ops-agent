@@ -50,3 +50,25 @@ Codex 仅启用文档搜索/虚拟文档读取、API 搜索/符号读取四项�
 用户授权本项目接入已落实到本地配置；新克隆/新 worktree 仍遵守宿主项目信任机制，脚本不自动信任所有目录。当前已打开的会话未必热加载，需重开/刷新 MCP 后验证。检查命令：`codex mcp get langchain-docs --json`、`codex mcp get langchain-reference --json`、`claude mcp get langchain-docs`、`claude mcp get langchain-reference`。配置读取、Connected 和实际查询是不同证据，见[任务记录](tasks/2026-09-08-agent-capabilities.md)。
 
 停用时在项目 Codex 两个 server 表设置 `enabled = false`，并按 Claude 的项目 MCP 管理停用对应名字；只改这两项，保留其他服务器。重新启用先核对修改后的配置，不用安装脚本覆盖用户后续定制。Git 忽略不等于可删除，清理工作区前按原 worktree 约定保留需要的本地配置与私有资料。
+
+## M0-01 离线协议入口
+
+`make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest 明确禁用 LangSmith 自动插件，CI 仍只做离线开发检查。
+
+在任务 worktree 根目录执行：
+
+```sh
+make setup
+make check
+.venv/bin/python -m scripts.m0 offline
+.venv/bin/python -m scripts.m0 check-config --env-file /Users/shenghuikevin/dev/AI/production-ops-agent/.env
+.venv/bin/python -m scripts.m0 live
+```
+
+`offline` 仅使用版本管理的合成 fixture，不接受私有配置参数；模型使用 HTTPX2 内存 transport，trace 使用 requests 捕获 session，并拦截 socket 网络调用。入口只输出白名单摘要、版本与输入文件哈希；两次替身请求、单次 SDK 超时 5 秒、模型阶段总超时 15 秒、SDK 重试 0。此次数/时间限制属于固定替身排演，不能复用于付费预算或产品运行时。
+
+`check-config` 是纯本地校验，显式绝对路径或 `--process-env` 二选一；无默认 dotenv 发现。文件必须为当前用户持有、普通文件且无 group/other 权限，拒绝最终符号链接、重复/未知键与 shell 插值，不执行配置。只输出固定错误码或布尔状态；文件与同名环境变量不一致即拒绝，不回显键值。日期要求带时区且在未来。有效性/区域归属/多 workspace 权限仍需后续实际验证，字段存在不算通过。
+
+退出码：0 仅表示离线排演成功；1 排演异常（不输出原始 SDK 异常）；2 配置拒绝或真实前提未完成；3 `LIVE_NOT_ENABLED`。本版本 `live` **始终拒绝**，即使 key、预算、日期全填也不创建客户端、不读文件。后续真实入口必须先实现授权记录、实际 endpoint/workspace 校验、持久累计费用预留（含未知费用）、并发/重启和总期限限制、受控 trace 上传/回读与退出清理，并完成独立审查；预算数字本身不能打开此入口。
+
+本次没有服务、数据库或后台导出线程需要停止，CLI 客户端随上下文关闭。stdout 可保存到任务专用 `tmp/m0-01/`；审核后无秘密证据写入 `docs/evidence/m0-01/`。清理遵循 AGENTS，不自动删除证据或其他任务卷。真实实验的用例合同、版本来源、资源限制和缺项见 [M0-01](tasks/2026-09-08-m0-01-preflight.md)。

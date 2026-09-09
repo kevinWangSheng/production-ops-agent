@@ -6,9 +6,15 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest", "ruff"]
+m0 = [
+    "httpx2==2.12.0",
+    "langsmith==0.12.2",
+    "openai==3.10.0",
+]
 
 [tool.uv]
 package = false
+default-groups = ["dev", "m0"]
 
 [tool.ruff]
 target-version = "py312"
@@ -18,4 +24,4 @@ select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -p no:langsmith_plugin"

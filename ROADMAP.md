@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: technical design approved and persisted; M0 validation is next. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Implementation has not started.
+Current phase: technical design approved and persisted; M0-01 offline preparation is in progress. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Implementation has not started.
 
 ## Completed decisions and documentation
 
@@ -20,7 +20,7 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 - [x] 开发能力接入与全盘规划 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-agent-capabilities.md)。在主项目安装 LangChain 文档/API MCP，规划 CLI+skill、API/UI 测试、类型/秘密检查、trace/eval 和交接能力；Codex 项目配置读取、Claude Connected 及公共资料查询通过，独立审查 P2 已修复复验；其余新增工具待对应工作项实施，不改变 M0 门槛。
 
 
-- [x] 开工上下文补齐 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-preflight-context.md)。同步已合并状态、明确控制/观察语义及 coding agent 评测隔离，准备配置模板和 [M0-01 任务](docs/tasks/2026-09-08-m0-01-preflight.md)；本批本地检查和独立全文审查通过；未执行模型实验或开放实施门槛，M0-01 待开始。
+- [x] 开工上下文补齐 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-preflight-context.md)。同步已合并状态、明确控制/观察语义及 coding agent 评测隔离，准备配置模板和 [M0-01 任务](docs/tasks/2026-09-08-m0-01-preflight.md)；本批本地检查和独立全文审查通过；未执行模型实验或开放实施门槛，M0-01 已接续离线准备，见下方当前任务。
 
 - [x] GitHub 基础 CI 与 PR 管理 — 2026-09-08：PR #1 的 Ubuntu checks 成功并已合并（4502ece）；[任务](docs/tasks/2026-09-08-github-ci.md)，[交付与资源后续安排](docs/plans/delivery-and-resources-2026-09-08.md)。本轮无 dataset eval 或 CD；用户授权公开仓库后 main 分支保护已配置，机器人手动审查完成，文档发现已处理；自动推送复审待单独确认。PR #2 已合并为 f225d82，主线 CI、本地同步及 CI 任务 worktree 清理完成，最终结果已补入任务记录。
 
@@ -39,6 +39,8 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 - [x] 共享指令加载验证 — 2026-09-08：Codex 已有受限新会话加载证据；Claude 本次新会话正确读取中文规则与最新独立审查/旧 skills 约定，账户限制不再阻断。仅加载与理解验证，不等于完整任务行为验证；旧 skills 原生发现不作为当前收尾条件。
 
 ## Next: M0 validation and acceptance calibration
+
+- [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。真实调用入口保持关闭，区域/预算/期限及累计费用机制待补齐；不代表 M0 机制或产品通过。
 
 - [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
 

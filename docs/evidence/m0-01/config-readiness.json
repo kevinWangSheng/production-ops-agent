@@ -1,0 +1,14 @@
+{
+  "command": ".venv/bin/python -m scripts.m0 check-config --env-file /Users/shenghuikevin/dev/AI/production-ops-agent/.env",
+  "exit_code": 2,
+  "deepseek_key_present": true,
+  "langsmith_key_present": true,
+  "langsmith_endpoint_present": false,
+  "langsmith_project_present": false,
+  "workspace_present": false,
+  "positive_budget_configured": false,
+  "future_deadline_configured": false,
+  "authorization_recorded": false,
+  "live_execution_enabled": false,
+  "key_validity_verified": false
+}
