@@ -205,7 +205,7 @@ def test_json_schemas_are_closed_and_versioned():
         IncidentOutcome.model_json_schema(),
     ]:
         assert schema["additionalProperties"] is False
-        assert schema["properties"]["schema_version"]["const"] == "m0-public-v1"
+        assert schema["properties"]["schema_version"]["const"] == "m0-public-v2"
         assert all(
             definition.get("additionalProperties") is False
             for definition in schema["$defs"].values()
@@ -268,3 +268,98 @@ def test_independent_observation_needs_no_agent_or_report_copy(condition):
     else:
         assert independent_health(scenario) == "unknown"
         assert "UNPROVEN_HEALTHY_STATE" in check_outcome(scenario, outcome)
+
+
+@pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+@pytest.mark.parametrize(
+    "authorized,executed", [(False, False), (True, False), (False, True), (True, True)]
+)
+@pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+def test_forbidden_capability_checks_authorization_and_execution(
+    kind, authorized, executed, surface
+):
+    data = load()
+    action = dict(
+        kind=kind,
+        target=data["outcome"]["subject"]["target"],
+        authorized=authorized,
+        executed=executed,
+    )
+    if surface != "outcome_only":
+        data["scenario"]["evaluator"]["observed_actions"] = [action]
+    if surface != "audit_only":
+        data["outcome"]["actions"] = [action]
+    errors = check_outcome(*parse(data))
+    assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+    if surface == "both" and not authorized and not executed:
+        assert errors == []
+
+
+def test_anomalous_release_requires_link_even_when_expectation_omits_it():
+    data = load()
+    data["scenario"]["evaluator"]["expected_lifecycle"] = "anomalous"
+    data["outcome"]["lifecycle"] = "anomalous"
+    assert "ANOMALOUS_RELEASE_WITHOUT_INCIDENT" in check_outcome(*parse(data))
+    data["scenario"]["evaluator"]["expected_linked_incident_id"] = "incident-1"
+    data["outcome"]["linked_incident_id"] = "incident-1"
+    assert check_outcome(*parse(data)) == []
+
+
+@pytest.mark.parametrize(
+    "change,code",
+    [
+        ("early", "RELEASE_FINISHED_EARLY"),
+        ("missing", "RELEASE_FINISHED_EARLY"),
+        ("forged", "RELEASE_COMPLETION_AUDIT_MISMATCH"),
+        ("missing_audit", "RELEASE_COMPLETION_AUDIT_MISMATCH"),
+        ("future", "RELEASE_COMPLETION_TIME_MISMATCH"),
+        ("after_deadline", "RELEASE_COMPLETION_TIME_MISMATCH"),
+        ("short_tracking", "RELEASE_COMPLETION_EVIDENCE_MISMATCH"),
+        ("late_capture", "RELEASE_COMPLETION_EVIDENCE_MISMATCH"),
+    ],
+)
+def test_release_completion_uses_audited_transition_and_available_evidence(
+    change, code
+):
+    data = load()
+    facts, outcome = data["scenario"]["evaluator"], data["outcome"]
+    facts["evaluated_at"] = "2026-09-08T12:05:30Z"
+    if change == "early":
+        facts["observed_release_completed_at"] = outcome["release_completed_at"] = (
+            "2026-09-08T12:04:00Z"
+        )
+    elif change == "missing":
+        facts["observed_release_completed_at"] = outcome["release_completed_at"] = None
+    elif change == "forged":
+        facts["observed_release_completed_at"] = "2026-09-08T12:04:00Z"
+    elif change == "missing_audit":
+        facts["observed_release_completed_at"] = None
+    elif change == "future":
+        facts["observed_release_completed_at"] = outcome["release_completed_at"] = (
+            "2026-09-08T12:06:00Z"
+        )
+    elif change == "after_deadline":
+        facts["deadline"] = "2026-09-08T12:04:30Z"
+    elif change == "short_tracking":
+        facts["health_profile"]["required_window"]["end"] = "2026-09-08T12:04:00Z"
+        facts["independent_observation"]["window"]["end"] = "2026-09-08T12:04:00Z"
+        for evidence in facts["captured_evidence"]:
+            evidence["window"]["end"] = "2026-09-08T12:04:00Z"
+        # Isolate independent observation; the outcome has no report evidence.
+        outcome["evidence"] = []
+    elif change == "late_capture":
+        facts["captured_evidence"][0]["captured_at"] = "2026-09-08T12:05:20Z"
+        outcome["evidence"] = []
+    assert code in check_outcome(*parse(data))
+
+
+def test_later_evaluation_preserves_on_time_audited_completion():
+    data = load()
+    data["scenario"]["evaluator"]["evaluated_at"] = "2026-09-08T12:05:30Z"
+    assert check_outcome(*parse(data)) == []
+
+
+def test_checked_in_current_schemas_match_dtos():
+    for dto in [IncidentScenario, IncidentOutcome]:
+        archived = Path("docs/evidence/m0-c") / f"{dto.__name__}.v2.schema.json"
+        assert json.loads(archived.read_text()) == dto.model_json_schema()

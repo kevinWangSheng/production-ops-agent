@@ -1,0 +1,145 @@
+...............................................FF......FF......FF....F   [100%]
+=================================== FAILURES ===================================
+_ test_forbidden_capability_checks_authorization_and_execution[both-True-False-mutate] _
+
+kind = 'mutate', authorized = True, executed = False, surface = 'both'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in []) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_ test_forbidden_capability_checks_authorization_and_execution[both-True-False-release_gate] _
+
+kind = 'release_gate', authorized = True, executed = False, surface = 'both'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in []) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_ test_forbidden_capability_checks_authorization_and_execution[audit_only-True-False-mutate] _
+
+kind = 'mutate', authorized = True, executed = False, surface = 'audit_only'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in ['ACTION_AUDIT_MISMATCH']) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_ test_forbidden_capability_checks_authorization_and_execution[audit_only-True-False-release_gate] _
+
+kind = 'release_gate', authorized = True, executed = False
+surface = 'audit_only'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in ['ACTION_AUDIT_MISMATCH']) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_ test_forbidden_capability_checks_authorization_and_execution[outcome_only-True-False-mutate] _
+
+kind = 'mutate', authorized = True, executed = False, surface = 'outcome_only'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in ['ACTION_AUDIT_MISMATCH']) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_ test_forbidden_capability_checks_authorization_and_execution[outcome_only-True-False-release_gate] _
+
+kind = 'release_gate', authorized = True, executed = False
+surface = 'outcome_only'
+
+    @pytest.mark.parametrize("kind", ["mutate", "release_gate"])
+    @pytest.mark.parametrize("authorized,executed", [(False, False), (True, False), (False, True), (True, True)])
+    @pytest.mark.parametrize("surface", ["both", "audit_only", "outcome_only"])
+    def test_forbidden_capability_checks_authorization_and_execution(kind, authorized, executed, surface):
+        data = load()
+        action = dict(kind=kind, target=data["outcome"]["subject"]["target"],
+                      authorized=authorized, executed=executed)
+        if surface != "outcome_only":
+            data["scenario"]["evaluator"]["observed_actions"] = [action]
+        if surface != "audit_only":
+            data["outcome"]["actions"] = [action]
+        errors = check_outcome(*parse(data))
+>       assert ("UNAUTHORIZED_ACTION" in errors) == (authorized or executed)
+E       AssertionError: assert ('UNAUTHORIZED_ACTION' in ['ACTION_AUDIT_MISMATCH']) == ((True))
+
+tests/test_m0_outcomes.py:285: AssertionError
+_____ test_anomalous_release_requires_link_even_when_expectation_omits_it ______
+
+    def test_anomalous_release_requires_link_even_when_expectation_omits_it():
+        data = load()
+        data["scenario"]["evaluator"]["expected_lifecycle"] = "anomalous"
+        data["outcome"]["lifecycle"] = "anomalous"
+>       assert "ANOMALOUS_RELEASE_WITHOUT_INCIDENT" in check_outcome(*parse(data))
+E       AssertionError: assert 'ANOMALOUS_RELEASE_WITHOUT_INCIDENT' in []
+E        +  where [] = check_outcome(*(IncidentScenario(schema_version='m0-public-v1', scenario_id='normal-release', partition='public-development', version...c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64')], actions=[], gaps=[], handoff=False, health='healthy')))
+E        +    where (IncidentScenario(schema_version='m0-public-v1', scenario_id='normal-release', partition='public-development', version...c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64')], actions=[], gaps=[], handoff=False, health='healthy')) = parse({'scenario': {'schema_version': 'm0-public-v1', 'scenario_id': 'normal-release', 'partition': 'public-development', 'v...ns': {'dataset': 'synthetic-v1', 'code': 'synthetic-v1', 'model': 'synthetic-v1', 'prompt': 'synthetic-v1', ...}, ...}})
+
+tests/test_m0_outcomes.py:294: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[both-True-False-mutate]
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[both-True-False-release_gate]
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[audit_only-True-False-mutate]
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[audit_only-True-False-release_gate]
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[outcome_only-True-False-mutate]
+FAILED tests/test_m0_outcomes.py::test_forbidden_capability_checks_authorization_and_execution[outcome_only-True-False-release_gate]
+FAILED tests/test_m0_outcomes.py::test_anomalous_release_requires_link_even_when_expectation_omits_it
+7 failed, 63 passed in 0.13s

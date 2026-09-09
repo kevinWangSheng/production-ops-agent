@@ -1,0 +1,651 @@
+{
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "query",
+            "mutate",
+            "release_gate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "authorized": {
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "executed": {
+          "title": "Executed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "authorized",
+        "executed"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "AgentInput": {
+      "additionalProperties": false,
+      "description": "Only this DTO may be passed to an investigator; content is untrusted.",
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "request": {
+          "minLength": 1,
+          "title": "Request",
+          "type": "string"
+        },
+        "visible_evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Visible Evidence",
+          "type": "array"
+        },
+        "human_feedback": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Human Feedback",
+          "type": "array"
+        },
+        "knowledge_revision": {
+          "minLength": 1,
+          "title": "Knowledge Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "request",
+        "visible_evidence",
+        "human_feedback",
+        "knowledge_revision"
+      ],
+      "title": "AgentInput",
+      "type": "object"
+    },
+    "EvaluatorFacts": {
+      "additionalProperties": false,
+      "description": "Harness-only inputs; no injection answer or held-out data in this module.",
+      "properties": {
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "diagnosability": {
+          "enum": [
+            "sufficient",
+            "insufficient"
+          ],
+          "title": "Diagnosability",
+          "type": "string"
+        },
+        "diagnosability_basis": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Diagnosability Basis",
+          "type": "array"
+        },
+        "expected_execution": {
+          "enum": [
+            "queued",
+            "running",
+            "waiting_human",
+            "paused",
+            "blocked",
+            "completed",
+            "failed",
+            "cancelled",
+            "budget_exhausted"
+          ],
+          "title": "Expected Execution",
+          "type": "string"
+        },
+        "expected_lifecycle": {
+          "enum": [
+            "open",
+            "observing_recovery",
+            "resolved",
+            "closed",
+            "pending",
+            "observing",
+            "healthy",
+            "anomalous",
+            "unknown",
+            "cancelled"
+          ],
+          "title": "Expected Lifecycle",
+          "type": "string"
+        },
+        "expected_linked_incident_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Linked Incident Id"
+        },
+        "expected_handoff": {
+          "title": "Expected Handoff",
+          "type": "boolean"
+        },
+        "captured_evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Captured Evidence",
+          "type": "array"
+        },
+        "observed_actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "title": "Observed Actions",
+          "type": "array"
+        },
+        "health_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HealthProfile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "independent_observation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IndependentObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_release_completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed Release Completed At"
+        },
+        "release_earliest_completion": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Earliest Completion"
+        },
+        "deadline": {
+          "format": "date-time",
+          "title": "Deadline",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evaluated_at",
+        "diagnosability",
+        "diagnosability_basis",
+        "expected_execution",
+        "expected_lifecycle",
+        "expected_linked_incident_id",
+        "expected_handoff",
+        "captured_evidence",
+        "observed_actions",
+        "health_profile",
+        "independent_observation",
+        "observed_release_completed_at",
+        "release_earliest_completion",
+        "deadline"
+      ],
+      "title": "EvaluatorFacts",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "query": {
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "freshness_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Freshness Seconds",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_data",
+            "stale",
+            "invalid_input",
+            "denied",
+            "connectivity",
+            "timeout",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "query",
+        "target",
+        "window",
+        "captured_at",
+        "freshness_seconds",
+        "status",
+        "content",
+        "content_sha256"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "HealthProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "required_signals": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Signals",
+          "type": "array"
+        },
+        "min_samples": {
+          "exclusiveMinimum": 0,
+          "title": "Min Samples",
+          "type": "integer"
+        },
+        "freshness_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Freshness Seconds",
+          "type": "integer"
+        },
+        "required_window": {
+          "$ref": "#/$defs/Window"
+        }
+      },
+      "required": [
+        "revision",
+        "required_signals",
+        "min_samples",
+        "freshness_seconds",
+        "required_window"
+      ],
+      "title": "HealthProfile",
+      "type": "object"
+    },
+    "IndependentObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "profile_revision": {
+          "minLength": 1,
+          "title": "Profile Revision",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/$defs/Signal"
+          },
+          "title": "Signals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subject",
+        "profile_revision",
+        "window",
+        "signals"
+      ],
+      "title": "IndependentObservation",
+      "type": "object"
+    },
+    "Signal": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "evidence_id": {
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "samples": {
+          "minimum": 0,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "verdict": {
+          "enum": [
+            "healthy",
+            "degraded",
+            "unknown"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "evidence_id",
+        "samples",
+        "verdict"
+      ],
+      "title": "Signal",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "incident",
+            "release_observation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "control_generation": {
+          "minimum": 0,
+          "title": "Control Generation",
+          "type": "integer"
+        },
+        "before_revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Revision"
+        },
+        "release_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "target",
+        "control_generation"
+      ],
+      "title": "Subject",
+      "type": "object"
+    },
+    "Target": {
+      "additionalProperties": false,
+      "properties": {
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "cluster_uid": {
+          "minLength": 1,
+          "title": "Cluster Uid",
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "resource_uid": {
+          "minLength": 1,
+          "title": "Resource Uid",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "integration_id",
+        "cluster_uid",
+        "namespace",
+        "resource_uid",
+        "revision"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "Versions": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "minLength": 1,
+          "title": "Dataset",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt": {
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "tool": {
+          "minLength": 1,
+          "title": "Tool",
+          "type": "string"
+        },
+        "access_policy": {
+          "minLength": 1,
+          "title": "Access Policy",
+          "type": "string"
+        },
+        "runbook": {
+          "minLength": 1,
+          "title": "Runbook",
+          "type": "string"
+        },
+        "evaluator": {
+          "const": "m0-deterministic-v2",
+          "title": "Evaluator",
+          "type": "string"
+        },
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "workload": {
+          "minLength": 1,
+          "title": "Workload",
+          "type": "string"
+        },
+        "knowledge": {
+          "minLength": 1,
+          "title": "Knowledge",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "code",
+        "model",
+        "prompt",
+        "tool",
+        "access_policy",
+        "runbook",
+        "evaluator",
+        "adapter",
+        "workload",
+        "knowledge"
+      ],
+      "title": "Versions",
+      "type": "object"
+    },
+    "Window": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Window",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "m0-public-v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scenario_id": {
+      "minLength": 1,
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "partition": {
+      "const": "public-development",
+      "title": "Partition",
+      "type": "string"
+    },
+    "versions": {
+      "$ref": "#/$defs/Versions"
+    },
+    "agent_input": {
+      "$ref": "#/$defs/AgentInput"
+    },
+    "evaluator": {
+      "$ref": "#/$defs/EvaluatorFacts"
+    }
+  },
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "partition",
+    "versions",
+    "agent_input",
+    "evaluator"
+  ],
+  "title": "IncidentScenario",
+  "type": "object"
+}

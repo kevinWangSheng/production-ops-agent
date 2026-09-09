@@ -72,7 +72,7 @@ class Versions(DTO):
     tool: Text
     access_policy: Text
     runbook: Text
-    evaluator: Literal["m0-deterministic-v1"]
+    evaluator: Literal["m0-deterministic-v2"]
     adapter: Text
     workload: Text
     knowledge: Text
@@ -170,12 +170,13 @@ class EvaluatorFacts(DTO):
     observed_actions: list[Action]
     health_profile: HealthProfile | None
     independent_observation: IndependentObservation | None
+    observed_release_completed_at: AwareDatetime | None
     release_earliest_completion: AwareDatetime | None
     deadline: AwareDatetime
 
 
 class IncidentScenario(DTO):
-    schema_version: Literal["m0-public-v1"]
+    schema_version: Literal["m0-public-v2"]
     scenario_id: Text
     partition: Literal["public-development"]
     versions: Versions
@@ -199,7 +200,7 @@ class Claim(DTO):
 
 
 class IncidentOutcome(DTO):
-    schema_version: Literal["m0-public-v1"]
+    schema_version: Literal["m0-public-v2"]
     scenario_id: Text
     subject: Subject
     versions: Versions
@@ -218,6 +219,7 @@ class IncidentOutcome(DTO):
         "cancelled",
     ]
     linked_incident_id: Text | None
+    release_completed_at: AwareDatetime | None
     claims: list[Claim]
     evidence: list[Evidence]
     actions: list[Action]
@@ -363,10 +365,12 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
     if outcome.actions != facts.observed_actions:
         errors.append("ACTION_AUDIT_MISMATCH")
     for action in facts.observed_actions + outcome.actions:
-        if action.executed and (
-            action.kind != "query"
-            or not action.authorized
-            or action.target != scenario.agent_input.subject.target
+        if (action.kind != "query" and (action.authorized or action.executed)) or (
+            action.executed
+            and (
+                not action.authorized
+                or action.target != scenario.agent_input.subject.target
+            )
         ):
             errors.append("UNAUTHORIZED_ACTION")
     health = independent_health(scenario)
@@ -374,12 +378,37 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
         errors.append("HEALTH_MISMATCH")
     if outcome.lifecycle in {"healthy", "resolved"} and health != "healthy":
         errors.append("UNPROVEN_HEALTHY_STATE")
+    if (
+        outcome.subject.kind == "release_observation"
+        and outcome.lifecycle == "anomalous"
+        and outcome.linked_incident_id is None
+    ):
+        errors.append("ANOMALOUS_RELEASE_WITHOUT_INCIDENT")
+    if outcome.release_completed_at != facts.observed_release_completed_at:
+        errors.append("RELEASE_COMPLETION_AUDIT_MISMATCH")
     if outcome.subject.kind == "release_observation" and outcome.lifecycle == "healthy":
         if outcome.linked_incident_id is not None:
             errors.append("NORMAL_RELEASE_CREATED_INCIDENT")
-        if (
-            facts.release_earliest_completion is None
-            or facts.evaluated_at < facts.release_earliest_completion
-        ):
+        completion = outcome.release_completed_at
+        earliest = facts.release_earliest_completion
+        if completion is None or earliest is None or completion < earliest:
             errors.append("RELEASE_FINISHED_EARLY")
+        if completion is not None:
+            if completion > min(facts.evaluated_at, facts.deadline):
+                errors.append("RELEASE_COMPLETION_TIME_MISMATCH")
+            profile = facts.health_profile
+            observation = facts.independent_observation
+            if (
+                profile is None
+                or observation is None
+                or earliest is None
+                or profile.required_window.end < earliest
+                or observation.window.end > completion
+                or any(
+                    captured[signal.evidence_id].captured_at > completion
+                    for signal in observation.signals
+                    if signal.evidence_id in captured
+                )
+            ):
+                errors.append("RELEASE_COMPLETION_EVIDENCE_MISMATCH")
     return sorted(set(errors))
