@@ -1,6 +1,6 @@
 # M0 汇合与秘密扫描
 
-- 当前状态（2026-09-09）：PR #8 已合入 components；GitHub 扫描证据版本发现正在独立修复分支处理，本次独立复验完成，PR #9 待用户审核；最新提交 CI 以 PR 实时 checks 为准。下文 2026-09-08 过程与 CI 状态保留为历史。
+- 当前状态（2026-09-09）：PR #8/#9 已合入 components；本次主线汇合提交纳入其内容和 #4–#7 已审修复。当前收尾见[批次索引](2026-09-08-m0-batch.md)，下文均为此前阶段的证据与交接记录。
 - 工作区：production-ops-agent-m0-integration / chore/m0-integration；依赖快照 chore/m0-components（普通本地 merge A/B/C，不代表任何 PR 已获准合并）。
 - 依据：SPEC 门槛与数据出口、C3 §5/7/11–13、M0 §1/2/3/6/7、本批用户授权和[索引](2026-09-08-m0-batch.md)。
 
