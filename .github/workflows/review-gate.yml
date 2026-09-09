@@ -1,0 +1,38 @@
+name: PR review gate
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited, closed]
+  issue_comment:
+    types: [created, edited, deleted]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Metadata-only publisher. Never checkout a PR ref or execute PR code here.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+# Serialize all PRs because GitHub checks are shared by SHA, not PR.
+concurrency:
+  group: review-gate-publisher
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Reconcile open main PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I scripts/review_gate.py --publish

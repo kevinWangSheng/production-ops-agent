@@ -1,0 +1,8 @@
+{
+  "strict": true,
+  "checks": [
+    {"context": "checks", "app_id": 15368},
+    {"context": "m0-postgres", "app_id": 15368},
+    {"context": "review-gate", "app_id": 15368}
+  ]
+}
