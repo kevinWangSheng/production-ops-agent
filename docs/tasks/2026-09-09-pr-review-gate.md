@@ -1,6 +1,6 @@
 # PR 机器人审查强制门禁
 
-- 状态：进行中
+- 状态：阻塞（机器人复审发现门禁失败关闭设计缺口，待决定完成语义或更换执行方案）
 - 日期：2026-09-09
 - PR：[#13](https://github.com/kevinWangSheng/production-ops-agent/pull/13)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-review-gate`，`chore/pr-review-gate`，起点 `ad99e6a`
@@ -55,3 +55,9 @@ main保护已将现有m0-postgres加入必需检查，API回读确认绑定Actio
 ## 当前外部前提修正
 
 12:48Z重新加载Codex设置，仓库复审触发仍为On PR open；第二次修改界面即时显示On every push，但重载再次恢复。没有可见错误或持久化成功证据，不猜测原因，不改变其他账号设置。ROADMAP和开发说明已更正早期即时UI状态的结论。自动每push触发仍是未完成项；本轮用[手动请求](https://github.com/kevinWangSheng/production-ops-agent/pull/13#issuecomment-5602072004)继续审查，机器人已响应eyes，但其结果也必须核对最新HEAD。
+
+## 最新阻断（不得激活或视为就绪）
+
+#13机器人在379019f完成正式复审，发现[P1](https://github.com/kevinWangSheng/production-ops-agent/pull/13#discussion_r3968610778)：已有success后，新请求触发的pending重写若Checks API GET/PATCH失败，旧success仍存在；reconcile工作流的原生失败挂在main事件上，不是PR必需上下文。此前独立审查承认的限制不能满足本轮“强制闭环”目标，未处置，不能通过移动try或追加文字宣称修复。
+
+保留草案PR及本地证据，不合并/激活review-gate。两个现有CI必需检查已生效并保持成功。后续需决定：将审查执行迁到具有可信SHA完成回执及原生失败状态的执行入口（涉及身份/调用方式与预算，尚未授权新增凭据/费用）；或明确将完成语义限定为每个SHA至少一次完整审查，已通过后的同SHA手动复审不撤销旧资格。不能由实现者静默降低“已触发的审查必须完成”要求。无业务模型/trace/产品部署变化。
