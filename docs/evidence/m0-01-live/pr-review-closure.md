@@ -17,3 +17,7 @@
 最新Code Review于11:35UTC返回，覆盖d14d09c，新增P2（comment3967879107）：uv.lock hash只固定意图，没有验证已安装环境。新增runtime.py，在claim前核对批准的CPython完整版本/实现、锁的Python范围以及默认dev/m0依赖闭包的实际distribution版本；按当前平台marker与extras取有效依赖，缺包/版本漂移统一拒绝。runtime字段也进入批准合同hash；没有自动安装/升级或真实调用。当前单版本锁之外的多版本解析明确拒绝，版本元数据核对不是二进制完整性证明。
 
 固定Runtime/包漂移回归及[独立审查](runtime-review.md)完成后，再请求覆盖本次改动的远程复审，不能在新P2尚未处置时把上一轮CI/审查标为已就绪。
+
+## 第三轮远程审查：失败分类
+
+Code Review于11:50UTC返回，覆盖c8a8ced，新增P2（comment3968000660）：账号/存储/超时或取消被统一写为LIVE_PROTOCOL_FAILED。新增固定failure_code分类并用于business/trace异常，401/403和429单独分类，保留受控的身份、期限、存储、模型错配等错误；未知异常固定OPERATION_FAILED，不输出任何异常正文。完整路径和秘密哨兵回归覆盖认证失败、账户错配、超时、取消、存储、期限和未知异常；[独立复验](failure-code-review.md)单独记录。此为诊断准确性修复，不增加重试、出站权限或真实调用。

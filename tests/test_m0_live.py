@@ -93,6 +93,8 @@ def scenario(contract, ledger, variant="normal"):
         seen.append(request)
         assert "x-tenant-id" not in request.headers
         if request.url.path.startswith("/sessions/"):
+            if variant == "auth-failure":
+                return httpx2.Response(401, json={"detail": "private-error"})
             return httpx2.Response(
                 200,
                 json={
@@ -117,6 +119,8 @@ def scenario(contract, ledger, variant="normal"):
                 )
             if variant == "large":
                 return httpx2.Response(200, content=b"x" * 131073)
+            if variant == "timeout":
+                raise httpx2.ReadTimeout("private-error")
             if variant == "cancel":
                 raise asyncio.CancelledError
             message = copy.deepcopy(fixture["assistant"])
@@ -204,6 +208,8 @@ def scenario(contract, ledger, variant="normal"):
     "variant, business, trace, models",
     [
         ("normal", "completed", "verified", 2),
+        ("auth-failure", "failed", "pending", 0),
+        ("timeout", "failed", "pending", 1),
         ("wrong-model", "failed", "pending", 1),
         ("wrong-second-model", "failed", "pending", 2),
         ("missing-model", "failed", "pending", 1),
@@ -232,6 +238,15 @@ def test_complete_boundary(variant, business, trace, models):
         result = asyncio.run(execute(contract, config, ledger, transport=transport))
     assert result["business"] == business
     assert result["trace"] == trace
+    expected_codes = {
+        "auth-failure": "LIVE_AUTH_FAILED",
+        "wrong-workspace": "LIVE_ACCOUNT_MISMATCH",
+        "timeout": "LIVE_TIMEOUT",
+        "cancel": "LIVE_CANCELLED",
+    }
+    if variant in expected_codes:
+        assert result["business_code"] == expected_codes[variant]
+    assert "private-error" not in json.dumps(result)
     if variant == "wrong-second-model":
         assert result["business_code"] == "LIVE_MODEL_PROFILE_MISMATCH"
         assert "trace-post" not in ledger.attempts
@@ -374,3 +389,33 @@ def test_wrong_python_refuses_before_claim():
     with no_network(), pytest.raises(ConfigError, match="LIVE_RUNTIME_MISMATCH"):
         asyncio.run(execute(contract, config, ledger))
     assert not ledger.claimed
+
+
+@pytest.mark.parametrize(
+    "failure,code",
+    [
+        ("storage", "LIVE_STORAGE_UNAVAILABLE"),
+        ("deadline", "LIVE_DEADLINE_OR_CANCELLED"),
+        ("unknown", "LIVE_OPERATION_FAILED"),
+    ],
+)
+def test_business_control_and_storage_failures_keep_category(failure, code):
+    from scripts.m0.contracts import BudgetError
+
+    contract, config = packet()
+    ledger = MemoryLedger()
+    transport, seen = scenario(contract, ledger)
+
+    def fail(*args):
+        if failure == "storage":
+            raise BudgetError("STORAGE_UNAVAILABLE")
+        if failure == "deadline":
+            raise ConfigError("LIVE_DEADLINE_OR_CANCELLED")
+        raise RuntimeError("private-error")
+
+    ledger.attempt = fail
+    with no_network():
+        result = asyncio.run(execute(contract, config, ledger, transport=transport))
+    assert result["business_code"] == code
+    assert result["business"] == "failed" and seen == []
+    assert "private-error" not in json.dumps(result)

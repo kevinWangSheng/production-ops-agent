@@ -16,10 +16,12 @@ from psycopg.types.json import Jsonb
 
 from .budget import PostgresBudget
 from .config import ConfigError, load_config
+from .contracts import BudgetError
 from .protocol import (
     FIXTURE,
     ROOT,
     CaptureSession,
+    ProtocolError,
     continuation,
     tool_result,
     trace_dto,
@@ -300,6 +302,10 @@ class Wire:
                 if response.status_code == 404 and slot.startswith("trace-read-"):
                     return None
                 if response.status_code < 200 or response.status_code >= 300:
+                    if response.status_code in (401, 403):
+                        raise ConfigError("LIVE_AUTH_FAILED")
+                    if response.status_code == 429:
+                        raise ConfigError("LIVE_RATE_LIMITED")
                     raise ConfigError("LIVE_HTTP_FAILED")
                 if slot == "trace-post":
                     return {}
@@ -395,6 +401,43 @@ def trace_readback_code(returned, contract, dto):
         ):
             return "TRACE_EXTRA_REJECTED"
     return "TRACE_VERIFIED"
+
+
+def failure_code(exc):
+    """Preserve known failure categories without rendering provider exception prose."""
+    if isinstance(exc, asyncio.CancelledError):
+        return "LIVE_CANCELLED"
+    if isinstance(exc, (TimeoutError, httpx2.TimeoutException)):
+        return "LIVE_TIMEOUT"
+    if isinstance(exc, httpx2.TransportError):
+        return "LIVE_TRANSPORT_FAILED"
+    if isinstance(exc, json.JSONDecodeError):
+        return "LIVE_RESPONSE_INVALID"
+    if isinstance(exc, ProtocolError):
+        return "LIVE_PROTOCOL_FAILED"
+    if isinstance(exc, BudgetError):
+        return (
+            "LIVE_STORAGE_UNAVAILABLE"
+            if str(exc) == "STORAGE_UNAVAILABLE"
+            else "LIVE_BUDGET_DENIED"
+        )
+    codes = {
+        "LIVE_TRACE_RESPONSE_INVALID",
+        "LIVE_HTTP_FAILED",
+        "LIVE_AUTH_FAILED",
+        "LIVE_RATE_LIMITED",
+        "LIVE_RESPONSE_TOO_LARGE",
+        "LIVE_REQUEST_TOO_LARGE",
+        "LIVE_DEADLINE",
+        "LIVE_DEADLINE_OR_CANCELLED",
+        "LIVE_ATTEMPT_DENIED",
+        "LIVE_ACCOUNT_MISMATCH",
+        "LIVE_MODEL_PROFILE_MISMATCH",
+        "LIVE_PROTOCOL_FAILED",
+    }
+    if isinstance(exc, ConfigError) and str(exc) in codes:
+        return str(exc)
+    return "LIVE_OPERATION_FAILED"
 
 
 def model_message(response, finish):
@@ -497,9 +540,8 @@ async def execute(contract, config, ledger, *, transport=None):
                     raise ConfigError("LIVE_PROTOCOL_FAILED")
             business = "completed"
             business_code = "LIVE_PROTOCOL_COMPLETED"
-    except (Exception, asyncio.CancelledError):
-        # Store only controlled outcomes, never exception objects, model prose or protocol state.
-        pass
+    except (Exception, asyncio.CancelledError) as exc:
+        business_code = failure_code(exc)
     count = wire.model_count
     dto = trace_dto(
         {"run_id": contract["run_id"], "request_count": count, "status": business}
@@ -535,20 +577,7 @@ async def execute(contract, config, ledger, *, transport=None):
                 break
         ledger.trace_status(contract["experiment_id"], trace)
     except (Exception, asyncio.CancelledError) as exc:
-        # Only fixed codes leave the boundary, never response/exception prose.
-        known = {
-            "LIVE_TRACE_RESPONSE_INVALID",
-            "LIVE_HTTP_FAILED",
-            "LIVE_RESPONSE_TOO_LARGE",
-            "LIVE_REQUEST_TOO_LARGE",
-            "LIVE_DEADLINE",
-            "LIVE_DEADLINE_OR_CANCELLED",
-        }
-        trace_code = (
-            str(exc)
-            if isinstance(exc, ConfigError) and str(exc) in known
-            else "TRACE_OPERATION_FAILED"
-        )
+        trace_code = failure_code(exc)
         trace = "unknown"  # Committed business/outbox survives exporter failure.
     finally:
         await wire.client.aclose()
