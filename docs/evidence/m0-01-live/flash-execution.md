@@ -32,4 +32,4 @@ API 核对 default project/tenant/name 匹配，模型目录含显式 Flash，CN
 
 专属 PostgreSQL 17.9 在旧 M0-01 worktree 的 `tmp/m0-b/postgres`，55431/m0_budget。运行前已有业务/诊断表可查询，无 live 安装/迁移。前置显式 PG 测试 4 passed；这些既有测试会在专属实例创建随机合成行和缺表测试 schema，未将其误记为真实实验或产品 migration。运行前快照中的 22 条行逐一哈希一致，含旧 Pro 实验；原 Pro 批准及证据未覆盖。
 
-私有批准、API 元数据响应、CLI、余额及旧行快照仅在 `tmp/m0-01-flash-live/`，0600/0700；主 `.env` 只更新本轮非秘密预算/期限，key 不复制。收尾服务停止、独立审查及 PR/CI 状态在任务记录接续；未完成的完整链路需新的执行边界决定。
+私有批准、API 元数据响应、CLI、余额及旧行快照仅在 `tmp/m0-01-flash-live/`，0600/0700；主 `.env` 只更新本轮非秘密预算/期限，key 不复制。[独立复核](flash-independent-review.md)完成；[服务停止检查](flash-cleanup.json)已通过，数据保留。PR #14 的 CI/review 状态在任务记录接续；未完成的完整链路需新的执行边界决定。
