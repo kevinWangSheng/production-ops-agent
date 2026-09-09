@@ -1,0 +1,9 @@
+{
+  "scripts/m0/budget.py": "10080ca3b2c8759da48678ef1d95cf42797766bbe29bfe61deead77fb3576401",
+  "scripts/m0/budget.sql": "bf300380b30c1879458a0db98e5084bd1d3833d77aac0bec93d80c337e191dc5",
+  "scripts/m0/postgres_lab.py": "a5cb1eeb47eae441f30afbbf4b826f82af2650161d25c53f11265c41d0a0bdff",
+  "tests/test_m0_budget.py": "6967b4e981d0f589fd14d4acdabb23edb43e6ce23c881812e5e46480b3890be0",
+  "tests/integration/test_m0_budget_postgres.py": "f71946ac988fb7ecbc51d7ed0a56f163a3902ade0f26e70afca8c35098f92a72",
+  "pyproject.toml": "d8065c41bde26e1ed3171827764bf9c9fc260ba4b06c401b980a92305526f976",
+  "uv.lock": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce"
+}
