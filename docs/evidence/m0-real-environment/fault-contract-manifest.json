@@ -1,0 +1,7 @@
+{
+  "contract_path": "tmp/m0-environment/fault-experiment-contract.md",
+  "contract_sha256": "875a924159ac25561194d5f0d083bed8f19be23de05b9d48000f5830422f507a",
+  "classification": "developer case; injector details excluded from investigation model",
+  "planned_observation_seconds": 300,
+  "expected_observable": "at least2 checkout failures, service error propagation in trace, error metric changes, source logs; exact hidden flag not required in investigator answer"
+}

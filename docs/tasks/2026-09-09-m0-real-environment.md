@@ -25,6 +25,8 @@
 - 已完成固定25服务+1只读proxy容器部署、镜像digest、正常真实三类遥测查询、部署身份登记、实际HTTP拒绝及隔离网络探针；详见[环境证据](../evidence/m0-real-environment/environment-results.md)。
 - 保留Prometheus首次配置失败、初始cold数据不齐、逐服务日志缺口、proxy错误分类失败及修复。原始pull日志完整保留在tmp并无损压缩归档。
 - 减载关闭额外Chromium、LOCUST_USERS=2，全部服务保留；减载前后资源实测保存。
-- Holmes由另一执行者维护，正常案已跑但框架无最终结论；其重试/模型预算由主Agent协调。本执行者0模型/trace。等待正常复验，尚未故障注入。
-- 独立审查指出5m lookback和redirect缺口已修并实测；最终独立审查/故障/恢复与停止仍待完成。
+- Holmes由另一执行者维护，正常案已跑但框架无最终结论；其重试/模型预算由主Agent协调。本执行者0模型/trace。normal-03已取得上游最终业务结论，前两案失败保留；2026-09-09T17:51:53Z已仅在专属Demo注入开发故障，独立固定5m采样已取得7条真实故障trace、错误metric和HTTP500日志，已交Holmes执行故障调查；原注入脚本成功没有替代事实判据。
+- 独立审查指出5m lookback和redirect缺口已修并实测；最终独立审查/故障调查/恢复与停止仍待完成。
 - 必须从本worktree执行实验及停止；合并分支不迁移tmp数据。结束compose stop及colima stop m0-otel，不down，不删除容器/volume/数据。
+
+基线逻辑提交：`2db7a9c`，Ruff/format/py_compile及git diff --check通过；故障/恢复与Holmes证据后续追加，不把基线提交当整轮完成。
