@@ -19,7 +19,7 @@
 
 workflow在PR打开/推送等事件、issue评论变更和手动触发时重算，并以5分钟cron补偿。cron可能延迟，不能承诺固定处理时间；线程重开即时合并阻断由原生讨论解决规则负责。全局串行，复用同SHA的单个check-run（避免commit status历史上限），先in_progress再查询，成功前重读证据；同SHA多PR拒绝成功。API或发布失败必须检查运行日志，不能把旧成功视作新证据。
 
-2026-09-09本仓库Codex设置已从On PR open改为On every push，Review all PRs保持启用，未改个人默认或开启credits。配置已回读；#13初始自动正式Code Review已返回，推送后的最新提交覆盖仍需验证。当前账号UI为Plus，没有SecurityReview配置项；[官方范围](https://learn.chatgpt.com/docs/security/security-review)明确Plus不提供。旧PR双汇总不能当作本账号当前可用性的证明，没有升级或新增费用。官方[Code Review说明](https://learn.chatgpt.com/docs/third-party/github)支持自动审查，但规则文字不能替代分支保护。
+2026-09-09两次尝试将本仓库Codex设置从On PR open改为On every push，界面立即显示成功，但重新加载后均恢复On PR open，原因未确认。故每次push自动复审未持久化；Review all PRs保持启用，未改个人默认或开启credits。#13初始自动正式Code Review已返回，后续通过@codex review手动请求。脚本只检查审查证据，不自动调用机器人；自动触发缺口未解决前，不能宣称全自动闭环。当前账号UI为Plus，没有SecurityReview配置项；[官方范围](https://learn.chatgpt.com/docs/security/security-review)明确Plus不提供。旧PR双汇总不能当作本账号当前可用性的证明，没有升级或新增费用。官方[Code Review说明](https://learn.chatgpt.com/docs/third-party/github)支持自动审查，但规则文字不能替代分支保护。
 
 ## 强制范围与局限
 

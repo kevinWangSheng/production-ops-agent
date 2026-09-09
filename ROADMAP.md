@@ -17,7 +17,7 @@ Current phase: technical design approved and persisted; local M0 A/B/C implement
 
 ## Development Agent environment
 
-- [-] 2026-09-09 PR 机器人审查强制门禁：[当前任务](docs/tasks/2026-09-09-pr-review-gate.md)。本仓库已启用每次push自动复审；main受信metadata门禁及反例测试已实现，按真实Code Review接口补充校验；m0-postgres已加入必需检查。新增必需review-gate需本PR经人审合并、真实工作流验证后激活，尚未生效。
+- [-] 2026-09-09 PR 机器人审查强制门禁：[当前任务](docs/tasks/2026-09-09-pr-review-gate.md)。每次push自动复审设置重载后未持久化，触发仍待解决；main受信metadata门禁及反例测试已实现，按真实Code Review接口补充校验；m0-postgres已加入必需检查。新增必需review-gate需本PR经人审合并、真实工作流验证后激活，尚未生效。
 
 - [x] 开发能力接入与全盘规划 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-agent-capabilities.md)。在主项目安装 LangChain 文档/API MCP，规划 CLI+skill、API/UI 测试、类型/秘密检查、trace/eval 和交接能力；Codex 项目配置读取、Claude Connected 及公共资料查询通过，独立审查 P2 已修复复验；其余新增工具待对应工作项实施，不改变 M0 门槛。
 

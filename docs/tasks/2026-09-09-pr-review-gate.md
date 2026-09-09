@@ -29,7 +29,7 @@
 
 ## 实现进展
 
-- 本仓库Codex Review all PRs保持启用，Review trigger由On PR open改为On every push，UI回读确认；credits未开启，个人默认未改。
+- 历史操作：本仓库Codex Review all PRs保持启用，Review trigger修改后曾显示On every push；后续重载证实没有持久化，不能作为成功配置证据；credits未开启，个人默认未改。
 - 独立设计发现与处置见[报告](../evidence/pr-review-gate/design-review.md)。门禁信任仓库写作者，不宣称抵御恶意有写权限workflow或持续原子失效。
 - 实现及激活顺序见[开发说明](../development-review-gate.md)。37项定向测试通过；独立实现复验进行中。main工作流及必需review-gate尚未部署/激活。
 
@@ -51,3 +51,7 @@ main保护已将现有m0-postgres加入必需检查，API回读确认绑定Actio
 - 57项当前门禁测试通过，新入口独立复验进行中。首次适配的40/44项通过及双汇总设计保留为历史，最终运行证据见local-check。
 
 - 当前最终本地`make check`：248 passed、13 PG opt-in skipped。58项门禁测试与新增入口独立复验通过；定向请求迟到关联P1修复，报告保留完整历史。最后API主机固定github.com也经独立只读核查。最新代码/CI/机器人审查见#13，尚未部署主线或激活review-gate。
+
+## 当前外部前提修正
+
+12:48Z重新加载Codex设置，仓库复审触发仍为On PR open；第二次修改界面即时显示On every push，但重载再次恢复。没有可见错误或持久化成功证据，不猜测原因，不改变其他账号设置。ROADMAP和开发说明已更正早期即时UI状态的结论。自动每push触发仍是未完成项；本轮用[手动请求](https://github.com/kevinWangSheng/production-ops-agent/pull/13#issuecomment-5602072004)继续审查，机器人已响应eyes，但其结果也必须核对最新HEAD。
