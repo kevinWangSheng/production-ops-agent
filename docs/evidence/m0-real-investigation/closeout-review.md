@@ -32,3 +32,15 @@
 SPEC仅修正“完全没有实现/部署证据”的过期泛称，明确无产品实施或生产部署证据，Feature implementation gate仍not cleared。C3新增单次Flash固定协议链路的实际状态，同时保留完整协议/恢复矩阵和产品验收未完成；不把Holmes失败写为调查成功。首片候选计划已明确本轮4HTTP/128KiB/8192等只是**尚未通过故障报告链路、不得作为最终冻结值**的校准起点；保留真实目标/依赖授权、动态可见视图、持久步骤恢复与工具wall-time缺口。
 
 实际模型/环境失败、不同窗口、不同输入上限/投影以及最后新Run业务接续均保留原记录；不得重写为匹配条件评测或跨进程provider私有协议恢复。任何后续M0实验须先明确相应合同和可用授权，当前20模型HTTP已耗尽。
+
+## PR #15 历史镜像锁覆盖 P2：独立修复复验
+
+对应Code Review comment3971829340。旧入口会把后来inspect到的tag/digest重新写入已提交image-lock.json/configuration-hashes.json，且此前先写运行proxy；这是历史证据保全缺陷，不改记任何已经发生的实验成败。
+
+独立检查修复：两份docs manifest只作输入，缺失拒绝；先收集全部镜像并严格比对repo digest、image ID、架构和记录内容，再在内存核对全部候选配置hash；全部通过后仅生成tmp运行Compose/proxy。镜像/配置漂移的拒绝发生在任何输出写入前。这里生成的是**与既有归档相同的运行文件**，不是把新运行/新tag重新认证成旧实验。reproduce.md已把原部署/改proxy命令标为历史，并明确不同路径/配置或新实验应另有记录；没有增加通用工件平台。
+
+独立实际运行 `/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python -m pytest tests/test_m0_freeze_images.py -q`：**9 passed in 6.54s**。这些测试在临时目录执行真实freeze_images.py CLI，PATH首项是断言参数的fake Docker inspect，未调用真实daemon。覆盖同锁成功且档案非规范空白保持、末个proxy镜像digest/architecture/ID漂移、collector/proxy/Compose漂移、两份历史文件缺失；拒绝时对docs/tmp全部文件作字节快照比对。执行者将平台负例由占位值改为真实amd64后，审查者单独复验该例：**1 passed in 0.93s**。已读取保留的旧版9失败红测工件；未将搭建错误算成产品失败。
+
+另针对实际环境当前归档做只读重放：真实输入配置/历史manifest不变，mock仅替换Docker inspect和最终Path.write_bytes。26条镜像/配置核验通过，恰有2个运行输出写请求被截获、实际写入0。与Git HEAD逐字对照，2份manifest及4份runtime-configuration原件共6文件全部不变。
+
+受检环境工作区源码SHA-256：freeze_images.py=`d0d73303467fef0bf2eabeb143db27bbbd9ab94bd2d02e71f2afa32ad86af71f`；测试=`1701a8958a8030078a2e8a166a9808d8116141424eeccb0c0818b8155e0fe966`。该修复的本地独立验证通过，没有剩余该发现阻断项；不宣称运行文件双写具备崩溃原子性，不启动环境/模型，不替代最新提交CI及已触发Security Review/Code Review闭环。

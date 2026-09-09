@@ -62,3 +62,7 @@ fault-handoff-01最后1HTTP200、90513bytes在上限内、0新工具；finish_re
 [最终用量与费用](../evidence/m0-real-investigation/final-usage.json)：20模型/1trace、59真实工具查询；input170078/output46839、总216917tokens。按本轮空闲时段与已知cache（Flash按miss保守）估算0.3834861CNY；全miss空闲估算0.4658925、峰值上界估算0.931785。实际账户余额减少0.39CNY，是聚合显示而非逐Run账单；模型/trace可归属实际费用仍unknown。新20CNY+旧4CNY共24CNY未核账预留，**不是实际花费24CNY**。各Run计时以首模型请求至末响应定义，详见工件，不冒充完整进程wall/告警SLA。
 
 专属PG已于18:19:44Z停止，55431关闭、数据及全部历史保留，系统PG4391仍运行：[收尾](../evidence/m0-real-investigation/postgres-cleanup.json)。环境者另已还原故障、独立采还原后5min，26容器/卷/profile保留并停止，具体完成工件由环境任务维护。
+
+## PR #15 审查发现处置
+
+f79e84f两项CI34389374955成功；Code Review与Security Review均已返回，前者指出P2：freeze_images覆盖已提交image-lock，后者无新增可见发现。按实际发现改为将旧lock/config hash作为只读输入，完整收集/比对后才允许写runtime；缺档/漂移/平台或配置差异先拒绝。原96份归档及4份运行文件字节不变，9项真实CLI临时树回归红→绿及独立复验通过，服务/模型未重启。修复来自环境dbd2ac7/5df00df，独立覆盖见closeout-review.md；原实际实验的源码/失败/费用记录不改写。推送后核对覆盖本次变更的CI/Code/Security复审，未据旧head通过宣布新head完成。

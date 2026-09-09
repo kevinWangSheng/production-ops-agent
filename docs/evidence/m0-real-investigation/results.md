@@ -29,4 +29,4 @@ Holmes原ToolCallingLLM/ToolExecutor/共享prompt与固定只读源适配实际�
 
 2026-09-09决定：SPEC首片门槛仍未满足。已取得真实环境、正常报告及故障可诊断事实，不能据此填passes=true；完整主动故障报告仍缺。下一项为[M0-02：故障报告收束与动态证据验收冻结](../../plans/first-vertical-investigation-2026-09-09.md)，条件满足后实施M1-01完整提交→查询→展示→追问/取消→持久保存流程。只补此首片前提，完整UI/发布/恢复/知识/72h soak在原后续阶段。
 
-PR #15交付此修复与证据，最新CI及已触发review需核对后交用户审核；不自动合并。工作区与原始数据保留位置见[当前任务](../../tasks/2026-09-09-m0-real-investigation.md)和[复现说明](../m0-real-environment/reproduce.md)。
+PR #15交付此修复与证据，远端CI与Code/Security审查结果在PR中维护；不自动合并。已处置远端image-lock覆盖P2，旧锁/配置hash改为只读校验输入，局部CLI红→绿及独立复验通过，原运行证据字节未改；新提交复审不借旧head结果冒称通过。工作区与原始数据保留位置见[当前任务](../../tasks/2026-09-09-m0-real-investigation.md)和[复现说明](../m0-real-environment/reproduce.md)。
