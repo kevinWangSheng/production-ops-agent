@@ -1,0 +1,10 @@
+{
+  "tested_commit": "f5e75cef138450f31dfa10f0847e71ebc98780c6",
+  "shared_baseline": "92eb7d0",
+  "command": "make check",
+  "exit_code": 0,
+  "passed": 137,
+  "skipped_postgres_opt_in": 0,
+  "real_model_calls": 0,
+  "real_trace_calls": 0
+}

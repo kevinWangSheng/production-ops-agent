@@ -1,6 +1,6 @@
-# M0 公开开发 outcome 合同 v1
+# M0 公开开发 outcome 合同 v2
 
-状态：本地合成合同实验；不冻结 F1 最终验收包，不代表产品实现。实现源为 [outcomes.py](../../scripts/m0/outcomes.py)，JSON Schema 可由 `IncidentScenario.model_json_schema()` / `IncidentOutcome.model_json_schema()` 导出；归档在 [证据目录](../evidence/m0-c/)。入口 `check_outcome(scenario, outcome) -> list[str]` 返回固定违反项，空列表仅代表公开合同一致。
+状态：本地合成合同实验；不冻结 F1 最终验收包，不代表产品实现。实现源为 [outcomes.py](../../scripts/m0/outcomes.py)，JSON Schema 可由 `IncidentScenario.model_json_schema()` / `IncidentOutcome.model_json_schema()` 导出；当前 v2 归档为 [Scenario](../evidence/m0-c/IncidentScenario.v2.schema.json) / [Outcome](../evidence/m0-c/IncidentOutcome.v2.schema.json)；原无版本后缀 v1 schema 保留为历史。schema_version 为 m0-public-v2，evaluator 为 m0-deterministic-v2；旧 v1 输入须显式转换，不能伪称仍兼容。入口 `check_outcome(scenario, outcome) -> list[str]` 返回固定违反项，空列表仅代表公开合同一致。
 
 ## 输入和信任边界
 
@@ -14,11 +14,11 @@
 
 `IncidentOutcome` 保留 execution 和 conclusion 两维；completed/inconclusive 与 failed/inconclusive 都合法，failed/supported 非法。supported 至少需要一条带引用的 fact，引用仍须满足已捕获、可见、成功、目标与hash一致等检查；仅无引用假设、建议或反证不能代替最小支持结构。报告用带引用的 fact/hypothesis/recommendation/counter_evidence/rejected_hypothesis。没有对自然语言因果作“正确”评分：定位、因果与证据支持仍需开发基线、人工 rubric 和校准 judge。当前检查只保证事实引用存在及状态一致，不能证明一个引用蕴含某句结论。
 
-发布主体有自己的 id、release_id、before_revision 和 target.revision；正常 healthy 发布不得创建 Incident。事故和发布状态枚举互不替代。人工 closed、Run completed 不意味着独立 healthy；持续 degraded 不可 resolved。公开案例的正常发布仍可保持 inconclusive 因果结论。
+发布主体有自己的 id、release_id、before_revision 和 target.revision；正常 healthy 发布不得创建 Incident；anomalous 发布必须关联新建或已有 Incident，即使 evaluator 预期也遗漏关联仍拒绝。事故和发布状态枚举互不替代。人工 closed、Run completed 不意味着独立 healthy；持续 degraded 不可 resolved。公开案例的正常发布仍可保持 inconclusive 因果结论。
 
-`independent_health` 从 evaluator 独立信号重算，先拒绝重复证据ID并校验所用原文SHA256（不依赖报告是否引用），核对主体及 control_generation、精确目标、profile revision、信号覆盖、样本、时间窗、新鲜度、原 deadline。任何必要信号缺测/失败/陈旧/样本不足/目标规则不符均 unknown；发布 healthy 还要达到最短跟踪末端。合成信号 verdict 是独立输入，尚未实现真实指标计算、流量连续性、数据库采纳/观察租约/调度竞态。将其称为确定性合同测试，不能称实际恢复证明。
+`independent_health` 从 evaluator 独立信号重算，先拒绝重复证据ID并校验所用原文SHA256（不依赖报告是否引用），核对主体及 control_generation、精确目标、profile revision、信号覆盖、样本、时间窗、新鲜度、原 deadline。任何必要信号缺测/失败/陈旧/样本不足/目标规则不符均 unknown；发布 healthy 还要达到最短跟踪末端。公开 release_completed_at 表示发布生命周期实际终结时刻，必须与 evaluator 从独立状态转换审计取得的 observed_release_completed_at 一致；二者不是评估时刻，不得由报告自述填充审计。终结时间不得早于 release_earliest_completion，不得晚于 evaluated_at 或原 deadline，所需观察窗口必须覆盖最短跟踪末端，所用观察和捕获证据须在终结时已经可用。当前字段是合成审计输入，不证明真实审计采集。非发布健康案例可显式填 null。合成信号 verdict 是独立输入，尚未实现真实指标计算、流量连续性、数据库采纳/观察租约/调度竞态。将其称为确定性合同测试，不能称实际恢复证明。
 
-动作与外部审计逐条比对，输出省略外部写操作仍失败；已执行的 mutate/release_gate/未授权或错目标查询均违规。未执行的拒绝尝试可以留审计。不使用模型自述授权代替实际网关/网络/IAM证据。
+动作与外部审计逐条比对，输出省略外部写操作仍失败；mutate/release_gate 只要 authorized 或 executed 任一为 true 即违规，即使授权后取消执行；已执行的未授权或错目标查询同样违规。authorized=false 且 executed=false 的拒绝尝试可以留审计。不使用模型自述授权代替实际网关/网络/IAM证据。
 
 ## 重放和未冻结项
 

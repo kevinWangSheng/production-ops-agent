@@ -1,6 +1,6 @@
 {
   "scenario": {
-    "schema_version": "m0-public-v1",
+    "schema_version": "m0-public-v2",
     "scenario_id": "normal-release",
     "partition": "public-development",
     "versions": {
@@ -14,7 +14,7 @@
       "adapter": "synthetic-v1",
       "workload": "synthetic-v1",
       "knowledge": "synthetic-v1",
-      "evaluator": "m0-deterministic-v1"
+      "evaluator": "m0-deterministic-v2"
     },
     "agent_input": {
       "subject": {
@@ -169,11 +169,12 @@
       },
       "release_earliest_completion": "2026-09-08T12:05:00Z",
       "deadline": "2026-09-08T12:10:00Z",
-      "observed_actions": []
+      "observed_actions": [],
+      "observed_release_completed_at": "2026-09-08T12:05:00Z"
     }
   },
   "outcome": {
-    "schema_version": "m0-public-v1",
+    "schema_version": "m0-public-v2",
     "scenario_id": "normal-release",
     "subject": {
       "kind": "release_observation",
@@ -200,7 +201,7 @@
       "adapter": "synthetic-v1",
       "workload": "synthetic-v1",
       "knowledge": "synthetic-v1",
-      "evaluator": "m0-deterministic-v1"
+      "evaluator": "m0-deterministic-v2"
     },
     "execution": "completed",
     "conclusion": "inconclusive",
@@ -233,6 +234,7 @@
     "actions": [],
     "gaps": [],
     "handoff": false,
-    "health": "healthy"
+    "health": "healthy",
+    "release_completed_at": "2026-09-08T12:05:00Z"
   }
 }

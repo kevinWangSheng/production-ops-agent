@@ -1,6 +1,6 @@
 # M0 C：公开验收合同与开发用例
 
-- 状态：本地合同自测通过，待完成后的独立审查；日期：2026-09-08。
+- 状态：本轮修复与独立复验已完成，公共基线已合入并复测；PR #7 待用户审核。最新提交 CI 以 PR 实时 checks 为准；更新日期：2026-09-09。
 - 批次与授权：[索引](2026-09-08-m0-batch.md)，本地可逆 M0 实施测试及 PR；不合并、不联网实验。
 - 依据：SPEC、C3 §5/7/11–13、M0 §1–7；F1/F2/F7/F8/F14 相关机制前提，不更改 steps/passes。
 - 工作区：协调者从共同基线创建 `production-ops-agent-m0-c` / `chore/m0-c-outcomes`。
@@ -48,3 +48,24 @@ A/C 仅短时 Python 测试及公开资料查询；B 独占本批唯一重型环
 ## 独立复验
 
 全新上下文review_c两项P2原反例均复验拒绝；合法supported、独立观察和partial/inconclusive正例通过，定向45 tests/完整92 tests。[报告](../evidence/m0-c/independent-review.md)。7份来源hash及OTel tag独立核查一致。本地实现与本批独立审查完成；PR/CI待协调者回读，未合并，不代表M0退出/正式评测或产品验收。
+
+
+## PR #7 GitHub 发现修复（2026-09-09）
+
+本轮执行前重新检查原 worktree（起始干净）及 SPEC 门槛/排除项/证据/控制/费用/验证要求；依据 C3 §3/10、F1/F7/F11 原验收、M0 §1/3/5、共享合同。范围仅为公开 DTO/合成断言及相关测试文档，不改 steps/passes，不读取真实 .env，不调用模型或 trace。原分支继续使用，公共基线由协调者统一合入。
+
+实验合同：重放审查给出的匹配 audit/outcome 越权授权、延迟评估掩盖提前 healthy、异常无 Incident 反例；修复后要求拒绝，并保留拒绝尝试、正常按期发布及已关联异常正例。记录原始失败与 make check 输出；完成后由未参与修复的新上下文 agent 复验，不以实现者自测替代独立结论。
+
+- [3965230167](https://github.com/kevinWangSheng/production-ops-agent/pull/7#discussion_r3965230167)：把 forbidden capability 授权判断从 executed 条件分离，mutate/release_gate 的 authorized=true 即拒绝；覆盖四种授权/执行组合与 audit-only/outcome-only/both 三种来源。
+- [3965230180](https://github.com/kevinWangSheng/production-ops-agent/pull/7#discussion_r3965230180)：公开 outcome 增加 release_completed_at，与独立 evaluator 的 observed_release_completed_at 对照，按真实终结时刻核对最短跟踪/原 deadline/评估时刻及终结前可用的独立观察证据。新增早结束晚评估、缺时间/审计、伪造时间、未来/超 deadline、短跟踪及终结后捕获证据反例和延迟评估正例。
+- [3965230184](https://github.com/kevinWangSheng/production-ops-agent/pull/7#discussion_r3965230184)：anomalous 必须有 linked_incident_id，不能因 evaluator 同样漏配而通过；有合法关联的正例保留。
+- 新必需字段改变公开输入，schema/evaluator 升为 m0-public-v2 / m0-deterministic-v2；六份公开 fixture 明确更新，当前 Schema 另存 *.v2.schema.json 并测试与 DTO 一致。原 v1 Schema、版本、检查和独立审查历史原样保留；不把旧结果作为 v2 验证。
+- 权限/关联反例修复前输出见 [pr-review-regression-before](../evidence/m0-c/pr-review-regression-before.txt)，7 failed / 63 passed。第一次新增完成时间反例与全部定向测试：80 passed。
+- `make check` 通过：127 passed（其中 outcome 定向 80），Ruff/format/锁检查通过；原始输出 [pr-review-check](../evidence/m0-c/pr-review-check.txt)。
+- 本轮独立复验、基线合入后复测、提交/推送及最新 CI 由协调者接续，当前未宣称完成。实验仍仅公开合成合同，不证明真实网关权限、连续流量、数据库状态转换或产品验收。
+
+- 本轮独立复验已完成：全新上下文 Agent 亲跑 `make check` 127 passed，额外检查独立审计与完成时间边界、权限、正常/异常发布反例及 v2 schema 一致性；无待修复发现。见[报告](../evidence/m0-c/review-2026-09-09.md)。下一步合入通过复验及 CI 的公共基线、复测并推送原 PR #7；不合并 PR 或改产品验收。
+
+## 公共依赖合入与最终交接
+
+#4 公共基线 `92eb7d0` 经独立复验及远程 CI 成功（run 34325057891）后，通过普通 merge 合入本分支 `f5e75ce`，无冲突、未复制共享实现。`make check` 137 passed；见[受检提交与结果](../evidence/m0-c/baseline-merge-check-2026-09-09.json)。本轮未新增数据库实验或真实模型/trace调用。后续交用户审核原 PR，合并须明确授权；最新检查与评论处置以 PR 描述和实时 checks 为准。前文各阶段的待办为当时记录，本节为当前交接。

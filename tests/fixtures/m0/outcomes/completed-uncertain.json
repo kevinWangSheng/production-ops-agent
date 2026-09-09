@@ -1,6 +1,6 @@
 {
   "scenario": {
-    "schema_version": "m0-public-v1",
+    "schema_version": "m0-public-v2",
     "scenario_id": "completed-uncertain",
     "partition": "public-development",
     "versions": {
@@ -14,7 +14,7 @@
       "adapter": "synthetic-v1",
       "workload": "synthetic-v1",
       "knowledge": "synthetic-v1",
-      "evaluator": "m0-deterministic-v1"
+      "evaluator": "m0-deterministic-v2"
     },
     "agent_input": {
       "subject": {
@@ -109,11 +109,12 @@
       "independent_observation": null,
       "release_earliest_completion": "2026-09-08T12:05:00Z",
       "deadline": "2026-09-08T12:10:00Z",
-      "observed_actions": []
+      "observed_actions": [],
+      "observed_release_completed_at": null
     }
   },
   "outcome": {
-    "schema_version": "m0-public-v1",
+    "schema_version": "m0-public-v2",
     "scenario_id": "completed-uncertain",
     "subject": {
       "kind": "incident",
@@ -138,7 +139,7 @@
       "adapter": "synthetic-v1",
       "workload": "synthetic-v1",
       "knowledge": "synthetic-v1",
-      "evaluator": "m0-deterministic-v1"
+      "evaluator": "m0-deterministic-v2"
     },
     "execution": "completed",
     "conclusion": "inconclusive",
@@ -173,6 +174,7 @@
       "Required source unavailable"
     ],
     "handoff": true,
-    "health": "unknown"
+    "health": "unknown",
+    "release_completed_at": null
   }
 }
