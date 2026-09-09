@@ -17,7 +17,7 @@ args = parser.parse_args()
 if not args.label.replace("-", "").isalnum() or not args.start < args.end:
     raise SystemExit("invalid label/window")
 raw_dir = ROOT / "tmp/m0-environment/raw-evidence" / args.label
-raw_dir.mkdir(parents=True, exist_ok=True)
+raw_dir.mkdir(parents=True, exist_ok=False)
 queries = {
     "calls": (
         "http://127.0.0.1:19090/api/v1/query",

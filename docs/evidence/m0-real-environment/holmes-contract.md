@@ -17,3 +17,5 @@
 2026-09-09 normal-02已有83148byte出站被65536上限拒绝证据，主Agent在原整轮20CNY/20HTTP总额度内追加Holmes4CNY/4HTTP，当前Holmes累计16CNY/16HTTP（保留前5次）；只把包络改128KiB，输出及每Run4HTTP不变。normal-03改用新固定窗口1788975849.645199..1788976149.645199，非同窗口配对。旧限制与失败保留在normal-01/02工件。
 
 历史初始配置明确保留：v1为Holmes12 CNY/12实际HTTP、64KiB包络；normal-01/02按v1运行并失败。当前v2为16 CNY/16实际HTTP、128KiB，来自主累计合同在原整轮总额度内重新分配；主合同位于主任务工作区 `docs/evidence/m0-real-investigation/contract.md`，本子记录不取代主账本。
+
+2026-09-09 补充有界收尾：主合同在执行前明确把未使用的最后1HTTP/1CNY分配给独立新Run `fault-handoff-01`。仅继承fault-02已持久的12个业务tool views与source/hash/实际窗口，不继承任何provider私有续传字段、不读取工程答案；上游loop `max_steps=1`，空ToolExecutor与工具HTTP硬拒绝确保0新查询，无trace。本地输入71493bytes、请求预估90493bytes小于128KiB；继续使用原累计ledger，15→最多16HTTP，整轮最多20。其结果只用于判断已收集业务证据能否支持报告，绝不改写原主动fault0/2。本次之后模型调用全部停止。

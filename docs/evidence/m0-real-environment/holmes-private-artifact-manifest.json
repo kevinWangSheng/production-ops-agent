@@ -1,6 +1,6 @@
 {
-  "scope": "private local business evidence; provider reasoning not persisted",
-  "current_runner_sha256": "aaed9ac3ae501a2271c60bd52c5beb5f2b88611c633d8d0a808dbaa08508ead8",
+  "scope": "private local business evidence and input snapshots; provider reasoning not persisted",
+  "current_runner_sha256": "d24ae3d6649088172d812b1c9193c9696407a446f1d7bffc978de5db3b869bc2",
   "files": [
     {
       "path": "tmp/m0-environment/holmes-runs/fault-01/configuration.json",
@@ -181,6 +181,46 @@
       "path": "tmp/m0-environment/holmes-runs/fault-02/result-business.json",
       "bytes": 202,
       "sha256": "86e6b40041b132a68c01a732ea774a5c8c5a3e8c50f8241d368e6d66594178ed"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-01/configuration.json",
+      "bytes": 529,
+      "sha256": "217b2a8bd6d2f09459cc8af1f39e99df0e41240e87184784180485d0072b9b98"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-01/input-business.json",
+      "bytes": 90416,
+      "sha256": "859f4ded9cd09ae8c2ea0043d9dd012d7cf1910ce2e9e62a0d40bba2395c70e4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-01/request-envelope-checks.json",
+      "bytes": 203,
+      "sha256": "c4c22bde1f873b46e9c12e64a5fa54344c9f0e1234be24ac07c1eb648027b7b1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-01/result-business.json",
+      "bytes": 233,
+      "sha256": "c9ac6a4d4a8910dab2c901d09c68768863c9f18d951c98215221c8a24b62ecbf"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-preflight/configuration.json",
+      "bytes": 3731,
+      "sha256": "2a9f036dc5f52513ac709d4a205f02d370714ce17fd1ce786ac636fdd189bede"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-preflight/input-business.json",
+      "bytes": 90416,
+      "sha256": "859f4ded9cd09ae8c2ea0043d9dd012d7cf1910ce2e9e62a0d40bba2395c70e4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-preflight-02/configuration.json",
+      "bytes": 529,
+      "sha256": "217b2a8bd6d2f09459cc8af1f39e99df0e41240e87184784180485d0072b9b98"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/fault-handoff-preflight-02/input-business.json",
+      "bytes": 90416,
+      "sha256": "859f4ded9cd09ae8c2ea0043d9dd012d7cf1910ce2e9e62a0d40bba2395c70e4"
     },
     {
       "path": "tmp/m0-environment/holmes-runs/normal-01/configuration.json",
@@ -373,9 +413,34 @@
       "sha256": "c7d4ebb869d1f289fb6ac02030588f84736290217e2a54d359179bb59122e4a3"
     },
     {
+      "path": "tmp/m0-environment/holmes-inputs/fault-01.txt",
+      "bytes": 1523,
+      "sha256": "f6bf286cb542a3ae5782e18631663cf7ce0f9b40067bccb653cc4b644ba4b1f6"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-inputs/fault-handoff-01.json",
+      "bytes": 71493,
+      "sha256": "13a778424fdfd9011d5ee20ed8bbb087220244867e5bcf1f219298d0be866f32"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-inputs/normal-01.txt",
+      "bytes": 1227,
+      "sha256": "c14c776e9780deb789d264b41e5025d0fd96962345f8abb84f4d7f41d0c3330c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-inputs/normal-03.txt",
+      "bytes": 1356,
+      "sha256": "3172c7a60f0dd6895302f4951a616af8f9ea3be9d4976457fd52a1a721a5139a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-inputs/preflight.txt",
+      "bytes": 77,
+      "sha256": "23c3f0c01a54841f4b4fbe13a32fddb3ffa859f1282dfb88b88e9fc5f2a9c9d5"
+    },
+    {
       "path": "tmp/m0-environment/holmes-request-ledger.json",
-      "bytes": 8937,
-      "sha256": "8db768b795835a651b99323acafa60cf451460d7e9b406aad4963b94245c7162"
+      "bytes": 9536,
+      "sha256": "40060e275dc160169c29525a6744790c48426445d1a3f7211968c4164182f036"
     }
   ]
 }

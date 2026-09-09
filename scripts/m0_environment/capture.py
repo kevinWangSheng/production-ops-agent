@@ -16,7 +16,7 @@ args = parser.parse_args()
 if not args.label.replace("-", "").isalnum():
     raise SystemExit("invalid capture label")
 out = ROOT / "docs/evidence/m0-real-environment" / args.label
-out.mkdir(exist_ok=True)
+out.mkdir(exist_ok=False)
 now = datetime.datetime.now(datetime.UTC)
 queries = {
     "frontend": "http://127.0.0.1:18080/",

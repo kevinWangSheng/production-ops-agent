@@ -20,7 +20,7 @@
 
 证据：docs/evidence/m0-real-environment；上游和运行数据保留在tmp/m0-environment及专属虚机，必要工件归档。失败保留命令输出并分类部署/遥测/能力问题。结束只停止自己服务，不删除数据、镜像、虚机或worktree。
 
-## 当前进展
+## 阶段进展（历史，最新状态见最终环境收尾）
 
 - 已完成固定25服务+1只读proxy容器部署、镜像digest、正常真实三类遥测查询、部署身份登记、实际HTTP拒绝及隔离网络探针；详见[环境证据](../evidence/m0-real-environment/environment-results.md)。
 - 保留Prometheus首次配置失败、初始cold数据不齐、逐服务日志缺口、proxy错误分类失败及修复。原始pull日志完整保留在tmp并无损压缩归档。
@@ -30,3 +30,10 @@
 - 必须从本worktree执行实验及停止；合并分支不迁移tmp数据。结束compose stop及colima stop m0-otel，不down，不删除容器/volume/数据。
 
 基线逻辑提交：`2db7a9c`，Ruff/format/py_compile及git diff --check通过；故障/恢复与Holmes证据后续追加，不把基线提交当整轮完成。
+
+
+## 最终环境收尾
+
+工程恢复新300s窗的指标、8条trace及8条HTTP200日志成立，原配置按字节还原；详情见环境证据。Jaeger停前导出2792 distinct retained trace/19源并逐hash确认；26容器、持久卷与VM数据保留，专属m0-otel于18:20:53Z停止，default不变。未删除原始资料、未修改SPEC/ROADMAP/passes。本执行者0模型/trace；Holmes最终用量/成功失败由其执行记录和协调者共享账本负责。
+
+源码Ruff/format/py_compile、实际负例、原始hash和独立核查已执行；完整M0、Kubernetes权限/健康、正式评测和72h仍未完成。最终独立审查覆盖恢复/stop的结果待协调者合并记录，不把本执行者自检标为独立完成。
