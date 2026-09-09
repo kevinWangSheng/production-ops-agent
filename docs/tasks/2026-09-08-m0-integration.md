@@ -22,3 +22,7 @@ A/B/C初始实现已普通合入依赖快照；独立审查进行中，尚不能
 ## 自测结果
 
 A/B/C各自独立发现已关闭；当前汇合自测135 passed/13默认skip，显式PG集成12 passed/1原生restart skip，扫描器实际正负自检及跟踪源码/历史扫描通过，live退出3。两次测试失败及处置见[结果](../evidence/m0-integration/results.md)，原始版本/hash见[verification](../evidence/m0-integration/verification.json)。B专属PG已stop，下一步fresh独立集成审查；不能由协调者自检宣布该门槛通过。
+
+## 独立审查与修复
+
+全新上下文review_integration独立验证135普通tests、12实际PG集成（1原生restart skip）；I-R1为新证据源码hash误报，精确例外修复1cb08e0后独立重跑当前文件/全历史扫描及7项反例通过，原发现已关闭。[独立报告](../evidence/m0-integration/independent-review.md)。本地实现和独立审查完成，PR/CI尚待提交回读；不自动合并。最终公开PR描述记录最新提交checks，避免把早期自测当最新提交结果。
