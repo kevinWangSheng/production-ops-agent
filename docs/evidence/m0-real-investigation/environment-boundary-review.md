@@ -50,3 +50,7 @@
 再次读取执行器并独立执行真实 httpx 的合成 gzip/超限流检查：gzip 正确解码为原 JSON、重建响应不含 Content-Encoding；超2MB仍拒绝；两条流均 close；0实际网络。原 gzip 重复解码发现关闭。当前源码SHA-256：`24f2bd94812c0ed974aa251aa8940093a619f8153aca3d112f4fe538195c35ac`。
 
 同时静态核查请求前改为检查 run_stop（单Run与总截止较早值）、响应model精确匹配、finish_reason判据与合同将20秒称为客户端IO超时。不能据这些检查宣称全工具绝对清理或实际网络沙箱通过。后续执行结果与环境权限原始证据仍由独立业务/环境核查判定。
+
+## 环境采集保全追加复核
+
+`capture.py`和`observe_window.py`仅将输出目录mkdir改为exist_ok=False，位于发起query之前。已读取history-overwrite-denial.json：重复normal-ready/fault-01退出1，原记录SHA保持；控制流与工件相符。审查者未重跑或操作环境。此修改避免误用标签覆盖历史，不声明任意文件系统故障下的完整事务保证。

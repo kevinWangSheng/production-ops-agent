@@ -115,3 +115,7 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 错误审计：显式本地setup还会创建m0_live_diagnostics，与m0_live_once通过experiment_id关联；业务/outbox与business_code同事务，trace状态与trace_code同事务。原实验行不改写，无诊断行代表历史未记录；连接不可用时不能声称错误码已落盘，需保留CLI固定分类。本次不向生产数据库安装或迁移。
 
 最终内容诊断：`LIVE_FINAL_JSON_INVALID` 表示最终文本不是可解析 JSON；`LIVE_FINAL_SCHEMA_MISMATCH` 表示非对象或字段集合不符；`LIVE_FINAL_TARGET_MISMATCH` / `LIVE_FINAL_EVIDENCE_MISMATCH` 区分对应值错配。仅保存固定代码，不导出正文；原历史 LIVE_PROTOCOL_FAILED 不追溯重分类。
+
+### 本轮真实软件环境与上游基线
+
+2026-09-09已固定并实际部署OTel Demo 2.0.2，HolmesGPT固定上游源码/独立锁依赖运行；[环境复现与保留路径](evidence/m0-real-environment/reproduce.md)、[当前总任务](tasks/2026-09-09-m0-real-investigation.md)。专属Colima profile和运行数据属于production-ops-agent-m0-environment原工作区；合入代码不自动搬移其tmp/VM/数据库，不从其他worktree盲目启停同名服务。原PG仍属于production-ops-agent-m0-01。真实模型/故障仅按当前实验合同执行，产品Agent仍只读；安装/开发检查不证明调查正确。
