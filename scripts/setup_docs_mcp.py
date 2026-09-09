@@ -2,6 +2,9 @@
 
 import argparse
 import json
+import os
+import stat
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -18,6 +21,10 @@ SERVERS = {
         "tools": ["search_api", "get_symbol"],
     },
 }
+
+
+class RollbackError(OSError):
+    """Publication failed and at least one target needs manual recovery."""
 
 
 def read_config(path, parser):
@@ -39,6 +46,8 @@ def prepare(root):
     if not (root / "AGENTS.md").is_file() or not (root / "SPEC.md").is_file():
         raise ValueError("目标必须是含 AGENTS.md 与 SPEC.md 的项目根目录")
     for parent in [root / ".codex", root / ".claude"]:
+        if parent.exists() and not parent.is_dir():
+            raise ValueError("配置目录必须是目录")
         if parent.is_symlink():
             raise ValueError("拒绝写入符号链接配置目录")
     codex = root / ".codex/config.toml"
@@ -93,14 +102,67 @@ def prepare(root):
 
 
 def install(root):
-    changes = prepare(root)  # 全部解析和冲突检查在首次写入前完成。
-    for path, text in changes.items():
-        if path.exists() and path.read_text() == text:
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-        path.chmod(0o600)
+    changes = prepare(root)
+    staged = {}
+    backups = {}
+    replaced = []
+    created_dirs = []
+    retained_backups = set()
+    try:
+        # Stage all new bytes and rollback copies before publishing any registration.
+        for path, text in changes.items():
+            if path.exists() and path.read_text() == text:
+                continue
+            if not path.parent.exists():
+                path.parent.mkdir()
+                created_dirs.append(path.parent)
+            if path.exists():
+                backups[path] = stage_file(
+                    path, path.read_bytes(), stat.S_IMODE(path.stat().st_mode)
+                )
+            else:
+                backups[path] = None
+            staged[path] = stage_file(path, text.encode(), 0o600)
+        for path, temporary in staged.items():
+            os.replace(temporary, path)
+            replaced.append(path)
+    except OSError:
+        rollback_failed = False
+        for path in reversed(replaced):
+            backup = backups[path]
+            try:
+                if backup is None:
+                    path.unlink()
+                else:
+                    os.replace(backup, path)
+            except OSError:
+                rollback_failed = True
+                if backup is not None:
+                    retained_backups.add(backup)
+        if rollback_failed:
+            raise RollbackError("MCP_ROLLBACK_INCOMPLETE") from None
+        raise
+    finally:
+        for temporary in [*staged.values(), *backups.values()]:
+            if temporary is not None and temporary not in retained_backups:
+                temporary.unlink(missing_ok=True)
+        for directory in reversed(created_dirs):
+            if not any(directory.iterdir()):
+                directory.rmdir()
     return list(changes)
+
+
+def stage_file(path, data, mode):
+    fd, name = tempfile.mkstemp(prefix=".mcp-stage-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            os.fchmod(stream.fileno(), mode)
+            stream.write(data)
+        return temporary
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def main():
@@ -109,6 +171,12 @@ def main():
     args = parser.parse_args()
     try:
         paths = install(args.project.resolve())
+    except RollbackError:
+        parser.exit(
+            1,
+            "配置回滚未完成：请暂停加载本项目 MCP，核查三个目标配置；"
+            "未恢复的原件保留在对应目录的 .mcp-stage-*，请保留并恢复后重试。\n",
+        )
     except (ValueError, OSError):
         # 不输出配置内容或解析异常，避免泄漏已有配置的私有值。
         parser.exit(1, "配置未完成：目标、格式或同名配置冲突；请保留现有文件核查。\n")

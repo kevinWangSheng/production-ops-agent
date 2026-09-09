@@ -101,7 +101,8 @@ def load_config(path: Path | None, *, environ=None) -> Config:
         if key in env:
             if key in values and values[key] != env[key]:
                 raise ConfigError("CONFIG_ENV_CONFLICT")
-            values[key] = env[key]
+            if path is None:
+                values[key] = env[key]
     for key, expected in PROFILE.items():
         if values.get(key, expected) != expected:
             raise ConfigError("CONFIG_PROFILE_MISMATCH")
