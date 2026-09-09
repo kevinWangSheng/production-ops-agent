@@ -1,0 +1,88 @@
+{
+  "window": {
+    "start": 1788977596.026837,
+    "end": 1788977896.026837
+  },
+  "query": {
+    "size": 20,
+    "sort": [
+      {
+        "@timestamp": "desc"
+      }
+    ],
+    "query": {
+      "bool": {
+        "filter": [
+          {
+            "term": {
+              "resource.service.name.keyword": "frontend-proxy"
+            }
+          },
+          {
+            "term": {
+              "attributes.url.path.keyword": "/api/checkout"
+            }
+          },
+          {
+            "range": {
+              "@timestamp": {
+                "gte": 1788977596026,
+                "lte": 1788977896026,
+                "format": "epoch_millis"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "http_status": 200,
+  "raw_path": "tmp/m0-environment/raw-evidence/recovery-01/checkout-logs.json",
+  "raw_sha256": "737b3a4a08f5e2cca98484f862bbc3c2edfefbc0e94a14f7c768a0964c1693a3",
+  "total": {
+    "value": 8,
+    "relation": "eq"
+  },
+  "samples": [
+    {
+      "timestamp": "2026-09-09T18:17:10.802134Z",
+      "trace_id": "7953c09a89ddf53afa5d86cafbd96355",
+      "body": "[2026-09-09T18:17:10.802Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 380 970 50 50 \"-\" \"python-requests/2.32.3\" \"adb632d8-ad78-943e-b732-f8cc054eb6b1\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:49700 172.18.0.26:8080 172.18.0.25:45558 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:16:51.007519Z",
+      "trace_id": "7a8cf1903af09fd52b8460dfcae8d3f5",
+      "body": "[2026-09-09T18:16:51.007Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 372 1231 44 43 \"-\" \"python-requests/2.32.3\" \"f45dad71-0d3e-976d-8c59-452e739ac9a9\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:58572 172.18.0.26:8080 172.18.0.25:45562 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:15:57.401992Z",
+      "trace_id": "fb28d92f0e7a21fc7ca46147a4e67f07",
+      "body": "[2026-09-09T18:15:57.401Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 388 912 33 33 \"-\" \"python-requests/2.32.3\" \"725dce97-08a6-964f-9d5f-01ed04de536c\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:50668 172.18.0.26:8080 172.18.0.25:45558 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:15:49.192353Z",
+      "trace_id": "f2d1c6d19d25a3c5781416ba4ab7e0a0",
+      "body": "[2026-09-09T18:15:49.192Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 372 965 46 46 \"-\" \"python-requests/2.32.3\" \"d89133d0-26bf-99b5-a68c-b7f87bc70912\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:50668 172.18.0.26:8080 172.18.0.25:45558 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:15:32.997902Z",
+      "trace_id": "27ea85a262af237491ce4ea80bd48f34",
+      "body": "[2026-09-09T18:15:32.997Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 380 741 82 81 \"-\" \"python-requests/2.32.3\" \"6f5ea239-b5ac-93a7-9937-1e78febf27ea\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:50668 172.18.0.26:8080 172.18.0.25:45562 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:14:53.526337Z",
+      "trace_id": "be6bd442368a4d71092cf8e251708110",
+      "body": "[2026-09-09T18:14:53.526Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 388 1636 68 68 \"-\" \"python-requests/2.32.3\" \"43d71ab5-0890-90ed-a104-bc8f79780ea4\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:39982 172.18.0.26:8080 172.18.0.25:45558 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:14:23.316153Z",
+      "trace_id": "d10aaef43737b659c63121a88029aadf",
+      "body": "[2026-09-09T18:14:23.316Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 386 1465 76 76 \"-\" \"python-requests/2.32.3\" \"0f712d7f-90a1-9f4f-ad3f-2fb96715172c\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:50244 172.18.0.26:8080 172.18.0.25:45562 - -\n"
+    },
+    {
+      "timestamp": "2026-09-09T18:13:31.073996Z",
+      "trace_id": "c82433749a52a1809c8ba51743ac9865",
+      "body": "[2026-09-09T18:13:31.073Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 382 744 63 62 \"-\" \"python-requests/2.32.3\" \"c7352a5f-951b-9ed5-9e0e-adfd0a1cd157\" \"frontend-proxy:8080\" \"172.18.0.24:8080\" frontend 172.18.0.26:48174 172.18.0.26:8080 172.18.0.25:45558 - -\n"
+    }
+  ]
+}

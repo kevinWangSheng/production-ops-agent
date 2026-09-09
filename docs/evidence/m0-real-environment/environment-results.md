@@ -49,4 +49,15 @@ Prometheus1h留存且持久卷；OpenSearch持久卷、当前未设自动删除�
 
 此前“至少2真实请求失败+trace传播+metric变化+日志”的可诊断前提成立，未降低判据。模型只收到[HTTP500可见症状/接入/窗口](fault-01-investigator-input.json)，未提供注入参数、隐藏flag或预设payment答案。模型是否定位及证据是否支持另由独立评估核查。
 
-尚未：故障恢复观察、Holmes对照结果整合、完整权限/数据出口合同、Kubernetes HealthProfile、72h soak。结束使用compose stop和colima stop专属profile，保留容器/卷/数据；不使用down或删除虚机。
+以下为故障调查完成前的历史待办；工程恢复与停止已在下节完成。Holmes结果以其独立执行记录为准；完整权限/数据出口合同、Kubernetes HealthProfile、72h soak未完成。结束使用compose stop和colima stop专属profile，保留容器/卷/数据；不使用down或删除虚机。
+
+
+## 工程恢复、导出和停止
+
+原配置在2026-09-09T18:12:46Z由工程脚本按预定合同恢复，不依赖调查模型建议；[前后hash与原字节相等](fault-configuration-hashes.json)。独立新窗`1788977596.026837 → 1788977896.026837`（18:13:16→18:18:16Z）在恢复330秒时自动采集，见[7源观察](recovery-01-observation.json)。所有已有error series增量0，Charge成功与交易增量约8.75，Charge status2增量0；8条trace相关span无error。同窗追加精确path查询得[8条checkout HTTP200日志](recovery-checkout-logs.json)。这是该开发窗口的工程恢复证据，不是模型自我认证、F6验收或持续可用性承诺。
+
+停止工作负载后、停止后端前，[Jaeger导出](jaeger-final-export.json)保存19服务在截止时刻前1h内的2792个distinct retained trace，原始响应无损gzip约9.4MiB，逐项raw SHA核对成功，均未触及25000条限额。它不是事务一致全局快照，也不能证明更早未发生默认容量淘汰；模型已见及本轮正常/故障/恢复关键raw均另外保留。
+
+[停止状态](closeout.json)和[容器/卷清单](stopped-resources.json)：26个工作负载/代理容器全部exited，m0-otel在18:20:53Z停止，default仍停止。未down/prune/删除工作负载容器、卷或profile；宿主memory free59%。原始停止输出/hash、源码/依赖/镜像和所有本轮业务/费用记录保留在原worktree与专属VM，不迁移或清理。
+
+工程采集脚本拒绝同名label，避免误覆盖历史；[实际拒绝与原SHA不变](history-overwrite-denial.json)已复验，独立reviewer核查两行控制流与工件。最终范围仍是真实环境设计验证；完整权限合同、Kubernetes HealthProfile和72h soak保持未完成。

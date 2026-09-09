@@ -1,0 +1,227 @@
+[
+  {
+    "Name": "opspilot-m0-telemetry",
+    "Id": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe",
+    "Driver": "bridge",
+    "Internal": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.18.0.0/16",
+          "Gateway": "172.18.0.1"
+        }
+      ]
+    },
+    "Containers": {
+      "2f9c3e3ccb1e66d6951da781f7f638931c5f8bcb07c5ae0db9ffa5ab615a7a79": {
+        "Name": "opspilot-m0-fraud-detection",
+        "EndpointID": "437172b3a3c294930bce049ae017545a774bc003d7f518d23d743e4aaa14aa49",
+        "MacAddress": "42:3c:fb:8f:ea:3c",
+        "IPv4Address": "172.18.0.23/16",
+        "IPv6Address": ""
+      },
+      "30e3e60156992aacda5c4d5cd4c4ca54466e1053fc64d7d58737701404278e75": {
+        "Name": "opspilot-m0-prometheus",
+        "EndpointID": "61178d18e4b3a60ff85936366c00f89c631281335e31b69698b82e653ee77f7e",
+        "MacAddress": "f6:88:3a:6e:68:b0",
+        "IPv4Address": "172.18.0.27/16",
+        "IPv6Address": ""
+      },
+      "34f8b642179496316a54cd3581968902c866de2af4b4831e3f20e953f05bc3e6": {
+        "Name": "opspilot-m0-product-catalog",
+        "EndpointID": "f9d36071c6c8075e01da14877f5e8b3380452cd1ce5771538ce24230793c4765",
+        "MacAddress": "1a:cb:f9:90:75:f1",
+        "IPv4Address": "172.18.0.13/16",
+        "IPv6Address": ""
+      },
+      "35821a0bbc0e9756d5bdd5ecd5ce62497f8bf87097b77d4ba02451b605ac5317": {
+        "Name": "opspilot-m0-otel-collector",
+        "EndpointID": "db08b9b6fff0e1a4b121363987ab24551c880ed12b89deb9471564c474d72ff9",
+        "MacAddress": "6a:11:61:ef:02:3d",
+        "IPv4Address": "172.18.0.5/16",
+        "IPv6Address": ""
+      },
+      "3e81b9d46fd19226a8700ab005ab8867e1c1a12664a79935946ef78d82bfa364": {
+        "Name": "opspilot-m0-quote",
+        "EndpointID": "1e1985b9f2fc7c6987c1b2d46f7a5f22062e2f9a63eb360e361759a3e9871aaa",
+        "MacAddress": "c2:d5:44:bd:8e:d9",
+        "IPv4Address": "172.18.0.12/16",
+        "IPv6Address": ""
+      },
+      "3f1ccd7b6ecf0ea361a2bd4d7937eb8b93cef73808e0824b0c20a4e7c5a303f2": {
+        "Name": "opspilot-m0-ad",
+        "EndpointID": "3f0ad2a22beab801fc9a2867256c4eb289deea9ba2a626128873e89fcd42f234",
+        "MacAddress": "e6:74:48:c7:75:31",
+        "IPv4Address": "172.18.0.16/16",
+        "IPv6Address": ""
+      },
+      "480391d5d47f4eb2f541e2813f1e83ffc226c6d2f4c93c03a458626c22e99dde": {
+        "Name": "opspilot-m0-flagd-ui",
+        "EndpointID": "15d8b646bb7345c851c0bafc0d2a6799bcbb62c74fed95ccf66a6096c7d56b3f",
+        "MacAddress": "f6:86:7a:58:14:6d",
+        "IPv4Address": "172.18.0.10/16",
+        "IPv6Address": ""
+      },
+      "5046477b3ed35fc29760b21e407684d728773f76fd1a1777016b9121b2150d3b": {
+        "Name": "opspilot-m0-kafka",
+        "EndpointID": "ed608c63a4e7396c60cd2551dd6f4e971f29947edf44e1b15f4c22d8fee2c854",
+        "MacAddress": "8e:91:94:ee:c0:8b",
+        "IPv4Address": "172.18.0.7/16",
+        "IPv6Address": ""
+      },
+      "5b47747f81a990f169f71137c036882494f2d82147553ff1fac3dea2f3b070f8": {
+        "Name": "opspilot-m0-grafana",
+        "EndpointID": "a1d9a35b66763cb192557031247eba0e8ed8b2fbb19293ac7f50a99d498ba98a",
+        "MacAddress": "e2:36:57:3c:0b:a0",
+        "IPv4Address": "172.18.0.2/16",
+        "IPv6Address": ""
+      },
+      "612a2075658eed31d4008a3c1b40292517f46e1dfc36ba07c2205abf5ea3f8fa": {
+        "Name": "opspilot-m0-currency",
+        "EndpointID": "aa5e51ec830fea39c264f871a3b2873706816f149e2da2d797f19332e10d484a",
+        "MacAddress": "4e:b1:7f:26:36:f1",
+        "IPv4Address": "172.18.0.18/16",
+        "IPv6Address": ""
+      },
+      "653eb0b14fffb94b946a71e0ca6f5aafd8f53d5cf7608e5f62a8b53f5a654bf3": {
+        "Name": "opspilot-m0-shipping",
+        "EndpointID": "570656efbd68a0580b8d3378719880275c3f380c05fedce98440e0e89335b319",
+        "MacAddress": "0a:1a:24:5c:0d:01",
+        "IPv4Address": "172.18.0.19/16",
+        "IPv6Address": ""
+      },
+      "766b7b285ed404fa2588f0f933f075f6831203d79d23abd51dadea32db01f55a": {
+        "Name": "opspilot-m0-frontend",
+        "EndpointID": "95779f9f5c69b6ca354772fcb7913ebb9d9f5a220038b3b9204d2247572d01a8",
+        "MacAddress": "46:ae:a2:cd:1b:aa",
+        "IPv4Address": "172.18.0.24/16",
+        "IPv6Address": ""
+      },
+      "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16": {
+        "Name": "opspilot-m0-cart",
+        "EndpointID": "e2e021b5f1bdbf5016dadd4f16938ec4309e47f70ac8374edf1104b708fcb7cc",
+        "MacAddress": "2a:01:97:2e:cf:74",
+        "IPv4Address": "172.18.0.11/16",
+        "IPv6Address": ""
+      },
+      "8d8e65e2ed9f99ddf60b05d230eff40c68dc66a7afbd434ac6b959d122286571": {
+        "Name": "opspilot-m0-payment",
+        "EndpointID": "792ef93e6132a23fc40876b136bd31a68e649a8023bacba83daa03f0dee5f555",
+        "MacAddress": "1e:7d:a2:6e:e6:13",
+        "IPv4Address": "172.18.0.14/16",
+        "IPv6Address": ""
+      },
+      "990187bcd9c28d3148889de3a0a9dad9d4010b53f00ad27ed09f581854b0a5dd": {
+        "Name": "opspilot-m0-flagd",
+        "EndpointID": "1dc1a8d537307ccf7728cd962a434a066775513776819f37609f67c71da3470c",
+        "MacAddress": "2e:82:08:41:e6:f9",
+        "IPv4Address": "172.18.0.6/16",
+        "IPv6Address": ""
+      },
+      "99d1898663b57ad588b58a67c1ca660db200af5c86dd697ed0924bc2529e8b06": {
+        "Name": "opspilot-m0-email",
+        "EndpointID": "e8312dac3fb261e82ff667f50cdf7fd126d74c87c8fad5e9c5ff4a48e62f0a3e",
+        "MacAddress": "76:a1:f3:50:ca:38",
+        "IPv4Address": "172.18.0.15/16",
+        "IPv6Address": ""
+      },
+      "9f16520797b78d7eb2d6e103f3769573f8e64095747ea88197d3bb1351f2a42c": {
+        "Name": "opspilot-m0-opensearch",
+        "EndpointID": "13f507e497aab99a42116a08b95719be9d5039c1b97508641b5e5b4c72a7763c",
+        "MacAddress": "76:ac:be:24:24:a4",
+        "IPv4Address": "172.18.0.4/16",
+        "IPv6Address": ""
+      },
+      "a57660d1e0e3f336e559684d4d1930b50c3684d1f9ae65b4afbb65c14b4f05a1": {
+        "Name": "opspilot-m0-checkout",
+        "EndpointID": "7c5ddbc85372a8db0744828bc33847c8ab5ce53b89546de88900122c5c78e689",
+        "MacAddress": "82:13:88:82:be:56",
+        "IPv4Address": "172.18.0.21/16",
+        "IPv6Address": ""
+      },
+      "ad10968ef140d57cd9e8f53bf8b053b27b8251189fb959e36092edfe49cb3111": {
+        "Name": "opspilot-m0-image-provider",
+        "EndpointID": "394e90bb66cd00d2693158925f0619b16cf2f370ccf2cea4a43b7dd0c5882ec4",
+        "MacAddress": "7e:1e:9f:73:8a:5b",
+        "IPv4Address": "172.18.0.17/16",
+        "IPv6Address": ""
+      },
+      "b053e9faf3841e3004e786468b6ba01b55a253f6b8e8cfc039a1a0b89419e6a3": {
+        "Name": "opspilot-m0-jaeger",
+        "EndpointID": "ba8a2e6cdf8c088f9bd507174810afdea8c2194b99362ed3b42a7bb56634f878",
+        "MacAddress": "b2:d4:10:a0:f9:cf",
+        "IPv4Address": "172.18.0.8/16",
+        "IPv6Address": ""
+      },
+      "bddad7a6e5c5c853125e84fbfc274337af60e5cb0913b8c7fa6ea46cd1a627fd": {
+        "Name": "opspilot-m0-accounting",
+        "EndpointID": "661ab1fe927b014b4e514f53d4b8c00cb2ed5981b83f249337ce9f2748f633c7",
+        "MacAddress": "f2:1a:e8:f0:8a:ea",
+        "IPv4Address": "172.18.0.22/16",
+        "IPv6Address": ""
+      },
+      "d94cd84bd11f2a1079a088ff9422397ee34a0aad4e812f8de965e3d04f43426f": {
+        "Name": "opspilot-m0-read-proxy",
+        "EndpointID": "f77a5804b43239d91494ca67e1f18dc5ef7ff1890d529678753860b6065eda98",
+        "MacAddress": "aa:e7:be:23:ea:3c",
+        "IPv4Address": "172.18.0.9/16",
+        "IPv6Address": ""
+      },
+      "e1e1ce623ac4ffb85b21ec4803e9a714f66b8d4a10a5df1474f9e232e2d18156": {
+        "Name": "opspilot-m0-valkey-cart",
+        "EndpointID": "460a07a166190b73b20904554f8d57433b3dde58bf60e371a420c9d7aea84a7f",
+        "MacAddress": "d2:20:5c:25:a5:34",
+        "IPv4Address": "172.18.0.3/16",
+        "IPv6Address": ""
+      },
+      "f171ff2fa8fe32e7edec4a0d7520ebd42c8319e3ff3038849df46ee7ad1a0a8c": {
+        "Name": "opspilot-m0-load-generator",
+        "EndpointID": "178d13fd1458a91be9aa884db3a88294aabe9429c67013de99067f2ababc81df",
+        "MacAddress": "d6:6b:14:8a:84:30",
+        "IPv4Address": "172.18.0.25/16",
+        "IPv6Address": ""
+      },
+      "f9bb761941d4875cbc524e45a61078ce9fd3bbb969dc08fe4350f9877aa2142e": {
+        "Name": "opspilot-m0-recommendation",
+        "EndpointID": "60c3eda407da0d0502fe67b9e0c00e3884bdab75cefce80d4ec090659bc0bc7a",
+        "MacAddress": "d2:01:8d:64:b7:90",
+        "IPv4Address": "172.18.0.20/16",
+        "IPv6Address": ""
+      },
+      "fd1c681f98515d356c9974fbfa65cb33e427f05707352a9a1a0e61c91cdc7be5": {
+        "Name": "opspilot-m0-frontend-proxy",
+        "EndpointID": "1197cb6adfa172dcf56b20a8cdbd37d552a1ff7cdc80f28e5f667de39c6a7069",
+        "MacAddress": "22:9b:b4:0d:ef:2c",
+        "IPv4Address": "172.18.0.26/16",
+        "IPv6Address": ""
+      }
+    }
+  },
+  {
+    "Name": "opspilot-m0-investigation",
+    "Id": "72238a0ed60596781ab21d865d83d6601e383a17ed9b9eb1bb9cd9a14f8e7331",
+    "Driver": "bridge",
+    "Internal": true,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.19.0.0/16",
+          "Gateway": "172.19.0.1"
+        }
+      ]
+    },
+    "Containers": {
+      "d94cd84bd11f2a1079a088ff9422397ee34a0aad4e812f8de965e3d04f43426f": {
+        "Name": "opspilot-m0-read-proxy",
+        "EndpointID": "a42cead4a22e05cd52833ea75bf2f9e1d4de4d8d93ed32fbb439ea669c0d729a",
+        "MacAddress": "f6:66:56:06:95:df",
+        "IPv4Address": "172.19.0.2/16",
+        "IPv6Address": ""
+      }
+    }
+  }
+]
