@@ -14,7 +14,7 @@ lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytes
             if name.startswith("docs/"):
 >               assert after[name] == content
 E               assert b'[\n  {\n   ...768\n  }\n]\n' == b'[\n {\n  "s...5768\n }\n]\n'
-E                 
+E
 E                 At index 3 diff: b' ' != b'{'
 E                 Use -v to get more diff
 

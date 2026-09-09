@@ -405,5 +405,10 @@
       "sha256": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
     }
   ],
-  "scope": "Only reproduce.md semantics and new review evidence may change; no original data artifacts rewritten."
+  "scope": "Only reproduce.md semantics and new review evidence may change; no original data artifacts rewritten.",
+  "red_log_raw": {
+    "path": "tmp/m0-environment/freeze-review-regression-red-original.txt",
+    "sha256": "59c223952eed8da020e7c7782f993b97c9125338852fc4fa99e318414d754a6b",
+    "public_normalization": "Only trailing pytest whitespace removed; raw bytes preserved."
+  }
 }
