@@ -1,0 +1,13 @@
+# PR #12：审查闭环与模型批准合同修复
+
+2026-09-09。用户指出已知code_review应等待结果并处置后才算PR交付完成；在AGENTS“变更、Git与交接”增补统一原则。已触发的Code/Security Review均须返回、发现须处置，核对覆盖提交，实质变更取得复审。只有CI与适用审查闭环才能报告“PR已就绪，待用户审核合并”，不自动获得合并授权。旧提交review/local review/CI三者不能互相冒充。无法取得审查结果必须明确未完成，不先宣告交付。
+
+## 本次发现与处理
+
+实际GitHub回读：Code Review和Security Review均完成，但summary覆盖3309daf，现实现已多次改变。Code Review有P1（review comment3966807552）：批准固定版本时合同没有model/version字段，仍用可变alias；实际返回不同版本也可继续请求/成功trace。此前仅报告CI成功，没有主动等待并处置该已触发审查，是交付遗漏。
+
+修复使用m0-normal-1-v2批准合同：model_profile明确request_model、accepted_response_model、thinking、reasoning_effort及version_scope，并随完整合同持久hash绑定。当前仅支持明确批准reported_alias=deepseek-v4-pro的兼容试验；官方alias无法证明固定后端权重，所以fixed_weights或固定0813的批准一律在claim/网络前拒绝，不冒充固定版支持。每个模型响应的model必须与获批报告名完全匹配，缺失/未知/换模型立即失败；首轮不执行工具或第二次请求，第二轮也不能产生成功trace。结果用固定LIVE_MODEL_PROFILE_MISMATCH解释，不导出任意provider正文。
+
+这不证明provider不会在同一个报告别名后更换权重，也不放开未来路由变化的授权。若用户要求不可变模型版本，须先取得真实可用的不可变地址/版本证明，再另行设计验证，当前入口明确不支持。原v1批准文件与首次实验历史保留，不迁移、不重新授权或重跑。
+
+验证涵盖缺失/错误profile、固定权重请求、首/次轮模型不匹配与缺失返回名。独立审查见[profile-review.md](profile-review.md)。本轮无真实模型/trace或新增费用；原PR保持OPEN，后续提交后等待最新CI和机器人复审结果，不将本地通过替代远程审查完成。

@@ -10,7 +10,14 @@ import httpx2
 import pytest
 
 from scripts.m0.config import PROFILE, Config, ConfigError
-from scripts.m0.live import code_digest, digest, execute, utcnow, validate
+from scripts.m0.live import (
+    MODEL_PROFILE,
+    code_digest,
+    digest,
+    execute,
+    utcnow,
+    validate,
+)
 from scripts.m0.protocol import FIXTURE, no_network
 
 
@@ -29,7 +36,8 @@ def packet():
         }
     )
     contract = {
-        "version": "m0-normal-1-v1",
+        "version": "m0-normal-1-v2",
+        "model_profile": copy.deepcopy(MODEL_PROFILE),
         "approved": True,
         "approval_ref": "synthetic-approval-" + str(uuid4()),
         "experiment_id": str(uuid4()),
@@ -123,6 +131,14 @@ def scenario(contract, ledger, variant="normal"):
             return httpx2.Response(
                 200,
                 json={
+                    "model": (
+                        "deepseek-v4.1-flash"
+                        if variant == "wrong-model"
+                        or (variant == "wrong-second-model" and second)
+                        else None
+                        if variant == "missing-model"
+                        else "deepseek-v4-pro"
+                    ),
                     "choices": [
                         {
                             "finish_reason": "stop" if second else "tool_calls",
@@ -183,6 +199,9 @@ def scenario(contract, ledger, variant="normal"):
     "variant, business, trace, models",
     [
         ("normal", "completed", "verified", 2),
+        ("wrong-model", "failed", "pending", 1),
+        ("wrong-second-model", "failed", "pending", 2),
+        ("missing-model", "failed", "pending", 1),
         ("server-metadata", "completed", "verified", 2),
         ("metadata-bool", "completed", "unknown", 2),
         ("metadata-depth", "completed", "unknown", 2),
@@ -208,6 +227,12 @@ def test_complete_boundary(variant, business, trace, models):
         result = asyncio.run(execute(contract, config, ledger, transport=transport))
     assert result["business"] == business
     assert result["trace"] == trace
+    if variant == "wrong-second-model":
+        assert result["business_code"] == "LIVE_MODEL_PROFILE_MISMATCH"
+        assert "trace-post" not in ledger.attempts
+    if variant in ("wrong-model", "missing-model"):
+        assert result["business_code"] == "LIVE_MODEL_PROFILE_MISMATCH"
+        assert "model-2" not in ledger.attempts and "trace-post" not in ledger.attempts
     if variant == "read-null":
         assert ledger.attempts.count("trace-read-1") == 1
         assert "trace-read-2" not in ledger.attempts
@@ -285,3 +310,34 @@ def test_deadline_rechecked_after_persistent_attempt():
     with no_network():
         asyncio.run(run())
     assert seen == []
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        None,
+        {},
+        MODEL_PROFILE | {"version_scope": "fixed_weights"},
+        MODEL_PROFILE | {"accepted_response_model": "deepseek-v4-pro-0813"},
+        MODEL_PROFILE | {"thinking": "disabled"},
+    ],
+)
+def test_unapproved_or_unverifiable_profile_is_denied_before_claim(profile):
+    contract, config = packet()
+    contract["model_profile"] = profile
+    ledger = MemoryLedger()
+    with no_network(), pytest.raises(ConfigError):
+        asyncio.run(execute(contract, config, ledger))
+    assert not ledger.claimed
+
+
+@pytest.mark.parametrize("include_profile", [True, False])
+def test_legacy_approval_cannot_be_migrated_implicitly(include_profile):
+    contract, config = packet()
+    contract["version"] = "m0-normal-1-v1"
+    if not include_profile:
+        del contract["model_profile"]
+    ledger = MemoryLedger()
+    with no_network(), pytest.raises(ConfigError):
+        asyncio.run(execute(contract, config, ledger))
+    assert not ledger.claimed

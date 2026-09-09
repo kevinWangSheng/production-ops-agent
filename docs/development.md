@@ -107,3 +107,5 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 本轮正常模型请求为固定官方Chat Completions JSON，经锁定HTTPX2直接受限发送；LangSmith通过锁定SDK序列化到内存并验证白名单后发送。没有OpenAI SDK自动重试或自动trace wrapper。单次请求/响应限制16KiB/128KiB，HTTP层无环境代理、重定向或重试；完整body读取受timeout约束，DB提交后再次检查截止与取消。420秒是有效HTTP运行期限，数据库失败保存/客户端关闭另受既有有界连接/语句超时约束，不保证进程精确420秒退出。真实后端协议（包括LangSmith legacy runs回读兼容）仍需真实实验取得证据。
 
 回读诊断：CLI的trace_code为固定分类；trace_readback_code严格核对业务DTO，仅允许平台返回的根层级metadata.ls_run_depth=int0，出站extra规则仍不变。2xx null明确失败而非按404重试。初次失败可继续只读核对已有Run，无需重跑模型或重新上传；参考[真实误判修复](evidence/m0-01-live/trace-diagnosis.md)。
+
+模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-pro，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。

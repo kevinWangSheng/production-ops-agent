@@ -26,6 +26,14 @@ from .protocol import (
 )
 
 ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.com"}
+MODEL_PROFILE = {
+    "request_model": "deepseek-v4-pro",
+    "accepted_response_model": "deepseek-v4-pro",
+    "version_scope": "reported_alias",
+    "thinking": "enabled",
+    "reasoning_effort": "high",
+}
+
 SLOTS = (
     "project",
     "model-1",
@@ -71,6 +79,7 @@ def validate(contract, config, now=None):
     try:
         required = {
             "version",
+            "model_profile",
             "approved",
             "approval_ref",
             "experiment_id",
@@ -93,7 +102,11 @@ def validate(contract, config, now=None):
             or contract["billing_checked"] is not True
         ):
             denied()
-        if contract["version"] != "m0-normal-1-v1" or contract["budget_cny"] != "2.00":
+        if contract["version"] != "m0-normal-1-v2" or contract["budget_cny"] != "2.00":
+            denied()
+        # The current endpoint cannot attest immutable backend weights.
+        # A fixed-weight approval is unsupported, never silently downgraded to an alias.
+        if contract["model_profile"] != MODEL_PROFILE:
             denied()
         for key in ("experiment_id", "run_id", "workspace_id", "project_id"):
             if str(UUID(contract[key])) != contract[key]:
@@ -423,6 +436,8 @@ async def execute(contract, config, ledger, *, transport=None):
     )  # Commit succeeds before ANY external request, including project GET.
     wire = Wire(contract, config, ledger, deadline, transport)
     business, trace, count, usage = "failed", "pending", 0, []
+    business_code = "LIVE_PROTOCOL_FAILED"
+    profile = contract["model_profile"]
     try:
         async with asyncio.timeout(max(0.001, (deadline - utcnow()).total_seconds())):
             project = await wire.request(
@@ -440,12 +455,12 @@ async def execute(contract, config, ledger, *, transport=None):
             messages = copy.deepcopy(fixture["messages"])
             for step in (1, 2):
                 body = {
-                    "model": "deepseek-v4-pro",
+                    "model": profile["request_model"],
                     "messages": messages,
                     "tools": fixture["tools"],
                     "max_tokens": 4096,
-                    "reasoning_effort": "high",
-                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": profile["reasoning_effort"],
+                    "thinking": {"type": profile["thinking"]},
                     "stream": False,
                 }
                 response = await wire.request(
@@ -455,6 +470,9 @@ async def execute(contract, config, ledger, *, transport=None):
                     body,
                 )
                 usage.append(token_usage(response))
+                if response.get("model") != profile["accepted_response_model"]:
+                    business_code = "LIVE_MODEL_PROFILE_MISMATCH"
+                    raise ConfigError(business_code)
                 message = model_message(response, "tool_calls" if step == 1 else "stop")
                 if step == 1:
                     if len(message["tool_calls"]) != 1:
@@ -475,6 +493,7 @@ async def execute(contract, config, ledger, *, transport=None):
                 ):
                     raise ConfigError("LIVE_PROTOCOL_FAILED")
             business = "completed"
+            business_code = "LIVE_PROTOCOL_COMPLETED"
     except (Exception, asyncio.CancelledError):
         # Store only controlled outcomes, never exception objects, model prose or protocol state.
         pass
@@ -532,6 +551,7 @@ async def execute(contract, config, ledger, *, transport=None):
         await wire.client.aclose()
     return {
         "business": business,
+        "business_code": business_code,
         "trace": trace,
         "trace_code": trace_code,
         "request_count": count,
