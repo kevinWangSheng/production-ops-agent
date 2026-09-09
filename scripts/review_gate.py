@@ -32,7 +32,7 @@ class GateError(Exception):
 def api(path, payload=None, paginate=False, method=None):
     if not (path.startswith(f"repos/{REPOSITORY}/") or path == "graphql"):
         raise GateError("API_PATH_REJECTED")
-    args = ["gh", "api", path]
+    args = ["gh", "api", "--hostname", "github.com", path]
     if method:
         args += ["--method", method]
     if paginate:
