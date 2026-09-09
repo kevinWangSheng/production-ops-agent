@@ -199,3 +199,31 @@ def test_pairing_rejects_structural_corruption(mutation):
         del a["content"]
     with pytest.raises(protocol.ProtocolError, match="TOOL_PAIRING_INVALID"):
         protocol.continuation(a, [result], provider="deepseek", run_id=protocol.RUN_ID)
+
+
+@pytest.mark.parametrize("file_text", ["", "DEEPSEEK_API_KEY=synthetic"])
+def test_file_mode_does_not_inherit_ambient_readiness(tmp_path, file_text):
+    ambient = {
+        "DEEPSEEK_API_KEY": "synthetic",
+        "LANGSMITH_API_KEY": "synthetic-trace",
+        "LANGSMITH_ENDPOINT": "https://synthetic.invalid",
+        "LANGSMITH_PROJECT": "synthetic",
+        "LANGSMITH_WORKSPACE_ID": "synthetic",
+        "OPSPILOT_EXPERIMENT_BUDGET_CNY": "10",
+        "OPSPILOT_EXPERIMENT_DEADLINE_UTC": "2999-01-01T00:00:00+00:00",
+    }
+    loaded = config.load_config(private_file(tmp_path, file_text), environ=ambient)
+    assert (
+        loaded.readiness()
+        == config.load_config(private_file(tmp_path, file_text), environ={}).readiness()
+    )
+    assert config.load_config(None, environ=ambient).readiness()[
+        "positive_budget_configured"
+    ]
+
+
+def test_file_mode_still_rejects_ambient_automatic_tracing(tmp_path):
+    with pytest.raises(config.ConfigError, match="AUTOMATIC_TRACING_FORBIDDEN"):
+        config.load_config(
+            private_file(tmp_path, ""), environ={"LANGCHAIN_TRACING_V2": "true"}
+        )
