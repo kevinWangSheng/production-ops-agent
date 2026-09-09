@@ -1,0 +1,34 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-a
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+.venv/bin/ruff check .
+All checks passed!
+.venv/bin/ruff format --check .
+unformatted: File would be reformatted
+  --> docs/evidence/m0-a/independent-review.md:15:1
+   |
+14 | import asyncio, runpy
+   - m = runpy.run_path('tests/test_m0_adapters.py')
+   - a, r, h, f, events, _ = m['setup']()
+15 +
+16 + m = runpy.run_path("tests/test_m0_adapters.py")
+17 + a, r, h, f, events, _ = m["setup"]()
+18 +
+19 +
+20 | def cancelled(*args):
+21 |     raise asyncio.CancelledError()
+22 +
+23 +
+24 | try:
+   -     m['execute'](a, r, h, f, tool=cancelled)
+25 +     m["execute"](a, r, h, f, tool=cancelled)
+26 | except asyncio.CancelledError:
+   |
+
+1 file would be reformatted, 101 files already formatted
