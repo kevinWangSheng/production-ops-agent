@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-09-09T07:34:30.527399+00:00",
+  "purpose": "PR #8 post-fix scanner evidence; original verification.json is retained as pre-fix history",
+  "tested_revision": "1282ab4bcc53d1530c59ee95d2b1ae671ffc4fe8",
+  "tested_tree": "cdafe6287b149d9867a221cd05d849922bc268f4",
+  "scope": {
+    "snapshot": "clean tracked files at tested_revision",
+    "history": "tested_revision and all reachable ancestors only; isolated repository has detached HEAD and no refs",
+    "history_commit_count": 42,
+    "excluded": "this result and all later changes; original workspace untracked/ignored files and unrelated refs are not copied"
+  },
+  "sources": [
+    {
+      "path": "scripts/check_secrets.py",
+      "sha256": "1ff3681f5951aecbdea11392c409c4605560ce41c57ffe047bcd31005ba6b7ca"
+    },
+    {
+      "path": "scripts/install_gitleaks.py",
+      "sha256": "71e45944ca600a2a1a6d2b3e02ca713da26ffbcc93950802bedb7a11edc2b893"
+    }
+  ],
+  "scanner": {
+    "version": "8.30.1",
+    "binary_sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+    "distribution": "darwin_arm64",
+    "archive_sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+    "installation": {
+      "command": [
+        "python3",
+        "scripts/install_gitleaks.py",
+        "--directory",
+        "tmp/gitleaks"
+      ],
+      "exit_code": 0,
+      "stdout": "GITLEAKS_INSTALLED_8.30.1\n"
+    }
+  },
+  "execution": {
+    "cwd": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-evidence-version/tmp/post-fix-snapshot",
+    "command": [
+      "python3",
+      "scripts/check_secrets.py",
+      "--root",
+      "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-evidence-version/tmp/post-fix-snapshot",
+      "--binary",
+      "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-evidence-version/tmp/gitleaks/gitleaks"
+    ],
+    "exit_code": 0,
+    "stdout": "SECRET_SCAN_PASSED\n",
+    "stderr": ""
+  },
+  "limitations": [
+    "synthetic scanner probes and repository scan only; no product acceptance, runtime egress, live provider, database or soak verification",
+    "the result file does not claim to scan itself; latest PR CI must scan subsequent committed changes"
+  ]
+}
