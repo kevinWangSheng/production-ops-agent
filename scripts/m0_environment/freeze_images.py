@@ -1,4 +1,8 @@
-"""Freeze all pulled lab images before the first workload startup."""
+"""Verify the archived lab inputs before materializing its runtime files.
+
+Committed image/configuration manifests are inputs, never output destinations.
+A changed experiment needs its own reviewed record instead of rewriting this one.
+"""
 
 import hashlib
 import json
@@ -7,6 +11,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "tmp/m0-environment"
+evidence = ROOT / "docs/evidence/m0-real-environment"
+archive_paths = [
+    evidence / name for name in ("image-lock.json", "configuration-hashes.json")
+]
+if not all(path.is_file() for path in archive_paths):
+    raise SystemExit(
+        "Archived image lock and configuration hashes are required; no files written."
+    )
+expected_images = json.loads(archive_paths[0].read_text())
+expected_hashes = json.loads(archive_paths[1].read_text())
 config = json.loads((LAB / "compose.json").read_text())
 config["networks"]["investigation"] = {
     "name": "opspilot-m0-investigation",
@@ -40,9 +54,7 @@ config["services"]["read-proxy"] = {
     "ports": [{"target": 18081, "published": "18081", "host_ip": "127.0.0.1"}],
     "deploy": {"resources": {"limits": {"memory": "64M", "cpus": "0.5"}}},
 }
-(LAB / "read_proxy.py").write_bytes(
-    (ROOT / "scripts/m0_environment/read_proxy.py").read_bytes()
-)
+proxy_bytes = (ROOT / "scripts/m0_environment/read_proxy.py").read_bytes()
 records = []
 for name, service in config["services"].items():
     tag = service["image"]
@@ -62,26 +74,34 @@ for name, service in config["services"].items():
             "size": image["Size"],
         }
     )
-(LAB / "compose-pinned.json").write_text(json.dumps(config, indent=2) + "\n")
-evidence = ROOT / "docs/evidence/m0-real-environment"
-(evidence / "image-lock.json").write_text(json.dumps(records, indent=2) + "\n")
-files = [
-    LAB / name
-    for name in (
-        "compose-pinned.json",
-        "collector.yml",
-        "prometheus.yaml",
-        "read_proxy.py",
+if records != expected_images:
+    raise SystemExit(
+        "Image identity/platform differs from the archived lock; no files written."
     )
-]
-(evidence / "configuration-hashes.json").write_text(
-    json.dumps(
-        {
-            str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in files
-        },
-        indent=2,
+
+# Build and check the entire candidate before changing even the runtime proxy.
+outputs = {
+    LAB / "compose-pinned.json": (json.dumps(config, indent=2) + "\n").encode(),
+    LAB / "read_proxy.py": proxy_bytes,
+}
+inputs = {
+    **outputs,
+    **{
+        LAB / name: (LAB / name).read_bytes()
+        for name in ("collector.yml", "prometheus.yaml")
+    },
+}
+hashes = {
+    str(path.relative_to(ROOT)): hashlib.sha256(content).hexdigest()
+    for path, content in inputs.items()
+}
+if hashes != expected_hashes:
+    raise SystemExit(
+        "Configuration differs from the archived hashes; no files written."
     )
-    + "\n"
+
+for path, content in outputs.items():
+    path.write_bytes(content)
+print(
+    f"Verified {len(records)} archived images/configuration; runtime materialized, evidence unchanged."
 )
-print(f"Frozen {len(records)} images by digest before startup.")
