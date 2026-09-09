@@ -1,11 +1,11 @@
 {
-  "scope": "synthetic local SDK contract tests only; dirty worktree before task commit",
-  "base": "e5a971cbb7b80c8f7dc789756034d4cda7630a72",
+  "scope": "P2 cancellation fix synthetic local SDK contract tests; dirty worktree before fix commit",
+  "base": "bb0ed2faaeb7a77f4952b7f28fd4e6d6b1dd43a0",
   "hashes": {
-    "scripts/m0/adapters.py": "3babad900c7df1a88b7ea16ef11718420d816ada182e8ea2eab9656f44e3a6d4",
+    "scripts/m0/adapters.py": "399e068aebf4368f7e385a474671de5b55c363577d882bf4971187cc1c62150a",
     "scripts/m0/protocol.py": "c0484cdcc6ffabe652b857f92848a5ef8e4710ca1d3f896fb02728301142c2f9",
     "scripts/m0/trace_adapter.py": "fff3571742e27cc8ef6606b74f0ade934346917b0b3e7efa3687c8a685f4cd54",
-    "tests/test_m0_adapters.py": "bd841f44448d68e1d1a8f021d61632d2403b44864390949ba597d8bb1018d9ab",
+    "tests/test_m0_adapters.py": "83dd6e4f99eafe9675da2a31e0b73a254c8bd8c81a1ac1ed162ad999db7147f6",
     "tests/test_m0_trace.py": "4e7321cac3c9dfc39bc5ce9fc1ce1759f62b43f59e3f36ada981b498503e362c",
     "tests/fixtures/m0/protocol-v1.json": "7967484c6601d78a92ff50ffe09577b877af541ed06a1982ec57013a5f40da03",
     "scripts/m0/contracts.py": "0a7022911aa8590ac8c474d425d184efeb1c8f29f432416957637e0ad6c15f2a",

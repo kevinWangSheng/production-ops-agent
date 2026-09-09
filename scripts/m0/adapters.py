@@ -178,7 +178,7 @@ class SyntheticAdapter:
             expected_run_id=str(history.owner.run_id),
         )
         results, statuses = [], []
-        for call in assistant["tool_calls"]:
+        for index, call in enumerate(assistant["tool_calls"]):
             try:
                 tool_result(call, fixture)  # Exact synthetic tool and target allowlist.
             except ProtocolError:
@@ -191,6 +191,19 @@ class SyntheticAdapter:
                     if result != tool_result(call, fixture):
                         raise ProtocolError("TOOL_RESULT_INVALID")
                     status, content = "completed", None
+                except asyncio.CancelledError:
+                    # Keep completed observations and pair the entire accepted plan.
+                    # Remaining tools are not executed; cancellation still reaches caller.
+                    results.extend(
+                        {
+                            "role": "tool",
+                            "tool_call_id": pending["id"],
+                            "content": json.dumps({"error": "TOOL_CANCELLED"}),
+                        }
+                        for pending in assistant["tool_calls"][index:]
+                    )
+                    history.append(run, assistant, results)
+                    raise asyncio.CancelledError from None
                 except Exception:
                     status, content = "TOOL_FAILED", {"error": "TOOL_FAILED"}
             results.append(
