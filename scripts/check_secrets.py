@@ -16,47 +16,65 @@ class ScanError(Exception):
     pass
 
 
-def command(args, *, cwd, timeout=60):
+def command(args, *, cwd, timeout=60, text=True):
     # CLI subprocesses do not inherit service credentials or scanner override config.
     env = {k: v for k, v in os.environ.items() if k in ("PATH", "SYSTEMROOT", "TMPDIR")}
     return subprocess.run(
-        args, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout
+        args, cwd=cwd, env=env, capture_output=True, text=text, timeout=timeout
     )
 
 
-def tracked_snapshot(root: Path, destination: Path):
-    listing = command(["git", "ls-files", "-z"], cwd=root)
+def tracked_snapshot(root: Path, destination: Path, *, index=True):
+    listing = command(["git", "ls-files", "--stage", "-z"], cwd=root)
     if listing.returncode:
         raise ScanError("GIT_LIST_FAILED")
-    count = 0
-    for name in listing.stdout.split("\0"):
-        if not name:
+    entries = []
+    for record in listing.stdout.split("\0"):
+        if not record:
             continue
+        metadata, name = record.split("\t", 1)
+        mode, blob, stage = metadata.split()
         relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise ScanError("TRACKED_PATH_INVALID")
-        # No copying/reading a real .env, even if accidentally staged.
+        # Validate the entire index before reading any blobs or working-tree files.
         if any(
             part == ".env" or part.startswith(".env.") and part != ".env.example"
             for part in relative.parts
         ):
             raise ScanError("PRIVATE_CONFIG_TRACKED")
-        source = root / relative
-        if not source.exists() and not source.is_symlink():
-            continue  # Tracked deletion; history scanner still covers its old content.
-        current = root
-        for part in relative.parts:
-            current = current / part
-            if current.is_symlink():
-                raise ScanError("TRACKED_SYMLINK_DENIED")
-        if not stat.S_ISREG(source.stat().st_mode):
+        if stage != "0":
+            raise ScanError("UNMERGED_INDEX")
+        if mode == "120000":
+            raise ScanError("TRACKED_SYMLINK_DENIED")
+        if mode not in ("100644", "100755"):
             raise ScanError("TRACKED_FILE_INVALID")
+        entries.append((relative, blob))
+    if not entries:
+        raise ScanError("EMPTY_SCAN")
+    for relative, blob in entries:
+        if index:
+            # Use the listed immutable object ID: worktree edits/deletions cannot
+            # replace the bytes that were staged when this snapshot was captured.
+            result = command(["git", "cat-file", "blob", blob], cwd=root, text=False)
+            if result.returncode:
+                raise ScanError("INDEX_BLOB_READ_FAILED")
+            content = result.stdout
+        else:
+            source = root / relative
+            current = root
+            for part in relative.parts:
+                current = current / part
+                if current.is_symlink():
+                    raise ScanError("TRACKED_SYMLINK_DENIED")
+            if not source.exists():
+                continue  # The index snapshot still scans an unstaged deletion.
+            if not stat.S_ISREG(source.stat().st_mode):
+                raise ScanError("TRACKED_FILE_INVALID")
+            content = source.read_bytes()
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(source.read_bytes())
-        count += 1
-    if count == 0:
-        raise ScanError("EMPTY_SCAN")
+        target.write_bytes(content)
 
 
 def scan(binary: Path, mode: str, target: Path, scratch: Path):
@@ -137,11 +155,14 @@ def check(root: Path, binary: Path):
         (probe / "canary.txt").write_text('api_key = "' + known_digest + '"\n')
         if scan(binary, "dir", probe, scratch) == 0:
             raise ScanError("SCANNER_SELFTEST_FAILED")
-        snapshot = scratch / "tracked"
-        snapshot.mkdir()
-        tracked_snapshot(root, snapshot)
-        # Avoid repository-owned suppressions: no config supplied; run outside repo.
-        if scan(binary, "dir", snapshot, scratch) or scan(binary, "git", root, scratch):
+        # Separate roots retain exact relative paths for the narrow reviewed exceptions.
+        for name, index in (("index", True), ("worktree", False)):
+            snapshot = scratch / name
+            snapshot.mkdir()
+            tracked_snapshot(root, snapshot, index=index)
+            if scan(binary, "dir", snapshot, scratch):
+                raise ScanError("SECRET_DETECTED")
+        if scan(binary, "git", root, scratch):
             raise ScanError("SECRET_DETECTED")
     return "SECRET_SCAN_PASSED"
 

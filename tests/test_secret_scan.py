@@ -61,3 +61,47 @@ def test_missing_scanner_fails_closed_with_fixed_output(tmp_path):
     assert result.returncode == 2
     assert result.stdout.strip() == "SECRET_SCAN_FAILED"
     assert result.stderr == ""
+
+
+@pytest.mark.parametrize("working", ["clean", "deleted"])
+def test_index_snapshot_preserves_staged_bytes_after_worktree_change(tmp_path, working):
+    root = repo(tmp_path)
+    source = root / "config.txt"
+    staged = b"synthetic staged credential candidate\x00\xff\n"
+    source.write_bytes(staged)
+    stage(root, source.name)
+    if working == "deleted":
+        source.unlink()
+    else:
+        source.write_text("clean working copy\n")
+    out = tmp_path / "index"
+    tracked_snapshot(root, out)
+    assert (out / source.name).read_bytes() == staged
+
+
+def test_worktree_snapshot_still_includes_unstaged_changes(tmp_path):
+    root = repo(tmp_path)
+    source = root / "config.txt"
+    source.write_text("clean staged copy\n")
+    stage(root, source.name)
+    source.write_text("synthetic unstaged credential candidate\n")
+    out = tmp_path / "working"
+    tracked_snapshot(root, out, index=False)
+    assert (out / source.name).read_bytes() == source.read_bytes()
+
+
+def test_private_index_entry_is_rejected_before_any_blob_read(tmp_path, monkeypatch):
+    import scripts.check_secrets as scanner
+
+    root = repo(tmp_path)
+    (root / ".env").write_text("synthetic only")
+    stage(root, ".env")
+    original = scanner.command
+
+    def guarded(args, **kwargs):
+        assert "cat-file" not in args
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(scanner, "command", guarded)
+    with pytest.raises(ScanError, match="PRIVATE_CONFIG_TRACKED"):
+        tracked_snapshot(root, tmp_path / "out")

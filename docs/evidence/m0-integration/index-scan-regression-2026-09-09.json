@@ -1,0 +1,28 @@
+{
+  "source_revision_before_fix": "2424c93054c6e2f642eeb1641592a5c1c1972e9b",
+  "evidence": "synthetic canaries only; values intentionally omitted",
+  "results": [
+    {
+      "case": "staged_secret_clean_worktree",
+      "old": "SECRET_SCAN_PASSED",
+      "new": "SECRET_DETECTED"
+    },
+    {
+      "case": "staged_secret_deleted_worktree",
+      "old": "SECRET_SCAN_PASSED",
+      "new": "SECRET_DETECTED"
+    },
+    {
+      "case": "unstaged_secret",
+      "old": "SECRET_DETECTED",
+      "new": "SECRET_DETECTED"
+    },
+    {
+      "case": "clean",
+      "old": "SECRET_SCAN_PASSED",
+      "new": "SECRET_SCAN_PASSED"
+    }
+  ],
+  "new_scanner_sha256": "d6e8dd03cf052b1851bb67ba3bbd7d323d63d9d1fe10ecc3da10dbabd89cc8ee",
+  "real_credentials_read": false
+}
