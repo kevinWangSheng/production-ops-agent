@@ -25,3 +25,12 @@
 
 - `scripts/m0/live.py`：`4cc44e76672c0be72bfee2ae9c848475c971260e21e555f87d473d05add02fae`
 - `tests/integration/test_m0_live_postgres.py`：`f9c026fbb99bc787ecad3d024c8f2fa5fcb7bbde27a6bbdbc269b913f0c10379`
+
+## 未提交业务结果专项复验
+
+同日追加，范围仅为远程 comment 3968481848 的修复；基线 `de99c41b0bfb3b956465187ff4b080fead66f746` 加 `execute` 提交标志与两个回归测试 diff。无阻塞发现：`business_committed` 仅在 `ledger.save` 成功返回后置为 true；保存失败时返回 `handoff` 和固定失败码，不再将内存中的 completed 报为已完成业务。已提交业务后的 trace 存储失败仍保留业务 completed、trace unknown，符合业务状态独立于 trace 的合同。
+
+独立执行 `.venv/bin/python -m pytest tests/test_m0_live.py -q`：66 passed in 1.55s；两个新增用例分别验证业务保存失败和仅 trace 存储失败，均使用完整 `execute` 与禁止真实网络的 HTTP 替身；`git diff --check` 退出 0。本专项未连接 PostgreSQL、未读取私有文件、未发外部请求。没有扩大为真实存储故障或进程中断矩阵证明。当前专项复验内容 SHA-256：
+
+- `scripts/m0/live.py`：`5f9fef6dbbe0e7ee0d62af4557bf4b7c021fc15973b0c5e1baf66ea310e0b62b`
+- `tests/test_m0_live.py`：`ceae4a2d83e4964d554234f709bdd3458ad9185199823eb2ae6704698497e3b2`

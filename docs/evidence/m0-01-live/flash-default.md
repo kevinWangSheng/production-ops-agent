@@ -7,3 +7,5 @@
 原Pro真实实验、已使用v1批准文件、原账本及费用记录保留，不能改名为Flash成功；本次选择不授权重新claim或付费重跑。新实验仍需匹配当前profile/runtime/代码hash的具体批准合同，错配和旧批准均拒绝。
 
 验证：make check 240 passed / 15显式PG默认skip；offline返回offline_pass、external_calls=0、live_verified=false。本次只做本地切换/测试，无真实模型或trace上传。独立审查见[flash-review.md](flash-review.md)。官方峰值cache-miss输入3元/M、输出9元/M，仅作为后续估算依据，原已使用的单次2元授权不延续到新实验。
+
+补充只读核验：DeepSeek /models 返回HTTP200，包含deepseek-v4-flash，未单列deepseek-v4.1-flash；仅一次模型目录读取，无推理请求。目录可用不代替Flash真实协议验证。

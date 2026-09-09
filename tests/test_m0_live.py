@@ -490,3 +490,40 @@ def test_malformed_project_response_is_classified_before_model(payload):
     assert result["business_code"] == "LIVE_PROJECT_RESPONSE_INVALID"
     assert ledger.business_code == result["business_code"]
     assert ledger.attempts == ["project"]
+
+
+def test_uncommitted_terminal_result_is_handoff_not_completed():
+    from scripts.m0.contracts import BudgetError
+
+    contract, config = packet()
+    ledger = MemoryLedger()
+    transport, seen = scenario(contract, ledger)
+
+    def unavailable(*args):
+        raise BudgetError("STORAGE_UNAVAILABLE")
+
+    ledger.save = unavailable
+    with no_network():
+        result = asyncio.run(execute(contract, config, ledger, transport=transport))
+    assert result["business"] == "handoff"
+    assert result["business_code"] == "LIVE_STORAGE_UNAVAILABLE"
+    assert ledger.saved is None
+    assert "trace-post" not in ledger.attempts
+
+
+def test_trace_storage_failure_keeps_committed_business_complete():
+    from scripts.m0.contracts import BudgetError
+
+    contract, config = packet()
+    ledger = MemoryLedger()
+    transport, seen = scenario(contract, ledger)
+
+    def unavailable(*args):
+        raise BudgetError("STORAGE_UNAVAILABLE")
+
+    ledger.trace_status = unavailable
+    with no_network():
+        result = asyncio.run(execute(contract, config, ledger, transport=transport))
+    assert ledger.saved[0] == "completed"
+    assert result["business"] == "completed" and result["trace"] == "unknown"
+    assert "trace-post" not in ledger.attempts

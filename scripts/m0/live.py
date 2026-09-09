@@ -594,8 +594,10 @@ async def execute(contract, config, ledger, *, transport=None):
         code_sha256=contract["code_sha256"],
     )
     trace_code = "TRACE_NOT_ATTEMPTED"
+    business_committed = False
     try:
         ledger.save(contract["experiment_id"], business, dto, usage, business_code)
+        business_committed = True
         # Failed or cancelled model chain does not gain further upload authority in this slice.
         if business == "completed":
             body = trace_wire(contract, dto)
@@ -622,6 +624,9 @@ async def execute(contract, config, ledger, *, transport=None):
         ledger.trace_status(contract["experiment_id"], trace, trace_code)
     except (Exception, asyncio.CancelledError) as exc:
         trace_code = failure_code(exc)
+        if not business_committed:
+            business = "handoff"
+            business_code = trace_code
         trace = "unknown"  # Committed business/outbox survives exporter failure.
         try:
             ledger.trace_status(contract["experiment_id"], trace, trace_code)

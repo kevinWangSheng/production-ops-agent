@@ -37,3 +37,7 @@ Code Review于11:50UTC返回，覆盖c8a8ced，新增P2（comment3968000660）�
 本轮补充验证：make check254passed/16显式PG默认skip；新增/现有live PG专项3passed，独立67项组合测试及诊断SQL失败事务回滚通过。原真实实验行to_jsonb的SHA256前后相同。专属PG已stop，保留旧数据和新增诊断表；模型/上传新增0。
 
 补充前提防护：claim前检查诊断表字段可查询，旧schema缺表时拒绝且不消耗授权；真实PG专项4passed，独立复验通过。最后完整检查254passed/17显式PG默认skip。专属PG再次stop，仍无模型/上传新增。
+
+## 完成状态须以已确认提交为准
+
+12:46UTC的review覆盖de99c41，comment3968481848指出终态保存失败仍可能返回completed。增加提交确认标记：save成功返回后才保留终态完成；失败/提交不明对外handoff并报告存储失败，已确认提交后的trace故障不覆盖业务completed。原数据库行可能处于提交结果不明状态，handoff不声称数据库一定未提交。66项离线回归及独立复验通过，无PG或真实请求新增。
