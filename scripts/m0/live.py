@@ -447,6 +447,10 @@ def failure_code(exc):
         "LIVE_ACCOUNT_MISMATCH",
         "LIVE_MODEL_PROFILE_MISMATCH",
         "LIVE_PROTOCOL_FAILED",
+        "LIVE_FINAL_JSON_INVALID",
+        "LIVE_FINAL_SCHEMA_MISMATCH",
+        "LIVE_FINAL_TARGET_MISMATCH",
+        "LIVE_FINAL_EVIDENCE_MISMATCH",
     }
     if isinstance(exc, ConfigError) and str(exc) in codes:
         return str(exc)
@@ -572,14 +576,18 @@ async def execute(contract, config, ledger, *, transport=None):
                     )
                 else:
                     try:
-                        valid = json.loads(message["content"]) == {
-                            "target": "m0-target-a",
-                            "evidence_id": "m0-evidence-a",
-                        }
+                        final = json.loads(message["content"])
                     except (TypeError, ValueError):
-                        valid = False
-                    if not valid:
-                        raise ConfigError("LIVE_PROTOCOL_FAILED")
+                        raise ConfigError("LIVE_FINAL_JSON_INVALID") from None
+                    if type(final) is not dict or set(final) != {
+                        "target",
+                        "evidence_id",
+                    }:
+                        raise ConfigError("LIVE_FINAL_SCHEMA_MISMATCH")
+                    if final["target"] != "m0-target-a":
+                        raise ConfigError("LIVE_FINAL_TARGET_MISMATCH")
+                    if final["evidence_id"] != "m0-evidence-a":
+                        raise ConfigError("LIVE_FINAL_EVIDENCE_MISMATCH")
             business = "completed"
             business_code = "LIVE_PROTOCOL_COMPLETED"
     except (Exception, asyncio.CancelledError) as exc:

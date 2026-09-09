@@ -1,0 +1,80 @@
+{
+  "started_at": "2026-09-09T14:05:09.466543+00:00",
+  "finished_at": "2026-09-09T14:05:13.652583+00:00",
+  "elapsed_seconds": 4.185888,
+  "exit_code": 1,
+  "cli": {
+    "actual_cost_cny": null,
+    "business": "failed",
+    "business_code": "LIVE_PROTOCOL_FAILED",
+    "request_count": 2,
+    "trace": "pending",
+    "trace_code": "TRACE_NOT_ATTEMPTED",
+    "unreconciled_reserved_cny": "2.00"
+  },
+  "ledger": {
+    "business": "failed",
+    "trace_status": "pending",
+    "attempts": [
+      "project",
+      "model-1",
+      "model-2"
+    ],
+    "outbox": {
+      "run_id": "d29aa60c-d0eb-4dac-b1f7-2253a4c34886",
+      "status": "failed",
+      "adapter": "m0-normal-1-v1",
+      "attempt": 1,
+      "fixture": "m0-protocol-v1",
+      "subject": "m0-target-a",
+      "code_sha256": "0027a403c92768c9991e8f96875edb65c0b9d0618fda800716cef84c749ecfdd",
+      "evidence_id": "m0-evidence-a",
+      "experiment_id": "f591c7b6-dcd4-4761-9774-bf7ea2a37070",
+      "request_count": 2
+    },
+    "usage": [
+      {
+        "total_tokens": 473,
+        "prompt_tokens": 394,
+        "reported_model": "deepseek-v4-flash",
+        "completion_tokens": 79
+      },
+      {
+        "total_tokens": 621,
+        "prompt_tokens": 582,
+        "reported_model": "deepseek-v4-flash",
+        "completion_tokens": 39
+      }
+    ],
+    "reserved_cny": "2.00",
+    "cost_state": "unreconciled",
+    "diagnostics": {
+      "business_code": "LIVE_PROTOCOL_FAILED",
+      "trace_code": "TRACE_NOT_ATTEMPTED"
+    },
+    "all_prior_rows_unchanged": true,
+    "prior_rows_checked": 22
+  },
+  "cost_observation": {
+    "account_balance_delta_cny": "0.00",
+    "attributable_actual_cost_cny": null,
+    "reason": "account aggregate and reporting delay; not a per-run bill"
+  },
+  "tokens": {
+    "prompt_tokens": 976,
+    "completion_tokens": 118,
+    "total_tokens": 1094
+  },
+  "peak_cache_miss_estimate_cny": "0.00399",
+  "off_peak_cache_miss_estimate_cny": "0.001995",
+  "external_requests": {
+    "preflight_read_only_get": 4,
+    "project_get": 1,
+    "model_post": 2,
+    "trace_post": 0,
+    "trace_get": 0,
+    "balance_after_get": 1
+  },
+  "original_pro_reserved_cny": "2.00",
+  "real_experiments_total_unreconciled_cny": "4.00"
+}

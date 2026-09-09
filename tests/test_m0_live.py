@@ -527,3 +527,55 @@ def test_trace_storage_failure_keeps_committed_business_complete():
     assert ledger.saved[0] == "completed"
     assert result["business"] == "completed" and result["trace"] == "unknown"
     assert "trace-post" not in ledger.attempts
+
+
+@pytest.mark.parametrize(
+    ("content", "code"),
+    [
+        ("not-json fake-model-auth", "LIVE_FINAL_JSON_INVALID"),
+        (
+            '```json\n{"target":"m0-target-a","evidence_id":"m0-evidence-a"}\n```',
+            "LIVE_FINAL_JSON_INVALID",
+        ),
+        ("null", "LIVE_FINAL_SCHEMA_MISMATCH"),
+        ("[]", "LIVE_FINAL_SCHEMA_MISMATCH"),
+        ('{"target":"m0-target-a"}', "LIVE_FINAL_SCHEMA_MISMATCH"),
+        (
+            '{"target":"m0-target-a","evidence_id":"m0-evidence-a","extra":"fake-model-auth"}',
+            "LIVE_FINAL_SCHEMA_MISMATCH",
+        ),
+        (
+            '{"target":"fake-model-auth","evidence_id":"m0-evidence-a"}',
+            "LIVE_FINAL_TARGET_MISMATCH",
+        ),
+        (
+            '{"target":"m0-target-a","evidence_id":"fake-model-auth"}',
+            "LIVE_FINAL_EVIDENCE_MISMATCH",
+        ),
+    ],
+)
+def test_final_failure_is_classified_without_exporting_content(content, code):
+    contract, config = packet()
+    ledger = MemoryLedger()
+    original, _ = scenario(contract, ledger)
+
+    async def reply(request):
+        response = await original.handle_async_request(request)
+        if request.url.host == "api.deepseek.com" and ledger.attempts[-1] == "model-2":
+            payload = response.json()
+            payload["choices"][0]["message"]["content"] = content
+            return httpx2.Response(200, json=payload)
+        return response
+
+    with no_network():
+        result = asyncio.run(
+            execute(contract, config, ledger, transport=httpx2.MockTransport(reply))
+        )
+    assert result["business_code"] == code
+    assert ledger.business_code == code
+    assert result["business"] == "failed"
+    assert ledger.attempts == ["project", "model-1", "model-2"]
+    assert result["trace_code"] == "TRACE_NOT_ATTEMPTED"
+    assert result["unreconciled_reserved_cny"] == "2.00"
+    assert len(ledger.saved[2]) == 2
+    assert "fake-model-auth" not in json.dumps([result, ledger.saved])

@@ -1,0 +1,29 @@
+{
+  "version": "m0-normal-1-v2",
+  "model_profile": {
+    "request_model": "deepseek-v4-flash",
+    "accepted_response_model": "deepseek-v4-flash",
+    "version_scope": "reported_alias",
+    "thinking": "enabled",
+    "reasoning_effort": "high"
+  },
+  "runtime": {
+    "python": "3.12.13",
+    "implementation": "CPython"
+  },
+  "experiment_id": "f591c7b6-dcd4-4761-9774-bf7ea2a37070",
+  "run_id": "d29aa60c-d0eb-4dac-b1f7-2253a4c34886",
+  "deadline": "2026-09-09T15:00:00+00:00",
+  "budget_cny": "2.00",
+  "code_sha256": "0027a403c92768c9991e8f96875edb65c0b9d0618fda800716cef84c749ecfdd",
+  "code_commit": "55539bc3262260840c2f6a92201c1478c8443255",
+  "dependencies": {
+    "openai": "3.10.0",
+    "httpx2": "2.12.0",
+    "langsmith": "0.12.2",
+    "psycopg": "3.3.3",
+    "psycopg-binary": "3.3.3"
+  },
+  "fixture_sha256": "7967484c6601d78a92ff50ffe09577b877af541ed06a1982ec57013a5f40da03",
+  "lock_sha256": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce"
+}

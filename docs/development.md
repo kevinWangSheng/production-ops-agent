@@ -1,6 +1,6 @@
 # 开发工具与检查
 
-当前工具覆盖Python开发检查、环境诊断与有界M0实验入口；原Pro单次实验及后续trace只读核验已有记录，默认现为Flash。完整M0、Flash真实组合与产品验收仍未完成。
+当前工具覆盖Python开发检查、环境诊断与有界M0实验入口；原Pro单次实验及后续trace只读核验已有记录，默认现为Flash。Flash 单次已真实运行，但最终 JSON 合同失败、未上传 trace，见 [结果](evidence/m0-01-live/flash-execution.md)。完整链路、M0 与产品验收仍未完成。
 项目使用 Python 3.12；系统 Python 可继续保留原版本。当前支持 macOS/Linux 的 `.venv/bin` 布局。
 
 ## 首次准备
@@ -106,10 +106,12 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 批准后运行形式为 `.venv/bin/python -m scripts.m0 live --env-file /absolute/private.env --approval-file /absolute/private-approval.json`。成功退出0；默认或前提拒绝退出3；协议/trace不完整退出1。输出只含受控状态、模型请求尝试数与未核账占用，实际费用unknown不自动退还额度。PostgreSQL的m0_live_once记录固定身份、每类HTTP尝试、业务结果与白名单outbox；trace失败不能抹掉业务结果。重启/并发再次启动一律拒绝，不自动续传或重发；后续trace恢复须另行限定，不能靠新UUID绕过同一授权。
 
-本轮正常模型请求为固定官方Chat Completions JSON，经锁定HTTPX2直接受限发送；LangSmith通过锁定SDK序列化到内存并验证白名单后发送。没有OpenAI SDK自动重试或自动trace wrapper。单次请求/响应限制16KiB/128KiB，HTTP层无环境代理、重定向或重试；完整body读取受timeout约束，DB提交后再次检查截止与取消。420秒是有效HTTP运行期限，数据库失败保存/客户端关闭另受既有有界连接/语句超时约束，不保证进程精确420秒退出。原Pro协议及LangSmith既有trace回读已有指定范围证据，不能据此证明新Flash配置、恢复流程或全部后端行为；新配置仍需另行有界实验。
+本轮正常模型请求为固定官方Chat Completions JSON，经锁定HTTPX2直接受限发送；LangSmith通过锁定SDK序列化到内存并验证白名单后发送。没有OpenAI SDK自动重试或自动trace wrapper。单次请求/响应限制16KiB/128KiB，HTTP层无环境代理、重定向或重试；完整body读取受timeout约束，DB提交后再次检查截止与取消。420秒是有效HTTP运行期限，数据库失败保存/客户端关闭另受既有有界连接/语句超时约束，不保证进程精确420秒退出。原Pro协议及LangSmith既有trace回读已有指定范围证据，不能据此证明新Flash配置、恢复流程或全部后端行为；Flash 本轮结果及最终内容诊断缺口见上述执行记录；完整成功链路仍需新的有界执行，不复用已消耗批准。
 
 回读诊断：CLI的trace_code为固定分类；trace_readback_code严格核对业务DTO，仅允许平台返回的根层级metadata.ls_run_depth=int0，出站extra规则仍不变。2xx null明确失败而非按404重试。初次失败可继续只读核对已有Run，无需重跑模型或重新上传；参考[真实误判修复](evidence/m0-01-live/trace-diagnosis.md)。
 
 模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-flash，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
 批准合同v2还需runtime={python,implementation}，明确完整Python版本（包括patch）及CPython实现。入口在claim前核对实际运行环境与锁定依赖闭包（含当前平台marker和binary extra）；旧/缺失依赖或Python错配固定拒绝。此核对不自动安装环境，也不承诺检测伪造distribution元数据或被篡改的二进制。
 错误审计：显式本地setup还会创建m0_live_diagnostics，与m0_live_once通过experiment_id关联；业务/outbox与business_code同事务，trace状态与trace_code同事务。原实验行不改写，无诊断行代表历史未记录；连接不可用时不能声称错误码已落盘，需保留CLI固定分类。本次不向生产数据库安装或迁移。
+
+最终内容诊断：`LIVE_FINAL_JSON_INVALID` 表示最终文本不是可解析 JSON；`LIVE_FINAL_SCHEMA_MISMATCH` 表示非对象或字段集合不符；`LIVE_FINAL_TARGET_MISMATCH` / `LIVE_FINAL_EVIDENCE_MISMATCH` 区分对应值错配。仅保存固定代码，不导出正文；原历史 LIVE_PROTOCOL_FAILED 不追溯重分类。
