@@ -1,6 +1,6 @@
 # M0 A：模型协议与 trace 适配
 
-- 状态：本地实现与自测完成，待实现后独立审查；日期：2026-09-08。
+- 状态：PR #6 模型请求取消修复与自测完成，待本轮独立复验及公共基线合入复测；日期：2026-09-09。
 - 批次与授权：[索引](2026-09-08-m0-batch.md)，本地可逆 M0 实施测试及 PR；不合并、不联网实验。
 - 依据：SPEC、C3 §5/7/11–13、M0 §1–7；F1/F2/F7/F8/F14 相关机制前提，不更改 steps/passes。
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-m0-a` / `chore/m0-a-adapters`。
@@ -50,3 +50,31 @@ P2实现者复验：单工具及三工具中途取消均保留完整配对，当
 ## 独立复验
 
 全新上下文review_a原P2工具取消丢失配对，修复546148e后独立复验关闭：69项相关测试、原反例、自拟四工具中途取消和下一轮续传通过。[报告](../evidence/m0-a/independent-review.md)。本地实现与本批独立审查完成；真实工具硬超时、持久恢复、混合SSE响应身份未证明，详见边界。PR/CI待协调者回读，未合并、无真实调用。
+
+## PR #6 模型取消修复合同（2026-09-09，执行前）
+
+GitHub review 指出模型请求创建或流消费期间的 task cancellation 被统一转成
+`MODEL_STREAM_FAILED`，调用者无法观察任务取消。依据 SPEC Runtime and human control、
+C3 §7 的有界取消/清理及 §12 私有字段边界，仅修改 A 适配器、反例测试和本任务证据。
+既有 worktree 初始干净；不读取 .env，不进行真实模型/trace 调用，不改变产品实施门槛。
+
+验证使用真实 `asyncio.Task.cancel`，分别在 MockTransport 请求等待与合成流消费等待时
+触发；必须向调用方传播无原始异常文本的 `CancelledError`，Task 保持 cancelled，
+预算保留 unknown、不执行工具、不写入半组 History，传输/流完成清理。
+先保存旧实现反例失败，再修复并运行定向 pytest 与 `make check`。
+证据追加到 `docs/evidence/m0-a/pr6-cancellation-*`，保留历史工件。
+公共基线依赖由协调者正常合入后复测；本轮实现者不得代替全新上下文独立复验。
+
+实现与自测：模型阶段单独捕获 `CancelledError`，保留预算 unknown（确定未发送时仍为
+settle(0)），在 SDK/HTTP 上下文退出后抛出无参数、抑制原异常上下文的取消信号。
+请求创建与流消费两项真实 Task.cancel 反例在旧实现均失败，修复后均观察到 cancelled
+终态、相同 request 的 unknown、工具零执行、History 无半组，以及传输/流关闭。
+[旧实现失败](../evidence/m0-a/pr6-cancellation-before.txt)、
+[定向 33 passed](../evidence/m0-a/pr6-cancellation-targeted.txt)、
+[make check 80 passed](../evidence/m0-a/pr6-cancellation-check.txt) 与
+[受检版本哈希](../evidence/m0-a/pr6-cancellation-manifest.json) 已保留。
+本轮仅合成 SDK/合同验证；独立复验、基线合入复测、提交推送和最新 CI 由协调者接续。
+
+- 独立复验补充发现：stream/transport 清理错误可能在 async context 退出时覆盖原始取消。已保留当前任务外部取消优先级，预算保留错误也不覆盖取消；超时内部取消不冒充人工取消。新增清理失败参数反例，修后 `make check` 84 passed；[复审后源码/结果](../evidence/m0-a/pr6-post-review-manifest.json)。初次 80 项及旧失败工件保留，等待独立复验结论。
+
+- 全新上下文独立复验已关闭原取消和清理异常两项发现，亲跑 84 项及 13 组额外取消/超时/清理/预算错误反例；[独立报告](../evidence/m0-a/review-2026-09-09.md)保留旧失败及最终 hash。下一步仅公共基线合入复测和原 PR 最新 CI，合并待用户审核。

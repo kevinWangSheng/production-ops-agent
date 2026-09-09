@@ -109,6 +109,8 @@ class SyntheticAdapter:
             self.budget.settle(request, 0)  # Definitely no transmission yet.
             raise
         sent = False
+        task = asyncio.current_task()
+        initial_cancels = task.cancelling()
         try:
             with no_network():
                 async with httpx2.AsyncClient(
@@ -142,17 +144,23 @@ class SyntheticAdapter:
                                 assistant, finish, usage = await _collect(stream)
                             if not wire.complete:
                                 raise ProtocolError("STREAM_INCOMPLETE")
-        except BudgetError:
-            if not sent:
-                self.budget.settle(request, 0)
-            else:
-                self.budget.retain_unknown(request)
-            raise
-        except (Exception, asyncio.CancelledError):
-            if sent:
-                self.budget.retain_unknown(request)
-            else:
-                self.budget.settle(request, 0)
+        except (Exception, asyncio.CancelledError) as error:
+            # A failing context-manager cleanup can replace CancelledError. Pending
+            # external Task.cancel requests still outrank that secondary exception.
+            # asyncio.timeout withdraws its own request when its scope exits.
+            cancelled = isinstance(error, asyncio.CancelledError) or (
+                task.cancelling() > initial_cancels
+            )
+            try:
+                if sent:
+                    self.budget.retain_unknown(request)
+                else:
+                    self.budget.settle(request, 0)
+            finally:
+                if cancelled:
+                    raise asyncio.CancelledError from None
+            if isinstance(error, BudgetError):
+                raise
             raise ProtocolError("MODEL_STREAM_FAILED") from None
         if usage is None:
             self.budget.retain_unknown(request)
