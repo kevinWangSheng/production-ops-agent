@@ -1,0 +1,2 @@
+{"status":"denied_or_failed","reason":"LIVE_STOPPED_CHECK_LOCAL_LEDGER"}
+exit_code=3; sockets denied

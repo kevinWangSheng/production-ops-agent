@@ -84,3 +84,24 @@ make check
 - `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再分别扫描 Git 索引暂存 blob、已跟踪路径的当前工作区快照，以及全部本地 Git refs 历史。索引内容按列举时固定的 blob ID 读取，工作区后续清理或删除不会掩盖已暂存内容；未暂存更改仍单独检查。未合并的索引、symlink/submodule 与误暂存私有配置均拒绝；不宣称检查与后续 commit 对并发 git add 原子绑定。使用默认规则并禁用仓库抑制/inline allow；仅对指定证据manifest的两个已核实源码SHA256设规则+路径+值AND例外，并实测同路径canary/同值不同路径仍拒绝；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
 
 CI 的checks增加同一扫描与自检；m0-postgres使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。
+
+### 首条真实链路入口（M0-01 normal-1，费用尚未批准）
+
+[具体方案](evidence/m0-01-live/plan.md)和[当前任务](tasks/2026-09-08-m0-01-preflight.md)是范围及授权依据。`live` 默认仍退出3；只有显式 `--env-file /absolute/private.env --approval-file /absolute/private-approval.json` 才进入批准合同校验。缺字段、未批准、错误hash/身份、非正预算、过期均在外部请求前拒绝。批准文件是工程操作者根据真实人工授权填写的0600本地记录，不是授予模型的权限，不承诺抵御可修改本机代码/数据库的恶意操作者。
+
+助手在获批后完成私有记录，不要求用户手写JSON。记录字段以 `live.validate` 为准；审批引用与experiment/run UUID不可重复，绑定代码/lock/fixture digest、两key的SHA256、区域/现有workspace/project UUID、2.00元及绝对deadline。`approved` 和 `billing_checked` 仅在对应依据齐全后填写true；不能将草案预算当授权。修改源码后重新核对digest与审查范围。
+
+本地工程准备（不调用模型或平台）：
+
+```sh
+.venv/bin/python -m scripts.m0.postgres_lab start
+.venv/bin/python -c 'from scripts.m0.live import LiveLedger; from scripts.m0.postgres_lab import DSN, verify_server; verify_server(); LiveLedger(DSN).install_live()'
+M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgres.py -q
+.venv/bin/python -m scripts.m0.postgres_lab stop
+```
+
+该脚本检查端口及本worktree数据目录归属；数据留在 `tmp/m0-b/postgres`（沿用既有lab布局），不复用另一worktree的数据库、不删除卷。live执行本身只验证本地服务归属并使用已安装表，不自动安装schema。独立live表记录本实验真实调用授权/未知账单，旧synthetic表不变；测试只用随机合成审批身份。
+
+批准后运行形式为 `.venv/bin/python -m scripts.m0 live --env-file /absolute/private.env --approval-file /absolute/private-approval.json`。成功退出0；默认或前提拒绝退出3；协议/trace不完整退出1。输出只含受控状态、模型请求尝试数与未核账占用，实际费用unknown不自动退还额度。PostgreSQL的m0_live_once记录固定身份、每类HTTP尝试、业务结果与白名单outbox；trace失败不能抹掉业务结果。重启/并发再次启动一律拒绝，不自动续传或重发；后续trace恢复须另行限定，不能靠新UUID绕过同一授权。
+
+本轮正常模型请求为固定官方Chat Completions JSON，经锁定HTTPX2直接受限发送；LangSmith通过锁定SDK序列化到内存并验证白名单后发送。没有OpenAI SDK自动重试或自动trace wrapper。单次请求/响应限制16KiB/128KiB，HTTP层无环境代理、重定向或重试；完整body读取受timeout约束，DB提交后再次检查截止与取消。420秒是有效HTTP运行期限，数据库失败保存/客户端关闭另受既有有界连接/语句超时约束，不保证进程精确420秒退出。真实后端协议（包括LangSmith legacy runs回读兼容）仍需真实实验取得证据。
