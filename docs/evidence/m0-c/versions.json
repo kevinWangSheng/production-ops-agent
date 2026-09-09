@@ -1,0 +1,12 @@
+{
+  "python": "3.12.13",
+  "packages": {
+    "pydantic": "2.13.5",
+    "pytest": "9.1.1",
+    "ruff": "0.16.6"
+  },
+  "schema": "m0-public-v1",
+  "evaluator": "m0-deterministic-v1",
+  "model_calls": 0,
+  "trace_uploads": 0
+}

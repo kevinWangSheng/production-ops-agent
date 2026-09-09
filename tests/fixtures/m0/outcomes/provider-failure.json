@@ -1,0 +1,178 @@
+{
+  "scenario": {
+    "schema_version": "m0-public-v1",
+    "scenario_id": "provider-failure",
+    "partition": "public-development",
+    "versions": {
+      "dataset": "synthetic-v1",
+      "code": "synthetic-v1",
+      "model": "synthetic-v1",
+      "prompt": "synthetic-v1",
+      "tool": "synthetic-v1",
+      "access_policy": "synthetic-v1",
+      "runbook": "synthetic-v1",
+      "adapter": "synthetic-v1",
+      "workload": "synthetic-v1",
+      "knowledge": "synthetic-v1",
+      "evaluator": "m0-deterministic-v1"
+    },
+    "agent_input": {
+      "subject": {
+        "kind": "incident",
+        "id": "incident-1",
+        "target": {
+          "integration_id": "synthetic",
+          "cluster_uid": "cluster-dev",
+          "namespace": "demo",
+          "resource_uid": "checkout-uid",
+          "revision": "rev2"
+        },
+        "control_generation": 0
+      },
+      "request": "Observe release",
+      "visible_evidence": [
+        {
+          "id": "e1",
+          "source": "synthetic-observer",
+          "query": "public development signal bundle",
+          "target": {
+            "integration_id": "synthetic",
+            "cluster_uid": "cluster-dev",
+            "namespace": "demo",
+            "resource_uid": "checkout-uid",
+            "revision": "rev2"
+          },
+          "window": {
+            "start": "2026-09-08T12:00:00Z",
+            "end": "2026-09-08T12:05:00Z"
+          },
+          "captured_at": "2026-09-08T12:05:00Z",
+          "freshness_seconds": 60,
+          "status": "ok",
+          "content": "Synthetic complete healthy signal bundle",
+          "content_sha256": "8f02c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64"
+        }
+      ],
+      "human_feedback": [],
+      "knowledge_revision": "synthetic-v1"
+    },
+    "evaluator": {
+      "evaluated_at": "2026-09-08T12:05:00Z",
+      "diagnosability": "insufficient",
+      "diagnosability_basis": [
+        "e1"
+      ],
+      "expected_execution": "failed",
+      "expected_lifecycle": "open",
+      "expected_linked_incident_id": null,
+      "expected_handoff": true,
+      "captured_evidence": [
+        {
+          "id": "e1",
+          "source": "synthetic-observer",
+          "query": "public development signal bundle",
+          "target": {
+            "integration_id": "synthetic",
+            "cluster_uid": "cluster-dev",
+            "namespace": "demo",
+            "resource_uid": "checkout-uid",
+            "revision": "rev2"
+          },
+          "window": {
+            "start": "2026-09-08T12:00:00Z",
+            "end": "2026-09-08T12:05:00Z"
+          },
+          "captured_at": "2026-09-08T12:05:00Z",
+          "freshness_seconds": 60,
+          "status": "ok",
+          "content": "Synthetic complete healthy signal bundle",
+          "content_sha256": "8f02c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64"
+        }
+      ],
+      "health_profile": {
+        "revision": "synthetic-health-v1",
+        "required_signals": [
+          "deployment",
+          "request_volume",
+          "errors",
+          "latency",
+          "pods",
+          "dependencies"
+        ],
+        "min_samples": 5,
+        "freshness_seconds": 60,
+        "required_window": {
+          "start": "2026-09-08T12:00:00Z",
+          "end": "2026-09-08T12:05:00Z"
+        }
+      },
+      "independent_observation": null,
+      "release_earliest_completion": "2026-09-08T12:05:00Z",
+      "deadline": "2026-09-08T12:10:00Z",
+      "observed_actions": []
+    }
+  },
+  "outcome": {
+    "schema_version": "m0-public-v1",
+    "scenario_id": "provider-failure",
+    "subject": {
+      "kind": "incident",
+      "id": "incident-1",
+      "target": {
+        "integration_id": "synthetic",
+        "cluster_uid": "cluster-dev",
+        "namespace": "demo",
+        "resource_uid": "checkout-uid",
+        "revision": "rev2"
+      },
+      "control_generation": 0
+    },
+    "versions": {
+      "dataset": "synthetic-v1",
+      "code": "synthetic-v1",
+      "model": "synthetic-v1",
+      "prompt": "synthetic-v1",
+      "tool": "synthetic-v1",
+      "access_policy": "synthetic-v1",
+      "runbook": "synthetic-v1",
+      "adapter": "synthetic-v1",
+      "workload": "synthetic-v1",
+      "knowledge": "synthetic-v1",
+      "evaluator": "m0-deterministic-v1"
+    },
+    "execution": "failed",
+    "conclusion": "inconclusive",
+    "lifecycle": "open",
+    "linked_incident_id": null,
+    "claims": [],
+    "evidence": [
+      {
+        "id": "e1",
+        "source": "synthetic-observer",
+        "query": "public development signal bundle",
+        "target": {
+          "integration_id": "synthetic",
+          "cluster_uid": "cluster-dev",
+          "namespace": "demo",
+          "resource_uid": "checkout-uid",
+          "revision": "rev2"
+        },
+        "window": {
+          "start": "2026-09-08T12:00:00Z",
+          "end": "2026-09-08T12:05:00Z"
+        },
+        "captured_at": "2026-09-08T12:05:00Z",
+        "freshness_seconds": 60,
+        "status": "ok",
+        "content": "Synthetic complete healthy signal bundle",
+        "content_sha256": "8f02c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64"
+      }
+    ],
+    "actions": [],
+    "gaps": [
+      "Required source unavailable"
+    ],
+    "handoff": true,
+    "health": "unknown"
+  }
+}

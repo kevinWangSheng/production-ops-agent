@@ -1,9 +1,9 @@
 # M0 C：公开验收合同与开发用例
 
-- 状态：待接口独立审查后开始；日期：2026-09-08。
+- 状态：本地合同自测通过，待完成后的独立审查；日期：2026-09-08。
 - 批次与授权：[索引](2026-09-08-m0-batch.md)，本地可逆 M0 实施测试及 PR；不合并、不联网实验。
 - 依据：SPEC、C3 §5/7/11–13、M0 §1–7；F1/F2/F7/F8/F14 相关机制前提，不更改 steps/passes。
-- 工作区：待协调者从共同基线创建 `production-ops-agent-m0-c` / `chore/m0-c-outcomes`。
+- 工作区：协调者从共同基线创建 `production-ops-agent-m0-c` / `chore/m0-c-outcomes`。
 
 ## 目标、接口与归属
 
@@ -18,4 +18,22 @@
 ## 资源、进展与交接
 
 A/C 仅短时 Python 测试及公开资料查询；B 独占本批唯一重型环境，不干扰其他项目。真实模型和 trace 次数必须为 0，付费总额未授权，不复制凭据。独立数据库不增加真实授权额度。
-当前未执行；下一步接口审查后实现，写回实际命令、版本/hash、结果及缺项，保留专属进程/数据位置；完成时分别标注本地、独立审查、PR/CI、合并、真实实验、M0 退出与产品验收。
+以下为本轮实际结果；PR/CI、独立审查由协调者接续，合并仍待用户。
+
+## 执行前实验合同（2026-09-08）
+
+工作区 `/Users/shenghuikevin/dev/AI/production-ops-agent-m0-c`，分支 chore/m0-c-outcomes，基线 2a1cc49，起始干净。已读完整 SPEC、C3、M0、共享合同及 F1/F3/F6/F7/F11/F14 原步骤；接口独立审查由协调者完成。
+问题：公开外部输入/结果能否拒绝缺证据健康、自述成功、错误引用和越权动作，同时保留正常发布独立身份？
+方法：Pydantic 严格公开 DTO；外部 evaluator 另持可见性判定、期望状态、已捕获证据与独立观察；合成 JSON 开发 fixtures，通过 pytest 从 JSON 入口重放并变异不合法结果。真实 Agent、模型、目标环境均不运行。
+版本：Python 3.12 与基线 uv.lock（安装后记录精确版本）；schema m0-public-v1；evaluator m0-deterministic-v1。现有传递 pydantic 由协调者提升为固定直接依赖，不在 C 改锁。
+命令：make setup；定向 pytest；make check；记录原始输出于 docs/evidence/m0-c。通过条件：正常/失败/缺测 fixtures 合同通过，伪造身份/引用/执行状态/健康/权限结果被拒绝，Agent DTO 无 evaluator 字段。失败保留原始日志、修复后重测。源码核查固定 upstream SHA 与 OTel release commit，并保存来源 URL/hash；不执行上游或工作负载，不声称 F14 baseline。
+
+## 本地结果与交接
+
+- `make setup` 按基线锁成功；公共依赖变更由协调者提交0f25fe8并正常合入，C没有改锁。最终同步基线e5a971c。Python 3.12.13、Pydantic 2.13.5、pytest 9.1.1、Ruff 0.16.6；精确清单见 [versions](../evidence/m0-c/versions.json)。
+- 6份公开开发JSON、严格schema、37项新增测试；make check最终84 passed，Ruff和锁检查通过：[最终原始输出](../evidence/m0-c/check-final.txt)。
+- 首次编辑 lint 报单行复合语句，格式化消除；首次make check因下载的上游.py原文件被全仓Ruff扫描失败，保留 [check-first](../evidence/m0-c/check-first.txt)，将原样来源重命名.py.txt且更新清单路径（不改其内容/hash）；第二次80 passed；增加外部审计遗漏和人工关闭区别测试后84 passed。
+- 网页工具对GitHub tag API返回safe-open错误，改用公开urllib只读API成功；OTel 2.0.2对应63649d6d6a59de88fb421b88c3c3a6185b6d21ad，Holmes固定既有SHA。源码/许可证/hash见 [sources](../evidence/m0-c/sources.json)，配置映射 [草案](../testing/m0-upstream-mapping.md)。
+- 公开合同见 [说明](../testing/m0-public-outcomes.md)；JSON Schema归档可重生成。Agent字段投影不等于OS隔离；合成signal verdict不是实际遥测计算；check_outcome只检查合同一致，不评价自然语言因果正确。
+- 未执行模型/trace/重型环境/权限隔离/真实基线/故障注入/soak，未读取.env或保留集，未冻结最终阈值、未更改passes或SPEC门槛。没有专属后台服务；.venv保留用于复验。
+- 下一步：协调者启动全新上下文独立审查，处理发现后推送任务分支/建PR/等待最新CI；用户审核合并。任务本地完成与M0退出、产品验收严格区分。

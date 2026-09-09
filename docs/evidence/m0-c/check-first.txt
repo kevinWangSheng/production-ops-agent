@@ -1,0 +1,401 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-c
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+Resolved 38 packages in 20ms
+.venv/bin/ruff check .
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:9:1
+   |
+ 8 | display_logger = logging.getLogger("holmes.display.config")
+ 9 | from typing import TYPE_CHECKING, Any, List, Optional, Union
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |
+11 | import sentry_sdk
+   |
+help: Move module level imports to top of file
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:9:1
+   |
+ 8 |   display_logger = logging.getLogger("holmes.display.config")
+ 9 | / from typing import TYPE_CHECKING, Any, List, Optional, Union
+10 | |
+11 | | import sentry_sdk
+12 | | import yaml  # type: ignore
+13 | | from pydantic import (
+14 | |     BaseModel,
+15 | |     ConfigDict,
+16 | |     FilePath,
+17 | |     PrivateAttr,
+18 | |     SecretStr,
+19 | | )
+20 | |
+21 | | from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+22 | | from holmes.core.llm import DefaultLLM, LLMModelRegistry
+23 | | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+24 | | from holmes.core.tools_utils.tool_executor import ToolExecutor
+25 | | from holmes.core.toolset_manager import ToolsetManager
+26 | | from holmes.core.transformers.llm_summarize import LLMSummarizeTransformer
+27 | | from holmes.plugins.skills.git_skill_repos import (
+28 | |     GitSkillRepo,
+29 | |     GitSkillRepoManager,
+30 | |     parse_skill_repos_env,
+31 | | )
+32 | | from holmes.plugins.skills.skill_loader import (
+33 | |     SkillCatalog,
+34 | |     load_skill_catalog,
+35 | | )
+   | |_^
+36 |
+37 |   # Source plugin imports moved to their respective create methods to speed up startup
+   |
+help: Organize imports
+   |
+12 | import yaml  # type: ignore
+   - from pydantic import (
+   -     BaseModel,
+   -     ConfigDict,
+   -     FilePath,
+   -     PrivateAttr,
+   -     SecretStr,
+   - )
+   -
+13 | from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+--------------------------------------------------------------------------------
+27 | )
+28 + from pydantic import (
+29 +     BaseModel,
+30 +     ConfigDict,
+31 +     FilePath,
+32 +     PrivateAttr,
+33 +     SecretStr,
+34 + )
+35 |
+   |
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:11:1
+   |
+ 9 | from typing import TYPE_CHECKING, Any, List, Optional, Union
+10 |
+11 | import sentry_sdk
+   | ^^^^^^^^^^^^^^^^^
+12 | import yaml  # type: ignore
+13 | from pydantic import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:12:1
+   |
+11 | import sentry_sdk
+12 | import yaml  # type: ignore
+   | ^^^^^^^^^^^
+13 | from pydantic import (
+14 |     BaseModel,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:13:1
+   |
+11 |   import sentry_sdk
+12 |   import yaml  # type: ignore
+13 | / from pydantic import (
+14 | |     BaseModel,
+15 | |     ConfigDict,
+16 | |     FilePath,
+17 | |     PrivateAttr,
+18 | |     SecretStr,
+19 | | )
+   | |_^
+20 |
+21 |   from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:21:1
+   |
+19 | )
+20 |
+21 | from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 | from holmes.core.llm import DefaultLLM, LLMModelRegistry
+23 | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:22:1
+   |
+21 | from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+22 | from holmes.core.llm import DefaultLLM, LLMModelRegistry
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+24 | from holmes.core.tools_utils.tool_executor import ToolExecutor
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:23:1
+   |
+21 | from holmes.core.init_event import EventCallback, StatusEvent, StatusEventKind
+22 | from holmes.core.llm import DefaultLLM, LLMModelRegistry
+23 | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 | from holmes.core.tools_utils.tool_executor import ToolExecutor
+25 | from holmes.core.toolset_manager import ToolsetManager
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:24:1
+   |
+22 | from holmes.core.llm import DefaultLLM, LLMModelRegistry
+23 | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+24 | from holmes.core.tools_utils.tool_executor import ToolExecutor
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 | from holmes.core.toolset_manager import ToolsetManager
+26 | from holmes.core.transformers.llm_summarize import LLMSummarizeTransformer
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:25:1
+   |
+23 | from holmes.core.tools import PrerequisiteCacheMode, Toolset, ToolsetTag
+24 | from holmes.core.tools_utils.tool_executor import ToolExecutor
+25 | from holmes.core.toolset_manager import ToolsetManager
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 | from holmes.core.transformers.llm_summarize import LLMSummarizeTransformer
+27 | from holmes.plugins.skills.git_skill_repos import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:26:1
+   |
+24 | from holmes.core.tools_utils.tool_executor import ToolExecutor
+25 | from holmes.core.toolset_manager import ToolsetManager
+26 | from holmes.core.transformers.llm_summarize import LLMSummarizeTransformer
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 | from holmes.plugins.skills.git_skill_repos import (
+28 |     GitSkillRepo,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:27:1
+   |
+25 |   from holmes.core.toolset_manager import ToolsetManager
+26 |   from holmes.core.transformers.llm_summarize import LLMSummarizeTransformer
+27 | / from holmes.plugins.skills.git_skill_repos import (
+28 | |     GitSkillRepo,
+29 | |     GitSkillRepoManager,
+30 | |     parse_skill_repos_env,
+31 | | )
+   | |_^
+32 |   from holmes.plugins.skills.skill_loader import (
+33 |       SkillCatalog,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:32:1
+   |
+30 |       parse_skill_repos_env,
+31 |   )
+32 | / from holmes.plugins.skills.skill_loader import (
+33 | |     SkillCatalog,
+34 | |     load_skill_catalog,
+35 | | )
+   | |_^
+36 |
+37 |   # Source plugin imports moved to their respective create methods to speed up startup
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:47:1
+   |
+45 |     from holmes.plugins.sources.prometheus.plugin import AlertManagerSource
+46 |
+47 | from holmes.common.env_vars import TOOLSET_STATUS_REFRESH_INTERVAL_SECONDS
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+48 | from holmes.core.config import config_path_dir
+49 | from holmes.core.oauth_utils import (
+   |
+help: Move module level imports to top of file
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:47:1
+   |
+45 |       from holmes.plugins.sources.prometheus.plugin import AlertManagerSource
+46 |
+47 | / from holmes.common.env_vars import TOOLSET_STATUS_REFRESH_INTERVAL_SECONDS
+48 | | from holmes.core.config import config_path_dir
+49 | | from holmes.core.oauth_utils import (
+50 | |     eager_load_oauth_tools,
+51 | |     preload_oauth_tokens,
+52 | |     set_oauth_dal,
+53 | | )
+54 | | from holmes.core.supabase_dal import SupabaseDal
+55 | | from holmes.utils.definitions import RobustaConfig
+56 | | from holmes.utils.pydantic_utils import (
+57 | |     RobustaBaseConfig,
+58 | |     load_model_from_file,
+59 | |     parse_model_from_file,
+60 | | )
+   | |_^
+help: Organize imports
+   |
+61 |
+   -
+62 | DEFAULT_CONFIG_LOCATION = os.path.join(config_path_dir, "config.yaml")
+   |
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:48:1
+   |
+47 | from holmes.common.env_vars import TOOLSET_STATUS_REFRESH_INTERVAL_SECONDS
+48 | from holmes.core.config import config_path_dir
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+49 | from holmes.core.oauth_utils import (
+50 |     eager_load_oauth_tools,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:49:1
+   |
+47 |   from holmes.common.env_vars import TOOLSET_STATUS_REFRESH_INTERVAL_SECONDS
+48 |   from holmes.core.config import config_path_dir
+49 | / from holmes.core.oauth_utils import (
+50 | |     eager_load_oauth_tools,
+51 | |     preload_oauth_tokens,
+52 | |     set_oauth_dal,
+53 | | )
+   | |_^
+54 |   from holmes.core.supabase_dal import SupabaseDal
+55 |   from holmes.utils.definitions import RobustaConfig
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:54:1
+   |
+52 |     set_oauth_dal,
+53 | )
+54 | from holmes.core.supabase_dal import SupabaseDal
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 | from holmes.utils.definitions import RobustaConfig
+56 | from holmes.utils.pydantic_utils import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:55:1
+   |
+53 | )
+54 | from holmes.core.supabase_dal import SupabaseDal
+55 | from holmes.utils.definitions import RobustaConfig
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 | from holmes.utils.pydantic_utils import (
+57 |     RobustaBaseConfig,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> docs/evidence/m0-c/holmesgpt-holmes-config.py:56:1
+   |
+54 |   from holmes.core.supabase_dal import SupabaseDal
+55 |   from holmes.utils.definitions import RobustaConfig
+56 | / from holmes.utils.pydantic_utils import (
+57 | |     RobustaBaseConfig,
+58 | |     load_model_from_file,
+59 | |     parse_model_from_file,
+60 | | )
+   | |_^
+help: Move module level imports to top of file
+
+F401 [*] `holmes.plugins.sources.jira.JiraServiceManagementSource` imported but unused
+   --> docs/evidence/m0-c/holmesgpt-holmes-config.py:936:49
+    |
+934 |         model: Optional[str] = None,
+935 |     ) -> TicketSource:
+936 |         from holmes.plugins.sources.jira import JiraServiceManagementSource
+    |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+937 |         from holmes.plugins.sources.pagerduty import PagerDutySource
+    |
+help: Remove unused import: `holmes.plugins.sources.jira.JiraServiceManagementSource`
+    |
+935 |     ) -> TicketSource:
+    -         from holmes.plugins.sources.jira import JiraServiceManagementSource
+936 |         from holmes.plugins.sources.pagerduty import PagerDutySource
+    |
+
+F401 [*] `holmes.plugins.sources.pagerduty.PagerDutySource` imported but unused
+   --> docs/evidence/m0-c/holmesgpt-holmes-config.py:937:54
+    |
+935 |     ) -> TicketSource:
+936 |         from holmes.plugins.sources.jira import JiraServiceManagementSource
+937 |         from holmes.plugins.sources.pagerduty import PagerDutySource
+    |                                                      ^^^^^^^^^^^^^^^
+938 |
+939 |         TicketSource.model_rebuild()
+    |
+help: Remove unused import: `holmes.plugins.sources.pagerduty.PagerDutySource`
+    |
+936 |         from holmes.plugins.sources.jira import JiraServiceManagementSource
+    -         from holmes.plugins.sources.pagerduty import PagerDutySource
+937 |
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> docs/evidence/m0-c/holmesgpt-holmes-core-models.py:1:1
+  |
+1 | / import json
+2 | | import logging
+3 | | from enum import Enum
+4 | | from typing import Any, Dict, List, Optional, Union
+5 | |
+6 | | from pydantic import BaseModel, Field, model_validator
+7 | |
+8 | | from holmes.core.tools import StructuredToolResult, StructuredToolResultStatus
+  | |______________________________________________________________________________^
+help: Organize imports
+  |
+5 |
+  - from pydantic import BaseModel, Field, model_validator
+  -
+6 | from holmes.core.tools import StructuredToolResult, StructuredToolResultStatus
+7 + from pydantic import BaseModel, Field, model_validator
+8 |
+  |
+
+F401 [*] `logging` imported but unused
+ --> docs/evidence/m0-c/holmesgpt-holmes-core-models.py:2:8
+  |
+1 | import json
+2 | import logging
+  |        ^^^^^^^
+3 | from enum import Enum
+4 | from typing import Any, Dict, List, Optional, Union
+  |
+help: Remove unused import: `logging`
+  |
+1 | import json
+  - import logging
+2 | from enum import Enum
+  |
+
+Found 24 errors.
+[*] 6 fixable with the `--fix` option.
+make: *** [check] Error 1

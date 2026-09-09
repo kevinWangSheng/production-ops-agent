@@ -1,0 +1,473 @@
+{
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "query",
+            "mutate",
+            "release_gate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "authorized": {
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "executed": {
+          "title": "Executed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "authorized",
+        "executed"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "fact",
+            "hypothesis",
+            "recommendation",
+            "counter_evidence",
+            "rejected_hypothesis"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "evidence_ids"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "query": {
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "freshness_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Freshness Seconds",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_data",
+            "stale",
+            "invalid_input",
+            "denied",
+            "connectivity",
+            "timeout",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "query",
+        "target",
+        "window",
+        "captured_at",
+        "freshness_seconds",
+        "status",
+        "content",
+        "content_sha256"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "incident",
+            "release_observation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "control_generation": {
+          "minimum": 0,
+          "title": "Control Generation",
+          "type": "integer"
+        },
+        "before_revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Revision"
+        },
+        "release_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "target",
+        "control_generation"
+      ],
+      "title": "Subject",
+      "type": "object"
+    },
+    "Target": {
+      "additionalProperties": false,
+      "properties": {
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "cluster_uid": {
+          "minLength": 1,
+          "title": "Cluster Uid",
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "resource_uid": {
+          "minLength": 1,
+          "title": "Resource Uid",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "integration_id",
+        "cluster_uid",
+        "namespace",
+        "resource_uid",
+        "revision"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "Versions": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "minLength": 1,
+          "title": "Dataset",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt": {
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "tool": {
+          "minLength": 1,
+          "title": "Tool",
+          "type": "string"
+        },
+        "access_policy": {
+          "minLength": 1,
+          "title": "Access Policy",
+          "type": "string"
+        },
+        "runbook": {
+          "minLength": 1,
+          "title": "Runbook",
+          "type": "string"
+        },
+        "evaluator": {
+          "const": "m0-deterministic-v1",
+          "title": "Evaluator",
+          "type": "string"
+        },
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "workload": {
+          "minLength": 1,
+          "title": "Workload",
+          "type": "string"
+        },
+        "knowledge": {
+          "minLength": 1,
+          "title": "Knowledge",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "code",
+        "model",
+        "prompt",
+        "tool",
+        "access_policy",
+        "runbook",
+        "evaluator",
+        "adapter",
+        "workload",
+        "knowledge"
+      ],
+      "title": "Versions",
+      "type": "object"
+    },
+    "Window": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Window",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "m0-public-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scenario_id": {
+      "minLength": 1,
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/Subject"
+    },
+    "versions": {
+      "$ref": "#/$defs/Versions"
+    },
+    "execution": {
+      "enum": [
+        "queued",
+        "running",
+        "waiting_human",
+        "paused",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exhausted"
+      ],
+      "title": "Execution",
+      "type": "string"
+    },
+    "conclusion": {
+      "enum": [
+        "supported",
+        "partial",
+        "inconclusive"
+      ],
+      "title": "Conclusion",
+      "type": "string"
+    },
+    "lifecycle": {
+      "enum": [
+        "open",
+        "observing_recovery",
+        "resolved",
+        "closed",
+        "pending",
+        "observing",
+        "healthy",
+        "anomalous",
+        "unknown",
+        "cancelled"
+      ],
+      "title": "Lifecycle",
+      "type": "string"
+    },
+    "linked_incident_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Linked Incident Id"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/Claim"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/Action"
+      },
+      "title": "Actions",
+      "type": "array"
+    },
+    "gaps": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Gaps",
+      "type": "array"
+    },
+    "handoff": {
+      "title": "Handoff",
+      "type": "boolean"
+    },
+    "health": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "unknown"
+      ],
+      "title": "Health",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "subject",
+    "versions",
+    "execution",
+    "conclusion",
+    "lifecycle",
+    "linked_incident_id",
+    "claims",
+    "evidence",
+    "actions",
+    "gaps",
+    "handoff",
+    "health"
+  ],
+  "title": "IncidentOutcome",
+  "type": "object"
+}
