@@ -1,0 +1,69 @@
+{
+  "base_commit": "51c892a912fefe5b4123fbcd63b36866efcaf954",
+  "working_tree": "staged integration changes; hashes identify tested source",
+  "commands": [
+    {
+      "command": [
+        "make",
+        "check"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "python3 scripts/doctor.py\nOK | \u9879\u76ee\u6839\u76ee\u5f55 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-integration\nOK | \u9879\u76ee\u58f0\u660e | pyproject.toml\nOK | \u9501\u6587\u4ef6\u5b58\u5728 | \u4ec5\u68c0\u67e5\u5b58\u5728\nOK | uv | uv 0.10.8 (c021be36a 2026-03-03)\nOK | \u9879\u76ee Python 3.12 \u4e0e\u5f00\u53d1\u5de5\u5177 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}\n\u57fa\u7840\u5f00\u53d1\u73af\u5883\uff1a\u524d\u63d0\u53ef\u7528\n\u73af\u5883\u8bca\u65ad\u4e0d\u8bc1\u660e\u4f9d\u8d56\u5b8c\u5168\u5339\u914d\u9501\u6587\u4ef6\uff1b\u540c\u6b65\u7531 make setup \u5b8c\u6210\u3002\nuv lock --check --offline --no-python-downloads\n.venv/bin/ruff check .\nAll checks passed!\n.venv/bin/ruff format --check .\n119 files already formatted\n.venv/bin/python -m pytest\n============================= test session starts ==============================\nplatform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0\nrootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-integration\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: anyio-4.15.1\ncollected 148 items\n\ntests/integration/test_m0_adapter_budget.py sss                          [  2%]\ntests/integration/test_m0_budget_postgres.py ssssssssss                  [  8%]\ntests/test_doctor.py .....                                               [ 12%]\ntests/test_m0.py ...............................                         [ 33%]\ntests/test_m0_adapters.py .......................                        [ 48%]\ntests/test_m0_budget.py ........                                         [ 54%]\ntests/test_m0_contracts.py .......                                       [ 58%]\ntests/test_m0_outcomes.py .............................................  [ 89%]\ntests/test_m0_trace.py ........                                          [ 94%]\ntests/test_secret_scan.py ....                                           [ 97%]\ntests/test_setup_docs_mcp.py ....                                        [100%]\n\n=========================== short test summary info ============================\nSKIPPED [1] tests/integration/test_m0_adapter_budget.py:100: explicit synthetic PostgreSQL opt-in\nSKIPPED [1] tests/integration/test_m0_adapter_budget.py:151: explicit synthetic PostgreSQL opt-in\nSKIPPED [1] tests/integration/test_m0_adapter_budget.py:185: explicit synthetic PostgreSQL opt-in\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:58: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:70: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:91: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:111: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:122: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required\n======================= 135 passed, 13 skipped in 1.20s ========================\n",
+      "stderr": "Resolved 38 packages in 22ms\n"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/integration",
+        "-q"
+      ],
+      "environment": {
+        "M0_B_POSTGRES": "1"
+      },
+      "exit_code": 0,
+      "stdout": "........s....                                                            [100%]\n=========================== short test summary info ============================\nSKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in\n12 passed, 1 skipped in 2.44s\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_secrets.py",
+        "--binary",
+        "tmp/gitleaks/gitleaks"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "SECRET_SCAN_PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "scripts.m0",
+        "live"
+      ],
+      "environment": {},
+      "exit_code": 3,
+      "stdout": "{\"status\": \"denied\", \"reason\": \"LIVE_NOT_ENABLED\", \"network_calls\": 0}\n",
+      "stderr": ""
+    }
+  ],
+  "sha256": {
+    "scripts/check_secrets.py": "b39dadc086f7d83346d9b5ff6ece87b956365ec9fde8c33912772bd0ec128ac1",
+    "scripts/install_gitleaks.py": "71e45944ca600a2a1a6d2b3e02ca713da26ffbcc93950802bedb7a11edc2b893",
+    "tests/test_secret_scan.py": "b3497adb93bd314032e83d974893e9d62adea82c24ad534dd223883cd794b67f",
+    "tests/integration/test_m0_adapter_budget.py": "d8c76db77b87cf12a366e6afc1bb517dc8bf3dafd88b28f8e3203c72d2e962d2",
+    ".github/workflows/ci.yml": "8f9f89905754f256a58424b4ada365b3c8ebac15c82c05ff712e8c4a896e29de",
+    "scripts/m0/adapters.py": "399e068aebf4368f7e385a474671de5b55c363577d882bf4971187cc1c62150a",
+    "scripts/m0/budget.py": "10080ca3b2c8759da48678ef1d95cf42797766bbe29bfe61deead77fb3576401",
+    "scripts/m0/outcomes.py": "4f42715bc2c7f45fa72c3cb0b671c2280f1cc5d05d00ae7b419c79e129d07b05",
+    "uv.lock": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce"
+  },
+  "model_calls": 0,
+  "trace_uploads": 0,
+  "cost_cny": 0
+}
