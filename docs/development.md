@@ -38,3 +38,15 @@ Docker 不可用不影响默认基础检查；等对应实验获得准备授权�
 PR 到 main、push main 或手动触发 `.github/workflows/ci.yml`；Ubuntu 24.04、uv 0.10.8 与 Python 3.12.13，执行相同 make setup/check。CI 无业务 Secrets、dataset eval 或部署。setup 尊重 UV_PYTHON，避免安装与后续锁检查选择不同解释器。
 
 PR 通过最新 checks 及适用独立审查后才按授权合并；平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
+
+## 项目 LangChain 文档 MCP
+
+从有本批变更的任务分支执行 `.venv/bin/python scripts/setup_docs_mcp.py`；默认配置当前目录，可用 `--project /绝对/项目目录` 安装到本仓库另一 worktree。脚本只修改三个项目文件：`.codex/config.toml`、`.mcp.json`、`.claude/settings.local.json`，无用户级服务器注册、模型调用、业务 key 或全量工具自动授权。未知同名配置冲突时拒绝覆盖，保留其他服务器和设置；可重复执行。
+
+版本管理保存安装脚本，生成配置被忽略。原因是本仓库保留 `.Codex/` 旧资料，而 Codex 运行入口为小写 `.codex/`：macOS 大小写不敏感时两者落入同一目录，Linux 则不同；安装时按宿主正确路径生成，避免 Git 同时保存仅目录大小写不同的树。Claude 同步生成本项目 `.mcp.json` 和两个具名服务器的本地启用设置；不修改共享 AGENTS 规则或复制 skills。
+
+Codex 仅启用文档搜索/虚拟文档读取、API 搜索/符号读取四项工具；不设 required，断连时回退官方网页及源码。Claude 明确 deny 已知 `submit_feedback`，其余工具仍受宿主权限机制；不是对未来未知工具的完整白名单保证。文档服务不需要 DeepSeek/LangSmith key，不读取 `.env`；虚拟文档文件系统在远端官方资料内，不是本机文件访问。
+
+用户授权本项目接入已落实到本地配置；新克隆/新 worktree 仍遵守宿主项目信任机制，脚本不自动信任所有目录。当前已打开的会话未必热加载，需重开/刷新 MCP 后验证。检查命令：`codex mcp get langchain-docs --json`、`codex mcp get langchain-reference --json`、`claude mcp get langchain-docs`、`claude mcp get langchain-reference`。配置读取、Connected 和实际查询是不同证据，见[任务记录](tasks/2026-09-08-agent-capabilities.md)。
+
+停用时在项目 Codex 两个 server 表设置 `enabled = false`，并按 Claude 的项目 MCP 管理停用对应名字；只改这两项，保留其他服务器。重新启用先核对修改后的配置，不用安装脚本覆盖用户后续定制。Git 忽略不等于可删除，清理工作区前按原 worktree 约定保留需要的本地配置与私有资料。

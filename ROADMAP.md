@@ -17,6 +17,9 @@ Current phase: technical design approved and persisted; M0 validation is next. P
 
 ## Development Agent environment
 
+- [x] 开发能力接入与全盘规划 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-agent-capabilities.md)。在主项目安装 LangChain 文档/API MCP，规划 CLI+skill、API/UI 测试、类型/秘密检查、trace/eval 和交接能力；Codex 项目配置读取、Claude Connected 及公共资料查询通过，独立审查 P2 已修复复验；其余新增工具待对应工作项实施，不改变 M0 门槛。
+
+
 - [x] 开工上下文补齐 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-preflight-context.md)。同步已合并状态、明确控制/观察语义及 coding agent 评测隔离，准备配置模板和 [M0-01 任务](docs/tasks/2026-09-08-m0-01-preflight.md)；本批本地检查和独立全文审查通过；未执行模型实验或开放实施门槛，M0-01 待开始。
 
 - [x] GitHub 基础 CI 与 PR 管理 — 2026-09-08：PR #1 的 Ubuntu checks 成功并已合并（4502ece）；[任务](docs/tasks/2026-09-08-github-ci.md)，[交付与资源后续安排](docs/plans/delivery-and-resources-2026-09-08.md)。本轮无 dataset eval 或 CD；用户授权公开仓库后 main 分支保护已配置，机器人手动审查完成，文档发现已处理；自动推送复审待单独确认。PR #2 已合并为 f225d82，主线 CI、本地同步及 CI 任务 worktree 清理完成，最终结果已补入任务记录。
