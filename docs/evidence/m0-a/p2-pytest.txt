@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-a
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 78 items
+
+tests/test_doctor.py .....                                               [  6%]
+tests/test_m0.py ...............................                         [ 46%]
+tests/test_m0_adapters.py .......................                        [ 75%]
+tests/test_m0_contracts.py .......                                       [ 84%]
+tests/test_m0_trace.py ........                                          [ 94%]
+tests/test_setup_docs_mcp.py ....                                        [100%]
+
+============================== 78 passed in 0.93s ==============================
