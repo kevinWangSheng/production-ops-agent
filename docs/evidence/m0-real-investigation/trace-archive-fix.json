@@ -1,0 +1,10 @@
+{
+  "old_raw_red_path": "tmp/m0-real-investigation/trace-archive-red.txt",
+  "old_raw_sha256": "6750ab4b4df3a852c58906e890d0133b16060054c5a81d3e98905a7e365ff952",
+  "public_red_normalization": "trailing whitespace only",
+  "old_result": "1 failed, 1 passed",
+  "fixed_result": "2 passed",
+  "model_requests": 0,
+  "network_requests": 0,
+  "existing_trace_archive_changed": false
+}

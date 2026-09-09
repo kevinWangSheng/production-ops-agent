@@ -66,3 +66,5 @@ fault-handoff-01最后1HTTP200、90513bytes在上限内、0新工具；finish_re
 ## PR #15 审查发现处置
 
 f79e84f两项CI34389374955成功；Code Review与Security Review均已返回，前者指出P2：freeze_images覆盖已提交image-lock，后者无新增可见发现。按实际发现改为将旧lock/config hash作为只读输入，完整收集/比对后才允许写runtime；缺档/漂移/平台或配置差异先拒绝。原96份归档及4份运行文件字节不变，9项真实CLI临时树回归红→绿及独立复验通过，服务/模型未重启。修复来自环境dbd2ac7/5df00df，独立覆盖见closeout-review.md；原实际实验的源码/失败/费用记录不改写。推送后核对覆盖本次变更的CI/Code/Security复审，未据旧head通过宣布新head完成。
+
+同一保全缺陷检查中又通过真实入口临时树复现export_traces.py在新checkout覆盖旧Jaeger manifest；增加查询/创建输出目录前的旧manifest拒绝，最终用独占创建防覆盖。两条回归红1失败→绿2通过；原归档字节未改、0网络/模型，独立局部复验另记closeout-review。不是追加真实实验或导出，也不修改先前2792trace结果。

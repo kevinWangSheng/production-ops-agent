@@ -9,6 +9,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = ROOT / "docs/evidence/m0-real-environment/jaeger-final-export.json"
+if MANIFEST.exists() or MANIFEST.is_symlink():
+    raise SystemExit("Historical trace manifest exists; no query or files written.")
 OUT = ROOT / "tmp/m0-environment/jaeger-final-export"
 OUT.mkdir(exist_ok=False)
 BASE = "http://127.0.0.1:16686/jaeger/ui/api"
@@ -56,9 +59,8 @@ summary = {
     "unique_trace_ids": len(trace_ids),
     "scope": "Jaeger retained one-hour window per discovered service; not a transactional snapshot or proof of no earlier eviction",
 }
-(ROOT / "docs/evidence/m0-real-environment/jaeger-final-export.json").write_text(
-    json.dumps(summary, indent=2) + "\n"
-)
+with MANIFEST.open("x") as stream:
+    stream.write(json.dumps(summary, indent=2) + "\n")
 print(
     f"Archived {len(trace_ids)} distinct retained traces across {len(services)} services."
 )
