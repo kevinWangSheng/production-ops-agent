@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "chore/m0-batch-baseline"]
   push:
     branches: [main]
   workflow_dispatch:
