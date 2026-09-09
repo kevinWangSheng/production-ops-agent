@@ -1,0 +1,7 @@
+{
+  "raw_bytes": 3555271,
+  "raw_sha256": "8017066a4139af1a4e096a3a7a462f9aca121885fae23e66b02416e222bd2e00",
+  "exit_code": 0,
+  "raw_retained_path": "tmp/m0-environment/image-pull-original.txt",
+  "compressed_lossless": "tmp/m0-environment/raw-evidence/image-pull.txt.gz"
+}

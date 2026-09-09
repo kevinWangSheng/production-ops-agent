@@ -1,0 +1,32 @@
+[
+  {
+    "case": "proxy",
+    "status": 200
+  },
+  {
+    "case": "direct-prometheus",
+    "denied_or_unreachable": true,
+    "error_type": "URLError"
+  },
+  {
+    "case": "direct-opensearch",
+    "denied_or_unreachable": true,
+    "error_type": "URLError"
+  },
+  {
+    "case": "host-port",
+    "denied_or_unreachable": true,
+    "error_type": "URLError"
+  },
+  {
+    "case": "internet",
+    "denied_or_unreachable": true,
+    "error_type": "URLError"
+  },
+  {
+    "case": "socket-or-injector",
+    "docker_socket_exists": false,
+    "host_home_exists": false,
+    "uid": 65534
+  }
+]

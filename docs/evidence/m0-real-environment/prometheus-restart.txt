@@ -1,0 +1,2 @@
+ Container opspilot-m0-prometheus Starting
+ Container opspilot-m0-prometheus Started

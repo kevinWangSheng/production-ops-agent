@@ -1,0 +1,28 @@
+{
+  "at": "2026-09-09T17:20:30.851620+00:00",
+  "contexts": {
+    "rc": 0,
+    "stdout": "NAME             DESCRIPTION                               DOCKER ENDPOINT                                           ERROR\ncolima *         colima                                    unix:///Users/shenghuikevin/.colima/default/docker.sock   \ncolima-m0-otel   colima [profile=m0-otel]                  unix:///Users/shenghuikevin/.colima/m0-otel/docker.sock   \ndefault          Current DOCKER_HOST based configuration   unix:///var/run/docker.sock                               \n",
+    "stderr": ""
+  },
+  "profiles": {
+    "rc": 0,
+    "stdout": "PROFILE    STATUS     ARCH       CPUS    MEMORY    DISK     RUNTIME    ADDRESS\ndefault    Stopped    aarch64    4       6GiB      30GiB               \nm0-otel    Running    aarch64    4       6GiB      24GiB    docker     \n",
+    "stderr": ""
+  },
+  "disk": {
+    "rc": 0,
+    "stdout": "Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on\n/dev/disk3s5   228Gi   154Gi    37Gi    81%    2.9M  393M    1%   /System/Volumes/Data\n",
+    "stderr": ""
+  },
+  "memory": {
+    "rc": 0,
+    "stdout": "hw.memsize: 17179869184\n",
+    "stderr": ""
+  },
+  "docker": {
+    "rc": 0,
+    "stdout": "29.2.1 aarch64 4 6198038528\n",
+    "stderr": ""
+  }
+}

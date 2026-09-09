@@ -1,0 +1,5 @@
+ Container opspilot-m0-read-proxy Running
+ Container opspilot-m0-prometheus Recreate
+ Container opspilot-m0-prometheus Recreated
+ Container opspilot-m0-prometheus Starting
+ Container opspilot-m0-prometheus Started

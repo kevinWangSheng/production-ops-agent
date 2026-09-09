@@ -1,0 +1,18 @@
+{
+  "request": {
+    "query": "sum by (service_name) (rate({__name__=~\".*rpc.*duration.*|.*http.*duration.*\"}[5m]))",
+    "start": 1788975149.661,
+    "end": 1788975449.661
+  },
+  "http_status": 400,
+  "body": {
+    "error": "SOURCE_QUERY_REJECTED",
+    "source_status": 422,
+    "source_error": {
+      "status": "error",
+      "errorType": "execution",
+      "error": "vector cannot contain metrics with the same labelset"
+    },
+    "incomplete": true
+  }
+}

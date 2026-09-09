@@ -1,0 +1,34 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source": "logs",
+  "query": {
+    "start": [
+      "1788974813.8848379"
+    ],
+    "end": [
+      "1788975413.8848379"
+    ],
+    "service": [
+      "frontend"
+    ]
+  },
+  "collected_at": 1788975414.719156,
+  "data": {
+    "took": 4,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "total": {
+        "value": 0,
+        "relation": "eq"
+      },
+      "max_score": null,
+      "hits": []
+    }
+  }
+}

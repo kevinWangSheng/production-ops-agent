@@ -1,0 +1,1348 @@
+{
+  "name": "opspilot-m0",
+  "networks": {
+    "default": {
+      "name": "opspilot-m0-telemetry",
+      "driver": "bridge",
+      "ipam": {}
+    },
+    "investigation": {
+      "name": "opspilot-m0-investigation",
+      "internal": true
+    }
+  },
+  "services": {
+    "accounting": {
+      "command": null,
+      "container_name": "opspilot-m0-accounting",
+      "depends_on": {
+        "kafka": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "125829120"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "KAFKA_ADDR": "kafka:9092",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "accounting"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:5dd4d4655a1c2bb8868e691c8c37dbedc0ffd7461c36a99417dd89b4b7a2d140",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "ad": {
+      "command": null,
+      "container_name": "opspilot-m0-ad",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "314572800"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "AD_PORT": "9555",
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "ad",
+        "_JAVA_OPTIONS": null
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:7f6c3fda7fed57ea4dbca92d801d8a3c01909a848b33170f16494da89e90343c",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "cart": {
+      "command": null,
+      "container_name": "opspilot-m0-cart",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        },
+        "valkey-cart": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "167772160"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "ASPNETCORE_URLS": "http://*:7070",
+        "CART_PORT": "7070",
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "cart",
+        "VALKEY_ADDR": "valkey-cart:6379"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:2ec7601655cbe5d295d0e5bd85f5b8acaf3b0f2651f8ea33ba1150edbf6000bf",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "checkout": {
+      "command": null,
+      "container_name": "opspilot-m0-checkout",
+      "depends_on": {
+        "cart": {
+          "condition": "service_started",
+          "required": true
+        },
+        "currency": {
+          "condition": "service_started",
+          "required": true
+        },
+        "email": {
+          "condition": "service_started",
+          "required": true
+        },
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "kafka": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        },
+        "payment": {
+          "condition": "service_started",
+          "required": true
+        },
+        "product-catalog": {
+          "condition": "service_started",
+          "required": true
+        },
+        "shipping": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "20971520"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "CART_ADDR": "cart:7070",
+        "CHECKOUT_PORT": "5050",
+        "CURRENCY_ADDR": "currency:7001",
+        "EMAIL_ADDR": "http://email:6060",
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "KAFKA_ADDR": "kafka:9092",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "checkout",
+        "PAYMENT_ADDR": "payment:50051",
+        "PRODUCT_CATALOG_ADDR": "product-catalog:3550",
+        "SHIPPING_ADDR": "shipping:50050"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "currency": {
+      "command": null,
+      "container_name": "opspilot-m0-currency",
+      "depends_on": {
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "20971520"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "CURRENCY_PORT": "7001",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,service.name=currency,opspilot.integration.id=m0-otel-20260909",
+        "VERSION": "2.0.2"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:03fb9bf6d8072cacabdf018396f6d48082ad5f824443965573a064c7faecd944",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "email": {
+      "command": null,
+      "container_name": "opspilot-m0-email",
+      "depends_on": {
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "104857600"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "APP_ENV": "production",
+        "EMAIL_PORT": "6060",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://otel-collector:4318/v1/traces",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "email"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:270c487983d8aaf111df31eb1075ddc366d9eafec1e4c937899d05be9a6dd4b3",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "flagd": {
+      "command": [
+        "start",
+        "--uri",
+        "file:./etc/flagd/demo.flagd.json"
+      ],
+      "container_name": "opspilot-m0-flagd",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "78643200"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_METRICS_EXPORTER": "otel",
+        "FLAGD_OTEL_COLLECTOR_URI": "otel-collector:4317",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "flagd"
+      },
+      "image": "ghcr.io/open-feature/flagd@sha256:9595dffe7a9e33d15f6200e1b1ec88b6f98dc697c9f64564a2a5e35ab5ec7943",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd",
+          "target": "/etc/flagd",
+          "bind": {},
+          "read_only": true
+        }
+      ]
+    },
+    "flagd-ui": {
+      "command": null,
+      "container_name": "opspilot-m0-flagd-ui",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "104857600"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "flagd-ui"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:655da6a8735b7bb7da2c36c8992387d03ae06420f2a06fbc499f2591889c1d03",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd",
+          "target": "/app/data",
+          "bind": {}
+        }
+      ]
+    },
+    "fraud-detection": {
+      "command": null,
+      "container_name": "opspilot-m0-fraud-detection",
+      "depends_on": {
+        "kafka": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "314572800"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "KAFKA_ADDR": "kafka:9092",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_INSTRUMENTATION_KAFKA_EXPERIMENTAL_SPAN_ATTRIBUTES": "true",
+        "OTEL_INSTRUMENTATION_MESSAGING_EXPERIMENTAL_RECEIVE_TELEMETRY_ENABLED": "true",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "fraud-detection"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:8b0a841c19f583a83b150bbd0609d85b3f09d19a75888d716bb234098f3385b4",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "frontend": {
+      "command": null,
+      "container_name": "opspilot-m0-frontend",
+      "depends_on": {
+        "ad": {
+          "condition": "service_started",
+          "required": true
+        },
+        "cart": {
+          "condition": "service_started",
+          "required": true
+        },
+        "checkout": {
+          "condition": "service_started",
+          "required": true
+        },
+        "currency": {
+          "condition": "service_started",
+          "required": true
+        },
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "image-provider": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        },
+        "product-catalog": {
+          "condition": "service_started",
+          "required": true
+        },
+        "quote": {
+          "condition": "service_started",
+          "required": true
+        },
+        "recommendation": {
+          "condition": "service_started",
+          "required": true
+        },
+        "shipping": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "262144000"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "AD_ADDR": "ad:9555",
+        "CART_ADDR": "cart:7070",
+        "CHECKOUT_ADDR": "checkout:5050",
+        "CURRENCY_ADDR": "currency:7001",
+        "ENV_PLATFORM": "local",
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "FRONTEND_ADDR": "frontend:8080",
+        "OTEL_COLLECTOR_HOST": "otel-collector",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "frontend",
+        "PORT": "8080",
+        "PRODUCT_CATALOG_ADDR": "product-catalog:3550",
+        "PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://localhost:8080/otlp-http/v1/traces",
+        "RECOMMENDATION_ADDR": "recommendation:9001",
+        "SHIPPING_ADDR": "shipping:50050",
+        "WEB_OTEL_SERVICE_NAME": "frontend-web"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:3a0c7649f63d59656f6ba76fcd7ec79c1974cc3db0ae624efdf38fbdc8a14d4c",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "frontend-proxy": {
+      "command": null,
+      "container_name": "opspilot-m0-frontend-proxy",
+      "depends_on": {
+        "flagd-ui": {
+          "condition": "service_started",
+          "required": true
+        },
+        "frontend": {
+          "condition": "service_started",
+          "required": true
+        },
+        "grafana": {
+          "condition": "service_started",
+          "required": true
+        },
+        "jaeger": {
+          "condition": "service_started",
+          "required": true
+        },
+        "load-generator": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "68157440"
+          }
+        },
+        "placement": {}
+      },
+      "dns_search": [
+        ""
+      ],
+      "entrypoint": null,
+      "environment": {
+        "ENVOY_PORT": "8080",
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "FLAGD_UI_HOST": "flagd-ui",
+        "FLAGD_UI_PORT": "4000",
+        "FRONTEND_HOST": "frontend",
+        "FRONTEND_PORT": "8080",
+        "GRAFANA_HOST": "grafana",
+        "GRAFANA_PORT": "3000",
+        "IMAGE_PROVIDER_HOST": "image-provider",
+        "IMAGE_PROVIDER_PORT": "8081",
+        "JAEGER_HOST": "jaeger",
+        "JAEGER_PORT": "16686",
+        "LOCUST_WEB_HOST": "load-generator",
+        "LOCUST_WEB_PORT": "8089",
+        "OTEL_COLLECTOR_HOST": "otel-collector",
+        "OTEL_COLLECTOR_PORT_GRPC": "4317",
+        "OTEL_COLLECTOR_PORT_HTTP": "4318",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "frontend-proxy"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:9cc478aa226b33cd80af46971683bfa963283a4309adf36d39706a406641ac7e",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "ports": [
+        {
+          "target": 8080,
+          "published": "18080",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "grafana": {
+      "command": null,
+      "container_name": "opspilot-m0-grafana",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "125829120"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {},
+      "image": "grafana/grafana@sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/grafana/grafana.ini",
+          "target": "/etc/grafana/grafana.ini",
+          "bind": {},
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/grafana/provisioning",
+          "target": "/etc/grafana/provisioning",
+          "bind": {},
+          "read_only": true
+        }
+      ]
+    },
+    "image-provider": {
+      "command": null,
+      "container_name": "opspilot-m0-image-provider",
+      "depends_on": {
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "125829120"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "IMAGE_PROVIDER_PORT": "8081",
+        "OTEL_COLLECTOR_HOST": "otel-collector",
+        "OTEL_COLLECTOR_PORT_GRPC": "4317",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "image-provider"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:bfa0b940f79df27c564778bc70eaf506c7234fcef328d8139e30d0f592e8fbfc",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "jaeger": {
+      "command": [
+        "--memory.max-traces=25000",
+        "--query.base-path=/jaeger/ui",
+        "--prometheus.server-url=http://prometheus:9090",
+        "--prometheus.query.normalize-calls=true",
+        "--prometheus.query.normalize-duration=true"
+      ],
+      "container_name": "opspilot-m0-jaeger",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "1258291200"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "METRICS_STORAGE_TYPE": "prometheus"
+      },
+      "image": "jaegertracing/all-in-one@sha256:9864182b4e01350fcc64631bdba5f4085f87daae9d477a04c25d9cb362e787a9",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "ports": [
+        {
+          "target": 16686,
+          "published": "16686",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "kafka": {
+      "command": null,
+      "container_name": "opspilot-m0-kafka",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "650117120"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "KAFKA_ADVERTISED_LISTENERS": "PLAINTEXT://kafka:9092",
+        "KAFKA_HEAP_OPTS": "-Xmx400m -Xms400m",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "kafka",
+        "_JAVA_OPTIONS": null
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "nc -z kafka 9092"
+        ],
+        "timeout": "10s",
+        "interval": "5s",
+        "retries": 10,
+        "start_period": "10s"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:0f1270d986ffd18ce73ca56e6c9b94077929fb31ae2be101036663213da0a4a1",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "load-generator": {
+      "command": null,
+      "container_name": "opspilot-m0-load-generator",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "frontend": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "1572864000"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_HOST": "flagd",
+        "FLAGD_OFREP_PORT": "8016",
+        "LOCUST_AUTOSTART": "true",
+        "LOCUST_BROWSER_TRAFFIC_ENABLED": "false",
+        "LOCUST_HEADLESS": "false",
+        "LOCUST_HOST": "http://frontend-proxy:8080",
+        "LOCUST_USERS": "2",
+        "LOCUST_WEB_HOST": "0.0.0.0",
+        "LOCUST_WEB_PORT": "8089",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "load-generator",
+        "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION": "python"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:d257288d374e1f6ebceb9997049fd4a31437037e85fc6dccaedd0c4810e1ca11",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "opensearch": {
+      "command": null,
+      "container_name": "opspilot-m0-opensearch",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "1181116006"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "DISABLE_INSTALL_DEMO_CONFIG": "true",
+        "DISABLE_SECURITY_PLUGIN": "true",
+        "OPENSEARCH_JAVA_OPTS": "-Xms300m -Xmx300m",
+        "_JAVA_OPTIONS": null,
+        "bootstrap.memory_lock": "true",
+        "cluster.name": "demo-cluster",
+        "discovery.type": "single-node",
+        "node.name": "demo-node"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "curl -s http://localhost:9200/_cluster/health | grep -E '\"status\":\"(green|yellow)\"'"
+        ],
+        "timeout": "10s",
+        "interval": "5s",
+        "retries": 10,
+        "start_period": "10s"
+      },
+      "image": "opensearchproject/opensearch@sha256:1f8b88245a6af61e7aa500afe0e87d43401e4b33140bb47230a919428ce3f7cb",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "ulimits": {
+        "memlock": {
+          "soft": -1,
+          "hard": -1
+        },
+        "nofile": {
+          "soft": 65536,
+          "hard": 65536
+        }
+      },
+      "ports": [
+        {
+          "target": 9200,
+          "published": "19200",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ],
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "opensearch-data",
+          "target": "/usr/share/opensearch/data"
+        }
+      ]
+    },
+    "otel-collector": {
+      "command": [
+        "--config=/etc/otelcol-config.yml",
+        "--config=/etc/otelcol-config-extras.yml"
+      ],
+      "container_name": "opspilot-m0-otel-collector",
+      "depends_on": {
+        "jaeger": {
+          "condition": "service_started",
+          "required": true
+        },
+        "opensearch": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "209715200"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "ENVOY_PORT": "8080",
+        "GOMEMLIMIT": "160MiB",
+        "HOST_FILESYSTEM": "/",
+        "OTEL_COLLECTOR_HOST": "otel-collector",
+        "OTEL_COLLECTOR_PORT_GRPC": "4317",
+        "OTEL_COLLECTOR_PORT_HTTP": "4318"
+      },
+      "image": "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib@sha256:85ac41c2db88d0df9bd6145e608a3cb023f5d8443868adbfbbf66efb51087917",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "user": "0:0",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/collector.yml",
+          "target": "/etc/otelcol-config.yml",
+          "bind": {},
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/otel-collector/otelcol-config-extras.yml",
+          "target": "/etc/otelcol-config-extras.yml",
+          "bind": {},
+          "read_only": true
+        }
+      ]
+    },
+    "payment": {
+      "command": null,
+      "container_name": "opspilot-m0-payment",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "125829120"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "payment",
+        "PAYMENT_PORT": "50051"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "product-catalog": {
+      "command": null,
+      "container_name": "opspilot-m0-product-catalog",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "20971520"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "product-catalog",
+        "PRODUCT_CATALOG_PORT": "3550",
+        "PRODUCT_CATALOG_RELOAD_INTERVAL": "10"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:050a0fc2026b75cc8716cbd5daf9c9e5fd552808a59928a6bfca18bfb8edd2d5",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/product-catalog/products",
+          "target": "/usr/src/app/products",
+          "bind": {},
+          "read_only": true
+        }
+      ]
+    },
+    "prometheus": {
+      "command": [
+        "--web.console.templates=/etc/prometheus/consoles",
+        "--web.console.libraries=/etc/prometheus/console_libraries",
+        "--storage.tsdb.retention.time=1h",
+        "--config.file=/etc/prometheus/prometheus-config.yaml",
+        "--storage.tsdb.path=/prometheus",
+        "--web.enable-lifecycle",
+        "--web.route-prefix=/",
+        "--web.enable-otlp-receiver",
+        "--enable-feature=exemplar-storage",
+        "--query.lookback-delta=5m"
+      ],
+      "container_name": "opspilot-m0-prometheus",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "314572800"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "image": "quay.io/prometheus/prometheus@sha256:5888c188cf09e3f7eebc97369c3b2ce713e844cdbd88ccf36f5047c958aea120",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/prometheus.yaml",
+          "target": "/etc/prometheus/prometheus-config.yaml",
+          "bind": {},
+          "read_only": true
+        },
+        {
+          "type": "volume",
+          "source": "prometheus-data",
+          "target": "/prometheus"
+        }
+      ],
+      "ports": [
+        {
+          "target": 9090,
+          "published": "19090",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "quote": {
+      "command": null,
+      "container_name": "opspilot-m0-quote",
+      "depends_on": {
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "41943040"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318",
+        "OTEL_PHP_AUTOLOAD_ENABLED": "true",
+        "OTEL_PHP_INTERNAL_METRICS_ENABLED": "true",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "quote",
+        "QUOTE_PORT": "8090"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:38f9d9abe0808c154011f3286754c848977bb9816923bdddd6dd39043c1e2139",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "recommendation": {
+      "command": null,
+      "container_name": "opspilot-m0-recommendation",
+      "depends_on": {
+        "flagd": {
+          "condition": "service_started",
+          "required": true
+        },
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        },
+        "product-catalog": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "524288000"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "FLAGD_HOST": "flagd",
+        "FLAGD_PORT": "8013",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_PYTHON_LOG_CORRELATION": "true",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "recommendation",
+        "PRODUCT_CATALOG_ADDR": "product-catalog:3550",
+        "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION": "python",
+        "RECOMMENDATION_PORT": "9001"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:2ca9d61f520e94c7d28fd77d9715483513773a248bf10e8612885868b2c147e5",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "shipping": {
+      "command": null,
+      "container_name": "opspilot-m0-shipping",
+      "depends_on": {
+        "otel-collector": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "20971520"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "environment": {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+        "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909",
+        "OTEL_SERVICE_NAME": "shipping",
+        "QUOTE_ADDR": "http://quote:8090",
+        "SHIPPING_PORT": "50050"
+      },
+      "image": "ghcr.io/open-telemetry/demo@sha256:e29cb4277ebd2f0532eb43ae704038cbc47f220205fdb389ac8292a6356d1a0a",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "valkey-cart": {
+      "command": null,
+      "container_name": "opspilot-m0-valkey-cart",
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "20971520"
+          }
+        },
+        "placement": {}
+      },
+      "entrypoint": null,
+      "image": "valkey/valkey@sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "2",
+          "max-size": "5m",
+          "tag": "{{.Name}}"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "user": "valkey"
+    },
+    "read-proxy": {
+      "image": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+      "container_name": "opspilot-m0-read-proxy",
+      "command": [
+        "python",
+        "/app/read_proxy.py"
+      ],
+      "user": "65534:65534",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "networks": {
+        "default": {},
+        "investigation": {}
+      },
+      "environment": {
+        "BIND_ADDRESS": "0.0.0.0",
+        "PROMETHEUS_URL": "http://prometheus:9090",
+        "JAEGER_URL": "http://jaeger:16686",
+        "OPENSEARCH_URL": "http://opensearch:9200"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/read_proxy.py",
+          "target": "/app/read_proxy.py",
+          "read_only": true
+        }
+      ],
+      "ports": [
+        {
+          "target": 18081,
+          "published": "18081",
+          "host_ip": "127.0.0.1"
+        }
+      ],
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "64M",
+            "cpus": "0.5"
+          }
+        }
+      }
+    }
+  },
+  "x-default-logging": {
+    "driver": "json-file",
+    "options": {
+      "max-file": "2",
+      "max-size": "5m",
+      "tag": "{{.Name}}"
+    }
+  },
+  "volumes": {
+    "prometheus-data": {},
+    "opensearch-data": {}
+  }
+}
