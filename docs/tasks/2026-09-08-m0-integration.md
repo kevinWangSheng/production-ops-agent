@@ -1,6 +1,6 @@
 # M0 汇合与秘密扫描
 
-- 状态：进行中；2026-09-08。
+- 状态：本批交付完成，PR待用户审核；2026-09-08。
 - 工作区：production-ops-agent-m0-integration / chore/m0-integration；依赖快照 chore/m0-components（普通本地 merge A/B/C，不代表任何 PR 已获准合并）。
 - 依据：SPEC 门槛与数据出口、C3 §5/7/11–13、M0 §1/2/3/6/7、本批用户授权和[索引](2026-09-08-m0-batch.md)。
 
@@ -26,3 +26,9 @@ A/B/C各自独立发现已关闭；当前汇合自测135 passed/13默认skip，�
 ## 独立审查与修复
 
 全新上下文review_integration独立验证135普通tests、12实际PG集成（1原生restart skip）；I-R1为新证据源码hash误报，精确例外修复1cb08e0后独立重跑当前文件/全历史扫描及7项反例通过，原发现已关闭。[独立报告](../evidence/m0-integration/independent-review.md)。本地实现和独立审查完成，PR/CI尚待提交回读；不自动合并。最终公开PR描述记录最新提交checks，避免把早期自测当最新提交结果。
+
+## PR/CI及最终交接
+
+[PR #8](https://github.com/kevinWangSheng/production-ops-agent/pull/8) base=chore/m0-components 51c892a。0e2435d 的GitHub run34318679519：checks成功（含Gitleaks），m0-postgres成功（实际12 passed/1原生restart skip）。[五PR快照](../evidence/m0-integration/pr-ci-snapshot.json)记录核查时各head及checks；这是固定快照，后续文档提交最新CI以PR实时状态和最终描述为准。五个PR均OPEN、未合并。
+
+本批本地/独立审查/PR交付已完成；仍未真实实验、M0退出或产品验收。main/旧分支不动；B唯一数据和日志保留、专属端口已无监听；原有PID4391仍存活。无其他任务后台进程。全部worktree保留待用户审核与合并后安全清理；清理B前必须保留独有实验数据证据，不强删。

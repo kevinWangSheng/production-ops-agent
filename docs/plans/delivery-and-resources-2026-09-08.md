@@ -101,3 +101,7 @@
 - [uv 与 GitHub Actions](https://docs.astral.sh/uv/guides/integration/github/)。
 - [GitHub 分支保护适用套餐](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)。
 - [Codex GitHub review 配置](https://learn.chatgpt.com/docs/third-party/github)。
+
+## 本批交付状态
+
+2026-09-08：[批次索引](../tasks/2026-09-08-m0-batch.md)汇总PR #4–#8。A/B/C及汇合均已完成本地检查、独立审查与发现修复；PR #8首次固定PostgreSQL服务和Gitleaks CI成功。全部PR未合并，真实模型/trace未运行，账号范围/区域/实际费用期限仍未授权；产品门槛不变。本地专属PG已停止，独有数据/日志与worktree保留。
