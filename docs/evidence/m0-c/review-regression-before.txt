@@ -1,0 +1,110 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-c
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collected 42 items / 37 deselected / 5 selected
+
+tests/test_m0_outcomes.py FFFFF                                          [100%]
+
+=================================== FAILURES ===================================
+_______________ test_supported_requires_a_cited_fact[hypothesis] _______________
+
+kind = 'hypothesis'
+
+    @pytest.mark.parametrize(
+        "kind", ["hypothesis", "recommendation", "rejected_hypothesis"]
+    )
+    def test_supported_requires_a_cited_fact(kind):
+        data = load("recovered-incident")
+        data["outcome"]["conclusion"] = "supported"
+        data["outcome"]["claims"] = [
+            dict(kind=kind, text="Candidate cause", evidence_ids=[])
+        ]
+        data["outcome"]["evidence"] = []
+>       assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+E       AssertionError: assert 'UNSUPPORTED_CONCLUSION' in []
+E        +  where [] = check_outcome(*(IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...thesis', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')))
+E        +    where (IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...thesis', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')) = parse({'scenario': {'schema_version': 'm0-public-v1', 'scenario_id': 'recovered-incident', 'partition': 'public-development'...ns': {'dataset': 'synthetic-v1', 'code': 'synthetic-v1', 'model': 'synthetic-v1', 'prompt': 'synthetic-v1', ...}, ...}})
+
+tests/test_m0_outcomes.py:225: AssertionError
+_____________ test_supported_requires_a_cited_fact[recommendation] _____________
+
+kind = 'recommendation'
+
+    @pytest.mark.parametrize(
+        "kind", ["hypothesis", "recommendation", "rejected_hypothesis"]
+    )
+    def test_supported_requires_a_cited_fact(kind):
+        data = load("recovered-incident")
+        data["outcome"]["conclusion"] = "supported"
+        data["outcome"]["claims"] = [
+            dict(kind=kind, text="Candidate cause", evidence_ids=[])
+        ]
+        data["outcome"]["evidence"] = []
+>       assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+E       AssertionError: assert 'UNSUPPORTED_CONCLUSION' in []
+E        +  where [] = check_outcome(*(IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...dation', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')))
+E        +    where (IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...dation', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')) = parse({'scenario': {'schema_version': 'm0-public-v1', 'scenario_id': 'recovered-incident', 'partition': 'public-development'...ns': {'dataset': 'synthetic-v1', 'code': 'synthetic-v1', 'model': 'synthetic-v1', 'prompt': 'synthetic-v1', ...}, ...}})
+
+tests/test_m0_outcomes.py:225: AssertionError
+__________ test_supported_requires_a_cited_fact[rejected_hypothesis] ___________
+
+kind = 'rejected_hypothesis'
+
+    @pytest.mark.parametrize(
+        "kind", ["hypothesis", "recommendation", "rejected_hypothesis"]
+    )
+    def test_supported_requires_a_cited_fact(kind):
+        data = load("recovered-incident")
+        data["outcome"]["conclusion"] = "supported"
+        data["outcome"]["claims"] = [
+            dict(kind=kind, text="Candidate cause", evidence_ids=[])
+        ]
+        data["outcome"]["evidence"] = []
+>       assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+E       AssertionError: assert 'UNSUPPORTED_CONCLUSION' in ['CLAIM_WITHOUT_EVIDENCE']
+E        +  where ['CLAIM_WITHOUT_EVIDENCE'] = check_outcome(*(IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...thesis', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')))
+E        +    where (IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...thesis', text='Candidate cause', evidence_ids=[])], evidence=[], actions=[], gaps=[], handoff=False, health='healthy')) = parse({'scenario': {'schema_version': 'm0-public-v1', 'scenario_id': 'recovered-incident', 'partition': 'public-development'...ns': {'dataset': 'synthetic-v1', 'code': 'synthetic-v1', 'model': 'synthetic-v1', 'prompt': 'synthetic-v1', ...}, ...}})
+
+tests/test_m0_outcomes.py:225: AssertionError
+__________________ test_supported_with_captured_visible_fact ___________________
+
+    def test_supported_with_captured_visible_fact():
+        data = load("recovered-incident")
+        data["outcome"]["conclusion"] = "supported"
+        data["outcome"]["claims"] = [
+            dict(kind="fact", text="Synthetic observed signal", evidence_ids=["e1"])
+        ]
+        assert check_outcome(*parse(data)) == []
+        data["outcome"]["claims"][0]["evidence_ids"] = []
+>       assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+E       AssertionError: assert 'UNSUPPORTED_CONCLUSION' in ['CLAIM_WITHOUT_EVIDENCE']
+E        +  where ['CLAIM_WITHOUT_EVIDENCE'] = check_outcome(*(IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64')], actions=[], gaps=[], handoff=False, health='healthy')))
+E        +    where (IncidentScenario(schema_version='m0-public-v1', scenario_id='recovered-incident', partition='public-development', ver...c065b2e513e71213f24c92e7fcfdb88bef2537e19b5486f36f50b6c43c64')], actions=[], gaps=[], handoff=False, health='healthy')) = parse({'scenario': {'schema_version': 'm0-public-v1', 'scenario_id': 'recovered-incident', 'partition': 'public-development'...ns': {'dataset': 'synthetic-v1', 'code': 'synthetic-v1', 'model': 'synthetic-v1', 'prompt': 'synthetic-v1', ...}, ...}})
+
+tests/test_m0_outcomes.py:236: AssertionError
+____ test_independent_health_rejects_tampered_capture_when_report_omits_it _____
+
+    def test_independent_health_rejects_tampered_capture_when_report_omits_it():
+        data = load()
+        data["outcome"]["claims"] = []
+        data["outcome"]["evidence"] = []
+        data["scenario"]["evaluator"]["captured_evidence"][0]["content"] = (
+            "Tampered independent evidence"
+        )
+        scenario, outcome = parse(data)
+>       assert independent_health(scenario) == "unknown"
+E       AssertionError: assert 'healthy' == 'unknown'
+E         
+E         - unknown
+E         + healthy
+
+tests/test_m0_outcomes.py:247: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_m0_outcomes.py::test_supported_requires_a_cited_fact[hypothesis]
+FAILED tests/test_m0_outcomes.py::test_supported_requires_a_cited_fact[recommendation]
+FAILED tests/test_m0_outcomes.py::test_supported_requires_a_cited_fact[rejected_hypothesis]
+FAILED tests/test_m0_outcomes.py::test_supported_with_captured_visible_fact
+FAILED tests/test_m0_outcomes.py::test_independent_health_rejects_tampered_capture_when_report_omits_it
+======================= 5 failed, 37 deselected in 0.09s =======================

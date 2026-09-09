@@ -37,3 +37,10 @@ A/C 仅短时 Python 测试及公开资料查询；B 独占本批唯一重型环
 - 公开合同见 [说明](../testing/m0-public-outcomes.md)；JSON Schema归档可重生成。Agent字段投影不等于OS隔离；合成signal verdict不是实际遥测计算；check_outcome只检查合同一致，不评价自然语言因果正确。
 - 未执行模型/trace/重型环境/权限隔离/真实基线/故障注入/soak，未读取.env或保留集，未冻结最终阈值、未更改passes或SPEC门槛。没有专属后台服务；.venv保留用于复验。
 - 下一步：协调者启动全新上下文独立审查，处理发现后推送任务分支/建PR/等待最新CI；用户审核合并。任务本地完成与M0退出、产品验收严格区分。
+
+## 独立审查修复（2026-09-08）
+
+依据 review_c 的 [独立审查](../evidence/m0-c/independent-review.md) 处理 C-R1/C-R2 两项P2；本轮只改对应最小支持结构与独立观察证据完整性，重新复核 SPEC 相关门槛与约束，未扩大权限或实验。
+新增反例先运行：[修复前失败原始输出](../evidence/m0-c/review-regression-before.txt)。supported 现要求至少一个带引用的 fact，其引用继续通过既有完整证据校验。独立观察现校验所用捕获证据hash并拒绝重复ID；check_outcome对捕获证据独立记录hash错误，即使报告省略也不可绕过。未要求Observer证据进入AgentInput。
+新增合法supported正例、无引用假设/建议/拒绝假设反例、隐藏于报告之外的损坏证据，以及仅Observer拥有完整/缺失/重复证据的边界测试。schema字段未变，序列化JSON Schema对照仍一致，无需更新fixture/hash；源码SHA由Git提交固定。
+第一次修复后make check在reviewer新增Markdown代码块的格式检查处失败，见review-fix-check.txt；文件属reviewer，已联系其自行格式化，没有改审查结论。reviewer已自行格式化，定向45 passed，最终make check全仓92 passed、Ruff与锁检查通过，完整重测结果见review-fix-final.txt；仍待同一独立审查者复验关闭发现，不自行记独立通过。

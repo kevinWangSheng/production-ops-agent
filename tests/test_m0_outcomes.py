@@ -210,3 +210,61 @@ def test_json_schemas_are_closed_and_versioned():
             definition.get("additionalProperties") is False
             for definition in schema["$defs"].values()
         )
+
+
+@pytest.mark.parametrize(
+    "kind", ["hypothesis", "recommendation", "rejected_hypothesis"]
+)
+def test_supported_requires_a_cited_fact(kind):
+    data = load("recovered-incident")
+    data["outcome"]["conclusion"] = "supported"
+    data["outcome"]["claims"] = [
+        dict(kind=kind, text="Candidate cause", evidence_ids=[])
+    ]
+    data["outcome"]["evidence"] = []
+    assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+
+
+def test_supported_with_captured_visible_fact():
+    data = load("recovered-incident")
+    data["outcome"]["conclusion"] = "supported"
+    data["outcome"]["claims"] = [
+        dict(kind="fact", text="Synthetic observed signal", evidence_ids=["e1"])
+    ]
+    assert check_outcome(*parse(data)) == []
+    data["outcome"]["claims"][0]["evidence_ids"] = []
+    assert "UNSUPPORTED_CONCLUSION" in check_outcome(*parse(data))
+
+
+def test_independent_health_rejects_tampered_capture_when_report_omits_it():
+    data = load()
+    data["outcome"]["claims"] = []
+    data["outcome"]["evidence"] = []
+    data["scenario"]["evaluator"]["captured_evidence"][0]["content"] = (
+        "Tampered independent evidence"
+    )
+    scenario, outcome = parse(data)
+    assert independent_health(scenario) == "unknown"
+    errors = check_outcome(scenario, outcome)
+    assert "EVIDENCE_HASH_MISMATCH" in errors
+    assert "UNPROVEN_HEALTHY_STATE" in errors
+
+
+@pytest.mark.parametrize("condition", ["intact", "missing", "duplicate"])
+def test_independent_observation_needs_no_agent_or_report_copy(condition):
+    data = load()
+    data["scenario"]["agent_input"]["visible_evidence"] = []
+    data["outcome"]["claims"] = []
+    data["outcome"]["evidence"] = []
+    captured = data["scenario"]["evaluator"]["captured_evidence"]
+    if condition == "missing":
+        captured.clear()
+    elif condition == "duplicate":
+        captured.append(dict(captured[0]))
+    scenario, outcome = parse(data)
+    if condition == "intact":
+        assert independent_health(scenario) == "healthy"
+        assert check_outcome(scenario, outcome) == []
+    else:
+        assert independent_health(scenario) == "unknown"
+        assert "UNPROVEN_HEALTHY_STATE" in check_outcome(scenario, outcome)

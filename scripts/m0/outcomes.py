@@ -1,5 +1,6 @@
 """Public M0 DTOs and offline checks; no investigator, transport or live oracle."""
 
+import hashlib
 from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -225,6 +226,12 @@ class IncidentOutcome(DTO):
     health: Health
 
 
+def _hash_valid(evidence: Evidence) -> bool:
+    return (
+        hashlib.sha256(evidence.content.encode()).hexdigest() == evidence.content_sha256
+    )
+
+
 def independent_health(scenario: IncidentScenario) -> Health:
     """Recompute the synthetic external observation, never trust report prose."""
     facts = scenario.evaluator
@@ -250,6 +257,8 @@ def independent_health(scenario: IncidentScenario) -> Health:
     if len(signals) != len(observation.signals):
         return "unknown"
     captured = {e.id: e for e in facts.captured_evidence}
+    if len(captured) != len(facts.captured_evidence):
+        return "unknown"
     verdicts = []
     for name in profile.required_signals:
         signal = signals.get(name)
@@ -258,6 +267,7 @@ def independent_health(scenario: IncidentScenario) -> Health:
         evidence = captured.get(signal.evidence_id)
         if (
             evidence is None
+            or not _hash_valid(evidence)
             or evidence.status != "ok"
             or evidence.target != observation.subject.target
         ):
@@ -280,8 +290,6 @@ def independent_health(scenario: IncidentScenario) -> Health:
 
 def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[str]:
     """Return stable violations. Success means contract consistency, not causal truth."""
-    import hashlib
-
     errors = []
     facts = scenario.evaluator
     if (outcome.scenario_id, outcome.subject, outcome.versions) != (
@@ -309,7 +317,9 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
     if outcome.conclusion == "supported" and (
         outcome.execution != "completed"
         or facts.diagnosability != "sufficient"
-        or not outcome.claims
+        or not any(
+            claim.kind == "fact" and claim.evidence_ids for claim in outcome.claims
+        )
     ):
         errors.append("UNSUPPORTED_CONCLUSION")
     if facts.diagnosability == "insufficient" and not outcome.gaps:
@@ -323,6 +333,8 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
         or len(reported) != len(outcome.evidence)
     ):
         errors.append("DUPLICATE_EVIDENCE")
+    if any(not _hash_valid(evidence) for evidence in facts.captured_evidence):
+        errors.append("EVIDENCE_HASH_MISMATCH")
     for evidence in outcome.evidence:
         if evidence != captured.get(evidence.id) or evidence != visible.get(
             evidence.id
@@ -330,10 +342,7 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
             errors.append("EVIDENCE_NOT_CAPTURED_OR_VISIBLE")
         if evidence.target != scenario.agent_input.subject.target:
             errors.append("WRONG_TARGET_EVIDENCE")
-        if (
-            hashlib.sha256(evidence.content.encode()).hexdigest()
-            != evidence.content_sha256
-        ):
+        if not _hash_valid(evidence):
             errors.append("EVIDENCE_HASH_MISMATCH")
         if (
             evidence.window.end > evidence.captured_at
