@@ -43,4 +43,4 @@ A/C 仅短时 Python 测试及公开资料查询；B 独占本批唯一重型环
 依据 review_c 的 [独立审查](../evidence/m0-c/independent-review.md) 处理 C-R1/C-R2 两项P2；本轮只改对应最小支持结构与独立观察证据完整性，重新复核 SPEC 相关门槛与约束，未扩大权限或实验。
 新增反例先运行：[修复前失败原始输出](../evidence/m0-c/review-regression-before.txt)。supported 现要求至少一个带引用的 fact，其引用继续通过既有完整证据校验。独立观察现校验所用捕获证据hash并拒绝重复ID；check_outcome对捕获证据独立记录hash错误，即使报告省略也不可绕过。未要求Observer证据进入AgentInput。
 新增合法supported正例、无引用假设/建议/拒绝假设反例、隐藏于报告之外的损坏证据，以及仅Observer拥有完整/缺失/重复证据的边界测试。schema字段未变，序列化JSON Schema对照仍一致，无需更新fixture/hash；源码SHA由Git提交固定。
-第一次修复后make check在reviewer新增Markdown代码块的格式检查处失败，见review-fix-check.txt；文件属reviewer，已联系其自行格式化，没有改审查结论。reviewer已自行格式化，定向45 passed，最终make check全仓92 passed、Ruff与锁检查通过，完整重测结果见review-fix-final.txt；仍待同一独立审查者复验关闭发现，不自行记独立通过。
+第一次修复后make check在reviewer新增Markdown代码块的格式检查处失败，见review-fix-check.txt；文件属reviewer，已联系其自行格式化，没有改审查结论。协调者已格式化审查文件，reviewer确认无需额外修改；定向45 passed，最终make check全仓92 passed、Ruff与锁检查通过，完整重测结果见review-fix-final.txt；仍待同一独立审查者复验关闭发现，不自行记独立通过。
