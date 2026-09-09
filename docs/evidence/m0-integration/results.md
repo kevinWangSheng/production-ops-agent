@@ -17,3 +17,5 @@
 Docker buildx imagetools本机入口不支持所请求选项，未启动daemon；改用Docker官方registry读取postgres:17.9 manifest，固定index sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545，amd64 sha256:66b6a97eac1771fc78bd201b918b4253859f436c6913aeede97bd5366cce89ae。CI容器尚待首次运行；只用合成trust身份，不注入业务Secrets，1CPU/512MiB，不授权真实额度或产品鉴权。
 
 下一步独立集成审查、修复和有界PR/CI；真实模型+trace、账号区域范围、费用期限授权、M0退出和产品验收仍未执行。
+
+独立审查发现提交后的verification.json两个源码hash触发generic-api-key误报；原扫描发生在生成该证据文件前，故不能用于声明后来提交已通过扫描。修复保留历史，固定配置只对该证据路径和两个精确非秘密hash设置AND例外；新增真实binary自检证明同路径其他值/同值其他路径均拒绝，不放宽整条规则。最终提交后重新运行，独立复验结论另见报告。

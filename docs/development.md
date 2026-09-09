@@ -81,6 +81,6 @@ make check
 - 数据库仅由B worktree的 `.venv/bin/python -m scripts.m0.postgres_lab start/stop` 控制；先核对[资源与归属](evidence/m0-b/results.md)。本机现有PostgreSQL17.9，专属55431及tmp/m0-b/postgres，数据始终保留；不要在另一个worktree同时创建同端口实例。原生配置不是容器硬资源限额，不证明产品数据库身份隔离。
 - 数据库已由B实例启动时，在集成worktree执行 `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`；数据库重启测试只从B工作区额外设置 `M0_B_RESTART=1`。任务完成后由B实例脚本停止，不删除数据。
 - 秘密扫描：`python3 scripts/install_gitleaks.py --directory tmp/gitleaks` 下载固定8.30.1官方发行包并校验固定SHA256；已存在目标拒绝覆盖，可直接复用已核查binary。支持macOS arm64/Linux x86_64。
-- `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再扫描全部本地Git refs历史及已跟踪文件快照。使用默认规则并禁用仓库抑制/inline allow；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
+- `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再扫描全部本地Git refs历史及已跟踪文件快照。使用默认规则并禁用仓库抑制/inline allow；仅对指定证据manifest的两个已核实源码SHA256设规则+路径+值AND例外，并实测同路径canary/同值不同路径仍拒绝；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
 
 CI 的checks增加同一扫描与自检；m0-postgres使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。

@@ -63,7 +63,24 @@ def scan(binary: Path, mode: str, target: Path, scratch: Path):
     report = scratch / "report.json"
     report.unlink(missing_ok=True)
     config = scratch / "scanner.toml"
-    config.write_text("[extend]\nuseDefault = true\n")
+    # Two reviewed non-credential source digests in one historical evidence manifest.
+    # Rule + exact manifest suffix + exact value all must match; no directory exclusion.
+    config.write_text(
+        """[extend]
+useDefault = true
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Reviewed source SHA256 values in the M0 integration manifest"
+condition = "AND"
+paths = ['(^|/)docs/evidence/m0-integration/verification\\.json$']
+regexTarget = "secret"
+regexes = [
+  '^b39dadc086f7d83346d9b5ff6ece87b956365ec9fde8c33912772bd0ec128ac1$',
+  '^b3497adb93bd314032e83d974893e9d62adea82c24ad534dd223883cd794b67f$'
+]
+"""
+    )
     args = [
         str(binary),
         mode,
@@ -104,6 +121,21 @@ def check(root: Path, binary: Path):
             raise ScanError("SCANNER_SELFTEST_FAILED")
         (probe / "canary.txt").write_text("public non-secret fixture\n")
         if scan(binary, "dir", probe, scratch):
+            raise ScanError("SCANNER_SELFTEST_FAILED")
+        precise = probe / "docs/evidence/m0-integration/verification.json"
+        precise.parent.mkdir(parents=True)
+        known_digest = (
+            "b39dadc086f7d83346d9b5ff6ece87b956365ec9fde8c33912772bd0ec128ac1"
+        )
+        precise.write_text(json.dumps({"scripts/check_secrets.py": known_digest}))
+        if scan(binary, "dir", probe, scratch):
+            raise ScanError("SCANNER_SELFTEST_FAILED")
+        precise.write_text('api_key = "' + secrets.token_hex(24) + '"\n')
+        if scan(binary, "dir", probe, scratch) == 0:
+            raise ScanError("SCANNER_SELFTEST_FAILED")
+        precise.unlink()
+        (probe / "canary.txt").write_text('api_key = "' + known_digest + '"\n')
+        if scan(binary, "dir", probe, scratch) == 0:
             raise ScanError("SCANNER_SELFTEST_FAILED")
         snapshot = scratch / "tracked"
         snapshot.mkdir()
