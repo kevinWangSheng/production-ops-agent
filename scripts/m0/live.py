@@ -441,16 +441,37 @@ def failure_code(exc):
 
 
 def model_message(response, finish):
-    if (
-        len(response["choices"]) != 1
-        or response["choices"][0]["finish_reason"] != finish
-    ):
-        raise ConfigError("LIVE_PROTOCOL_FAILED")
-    return response["choices"][0]["message"]
+    try:
+        if (
+            type(response) is not dict
+            or type(response.get("choices")) is not list
+            or len(response["choices"]) != 1
+        ):
+            raise ValueError
+        choice = response["choices"][0]
+        if type(choice) is not dict or choice.get("finish_reason") != finish:
+            raise ValueError
+        message = choice["message"]
+        if type(message) is not dict or message.get("role") != "assistant":
+            raise ValueError
+        content = message["content"]
+        if content is not None and type(content) is not str:
+            raise ValueError
+        calls = message.get("tool_calls")
+        if finish == "tool_calls":
+            if type(calls) is not list or len(calls) != 1:
+                raise ValueError
+        elif type(content) is not str or (calls is not None and calls != []):
+            raise ValueError
+        return message
+    except (KeyError, TypeError, ValueError, IndexError):
+        raise ConfigError("LIVE_PROTOCOL_FAILED") from None
 
 
 def token_usage(response):
     usage = response.get("usage", {})
+    if type(usage) is not dict:
+        usage = {}
     reported = response.get("model")
     known = {
         "deepseek-v4-flash",
@@ -518,11 +539,11 @@ async def execute(contract, config, ledger, *, transport=None):
                     "https://api.deepseek.com/chat/completions",
                     body,
                 )
+                message = model_message(response, "tool_calls" if step == 1 else "stop")
                 usage.append(token_usage(response))
                 if response.get("model") != profile["accepted_response_model"]:
                     business_code = "LIVE_MODEL_PROFILE_MISMATCH"
                     raise ConfigError(business_code)
-                message = model_message(response, "tool_calls" if step == 1 else "stop")
                 if step == 1:
                     if len(message["tool_calls"]) != 1:
                         raise ConfigError("LIVE_PROTOCOL_FAILED")
@@ -534,13 +555,16 @@ async def execute(contract, config, ledger, *, transport=None):
                         run_id=contract["run_id"],
                         expected_run_id=contract["run_id"],
                     )
-                elif (
-                    message.get("tool_calls")
-                    or message.get("role") != "assistant"
-                    or json.loads(message["content"])
-                    != {"target": "m0-target-a", "evidence_id": "m0-evidence-a"}
-                ):
-                    raise ConfigError("LIVE_PROTOCOL_FAILED")
+                else:
+                    try:
+                        valid = json.loads(message["content"]) == {
+                            "target": "m0-target-a",
+                            "evidence_id": "m0-evidence-a",
+                        }
+                    except (TypeError, ValueError):
+                        valid = False
+                    if not valid:
+                        raise ConfigError("LIVE_PROTOCOL_FAILED")
             business = "completed"
             business_code = "LIVE_PROTOCOL_COMPLETED"
     except (Exception, asyncio.CancelledError) as exc:

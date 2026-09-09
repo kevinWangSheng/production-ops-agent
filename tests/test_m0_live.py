@@ -424,3 +424,43 @@ def test_business_control_and_storage_failures_keep_category(failure, code):
     assert result["business_code"] == code
     assert result["business"] == "failed" and seen == []
     assert "private-error" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        None,
+        [],
+        {"model": "deepseek-v4-flash"},
+        {"choices": None},
+        {"choices": "x"},
+        {"choices": [None]},
+        {"choices": [{"finish_reason": "tool_calls", "message": {}}]},
+        {
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {"role": "assistant", "content": "", "tool_calls": "x"},
+                }
+            ]
+        },
+    ],
+)
+def test_malformed_model_response_is_protocol_failure(payload):
+    contract, config = packet()
+    ledger = MemoryLedger()
+    original, seen = scenario(contract, ledger)
+
+    async def reply(request):
+        if request.url.host == "api.deepseek.com":
+            return httpx2.Response(200, content=json.dumps(payload).encode())
+        return await original.handle_async_request(request)
+
+    with no_network():
+        result = asyncio.run(
+            execute(contract, config, ledger, transport=httpx2.MockTransport(reply))
+        )
+    assert result["business_code"] == "LIVE_PROTOCOL_FAILED"
+    assert result["business"] == "failed"
+    assert "model-2" not in ledger.attempts and "trace-post" not in ledger.attempts
