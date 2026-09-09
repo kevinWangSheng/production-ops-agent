@@ -41,4 +41,12 @@ OTel Demo 2.0.2 / `63649d6d6a59de88fb421b88c3c3a6185b6d21ad`，公开tar及Holme
 
 Prometheus1h留存且持久卷；OpenSearch持久卷、当前未设自动删除；Jaeger内存最多25000 traces，无时间/跨进程持久保证，停止前须导出需要的trace。日志/trace源原始证据和所有历史失败保留。只读代理不接收凭据、任意URL、shell或SQL。
 
-尚未：故障与恢复观察、Holmes正常/故障对照结果整合、完整权限/数据出口合同、Kubernetes HealthProfile、72h soak。结束使用compose stop和colima stop专属profile，保留容器/卷/数据；不使用down或删除虚机。
+## 已执行开发故障
+
+2026-09-09T17:51:53Z仅在专属实例施加预先合同规定的可逆开发故障，原/注入快照和时间线保留在工程目录。[合同manifest](fault-contract-manifest.json)。预定约17:57Z交付窗口，实际采集/交付延后到18:02Z，未将差异隐藏为源失败或固定延迟能力。
+
+[固定故障窗口独立事实](fault-01-observation.json)：`1788976626.533447 → 1788976926.533447`，7个真实查询均200。checkout/payment查询各有7条实际trace，跨服务传播中payment7 error spans、checkout14 error spans；checkout调用PaymentService/Charge的grpc status2增量7.50、成功status0增量0，交易增量0。frontend-proxy日志全窗131条，最新20包含真实POST /api/checkout HTTP500。Prometheus increase含外推，不能把7.50当整数请求。
+
+此前“至少2真实请求失败+trace传播+metric变化+日志”的可诊断前提成立，未降低判据。模型只收到[HTTP500可见症状/接入/窗口](fault-01-investigator-input.json)，未提供注入参数、隐藏flag或预设payment答案。模型是否定位及证据是否支持另由独立评估核查。
+
+尚未：故障恢复观察、Holmes对照结果整合、完整权限/数据出口合同、Kubernetes HealthProfile、72h soak。结束使用compose stop和colima stop专属profile，保留容器/卷/数据；不使用down或删除虚机。
