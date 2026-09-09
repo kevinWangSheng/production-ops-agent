@@ -1,0 +1,165 @@
+FF.                                                                      [100%]
+=================================== FAILURES ===================================
+___________ test_two_rounds_settle_and_trace_does_not_change_ledger ____________
+
+experiment = (<scripts.m0.budget.PostgresBudget object at 0x10b7d71d0>, RunContext(experiment_id=UUID('b0320839-0b2b-4ea3-b808-5fbf...ly.', 'parameters': {'type': 'object', 'properties': {...}, 'required': [...], 'additionalProperties': False}}}], ...})
+
+    def test_two_rounds_settle_and_trace_does_not_change_ledger(experiment):
+        ledger, run, fixture = experiment
+        calls = []
+    
+        def transport(request):
+            # Query durable state at the instant the replacement transport is invoked.
+            calls.append(json.loads(request.content))
+            return response(fixture, final=len(calls) == 2)
+    
+        adapter = SyntheticAdapter(transport=httpx2.MockTransport(transport), budget=ledger)
+        history = History(run)
+        for _ in range(2):
+>           asyncio.run(
+                adapter.round(
+                    run,
+                    history,
+                    fixture,
+                    upper_bound=50,
+                    synthetic_price=lambda usage: usage["total_tokens"],
+                )
+            )
+
+tests/integration/test_m0_adapter_budget.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <scripts.m0.adapters.SyntheticAdapter object at 0x10b7d7110>
+run = RunContext(experiment_id=UUID('b0320839-0b2b-4ea3-b808-5fbf3e539c0f'), run_id=UUID('de81aa1f-3dcd-464c-b700-ebe57db76a45'), provider='deepseek', deadline=datetime.datetime(2026, 9, 9, 6, 10, 28, 649957, tzinfo=datetime.timezone.utc))
+history = <scripts.m0.adapters.History object at 0x10b7d71a0>
+fixture = {'version': 'm0-protocol-v1', 'target': 'm0-target-a', 'messages': [{'role': 'user', 'content': 'Call read_fixture for...s': {'type': 'object', 'properties': {'target': {...}}, 'required': ['target'], 'additionalProperties': False}}}], ...}
+upper_bound = 50
+synthetic_price = <function test_two_rounds_settle_and_trace_does_not_change_ledger.<locals>.<lambda> at 0x10c0faa20>
+tool = <function tool_result at 0x10c288ae0>, timeout = 5
+
+    async def round(
+        self,
+        run: RunContext,
+        history: History,
+        fixture: dict,
+        *,
+        upper_bound: int,
+        synthetic_price: Callable[[dict], int],
+        tool: Callable = tool_result,
+        timeout: float = 5,
+    ) -> RoundResult:
+        messages = copy.deepcopy(fixture["messages"]) + history.messages(run)
+        amount(upper_bound, positive=True)
+        remaining_seconds(run, self.clock(), timeout)
+        request = RequestIdentity(run, uuid4())
+        reservation = self.budget.reserve(request, upper_bound)
+        if not reservation.created:
+            raise ProtocolError("REQUEST_REPLAYED")
+        try:
+            seconds = remaining_seconds(run, self.clock(), timeout)
+        except BudgetError:
+            self.budget.settle(request, 0)  # Definitely no transmission yet.
+            raise
+        sent = False
+        try:
+            with no_network():
+                async with httpx2.AsyncClient(
+                    transport=self.transport, trust_env=False, follow_redirects=False
+                ) as http:
+                    async with AsyncOpenAI(
+                        api_key="synthetic-model-auth",
+                        base_url="https://model.invalid",
+                        organization="",
+                        project="",
+                        max_retries=0,
+                        timeout=seconds,
+                        http_client=http,
+                    ) as client:
+                        seconds = remaining_seconds(run, self.clock(), timeout)
+                        async with asyncio.timeout(seconds):
+                            sent = True
+                            stream = await client.chat.completions.create(
+                                model="deepseek-v4-pro",
+                                messages=messages,
+                                tools=fixture["tools"],
+                                stream=True,
+                                stream_options={"include_usage": True},
+                                max_tokens=256,
+                                reasoning_effort="high",
+                                extra_body={"thinking": {"type": "enabled"}},
+                            )
+                            wire = _WireCompletion(stream.response.stream)
+                            stream.response.stream = wire
+                            async with stream:
+                                assistant, finish, usage = await _collect(stream)
+                            if not wire.complete:
+                                raise ProtocolError("STREAM_INCOMPLETE")
+        except BudgetError:
+            if not sent:
+                self.budget.settle(request, 0)
+            else:
+                self.budget.retain_unknown(request)
+            raise
+        except (Exception, asyncio.CancelledError):
+            if sent:
+                self.budget.retain_unknown(request)
+            else:
+                self.budget.settle(request, 0)
+>           raise ProtocolError("MODEL_STREAM_FAILED") from None
+E           scripts.m0.protocol.ProtocolError: MODEL_STREAM_FAILED
+
+scripts/m0/adapters.py:156: ProtocolError
+_____________ test_interrupted_stream_retains_cost_across_new_run ______________
+
+experiment = (<scripts.m0.budget.PostgresBudget object at 0x10b7d7410>, RunContext(experiment_id=UUID('76362b86-82c7-48ce-a25d-1f29...ly.', 'parameters': {'type': 'object', 'properties': {...}, 'required': [...], 'additionalProperties': False}}}], ...})
+
+    def test_interrupted_stream_retains_cost_across_new_run(experiment):
+        ledger, run, fixture = experiment
+        calls = []
+    
+        def transport(request):
+            calls.append(request)
+            return response(fixture, interrupted=True)
+    
+        adapter = SyntheticAdapter(transport=httpx2.MockTransport(transport), budget=ledger)
+        history = History(run)
+        with pytest.raises(ProtocolError, match="MODEL_STREAM_FAILED"):
+            asyncio.run(
+                adapter.round(
+                    run, history, fixture, upper_bound=80, synthetic_price=lambda usage: 1
+                )
+            )
+        assert ledger.snapshot(run.experiment_id)["unknown"] == 80
+        another = RunContext(run.experiment_id, uuid4(), run.provider, run.deadline)
+        recovered = PostgresBudget(DSN)
+        recovered.register_run(another)
+        with pytest.raises(BudgetError, match="BUDGET_EXHAUSTED"):
+            asyncio.run(
+                adapter.round(
+                    another,
+                    History(another),
+                    fixture,
+                    upper_bound=21,
+                    synthetic_price=lambda usage: 1,
+                )
+            )
+        assert len(calls) == 1
+>       assert history.groups == []
+               ^^^^^^^^^^^^^^
+E       AttributeError: 'History' object has no attribute 'groups'. Did you mean: '_groups'?
+
+tests/integration/test_m0_adapter_budget.py:183: AttributeError
+=========================== short test summary info ============================
+FAILED tests/integration/test_m0_adapter_budget.py::test_two_rounds_settle_and_trace_does_not_change_ledger
+FAILED tests/integration/test_m0_adapter_budget.py::test_interrupted_stream_retains_cost_across_new_run
+2 failed, 1 passed in 15.17s
