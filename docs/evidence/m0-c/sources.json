@@ -1,0 +1,41 @@
+{
+  "otel_version": "2.0.2",
+  "otel_commit": "63649d6d6a59de88fb421b88c3c3a6185b6d21ad",
+  "records": [
+    {
+      "url": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/63649d6d6a59de88fb421b88c3c3a6185b6d21ad/docker-compose.yml",
+      "path": "opentelemetry-demo-docker-compose.yml",
+      "sha256": "c9801f63a855f896873d4b0ea75956ab62796b1e90fbedb1d985e36a21fd5b58"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/otel-collector/otelcol-config.yml",
+      "path": "opentelemetry-demo-src-otel-collector-otelcol-config.yml",
+      "sha256": "2fdf3cdaf0035d8bdb8897f74956321257ad863977c483c63d11715d31d81c06"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/prometheus/prometheus-config.yaml",
+      "path": "opentelemetry-demo-src-prometheus-prometheus-config.yaml",
+      "sha256": "3613397e0a91e035334aaaf18b5d67f17e145d89d5223c218387e8eb28e12f18"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/63649d6d6a59de88fb421b88c3c3a6185b6d21ad/LICENSE",
+      "path": "opentelemetry-demo-LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/HolmesGPT/holmesgpt/5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/models.py",
+      "path": "holmesgpt-holmes-core-models.py.txt",
+      "sha256": "5a9d3ef3c18b8e60916dffcb17454358d09fc82a06c335a476bb8eb9a6f4aec3"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/HolmesGPT/holmesgpt/5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/config.py",
+      "path": "holmesgpt-holmes-config.py.txt",
+      "sha256": "6296236a7de3f1660b057c775325d9ac65eae92cada240b46756830b7a411adc"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/HolmesGPT/holmesgpt/5e983c17f30e93099c7d775167266d4cd1d586c4/LICENSE",
+      "path": "holmesgpt-LICENSE",
+      "sha256": "4e8d756a1bc4796e15973df082cf72b91f5e61fec4ec68d6799104670c108d08"
+    }
+  ]
+}
