@@ -287,7 +287,10 @@ class Wire:
                     raise ConfigError("LIVE_HTTP_FAILED")
                 if slot == "trace-post":
                     return {}
-                return json.loads(raw)
+                data = json.loads(raw)
+                if slot.startswith("trace-read-") and type(data) is not dict:
+                    raise ConfigError("LIVE_TRACE_RESPONSE_INVALID")
+                return data
 
 
 def trace_wire(contract, dto):
@@ -343,6 +346,39 @@ def trace_wire(contract, dto):
         ):
             denied()
         return result
+
+
+def trace_readback_code(returned, contract, dto):
+    """Validate exported data exactly; accept only the observed root-depth decoration."""
+    if type(returned) is not dict:
+        return "TRACE_RESPONSE_INVALID"
+    if (
+        returned.get("id") != contract["run_id"]
+        or returned.get("session_id") != contract["project_id"]
+    ):
+        return "TRACE_IDENTITY_MISMATCH"
+    if returned.get("inputs") != {"fixture": "m0-protocol-v1"}:
+        return "TRACE_INPUTS_MISMATCH"
+    outputs = returned.get("outputs")
+    if (
+        type(outputs) is not dict
+        or outputs != dto
+        or any(type(outputs[k]) is not type(v) for k, v in dto.items())
+    ):
+        return "TRACE_OUTPUTS_MISMATCH"
+    extra = returned.get("extra")
+    if extra is not None and extra != {}:
+        if type(extra) is not dict or set(extra) != {"metadata"}:
+            return "TRACE_EXTRA_REJECTED"
+        metadata = extra["metadata"]
+        if (
+            type(metadata) is not dict
+            or set(metadata) != {"ls_run_depth"}
+            or type(metadata["ls_run_depth"]) is not int
+            or metadata["ls_run_depth"] != 0
+        ):
+            return "TRACE_EXTRA_REJECTED"
+    return "TRACE_VERIFIED"
 
 
 def model_message(response, finish):
@@ -451,6 +487,7 @@ async def execute(contract, config, ledger, *, transport=None):
         adapter="m0-normal-1-v1",
         code_sha256=contract["code_sha256"],
     )
+    trace_code = "TRACE_NOT_ATTEMPTED"
     try:
         ledger.save(contract["experiment_id"], business, dto, usage)
         # Failed or cancelled model chain does not gain further upload authority in this slice.
@@ -468,27 +505,35 @@ async def execute(contract, config, ledger, *, transport=None):
                     f"{contract['endpoint']}/runs/{contract['run_id']}",
                 )
                 if returned is None:
+                    trace_code = "TRACE_NOT_VISIBLE"
                     continue
-                if (
-                    returned.get("id") == contract["run_id"]
-                    and returned.get("session_id") == contract["project_id"]
-                    and returned.get("inputs") == body["inputs"]
-                    and returned.get("outputs") == dto
-                    and all(
-                        type(returned["outputs"][k]) is type(v) for k, v in dto.items()
-                    )
-                    and not returned.get("extra")
-                ):
+                trace_code = trace_readback_code(returned, contract, dto)
+                if trace_code == "TRACE_VERIFIED":
                     trace = "verified"
                 break
         ledger.trace_status(contract["experiment_id"], trace)
-    except (Exception, asyncio.CancelledError):
+    except (Exception, asyncio.CancelledError) as exc:
+        # Only fixed codes leave the boundary, never response/exception prose.
+        known = {
+            "LIVE_TRACE_RESPONSE_INVALID",
+            "LIVE_HTTP_FAILED",
+            "LIVE_RESPONSE_TOO_LARGE",
+            "LIVE_REQUEST_TOO_LARGE",
+            "LIVE_DEADLINE",
+            "LIVE_DEADLINE_OR_CANCELLED",
+        }
+        trace_code = (
+            str(exc)
+            if isinstance(exc, ConfigError) and str(exc) in known
+            else "TRACE_OPERATION_FAILED"
+        )
         trace = "unknown"  # Committed business/outbox survives exporter failure.
     finally:
         await wire.client.aclose()
     return {
         "business": business,
         "trace": trace,
+        "trace_code": trace_code,
         "request_count": count,
         "unreconciled_reserved_cny": "2.00",
         "actual_cost_cny": None,

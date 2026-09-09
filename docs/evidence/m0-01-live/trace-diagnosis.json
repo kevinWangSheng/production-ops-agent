@@ -1,0 +1,28 @@
+{
+  "read_only_diagnostic_gets": 1,
+  "new_model_calls": 0,
+  "new_trace_uploads": 0,
+  "http_status": 200,
+  "captured_at": "2026-09-09T09:49:28.781638+00:00",
+  "raw_private_capture_sha256": "1b3c8db0d3caeb316eca561880f87a7f6eebe2cc280ff4a55b778aae3050ca86",
+  "original_validator_checks": {
+    "id": true,
+    "project": true,
+    "inputs": true,
+    "outputs": true,
+    "types": true,
+    "old_extra_empty": false
+  },
+  "returned_extra": {
+    "metadata": {
+      "ls_run_depth": 0
+    }
+  },
+  "fixed_validator_code": "TRACE_VERIFIED",
+  "validation_mode": "offline replay of actual read-only GET response; no model/upload re-execution",
+  "original_execution_preserved": true,
+  "reviewed_sha256": {
+    "scripts/m0/live.py": "ecf55a070b139a8a49dbd81dc36709ff8d187c9e29a8869c43bf72f8aa00856c",
+    "tests/test_m0_live.py": "2dd0be47220d844bef6db4a5720a507555f79c7bc24743c1113625b9d1fbf8f1"
+  }
+}

@@ -158,6 +158,20 @@ def scenario(contract, ledger, variant="normal"):
             "inputs": trace[0]["inputs"],
             "outputs": trace[0]["outputs"],
         }
+        extras = {
+            "server-metadata": {"metadata": {"ls_run_depth": 0}},
+            "metadata-bool": {"metadata": {"ls_run_depth": False}},
+            "metadata-depth": {"metadata": {"ls_run_depth": 1}},
+            "metadata-private": {
+                "metadata": {"ls_run_depth": 0, "reasoning_content": "private"}
+            },
+            "metadata-extra": {"metadata": {"ls_run_depth": 0}, "secret": "private"},
+            "extra-false": False,
+        }
+        if variant in extras:
+            returned["extra"] = extras[variant]
+        if variant == "read-null":
+            return httpx2.Response(200, content=b"null")
         if variant == "bad-read":
             returned["outputs"]["reasoning_content"] = "injected"
         return httpx2.Response(200, json=returned)
@@ -169,6 +183,13 @@ def scenario(contract, ledger, variant="normal"):
     "variant, business, trace, models",
     [
         ("normal", "completed", "verified", 2),
+        ("server-metadata", "completed", "verified", 2),
+        ("metadata-bool", "completed", "unknown", 2),
+        ("metadata-depth", "completed", "unknown", 2),
+        ("metadata-private", "completed", "unknown", 2),
+        ("metadata-extra", "completed", "unknown", 2),
+        ("extra-false", "completed", "unknown", 2),
+        ("read-null", "completed", "unknown", 2),
         ("wrong-workspace", "failed", "pending", 0),
         ("redirect", "failed", "pending", 1),
         ("large", "failed", "pending", 1),
@@ -187,6 +208,14 @@ def test_complete_boundary(variant, business, trace, models):
         result = asyncio.run(execute(contract, config, ledger, transport=transport))
     assert result["business"] == business
     assert result["trace"] == trace
+    if variant == "read-null":
+        assert ledger.attempts.count("trace-read-1") == 1
+        assert "trace-read-2" not in ledger.attempts
+        assert result["trace_code"] == "LIVE_TRACE_RESPONSE_INVALID"
+    if variant.startswith("metadata-") or variant == "extra-false":
+        assert result["trace_code"] == "TRACE_EXTRA_REJECTED"
+    if variant == "server-metadata":
+        assert result["trace_code"] == "TRACE_VERIFIED"
     assert len([r for r in seen if r.url.host == "api.deepseek.com"]) == models
     assert len(seen) <= 7 and result["actual_cost_cny"] is None
     assert ledger.saved[0] == business

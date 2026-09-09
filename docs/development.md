@@ -105,3 +105,5 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 批准后运行形式为 `.venv/bin/python -m scripts.m0 live --env-file /absolute/private.env --approval-file /absolute/private-approval.json`。成功退出0；默认或前提拒绝退出3；协议/trace不完整退出1。输出只含受控状态、模型请求尝试数与未核账占用，实际费用unknown不自动退还额度。PostgreSQL的m0_live_once记录固定身份、每类HTTP尝试、业务结果与白名单outbox；trace失败不能抹掉业务结果。重启/并发再次启动一律拒绝，不自动续传或重发；后续trace恢复须另行限定，不能靠新UUID绕过同一授权。
 
 本轮正常模型请求为固定官方Chat Completions JSON，经锁定HTTPX2直接受限发送；LangSmith通过锁定SDK序列化到内存并验证白名单后发送。没有OpenAI SDK自动重试或自动trace wrapper。单次请求/响应限制16KiB/128KiB，HTTP层无环境代理、重定向或重试；完整body读取受timeout约束，DB提交后再次检查截止与取消。420秒是有效HTTP运行期限，数据库失败保存/客户端关闭另受既有有界连接/语句超时约束，不保证进程精确420秒退出。真实后端协议（包括LangSmith legacy runs回读兼容）仍需真实实验取得证据。
+
+回读诊断：CLI的trace_code为固定分类；trace_readback_code严格核对业务DTO，仅允许平台返回的根层级metadata.ls_run_depth=int0，出站extra规则仍不变。2xx null明确失败而非按404重试。初次失败可继续只读核对已有Run，无需重跑模型或重新上传；参考[真实误判修复](evidence/m0-01-live/trace-diagnosis.md)。
