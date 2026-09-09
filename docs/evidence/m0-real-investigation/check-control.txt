@@ -1,0 +1,58 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+Resolved 38 packages in 105ms
+.venv/bin/ruff check .
+All checks passed!
+.venv/bin/ruff format --check .
+159 files already formatted
+.venv/bin/python -m pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 282 items
+
+tests/integration/test_m0_adapter_budget.py sss                          [  1%]
+tests/integration/test_m0_budget_postgres.py ssssssssss                  [  4%]
+tests/integration/test_m0_live_postgres.py ssss                          [  6%]
+tests/test_doctor.py .....                                               [  7%]
+tests/test_m0.py ..................................                      [ 19%]
+tests/test_m0_adapters.py .............................                  [ 30%]
+tests/test_m0_budget.py ........                                         [ 32%]
+tests/test_m0_contracts.py .......                                       [ 35%]
+tests/test_m0_live.py .................................................. [ 53%]
+.........................                                                [ 62%]
+tests/test_m0_outcomes.py .............................................. [ 78%]
+..................................                                       [ 90%]
+tests/test_m0_trace.py ........                                          [ 93%]
+tests/test_secret_scan.py ........                                       [ 96%]
+tests/test_setup_docs_mcp.py ...........                                 [100%]
+
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:100: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:151: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:185: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:58: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:70: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:91: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:111: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:122: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:38: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:67: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:84: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:105: explicit local PostgreSQL opt-in required
+======================= 265 passed, 17 skipped in 16.58s =======================

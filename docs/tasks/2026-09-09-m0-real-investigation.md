@@ -17,7 +17,7 @@
 1. 当前请求诊断：2请求、3.453秒，最终69字符为Markdown json围栏，内部target/evidence_id严格匹配，整体json.loads失败。业务failed/LIVE_FINAL_JSON_INVALID；0上传。只能定位这次，不倒推旧轮丢失正文。
 2. 最小修复后：仅最终请求加入response_format=json_object，其他请求/fixture/成功校验不变。2请求、10.792秒，最终57字符严格JSON；PG业务completed及诊断、outbox可回读；1上传/2回读后TRACE_VERIFIED。
 
-官方JSON模式依据：https://api-docs.deepseek.com/guides/json_mode/ 。[诊断1](../evidence/m0-real-investigation/final-diagnostic-1.json)、[复验2](../evidence/m0-real-investigation/final-diagnostic-2.json)。诊断包装器只记录结构和已确认等于已知fixture的最终业务文本，不保存reasoning或未知正文；其[原始脚本](../evidence/m0-real-investigation/diagnostic-harness.py)和私有运行目录保留，源码digest另列。Python/依赖沿用锁定CPython3.12.13、OpenAI3.10.0/HTTPX2 2.12.0/LangSmith0.12.2；真实请求直接HTTPX2，未宣称OpenAI SDK已真实运行。
+官方JSON模式依据：https://api-docs.deepseek.com/guides/json_mode/ 。[诊断1](../evidence/m0-real-investigation/final-diagnostic-1.json)、[复验2](../evidence/m0-real-investigation/final-diagnostic-2.json)。诊断包装器只记录结构和已确认等于已知fixture的最终业务文本，不保存reasoning或未知正文；其[原始脚本](../evidence/m0-real-investigation/diagnostic-harness.py.txt)和私有运行目录保留，源码digest另列。Python/依赖沿用锁定CPython3.12.13、OpenAI3.10.0/HTTPX2 2.12.0/LangSmith0.12.2；真实请求直接HTTPX2，未宣称OpenAI SDK已真实运行。
 
 回归测试捕获第二次请求JSON mode，同时返回真实围栏文本仍严格拒绝且不上传。有效修前红例见[输出](../evidence/m0-real-investigation/json-mode-red-valid.txt)；前两次测试搭建错误保存在私有目录，不算有效回归证据。修后75项定向通过、make check265 passed/17默认PG skip；[完整输出](../evidence/m0-real-investigation/check.txt)。独立源码/PG/原始证据审查待收尾。
 
@@ -28,3 +28,11 @@
 环境正常遥测/只读权限→正常与故障上游实际调查→独立核对→冻结首个纵向流程验收/环境与恢复前提；条件不足列具体缺项，不改功能passes。
 
 收尾需整合环境/基线证据及预算，形成入口决定和下一实施任务，更新ROADMAP/M0当前状态，完成独立审查、PR最新CI及已触发review；不自动合并。停止本轮服务，所有数据库/证据保留。
+
+## 首片机制与任务候选
+
+[控制探针合同](../evidence/m0-real-investigation/control-probe-contract.md)、[原始PG结果](../evidence/m0-real-investigation/control-probe.json)：正常提交1次；cancel/epoch/lease及取消后新generation共4次迟到采纳被拒绝；真实PG pid变化、4份快照与旧live业务/诊断哈希保留。0模型/trace。仅最终业务快照和SQL条件证据，owner/Run字段、逐步骤重建、取消后禁止新调用尚缺；不报完整恢复成功。
+
+[首个完整纵向任务候选](../plans/first-vertical-investigation-2026-09-09.md)已明确提交→查询→展示→跟进/取消→持久保存及外部验收。独立审查指出动态可见证据、最终人控代次和Compose身份与旧v2静态/Kubernetes合同存在接缝，入口冻结前须解决；不向已有v2数据填假UID、不提前给调查者最终证据。当前保持SPEC gate未开。
+
+PR #15初次CI checks失败（m0-postgres成功）：公开诊断原始脚本以.py存档，被Ruff作为维护源码检查而报格式问题。按既有原始源码证据习惯改为.py.txt保留逐字内容/hash，不修改运行脚本或放宽检查。修后make check265 passed/17默认PGskip，失败与修复输出均保留；后续PR最新CI另核对。

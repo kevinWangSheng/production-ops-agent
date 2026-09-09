@@ -1,0 +1,10 @@
+{
+  "source_sha256": "59de3d32c2d68eba8d5a12d0cb6e9bdc0d1c67b6f52641358891318b923bc5e9",
+  "persisted_snapshots": 4,
+  "compatible": "ready",
+  "incompatible": {
+    "status": "blocked",
+    "reason": "INCOMPATIBLE_STATE"
+  },
+  "note": "follow-up explicit reconstruction check; original restart probe artifact preserved"
+}
