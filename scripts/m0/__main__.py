@@ -1,4 +1,4 @@
-"""Offline-only CLI. Live mode remains unconditionally denied in M0-01."""
+"""M0 rehearsal and explicitly approved one-shot live experiment."""
 
 import argparse
 import asyncio
@@ -19,8 +19,17 @@ def main(argv=None):
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--env-file", type=Path)
     source.add_argument("--process-env", action="store_true")
+    parser.add_argument("--approval-file", type=Path)
     args = parser.parse_args(argv)
     # No SDK import, config read, or network activity on the denied live path.
+    if (
+        args.mode == "live"
+        and args.approval_file is not None
+        and args.env_file is not None
+    ):
+        from .live import run_cli
+
+        return run_cli(args.env_file, args.approval_file)
     if args.mode == "live":
         print(
             json.dumps(
@@ -28,6 +37,9 @@ def main(argv=None):
             )
         )
         return 3
+    if args.approval_file is not None:
+        print('{"status":"denied","reason":"APPROVAL_ONLY_FOR_LIVE"}')
+        return 2
     if args.mode == "check-config":
         if args.env_file is None and not args.process_env:
             print('{"status":"denied","reason":"CONFIG_SOURCE_REQUIRED"}')

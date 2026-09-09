@@ -16,7 +16,7 @@ OPSPILOT_DATABASE_URL""".split()
 )
 PROFILE = {
     "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
-    "OPSPILOT_MODEL": "deepseek-v4-pro",
+    "OPSPILOT_MODEL": "deepseek-v4-flash",
     "OPSPILOT_THINKING": "enabled",
     "OPSPILOT_REASONING_EFFORT": "high",
     "LANGSMITH_TRACING": "false",

@@ -1,0 +1,36 @@
+# 持久诊断与资源状态独立审查
+
+日期：2026-09-09。审查者为未参与实现、以全新上下文启动的独立 Agent。范围限定于远程 review comments 3968243058、3968243067、3968243074 对应修复；基线 `70850a2` 及本轮未提交的五文件 diff。已阅读当前 AGENTS、SPEC、ROADMAP、C3 §11、相关业务/事务实现、测试和资源计划；未读取真实 `.env`、批准文件或原实验数据库行，未发起外部请求、模型调用或 trace 上传。
+
+结论：本轮范围内未发现阻塞问题。此结论是代码审查、离线替身和专属本地 PostgreSQL 验证，不是 Flash 真实协议、M0 退出或产品验收通过。
+
+- `LiveLedger.save` 在同一事务更新业务/outbox/usage 并写入固定 business code；`trace_status` 在同一事务更新 trace 状态及 code。新增 `m0_live_diagnostics` 以外键关联原记录，安装 SQL 没有回填或更新原实验行。出口异常分支尽力保存固定分类，不保存供应商异常正文；既有业务失败不会新增 trace 上传权限。
+- 项目 GET 的合法 JSON 非字典结果在读取字段和任何模型请求之前返回 `LIVE_PROJECT_RESPONSE_INVALID`。新增参数化用例覆盖 null、数组、字符串、整数和布尔值，并断言只占用 project 请求槽。
+- 资源计划已区分原 Pro 单次实际证据、当前 Flash 本地默认切换与未运行的真实验证；旧费用期限不能复用，产品 gate 仍关闭。2026-09-08 批次状态已明确标为历史。审查未独立重查外部账号或 PR 状态。
+
+实际验证：
+
+1. `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/test_m0_live.py tests/integration/test_m0_live_postgres.py -q`：67 passed in 1.67s。包含替身出口失败的诊断与返回值一致性，以及新连接读取业务/trace code。
+2. 额外本地 PostgreSQL 故障注入：仅 claim 随机新 experiment id；对 `trace_status` 传入违反 NOT NULL 的 code，使第二条语句失败，前后按该 id 读取两表均不变；成功保存基线后，对 `save` 传入无法适配的 code，使第二条语句失败，业务/outbox/usage 与诊断仍全部保留基线。两次均返回固定 `STORAGE_UNAVAILABLE`。证明诊断写入失败不会留下单边状态提交。
+3. 额外离线替身故障注入：trace 状态存储持续抛 `BudgetError('STORAGE_UNAVAILABLE')`；结果为 business completed、trace unknown、`LIVE_STORAGE_UNAVAILABLE`，已保存业务保留，HTTP 替身仅收到 project 与两次模型请求，未发出 trace HTTP。
+4. `git diff --check`：退出 0。
+
+局限：存储不可用时不能保证诊断已落盘；进程可能只返回固定 storage code，不能将其表述为持久化成功。进入业务段前的 validate/claim 失败仍不属于本轮逐次诊断持久化保证；没有验证进程 crash 全矩阵或自动导出恢复。本审查未检查原真实行 hash；该项由主执行者独立比较和记录。本地测试只创建随机新 id 的合成记录，未启停 PostgreSQL，未改变旧行。
+
+## 旧实验库前置检查专项复验
+
+同日追加，基线 `53c3ca58fec9ef81c4e51e38ef64df266494ff7a` 加 `LiveLedger.claim` 前置查询及对应 PostgreSQL 测试 diff。只复验该增量，无阻塞发现：同一事务先以 `LIMIT 0` 解析诊断表及字段，再插入授权占用记录；缺表/字段会通过既有事务边界返回固定 storage 错误，发生在 `execute` 构造 HTTP 客户端及发请求之前。测试使用随机独立 schema，仅创建旧 parent 表，确认 claim 被拒且该 schema 的 parent 表仍为零行，没有删除旧数据。
+
+独立执行 `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgres.py -q`：4 passed in 0.67s；`git diff --check` 退出 0。未启停数据库、未读真实旧行或私有文件、未发外部请求。复验内容 SHA-256：
+
+- `scripts/m0/live.py`：`4cc44e76672c0be72bfee2ae9c848475c971260e21e555f87d473d05add02fae`
+- `tests/integration/test_m0_live_postgres.py`：`f9c026fbb99bc787ecad3d024c8f2fa5fcb7bbde27a6bbdbc269b913f0c10379`
+
+## 未提交业务结果专项复验
+
+同日追加，范围仅为远程 comment 3968481848 的修复；基线 `de99c41b0bfb3b956465187ff4b080fead66f746` 加 `execute` 提交标志与两个回归测试 diff。无阻塞发现：`business_committed` 仅在 `ledger.save` 成功返回后置为 true；保存失败时返回 `handoff` 和固定失败码，不再将内存中的 completed 报为已完成业务。已提交业务后的 trace 存储失败仍保留业务 completed、trace unknown，符合业务状态独立于 trace 的合同。
+
+独立执行 `.venv/bin/python -m pytest tests/test_m0_live.py -q`：66 passed in 1.55s；两个新增用例分别验证业务保存失败和仅 trace 存储失败，均使用完整 `execute` 与禁止真实网络的 HTTP 替身；`git diff --check` 退出 0。本专项未连接 PostgreSQL、未读取私有文件、未发外部请求。没有扩大为真实存储故障或进程中断矩阵证明。当前专项复验内容 SHA-256：
+
+- `scripts/m0/live.py`：`5f9fef6dbbe0e7ee0d62af4557bf4b7c021fc15973b0c5e1baf66ea310e0b62b`
+- `tests/test_m0_live.py`：`ceae4a2d83e4964d554234f709bdd3458ad9185199823eb2ae6704698497e3b2`

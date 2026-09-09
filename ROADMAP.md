@@ -1,8 +1,10 @@
 # Roadmap
 
-Current phase: technical design approved and persisted; local M0 A/B/C implementation and independent reviews are complete; integration PR checks have passed and the batch awaits user review. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Product feature implementation has not started.
+Current phase: technical design approved and persisted; local M0 A/B/C and integration are merged with independent review and main CI evidence; M0-01 one-shot live experiment was authorized and executed: model business completed; follow-up read-only diagnosis confirmed stored trace data and fixed a platform-metadata validation error. The initial failed exit is preserved; no full rerun or product gate clearance. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Product feature implementation has not started.
 
 ## Completed decisions and documentation
+
+- [x] 2026-09-09 用户指定默认DeepSeek Flash：直接使用deepseek-v4-flash，保留thinking/high。Pro实验记录保留；当前仅切换配置/入口与合成检查，不重跑付费实验。
 
 - [x] Operating constraints clarified — 2026-09-07: no backup/disk-disaster recovery; retain process/task recovery; CNY 1,000 adjustable initial budget reference; effectiveness first; data-use plan prepared by assistant then reviewed by user. F8 backup step retired with history, not passed.
 
@@ -42,7 +44,7 @@ Current phase: technical design approved and persisted; local M0 A/B/C implement
 
 - [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
 
-- [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。此为既有离线子任务记录；累计费用现已在B合成PostgreSQL完成本地机制验证，A扩展协议替身，见批次索引。真实调用入口保持关闭，区域/账号/费用/期限授权及真实链路仍未齐；不代表完整M0或产品通过。
+- [-] M0-01 首条真实入口本地准备 — 2026-09-09：[当前方案](docs/evidence/m0-01-live/plan.md)，沿用默认workspace/default项目；本地实现、审查已完成，[PR #12](https://github.com/kevinWangSheng/production-ops-agent/pull/12)代码提交CI成功，待用户审核，后续用户已批准并执行一次：[真实结果](docs/evidence/m0-01-live/execution.md)，两模型请求完成；后续[只读诊断](docs/evidence/m0-01-live/trace-diagnosis.md)确认trace正确、修复平台元数据误判；原失败与未知费用保留，未重跑模型/上传。以下离线记录为历史：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。此为既有离线子任务记录；累计费用现已在B合成PostgreSQL完成本地机制验证，A扩展协议替身，见批次索引。真实调用入口保持关闭，区域/账号/费用/期限授权及真实链路仍未齐；不代表完整M0或产品通过。
 
 - [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
 

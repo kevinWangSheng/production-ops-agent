@@ -95,7 +95,7 @@ Reuse may mean implementing an upstream idea, protocol or code logic in our chos
 
 ## Model priority and design ownership
 
-Confirmed user priority on 2026-09-07: adapt the first implementation to DeepSeek. Keep a replaceable model boundary for future GLM or other providers; this does not require implementing those providers in the first release. The initial validation profile is DeepSeek official Chat Completions-compatible service, deepseek-v4-pro, thinking/high; its availability and exact dependency/protocol compatibility require M0 verification and recorded versions.
+Confirmed user priority on 2026-09-07: adapt the first implementation to DeepSeek. Keep a replaceable model boundary for future GLM or other providers; this does not require implementing those providers in the first release. User decision on 2026-09-09: use Flash by default and call its explicit alias rather than relying on Pro rerouting. The current validation profile is DeepSeek official Chat Completions-compatible service, deepseek-v4-flash, thinking/high; its availability and exact dependency/protocol compatibility require M0 verification and recorded versions.
 
 Approved implementation approach: shared investigation instructions and output/evidence contracts; provider/model-version capability configuration for protocol differences; minimal prompt adjustments only when official requirements or controlled evaluation justify them. Do not fork a complete investigation prompt or workflow for every vendor by default. Record effective prompt, adapter, model, endpoint/mode and tool-schema versions per run. See `docs/research/model-adaptation-and-design-ownership-2026-09-07.md` for current evidence and responsibilities.
 

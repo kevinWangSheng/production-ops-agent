@@ -1,0 +1,45 @@
+{
+  "base_commit": "ad99e6abd30afdbc1e57a007afaab69dd3e80203",
+  "checks": [
+    {
+      "command": [
+        "make",
+        "check"
+      ],
+      "exit_code": 0,
+      "output": "check-0.txt"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "scripts.m0",
+        "live"
+      ],
+      "exit_code": 3,
+      "output": "check-1.txt"
+    },
+    {
+      "command": "M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgres.py -q",
+      "exit_code": 0,
+      "output": "postgres.txt"
+    },
+    {
+      "command": "live with real private config + unapproved draft under no_network",
+      "exit_code": 3,
+      "output": "draft-denied.txt"
+    }
+  ],
+  "model_calls": 0,
+  "trace_uploads": 0,
+  "langsmith_readonly_metadata_gets": 1,
+  "sha256": {
+    "scripts/m0/live.py": "230a3dd28af4f6fad4864ad2f101568865d7accdfd121e9d046016c3f338558f",
+    "scripts/m0/live.sql": "c6a593a5a4c0acf6f1cf75403ee903f227bf7cf84e19a4c01aae9bd67427f5ab",
+    "scripts/m0/__main__.py": "77680261a48e0c29821d45364d996cb48073390d046f43be2911ca5b1399d8c8",
+    "tests/test_m0_live.py": "66375d7705fdd1f831c48efc5a9d79eeaab3541e160495a7af77d9a2be4ea816",
+    "tests/integration/test_m0_live_postgres.py": "32e3128428a49aab2b1cb83a692aa7f69842e65d3aec3a8d9f104b702d4de7ac",
+    "uv.lock": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce"
+  },
+  "postgres_stopped": true
+}

@@ -42,7 +42,7 @@ def event(delta=None, finish=None, usage=None):
                 "id": "synthetic-stream",
                 "object": "chat.completion.chunk",
                 "created": 1,
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": []
                 if usage
                 else [{"index": 0, "delta": delta or {}, "finish_reason": finish}],

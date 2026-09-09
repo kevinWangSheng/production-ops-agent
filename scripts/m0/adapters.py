@@ -129,7 +129,7 @@ class SyntheticAdapter:
                         async with asyncio.timeout(seconds):
                             sent = True
                             stream = await client.chat.completions.create(
-                                model="deepseek-v4-pro",
+                                model="deepseek-v4-flash",
                                 messages=messages,
                                 tools=fixture["tools"],
                                 stream=True,

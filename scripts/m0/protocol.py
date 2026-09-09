@@ -225,7 +225,7 @@ async def rehearse():
                 "id": "synthetic-response",
                 "object": "chat.completion",
                 "created": 1788825660,
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": [{"index": 0, "message": message, "finish_reason": finish}],
                 "usage": {
                     "prompt_tokens": 20,
@@ -250,7 +250,7 @@ async def rehearse():
             messages = copy.deepcopy(fixture["messages"])
             async with asyncio.timeout(15):
                 first = await client.chat.completions.create(
-                    model="deepseek-v4-pro",
+                    model="deepseek-v4-flash",
                     messages=messages,
                     tools=fixture["tools"],
                     max_tokens=256,
@@ -263,7 +263,7 @@ async def rehearse():
                     assistant, results, provider="deepseek", run_id=RUN_ID
                 )
                 final = await client.chat.completions.create(
-                    model="deepseek-v4-pro",
+                    model="deepseek-v4-flash",
                     messages=messages,
                     tools=fixture["tools"],
                     max_tokens=256,
