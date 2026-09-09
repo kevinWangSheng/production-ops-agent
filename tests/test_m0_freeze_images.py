@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,37 @@ def lab(tmp_path):
     )
     (runtime / "read_proxy.py").write_bytes(b"existing runtime proxy\n")
     (runtime / "compose-pinned.json").write_bytes(b"existing runtime compose\n")
+    # A tiny pinned source archive exercises the same mounted paths without downloads.
+    source_name = "opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad"
+    files = {
+        "src/flagd/demo.flagd.json": b'{"flags": {}}\n',
+        "src/grafana/grafana.ini": b"[server]\n",
+        "src/grafana/provisioning/datasources/default.yaml": b"apiVersion: 1\n",
+        "src/otel-collector/otelcol-config-extras.yml": b"# extras\n",
+        "src/product-catalog/products/products.json": b"[]\n",
+    }
+    for name, content in files.items():
+        path = runtime / source_name / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    (runtime / source_name / "src/grafana/provisioning/empty").mkdir()
+    with tarfile.open(runtime / "otel.tar.gz", "w:gz") as bundle:
+        for path in sorted((runtime / source_name).rglob("*")):
+            bundle.add(path, arcname=str(path.relative_to(runtime)), recursive=False)
+    archive.joinpath("source-downloads.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "otel",
+                    "url": "https://codeload.github.com/open-telemetry/opentelemetry-demo/tar.gz/63649d6d6a59de88fb421b88c3c3a6185b6d21ad",
+                    "sha256": hashlib.sha256(
+                        (runtime / "otel.tar.gz").read_bytes()
+                    ).hexdigest(),
+                    "bytes": (runtime / "otel.tar.gz").stat().st_size,
+                }
+            ]
+        )
+    )
     fixture = tools / "inspect.json"
     fixture.write_text(
         json.dumps(
@@ -101,9 +133,9 @@ def snapshot(root):
     }
 
 
-def run_freeze(root):
+def run_freeze(root, *extra):
     return subprocess.run(
-        [sys.executable, str(root / "scripts/m0_environment/freeze_images.py")],
+        [sys.executable, str(root / "scripts/m0_environment/freeze_images.py"), *extra],
         cwd=root,
         env={
             **os.environ,
@@ -179,4 +211,121 @@ def test_missing_archive_is_not_silently_recreated(lab, name):
     before = snapshot(root)
     result = run_freeze(root)
     assert result.returncode != 0
+    assert snapshot(root) == before
+
+
+SOURCE_NAME = "opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "flagd",
+        "added-file",
+        "added-empty-dir",
+        "removed-file",
+        "removed-empty-directory",
+        "ancestor-symlink",
+        "nested-file-symlink",
+        "grafana",
+        "extras",
+        "products",
+        "file-symlink",
+        "parent-symlink",
+        "generated-symlink",
+        "tar-drift",
+    ],
+)
+def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+    root, _, _, _ = lab
+    runtime = root / "tmp/m0-environment"
+    source = runtime / SOURCE_NAME
+    flag = source / "src/flagd/demo.flagd.json"
+    if mutation == "flagd":
+        flag.write_text('{"flags": {"changed": true}}')
+    elif mutation == "added-file":
+        (flag.parent / "extra.json").write_text("{}")
+    elif mutation == "added-empty-dir":
+        (flag.parent / "extra-directory").mkdir()
+    elif mutation == "removed-file":
+        flag.unlink()
+    elif mutation == "removed-empty-directory":
+        (source / "src/grafana/provisioning/empty").rmdir()
+    elif mutation == "ancestor-symlink":
+        target = root / "source-src"
+        (source / "src").rename(target)
+        (source / "src").symlink_to(target, target_is_directory=True)
+    elif mutation == "nested-file-symlink":
+        nested = source / "src/grafana/provisioning/datasources/default.yaml"
+        target = root / "same-nested-content"
+        target.write_bytes(nested.read_bytes())
+        nested.unlink()
+        nested.symlink_to(target)
+    elif mutation in ("grafana", "extras", "products"):
+        name = {
+            "grafana": "src/grafana/grafana.ini",
+            "extras": "src/otel-collector/otelcol-config-extras.yml",
+            "products": "src/product-catalog/products/products.json",
+        }[mutation]
+        (source / name).write_text("changed")
+    elif mutation == "file-symlink":
+        target = root / "same-bytes"
+        target.write_bytes(flag.read_bytes())
+        flag.unlink()
+        flag.symlink_to(target)
+    elif mutation == "parent-symlink":
+        target = root / "same-directory"
+        flag.parent.rename(target)
+        flag.parent.symlink_to(target, target_is_directory=True)
+    elif mutation == "generated-symlink":
+        original = runtime / "collector.yml"
+        target = root / "same-generated-bytes"
+        target.write_bytes(original.read_bytes())
+        original.unlink()
+        original.symlink_to(target)
+    else:
+        with (runtime / "otel.tar.gz").open("ab") as stream:
+            stream.write(b"changed archive")
+    before = snapshot(root)
+    result = run_freeze(root)
+    assert result.returncode != 0
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("location", ["outside", "inside-fixed-root"])
+def test_unapproved_bind_is_rejected_even_if_compose_hash_matches(lab, location):
+    root, _, expected_compose, _ = lab
+    runtime = root / "tmp/m0-environment"
+    # A FIFO outside the allowed source tree would block if opened as input.
+    unknown = (
+        root.parent if location == "outside" else runtime / SOURCE_NAME
+    ) / "unapproved-input"
+    os.mkfifo(unknown)
+    candidate = json.loads((runtime / "compose.json").read_text())
+    frozen = json.loads(expected_compose)
+    for config in (candidate, frozen):
+        config["services"]["grafana"]["volumes"][0]["source"] = str(unknown)
+    (runtime / "compose.json").write_text(json.dumps(candidate))
+    path = root / "docs/evidence/m0-real-environment/configuration-hashes.json"
+    hashes = json.loads(path.read_text())
+    hashes["tmp/m0-environment/compose-pinned.json"] = hashlib.sha256(
+        (json.dumps(frozen, indent=2) + "\n").encode()
+    ).hexdigest()
+    path.write_text(json.dumps(hashes))
+    before = snapshot(root)
+    result = run_freeze(root)
+    assert result.returncode != 0
+    assert snapshot(root) == before
+    assert (
+        "Unapproved bind source" in result.stderr
+        or "absent from fixed source archive" in result.stderr
+    )
+
+
+def test_check_only_validates_candidate_without_any_publication(lab):
+    root, _, _, _ = lab
+    before = snapshot(root)
+    result = run_freeze(root, "--check-only")
+    assert result.returncode == 0, result.stderr
+    assert "9 bind inputs" in result.stdout
     assert snapshot(root) == before
