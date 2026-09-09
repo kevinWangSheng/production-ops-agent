@@ -1,0 +1,6 @@
+{
+  "checked_business_json_files": 74,
+  "credential_literal_found": false,
+  "private_protocol_fields_found": false,
+  "scope": "persisted business JSON only; not a proof of every network path or OS isolation"
+}
