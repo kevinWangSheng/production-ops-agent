@@ -219,18 +219,26 @@ class LiveLedger(PostgresBudget):
             if row is None:
                 raise ConfigError("LIVE_ATTEMPT_DENIED")
 
-    def save(self, experiment_id, business, dto, usage):
+    def save(self, experiment_id, business, dto, usage, business_code):
         with self._transaction() as conn:
             conn.execute(
                 "UPDATE m0_live_once SET business=%s,outbox=%s,usage=%s WHERE experiment_id=%s",
                 (business, Jsonb(dto), Jsonb(usage), experiment_id),
             )
+            conn.execute(
+                "INSERT INTO m0_live_diagnostics(experiment_id,business_code,trace_code) VALUES(%s,%s,'TRACE_NOT_ATTEMPTED') ON CONFLICT(experiment_id) DO UPDATE SET business_code=EXCLUDED.business_code",
+                (experiment_id, business_code),
+            )
 
-    def trace_status(self, experiment_id, status):
+    def trace_status(self, experiment_id, status, code):
         with self._transaction() as conn:
             conn.execute(
                 "UPDATE m0_live_once SET trace_status=%s WHERE experiment_id=%s",
                 (status, experiment_id),
+            )
+            conn.execute(
+                "INSERT INTO m0_live_diagnostics(experiment_id,trace_code) VALUES(%s,%s) ON CONFLICT(experiment_id) DO UPDATE SET trace_code=EXCLUDED.trace_code",
+                (experiment_id, code),
             )
 
 
@@ -423,6 +431,7 @@ def failure_code(exc):
         )
     codes = {
         "LIVE_TRACE_RESPONSE_INVALID",
+        "LIVE_PROJECT_RESPONSE_INVALID",
         "LIVE_HTTP_FAILED",
         "LIVE_AUTH_FAILED",
         "LIVE_RATE_LIMITED",
@@ -515,6 +524,8 @@ async def execute(contract, config, ledger, *, transport=None):
                 "GET",
                 f"{contract['endpoint']}/sessions/{contract['project_id']}",
             )
+            if type(project) is not dict:
+                raise ConfigError("LIVE_PROJECT_RESPONSE_INVALID")
             if (project.get("id"), project.get("tenant_id"), project.get("name")) != (
                 contract["project_id"],
                 contract["workspace_id"],
@@ -580,11 +591,13 @@ async def execute(contract, config, ledger, *, transport=None):
     )
     trace_code = "TRACE_NOT_ATTEMPTED"
     try:
-        ledger.save(contract["experiment_id"], business, dto, usage)
+        ledger.save(contract["experiment_id"], business, dto, usage, business_code)
         # Failed or cancelled model chain does not gain further upload authority in this slice.
         if business == "completed":
             body = trace_wire(contract, dto)
-            ledger.trace_status(contract["experiment_id"], "unknown")
+            ledger.trace_status(
+                contract["experiment_id"], "unknown", "TRACE_EXPORT_STARTED"
+            )
             await wire.request(
                 "trace-post", "POST", f"{contract['endpoint']}/runs", body
             )
@@ -602,10 +615,14 @@ async def execute(contract, config, ledger, *, transport=None):
                 if trace_code == "TRACE_VERIFIED":
                     trace = "verified"
                 break
-        ledger.trace_status(contract["experiment_id"], trace)
+        ledger.trace_status(contract["experiment_id"], trace, trace_code)
     except (Exception, asyncio.CancelledError) as exc:
         trace_code = failure_code(exc)
         trace = "unknown"  # Committed business/outbox survives exporter failure.
+        try:
+            ledger.trace_status(contract["experiment_id"], trace, trace_code)
+        except (Exception, asyncio.CancelledError):
+            pass  # Unavailable storage cannot be certified as having saved diagnostics.
     finally:
         await wire.client.aclose()
     return {

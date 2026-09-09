@@ -27,3 +27,11 @@ Code Review于11:50UTC返回，覆盖c8a8ced，新增P2（comment3968000660）�
 ## Flash提交复审：异常响应边界与计划同步
 
 12:07UTC的Code Review覆盖c0580b7，指出两个P2：comment3968131327要求畸形模型响应在解析边界分类为协议失败；comment3968131337要求当前资源计划同步Flash。后者已在等待期间本地发现并修正，随本次提交发布。前者补完整结构校验与最终JSON解析错误转换；保留profile错配阻断、未知费用占用和异常正文过滤。新增9个完整链路畸形响应回归，独立结果见[parser-review.md](parser-review.md)。只处理返回的具体发现，没有新增真实调用。
+
+## 审计持久化与项目响应复审
+
+12:20UTC的review覆盖70850a2，提出comment3968243058/3968243067/3968243074：安全错误码需要随状态持久化、项目2xx非对象需要受控分类、资源计划其他当前状态仍有过期文字。新增独立m0_live_diagnostics表，与业务/outbox或trace状态在同一事务写固定code；原实验行不增加或改写字段，原记录没有诊断行表示历史未分类。数据库不可用时仍不能假称已持久化，输出固定失败并保留原预算占用，不重发模型。项目非对象在任何模型调用前返回LIVE_PROJECT_RESPONSE_INVALID。资源计划全文同步现状/历史边界。
+
+新增表只由显式本地实验setup安装，live不会迁移数据库；测试使用现有专属55431及随机新身份，原真实实验行前后hash核对。独立验证见[durable-diagnostics-review.md](durable-diagnostics-review.md)。这不是产品数据库迁移或新的真实调用授权。
+
+本轮补充验证：make check254passed/16显式PG默认skip；新增/现有live PG专项3passed，独立67项组合测试及诊断SQL失败事务回滚通过。原真实实验行to_jsonb的SHA256前后相同。专属PG已stop，保留旧数据和新增诊断表；模型/上传新增0。

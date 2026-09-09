@@ -77,11 +77,13 @@ class MemoryLedger:
         assert self.claimed and slot not in self.attempts
         self.attempts.append(slot)
 
-    def save(self, experiment_id, business, dto, usage):
+    def save(self, experiment_id, business, dto, usage, business_code):
         self.saved = (business, dto, usage)
+        self.business_code = business_code
 
-    def trace_status(self, experiment_id, status):
+    def trace_status(self, experiment_id, status, code):
         self.status = status
+        self.trace_code = code
 
 
 def scenario(contract, ledger, variant="normal"):
@@ -264,6 +266,8 @@ def test_complete_boundary(variant, business, trace, models):
     assert len([r for r in seen if r.url.host == "api.deepseek.com"]) == models
     assert len(seen) <= 7 and result["actual_cost_cny"] is None
     assert ledger.saved[0] == business
+    assert ledger.business_code == result["business_code"]
+    assert ledger.trace_code == result["trace_code"]
     with no_network(), pytest.raises(ConfigError):
         asyncio.run(execute(contract, config, ledger, transport=transport))
 
@@ -464,3 +468,25 @@ def test_malformed_model_response_is_protocol_failure(payload):
     assert result["business_code"] == "LIVE_PROTOCOL_FAILED"
     assert result["business"] == "failed"
     assert "model-2" not in ledger.attempts and "trace-post" not in ledger.attempts
+
+
+@pytest.mark.parametrize("payload", [None, [], "text", 42, True])
+def test_malformed_project_response_is_classified_before_model(payload):
+    contract, config = packet()
+    ledger = MemoryLedger()
+    with no_network():
+        result = asyncio.run(
+            execute(
+                contract,
+                config,
+                ledger,
+                transport=httpx2.MockTransport(
+                    lambda request: httpx2.Response(
+                        200, content=json.dumps(payload).encode()
+                    )
+                ),
+            )
+        )
+    assert result["business_code"] == "LIVE_PROJECT_RESPONSE_INVALID"
+    assert ledger.business_code == result["business_code"]
+    assert ledger.attempts == ["project"]

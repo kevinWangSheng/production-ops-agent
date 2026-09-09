@@ -110,3 +110,4 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-flash，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
 批准合同v2还需runtime={python,implementation}，明确完整Python版本（包括patch）及CPython实现。入口在claim前核对实际运行环境与锁定依赖闭包（含当前平台marker和binary extra）；旧/缺失依赖或Python错配固定拒绝。此核对不自动安装环境，也不承诺检测伪造distribution元数据或被篡改的二进制。
+错误审计：显式本地setup还会创建m0_live_diagnostics，与m0_live_once通过experiment_id关联；业务/outbox与business_code同事务，trace状态与trace_code同事务。原实验行不改写，无诊断行代表历史未记录；连接不可用时不能声称错误码已落盘，需保留CLI固定分类。本次不向生产数据库安装或迁移。

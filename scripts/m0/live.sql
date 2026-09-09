@@ -13,3 +13,10 @@ CREATE TABLE IF NOT EXISTS m0_live_once (
  usage jsonb,
  trace_status text NOT NULL DEFAULT 'pending' CHECK(trace_status IN ('pending','unknown','verified'))
 );
+
+-- Additive diagnostic table; existing experiment rows and unknown history stay intact.
+CREATE TABLE IF NOT EXISTS m0_live_diagnostics (
+ experiment_id uuid PRIMARY KEY REFERENCES m0_live_once(experiment_id),
+ business_code text,
+ trace_code text NOT NULL
+);
