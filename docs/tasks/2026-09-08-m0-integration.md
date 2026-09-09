@@ -1,6 +1,6 @@
 # M0 汇合与秘密扫描
 
-- 当前状态（2026-09-09）：PR #8 已合入 components；GitHub 扫描证据版本发现正在独立修复分支处理，本次独立复验完成，待新 PR 最新 CI 与用户审核。下文 2026-09-08 过程与 CI 状态保留为历史。
+- 当前状态（2026-09-09）：PR #8 已合入 components；GitHub 扫描证据版本发现正在独立修复分支处理，本次独立复验完成，PR #9 待用户审核；最新提交 CI 以 PR 实时 checks 为准。下文 2026-09-08 过程与 CI 状态保留为历史。
 - 工作区：production-ops-agent-m0-integration / chore/m0-integration；依赖快照 chore/m0-components（普通本地 merge A/B/C，不代表任何 PR 已获准合并）。
 - 依据：SPEC 门槛与数据出口、C3 §5/7/11–13、M0 §1/2/3/6/7、本批用户授权和[索引](2026-09-08-m0-batch.md)。
 
@@ -27,7 +27,7 @@ A/B/C各自独立发现已关闭；当前汇合自测135 passed/13默认skip，�
 
 全新上下文review_integration独立验证135普通tests、12实际PG集成（1原生restart skip）；I-R1为新证据源码hash误报，精确例外修复1cb08e0后独立重跑当前文件/全历史扫描及7项反例通过，原发现已关闭。[独立报告](../evidence/m0-integration/independent-review.md)。本地实现和独立审查完成，PR/CI尚待提交回读；不自动合并。最终公开PR描述记录最新提交checks，避免把早期自测当最新提交结果。
 
-## PR/CI及最终交接
+## 2026-09-08 PR/CI及交接（历史）
 
 [PR #8](https://github.com/kevinWangSheng/production-ops-agent/pull/8) base=chore/m0-components 51c892a。0e2435d 的GitHub run34318679519：checks成功（含Gitleaks），m0-postgres成功（实际12 passed/1原生restart skip）。[五PR快照](../evidence/m0-integration/pr-ci-snapshot.json)记录核查时各head及checks；这是固定快照，后续文档提交最新CI以PR实时状态和最终描述为准。五个PR均OPEN、未合并。
 
@@ -43,4 +43,5 @@ A/B/C各自独立发现已关闭；当前汇合自测135 passed/13默认skip，�
 - 完成条件：固定版本实际扫描、摘要回读匹配、历史工件逐字不变、独立 Agent 复验、新 PR 与最新 CI；合并等待用户授权。
 - 实现者验证：固定提交的实际扫描退出 0 / `SECRET_SCAN_PASSED`，42 个可达提交；源码摘要与提交及新 JSON 完全匹配，原目录 5 份历史工件逐字不变。详见[范围与复现](../evidence/m0-integration/post-fix-scan-2026-09-09.md)和[原始结果](../evidence/m0-integration/post-fix-scan-2026-09-09.json)。未改代码，未重复数据库/协议测试。
 - 独立复验：全新上下文 Agent 独立核对版本、原工件及两次实际扫描，未发现阻断项；见[报告](../evidence/m0-integration/review-evidence-2026-09-09.md)。
-- 下一步：提交新 PR 并检查最新 CI；CI/PR 结果以新 PR 描述和实时 checks 为准，合并等待用户审核。
+- 当前交接：[PR #9](https://github.com/kevinWangSheng/production-ops-agent/pull/9) 已提交；修复和独立复验完成，等待用户审核。最新提交 CI 以 PR checks 为准，合并须明确授权。
+- GitHub 新增发现 discussion_r3965882716：汇合任务已写 #8 合并，而 ROADMAP/批次索引仍称全部待合并。已同步两处当前状态，明确 #8 已合并、#4–#7 与 #9 仍 OPEN，以及此文档分支不含其他原分支本轮修复；原 2026-09-08 过程标为历史，扫描原始工件不变。

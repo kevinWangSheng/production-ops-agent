@@ -40,7 +40,7 @@ Current phase: technical design approved and persisted; local M0 A/B/C implement
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-08 本地 M0 三线批次：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。共同基线PR #4；A/B/C本地实现及独立审查完成，PR #6/#5/#7最新checks成功，均未合并。汇合实测12项PostgreSQL、Gitleaks真实正负自检及精确误报修复已完成，独立集成复验通过，PR #8 checks/m0-postgres成功，等待集中审核；真实调用及产品实施门槛保持关闭。
+- [-] 2026-09-09 M0 PR 修复已交付，待用户审核：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#7 原分支修复、独立复验与最新 CI 已完成，仍 OPEN；#4 公共基线已普通 merge 到 A/B/C 复测。#8 已合入远程 components（1282ab4），证据澄清 [PR #9](https://github.com/kevinWangSheng/production-ops-agent/pull/9) 待审，最新检查以 PR 为准。本分支仅包含 #8 的既有代码和 #9 文档，不包含 #4–#7 本轮修复；真实调用及产品实施门槛保持关闭。
 
 - [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。此为既有离线子任务记录；累计费用现已在B合成PostgreSQL完成本地机制验证，A扩展协议替身，见批次索引。真实调用入口保持关闭，区域/账号/费用/期限授权及真实链路仍未齐；不代表完整M0或产品通过。
 

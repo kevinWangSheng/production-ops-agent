@@ -29,3 +29,14 @@ python3 scripts/check_secrets.py \
 ## 限制与交接
 
 原 post-fix JSON 只指向固定提交，不声称扫描自身或未来变更；此边界清楚且无循环引用。独立第二次扫描包含待审三文件，但不包括其后生成的本报告；最终提交全范围扫描仍须由最新 CI 证明。未运行数据库、服务、真实模型/trace、付费调用或产品验收，未读取真实 .env。没有提交、推送或合并；临时复验仓库保留供协调者检查和安全清理。
+
+
+## 2026-09-09 追加：PR #9 批次状态发现复验
+
+针对 discussion_r3965882716，独立只读复核 ROADMAP、批次索引及汇合任务的本次差异；未参与这三份文档的修改。结论：新增当前状态与远程一致，旧过程明确标为历史，未发现阻断项。
+
+实际执行 `gh pr list --state all --json number,state,headRefOid,baseRefName,mergeCommit,url` 及各 PR 的 `gh pr view --json headRefOid,statusCheckRollup,body`：#4 为 92eb7d0、#5 为 ab7f0ad、#6 为 566316a、#7 为 5905792，均 OPEN 且 checks SUCCESS；#8 为 MERGED，目标 components、合并提交 1282ab4；#9 为 OPEN，核查时 head ea661e0 的 checks/m0-postgres 均 SUCCESS。本次未提交改动不借用该 CI 结果，后续仍须最新提交检查。
+
+GitHub GraphQL reviewThreads 实时回读确认：#4–#7 的 7 条原讨论均 resolved；#8 与 #9 的各一条讨论仍 unresolved。文档引用的测试数字、修复范围与各 PR 描述一致；此追加只复核状态和对应来源，没有重跑其他分支测试或重新认证其实现。Git merge-base 检查确认四个下层最新 head 均不是本分支 HEAD 的祖先。
+
+逐个解析三份文档中的本地 Markdown 链接，目标文件全部存在。再次将固定 1282ab4 下的 5 份历史扫描目录工件与当前文件逐字比较，全部一致。SPEC、验收和扫描代码无本轮修改；文档继续明确真实入口、M0 退出和产品验收未通过，不将 PR 合并混作实施门槛开放。按任务范围没有重复固定历史扫描、读取真实 .env、启动服务或执行提交/推送；最终暂存快照及 CI 由协调者执行。
