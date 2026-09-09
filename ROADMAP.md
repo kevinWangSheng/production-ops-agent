@@ -40,7 +40,7 @@ Current phase: technical design approved and persisted; local M0 A/B/C implement
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-09 M0 离线批次修复与汇合：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。用户已授权合并，#4–#7 已合入 main，#8/#9 已合入 components；收尾 PR #10 汇集既有集成测试、扫描 CI 和证据；其 GitHub review 新增暂存索引漏扫 P1，已修复并独立复验，因新增安全改动待用户审核后合入 main，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
+- [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
 
 - [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。此为既有离线子任务记录；累计费用现已在B合成PostgreSQL完成本地机制验证，A扩展协议替身，见批次索引。真实调用入口保持关闭，区域/账号/费用/期限授权及真实链路仍未齐；不代表完整M0或产品通过。
 
