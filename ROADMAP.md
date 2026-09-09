@@ -40,7 +40,7 @@ Current phase: technical design approved and persisted; M0-01 offline preparatio
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-08 本地 M0 三线批次协调准备：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。共同基线保留既有离线成果并合入最新 Git 规则；接口先独立审查，再并发 A/B/C。本批仅本地可逆实现与 PR，真实调用及产品实施门槛保持关闭。
+- [-] 2026-09-09 M0 PR review 修复与依赖复测：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。原批次已交付 #4–#8；#4–#7 待审，#8 已合入 components，本轮修复 GitHub 发现并另开证据澄清 PR。公共基线先独立复验，再普通 merge 到 A/B/C 复测；真实调用及产品实施门槛保持关闭。
 
 - [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。真实调用入口保持关闭，区域/预算/期限及累计费用机制待补齐；不代表 M0 机制或产品通过。
 
