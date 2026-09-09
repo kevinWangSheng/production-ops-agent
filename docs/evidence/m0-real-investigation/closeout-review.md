@@ -44,3 +44,25 @@ SPEC仅修正“完全没有实现/部署证据”的过期泛称，明确无产
 另针对实际环境当前归档做只读重放：真实输入配置/历史manifest不变，mock仅替换Docker inspect和最终Path.write_bytes。26条镜像/配置核验通过，恰有2个运行输出写请求被截获、实际写入0。与Git HEAD逐字对照，2份manifest及4份runtime-configuration原件共6文件全部不变。
 
 受检环境工作区源码SHA-256：freeze_images.py=`d0d73303467fef0bf2eabeb143db27bbbd9ab94bd2d02e71f2afa32ad86af71f`；测试=`1701a8958a8030078a2e8a166a9808d8116141424eeccb0c0818b8155e0fe966`。该修复的本地独立验证通过，没有剩余该发现阻断项；不宣称运行文件双写具备崩溃原子性，不启动环境/模型，不替代最新提交CI及已触发Security Review/Code Review闭环。
+
+## 同类 trace manifest 覆盖路径：独立补验
+
+父执行者复现：新checkout保留已提交jaeger-final-export.json但没有tmp导出目录时，旧export_traces.py会覆盖该历史manifest。修复仅在任何目录创建/HTTP前检查manifest.exists()或is_symlink()并拒绝，最终写manifest使用open("x")，避免检查后出现文件时覆盖。历史导出事实与实验成败不变，没有新增平台。
+
+独立阅读旧入口红测：存在manifest分支未拒绝，得到1 failed/1 passed，确实击中覆盖路径。修后独立运行 `.venv/bin/python -m pytest tests/test_m0_trace_archive.py -q`：**2 passed in 0.04s**。临时tree中的真实runpy入口配假urlopen，既有manifest时无HTTP/无导出目录且历史字节不变；无manifest时允许原新导出路径。
+
+另在主worktree通过Python CLI/runpy直接执行实际脚本路径，HTTP和socket入口均替换为拒绝函数：实际既有manifest触发“Historical trace manifest exists”退出，HTTP/network尝试0，原文件字节和tmp导出目录存在状态均不变；没有启动环境或发送真实GET。原manifest SHA-256=`fed1376f6dfc6cfadc8381181aa5189f402e96dd988b9ac8fb20e54382176cd9`，受检修复源码SHA-256=`aee371fce53407f6a50509b276aaa2d1c147c4a374261274deaad3c6459fd55f`。
+
+本路径独立复验通过，未发现剩余该覆盖问题。仅认证本地修复和历史保全；最新提交的Code/Security Review与CI仍由主执行者等结果并闭环，不能以旧提交审查代表当前修复。
+
+## Code Review comment3971972974：全部bind输入保全
+
+旧核验仅覆盖Compose及3个生成文件，没有覆盖实际挂载的flagd、Grafana/provisioning、Collector extras和商品数据。归档Compose共有9条bind声明，其中flagd目录被两服务复用。该发现是重现入口的未覆盖输入，不能据事后修复断言原实验时点已经有完整bind验证。
+
+独立核查本次最小修复：根据已有source-downloads.json中的固定OTel commit URL和归档SHA验证本地otel.tar.gz，按tar的原目录/文件全集对比每个非生成bind源；不新建或更新基线。目录集合包含空目录，新增/缺失/改字节均拒绝；文件、目录、祖先路径和生成路径symlink拒绝。未知来源先按路径分类，原tar不存在的源及目录新增成员在读取其内容前拒绝；FIFO不被作为输入打开。3个生成文件继续受原hash核对。完整候选通过后才可写运行输出，`--check-only`则完全不写。
+
+已读取保留红测工件：12 failed/9 passed，其中旧入口对实际bind/tar漂移或unknown路径未拒绝。首版独立25项通过后，增加源树内未知项早拒绝及对应回归；最终独立执行 `/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python -m pytest tests/test_m0_freeze_images.py -q`：**26 passed in 7.83s**。测试用临时tree运行实际CLI、fake inspect，覆盖flagd/Grafana/extras/products、目录新增/删除含空目录、文件/父/祖先/嵌套symlink、源tar漂移、源树内外unknown FIFO（即使测试Compose hash匹配）及check-only无写；没有真实Docker或网络操作。
+
+另外，审查者在原环境worktree对**实际保留tar及当前9条bind内容**执行真实脚本 `--check-only` 路径：只用已归档image记录替代Docker inspect，并将Path.write_bytes/write_text拦截为拒绝。26个镜像记录、9条bind和配置核对通过，实际写0。该步骤证明现在保留的源码树/生成配置与固定归档匹配；没有重新检查已停Docker中的镜像，没有重启服务，不追溯认证过去运行时点。
+
+与Git HEAD逐字核对，image-lock、configuration-hashes、source-downloads以及4个runtime-configuration原件共7文件保持不变。最终受检源码SHA-256=`f0d47cba90b0c46239061b0f016564b542a23c0d8218133212c819647cd0702d`；测试=`0541d29c493f34bc7783c0b01d63a777142c0319a088c0c70c62da7efabab222`。本P2本地独立复验通过，没有剩余已定位的覆盖缺口；不声明敌对文件系统并发下的无TOCTOU保证，不扩产品/恢复平台。远端最新提交的复审与CI仍需闭环。
