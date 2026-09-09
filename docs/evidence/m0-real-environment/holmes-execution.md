@@ -1,8 +1,8 @@
 # HolmesGPT 基线实际执行
 
-最终状态（2026-09-09）：**已停止所有Holmes模型调用；5次开发Run中只有normal-03返回最终业务结论，四次失败原样保留，两个故障Run均无最终结论。不是整体通过。** 固定上游真实调用15次HTTP，均响应200，另有本地包络拒绝未发HTTP；59次工具查询。normal-03质量仅有限支持，不能认证健康；故障定位能力本轮未证明。
+最终状态（2026-09-09）：**已停止所有Holmes模型调用；5次主动开发Run中只有normal-03返回最终业务结论，四次失败原样保留，两个故障Run均无最终结论；另一次独立业务证据接续也因输出截断没有报告。不是整体通过。** 固定上游真实调用16次HTTP，均响应200，另有本地包络拒绝未发HTTP；59次工具查询。normal-03质量仅有限支持，不能认证健康；故障定位能力本轮未证明。
 
-当前累计分配16HTTP/16CNY，实际15次，剩1次不使用；上游trace上传0。实际response model全部deepseek-v4-flash，input141487/output38443 tokens。按当前已知cache字段估算峰值0.6056352 CNY、半价offpeak假设0.3028176 CNY；更保守全部cache-miss峰值上界0.770448 CNY，**均不是已核账费用**。详细字段及计时口径见`holmes-per-run-usage.json`和`holmes-usage-summary.json`。
+当前累计分配16HTTP/16CNY，实际16次，额度已用完；上游trace上传0。实际response model全部deepseek-v4-flash，input168105/output46634 tokens。按当前已知cache字段估算峰值0.7592082 CNY、半价offpeak假设0.3796041 CNY；更保守全部cache-miss峰值上界0.924021 CNY，**均不是已核账费用**。详细字段及计时口径见`holmes-per-run-usage.json`和`holmes-usage-summary.json`。
 
 
 历史记录，截至 normal-02：已实际执行固定上游循环和官方Flash多轮工具调用，两个正常窗口开发Run均没有最终结论。失败保留，不算质量通过。
@@ -47,8 +47,14 @@ normal-03独立结论复核：主要引用数值准确；e5/e6为同5条trace，
 
 ## 检查与复核范围
 
-两个脚本最终Ruff check、Ruff format --check和py_compile通过；离线真实LiteLLM协议构建/续传布尔检查与token计数器初始化通过（不是额外live模型）。74个私有业务JSON检查未发现实际模型key字面值或provider reasoning_content/provider_specific_fields/thinking_blocks字段；该检查不证明所有网络路径或OS沙箱。
+两个脚本最终Ruff check、Ruff format --check和py_compile通过；离线真实LiteLLM协议构建/续传布尔检查与token计数器初始化通过（不是额外live模型）。最终83个私有业务/接续输入JSON检查未发现实际模型key字面值或provider reasoning_content/provider_specific_fields/thinking_blocks字段；该检查不证明所有网络路径或OS沙箱。
 
-原始业务JSON+累计账本共75个文件hash在`holmes-private-artifact-manifest.json`，原始数据保持ignored私有文件，不在Git发布。清理工作树前必须安全保留这些工件，不能只保留hash后删除原始来源。
+原始业务JSON、输入快照及累计账本共88个文件hash在`holmes-private-artifact-manifest.json`，原始数据保持ignored私有文件，不在Git发布。清理工作树前必须安全保留这些工件，不能只保留hash后删除原始来源。
 
-独立上下文Agent已复核执行器边界、真实投影字段/计数及最终结果；主任务工作区`docs/evidence/m0-real-investigation/environment-boundary-review.md`和`investigation-outcome-review.md`持有完整审查。最终运行器hash `aaed9ac3ae501a2271c60bd52c5beb5f2b88611c633d8d0a808dbaa08508ead8`；不以审查替代实际权限隔离、完整M0、产品验收或生产证明。
+独立上下文Agent已复核执行器边界、真实投影字段/计数及最终结果；主任务工作区`docs/evidence/m0-real-investigation/environment-boundary-review.md`和`investigation-outcome-review.md`持有完整审查。主动fault-02运行器hash `aaed9ac3ae501a2271c60bd52c5beb5f2b88611c633d8d0a808dbaa08508ead8`；最终接续运行器hash `d24ae3d6649088172d812b1c9193c9696407a446f1d7bffc978de5db3b869bc2`；不以审查替代实际权限隔离、完整M0、产品验收或生产证明。
+
+## 单独授权的业务证据新Run接续（不覆盖主动调查失败）
+
+原“fault-02后停止”的决定及15HTTP阶段已经提交45aa1c8。主任务随后在原总额内执行前分配最后1HTTP给`fault-handoff-01`，因此新收尾记录单独追加，不回改原两次主动故障失败。新Run只继承12个持久业务tool views，完整出处/实际窗/hash保持；没有provider私有状态，也没有新查询/工程答案。只测已有业务证据支持最终报告的能力，不是私有协议恢复、原循环完成或同条件评测。
+
+接续最终结果：1HTTP200、0工具、包络90513bytes；供应商finish_reason=length，输出usage8191（配置max_tokens8192），业务content为空，status=incomplete。模型请求到响应66.066秒，非完整进程wall。独立审查确认没有可评分的诊断报告，不能据此评价故障定位准确率，也不能冒称原循环成功或私有状态恢复。主整轮模型额度到20次，Holmes16次，所有模型调用停止。

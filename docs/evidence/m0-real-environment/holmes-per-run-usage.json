@@ -101,6 +101,25 @@
       "peak_cache_aware_estimate_cny": 0.1564476,
       "offpeak_half_rate_estimate_cny": 0.0782238,
       "peak_cache_miss_upper_estimate_cny": 0.205446
+    },
+    {
+      "run_id": "fault-handoff-01",
+      "status": "incomplete",
+      "actual_http_requests": 1,
+      "tool_queries": 0,
+      "first_model_request_at": "2026-09-09T18:19:02.333376+00:00",
+      "last_model_response_at": "2026-09-09T18:20:08.399292+00:00",
+      "first_request_to_last_response_seconds": 66.065916,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 26618,
+        "completion_tokens": 8191,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 26618
+      },
+      "peak_cache_aware_estimate_cny": 0.153573,
+      "offpeak_half_rate_estimate_cny": 0.0767865,
+      "peak_cache_miss_upper_estimate_cny": 0.153573
     }
   ]
 }
