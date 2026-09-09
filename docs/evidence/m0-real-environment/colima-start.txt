@@ -1,0 +1,48 @@
+time="2026-09-09T10:16:51-07:00" level=info msg="starting colima [profile=m0-otel]"
+time="2026-09-09T10:16:51-07:00" level=info msg="runtime: docker"
+time="2026-09-09T10:16:52-07:00" level=info msg="creating and starting ..." context=vm
+time="2026-09-09T10:16:53-07:00" level=info msg="downloading disk image ..." context=vm
+time="2026-09-09T10:18:45-07:00" level=info msg="Terminal is not available, proceeding without opening an editor"
+time="2026-09-09T10:18:46-07:00" level=info msg="Starting the instance \"colima-m0-otel\" with internal VM driver \"vz\""
+time="2026-09-09T10:18:46-07:00" level=info msg="Attempting to download the image" arch=aarch64 digest= location=/Users/shenghuikevin/Library/Caches/colima/caches/11855796d01d1b76fbeb13f9bfabc0488c9cb66d8887d3e4ee7df48f05303ef0.raw
+time="2026-09-09T10:18:48-07:00" level=info msg="Downloaded the image from \"/Users/shenghuikevin/Library/Caches/colima/caches/11855796d01d1b76fbeb13f9bfabc0488c9cb66d8887d3e4ee7df48f05303ef0.raw\""
+time="2026-09-09T10:18:50-07:00" level=info msg="[hostagent] hostagent socket created at /Volumes/sd710/migrated/shenghuikevin/.colima/_lima/colima-m0-otel/ha.sock"
+time="2026-09-09T10:18:50-07:00" level=info msg="[hostagent] Starting VZ (hint: to watch the boot progress, see \"/Volumes/sd710/migrated/shenghuikevin/.colima/_lima/colima-m0-otel/serial*.log\")"
+time="2026-09-09T10:18:50-07:00" level=info msg="[hostagent] Mounting disk \"colima-m0-otel\" on \"/mnt/lima-colima-m0-otel\""
+time="2026-09-09T10:18:51-07:00" level=info msg="[hostagent] [VZ] - vm state change: running"
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] SSH server does not seem to be running on vsock port, using usernet forwarder"
+time="2026-09-09T10:18:56-07:00" level=info msg="SSH Local Port: 52668"
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] Waiting for the essential requirement 1 of 3: \"ssh\""
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] The essential requirement 1 of 3 is satisfied"
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] Waiting for the essential requirement 2 of 3: \"user session is ready for ssh\""
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] The essential requirement 2 of 3 is satisfied"
+time="2026-09-09T10:18:56-07:00" level=info msg="[hostagent] Waiting for the essential requirement 3 of 3: \"Explicitly start ssh ControlMaster\""
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] The essential requirement 3 of 3 is satisfied"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Waiting for the guest agent to be running"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Forwarding \"/var/run/docker.sock\" (guest) to \"/Users/shenghuikevin/.colima/m0-otel/docker.sock\" (host)"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Forwarding \"/var/run/containerd/containerd.sock\" (guest) to \"/Users/shenghuikevin/.colima/m0-otel/containerd.sock\" (host)"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Guest agent is running"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Waiting for the final requirement 1 of 1: \"boot scripts must have finished\""
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Not forwarding TCP 0.0.0.0:22"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] Not forwarding TCP [::]:22"
+time="2026-09-09T10:18:57-07:00" level=info msg="[hostagent] The final requirement 1 of 1 is satisfied"
+time="2026-09-09T10:18:57-07:00" level=info msg="READY. Run `limactl shell colima-m0-otel` to open the shell."
+installing: 386 OK
+installing: amd64 OK
+{
+  "supported": [
+    "linux/arm64",
+    "linux/amd64",
+    "linux/386"
+  ],
+  "emulators": [
+    "python3.12",
+    "qemu-i386",
+    "qemu-x86_64"
+  ]
+}
+time="2026-09-09T10:18:57-07:00" level=info msg="provisioning ..." context=docker
+colima-m0-otel
+Successfully created context "colima-m0-otel"
+time="2026-09-09T10:18:58-07:00" level=info msg="starting ..." context=docker
+time="2026-09-09T10:18:59-07:00" level=info msg=done

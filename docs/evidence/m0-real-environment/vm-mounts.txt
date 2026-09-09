@@ -1,0 +1,2 @@
+mount0 on /Users/shenghuikevin/Library/Caches/colima type virtiofs (ro,relatime)
+mount1 on /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment type virtiofs (rw,relatime)

@@ -1,0 +1,72 @@
+{
+  "at": "2026-09-09T17:35:12.760384+00:00",
+  "results": {
+    "frontend": {
+      "url": "http://127.0.0.1:18080/",
+      "status": 200,
+      "bytes": 9742
+    },
+    "prometheus-up": {
+      "url": "http://127.0.0.1:19090/api/v1/query?query=up",
+      "status": 200,
+      "bytes": 63
+    },
+    "metric-names": {
+      "url": "http://127.0.0.1:19090/api/v1/label/__name__/values",
+      "status": 200,
+      "bytes": 13411
+    },
+    "target-info": {
+      "url": "http://127.0.0.1:19090/api/v1/query?query=target_info",
+      "status": 200,
+      "bytes": 11812
+    },
+    "trace-services": {
+      "url": "http://127.0.0.1:16686/jaeger/ui/api/services",
+      "status": 200,
+      "bytes": 298
+    },
+    "logs-mapping": {
+      "url": "http://127.0.0.1:19200/otel/_mapping",
+      "status": 200,
+      "bytes": 7120
+    },
+    "logs-sample": {
+      "url": "http://127.0.0.1:19200/otel/_search?size=5",
+      "status": 200,
+      "bytes": 5507
+    },
+    "containers": {
+      "command": [
+        "docker",
+        "--context",
+        "colima-m0-otel",
+        "ps",
+        "-a",
+        "--format",
+        "{{json .}}"
+      ],
+      "exit_code": 0
+    },
+    "stats": {
+      "command": [
+        "docker",
+        "--context",
+        "colima-m0-otel",
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{json .}}"
+      ],
+      "exit_code": 0
+    },
+    "disk": {
+      "command": [
+        "df",
+        "-h",
+        "."
+      ],
+      "exit_code": 0
+    }
+  }
+}

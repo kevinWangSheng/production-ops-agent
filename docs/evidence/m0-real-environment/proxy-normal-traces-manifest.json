@@ -1,0 +1,32 @@
+{
+  "raw_path": "tmp/m0-environment/raw-evidence/proxy-normal-traces.json",
+  "raw_sha256": "08952cdf5f3c5112f13eee659e52e5541164f2d8b83ba0f36b5018339f66843f",
+  "raw_bytes": 625118,
+  "integration_id": "m0-otel-20260909",
+  "query": {
+    "start": [
+      "1788974760.204875"
+    ],
+    "end": [
+      "1788975360.204875"
+    ],
+    "service": [
+      "checkout"
+    ]
+  },
+  "source": "traces",
+  "collected_at": 1788975361.7466404,
+  "trace_count": 9,
+  "trace_ids": [
+    "2fc2942b21e225c58a24d94927b1cec9",
+    "82c2fed65c3e5d122fc448368cf205c2",
+    "cb3f9c342b1ee47062d7862e791503e4",
+    "519b4daa25ca7106aeeedacb4a9bc37a",
+    "77ef39534e25512af839a0a69622ecda",
+    "bdca8f21e5e545dd594522b414f933f6",
+    "966805d4645d2f2b472f5a4bb45b6a05",
+    "ae22172ade5aae26d9d914569433ad72",
+    "79bb001d0578440ca624447274adb3ed"
+  ],
+  "span_count": 460
+}

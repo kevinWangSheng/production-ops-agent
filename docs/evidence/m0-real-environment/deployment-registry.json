@@ -1,0 +1,845 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source_revision": "63649d6d6a59de88fb421b88c3c3a6185b6d21ad",
+  "at": "2026-09-09T17:38:17.437450+00:00",
+  "containers": [
+    {
+      "container_id": "f171ff2fa8fe32e7edec4a0d7520ebd42c8319e3ff3038849df46ee7ad1a0a8c",
+      "name": "/opspilot-m0-load-generator",
+      "image_id": "sha256:d257288d374e1f6ebceb9997049fd4a31437037e85fc6dccaedd0c4810e1ca11",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:d257288d374e1f6ebceb9997049fd4a31437037e85fc6dccaedd0c4810e1ca11",
+      "created": "2026-09-09T17:35:35.466335896Z",
+      "labels": {
+        "com.docker.compose.config-hash": "3e7ab88a0796793ab65661a6ce5689c3a836f3546d66840a3ef8068807dd6227",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:d257288d374e1f6ebceb9997049fd4a31437037e85fc6dccaedd0c4810e1ca11",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.replace": "opspilot-m0-load-generator",
+        "com.docker.compose.service": "load-generator",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:35:43.462384913Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.25",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "30e3e60156992aacda5c4d5cd4c4ca54466e1053fc64d7d58737701404278e75",
+      "name": "/opspilot-m0-prometheus",
+      "image_id": "sha256:5888c188cf09e3f7eebc97369c3b2ce713e844cdbd88ccf36f5047c958aea120",
+      "image_ref": "quay.io/prometheus/prometheus@sha256:5888c188cf09e3f7eebc97369c3b2ce713e844cdbd88ccf36f5047c958aea120",
+      "created": "2026-09-09T17:28:40.958098123Z",
+      "labels": {
+        "com.docker.compose.config-hash": "0ad853c29896b8d2079500c1874c28e5c6a08fef35d6ec36007859e6e824e0ab",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:5888c188cf09e3f7eebc97369c3b2ce713e844cdbd88ccf36f5047c958aea120",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.replace": "opspilot-m0-prometheus",
+        "com.docker.compose.service": "prometheus",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:28:43.319332623Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.27",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "fd1c681f98515d356c9974fbfa65cb33e427f05707352a9a1a0e61c91cdc7be5",
+      "name": "/opspilot-m0-frontend-proxy",
+      "image_id": "sha256:9cc478aa226b33cd80af46971683bfa963283a4309adf36d39706a406641ac7e",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:9cc478aa226b33cd80af46971683bfa963283a4309adf36d39706a406641ac7e",
+      "created": "2026-09-09T17:27:15.327872506Z",
+      "labels": {
+        "com.docker.compose.config-hash": "0a78e9805814b4f281102259d20758d09b3187d7983a3643f473968f93bdcfc3",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "jaeger:service_started:false,load-generator:service_started:false,flagd-ui:service_started:false,frontend:service_started:false,grafana:service_started:false",
+        "com.docker.compose.image": "sha256:9cc478aa226b33cd80af46971683bfa963283a4309adf36d39706a406641ac7e",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "frontend-proxy",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:44.00981742Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.26",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "766b7b285ed404fa2588f0f933f075f6831203d79d23abd51dadea32db01f55a",
+      "name": "/opspilot-m0-frontend",
+      "image_id": "sha256:3a0c7649f63d59656f6ba76fcd7ec79c1974cc3db0ae624efdf38fbdc8a14d4c",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:3a0c7649f63d59656f6ba76fcd7ec79c1974cc3db0ae624efdf38fbdc8a14d4c",
+      "created": "2026-09-09T17:27:15.285758796Z",
+      "labels": {
+        "com.docker.compose.config-hash": "7d7ad821f2b801185b808265ff147eb193b4281b79f043493adfccbe088ee821",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "cart:service_started:false,checkout:service_started:false,quote:service_started:false,recommendation:service_started:false,otel-collector:service_started:false,currency:service_started:false,image-provider:service_started:false,ad:service_started:false,flagd:service_started:false,shipping:service_started:false,product-catalog:service_started:false",
+        "com.docker.compose.image": "sha256:3a0c7649f63d59656f6ba76fcd7ec79c1974cc3db0ae624efdf38fbdc8a14d4c",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "frontend",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:43.339541856Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.24",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "a57660d1e0e3f336e559684d4d1930b50c3684d1f9ae65b4afbb65c14b4f05a1",
+      "name": "/opspilot-m0-checkout",
+      "image_id": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+      "created": "2026-09-09T17:27:15.262978214Z",
+      "labels": {
+        "com.docker.compose.config-hash": "8183839e23551b4d52acce015cbb6e62ac8280ad116d0d03507b06fa15c18d93",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "cart:service_started:false,email:service_started:false,shipping:service_started:false,kafka:service_healthy:false,payment:service_started:false,flagd:service_started:false,currency:service_started:false,otel-collector:service_started:false,product-catalog:service_started:false",
+        "com.docker.compose.image": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "checkout",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:42.32750474Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.21",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "f9bb761941d4875cbc524e45a61078ce9fd3bbb969dc08fe4350f9877aa2142e",
+      "name": "/opspilot-m0-recommendation",
+      "image_id": "sha256:2ca9d61f520e94c7d28fd77d9715483513773a248bf10e8612885868b2c147e5",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:2ca9d61f520e94c7d28fd77d9715483513773a248bf10e8612885868b2c147e5",
+      "created": "2026-09-09T17:27:15.237561471Z",
+      "labels": {
+        "com.docker.compose.config-hash": "053eac2a85a4752b917f21d3955c4b48f4ba3fd15a7087d0679a95f166822df1",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "product-catalog:service_started:false,flagd:service_started:false,otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:2ca9d61f520e94c7d28fd77d9715483513773a248bf10e8612885868b2c147e5",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "recommendation",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:38.648151137Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.20",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "2f9c3e3ccb1e66d6951da781f7f638931c5f8bcb07c5ae0db9ffa5ab615a7a79",
+      "name": "/opspilot-m0-fraud-detection",
+      "image_id": "sha256:8b0a841c19f583a83b150bbd0609d85b3f09d19a75888d716bb234098f3385b4",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:8b0a841c19f583a83b150bbd0609d85b3f09d19a75888d716bb234098f3385b4",
+      "created": "2026-09-09T17:27:15.18013362Z",
+      "labels": {
+        "com.docker.compose.config-hash": "410f403f742604062bb67e88d280187d9aaba90b071159f9cc9894656993d19e",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false,kafka:service_healthy:false",
+        "com.docker.compose.image": "sha256:8b0a841c19f583a83b150bbd0609d85b3f09d19a75888d716bb234098f3385b4",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "fraud-detection",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:42.344905557Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.23",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "ad10968ef140d57cd9e8f53bf8b053b27b8251189fb959e36092edfe49cb3111",
+      "name": "/opspilot-m0-image-provider",
+      "image_id": "sha256:bfa0b940f79df27c564778bc70eaf506c7234fcef328d8139e30d0f592e8fbfc",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:bfa0b940f79df27c564778bc70eaf506c7234fcef328d8139e30d0f592e8fbfc",
+      "created": "2026-09-09T17:27:15.174835825Z",
+      "labels": {
+        "com.docker.compose.config-hash": "11ef352014766533447c20ccfab10a118b81ba787e050f269a1834228b20f0df",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:bfa0b940f79df27c564778bc70eaf506c7234fcef328d8139e30d0f592e8fbfc",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "image-provider",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.457299924Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.17",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "3e81b9d46fd19226a8700ab005ab8867e1c1a12664a79935946ef78d82bfa364",
+      "name": "/opspilot-m0-quote",
+      "image_id": "sha256:38f9d9abe0808c154011f3286754c848977bb9816923bdddd6dd39043c1e2139",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:38f9d9abe0808c154011f3286754c848977bb9816923bdddd6dd39043c1e2139",
+      "created": "2026-09-09T17:27:15.1747765Z",
+      "labels": {
+        "com.docker.compose.config-hash": "1a3facd2d58561858d2b119c5e53a28c01964943c08047b9e1d166eefe9dc30f",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:38f9d9abe0808c154011f3286754c848977bb9816923bdddd6dd39043c1e2139",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "quote",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.446968624Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.12",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "bddad7a6e5c5c853125e84fbfc274337af60e5cb0913b8c7fa6ea46cd1a627fd",
+      "name": "/opspilot-m0-accounting",
+      "image_id": "sha256:5dd4d4655a1c2bb8868e691c8c37dbedc0ffd7461c36a99417dd89b4b7a2d140",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:5dd4d4655a1c2bb8868e691c8c37dbedc0ffd7461c36a99417dd89b4b7a2d140",
+      "created": "2026-09-09T17:27:15.172861623Z",
+      "labels": {
+        "com.docker.compose.config-hash": "0f8c0b4cf8b59f89cbf56cec73453f49b0b83a2091dd3d67fe8bfd96ee730b77",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "kafka:service_healthy:false,otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:5dd4d4655a1c2bb8868e691c8c37dbedc0ffd7461c36a99417dd89b4b7a2d140",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "accounting",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:42.254540362Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.22",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "480391d5d47f4eb2f541e2813f1e83ffc226c6d2f4c93c03a458626c22e99dde",
+      "name": "/opspilot-m0-flagd-ui",
+      "image_id": "sha256:655da6a8735b7bb7da2c36c8992387d03ae06420f2a06fbc499f2591889c1d03",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:655da6a8735b7bb7da2c36c8992387d03ae06420f2a06fbc499f2591889c1d03",
+      "created": "2026-09-09T17:27:15.172408115Z",
+      "labels": {
+        "com.docker.compose.config-hash": "9e73cd3942f48e9ed3a8909c90a256f849a61a8dc34b826c1ff4b14e402963c8",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false,flagd:service_started:false",
+        "com.docker.compose.image": "sha256:655da6a8735b7bb7da2c36c8992387d03ae06420f2a06fbc499f2591889c1d03",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "flagd-ui",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.445880711Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.10",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "3f1ccd7b6ecf0ea361a2bd4d7937eb8b93cef73808e0824b0c20a4e7c5a303f2",
+      "name": "/opspilot-m0-ad",
+      "image_id": "sha256:7f6c3fda7fed57ea4dbca92d801d8a3c01909a848b33170f16494da89e90343c",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:7f6c3fda7fed57ea4dbca92d801d8a3c01909a848b33170f16494da89e90343c",
+      "created": "2026-09-09T17:27:15.171138437Z",
+      "labels": {
+        "com.docker.compose.config-hash": "40536b7c58363ccacbfa26ad5ebe44310cc6930c112921cd334504d64760e2ad",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "flagd:service_started:false,otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:7f6c3fda7fed57ea4dbca92d801d8a3c01909a848b33170f16494da89e90343c",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "ad",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.465649001Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.16",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "8d8e65e2ed9f99ddf60b05d230eff40c68dc66a7afbd434ac6b959d122286571",
+      "name": "/opspilot-m0-payment",
+      "image_id": "sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87",
+      "created": "2026-09-09T17:27:15.171117509Z",
+      "labels": {
+        "com.docker.compose.config-hash": "a95bfc14611fdb08ca0326d1cb424656f71473949db0dcba9d52341402583bb6",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "flagd:service_started:false,otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "payment",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.449364735Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.14",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "99d1898663b57ad588b58a67c1ca660db200af5c86dd697ed0924bc2529e8b06",
+      "name": "/opspilot-m0-email",
+      "image_id": "sha256:270c487983d8aaf111df31eb1075ddc366d9eafec1e4c937899d05be9a6dd4b3",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:270c487983d8aaf111df31eb1075ddc366d9eafec1e4c937899d05be9a6dd4b3",
+      "created": "2026-09-09T17:27:15.170693602Z",
+      "labels": {
+        "com.docker.compose.config-hash": "6ecda6c4f6e1487121c1760c02bc96b224da7fed0186ead443b77e9cce504ea3",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:270c487983d8aaf111df31eb1075ddc366d9eafec1e4c937899d05be9a6dd4b3",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "email",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.460254291Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.15",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "653eb0b14fffb94b946a71e0ca6f5aafd8f53d5cf7608e5f62a8b53f5a654bf3",
+      "name": "/opspilot-m0-shipping",
+      "image_id": "sha256:e29cb4277ebd2f0532eb43ae704038cbc47f220205fdb389ac8292a6356d1a0a",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:e29cb4277ebd2f0532eb43ae704038cbc47f220205fdb389ac8292a6356d1a0a",
+      "created": "2026-09-09T17:27:15.170595421Z",
+      "labels": {
+        "com.docker.compose.config-hash": "576c80f0e57649ae118b1df6b94d4000986aa6cf814f4a1bb00617cc16def1ec",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:e29cb4277ebd2f0532eb43ae704038cbc47f220205fdb389ac8292a6356d1a0a",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "shipping",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.467107779Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.19",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+      "name": "/opspilot-m0-cart",
+      "image_id": "sha256:2ec7601655cbe5d295d0e5bd85f5b8acaf3b0f2651f8ea33ba1150edbf6000bf",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:2ec7601655cbe5d295d0e5bd85f5b8acaf3b0f2651f8ea33ba1150edbf6000bf",
+      "created": "2026-09-09T17:27:15.170186939Z",
+      "labels": {
+        "com.docker.compose.config-hash": "13272ceb2c899541b52d3d3e49e30ced8212b36c0574942712ba9a4ebddc8d44",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "valkey-cart:service_started:false,flagd:service_started:false,otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:2ec7601655cbe5d295d0e5bd85f5b8acaf3b0f2651f8ea33ba1150edbf6000bf",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "cart",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.445166539Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.11",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "612a2075658eed31d4008a3c1b40292517f46e1dfc36ba07c2205abf5ea3f8fa",
+      "name": "/opspilot-m0-currency",
+      "image_id": "sha256:03fb9bf6d8072cacabdf018396f6d48082ad5f824443965573a064c7faecd944",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:03fb9bf6d8072cacabdf018396f6d48082ad5f824443965573a064c7faecd944",
+      "created": "2026-09-09T17:27:15.168995097Z",
+      "labels": {
+        "com.docker.compose.config-hash": "1d0384e0fbeb882ea59ac0993068e156697950386208d5ed2275a744dc8fccc4",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false",
+        "com.docker.compose.image": "sha256:03fb9bf6d8072cacabdf018396f6d48082ad5f824443965573a064c7faecd944",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "currency",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.46739118Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.18",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "34f8b642179496316a54cd3581968902c866de2af4b4831e3f20e953f05bc3e6",
+      "name": "/opspilot-m0-product-catalog",
+      "image_id": "sha256:050a0fc2026b75cc8716cbd5daf9c9e5fd552808a59928a6bfca18bfb8edd2d5",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:050a0fc2026b75cc8716cbd5daf9c9e5fd552808a59928a6bfca18bfb8edd2d5",
+      "created": "2026-09-09T17:27:15.168412058Z",
+      "labels": {
+        "com.docker.compose.config-hash": "b35796101a4ff43f87314fbdb1512db0d454b2ec2ba3c02f6a00c2ebf944da55",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "otel-collector:service_started:false,flagd:service_started:false",
+        "com.docker.compose.image": "sha256:050a0fc2026b75cc8716cbd5daf9c9e5fd552808a59928a6bfca18bfb8edd2d5",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "product-catalog",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:37.459530822Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.13",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "35821a0bbc0e9756d5bdd5ecd5ce62497f8bf87097b77d4ba02451b605ac5317",
+      "name": "/opspilot-m0-otel-collector",
+      "image_id": "sha256:85ac41c2db88d0df9bd6145e608a3cb023f5d8443868adbfbbf66efb51087917",
+      "image_ref": "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib@sha256:85ac41c2db88d0df9bd6145e608a3cb023f5d8443868adbfbbf66efb51087917",
+      "created": "2026-09-09T17:27:15.144612899Z",
+      "labels": {
+        "com.docker.compose.config-hash": "07f50b1b283fa58ef142cb740841c24a45f20c0a62df505b1132726f2530855f",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "jaeger:service_started:false,opensearch:service_healthy:false",
+        "com.docker.compose.image": "sha256:85ac41c2db88d0df9bd6145e608a3cb023f5d8443868adbfbbf66efb51087917",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "otel-collector",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:36.881328536Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.5",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "d94cd84bd11f2a1079a088ff9422397ee34a0aad4e812f8de965e3d04f43426f",
+      "name": "/opspilot-m0-read-proxy",
+      "image_id": "sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+      "image_ref": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+      "created": "2026-09-09T17:27:14.718571578Z",
+      "labels": {
+        "com.docker.compose.config-hash": "15ac0a3f6a515a5122671e8b9f7f67aea6ebd5e90b5f5b980299fb31a6e6a700",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "read-proxy",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:35:02.121800119Z",
+        "FinishedAt": "2026-09-09T17:34:58.22441619Z"
+      },
+      "networks": {
+        "opspilot-m0-investigation": {
+          "IPAddress": "172.19.0.2",
+          "NetworkID": "72238a0ed60596781ab21d865d83d6601e383a17ed9b9eb1bb9cd9a14f8e7331"
+        },
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.9",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "990187bcd9c28d3148889de3a0a9dad9d4010b53f00ad27ed09f581854b0a5dd",
+      "name": "/opspilot-m0-flagd",
+      "image_id": "sha256:9595dffe7a9e33d15f6200e1b1ec88b6f98dc697c9f64564a2a5e35ab5ec7943",
+      "image_ref": "ghcr.io/open-feature/flagd@sha256:9595dffe7a9e33d15f6200e1b1ec88b6f98dc697c9f64564a2a5e35ab5ec7943",
+      "created": "2026-09-09T17:27:14.716671788Z",
+      "labels": {
+        "com.docker.compose.config-hash": "7a748d090100a3dd70f17e998fb3963cead1ee70378e9af121389c91f42698be",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:9595dffe7a9e33d15f6200e1b1ec88b6f98dc697c9f64564a2a5e35ab5ec7943",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "flagd",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.407962288Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.6",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "5046477b3ed35fc29760b21e407684d728773f76fd1a1777016b9121b2150d3b",
+      "name": "/opspilot-m0-kafka",
+      "image_id": "sha256:0f1270d986ffd18ce73ca56e6c9b94077929fb31ae2be101036663213da0a4a1",
+      "image_ref": "ghcr.io/open-telemetry/demo@sha256:0f1270d986ffd18ce73ca56e6c9b94077929fb31ae2be101036663213da0a4a1",
+      "created": "2026-09-09T17:27:14.71629916Z",
+      "labels": {
+        "com.docker.compose.config-hash": "d6170f76f085ce1be58ab3435034ce4ea92630ff49a10dbb3232fe312fe1d1ec",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:0f1270d986ffd18ce73ca56e6c9b94077929fb31ae2be101036663213da0a4a1",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "kafka",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.403189624Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.7",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "b053e9faf3841e3004e786468b6ba01b55a253f6b8e8cfc039a1a0b89419e6a3",
+      "name": "/opspilot-m0-jaeger",
+      "image_id": "sha256:9864182b4e01350fcc64631bdba5f4085f87daae9d477a04c25d9cb362e787a9",
+      "image_ref": "jaegertracing/all-in-one@sha256:9864182b4e01350fcc64631bdba5f4085f87daae9d477a04c25d9cb362e787a9",
+      "created": "2026-09-09T17:27:14.715476858Z",
+      "labels": {
+        "com.docker.compose.config-hash": "a0fa3bc5d74e1829958d065b3dd59a9d1a7118a72630ea41e48a98e3febfb6ce",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:9864182b4e01350fcc64631bdba5f4085f87daae9d477a04c25d9cb362e787a9",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "jaeger",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.410353436Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.8",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "e1e1ce623ac4ffb85b21ec4803e9a714f66b8d4a10a5df1474f9e232e2d18156",
+      "name": "/opspilot-m0-valkey-cart",
+      "image_id": "sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
+      "image_ref": "valkey/valkey@sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
+      "created": "2026-09-09T17:27:14.713928602Z",
+      "labels": {
+        "com.docker.compose.config-hash": "7eb996896b4c1e44561c82b9a76ac27e6d03973013fd9f45f85997be421795bc",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "valkey-cart",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.403282427Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.3",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "9f16520797b78d7eb2d6e103f3769573f8e64095747ea88197d3bb1351f2a42c",
+      "name": "/opspilot-m0-opensearch",
+      "image_id": "sha256:1f8b88245a6af61e7aa500afe0e87d43401e4b33140bb47230a919428ce3f7cb",
+      "image_ref": "opensearchproject/opensearch@sha256:1f8b88245a6af61e7aa500afe0e87d43401e4b33140bb47230a919428ce3f7cb",
+      "created": "2026-09-09T17:27:14.713918513Z",
+      "labels": {
+        "com.docker.compose.config-hash": "c3e8683f544a7fa8bebb87a8a3ffa57b92f9173653ca4494e1b67e5246212b7d",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:1f8b88245a6af61e7aa500afe0e87d43401e4b33140bb47230a919428ce3f7cb",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "opensearch",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.40327609Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.4",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    },
+    {
+      "container_id": "5b47747f81a990f169f71137c036882494f2d82147553ff1fac3dea2f3b070f8",
+      "name": "/opspilot-m0-grafana",
+      "image_id": "sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7",
+      "image_ref": "grafana/grafana@sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7",
+      "created": "2026-09-09T17:27:14.713871278Z",
+      "labels": {
+        "com.docker.compose.config-hash": "d2bf66f08f6aadd446cb62ca83ee81f6ecc444130e9aec8e147b10e33072774e",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "opspilot-m0",
+        "com.docker.compose.project.config_files": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json",
+        "com.docker.compose.project.working_dir": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment",
+        "com.docker.compose.service": "grafana",
+        "com.docker.compose.version": "5.1.0"
+      },
+      "state": {
+        "Status": "running",
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-09-09T17:27:15.407916471Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "networks": {
+        "opspilot-m0-telemetry": {
+          "IPAddress": "172.18.0.2",
+          "NetworkID": "b45a08ad4ae5164fb8635adbea2ae323f513b8455d34d709ba57030a323a9afe"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+<!DOCTYPE html><html><head><meta charSet="utf-8" data-next-head=""/><meta name="viewport" content="width=device-width" data-next-head=""/><title data-next-head="">Otel Demo - Home</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/><link rel="preload" href="/_next/static/css/4a86f4d07dfbe27c.css" as="style"/><link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&amp;display=swap" rel="stylesheet"/><link rel="stylesheet" href="/_next/static/css/4a86f4d07dfbe27c.css" data-n-g=""/><noscript data-n-css=""></noscript><script defer="" noModule="" src="/_next/static/chunks/polyfills-42372ed130431b0a.js"></script><script src="/_next/static/chunks/webpack-8261614bdae5d353.js" defer=""></script><script src="/_next/static/chunks/framework-8c66923947fb0c35.js" defer=""></script><script src="/_next/static/chunks/main-ebe572c14257abb4.js" defer=""></script><script src="/_next/static/chunks/pages/_app-22a628ad4ce43c0f.js" defer=""></script><script src="/_next/static/chunks/817-7920d95b3de6dbea.js" defer=""></script><script src="/_next/static/chunks/330-9b09bbde0f7ff4ad.js" defer=""></script><script src="/_next/static/chunks/pages/index-84cd76a8512233f1.js" defer=""></script><script src="/_next/static/G-Aa61AgZf-2vIhwvhGmL/_buildManifest.js" defer=""></script><script src="/_next/static/G-Aa61AgZf-2vIhwvhGmL/_ssgManifest.js" defer=""></script><style data-styled="" data-styled-version="6.1.15">.fqqjBX{position:relative;padding:65px 9%;background-color:#403F4B;}/*!sc*/
+.fqqjBX *{color:#FFFFFF;font-size:16px;font-weight:500;}/*!sc*/
+data-styled.g1[id="sc-fb94b18d-0"]{content:"fqqjBX,"}/*!sc*/
+.hQxCpW{position:absolute;bottom:0;right:0;width:100px;height:27px;display:flex;justify-content:center;align-items:center;font-size:12px;font-weight:500;color:#FFFFFF;background:#EAAA3B;}/*!sc*/
+@media (min-width: 768px){.hQxCpW{width:190px;height:50px;font-size:16px;}}/*!sc*/
+data-styled.g2[id="sc-83ddb32-0"]{content:"hQxCpW,"}/*!sc*/
+.bjVaVd{background-color:#5262a8;color:white;display:inline-block;border:solid 1px #5262a8;padding:8px 16px;outline:none;font-weight:700;font-size:20px;line-height:27px;border-radius:10px;height:62px;cursor:pointer;}/*!sc*/
+data-styled.g3[id="sc-83a403b4-0"]{content:"bjVaVd,"}/*!sc*/
+.cjybds{position:relative;display:block;margin-left:25px;display:flex;flex-flow:column;align-items:center;justify-content:center;cursor:pointer;}/*!sc*/
+data-styled.g15[id="sc-17bcdc78-0"]{content:"cjybds,"}/*!sc*/
+.jflAlY{margin-bottom:3px;}/*!sc*/
+data-styled.g16[id="sc-17bcdc78-1"]{content:"jflAlY,"}/*!sc*/
+.hwizfk{display:flex;justify-content:flex-end;}/*!sc*/
+data-styled.g18[id="sc-3f7c9c3b-0"]{content:"hwizfk,"}/*!sc*/
+.GxVjJ{display:flex;align-items:center;position:relative;margin-left:40px;color:#605f64;}/*!sc*/
+.GxVjJ::-webkit-input-placeholder,.GxVjJ::-moz-placeholder,.GxVjJ :-ms-input-placeholder,.GxVjJ :-moz-placeholder{font-size:12px;color:#605f64;}/*!sc*/
+data-styled.g19[id="sc-3f7c9c3b-1"]{content:"GxVjJ,"}/*!sc*/
+.ddUmAl{font-size:20px;text-align:center;font-weight:500;position:relative;left:35px;width:20px;display:inline-block;}/*!sc*/
+data-styled.g20[id="sc-3f7c9c3b-2"]{content:"ddUmAl,"}/*!sc*/
+.cJfoLn{position:absolute;right:15px;width:12px;height:17px;}/*!sc*/
+data-styled.g21[id="sc-3f7c9c3b-3"]{content:"cJfoLn,"}/*!sc*/
+.gBYABA{-webkit-appearance:none;-webkit-border-radius:0px;font-size:20px;cursor:pointer;display:flex;align-items:center;background:transparent;font-weight:500;border:1px solid #2E2437;width:130px;height:40px;flex-shrink:0;padding:1px 0 0 45px;font-size:16px;border-radius:10px;}/*!sc*/
+data-styled.g22[id="sc-3f7c9c3b-4"]{content:"gBYABA,"}/*!sc*/
+.dKgirv{background-color:#853b5c;color:white;}/*!sc*/
+data-styled.g23[id="sc-cc7551ae-0"]{content:"dKgirv,"}/*!sc*/
+.hooKnz{height:80px;background-color:white;font-size:15px;color:#b4b2bb;border-bottom:1px solid #29293E;z-index:1;padding:0;}/*!sc*/
+@media (min-width: 768px){.hooKnz{height:100px;}}/*!sc*/
+data-styled.g24[id="sc-cc7551ae-1"]{content:"hooKnz,"}/*!sc*/
+.gBTPOO{display:flex;justify-content:space-between;align-items:center;width:100%;height:100%;padding:0 20px;}/*!sc*/
+@media (min-width: 768px){.gBTPOO{padding:25px 100px;}}/*!sc*/
+data-styled.g25[id="sc-cc7551ae-2"]{content:"gBTPOO,"}/*!sc*/
+.cBQBwF{display:flex;align-items:center;padding:0;}/*!sc*/
+data-styled.g26[id="sc-cc7551ae-3"]{content:"cBQBwF,"}/*!sc*/
+.ineNPa{width:280px;height:auto;}/*!sc*/
+data-styled.g27[id="sc-cc7551ae-4"]{content:"ineNPa,"}/*!sc*/
+.fpvFRr{display:flex;height:60px;}/*!sc*/
+data-styled.g28[id="sc-cc7551ae-5"]{content:"fpvFRr,"}/*!sc*/
+.iYIQcW{display:grid;grid-template-columns:1fr;gap:24px;}/*!sc*/
+@media (min-width: 768px){.iYIQcW{grid-template-columns:repeat(3,auto);}}/*!sc*/
+data-styled.g34[id="sc-bfbc57fa-0"]{content:"iYIQcW,"}/*!sc*/
+.fYPQts{width:100%;padding:0 20px;}/*!sc*/
+@media (min-width: 768px){.fYPQts{padding:0 100px;}}/*!sc*/
+data-styled.g35[id="sc-453fd2c7-0"]{content:"fYPQts,"}/*!sc*/
+.efjKZz{display:flex;flex-wrap:wrap;width:100%;}/*!sc*/
+data-styled.g36[id="sc-453fd2c7-1"]{content:"efjKZz,"}/*!sc*/
+.bXIcJq{width:100%;}/*!sc*/
+@media (min-width: 768px){.bXIcJq{margin-top:100px;}}/*!sc*/
+data-styled.g37[id="sc-453fd2c7-2"]{content:"bXIcJq,"}/*!sc*/
+.kPcXKT{margin-bottom:20px;}/*!sc*/
+@media (min-width: 768px){.kPcXKT{margin-bottom:100px;}}/*!sc*/
+data-styled.g38[id="sc-453fd2c7-3"]{content:"kPcXKT,"}/*!sc*/
+.ioCBIu{font-size:20px;font-weight:800;}/*!sc*/
+@media (min-width: 768px){.ioCBIu{font-size:58px;}}/*!sc*/
+data-styled.g39[id="sc-453fd2c7-4"]{content:"ioCBIu,"}/*!sc*/
+@media (max-width:992px){.dEkmJQ .sc-453fd2c7-2{width:100%;}}/*!sc*/
+data-styled.g40[id="sc-453fd2c7-5"]{content:"dEkmJQ,"}/*!sc*/
+.hxpbAh{display:flex;flex-direction:column;}/*!sc*/
+@media (min-width: 768px){.hxpbAh{flex-direction:row-reverse;padding-bottom:38px;background:rgba(64, 63, 75, 0.1);}}/*!sc*/
+data-styled.g41[id="sc-a415c2da-0"]{content:"hxpbAh,"}/*!sc*/
+.bsNlma{width:100%;height:auto;}/*!sc*/
+data-styled.g42[id="sc-a415c2da-1"]{content:"bsNlma,"}/*!sc*/
+@media (min-width: 768px){.fbgLYM{min-width:50%;}}/*!sc*/
+data-styled.g43[id="sc-a415c2da-2"]{content:"fbgLYM,"}/*!sc*/
+.eRhSoM{padding:20px;}/*!sc*/
+@media (min-width: 768px){.eRhSoM{display:flex;flex-direction:column;justify-content:center;align-items:start;width:50%;padding:100px 160px 100px 100px;}}/*!sc*/
+data-styled.g44[id="sc-a415c2da-3"]{content:"eRhSoM,"}/*!sc*/
+.dPJAZH{font-size:22px;font-weight:800;}/*!sc*/
+@media (min-width: 768px){.dPJAZH{font-size:58px;}}/*!sc*/
+data-styled.g45[id="sc-a415c2da-4"]{content:"dPJAZH,"}/*!sc*/
+.fzknQG{width:100%;}/*!sc*/
+@media (min-width: 768px){.fzknQG{width:auto;}}/*!sc*/
+data-styled.g46[id="sc-a415c2da-5"]{content:"fzknQG,"}/*!sc*/
+</style></head><body><link rel="preload" as="image" href="/images/opentelemetry-demo-logo.png"/><link rel="preload" as="image" href="/icons/Chevron.svg"/><link rel="preload" as="image" href="/images/Banner.png"/><div id="__next"><header class="sc-cc7551ae-0 dKgirv"><nav class="sc-cc7551ae-1 hooKnz"><div class="sc-cc7551ae-2 gBTPOO"><a class="sc-cc7551ae-3 cBQBwF" href="/"><img src="/images/opentelemetry-demo-logo.png" class="sc-cc7551ae-4 ineNPa"/></a><div class="sc-cc7551ae-5 fpvFRr"><div class="sc-3f7c9c3b-0 hwizfk"><div class="sc-3f7c9c3b-1 GxVjJ"><span class="sc-3f7c9c3b-2 ddUmAl"></span><select name="currency_code" data-cy="currency-switcher" class="sc-3f7c9c3b-4 gBYABA"></select><img src="/icons/Chevron.svg" alt="arrow" class="sc-3f7c9c3b-3 cJfoLn"/></div></div><a data-cy="cart-icon" class="sc-17bcdc78-0 cjybds"><img alt="Cart icon" title="Cart" loading="lazy" width="24" height="24" decoding="async" data-nimg="1" class="sc-17bcdc78-1 jflAlY" style="color:transparent" srcSet="http://localhost:8080//icons/CartIcon.svg?w=32&amp;q=75 1x, http://localhost:8080//icons/CartIcon.svg?w=48&amp;q=75 2x" src="http://localhost:8080//icons/CartIcon.svg?w=48&amp;q=75"/></a></div></div></nav></header><main><div data-cy="home-page" class="sc-453fd2c7-5 dEkmJQ"><div class="sc-a415c2da-0 hxpbAh"><div class="sc-a415c2da-2 fbgLYM"><img src="/images/Banner.png" class="sc-a415c2da-1 bsNlma"/></div><div class="sc-a415c2da-3 eRhSoM"><h1 class="sc-a415c2da-4 dPJAZH">The best telescopes to see the world closer</h1><a href="/#hot-products"><button class="sc-83a403b4-0 sc-a415c2da-5 bjVaVd fzknQG">Go Shopping</button></a></div></div><div class="sc-453fd2c7-0 fYPQts"><div class="sc-453fd2c7-1 efjKZz"><div class="sc-453fd2c7-2 bXIcJq"><div class="sc-453fd2c7-3 kPcXKT"><h1 data-cy="hot-products" id="hot-products" class="sc-453fd2c7-4 ioCBIu">Hot Products</h1><div data-cy="product-list" class="sc-bfbc57fa-0 iYIQcW"></div></div></div></div></div><footer class="sc-fb94b18d-0 fqqjBX"><div><p>This website is hosted for demo purpose only. It is not an actual shop.</p><p><span data-cy="session-id">session-id: </span></p></div><p>@ <!-- -->2026<!-- --> OpenTelemetry (<a href="https://github.com/open-telemetry/opentelemetry-demo">Source Code</a>)</p><div class="sc-83ddb32-0 hQxCpW">local</div></footer></div></main></div><script>
+        window.ENV = {
+          NEXT_PUBLIC_PLATFORM: 'local',
+          NEXT_PUBLIC_OTEL_SERVICE_NAME: 'frontend-web',
+          NEXT_PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://localhost:8080/otlp-http/v1/traces',
+          IS_SYNTHETIC_REQUEST: 'false',
+        };</script><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{}},"page":"/","query":{},"buildId":"G-Aa61AgZf-2vIhwvhGmL","isFallback":false,"isExperimentalCompile":false,"appGip":true,"scriptLoader":[]}</script></body></html>

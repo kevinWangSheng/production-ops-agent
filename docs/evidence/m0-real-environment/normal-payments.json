@@ -1,0 +1,31 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source": "metrics",
+  "query": {
+    "query": [
+      "sum(increase(app_payment_transactions_total[5m]))"
+    ],
+    "start": [
+      "1788975149.660874"
+    ],
+    "end": [
+      "1788975449.660874"
+    ]
+  },
+  "collected_at": 1788975450.539205,
+  "data": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1788975449.661,
+            "8.585129737662966"
+          ]
+        }
+      ]
+    }
+  }
+}

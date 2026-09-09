@@ -1,0 +1,14 @@
+[
+  {
+    "name": "otel",
+    "url": "https://codeload.github.com/open-telemetry/opentelemetry-demo/tar.gz/63649d6d6a59de88fb421b88c3c3a6185b6d21ad",
+    "sha256": "4bdfa245df27f224ff77c18eb29a2846a71528160a75a347448d1d67e1f3e9eb",
+    "bytes": 3414710
+  },
+  {
+    "name": "holmes",
+    "url": "https://codeload.github.com/HolmesGPT/holmesgpt/tar.gz/5e983c17f30e93099c7d775167266d4cd1d586c4",
+    "sha256": "d6b9b38d1387d899dcc213127fe7e6a6fae8473dd9cae904bf50e5799524609c",
+    "bytes": 282959487
+  }
+]

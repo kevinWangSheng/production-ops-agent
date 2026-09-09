@@ -1,0 +1,2 @@
+time=2026-09-09T17:27:16.411Z level=INFO source=main.go:225 msg="Experimental in-memory exemplar storage enabled"
+time=2026-09-09T17:27:16.414Z level=ERROR source=main.go:597 msg="Error loading config (--config.file=/etc/prometheus/prometheus-config.yaml)" file=/etc/prometheus/prometheus-config.yaml err="parsing YAML file /etc/prometheus/prometheus-config.yaml: duplicated promoted OTel resource attribute \"opspilot.integration.id\"\nduplicated promoted OTel resource attribute \"service.version\""

@@ -1,0 +1,869 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source": "logs",
+  "query": {
+    "start": [
+      "1788974813.7513542"
+    ],
+    "end": [
+      "1788975413.751358"
+    ],
+    "service": [
+      "cart"
+    ]
+  },
+  "collected_at": 1788975414.7055972,
+  "data": {
+    "took": 80,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "total": {
+        "value": 166,
+        "relation": "eq"
+      },
+      "max_score": null,
+      "hits": [
+        {
+          "_index": "otel",
+          "_id": "LPY-h6ABX2BU52i2ZDCH",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "06e7f368-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "EmptyCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:48.257443244Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "10a1866aac09a97d",
+            "@timestamp": "2026-09-09T17:36:45.7111285Z",
+            "traceId": "358a5b0d444165073b431ac1a0cb688f"
+          },
+          "sort": [
+            1788975405711
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "K_Y-h6ABX2BU52i2ZDCH",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "06e7f368-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:48.257344223Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "48702a42511bff8a",
+            "@timestamp": "2026-09-09T17:36:45.3116714Z",
+            "traceId": "358a5b0d444165073b431ac1a0cb688f"
+          },
+          "sort": [
+            1788975405311
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "KvY-h6ABX2BU52i2ZDCH",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "06e7f368-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:48.25732685Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "b1c7deb8e9c051dc",
+            "@timestamp": "2026-09-09T17:36:45.28617Z",
+            "traceId": "484949c5ea6f22d7d57bc5c3073c347b"
+          },
+          "sort": [
+            1788975405286
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "KfY-h6ABX2BU52i2ZDCH",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "HQTGWGPNH4",
+              "quantity": 10,
+              "userId": "06e7f368-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:48.257164057Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "969a688fe1650559",
+            "@timestamp": "2026-09-09T17:36:45.2828421Z",
+            "traceId": "484949c5ea6f22d7d57bc5c3073c347b"
+          },
+          "sort": [
+            1788975405282
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "FfY-h6ABX2BU52i2PDDW",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "00b0c4d4-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:38.030575976Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "f4bdd6fd7f845e23",
+            "@timestamp": "2026-09-09T17:36:34.8322665Z",
+            "traceId": "a3a55d6be5030edadd9e62717576aba1"
+          },
+          "sort": [
+            1788975394832
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "FPY-h6ABX2BU52i2PDDM",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "9SIQT8TOJO",
+              "quantity": 5,
+              "userId": "00b0c4d4-ac75-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:38.029992734Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "417a7e8bbeabf527",
+            "@timestamp": "2026-09-09T17:36:34.8282142Z",
+            "traceId": "a3a55d6be5030edadd9e62717576aba1"
+          },
+          "sort": [
+            1788975394828
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "7fY-h6ABX2BU52i2Ai-m",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f9963a76-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:23.194374404Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "e504c1d12f48a613",
+            "@timestamp": "2026-09-09T17:36:22.9426169Z",
+            "traceId": "3a5cf729caba7646292f7eaa23771ee4"
+          },
+          "sort": [
+            1788975382942
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "7PY-h6ABX2BU52i2Ai-m",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "6E92ZMYYFZ",
+              "quantity": 10,
+              "userId": "f9963a76-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:23.19424391Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "e99a539b06eed7b3",
+            "@timestamp": "2026-09-09T17:36:22.9389641Z",
+            "traceId": "3a5cf729caba7646292f7eaa23771ee4"
+          },
+          "sort": [
+            1788975382938
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "6vY9h6ABX2BU52i27i-2",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f63ed518-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:18.097422238Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "6a34c7c797a82ec3",
+            "@timestamp": "2026-09-09T17:36:17.3107434Z",
+            "traceId": "0f57781b78b10cfac4ef70cfc6d4c3e3"
+          },
+          "sort": [
+            1788975377310
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "6fY9h6ABX2BU52i27i-2",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "LS4PSXUNUM",
+              "quantity": 1,
+              "userId": "f63ed518-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:18.097309533Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "4f78d59c54908d02",
+            "@timestamp": "2026-09-09T17:36:17.2938148Z",
+            "traceId": "0f57781b78b10cfac4ef70cfc6d4c3e3"
+          },
+          "sort": [
+            1788975377293
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "3vY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "EmptyCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.034891495Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "3f86395eb7c13346",
+            "@timestamp": "2026-09-09T17:36:10.1067825Z",
+            "traceId": "a20ee3b1a3bb1390bc1ef067e228ec9c"
+          },
+          "sort": [
+            1788975370106
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "3fY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.034657778Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "5c1f070c0eb26211",
+            "@timestamp": "2026-09-09T17:36:09.9263773Z",
+            "traceId": "a20ee3b1a3bb1390bc1ef067e228ec9c"
+          },
+          "sort": [
+            1788975369926
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "3PY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.034375426Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "53a4a5ca00fe8984",
+            "@timestamp": "2026-09-09T17:36:09.9059456Z",
+            "traceId": "db4e5fdc229a21ba6d98a1ebbf2c6d7e"
+          },
+          "sort": [
+            1788975369905
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "2_Y9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "LS4PSXUNUM",
+              "quantity": 10,
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.033482747Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "0d5829c931ba62dd",
+            "@timestamp": "2026-09-09T17:36:09.9022965Z",
+            "traceId": "db4e5fdc229a21ba6d98a1ebbf2c6d7e"
+          },
+          "sort": [
+            1788975369902
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "2vY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.033049047Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "bac60b0687f5a7f0",
+            "@timestamp": "2026-09-09T17:36:09.8838764Z",
+            "traceId": "95be6b0c6036070921dab0bc1d75cc89"
+          },
+          "sort": [
+            1788975369883
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "2fY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "66VCHSJNUP",
+              "quantity": 10,
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.032458978Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "210629527ed3c816",
+            "@timestamp": "2026-09-09T17:36:09.8745009Z",
+            "traceId": "95be6b0c6036070921dab0bc1d75cc89"
+          },
+          "sort": [
+            1788975369874
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "2PY9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.029338912Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "756363f4ac7ada66",
+            "@timestamp": "2026-09-09T17:36:09.8386936Z",
+            "traceId": "88f72df947bac222ff10de53abef4f28"
+          },
+          "sort": [
+            1788975369838
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "1_Y9h6ABX2BU52i22i_w",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "productId": "2ZYFJ3GM2N",
+              "quantity": 1,
+              "userId": "f1c2524e-ac74-11f1-99a1-d66b148a8430"
+            },
+            "body": "AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:36:13.029068321Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "80bd2c0500c9bf46",
+            "@timestamp": "2026-09-09T17:36:09.8139672Z",
+            "traceId": "88f72df947bac222ff10de53abef4f28"
+          },
+          "sort": [
+            1788975369813
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "wvY9h6ABX2BU52i2oC-c",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": ""
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:35:58.103834723Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "3bef4f0fdbedf787",
+            "@timestamp": "2026-09-09T17:35:54.3542658Z",
+            "traceId": "b2215a0b27b4d5b6d3f0cc258195bd62"
+          },
+          "sort": [
+            1788975354354
+          ]
+        },
+        {
+          "_index": "otel",
+          "_id": "ZvY9h6ABX2BU52i2Ui-h",
+          "_score": null,
+          "_source": {
+            "attributes": {
+              "data_stream": {
+                "dataset": "default",
+                "namespace": "namespace",
+                "type": "record"
+              },
+              "userId": "e81d4744-8d3b-489c-8212-a3ef23fac3f0"
+            },
+            "body": "GetCartAsync called with userId={userId}",
+            "instrumentationScope": {
+              "name": "cart.cartstore.ValkeyCartStore"
+            },
+            "observedTimestamp": "2026-09-09T17:35:38.137911425Z",
+            "resource": {
+              "container.id": "8834645aa7828fc87c54efdf51fe4b76a9e5c47e42de62126fcce3271f780a16",
+              "host.name": "8834645aa782",
+              "opspilot.integration.id": "m0-otel-20260909",
+              "service.name": "cart",
+              "service.namespace": "opentelemetry-demo",
+              "service.version": "2.0.2",
+              "telemetry.sdk.language": "dotnet",
+              "telemetry.sdk.name": "opentelemetry",
+              "telemetry.sdk.version": "1.11.2"
+            },
+            "severity": {
+              "text": "Information",
+              "number": 9
+            },
+            "spanId": "7485a1ec610c8a3a",
+            "@timestamp": "2026-09-09T17:35:35.775894Z",
+            "traceId": "c986e7614c80b113859ea8a427b9e8d5"
+          },
+          "sort": [
+            1788975335775
+          ]
+        }
+      ]
+    }
+  }
+}

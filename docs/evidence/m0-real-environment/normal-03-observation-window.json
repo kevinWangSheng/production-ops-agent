@@ -1,0 +1,34 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "start": 1788975849.645199,
+  "end": 1788976149.645199,
+  "metric_names": [
+    "traces_span_metrics_calls_total",
+    "rpc_client_duration_milliseconds_bucket",
+    "rpc_server_duration_milliseconds_bucket",
+    "app_payment_transactions_total"
+  ],
+  "labels": [
+    "service_name",
+    "status_code",
+    "rpc_grpc_status_code",
+    "rpc_service",
+    "rpc_method",
+    "service_version",
+    "opspilot_integration_id"
+  ],
+  "available_log_sources": [
+    "cart",
+    "frontend-proxy"
+  ],
+  "log_field": "resource.service.name.keyword",
+  "log_time": "@timestamp",
+  "trace_service_examples": [
+    "checkout",
+    "payment",
+    "cart",
+    "frontend-proxy"
+  ],
+  "read_proxy": "http://127.0.0.1:18081/integrations/m0-otel-20260909/",
+  "limits": "instant metrics with 5m lookback; 300-3600s declared window; logs/traces at most20; logs unavailable for some services"
+}

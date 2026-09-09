@@ -1,0 +1,86 @@
+[
+  {
+    "case": "wrong-target",
+    "method": "GET",
+    "path": "/integrations/other/services",
+    "status": 403,
+    "body": {
+      "error": "TARGET_DENIED"
+    }
+  },
+  {
+    "case": "write",
+    "method": "POST",
+    "path": "/integrations/m0-otel-20260909/logs",
+    "status": 405,
+    "body": {
+      "error": "READ_ONLY"
+    }
+  },
+  {
+    "case": "backend-path",
+    "method": "GET",
+    "path": "/integrations/m0-otel-20260909/_bulk",
+    "status": 400,
+    "body": {
+      "error": "QUERY_DENIED"
+    }
+  },
+  {
+    "case": "services",
+    "method": "GET",
+    "path": "/integrations/m0-otel-20260909/services",
+    "status": 200,
+    "body": {
+      "integration_id": "m0-otel-20260909",
+      "services": [
+        "accounting",
+        "ad",
+        "cart",
+        "checkout",
+        "currency",
+        "email",
+        "flagd",
+        "flagd-ui",
+        "fraud-detection",
+        "frontend",
+        "frontend-proxy",
+        "image-provider",
+        "kafka",
+        "load-generator",
+        "payment",
+        "product-catalog",
+        "quote",
+        "recommendation",
+        "shipping"
+      ]
+    }
+  },
+  {
+    "case": "past-selector",
+    "method": "GET",
+    "path": "/integrations/m0-otel-20260909/metrics?start=1788974282.723937&end=1788974582.723938&query=up+%40+0",
+    "status": 400,
+    "body": {
+      "error": "QUERY_DENIED"
+    }
+  },
+  {
+    "case": "malformed",
+    "method": "GET",
+    "path": "/integrations/m0-otel-20260909/metrics?bad",
+    "status": 400,
+    "body": {
+      "error": "QUERY_DENIED"
+    }
+  },
+  {
+    "case": "wrong-service",
+    "method": "GET",
+    "path": "/integrations/m0-otel-20260909/logs?start=1788974282.7239769&end=1788974582.7239769&service=other-project",
+    "status": 400,
+    "body": {
+      "error": "QUERY_DENIED"
+    }
+  }
+]
