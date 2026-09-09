@@ -2,7 +2,7 @@
 
 日期 2026-09-08；[任务与执行前合同](../../tasks/2026-09-08-m0-a-adapters.md)。测试者为实现者，不是独立审查者。
 
-- [check.txt](check.txt)：最终 make check，76 passed；29 项新增协议/trace测试，其余47项基线回归。
+- [check.txt](check.txt)：最终 make check，78 passed；31 项新增协议/trace测试，其余47项基线回归。
 - [manifest.json](manifest.json)：dirty受检脚本、测试、共享合同、fixture、依赖的SHA256及基线；未把基线HEAD当成全部受检代码。
 - [legacy-offline.json](legacy-offline.json)：原SDK非流式两轮及LangSmith序列化离线排演通过。
 - [live-refusal.json](live-refusal.json)：真实入口退出3，LIVE_NOT_ENABLED。
@@ -24,3 +24,9 @@
 正常SDK流、分片参数、分片DONE、工具往返；缺finish、缺DONE、断流、截断finish、超时、429无隐式重试；参数拒绝、工具异常配对续接、重复ID整计划拒绝；压缩完整组/证据来源、不允许悬空结果；Run隔离、未知私有字段过滤；reserve/send/settle顺序、重复预留拒绝发送、费用未知保留、期限等待跨界零发送；trace上传/回读故障、污染/错误身份/错误类型、恢复重试；工具与trace网络调用被阻断。
 
 这些是合成SDK/合同测试，未执行DeepSeek真实兼容、LangSmith真实回读、持久恢复、真实目标权限、生产隔离、模型质量或72小时soak。安全边界只覆盖这个本地Python排演，不是可对抗不合作代码的OS隔离。工具为固定合成read_fixture，只读运行时和完整Controller提交门槛不在本实现内。实现后的独立审查、A+B汇合以及PR/CI仍待协调者执行，M0和产品门槛保持关闭。
+
+## 独立审查 P2 修复
+
+工具同步抛CancelledError时，当前及未执行项写TOOL_CANCELLED，先保留完整组，再向调用方抛无原异常文本的取消信号。已完成结果原样保留，剩余工具零执行；单工具和三工具中途取消回归见[p2-targeted.txt](p2-targeted.txt)，31 passed。修复后全套pytest见[p2-pytest.txt](p2-pytest.txt)，78 passed。首轮make check被独立审查Markdown代码块格式阻断，原始输出保留[p2-check-first-failure.txt](p2-check-first-failure.txt)，实现者未修改审查文件。独立复验仍待reviewer。
+
+明确覆盖边界：timeout约束模型流并在工具前检查deadline，不约束同步工具执行时长，尚未验证可中断工具运行器或产品级协作取消；本次修复只保证合成工具主动抛取消时的结果配对。收集器尚未验证所有SSE chunk具有相同响应ID，不将当前分片测试宣称为混合响应身份检测。

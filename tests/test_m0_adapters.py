@@ -361,3 +361,41 @@ def test_tools_cannot_use_network_in_synthetic_round():
     assert execute(adapter, run, history, fixture, tool=tool).tool_statuses == (
         "TOOL_FAILED",
     )
+
+
+@pytest.mark.parametrize("cancel_at,total", [(0, 1), (1, 3)])
+def test_tool_cancellation_preserves_complete_group_and_signal(cancel_at, total):
+    parts = stream_parts()
+    fixture = json.loads(FIXTURE.read_text())
+    calls = []
+    for index in range(total):
+        call = copy.deepcopy(fixture["assistant"]["tool_calls"][0])
+        call.update(index=index, id=f"synthetic_call_{index}")
+        calls.append(call)
+    parts[1] = sse({"tool_calls": calls})
+    adapter, run, history, fixture, events, _ = setup(parts)
+    executed = []
+
+    def tool(call, data):
+        executed.append(call["id"])
+        if len(executed) - 1 == cancel_at:
+            raise asyncio.CancelledError("SYNTHETIC_PRIVATE_CANCEL")
+        return tool_result(call, data)
+
+    with pytest.raises(asyncio.CancelledError) as caught:
+        execute(adapter, run, history, fixture, tool=tool)
+    assert caught.value.args == ()
+    assert executed == [f"synthetic_call_{i}" for i in range(cancel_at + 1)]
+    assert [event[0] for event in events] == ["reserve", "send", "settle"]
+    messages = history.messages(run)
+    assert len(messages) == 1 + total
+    assert [call["id"] for call in messages[0]["tool_calls"]] == [
+        result["tool_call_id"] for result in messages[1:]
+    ]
+    for index, message in enumerate(messages[1:]):
+        expected = (
+            fixture["evidence"] if index < cancel_at else {"error": "TOOL_CANCELLED"}
+        )
+        assert json.loads(message["content"]) == expected
+    assert "SYNTHETIC_PRIVATE_CANCEL" not in json.dumps(messages)
+    assert history.messages(run, keep_groups=1) == messages
