@@ -194,6 +194,10 @@ class LiveLedger(PostgresBudget):
 
     def claim(self, contract):
         with self._transaction() as conn:
+            # Refuse an old lab schema before consuming authorization or doing HTTP.
+            conn.execute(
+                "SELECT business_code,trace_code FROM m0_live_diagnostics LIMIT 0"
+            )
             row = conn.execute(
                 "INSERT INTO m0_live_once (experiment_id,run_id,approval_hash,contract_hash,deadline) SELECT %s,%s,%s,%s,%s WHERE clock_timestamp()<%s ON CONFLICT DO NOTHING RETURNING experiment_id",
                 (

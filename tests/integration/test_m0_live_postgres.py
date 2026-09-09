@@ -100,3 +100,41 @@ def test_failure_codes_survive_new_connection_without_stdout():
             (contract["experiment_id"],),
         ).fetchone()
     assert row == ("failed", "LIVE_AUTH_FAILED", "pending", "TRACE_NOT_ATTEMPTED")
+
+
+def test_missing_diagnostic_schema_refuses_before_claim():
+    from contextlib import contextmanager
+    from pathlib import Path
+
+    from psycopg import sql
+
+    from scripts.m0.contracts import BudgetError
+
+    schema = "m0_missing_diagnostics_" + uuid4().hex
+    with psycopg.connect(DSN) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        conn.execute(Path("scripts/m0/live.sql").read_text().split("-- Additive")[0])
+
+    class OldSchemaLedger(LiveLedger):
+        @contextmanager
+        def _transaction(self):
+            with super()._transaction() as conn:
+                conn.execute(
+                    sql.SQL("SET LOCAL search_path TO {}").format(
+                        sql.Identifier(schema)
+                    )
+                )
+                yield conn
+
+    with pytest.raises(BudgetError, match="STORAGE_UNAVAILABLE"):
+        OldSchemaLedger(DSN).claim(packet())
+    with psycopg.connect(DSN) as conn:
+        assert (
+            conn.execute(
+                sql.SQL("SELECT count(*) FROM {}.m0_live_once").format(
+                    sql.Identifier(schema)
+                )
+            ).fetchone()[0]
+            == 0
+        )

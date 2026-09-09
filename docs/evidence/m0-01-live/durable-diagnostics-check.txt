@@ -18,12 +18,12 @@ rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
 configfile: pyproject.toml
 testpaths: tests
 plugins: anyio-4.15.1
-collected 270 items
+collected 271 items
 
 tests/integration/test_m0_adapter_budget.py sss                          [  1%]
 tests/integration/test_m0_budget_postgres.py ssssssssss                  [  4%]
-tests/integration/test_m0_live_postgres.py sss                           [  5%]
-tests/test_doctor.py .....                                               [  7%]
+tests/integration/test_m0_live_postgres.py ssss                          [  6%]
+tests/test_doctor.py .....                                               [  8%]
 tests/test_m0.py ..................................                      [ 20%]
 tests/test_m0_adapters.py .............................                  [ 31%]
 tests/test_m0_budget.py ........                                         [ 34%]
@@ -53,5 +53,6 @@ SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local Pos
 SKIPPED [1] tests/integration/test_m0_live_postgres.py:38: explicit local PostgreSQL opt-in required
 SKIPPED [1] tests/integration/test_m0_live_postgres.py:67: explicit local PostgreSQL opt-in required
 SKIPPED [1] tests/integration/test_m0_live_postgres.py:84: explicit local PostgreSQL opt-in required
-======================= 254 passed, 16 skipped in 2.55s ========================
-Resolved 38 packages in 18ms
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:105: explicit local PostgreSQL opt-in required
+======================= 254 passed, 17 skipped in 2.47s ========================
+Resolved 38 packages in 17ms

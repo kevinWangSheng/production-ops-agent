@@ -35,3 +35,5 @@ Code Review于11:50UTC返回，覆盖c8a8ced，新增P2（comment3968000660）�
 新增表只由显式本地实验setup安装，live不会迁移数据库；测试使用现有专属55431及随机新身份，原真实实验行前后hash核对。独立验证见[durable-diagnostics-review.md](durable-diagnostics-review.md)。这不是产品数据库迁移或新的真实调用授权。
 
 本轮补充验证：make check254passed/16显式PG默认skip；新增/现有live PG专项3passed，独立67项组合测试及诊断SQL失败事务回滚通过。原真实实验行to_jsonb的SHA256前后相同。专属PG已stop，保留旧数据和新增诊断表；模型/上传新增0。
+
+补充前提防护：claim前检查诊断表字段可查询，旧schema缺表时拒绝且不消耗授权；真实PG专项4passed，独立复验通过。最后完整检查254passed/17显式PG默认skip。专属PG再次stop，仍无模型/上传新增。

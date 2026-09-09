@@ -16,3 +16,12 @@
 4. `git diff --check`：退出 0。
 
 局限：存储不可用时不能保证诊断已落盘；进程可能只返回固定 storage code，不能将其表述为持久化成功。进入业务段前的 validate/claim 失败仍不属于本轮逐次诊断持久化保证；没有验证进程 crash 全矩阵或自动导出恢复。本审查未检查原真实行 hash；该项由主执行者独立比较和记录。本地测试只创建随机新 id 的合成记录，未启停 PostgreSQL，未改变旧行。
+
+## 旧实验库前置检查专项复验
+
+同日追加，基线 `53c3ca58fec9ef81c4e51e38ef64df266494ff7a` 加 `LiveLedger.claim` 前置查询及对应 PostgreSQL 测试 diff。只复验该增量，无阻塞发现：同一事务先以 `LIMIT 0` 解析诊断表及字段，再插入授权占用记录；缺表/字段会通过既有事务边界返回固定 storage 错误，发生在 `execute` 构造 HTTP 客户端及发请求之前。测试使用随机独立 schema，仅创建旧 parent 表，确认 claim 被拒且该 schema 的 parent 表仍为零行，没有删除旧数据。
+
+独立执行 `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgres.py -q`：4 passed in 0.67s；`git diff --check` 退出 0。未启停数据库、未读真实旧行或私有文件、未发外部请求。复验内容 SHA-256：
+
+- `scripts/m0/live.py`：`4cc44e76672c0be72bfee2ae9c848475c971260e21e555f87d473d05add02fae`
+- `tests/integration/test_m0_live_postgres.py`：`f9c026fbb99bc787ecad3d024c8f2fa5fcb7bbde27a6bbdbc269b913f0c10379`
