@@ -399,3 +399,75 @@ def test_tool_cancellation_preserves_complete_group_and_signal(cancel_at, total)
         assert json.loads(message["content"]) == expected
     assert "SYNTHETIC_PRIVATE_CANCEL" not in json.dumps(messages)
     assert history.messages(run, keep_groups=1) == messages
+
+
+@pytest.mark.parametrize("cancel_at", ["request", "stream"])
+@pytest.mark.parametrize("cleanup_failure", [None, "stream", "transport"])
+def test_model_task_cancellation_propagates_and_cleans_up(cancel_at, cleanup_failure):
+    async def scenario():
+        events, tools, closed = [], [], []
+        reached = asyncio.Event()
+        blocked = asyncio.Event()
+
+        class WaitingStream(httpx2.AsyncByteStream):
+            async def __aiter__(self):
+                yield stream_parts()[0]
+                reached.set()
+                await blocked.wait()
+                for part in stream_parts()[1:]:
+                    yield part
+
+            async def aclose(self):
+                closed.append("stream")
+                if cleanup_failure == "stream":
+                    raise OSError("SYNTHETIC_PRIVATE_CLEANUP")
+
+        async def handler(request):
+            events.append(("send",))
+            if cancel_at == "request":
+                reached.set()
+                await blocked.wait()
+            return httpx2.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                stream=WaitingStream(),
+            )
+
+        class RecordingTransport(httpx2.MockTransport):
+            async def aclose(self):
+                closed.append("transport")
+                await super().aclose()
+                if cleanup_failure == "transport":
+                    raise OSError("SYNTHETIC_PRIVATE_CLEANUP")
+
+        run = context()
+        history = History(run)
+        adapter = SyntheticAdapter(
+            transport=RecordingTransport(handler),
+            budget=RecordingBudget(events),
+            clock=lambda: NOW,
+        )
+        task = asyncio.create_task(
+            adapter.round(
+                run,
+                history,
+                json.loads(FIXTURE.read_text()),
+                upper_bound=100,
+                synthetic_price=lambda usage: usage["total_tokens"],
+                tool=lambda *args: tools.append(args),
+            )
+        )
+        await asyncio.wait_for(reached.wait(), timeout=2)
+        task.cancel("SYNTHETIC_PRIVATE_CANCEL")
+        with pytest.raises(asyncio.CancelledError) as caught:
+            await task
+        assert caught.value.args == ()
+        assert caught.value.__suppress_context__
+        assert task.cancelled()
+        assert [event[0] for event in events] == ["reserve", "send", "unknown"]
+        assert events[0][1] == events[-1][1]
+        assert tools == [] and history.messages(run) == []
+        assert "transport" in closed
+        assert ("stream" in closed) == (cancel_at == "stream")
+
+    asyncio.run(scenario())

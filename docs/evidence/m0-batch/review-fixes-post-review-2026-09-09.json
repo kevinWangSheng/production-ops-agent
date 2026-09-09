@@ -1,0 +1,15 @@
+{
+  "base_commit": "e5a971cbb7b80c8f7dc789756034d4cda7630a72",
+  "kind": "dirty source self-test after independent review finding",
+  "command": "make check",
+  "exit_code": 0,
+  "passed": 57,
+  "finding": "publication failure plus rollback failure must retain original and continue remaining restorations",
+  "sha256": {
+    "scripts/m0/config.py": "c9b14626e1982af21f9b1df927c74eec237fd5278f8a20c206ea0d3468369a8e",
+    "scripts/setup_docs_mcp.py": "8c51a8cf503e643be4209e608acee209f85e052508b71749438a435fb0db35dc",
+    "tests/test_m0.py": "c6f8bfe2a65a366280502ec3cbf7ad79d031c024d6bb417a1fff09a0fb167e01",
+    "tests/test_setup_docs_mcp.py": "6834df1bba361a41416fffeca1f24afa3eef13dd0ce960b4820e321cabd7af8e"
+  },
+  "live_calls": 0
+}

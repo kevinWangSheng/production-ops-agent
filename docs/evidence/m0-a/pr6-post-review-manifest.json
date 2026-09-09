@@ -1,0 +1,12 @@
+{
+  "base_commit": "d61cf1557b9a2d3780488e3e7dc133a6282723e8",
+  "kind": "dirty source self-test after independent cleanup failure finding",
+  "command": "make check",
+  "exit_code": 0,
+  "passed": 84,
+  "sha256": {
+    "scripts/m0/adapters.py": "38748c92786b0bf45f0595fd7ea72e975512cddf0fa2936cba8f02bb73abc88b",
+    "tests/test_m0_adapters.py": "e06949f7820df61e4dcddae791f7a276d53dea0ff0d1996f9b36e861b7dc5522"
+  },
+  "live_calls": 0
+}

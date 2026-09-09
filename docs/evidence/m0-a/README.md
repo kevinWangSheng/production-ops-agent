@@ -30,3 +30,14 @@
 工具同步抛CancelledError时，当前及未执行项写TOOL_CANCELLED，先保留完整组，再向调用方抛无原异常文本的取消信号。已完成结果原样保留，剩余工具零执行；单工具和三工具中途取消回归见[p2-targeted.txt](p2-targeted.txt)，31 passed。修复后全套pytest见[p2-pytest.txt](p2-pytest.txt)，78 passed。首轮make check被独立审查Markdown代码块格式阻断，原始输出保留[p2-check-first-failure.txt](p2-check-first-failure.txt)，实现者未修改审查文件。独立复验仍待reviewer。
 
 明确覆盖边界：timeout约束模型流并在工具前检查deadline，不约束同步工具执行时长，尚未验证可中断工具运行器或产品级协作取消；本次修复只保证合成工具主动抛取消时的结果配对。收集器尚未验证所有SSE chunk具有相同响应ID，不将当前分片测试宣称为混合响应身份检测。
+
+
+## PR #6 模型请求取消复验（2026-09-09）
+
+历史工件保持原样。本轮请求创建及流消费阶段采用真实 `Task.cancel`，旧实现
+[两项失败](pr6-cancellation-before.txt)；修复后 [33 项定向测试](pr6-cancellation-targeted.txt)
+及 [make check / 80 项测试](pr6-cancellation-check.txt) 通过。取消信号无原始文本、
+任务状态 cancelled、预算 unknown、工具零执行、History 无半组及传输/流关闭均有断言。
+本轮 [manifest](pr6-cancellation-manifest.json) 记录实际受检脚本哈希；不覆盖旧 manifest。
+这不验证真实服务端撤销、同步工具硬超时或持久产品取消。独立复验及公共基线合入后的
+回归、PR 最新 CI 仍待协调者；不读取 .env，真实模型/trace 调用均为零。
