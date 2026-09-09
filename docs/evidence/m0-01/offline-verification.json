@@ -1,0 +1,113 @@
+{
+  "recorded_at": "2026-09-09T04:54:00.775147+00:00",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "base_commit": "0e51dd6979b33836125d1c6cc3cd18f15edd6c14",
+  "working_tree": "dirty; exact tested source hashes below",
+  "commands": [
+    {
+      "command": [
+        "make",
+        "doctor"
+      ],
+      "exit_code": 0,
+      "stdout": "python3 scripts/doctor.py\nOK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01\nOK | 项目声明 | pyproject.toml\nOK | 锁文件存在 | 仅检查存在\nOK | uv | uv 0.10.8 (c021be36a 2026-03-03)\nOK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}\n基础开发环境：前提可用\n环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/doctor.py",
+        "--lab"
+      ],
+      "exit_code": 2,
+      "stdout": "OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01\nOK | 项目声明 | pyproject.toml\nOK | 锁文件存在 | 仅检查存在\nOK | uv | uv 0.10.8 (c021be36a 2026-03-03)\nOK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}\n基础开发环境：前提可用\n环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。\nOK | Docker 客户端 | 只读探测，不自动准备\nOK | Docker Compose | 只读探测，不自动准备\n缺失/不可用 | Docker daemon | 只读探测，不自动准备\n缺失/不可用 | kubectl | 只读探测，不自动准备\n缺失/不可用 | Helm | 只读探测，不自动准备\n实验设施：未就绪\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sysctl",
+        "-n",
+        "hw.memsize",
+        "hw.logicalcpu"
+      ],
+      "exit_code": 0,
+      "stdout": "17179869184\n10\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "vm_stat"
+      ],
+      "exit_code": 0,
+      "stdout": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                     5877.\nPages active:                                 172990.\nPages inactive:                               167702.\nPages speculative:                              4525.\nPages throttled:                                   0.\nPages wired down:                             276870.\nPages purgeable:                                   2.\n\"Translation faults\":                     7277449910.\nPages copy-on-write:                       713058295.\nPages zero filled:                        2668561087.\nPages reactivated:                        1989959477.\nPages purged:                              261107173.\nFile-backed pages:                            126131.\nAnonymous pages:                              219086.\nPages stored in compressor:                  2308281.\nPages occupied by compressor:                 385805.\nDecompressions:                           2607146914.\nCompressions:                             2814157264.\nPageins:                                   118779515.\nPageouts:                                    1904404.\nSwapins:                                     4709310.\nSwapouts:                                    6201237.\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "df",
+        "-h",
+        "."
+      ],
+      "exit_code": 0,
+      "stdout": "Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on\n/dev/disk3s5   228Gi   151Gi    44Gi    78%    2.9M  463M    1%   /System/Volumes/Data\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "make",
+        "check"
+      ],
+      "exit_code": 0,
+      "stdout": "python3 scripts/doctor.py\nOK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01\nOK | 项目声明 | pyproject.toml\nOK | 锁文件存在 | 仅检查存在\nOK | uv | uv 0.10.8 (c021be36a 2026-03-03)\nOK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}\n基础开发环境：前提可用\n环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。\nuv lock --check --offline --no-python-downloads\n.venv/bin/ruff check .\nAll checks passed!\n.venv/bin/ruff format --check .\n87 files already formatted\n.venv/bin/python -m pytest\n============================= test session starts ==============================\nplatform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0\nrootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: anyio-4.15.1\ncollected 40 items\n\ntests/test_doctor.py .....                                               [ 12%]\ntests/test_m0.py ...............................                         [ 90%]\ntests/test_setup_docs_mcp.py ....                                        [100%]\n\n============================== 40 passed in 0.79s ==============================\n",
+      "stderr": "Resolved 35 packages in 20ms\n"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "scripts.m0",
+        "offline"
+      ],
+      "exit_code": 0,
+      "stdout": "{\n  \"architecture\": \"arm64\",\n  \"base_commit\": \"0e51dd6979b33836125d1c6cc3cd18f15edd6c14\",\n  \"cost_cny\": 0,\n  \"evidence_kind\": \"synthetic_sdk_wire\",\n  \"external_calls\": 0,\n  \"live_verified\": false,\n  \"platform\": \"Darwin\",\n  \"python\": \"3.12.13\",\n  \"sha256\": {\n    \"pyproject.toml\": \"98dbbe9033ff1ae1be9bcbfc0319f00651f0afc64c3a019b40c0e6aa7a63763b\",\n    \"scripts/m0/__init__.py\": \"eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4\",\n    \"scripts/m0/__main__.py\": \"1dc8af4977a614bebf0d15083a5457a694f2ded4b7d72b4980d89e2188773128\",\n    \"scripts/m0/config.py\": \"a98426cb572e0a4029d032fc1dfdfa06ea8147eb5682d7cc1a676d93c0287ade\",\n    \"scripts/m0/protocol.py\": \"c87c704aa3fd18d898e79cdd3af368332220c9a8450c5827108f4005b6a8227f\",\n    \"tests/fixtures/m0/protocol-v1.json\": \"7967484c6601d78a92ff50ffe09577b877af541ed06a1982ec57013a5f40da03\",\n    \"tests/test_m0.py\": \"17e9dbc4051d805e9a451d900c65e7cf3b28afaaab171cc0426fe34ca634e45a\",\n    \"uv.lock\": \"c5a7fb3539b994f8c22c940395ed01eb2baa863c2f9d73fd838ab42e7e1bbd98\"\n  },\n  \"status\": \"offline_pass\",\n  \"summary\": {\n    \"adapter\": \"m0-offline-v1\",\n    \"attempt\": 1,\n    \"evidence_id\": \"m0-evidence-a\",\n    \"fixture\": \"m0-protocol-v1\",\n    \"request_count\": 2,\n    \"run_id\": \"454b8982-dee3-4117-aaf7-e1aa13eb5315\",\n    \"status\": \"completed\",\n    \"subject\": \"m0-target-a\"\n  },\n  \"versions\": {\n    \"httpx2\": \"2.12.0\",\n    \"langsmith\": \"0.12.2\",\n    \"openai\": \"3.10.0\"\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "scripts.m0",
+        "live"
+      ],
+      "exit_code": 3,
+      "stdout": "{\"status\": \"denied\", \"reason\": \"LIVE_NOT_ENABLED\", \"network_calls\": 0}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "sdk_signatures": {
+    "openai.AsyncOpenAI": "(*, api_key: 'str | Callable[[], Awaitable[str]] | None' = None, admin_api_key: 'str | None' = None, workload_identity: 'WorkloadIdentity | X509WorkloadIdentity | None' = None, organization: 'str | None' = None, project: 'str | None' = None, webhook_secret: 'str | None' = None, provider: '_Provider | None' = None, base_url: 'str | httpx2.URL | None | NotGiven' = NOT_GIVEN, data_residency: 'DataResidency | None' = None, websocket_base_url: 'str | httpx2.URL | None' = None, timeout: 'float | Timeout | None | NotGiven' = NOT_GIVEN, max_retries: 'int' = 2, default_headers: 'Mapping[str, str] | None' = None, default_query: 'Mapping[str, object] | None' = None, http_client: 'httpx2.AsyncClient | None' = None, _strict_response_validation: 'bool' = False, _enforce_credentials: 'bool' = True) -> 'None'",
+    "openai.resources.chat.completions.completions.AsyncCompletions.create": "(self, *, messages: 'Iterable[ChatCompletionMessageParam]', model: 'Union[str, ChatModel]', audio: 'Optional[ChatCompletionAudioParam] | Omit' = <openai.Omit object at 0x1073624e0>, frequency_penalty: 'Optional[float] | Omit' = <openai.Omit object at 0x1073624e0>, function_call: 'completion_create_params.FunctionCall | Omit' = <openai.Omit object at 0x1073624e0>, functions: 'Iterable[completion_create_params.Function] | Omit' = <openai.Omit object at 0x1073624e0>, logit_bias: 'Optional[Dict[str, int]] | Omit' = <openai.Omit object at 0x1073624e0>, logprobs: 'Optional[bool] | Omit' = <openai.Omit object at 0x1073624e0>, max_completion_tokens: 'Optional[int] | Omit' = <openai.Omit object at 0x1073624e0>, max_tokens: 'Optional[int] | Omit' = <openai.Omit object at 0x1073624e0>, metadata: 'Optional[Metadata] | Omit' = <openai.Omit object at 0x1073624e0>, modalities: \"Optional[List[Literal['text', 'audio']]] | Omit\" = <openai.Omit object at 0x1073624e0>, moderation: 'Optional[completion_create_params.Moderation] | Omit' = <openai.Omit object at 0x1073624e0>, n: 'Optional[int] | Omit' = <openai.Omit object at 0x1073624e0>, parallel_tool_calls: 'bool | Omit' = <openai.Omit object at 0x1073624e0>, prediction: 'Optional[ChatCompletionPredictionContentParam] | Omit' = <openai.Omit object at 0x1073624e0>, presence_penalty: 'Optional[float] | Omit' = <openai.Omit object at 0x1073624e0>, prompt_cache_key: 'Optional[str] | Omit' = <openai.Omit object at 0x1073624e0>, prompt_cache_options: 'completion_create_params.PromptCacheOptions | Omit' = <openai.Omit object at 0x1073624e0>, prompt_cache_retention: \"Optional[Literal['in_memory', '24h']] | Omit\" = <openai.Omit object at 0x1073624e0>, reasoning_effort: 'Optional[ReasoningEffort] | Omit' = <openai.Omit object at 0x1073624e0>, response_format: 'completion_create_params.ResponseFormat | Omit' = <openai.Omit object at 0x1073624e0>, safety_identifier: 'Optional[str] | Omit' = <openai.Omit object at 0x1073624e0>, seed: 'Optional[int] | Omit' = <openai.Omit object at 0x1073624e0>, service_tier: \"Optional[Literal['auto', 'default', 'flex', 'scale', 'priority', 'fast']] | Omit\" = <openai.Omit object at 0x1073624e0>, stop: 'Union[Optional[str], SequenceNotStr[str], None] | Omit' = <openai.Omit object at 0x1073624e0>, store: 'Optional[bool] | Omit' = <openai.Omit object at 0x1073624e0>, stream: 'Optional[Literal[False]] | Literal[True] | Omit' = <openai.Omit object at 0x1073624e0>, stream_options: 'Optional[ChatCompletionStreamOptionsParam] | Omit' = <openai.Omit object at 0x1073624e0>, temperature: 'Optional[float] | Omit' = <openai.Omit object at 0x1073624e0>, tool_choice: 'ChatCompletionToolChoiceOptionParam | Omit' = <openai.Omit object at 0x1073624e0>, tools: 'Iterable[ChatCompletionToolUnionParam] | Omit' = <openai.Omit object at 0x1073624e0>, top_logprobs: 'Optional[int] | Omit' = <openai.Omit object at 0x1073624e0>, top_p: 'Optional[float] | Omit' = <openai.Omit object at 0x1073624e0>, user: 'str | Omit' = <openai.Omit object at 0x1073624e0>, verbosity: \"Optional[Literal['low', 'medium', 'high']] | Omit\" = <openai.Omit object at 0x1073624e0>, web_search_options: 'completion_create_params.WebSearchOptions | Omit' = <openai.Omit object at 0x1073624e0>, extra_headers: 'Headers | None' = None, extra_query: 'Query | None' = None, extra_body: 'Body | None' = None, timeout: 'float | httpx2.Timeout | None | NotGiven' = NOT_GIVEN) -> 'ChatCompletion | AsyncStream[ChatCompletionChunk]'",
+    "langsmith.client.Client": "(api_url: 'Optional[str]' = None, *, api_key: 'Optional[str]' = None, retry_config: 'Optional[Retry]' = None, timeout_ms: 'Optional[Union[int, tuple[int, int]]]' = None, web_url: 'Optional[str]' = None, session: 'Optional[requests.Session]' = None, auto_batch_tracing: 'bool' = True, anonymizer: 'Optional[Callable[[dict], dict]]' = None, hide_inputs: 'Optional[Union[Callable[[dict], dict], bool]]' = None, hide_outputs: 'Optional[Union[Callable[[dict], dict], bool]]' = None, hide_metadata: 'Optional[Union[Callable[[dict], dict], bool]]' = None, omit_traced_runtime_info: 'bool' = False, process_buffered_run_ops: 'Optional[Callable[[Sequence[dict]], Sequence[dict]]]' = None, run_ops_buffer_size: 'Optional[int]' = None, run_ops_buffer_timeout_ms: 'Optional[float]' = None, info: 'Optional[Union[dict, ls_schemas.LangSmithInfo]]' = None, api_urls: 'Optional[dict[str, str]]' = None, otel_tracer_provider: 'Optional[TracerProvider]' = None, tracing_mode: 'Optional[TracingMode]' = None, otel_enabled: 'Optional[bool]' = None, tracing_sampling_rate: 'Optional[float]' = None, workspace_id: 'Optional[str]' = None, max_batch_size_bytes: 'Optional[int]' = None, headers: 'Optional[dict[str, str]]' = None, tracing_error_callback: 'Optional[Callable[[Exception], None]]' = None, disable_prompt_cache: 'bool' = False, cache: 'Optional[Union[bool, PromptCache]]' = None) -> 'None'",
+    "langsmith.client.Client.create_run": "(self, name: 'str', inputs: 'dict[str, Any]', run_type: 'RUN_TYPE_T', *, project_name: 'Optional[str]' = None, revision_id: 'Optional[str]' = None, dangerously_allow_filesystem: 'bool' = False, api_key: 'Optional[str]' = None, api_url: 'Optional[str]' = None, **kwargs: 'Any') -> 'None'"
+  },
+  "sha256": {
+    "pyproject.toml": "98dbbe9033ff1ae1be9bcbfc0319f00651f0afc64c3a019b40c0e6aa7a63763b",
+    "uv.lock": "c5a7fb3539b994f8c22c940395ed01eb2baa863c2f9d73fd838ab42e7e1bbd98",
+    "tests/test_m0.py": "17e9dbc4051d805e9a451d900c65e7cf3b28afaaab171cc0426fe34ca634e45a",
+    "scripts/m0/__init__.py": "eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4",
+    "scripts/m0/__main__.py": "1dc8af4977a614bebf0d15083a5457a694f2ded4b7d72b4980d89e2188773128",
+    "scripts/m0/config.py": "a98426cb572e0a4029d032fc1dfdfa06ea8147eb5682d7cc1a676d93c0287ade",
+    "scripts/m0/protocol.py": "c87c704aa3fd18d898e79cdd3af368332220c9a8450c5827108f4005b6a8227f",
+    "tests/fixtures/m0/protocol-v1.json": "7967484c6601d78a92ff50ffe09577b877af541ed06a1982ec57013a5f40da03"
+  }
+}

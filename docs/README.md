@@ -2,6 +2,8 @@
 
 ## Current sources of truth
 
+- [开工上下文补齐](tasks/2026-09-08-preflight-context.md)：当前文档/配置维护；[M0-01 资源与入口准备](tasks/2026-09-08-m0-01-preflight.md)：首个有界准备任务和执行判据。
+
 - [交付与资源规划](plans/delivery-and-resources-2026-09-08.md)：本轮基础 CI/PR 范围、平台限制及后续资源/凭据/UI/eval/CD；[任务记录](tasks/2026-09-08-github-ci.md)。
 
 - [开发工具说明](development.md)：环境准备、诊断、检查和验证证据；[本批任务记录](tasks/2026-09-08-dev-environment.md)。

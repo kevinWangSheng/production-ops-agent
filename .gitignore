@@ -27,3 +27,9 @@ Codex.local.md
 # Python development environment
 .venv/
 .ruff_cache/
+
+# Generated project-local documentation MCP config (scripts/setup_docs_mcp.py)
+.codex/config.toml
+.Codex/config.toml
+.mcp.json
+.claude/settings.local.json
