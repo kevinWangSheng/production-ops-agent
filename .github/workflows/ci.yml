@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
@@ -34,3 +35,45 @@ jobs:
         run: make setup
       - name: Run development checks
         run: make check
+      - name: Install checksum-pinned Gitleaks
+        run: python3 scripts/install_gitleaks.py --directory tmp/ci-gitleaks
+      - name: Secret scan and synthetic detection self-test
+        run: python3 scripts/check_secrets.py --binary tmp/ci-gitleaks/gitleaks
+
+  m0-postgres:
+    name: m0-postgres
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        # Official postgres:17.9 multi-platform index, read from Docker registry.
+        image: postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545
+        env:
+          POSTGRES_USER: m0_lab
+          POSTGRES_DB: m0_budget
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55431:5432
+        options: >-
+          --cpus=1 --memory=512m
+          --health-cmd "pg_isready -U m0_lab -d m0_budget"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked experiment dependencies
+        run: make setup
+      - name: Verify ledger and adapter integration on synthetic PostgreSQL
+        env:
+          M0_B_POSTGRES: "1"
+        # Native local cluster restart is independently tested on macOS, not this service.
+        run: .venv/bin/python -m pytest tests/integration -q
+

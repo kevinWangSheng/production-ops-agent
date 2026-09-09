@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: technical design approved and persisted; M0-01 offline preparation is in progress. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Implementation has not started.
+Current phase: technical design approved and persisted; local M0 A/B/C implementation and independent reviews are complete; integration PR checks have passed and the batch awaits user review. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Product feature implementation has not started.
 
 ## Completed decisions and documentation
 
@@ -40,9 +40,9 @@ Current phase: technical design approved and persisted; M0-01 offline preparatio
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-09 M0 PR review 修复与依赖复测：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。原批次已交付 #4–#8；#4–#7 待审，#8 已合入 components，本轮修复 GitHub 发现并另开证据澄清 PR。公共基线先独立复验，再普通 merge 到 A/B/C 复测；真实调用及产品实施门槛保持关闭。
+- [-] 2026-09-09 M0 离线批次修复与汇合：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。用户已授权合并，#4–#7 已合入 main，#8/#9 已合入 components；收尾 PR #10 汇集既有集成测试、扫描 CI 和证据；其 GitHub review 新增暂存索引漏扫 P1，已修复并独立复验，因新增安全改动待用户审核后合入 main，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
 
-- [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。真实调用入口保持关闭，区域/预算/期限及累计费用机制待补齐；不代表 M0 机制或产品通过。
+- [-] M0-01 离线资源与协议入口准备 — 2026-09-08：[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)。从 0e51dd6 建立 chore/m0-01-offline 独立 worktree；依赖锁、显式配置校验、合成 SDK wire/trace 白名单排演完成；独立审查 P2 已修复复验，最终 40 tests 通过，离线证据已归档。此为既有离线子任务记录；累计费用现已在B合成PostgreSQL完成本地机制验证，A扩展协议替身，见批次索引。真实调用入口保持关闭，区域/账号/费用/期限授权及真实链路仍未齐；不代表完整M0或产品通过。
 
 - [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
 

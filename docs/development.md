@@ -72,3 +72,15 @@ make check
 退出码：0 仅表示离线排演成功；1 排演异常（不输出原始 SDK 异常）；2 配置拒绝或真实前提未完成；3 `LIVE_NOT_ENABLED`。本版本 `live` **始终拒绝**，即使 key、预算、日期全填也不创建客户端、不读文件。后续真实入口必须先实现授权记录、实际 endpoint/workspace 校验、持久累计费用预留（含未知费用）、并发/重启和总期限限制、受控 trace 上传/回读与退出清理，并完成独立审查；预算数字本身不能打开此入口。
 
 本次没有服务、数据库或后台导出线程需要停止，CLI 客户端随上下文关闭。stdout 可保存到任务专用 `tmp/m0-01/`；审核后无秘密证据写入 `docs/evidence/m0-01/`。清理遵循 AGENTS，不自动删除证据或其他任务卷。真实实验的用例合同、版本来源、资源限制和缺项见 [M0-01](tasks/2026-09-08-m0-01-preflight.md)。
+
+
+## 本批 M0 公开合同、预算与安全检查
+
+本批仍为离线合成机制实现，live 无条件拒绝。任务及PR依赖见[批次索引](tasks/2026-09-08-m0-batch.md)。`make check`包括A/C及预算输入检查；实际数据库测试必须显式 opt-in，默认skip单列，不能算实际集成通过。
+
+- 数据库仅由B worktree的 `.venv/bin/python -m scripts.m0.postgres_lab start/stop` 控制；先核对[资源与归属](evidence/m0-b/results.md)。本机现有PostgreSQL17.9，专属55431及tmp/m0-b/postgres，数据始终保留；不要在另一个worktree同时创建同端口实例。原生配置不是容器硬资源限额，不证明产品数据库身份隔离。
+- 数据库已由B实例启动时，在集成worktree执行 `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`；数据库重启测试只从B工作区额外设置 `M0_B_RESTART=1`。任务完成后由B实例脚本停止，不删除数据。
+- 秘密扫描：`python3 scripts/install_gitleaks.py --directory tmp/gitleaks` 下载固定8.30.1官方发行包并校验固定SHA256；已存在目标拒绝覆盖，可直接复用已核查binary。支持macOS arm64/Linux x86_64。
+- `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再分别扫描 Git 索引暂存 blob、已跟踪路径的当前工作区快照，以及全部本地 Git refs 历史。索引内容按列举时固定的 blob ID 读取，工作区后续清理或删除不会掩盖已暂存内容；未暂存更改仍单独检查。未合并的索引、symlink/submodule 与误暂存私有配置均拒绝；不宣称检查与后续 commit 对并发 git add 原子绑定。使用默认规则并禁用仓库抑制/inline allow；仅对指定证据manifest的两个已核实源码SHA256设规则+路径+值AND例外，并实测同路径canary/同值不同路径仍拒绝；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
+
+CI 的checks增加同一扫描与自检；m0-postgres使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。
