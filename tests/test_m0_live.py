@@ -579,3 +579,32 @@ def test_final_failure_is_classified_without_exporting_content(content, code):
     assert result["unreconciled_reserved_cny"] == "2.00"
     assert len(ledger.saved[2]) == 2
     assert "fake-model-auth" not in json.dumps([result, ledger.saved])
+
+
+def test_final_request_uses_json_mode_and_fenced_response_still_fails():
+    contract, config = packet()
+    ledger = MemoryLedger()
+    respond, _ = scenario(contract, ledger)
+    bodies = []
+
+    async def capture(request):
+        response = await respond.handle_async_request(request)
+        if request.url.host == "api.deepseek.com":
+            bodies.append(json.loads(request.content))
+            if len(bodies) == 2:
+                payload = response.json()
+                # The exact known-fixture content observed in the live diagnostic.
+                payload["choices"][0]["message"]["content"] = (
+                    '```json\n{"target": "m0-target-a", "evidence_id": "m0-evidence-a"}\n```'
+                )
+                return httpx2.Response(200, json=payload)
+        return response
+
+    with no_network():
+        result = asyncio.run(
+            execute(contract, config, ledger, transport=httpx2.MockTransport(capture))
+        )
+    assert "response_format" not in bodies[0]
+    assert bodies[1].get("response_format") == {"type": "json_object"}
+    assert result["business_code"] == "LIVE_FINAL_JSON_INVALID"
+    assert "trace-post" not in ledger.attempts

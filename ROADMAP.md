@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: technical design approved and persisted; local M0 A/B/C and integration are merged with independent review and main CI evidence; M0-01 one-shot live experiment was authorized and executed: model business completed; follow-up read-only diagnosis confirmed stored trace data and fixed a platform-metadata validation error. The initial failed exit is preserved; no full rerun or product gate clearance. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Product feature implementation has not started.
+Current phase: M0真实调查验证进行中。PR #14已合并为738b5c7，main CI34380825700成功；新一轮有界实验已定位Flash最终JSON围栏问题并最小修复，完整Flash→固定工具→PG→LangSmith回读单次通过。OTel Demo真实环境与HolmesGPT基线并行推进，见[当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。首个产品实施入口仍待真实调查/权限/恢复证据与对应冻结验收，不以协议成功代替产品进展。
 
 ## Completed decisions and documentation
 
@@ -42,11 +42,11 @@ Current phase: technical design approved and persisted; local M0 A/B/C and integ
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
+- [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。该离线批次不自动授权真实调用或打开M0退出/产品实施门槛；后续真实调用授权与结果见当前M0任务。
 
 - [-] M0-01 — 2026-09-09：PR #12 已合并为 `55539bc`，#13 已关闭、自动审查门禁暂缓。原 Pro 两轮完成及 trace 后续只读确认保留，原 2 CNY 未核账；本轮按新的 [Flash 单次合同](docs/evidence/m0-01-live/flash-contract.md)运行，2 次 Flash 请求后最终 JSON 合同失败，未上传 trace；[结果与诊断修复](docs/evidence/m0-01-live/flash-execution.md)保留。[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)接续运行证据，完整矩阵/恢复与产品门槛仍未完成。
 
-- [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
+- [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). 部分真实协议已执行，其他工作包按当前任务继续。
 
 - [x] C3 complete technical design accepted for persistence — 2026-09-07. Three whole-candidate adversarial rounds closed observer/control races, independent release-observation identity and provider-private-field export contradictions. See [technical plan](docs/design/technical-proposal-2026-09-07.md), [review record](docs/reviews/technical-design-c3-review-2026-09-07.md) and [ADR-0003](docs/adr/0003-business-state-recovery-authority.md).
 - [x] Technical direction: Python/FastAPI, PostgreSQL business recovery authority, DeepSeek-compatible adapter, LangSmith, Compose/Helm. LangGraph loop benefit and exact versions remain to be validated; graph checkpoints have no cross-attempt authority.
@@ -66,7 +66,7 @@ The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historic
 3. **M2 — full lifecycle and failures:** both entries, human control, delayed/duplicate inputs, knowledge versions and recovery; F2/F3/F6/F7/F11/F12/F13 acceptance evidence.
 4. **M3 — complete release evidence:** matched baseline/held-out comparisons, soak, upgrade/recovery and delivery; F1/F8/F9/F14 and every active acceptance check.
 
-F7/F8/F9 requirements apply from the first runnable system. No internal milestone substitutes for the complete product. No V2 scope or delivery date is promised; estimate effort after M0. Architecture is approved, runtime validation and feature implementation have not run.
+F7/F8/F9 requirements apply from the first runnable system. No internal milestone substitutes for the complete product. No V2 scope or delivery date is promised; estimate effort after M0. Architecture is approved; runtime validation is partial and feature implementation has not started.
 
 ## Retired scope
 

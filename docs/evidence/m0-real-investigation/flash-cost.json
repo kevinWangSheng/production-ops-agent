@@ -1,0 +1,9 @@
+{
+  "balance_delta_cny": "0.01",
+  "attributable_actual_cost_cny": null,
+  "reason": "aggregate balance precision/delay and concurrent account activity are not per-run invoice",
+  "flash_peak_estimate_cny": "0.007764",
+  "flash_offpeak_estimate_cny": "0.003882",
+  "legacy_unreconciled_cny": "4.00",
+  "new_flash_unreconciled_cny": "4.00"
+}

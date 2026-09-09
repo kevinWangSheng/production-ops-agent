@@ -552,6 +552,9 @@ async def execute(contract, config, ledger, *, transport=None):
                     "thinking": {"type": profile["thinking"]},
                     "stream": False,
                 }
+                if step == 2:
+                    # Final content is a strict JSON contract, not Markdown prose.
+                    body["response_format"] = {"type": "json_object"}
                 response = await wire.request(
                     f"model-{step}",
                     "POST",
