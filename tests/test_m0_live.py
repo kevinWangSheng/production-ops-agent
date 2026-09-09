@@ -146,7 +146,7 @@ def scenario(contract, ledger, variant="normal"):
                         or (variant == "wrong-second-model" and second)
                         else None
                         if variant == "missing-model"
-                        else "deepseek-v4-pro"
+                        else "deepseek-v4-flash"
                     ),
                     "choices": [
                         {
@@ -339,6 +339,11 @@ def test_deadline_rechecked_after_persistent_attempt():
         {},
         MODEL_PROFILE | {"version_scope": "fixed_weights"},
         MODEL_PROFILE | {"accepted_response_model": "deepseek-v4-pro-0813"},
+        MODEL_PROFILE
+        | {
+            "request_model": "deepseek-v4-pro",
+            "accepted_response_model": "deepseek-v4-pro",
+        },
         MODEL_PROFILE | {"thinking": "disabled"},
     ],
 )

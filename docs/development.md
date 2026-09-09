@@ -108,5 +108,5 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 回读诊断：CLI的trace_code为固定分类；trace_readback_code严格核对业务DTO，仅允许平台返回的根层级metadata.ls_run_depth=int0，出站extra规则仍不变。2xx null明确失败而非按404重试。初次失败可继续只读核对已有Run，无需重跑模型或重新上传；参考[真实误判修复](evidence/m0-01-live/trace-diagnosis.md)。
 
-模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-pro，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
+模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-flash，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
 批准合同v2还需runtime={python,implementation}，明确完整Python版本（包括patch）及CPython实现。入口在claim前核对实际运行环境与锁定依赖闭包（含当前平台marker和binary extra）；旧/缺失依赖或Python错配固定拒绝。此核对不自动安装环境，也不承诺检测伪造distribution元数据或被篡改的二进制。

@@ -30,8 +30,8 @@ from .runtime import check_runtime
 
 ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.com"}
 MODEL_PROFILE = {
-    "request_model": "deepseek-v4-pro",
-    "accepted_response_model": "deepseek-v4-pro",
+    "request_model": "deepseek-v4-flash",
+    "accepted_response_model": "deepseek-v4-flash",
     "version_scope": "reported_alias",
     "thinking": "enabled",
     "reasoning_effort": "high",
@@ -453,6 +453,9 @@ def token_usage(response):
     usage = response.get("usage", {})
     reported = response.get("model")
     known = {
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-0731",
+        "DeepSeek-V4-Flash-0731",
         "deepseek-v4-pro",
         "deepseek-v4-pro-0813",
         "DeepSeek-V4-Pro-0813",

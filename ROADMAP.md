@@ -4,6 +4,8 @@ Current phase: technical design approved and persisted; local M0 A/B/C and integ
 
 ## Completed decisions and documentation
 
+- [x] 2026-09-09 用户指定默认DeepSeek Flash：直接使用deepseek-v4-flash，保留thinking/high。Pro实验记录保留；当前仅切换配置/入口与合成检查，不重跑付费实验。
+
 - [x] Operating constraints clarified — 2026-09-07: no backup/disk-disaster recovery; retain process/task recovery; CNY 1,000 adjustable initial budget reference; effectiveness first; data-use plan prepared by assistant then reviewed by user. F8 backup step retired with history, not passed.
 
 - [x] Initial model adaptation targets DeepSeek; future GLM/provider replacement remains possible without committing first-release implementation — 2026-09-07.

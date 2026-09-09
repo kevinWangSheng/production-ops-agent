@@ -54,7 +54,7 @@ def sse(delta, finish=None, usage=None):
                 "id": "synthetic",
                 "object": "chat.completion.chunk",
                 "created": 1,
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
                 "usage": usage,
             }
@@ -88,7 +88,7 @@ def stream_parts(*, arguments=None, finish="tool_calls", usage=True):
                         "id": "synthetic",
                         "object": "chat.completion.chunk",
                         "created": 1,
-                        "model": "deepseek-v4-pro",
+                        "model": "deepseek-v4-flash",
                         "choices": [],
                         "usage": {
                             "prompt_tokens": 20,
