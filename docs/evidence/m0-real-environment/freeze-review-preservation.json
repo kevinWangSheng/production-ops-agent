@@ -1,0 +1,409 @@
+{
+  "base_commit": "5e91c0cd6046ecbcddb2ff6456e9487d60f462d8",
+  "archived_files_unchanged": 96,
+  "files": [
+    {
+      "path": "docs/evidence/m0-real-environment/closeout.json",
+      "sha256": "ecd2c0df20c641950b53d7dd7219dbb3d388816ea07e84bde303ddec92ffeb80"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/colima-start.txt",
+      "sha256": "a231c419d2e28894e04fd7efafa8fa444ebe634e12bc20050fbcf98131a47977"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/command-output-manifest.json",
+      "sha256": "3da76a1cb890361b743bd0625882c14067dba222203471e9e8f2eaf5d9ea42ce"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/compose-up.txt",
+      "sha256": "b540f3cb0c60d3bf55b55d6c6055a63c1b248c0933f394abf64c251da4db31b0"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/configuration-hashes.json",
+      "sha256": "2fda2d69162eb158f8ad2dd80d8e1100fdabb9e250ded7f320dfd1af1bb246ac"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/deployment-registry.json",
+      "sha256": "a18aff3c47853642a420f357c353ef90874094598c29110cb974d28a7494d2c8"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/environment-final-format.txt",
+      "sha256": "2ce9758b9f8abd876ec3e76c589e099e8b05377b1e7ea2331e81ee80f07bdff8"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/environment-final-ruff.txt",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/environment-format.txt",
+      "sha256": "ef7d13d02214e98ca902b05257cdbe6a8e84f3b4714508efdc19766460b54209"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/environment-results.md",
+      "sha256": "63fe93a34c3472eed64aad3d169a5d06fc2147789486d4cd9a635d256980f152"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/environment-ruff.txt",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/fault-01-investigator-input.json",
+      "sha256": "78956a6ea21dac808354531f9f9c109844d4d5eac82414f55f28cec8da79487b"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/fault-01-observation.json",
+      "sha256": "d6d077eda3cb346e73cc3079ab0c0acb83d65795c070402d5360cfdc722b9d37"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/fault-configuration-hashes.json",
+      "sha256": "11cbb93a47b5fcbb2a442185a2f27d62718b10b834b6ece313ba150d4050f7d3"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/fault-contract-manifest.json",
+      "sha256": "fb64286ae91168d66175f17481d71d72e46b4ad483e43e266894f263098842a1"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/capture.json",
+      "sha256": "27849758b6f1b91a611756a041f44c2690e14a981795d8185b2b252c1ccb6cbc"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/containers.txt",
+      "sha256": "872c8e4a766c8f51320bc50d27c1d83a2c1aa048991989ffd62d65fd6912ac0f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/disk.txt",
+      "sha256": "8d2e9a73712ca2ab09f5951b8905310d13c0b8421642bfbd6947f5d082d8871d"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/frontend.txt",
+      "sha256": "378ba333afa5ae4233d7cb2b7e7f2e8c5127befd68b7f552cd7cb1addbb9f863"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/logs-mapping.txt",
+      "sha256": "c96dc9d36da3b4b3a57303af0703f2f27aa2bdc561583b752f025a28b89c47ee"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/logs-sample.txt",
+      "sha256": "3446b10c225254fd7067456beab6a582d80fffbed856d14102d952f1b592e9a2"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/metric-names.txt",
+      "sha256": "b32f597fb607bced0c9c0c5e1638de9a08a144c9390a3e09c37b3b43b039c22f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/prometheus-up.txt",
+      "sha256": "664b0f4a552599ac59d91a24f7e6ea8c7a4499ad237fb76aa25c33d8c25f6ec2"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/stats.txt",
+      "sha256": "5da4f38c6dc8a8019342b99782e6a3e722d7fe7294c7b02ee2402aaf10425dd0"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/target-info.txt",
+      "sha256": "664b0f4a552599ac59d91a24f7e6ea8c7a4499ad237fb76aa25c33d8c25f6ec2"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/first-normal-attempt/trace-services.txt",
+      "sha256": "92e27ef9f230245fff87f0c8f7e89574d085791895f854af22ff5f97f83ea789"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/history-overwrite-denial.json",
+      "sha256": "9b0a24003ac5fbf691be05e9d157c1f84c80219c96fba8aec0dec03bf5998177"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-business-export-check.json",
+      "sha256": "08344705cb91d75efe603eccf71dfd7f0fa61e5834ad9018677243d90e7ade21"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-contract.md",
+      "sha256": "045e0c0f68c95ae1f1aa9f6866fa881bd906f4ddff7ca31abdd4e4569ccc1e1f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-execution.md",
+      "sha256": "632f84813d95e8475a8a63951c74f76ac92b665c40aac4ffa091022ffd29e134"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-export.txt",
+      "sha256": "0316a99d69aec615a946339867bc1e39b28e46a3e70185b6ab48df37e0acbafb"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-fault-01-hashes.txt",
+      "sha256": "2707a995d325b7c737c085c5e18718daee20b808c5f1d473983efd2d89509d75"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-fault-02-hashes.txt",
+      "sha256": "89cb3c2e269c4ab8d1e9782450419d70b0417c4ae3bdaeb40396a754cc49279f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-handoff-preflight.json",
+      "sha256": "91d492f38c86480b17136efc9a588e8fbe73aef5a575d431b6601da0609a8af7"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-install.txt",
+      "sha256": "df2c849d41fda7d18a77be20fb43c6864d5132ece38aeab9bde8ac69b2de1b30"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-installed-versions.json",
+      "sha256": "2b471332d581bd978fd9e42980a4dc00af05a47d3b15d80406d797888a5dba3b"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-mapping.md",
+      "sha256": "e3f8411b5467e5f4b5fd65ee4d8d799d28c0da171259d2243f4af77e14fec3d5"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-normal-03-hashes.txt",
+      "sha256": "49d8dc9ce5190743bcd80678cf831230341f3c6a9bf44675fc1e9479697611ef"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-normal-input-hashes.txt",
+      "sha256": "50f3005ef99b8c6ae21ee217ef0c8cbf906c3099ceb41af943c663eafe6de93f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-normal-preflight.md",
+      "sha256": "3e8e56a36ddc0ad38c14d4f2c731ef49ac769a5f6a223072689cbb7b5c60010f"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-per-run-usage.json",
+      "sha256": "6ae208db5ba5a73216c41486260a27233f7619edade2784da62ea41d64fef9d1"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-private-artifact-manifest.json",
+      "sha256": "a5c2f55b0cc58af58a82a1689f5644e411cf8825540984afe7cba4e1426e28ee"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-source-hashes.json",
+      "sha256": "4008d2e2d5fbfc22b4bfb5db214498826aaa3147aa90ffa6d2a0e9d7f9a0070e"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-usage-summary.json",
+      "sha256": "2025552a7093cb06082babe34978423c7fe6500efc3bde86cb5c59b991d50b48"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/holmes-wire-check.json",
+      "sha256": "44500e9a5daa9a229a3091228cec82e8e132d2855a3e7648247fdd6778f41870"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/image-lock.json",
+      "sha256": "0a6f0c23498b25d377a3e660997da5bec0a266ce8d9e71f7d18959938849685c"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/image-pull-summary.json",
+      "sha256": "885b8b6b31ec098c85860256bb7fff93bc23b027545dacb075330dae1d0d26e7"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/jaeger-final-export.json",
+      "sha256": "fed1376f6dfc6cfadc8381181aa5189f402e96dd988b9ac8fb20e54382176cd9"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/load-reduction.txt",
+      "sha256": "bf51d6721273d73c504a56d0d57bac608ea99eaa9460d4fec5e10e5c27f22d44"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/network-denials.json",
+      "sha256": "b75fcaa5a0b8d3289583ea8e2e07214523db83e36c6a3d2213866fccb399bcae"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/network-direct-ip.json",
+      "sha256": "6a08224885bac7476ef960de751012ab9d40921b61b5420e169d995059aee5f6"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/network-topology.json",
+      "sha256": "935397e9ade8db7cd69d7a7af93471085a0ae7cb4f49711337955bcf267b00c6"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-03-observation-window.json",
+      "sha256": "851e8990391164be36dc605bdea81b40580073b2e08da1a30058f4dc7758d81e"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-calls.json",
+      "sha256": "2ed138df07564a2716e36028cc1ecc4bac025db0ad8b3371e3b6e5e0b63f91c8"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-identity.json",
+      "sha256": "b08f1001e45a4b1660e5f55a7188e1939b5795f3a51e54fb74c1550fa50915dc"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-latency-followup.json",
+      "sha256": "375afff971fdbd7c2ff1705b97956e79edcfa386838df23ae5ea9286dd464256"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-payments.json",
+      "sha256": "aa2ff88bba24c3cdfb0bd81ee32604c03f53a835e998a275316446cf7109e7ba"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/capture.json",
+      "sha256": "c5d2e40567f9a7b5bc4d90bbb5b91a8a4d8ba54de117ec7d046eeb0e5e2ca2eb"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/containers.txt",
+      "sha256": "45fa39a07009a62088b6767a3e99f18c988291abcdaa7a65ea205947eb66e77d"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/disk.txt",
+      "sha256": "3a739c44863a68be6e9b91abb3dcaee80d37aa8ce25d5b3788ed634ec7cb06bf"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/frontend.txt",
+      "sha256": "378ba333afa5ae4233d7cb2b7e7f2e8c5127befd68b7f552cd7cb1addbb9f863"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/logs-mapping.txt",
+      "sha256": "d66929d9fbc1304a91152909ca09db57c3087444b4197225d12dcef9b2254dcd"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/logs-sample.txt",
+      "sha256": "821f333ccfe4930e79aa5e252078231f566547712fefcd6cd19b1bff313b4fd0"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/metric-names.txt",
+      "sha256": "0293405056f30ac7ec6cb700ec56d7455403ced0f34f854b6be56f63798209bf"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/prometheus-up.txt",
+      "sha256": "664b0f4a552599ac59d91a24f7e6ea8c7a4499ad237fb76aa25c33d8c25f6ec2"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/stats.txt",
+      "sha256": "e6f321ea683981ba6d4d46757f88cd1d62aff335a76a4b2c695998b322d6c784"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/target-info.txt",
+      "sha256": "f7d785d2017e40a2b903b1b7fda7543b9a38989db0f95c8216de63e60c5b8711"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/normal-ready/trace-services.txt",
+      "sha256": "d6edfbf191dd478232a6e09ba09d8bab27dab65dc1d9d70358826aa88210a7af"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/prometheus-first-failure.txt",
+      "sha256": "6ed5af6ff9dc3a6fbeb9737104d87cdb0e0a09580c2b6f0f8d0ea9e68d0cbed1"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/prometheus-restart.txt",
+      "sha256": "945df53d932c9a96a2621362c36429d7699fda2076f46a9d3456d4b16cdfad6e"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/promql-error-reproduction.json",
+      "sha256": "2d78b962a767f40f6e76e4ada72a683572769694c766e3f808365e6acfd7532d"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-and-prometheus-update.txt",
+      "sha256": "0c134672b06568ea8b9e476fb4dad131724834a24cbc76b4f34029b54e5f9375"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-denial-initial.json",
+      "sha256": "ef902cc35a1596af4f2fdaa50633ca9d2ee77fb675c0e5d0663a0013d6f5e396"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-error-classification-restart.txt",
+      "sha256": "b2232107c7cfcb0678e71a105d2b3f3c724685257f8e668a58dbb5f2057926ff"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-format-restart.txt",
+      "sha256": "b2232107c7cfcb0678e71a105d2b3f3c724685257f8e668a58dbb5f2057926ff"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-image-pull.txt",
+      "sha256": "ec27944406deb8eed54a74c12c794d2996a6db7f066f1f564444815f7928c2b3"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-logs-cart.json",
+      "sha256": "ea6c521fd4f95f04f30f0a3c491837cbb69752dbf29c66e6ed24a35a3669b070"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-logs-frontend.json",
+      "sha256": "7c47543842804e731622640d21862a885868ac66e793cdfca1ceed2238dfbe99"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-logs-payment.json",
+      "sha256": "2fb3646c5e9ddb46ff80bc2f161bad98e81c398b643221b35c68552e47f152c8"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-logs.json",
+      "sha256": "7a19ba6f8562e6c77e431566bf50ce8b44bd85944f306bc83cc043b80ca4fb60"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-metrics.json",
+      "sha256": "6607361692839e6afb8c1d8740f918a1a6c654f57605740b1be260fab07be176"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-summary.json",
+      "sha256": "a80fd73743f9552422f2553b4d685afec80cd12d216ee06bec7cce0f6cf85fe4"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-normal-traces-manifest.json",
+      "sha256": "4fa89ea34bb7766d9bbc6d87fe59432553d931cc04ce51752c22207828c58b3a"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/proxy-restart.txt",
+      "sha256": "b2232107c7cfcb0678e71a105d2b3f3c724685257f8e668a58dbb5f2057926ff"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/recovery-01-observation.json",
+      "sha256": "2f36d80afe9b5df50d7d3eeeda2b245d3e143d65c5a841d3e35b377237bf77aa"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/recovery-checkout-logs.json",
+      "sha256": "498f1231835a63c09f3feec29005549549f84b69df816c94a862d5daeeb95cc3"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/redirect-denial.json",
+      "sha256": "84d87596f911f066b63371a529174008dafa8923932c7c9f9ad22c71f24bf51e"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/resource-inventory.json",
+      "sha256": "513382bff4191237bf8b50a357805b5f00da2e1e7dc5b3cff60c372352f61fab"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/runtime-configuration/collector.yml",
+      "sha256": "5e8f6cb4e9a998a34ffa5025f0d956ff92bbac66dc93f24e929ee13b3edf81af"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/runtime-configuration/compose-pinned.json",
+      "sha256": "3b4f664e2754189a718b4d541797137c360be019c761cae3e8f0f73a1dd65e2c"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/runtime-configuration/prometheus.yaml",
+      "sha256": "083b6fbaaade97f4ee27528aff31438a182cafc41da21acf66d6b2164a9ef6d2"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/runtime-configuration/read_proxy.py",
+      "sha256": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/source-downloads.json",
+      "sha256": "e90881df41a3b0d743e400b5917078fe17b843dd24b80016fa214fcd40de5231"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/stats-after-load-reduction.txt",
+      "sha256": "9adf62e2aa68f05cd607a01dd120d2e346412ddc12106a2869f707dcafcef5d0"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/stopped-resources.json",
+      "sha256": "ae6e71fa3287fd1d4cca5ade80a1eef99124bdc9677b181a4a25c03e45efb67d"
+    },
+    {
+      "path": "docs/evidence/m0-real-environment/vm-mounts.txt",
+      "sha256": "df23ba5b680b1528287bf5e004707fbe8d589c1e76f344936679ac50ab2c2c48"
+    }
+  ],
+  "original_runtime_files_match_archived_hashes": [
+    {
+      "path": "tmp/m0-environment/compose-pinned.json",
+      "sha256": "3b4f664e2754189a718b4d541797137c360be019c761cae3e8f0f73a1dd65e2c"
+    },
+    {
+      "path": "tmp/m0-environment/collector.yml",
+      "sha256": "5e8f6cb4e9a998a34ffa5025f0d956ff92bbac66dc93f24e929ee13b3edf81af"
+    },
+    {
+      "path": "tmp/m0-environment/prometheus.yaml",
+      "sha256": "083b6fbaaade97f4ee27528aff31438a182cafc41da21acf66d6b2164a9ef6d2"
+    },
+    {
+      "path": "tmp/m0-environment/read_proxy.py",
+      "sha256": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
+    }
+  ],
+  "scope": "Only reproduce.md semantics and new review evidence may change; no original data artifacts rewritten."
+}

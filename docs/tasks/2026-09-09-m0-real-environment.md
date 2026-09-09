@@ -37,3 +37,11 @@
 工程恢复新300s窗的指标、8条trace及8条HTTP200日志成立，原配置按字节还原；详情见环境证据。Jaeger停前导出2792 distinct retained trace/19源并逐hash确认；26容器、持久卷与VM数据保留，专属m0-otel于18:20:53Z停止，default不变。未删除原始资料、未修改SPEC/ROADMAP/passes。本执行者0模型/trace；Holmes最终用量/成功失败由其执行记录和协调者共享账本负责。
 
 源码Ruff/format/py_compile、实际负例、原始hash和独立核查已执行；完整M0、Kubernetes权限/健康、正式评测和72h仍未完成。最终独立审查覆盖恢复/stop的结果待协调者合并记录，不把本执行者自检标为独立完成。
+
+## PR #15 工件保全审查修复
+
+Code Review 对 `f79e84f` 的评论 `3971829340` 指出 P2：复现入口会按当前可变tag重新解析镜像并覆盖已归档image lock/configuration hashes，而且在发现后续冲突前先写runtime proxy。
+
+本次仅修这一工程入口：两份历史manifest变为必需的只读输入；先在内存核对完整镜像身份/架构和全部配置hash，任何漂移/缺档均在runtime写入前拒绝；全部匹配后才生成相同runtime proxy/Compose。不增加新实验工件平台，不启动Colima、模型或trace，不动原始数据/依赖锁/产品门槛。不同实验或配置须另建受审核记录，不能用新hash覆盖旧实验；[复现说明](../evidence/m0-real-environment/reproduce.md)已区别历史执行命令与当前校验语义。
+
+真实CLI入口在隔离tmp树中由fake docker inspect供给固定响应，覆盖同版本、末项digest/amd64/image ID漂移、配置漂移、缺档及拒绝前完整docs/tmp字节快照。原版[9项失败](../evidence/m0-real-environment/freeze-review-regression-red.txt)，修复后[9项通过](../evidence/m0-real-environment/freeze-review-regression-green.txt)；同版本测试也保留历史JSON非规范化空格，避免“内容相等但字节被改写”。[保全复核](../evidence/m0-real-environment/freeze-review-preservation.json)核对原96份已归档工件和4份真实runtime hash全部不变。Ruff/format与git diff --check通过；这是离线工件保全回归，不是新的真实环境实验。独立flash_review已实际运行9项CLI回归及真实amd64负例，并以fake inspect/禁止写入重放当前26镜像配置，复验通过；旧两份manifest与4份runtime同Git HEAD一致。结论由协调者并入主closeout-review及PR审查记录。

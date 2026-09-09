@@ -1,0 +1,190 @@
+FFFFFFFFF                                                                [100%]
+=================================== FAILURES ===================================
+________ test_same_images_materialize_runtime_without_rewriting_archive ________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_same_image... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+
+    def test_same_images_materialize_runtime_without_rewriting_archive(lab):
+        root, _, expected_compose, proxy = lab
+        before = snapshot(root)
+        result = run_freeze(root)
+        assert result.returncode == 0, result.stderr
+        after = snapshot(root)
+        for name, content in before.items():
+            if name.startswith("docs/"):
+>               assert after[name] == content
+E               assert b'[\n  {\n   ...768\n  }\n]\n' == b'[\n {\n  "s...5768\n }\n]\n'
+E                 
+E                 At index 3 diff: b' ' != b'{'
+E                 Use -v to get more diff
+
+tests/test_m0_freeze_images.py:105: AssertionError
+_ test_image_drift_is_rejected_before_any_runtime_or_archive_write[RepoDigests] _
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_image_drif... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+field = 'RepoDigests'
+
+    @pytest.mark.parametrize("field", ["RepoDigests", "Architecture", "Id"])
+    def test_image_drift_is_rejected_before_any_runtime_or_archive_write(lab, field):
+        root, fixture, _, _ = lab
+        data = json.loads(fixture.read_text())
+        # Change the last inspected image: earlier services must not cause partial writes.
+        record = data["python:3.12.12-slim"][0]
+        record[field] = ["python@sha256:" + "f" * 64] if field == "RepoDigests" else "changed"
+        fixture.write_text(json.dumps(data))
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:120: AssertionError
+_ test_image_drift_is_rejected_before_any_runtime_or_archive_write[Architecture] _
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_image_drif... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+field = 'Architecture'
+
+    @pytest.mark.parametrize("field", ["RepoDigests", "Architecture", "Id"])
+    def test_image_drift_is_rejected_before_any_runtime_or_archive_write(lab, field):
+        root, fixture, _, _ = lab
+        data = json.loads(fixture.read_text())
+        # Change the last inspected image: earlier services must not cause partial writes.
+        record = data["python:3.12.12-slim"][0]
+        record[field] = ["python@sha256:" + "f" * 64] if field == "RepoDigests" else "changed"
+        fixture.write_text(json.dumps(data))
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:120: AssertionError
+_____ test_image_drift_is_rejected_before_any_runtime_or_archive_write[Id] _____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_image_drif... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+field = 'Id'
+
+    @pytest.mark.parametrize("field", ["RepoDigests", "Architecture", "Id"])
+    def test_image_drift_is_rejected_before_any_runtime_or_archive_write(lab, field):
+        root, fixture, _, _ = lab
+        data = json.loads(fixture.read_text())
+        # Change the last inspected image: earlier services must not cause partial writes.
+        record = data["python:3.12.12-slim"][0]
+        record[field] = ["python@sha256:" + "f" * 64] if field == "RepoDigests" else "changed"
+        fixture.write_text(json.dumps(data))
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:120: AssertionError
+____ test_configuration_drift_is_rejected_before_publication[collector.yml] ____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_configurat... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+name = 'collector.yml'
+
+    @pytest.mark.parametrize("name", ["collector.yml", "read_proxy.py", "compose.json"])
+    def test_configuration_drift_is_rejected_before_publication(lab, name):
+        root, _, _, _ = lab
+        path = root / ("scripts/m0_environment" if name == "read_proxy.py" else "tmp/m0-environment") / name
+        if name == "compose.json":
+            value = json.loads(path.read_text())
+            value["services"]["prometheus"]["restart"] = "always"
+            path.write_text(json.dumps(value))
+        else:
+            path.write_text(path.read_text() + "# changed\n")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:136: AssertionError
+____ test_configuration_drift_is_rejected_before_publication[read_proxy.py] ____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_configurat... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+name = 'read_proxy.py'
+
+    @pytest.mark.parametrize("name", ["collector.yml", "read_proxy.py", "compose.json"])
+    def test_configuration_drift_is_rejected_before_publication(lab, name):
+        root, _, _, _ = lab
+        path = root / ("scripts/m0_environment" if name == "read_proxy.py" else "tmp/m0-environment") / name
+        if name == "compose.json":
+            value = json.loads(path.read_text())
+            value["services"]["prometheus"]["restart"] = "always"
+            path.write_text(json.dumps(value))
+        else:
+            path.write_text(path.read_text() + "# changed\n")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:136: AssertionError
+____ test_configuration_drift_is_rejected_before_publication[compose.json] _____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_configurat... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+name = 'compose.json'
+
+    @pytest.mark.parametrize("name", ["collector.yml", "read_proxy.py", "compose.json"])
+    def test_configuration_drift_is_rejected_before_publication(lab, name):
+        root, _, _, _ = lab
+        path = root / ("scripts/m0_environment" if name == "read_proxy.py" else "tmp/m0-environment") / name
+        if name == "compose.json":
+            value = json.loads(path.read_text())
+            value["services"]["prometheus"]["restart"] = "always"
+            path.write_text(json.dumps(value))
+        else:
+            path.write_text(path.read_text() + "# changed\n")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:136: AssertionError
+_______ test_missing_archive_is_not_silently_recreated[image-lock.json] ________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_missing_ar... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+name = 'image-lock.json'
+
+    @pytest.mark.parametrize("name", ["image-lock.json", "configuration-hashes.json"])
+    def test_missing_archive_is_not_silently_recreated(lab, name):
+        root, _, _, _ = lab
+        (root / "docs/evidence/m0-real-environment" / name).unlink()
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:146: AssertionError
+__ test_missing_archive_is_not_silently_recreated[configuration-hashes.json] ___
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-99/test_missing_ar... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+name = 'configuration-hashes.json'
+
+    @pytest.mark.parametrize("name", ["image-lock.json", "configuration-hashes.json"])
+    def test_missing_archive_is_not_silently_recreated(lab, name):
+        root, _, _, _ = lab
+        (root / "docs/evidence/m0-real-environment" / name).unlink()
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...ipts/m0_environment/freeze_images.py'], returncode=0, stdout='Frozen 26 images by digest before startup.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:146: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_m0_freeze_images.py::test_same_images_materialize_runtime_without_rewriting_archive
+FAILED tests/test_m0_freeze_images.py::test_image_drift_is_rejected_before_any_runtime_or_archive_write[RepoDigests]
+FAILED tests/test_m0_freeze_images.py::test_image_drift_is_rejected_before_any_runtime_or_archive_write[Architecture]
+FAILED tests/test_m0_freeze_images.py::test_image_drift_is_rejected_before_any_runtime_or_archive_write[Id]
+FAILED tests/test_m0_freeze_images.py::test_configuration_drift_is_rejected_before_publication[collector.yml]
+FAILED tests/test_m0_freeze_images.py::test_configuration_drift_is_rejected_before_publication[read_proxy.py]
+FAILED tests/test_m0_freeze_images.py::test_configuration_drift_is_rejected_before_publication[compose.json]
+FAILED tests/test_m0_freeze_images.py::test_missing_archive_is_not_silently_recreated[image-lock.json]
+FAILED tests/test_m0_freeze_images.py::test_missing_archive_is_not_silently_recreated[configuration-hashes.json]
+9 failed in 8.86s
