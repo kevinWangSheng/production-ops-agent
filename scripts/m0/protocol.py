@@ -60,8 +60,8 @@ def tool_result(call, fixture):
     }
 
 
-def continuation(assistant, results, *, provider, run_id):
-    if provider != "deepseek" or run_id != RUN_ID:
+def continuation(assistant, results, *, provider, run_id, expected_run_id=RUN_ID):
+    if provider != "deepseek" or run_id != expected_run_id:
         raise ProtocolError("INCOMPATIBLE_STATE")
     try:
         if assistant["role"] != "assistant" or not isinstance(

@@ -1,0 +1,39 @@
+{
+  "architecture": "arm64",
+  "base_commit": "21a576f4357412be37fcaaea655c4dcb6c425185",
+  "cost_cny": 0,
+  "evidence_kind": "synthetic_sdk_wire",
+  "external_calls": 0,
+  "live_verified": false,
+  "platform": "Darwin",
+  "python": "3.12.13",
+  "sha256": {
+    "pyproject.toml": "d8065c41bde26e1ed3171827764bf9c9fc260ba4b06c401b980a92305526f976",
+    "scripts/m0/__init__.py": "eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4",
+    "scripts/m0/__main__.py": "1dc8af4977a614bebf0d15083a5457a694f2ded4b7d72b4980d89e2188773128",
+    "scripts/m0/adapters.py": "3babad900c7df1a88b7ea16ef11718420d816ada182e8ea2eab9656f44e3a6d4",
+    "scripts/m0/config.py": "a98426cb572e0a4029d032fc1dfdfa06ea8147eb5682d7cc1a676d93c0287ade",
+    "scripts/m0/contracts.py": "0a7022911aa8590ac8c474d425d184efeb1c8f29f432416957637e0ad6c15f2a",
+    "scripts/m0/protocol.py": "c0484cdcc6ffabe652b857f92848a5ef8e4710ca1d3f896fb02728301142c2f9",
+    "scripts/m0/trace_adapter.py": "fff3571742e27cc8ef6606b74f0ade934346917b0b3e7efa3687c8a685f4cd54",
+    "tests/fixtures/m0/protocol-v1.json": "7967484c6601d78a92ff50ffe09577b877af541ed06a1982ec57013a5f40da03",
+    "tests/test_m0.py": "17e9dbc4051d805e9a451d900c65e7cf3b28afaaab171cc0426fe34ca634e45a",
+    "uv.lock": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce"
+  },
+  "status": "offline_pass",
+  "summary": {
+    "adapter": "m0-offline-v1",
+    "attempt": 1,
+    "evidence_id": "m0-evidence-a",
+    "fixture": "m0-protocol-v1",
+    "request_count": 2,
+    "run_id": "454b8982-dee3-4117-aaf7-e1aa13eb5315",
+    "status": "completed",
+    "subject": "m0-target-a"
+  },
+  "versions": {
+    "httpx2": "2.12.0",
+    "langsmith": "0.12.2",
+    "openai": "3.10.0"
+  }
+}
