@@ -1,0 +1,67 @@
+{
+  "code_commit": "2dbdc0ffbc126931b340b99efce57ec63bb0ba2b",
+  "approval_ref": "user-confirmed-normal-1-2026-09-09T0932Z",
+  "started_at": "2026-09-09T09:33:41.834377+00:00",
+  "ended_at": "2026-09-09T09:33:56.249165+00:00",
+  "elapsed_seconds": 14.415,
+  "exit_code": 1,
+  "cli_result": {
+    "actual_cost_cny": null,
+    "business": "completed",
+    "request_count": 2,
+    "trace": "unknown",
+    "unreconciled_reserved_cny": "2.00"
+  },
+  "ledger": {
+    "attempts": [
+      "project",
+      "model-1",
+      "model-2",
+      "trace-post",
+      "trace-read-1",
+      "trace-read-2"
+    ],
+    "business": "completed",
+    "outbox": {
+      "run_id": "e61509bc-7b21-49cd-86c8-9bc3d4df60c2",
+      "status": "completed",
+      "adapter": "m0-normal-1-v1",
+      "attempt": 1,
+      "fixture": "m0-protocol-v1",
+      "subject": "m0-target-a",
+      "code_sha256": "eac1968a6cd9215b8095b04c05b4f13b04d04bf7821bf3aad4adaa37f6ec9e12",
+      "evidence_id": "m0-evidence-a",
+      "experiment_id": "e2f433fd-464a-4c17-8c55-3e05392417bd",
+      "request_count": 2
+    },
+    "usage": [
+      {
+        "total_tokens": 470,
+        "prompt_tokens": 394,
+        "reported_model": "deepseek-v4-pro",
+        "completion_tokens": 76
+      },
+      {
+        "total_tokens": 600,
+        "prompt_tokens": 579,
+        "reported_model": "deepseek-v4-pro",
+        "completion_tokens": 21
+      }
+    ],
+    "trace_status": "unknown",
+    "cost_state": "unreconciled",
+    "reserved_cny": "2.00",
+    "experiment_id": "e2f433fd-464a-4c17-8c55-3e05392417bd",
+    "run_id": "e61509bc-7b21-49cd-86c8-9bc3d4df60c2",
+    "deadline": "2026-09-10T23:59:59-07:00",
+    "contract_hash": "3d850b309aea2abbd72cf855c630b29170f4c3ec79673fb8a1f4f73ff5595903"
+  },
+  "cost": {
+    "input_tokens": 973,
+    "output_tokens": 97,
+    "model_peak_cache_miss_estimate_cny": "0.011376",
+    "actual_billed_cny": null,
+    "note": "Estimate only; cache hit details absent and account-wide balance changes are not attributable to this run."
+  },
+  "no_automatic_retry": true
+}
