@@ -24,6 +24,7 @@ from .protocol import (
     tool_result,
     trace_dto,
 )
+from .runtime import check_runtime
 
 ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.com"}
 MODEL_PROFILE = {
@@ -80,6 +81,7 @@ def validate(contract, config, now=None):
         required = {
             "version",
             "model_profile",
+            "runtime",
             "approved",
             "approval_ref",
             "experiment_id",
@@ -121,6 +123,7 @@ def validate(contract, config, now=None):
             days=2
         ):
             denied()
+        check_runtime(contract["runtime"])
         if contract["code_sha256"] != code_digest():
             denied()
         for name, key in (

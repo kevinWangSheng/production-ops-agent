@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import platform
 from datetime import timedelta
 from uuid import uuid4
 
@@ -38,6 +39,10 @@ def packet():
     contract = {
         "version": "m0-normal-1-v2",
         "model_profile": copy.deepcopy(MODEL_PROFILE),
+        "runtime": {
+            "python": platform.python_version(),
+            "implementation": platform.python_implementation(),
+        },
         "approved": True,
         "approval_ref": "synthetic-approval-" + str(uuid4()),
         "experiment_id": str(uuid4()),
@@ -339,5 +344,33 @@ def test_legacy_approval_cannot_be_migrated_implicitly(include_profile):
         del contract["model_profile"]
     ledger = MemoryLedger()
     with no_network(), pytest.raises(ConfigError):
+        asyncio.run(execute(contract, config, ledger))
+    assert not ledger.claimed
+
+
+@pytest.mark.parametrize(
+    "package", ["langsmith", "httpx2", "psycopg", "psycopg-binary", "requests"]
+)
+def test_stale_distribution_refuses_before_claim(monkeypatch, package):
+    from scripts.m0 import runtime
+
+    contract, config = packet()
+    original = runtime.importlib.metadata.version
+    monkeypatch.setattr(
+        runtime.importlib.metadata,
+        "version",
+        lambda name: "0.0.0" if name == package else original(name),
+    )
+    ledger = MemoryLedger()
+    with no_network(), pytest.raises(ConfigError, match="LIVE_RUNTIME_MISMATCH"):
+        asyncio.run(execute(contract, config, ledger))
+    assert not ledger.claimed
+
+
+def test_wrong_python_refuses_before_claim():
+    contract, config = packet()
+    contract["runtime"]["python"] = "3.12.0"
+    ledger = MemoryLedger()
+    with no_network(), pytest.raises(ConfigError, match="LIVE_RUNTIME_MISMATCH"):
         asyncio.run(execute(contract, config, ledger))
     assert not ledger.claimed
