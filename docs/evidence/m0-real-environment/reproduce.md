@@ -28,7 +28,7 @@ python3 scripts/m0_environment/capture.py normal-ready
 
 修改挂载的read_proxy.py后仅compose up不一定重启Python进程，实际执行`freeze_images.py`同步受限单文件副本，再显式restart read-proxy；须确保没有在途调查，不重置当前模型/工具总预算。
 
-结束命令（待全部调查/评估证据采集后执行）：
+本轮在调查/恢复证据及Jaeger导出完成后，已实际执行以下结束命令：
 
 ```sh
 docker --context colima-m0-otel compose -p opspilot-m0 -f tmp/m0-environment/compose-pinned.json stop
