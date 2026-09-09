@@ -1,0 +1,37 @@
+{
+  "scope": "Holmes baseline only; model execution stopped after fault-02",
+  "actual_model_http_requests": 15,
+  "all_response_models": [
+    "deepseek-v4-flash"
+  ],
+  "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "allocated_model_http_limit": 16,
+  "unused_calls_not_executed": 1,
+  "trace_uploads": 0,
+  "peak_cache_miss_cost_upper_cny": 0.770448,
+  "peak_cache_aware_estimate_cny": 0.6056352,
+  "offpeak_half_rate_estimate_cny": 0.3028176,
+  "provider_invoice_reconciled": false,
+  "usage_totals": {
+    "prompt_tokens": 141487,
+    "completion_tokens": 38443,
+    "prompt_cache_hit_tokens": 56832,
+    "prompt_cache_miss_tokens": 84655
+  }
+}
