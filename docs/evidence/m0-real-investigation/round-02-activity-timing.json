@@ -59,9 +59,34 @@
       "start": "2026-09-10T05:09:16Z",
       "end": null,
       "basis": "GitHub first manual request timestamp; interval includes remote waiting, local fixes, PG regressions, strict-contract design/implementation and independent review; not exclusive remote latency",
-      "status": "initial_evidence_bridge_and_runtime_version_followup_in_progress"
+      "status": "initial_pre_send_scope_and_reportless_cli_followup"
     }
   ],
   "other_work": "Source/contract inspection, coding/debugging, tests and independent reviews ran in parallel during 01:49Z onward; exact exclusive CPU/operator time was not instrumented. Final closeout/CI/review continue after paid phase. No invented percentage distribution.",
-  "parallelism": "root orchestrator and sole environment operator; report implementation and mechanism implementation initially parallel; independent reviews in fresh contexts; paid model operations sequential under one ledger lock."
+  "parallelism": "root orchestrator and sole environment operator; report implementation and mechanism implementation initially parallel; independent reviews in fresh contexts; paid model operations sequential under one ledger lock.",
+  "paid_call_window": {
+    "first_model_send": "2026-09-10T02:19:02.199029+00:00",
+    "last_model_response": "2026-09-10T03:54:45.994142+00:00",
+    "elapsed_seconds": 5743.795113,
+    "basis": "retained per-request ledger-derived timestamps; includes interleaved local work and observation, not continuous model compute"
+  },
+  "model_http_by_phase": {
+    "report": {
+      "actual_model_http": 2,
+      "model_http_wall_seconds": 145.6560549736023
+    },
+    "normal": {
+      "actual_model_http": 11,
+      "model_http_wall_seconds": 87.48870396614075
+    },
+    "pg": {
+      "actual_model_http": 3,
+      "model_http_wall_seconds": 3.237290143966675
+    },
+    "fault": {
+      "actual_model_http": 4,
+      "model_http_wall_seconds": 29.236761808395386
+    }
+  },
+  "real_holmes_tool_wall_seconds": 10.378155379381496
 }

@@ -146,3 +146,9 @@ root检查425 passed/41 PG默认skip（13.92s）；审查文档Python示例格�
 本组[联合独立终审](../evidence/m0-real-investigation/round-02-initial-evidence-final-review.md)已完成：94项定向测试、固定Holmes单步假传输→strict、带事实报告缺manifest/坏hash/重复/mixed保真unknown、版本差异/缺失、协议非法及原始字节保真反例通过。root make check448 passed/43 PG默认skip（14.72s）。控制当前final的26项PG另已完成并停库。新[离线源码清单](../evidence/m0-real-environment/round-02-initial-evidence-offline-source-manifest.json)覆盖13源/5schema及依赖审查引用；旧manifest/source快照不覆盖。当前v4包已补记兼容初始审计字段、单context限制、完整输入/报告保真、实际Holmes/tool版本绑定；仍无新增真实模型/trace或M1入口放行。待本批最新CI/Code/Security，先前缺口不以旧提交审查冒覆盖。
 
 全新上下文[最终交付核查](../evidence/m0-real-investigation/round-02-final-delivery-gate-review.md)已独立读两份完整真实报告、关键实际送模消息/raw/view及26项当前源码/依赖hash，并复核20HTTP/已知400404tokens/unknown占用；当前披露无新增P1/P2，但真实报告事实错误仍在，M1不得开放，Security未闭环。此前入口review保留各自版本/检查范围。最新本组提交之后继续等CI和已触发的Code/Security，不自动合并。
+
+## PR16 初始发送前权限与CLI交接补正
+
+ced7fd4的CI checks/m0-postgres成功（run34459556690）；09:21Z Code Review3977531749/3977531762指出初始导入缺current接口/时间前置校验、无report的CLI handoff会解引用None。runtime/bridge作者与独立审查者正在补实际wrapper发送前0请求反例和真实CLI保真输出；目标/时间必须在模型数据出口前执行，不能仅靠事后checker。仍无新增真实模型/trace/后端/PG操作，旧原文和schema快照保留。
+
+本组[独立复验](../evidence/m0-real-investigation/round-02-initial-scope-cli-review.md)通过：真实wrapper缩窗/禁接口0复制/0dotenv/0model/tool、原scope宽但query窄的合法正例、实际CLI无报告三组及58组合回归/6自写边界通过。bridge只使用已验证query_window，不再从scope补值；reportless原文/input/violation完整保留。root make check456 passed/43 PG默认skip（14.35s）；全程0真实模型/trace/后端/PG。旧候选manifest/审查仍保留原覆盖范围，新source manifest将记录本组三源修复。待本批最新CI/Code/Security。

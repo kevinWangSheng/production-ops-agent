@@ -40,6 +40,10 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 
 最后cancel/correct不仅推进控制版本/state，还清除subject当前final指针；历史m0_v3_report原payload/版本/时间保留。其[独立PG回归](../evidence/m0-real-investigation/round-02-final-pointer-review.md)不代表新增真实模型调用。
 
+发送前导入门槛由[scope/CLI独立复验](../evidence/m0-real-investigation/round-02-initial-scope-cli-review.md)进一步核查：实际query接口、服务与查询时间窗必须符合当前trusted access scope，不能只验目标或事后拒绝。原scope是授权上界，不拿它替代缺失的实际query；原scope较宽而实际query合法较窄可以通过。越界在复制初始证据、读取凭据或启动模型/工具前拒绝。无可验证query时间的来源不假造时间。
+
+无报告的strict handoff CLI必须保留原文/输入/hash和违规项，并把不存在的报告字段输出为null；不因空对象解引用崩溃，也不伪造模型assessment或conclusion。完整业务仅保留在本地输出，stdout为摘要。
+
 ## 有界候选与案例前提
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。
