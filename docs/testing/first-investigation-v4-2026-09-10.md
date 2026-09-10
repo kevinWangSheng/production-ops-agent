@@ -81,3 +81,5 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 严格入口必须具备原始操作员输入、实际送模输入及各自精确hash；缺失/空/损坏来源记录不得跳过验证。缺失事实可保留在审计packet中，但不能获得合同一致结论，直接checker及investigator_input导出同样执行该约束；旧schema和历史工件不改写。
 
 公共交付真实性不依赖最终报告是否可解析：每条已有Delivery均绑定actual input；已有ReportCapture须绑定身份、原文/hash、唯一已提交Delivery和响应时钟。没有请求/采集的合法handoff不补造记录；报告解析、声明和时效资格仍按其适用前提检查。
+
+初始证据的采集时钟逐字段与原raw精确一致，原值缺失/null不能由bundle补齐，已知原值不能擦为None；unknown来源时间不得带无依据边界。CLI完整审计输出以原子独占方式创建为0600，保留已有文件及符号链接，不依赖调用者默认umask。
