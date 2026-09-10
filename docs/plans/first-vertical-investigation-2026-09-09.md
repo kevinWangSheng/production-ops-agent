@@ -8,7 +8,7 @@
 
 - 已完成：单位分离及32768输出/512KiB、超时/费用统一合同；真实正常/故障JSON与核心结论；实际来源/动态raw-view-physical request的v3结构；最小PG提交/重建/取消与相关真实DeepSeek组合。
 - 当前冻结合同：[严格v4首片包](../testing/first-investigation-v4-2026-09-10.md)复用原案例/重复/非退化，补完整报告、来源/时间及最终控制；实现/schema及联合独立复验已完成；新版真实模型未执行。旧v2/v3与历史报告保留，不改feature passes。
-- 尚未通过：实际fault/normal03仍把可见数量、缺失series、跨trace字段/投影缺口解释错误。新view修复只离线，不能消除真实质量FAIL；[独立入口结论](../evidence/m0-real-investigation/round-02-final-entry-v4-review.md)。
+- 尚未通过：实际fault/normal03仍把可见数量、缺失series、跨trace字段/投影缺口解释错误。新view修复只离线，不能消除真实质量FAIL；[独立入口结论](../evidence/m0-real-investigation/round-02-final-delivery-gate-review.md)。
 - 下一项M0-03仅验证报告事实与实际可见证据一致性，当前20HTTP已尽，任何新模型调用需新授权。M1-01具体纵向能力保持，不预先实施。
 
 下面2026-09-09候选接缝/预算及当时结束决定为历史依据；当前完成项和阻门以上述核对、[本轮结果](../evidence/m0-real-investigation/round-02-results.md)为准。

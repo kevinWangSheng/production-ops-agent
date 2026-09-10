@@ -2,7 +2,7 @@
 
 创建：2026-09-09；当前收尾：2026-09-10 M0-02付费执行已结束、资源已停止保全，报告质量尚未通过，M1入口仍not cleared。
 
-当前结果见[round-02-results.md](../evidence/m0-real-investigation/round-02-results.md)、[独立入口审查](../evidence/m0-real-investigation/round-02-final-entry-v4-review.md)及[当前v4冻结首片包](../testing/first-investigation-v4-2026-09-10.md)。20模型HTTP/0trace，真实PG组合与有限核心调查结果有据，事实/可见范围P2仍未闭环；PR最新CI/review收尾下文继续更新。
+当前结果见[round-02-results.md](../evidence/m0-real-investigation/round-02-results.md)、[独立入口审查](../evidence/m0-real-investigation/round-02-final-delivery-gate-review.md)及[当前v4冻结首片包](../testing/first-investigation-v4-2026-09-10.md)。20模型HTTP/0trace，真实PG组合与有限核心调查结果有据，事实/可见范围P2仍未闭环；PR最新CI/review收尾下文继续更新。
 
 ## 历史：2026-09-09上一轮与PR #15过程
 
@@ -136,3 +136,13 @@ PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree
 aa485f9的CI checks/m0-postgres均SUCCESS（run34449729273）；07:30Z Code Review3976615675指出未领取send_grant仍可提交响应。独立真实PG复现并发现prepare两事务窗口；[修复](../evidence/m0-real-investigation/round-02-pr16-send-grant-fix.md)把grant与dispatch/预留原子提交，采纳要求已有grant已领取，保留直接路径合同。[独立复验](../evidence/m0-real-investigation/round-02-send-grant-review.md)24项PG及6个自写实验通过，历史真实两请求只读查到claimed/response/execution相容；这不是新真实模型验证。adapter标识同步pg-private-pipe-v3-atomic-send-grant，原code/profile hash门槛本已存在，10项离线检查及actual execute到claim替身验证版本传递。旧无grant歧义记录不回写，不授权静默续跑。
 
 root检查425 passed/41 PG默认skip（13.92s）；审查文档Python示例格式失败原输出与原文已保留，格式前后AST相同。随后专属PG已再次停止，见[停止记录](../evidence/m0-real-investigation/round-02-send-grant-pg-stop.json)；模型/trace新增0，原账本、v4报告源、旧schema/工件不变。此项待推送最新CI/Code/Security复审；此前六项发现已有修复/独立证据，不因安全审查长期无确认就视为通过。
+
+## PR16 初始证据与当前结果后续修复
+
+6eab0a4的CI checks/m0-postgres成功（run34451776556），08:02Z Code Review3976875093/5099/5104指出控制后current final未清、report-only初始证据桥接缺失、versions未含Holmes/tool合同。当前final修复已经[独立PG复验](../evidence/m0-real-investigation/round-02-final-pointer-review.md)：26项与两组独立历史保留/newRun检查通过；仅清当前指针，历史报告不变。root已[停止专属PG](../evidence/m0-real-investigation/round-02-final-pointer-pg-stop.json)，真实模型/trace新增0。
+
+[初始证据有界设计](../evidence/m0-real-investigation/round-02-initial-evidence-design-review.md)已独立通过：可信manifest核原raw/view/原投影Context/Timing，只作新Run副本；单兼容context才绑定，缺材料/坏ID/混合context保全真实input/report并经strict返回unknown，不能view冒raw或伪造新鲜度。实际user消息视图进入审计，导入不算新query；版本绑定实际upstream_commit和tool_schema，缺失为明确unknown。两作者正并行完成runtime/bridge；旧v4只读schema/source快照保留，当前canonical候选的兼容审计字段扩展须另记hash并终审。
+
+本组[联合独立终审](../evidence/m0-real-investigation/round-02-initial-evidence-final-review.md)已完成：94项定向测试、固定Holmes单步假传输→strict、带事实报告缺manifest/坏hash/重复/mixed保真unknown、版本差异/缺失、协议非法及原始字节保真反例通过。root make check448 passed/43 PG默认skip（14.72s）。控制当前final的26项PG另已完成并停库。新[离线源码清单](../evidence/m0-real-environment/round-02-initial-evidence-offline-source-manifest.json)覆盖13源/5schema及依赖审查引用；旧manifest/source快照不覆盖。当前v4包已补记兼容初始审计字段、单context限制、完整输入/报告保真、实际Holmes/tool版本绑定；仍无新增真实模型/trace或M1入口放行。待本批最新CI/Code/Security，先前缺口不以旧提交审查冒覆盖。
+
+全新上下文[最终交付核查](../evidence/m0-real-investigation/round-02-final-delivery-gate-review.md)已独立读两份完整真实报告、关键实际送模消息/raw/view及26项当前源码/依赖hash，并复核20HTTP/已知400404tokens/unknown占用；当前披露无新增P1/P2，但真实报告事实错误仍在，M1不得开放，Security未闭环。此前入口review保留各自版本/检查范围。最新本组提交之后继续等CI和已触发的Code/Security，不自动合并。

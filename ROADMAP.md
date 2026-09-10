@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3包作为历史保留，PR审查后的[严格v4包](docs/testing/first-investigation-v4-2026-09-10.md)已离线补齐并独立验证/冻结，尚无新版真实模型证据；完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-final-entry-v4-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
+Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3包作为历史保留，PR审查后的[严格v4包](docs/testing/first-investigation-v4-2026-09-10.md)已离线补齐并独立验证/冻结，尚无新版真实模型证据；完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-final-delivery-gate-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
 
 ## Completed decisions and documentation
 

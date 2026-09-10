@@ -26,6 +26,20 @@
 
 历史v1/v3报告重新检查时保留全文、原版本和hash。缺scope/时间字段标unknown并不通过当前strict入口，不替历史模型补target、不重签旧view，也不改写旧evaluator当时的结构结果或原质量FAIL。
 
+## report-only 初始证据与运行版本补正
+
+PR16后续的[初始证据独立终审](../evidence/m0-real-investigation/round-02-initial-evidence-final-review.md)补齐了本候选的初始证据接缝；此前内容寻址schema/source快照保留，当前canonical v4 schema的可选审计扩展有新的源码/hash记录，不回写原工件。
+
+可信`--initial-evidence-manifest`须绑定原raw、view、原manifest及投影源码/依赖/registry、独立时间依据。只复制精确字节作为新Run副本，保留原文件；不从question或模型声明推导原始来源。当前仅支持单一兼容原ProjectionContext，混合/不兼容来源明确unknown，不用当前投影重签旧view。导入初始证据不是当前Run的新工具查询。
+
+原question字节/hash与组装输入分别保存；实际user消息中的business_tool_views须和已验证视图逐项匹配。缺材料、坏hash、重复/非法ID或混合context保留原输入/报告与UnverifiedInitialView审计，并进入strict拒绝/unknown路径；不能FileNotFound、伪造Artifact或静默退legacy。合法`phase=report/max_steps=1`可无动态观察，仍完整经过IncidentScenario→IncidentOutcome。
+
+报告格式/协议解析与证据资格分开：格式合法但资格失败的候选保留完整解析对象/原文；非法结构、重复JSON键、DSML或非stop完成原因不能因缺解析副本而被升级成合格报告。原文及失败仍可审计。
+
+strict桥接版本显式包含配置中记录的实际Holmes upstream commit与工具合同canonical hash；缺失为EXECUTION_VERSION_UNKNOWN。版本差异不能被相同wrapper/schema标签掩盖。
+
+最后cancel/correct不仅推进控制版本/state，还清除subject当前final指针；历史m0_v3_report原payload/版本/时间保留。其[独立PG回归](../evidence/m0-real-investigation/round-02-final-pointer-review.md)不代表新增真实模型调用。
+
 ## 有界候选与案例前提
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。

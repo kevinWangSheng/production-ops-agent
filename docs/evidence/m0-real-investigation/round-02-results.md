@@ -1,6 +1,6 @@
 # M0-02 本轮结果与入口决定
 
-日期：2026-09-10 UTC。**本轮取得真实正常/故障最终报告与真实 PG 跨进程组合，但完整报告事实质量仍未通过，M1 入口不打开。** 20 次模型 HTTP 已用尽，全部付费执行停止；原失败不改写，feature passes 未改。完整入口判断见 [独立整体审查](round-02-final-entry-v4-review.md)。
+日期：2026-09-10 UTC。**本轮取得真实正常/故障最终报告与真实 PG 跨进程组合，但完整报告事实质量仍未通过，M1 入口不打开。** 20 次模型 HTTP 已用尽，全部付费执行停止；原失败不改写，feature passes 未改。完整入口判断见 [独立整体审查](round-02-final-delivery-gate-review.md)。
 
 ## 实际取得的结果
 
@@ -14,6 +14,8 @@
 ## PR 审查后的合同接续
 
 本文件下面的v3结构通过是当时evaluator的历史结果。PR16后续发现完整summary/next_steps没有进入Outcome、事实性claim缺目标/时间约束以及最终控制一致性遗漏；[新上下文设计审查](round-02-pr16-full-report-design-review.md)已独立复现并批准有界修复设计。[v4/report-v2严格包](../../testing/first-investigation-v4-2026-09-10.md)已离线实现并经[联合独立终审](round-02-pr16-v4-final-review.md)冻结，旧schema、原全文和原投影保留。历史v1缺target/time字段时只能标unknown、不能通过当前strict入口，不替模型补造字段来维持旧结构PASS。该变化不提升任何真实报告质量，也没有新增模型/trace样本。
+
+后续[初始证据终审](round-02-initial-evidence-final-review.md)补齐report-only真实user输入与原raw/manifest绑定、缺材料/协议非法的全文保留及Holmes/tool版本指纹；[当前final指针PG审查](round-02-final-pointer-review.md)确认cancel/correct清当前结果、历史保持。它们仍为离线/替身及PG机制证据，不增加真实模型样本，当前严格包的单context限制和历史unknown保留。
 
 ## 合同、机制和保留缺口
 
