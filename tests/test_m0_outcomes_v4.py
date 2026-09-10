@@ -38,6 +38,8 @@ def strict_packet():
     from scripts.m0 import outcomes_v4 as v4
 
     s, o = packet()
+    s["versions"].update(upstream_commit="a" * 40, tool_schema_sha256=v4.digest([]))
+    o["versions"] = dict(s["versions"])
     s["trusted"]["controls"][0]["action"] = "new_run"
     target = s["trusted"]["artifacts"][0]["targets"][0]
     ref = v4.target_ref("run", target)
@@ -360,3 +362,17 @@ def test_current_freshness_does_not_expand_query_window():
         )
     resync_context(s)
     assert "FACT_FRESHNESS_OUTSIDE_QUERY_WINDOW" in checked(s, o)
+
+
+def test_duplicate_json_keys_cannot_pass_full_report_output_seam():
+    from scripts.m0 import outcomes_v4 as v4
+
+    scenario, outcome = strict_packet()
+    content = outcome["report_content"].replace(
+        "{", '{"summary":"ignored duplicate",', 1
+    )
+    outcome["report_content"] = content
+    outcome["report_content_sha256"] = v4.content_hash(content)
+    scenario["trusted"]["report_capture"]["content"] = content
+    scenario["trusted"]["report_capture"]["content_sha256"] = v4.content_hash(content)
+    assert "REPORT_CONTENT_MISMATCH" in checked(scenario, outcome)

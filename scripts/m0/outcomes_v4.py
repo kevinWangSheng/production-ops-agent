@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, Field, model_validator
@@ -156,8 +157,20 @@ class TrustedFacts(legacy.TrustedFacts):
     timing_records: dict[str, TimingRecord] = {}
 
 
+class UnverifiedInitialView(DTO):
+    location: Text
+    content: str
+    content_sha256: Hash
+    reason: Text
+
+
 class AgentInput(legacy.AgentInput):
     evidence_context: EvidenceContext | None = None
+    original_user_content: str | None = None
+    original_user_content_sha256: Hash | None = None
+    actual_user_content: str | None = None
+    actual_user_content_sha256: Hash | None = None
+    unverified_initial_views: list[UnverifiedInitialView] = []
 
 
 class IncidentScenario(DTO):
@@ -168,6 +181,8 @@ class IncidentScenario(DTO):
     trusted: TrustedFacts
 
     def investigator_input(self):
+        if self.agent_input.unverified_initial_views:
+            raise ValueError("UNVERIFIED_INITIAL_EVIDENCE")
         errors = context_errors(
             self.agent_input.evidence_context,
             self.agent_input.initial_views,
@@ -505,7 +520,7 @@ def check_outcome(scenario, outcome):
         | {"deliveries": base_deliveries}
     )
     base_input = legacy.AgentInput.model_validate(
-        scenario.agent_input.model_dump(exclude={"evidence_context"})
+        scenario.agent_input.model_dump(include={"subject", "request", "initial_views"})
     )
     base_scenario = legacy.IncidentScenario(
         schema_version="m0-public-v3",
@@ -537,7 +552,39 @@ def check_outcome(scenario, outcome):
         handoff=outcome.handoff,
         health=outcome.health,
     )
-    errors = set(legacy.check_outcome(base_scenario, base_outcome))
+    errors = set(
+        legacy.check_outcome(
+            base_scenario,
+            base_outcome,
+            _initial_view_ids={v.id for v in scenario.agent_input.initial_views},
+        )
+    )
+    if not re.fullmatch(
+        r"[a-f0-9]{40}|[a-f0-9]{64}", scenario.versions.get("upstream_commit", "")
+    ) or not re.fullmatch(
+        r"[a-f0-9]{64}", scenario.versions.get("tool_schema_sha256", "")
+    ):
+        errors.add("EXECUTION_VERSION_UNKNOWN")
+    initial = scenario.agent_input
+    if initial.unverified_initial_views:
+        errors.add("UNVERIFIED_INITIAL_EVIDENCE")
+        if any(
+            content_hash(item.content) != item.content_sha256
+            for item in initial.unverified_initial_views
+        ):
+            errors.add("INITIAL_AUDIT_HASH_MISMATCH")
+    for text, sha in (
+        (initial.original_user_content, initial.original_user_content_sha256),
+        (initial.actual_user_content, initial.actual_user_content_sha256),
+    ):
+        if (text is None) != (sha is None) or (
+            text is not None and content_hash(text) != sha
+        ):
+            errors.add("INITIAL_INPUT_HASH_MISMATCH")
+    if (
+        initial.initial_views or initial.unverified_initial_views
+    ) and initial.actual_user_content is None:
+        errors.add("ACTUAL_INITIAL_INPUT_UNKNOWN")
     errors |= context_errors(
         scenario.agent_input.evidence_context,
         scenario.agent_input.initial_views,
@@ -597,8 +644,12 @@ def check_outcome(scenario, outcome):
         or outcome.report_content_sha256 != capture.content_sha256
     ):
         errors.add("REPORT_OUTPUT_BINDING_MISMATCH")
+    from scripts.m0_environment.report_contract import parse_report
+
     try:
-        if ModelReportV2.model_validate_json(outcome.report_content or "") != report:
+        if parse_report(
+            outcome.report_content or "", version="m0-report-v2"
+        ) != report.model_dump(mode="json"):
             errors.add("REPORT_CONTENT_MISMATCH")
     except ValueError:
         errors.add("REPORT_CONTENT_MISMATCH")
@@ -618,6 +669,22 @@ def check_outcome(scenario, outcome):
         errors.add("REPORT_DELIVERY_MISMATCH")
         return sorted(errors)
     delivery = matching[0]
+    if initial.actual_user_content is not None:
+        try:
+            business = json.loads(delivery.business_projection_content)
+            if delivery.business_projection == "envelope-v1":
+                inputs = [business.get("actual_user_content")]
+            else:
+                inputs = [
+                    m.get("content")
+                    for m in business
+                    if m.get("role") == "user"
+                    and m.get("content") == initial.actual_user_content
+                ]
+            if inputs != [initial.actual_user_content]:
+                errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
+        except (ValueError, TypeError, AttributeError):
+            errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
     if (
         not delivery.dispatch_started_at
         or not delivery.response_received_at

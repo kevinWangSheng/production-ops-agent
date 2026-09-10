@@ -332,7 +332,9 @@ def authorized(target, scope):
     )
 
 
-def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[str]:
+def check_outcome(
+    scenario: IncidentScenario, outcome: IncidentOutcome, *, _initial_view_ids=()
+) -> list[str]:
     errors = initial_view_errors(scenario)
     facts = scenario.trusted
     if (outcome.scenario_id, outcome.subject, outcome.versions, outcome.run_id) != (
@@ -393,7 +395,9 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
                 from .holmes_bridge import extract_registered_views
 
                 extracted = extract_registered_views(
-                    wire, {v.id: json.loads(v.content) for v in delivery.views}
+                    wire,
+                    {v.id: json.loads(v.content) for v in delivery.views},
+                    initial_view_ids=_initial_view_ids,
                 )
                 if set(extracted) != {v.id for v in delivery.views}:
                     errors.add("DELIVERY_INPUT_MISMATCH")

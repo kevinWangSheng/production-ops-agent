@@ -25,6 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from scripts.m0_environment.initial_evidence import (  # noqa: E402
+    import_initial_evidence,
+)
 from scripts.m0_environment.legacy_projections import (  # noqa: E402
     log_projection_v2,
     metric_projection_v1,
@@ -33,6 +36,7 @@ from scripts.m0_environment.legacy_projections import (  # noqa: E402
 from scripts.m0_environment.report_contract import (  # noqa: E402
     LEGACY_REPORT_VERSION,
     REPORT_VERSION,
+    parse_report,
     prepare_wire,
     report_instruction,
     source_timing,
@@ -259,6 +263,7 @@ def main():
     )
     parser.add_argument("--time-policy-file", type=Path)
     parser.add_argument("--initial-timings-file", type=Path)
+    parser.add_argument("--initial-evidence-manifest", type=Path)
     parser.add_argument("--max-steps", type=int, choices=(1, 3, 4), default=4)
     args = parser.parse_args()
     metadata_path = (
@@ -344,6 +349,34 @@ def main():
             out / "time-policies.json",
             [policy.model_dump(mode="json") for policy in time_policies],
         )
+    question_content = args.question_file.read_bytes().decode("utf-8")
+    initial_import = {
+        "actual_question_content": question_content,
+        "verified_views": {},
+        "timings": {},
+        "projection_context": None,
+        "unverified": [],
+    }
+    if args.report_version == REPORT_VERSION:
+        initial_import = import_initial_evidence(
+            question_content,
+            args.initial_evidence_manifest,
+            out,
+            scope,
+            run_id=args.run_id,
+            report_only=args.max_steps == 1,
+            runtime_source_sha256=hashlib.sha256(
+                Path(__file__).read_bytes()
+            ).hexdigest(),
+            runtime_dependencies={
+                module: hashlib.sha256(
+                    (Path(__file__).parent / (module + ".py")).read_bytes()
+                ).hexdigest()
+                for module in ("legacy_projections", "trace_view")
+            },
+        )
+        question_content = initial_import["actual_question_content"]
+    save(out / "observations.json", [])
     # Do not inherit credentials, tracing configuration, proxies or model fallbacks.
     retained = {
         k: v
@@ -401,22 +434,27 @@ def main():
     registered_view_values = {}
     registered_timings = {}
     timing_archive = {}
-    try:
-        supplied = json.loads(args.question_file.read_text())
-        if isinstance(supplied, dict):
-            for view in supplied.get("business_tool_views", []):
-                if isinstance(view, dict) and isinstance(view.get("evidence_id"), str):
-                    if args.report_version == REPORT_VERSION and (
-                        view["evidence_id"] in registered_views
-                        or view["evidence_id"].startswith(args.run_id + "-e")
+    if args.report_version == REPORT_VERSION:
+        for evidence_id, view in initial_import["verified_views"].items():
+            registered_views[evidence_id] = canonical_hash(view)
+            registered_view_values[evidence_id] = view
+            registered_timings[evidence_id] = initial_import["timings"][evidence_id]
+    else:
+        try:
+            supplied = json.loads(question_content)
+            if isinstance(supplied, dict):
+                for view in supplied.get("business_tool_views", []):
+                    if isinstance(view, dict) and isinstance(
+                        view.get("evidence_id"), str
                     ):
-                        raise ValueError("strict initial evidence ID collision")
-                    registered_views[view["evidence_id"]] = canonical_hash(view)
-                    registered_view_values[view["evidence_id"]] = view
-                    registered_timings[view["evidence_id"]] = source_timing({}, view)
-    except json.JSONDecodeError:
-        pass
-    if args.initial_timings_file:
+                        registered_views[view["evidence_id"]] = canonical_hash(view)
+                        registered_view_values[view["evidence_id"]] = view
+                        registered_timings[view["evidence_id"]] = source_timing(
+                            {}, view
+                        )
+        except json.JSONDecodeError:
+            pass
+    if args.initial_timings_file and not initial_import["unverified"]:
         if args.report_version != REPORT_VERSION:
             raise ValueError("initial timing input requires strict report version")
         initial_timing_input = json.loads(args.initial_timings_file.read_text())
@@ -458,16 +496,6 @@ def main():
     allocation_lock = ledger.with_suffix(".lock").open("a")
     fcntl.flock(allocation_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     budget = Budget(ledger)
-    # No inherited credentials are supplied to the investigation or tool results.
-    key = (
-        None
-        if args.preflight_only
-        else dotenv_values(ROOT.parent / "production-ops-agent/.env").get(
-            "DEEPSEEK_API_KEY"
-        )
-    )
-    if not args.preflight_only and not key:
-        raise ValueError("trusted credential unavailable")
     run_stop = min(DEADLINE, time.time() + PROFILE.run_seconds)
 
     def bounded_send(client, request, byte_limit, wall_seconds, **kwargs):
@@ -911,7 +939,7 @@ def main():
     )
     messages = [
         {"role": "system", "content": prompt},
-        {"role": "user", "content": args.question_file.read_text()},
+        {"role": "user", "content": question_content},
     ]
     save(out / "input-business.json", messages)
     if registry is not None:
@@ -930,6 +958,10 @@ def main():
             "phase": args.phase,
             "trusted_access_scope": scope,
             "compaction": "disabled",
+            "initial_projection_context": initial_import["projection_context"],
+            "initial_evidence_status": "unknown"
+            if initial_import["unverified"]
+            else "verified",
             "report_schema_version": args.report_version,
             "assurance_mode": "strict-candidate"
             if args.report_version == REPORT_VERSION
@@ -952,9 +984,34 @@ def main():
             "isolation": "fixed tool interfaces and HTTP egress checks; not OS/network sandbox or blind evaluation",
         },
     )
+    if initial_import["unverified"]:
+        result = {
+            "status": "incomplete",
+            "run_id": args.run_id,
+            "final_business_content": None,
+            "model_http_requests": 0,
+            "tool_queries": 0,
+            "initial_evidence_status": "unknown",
+            "initial_evidence_errors": [
+                item["reason"] for item in initial_import["unverified"]
+            ],
+        }
+        save(out / "result-business.json", result)
+        print(json.dumps(result))
+        return
     if args.preflight_only:
         print(json.dumps({"status": "import_configuration_pass", "out": str(out)}))
         return
+    # No inherited credentials are supplied to the investigation or tool results.
+    key = (
+        None
+        if args.preflight_only
+        else dotenv_values(ROOT.parent / "production-ops-agent/.env").get(
+            "DEEPSEEK_API_KEY"
+        )
+    )
+    if not args.preflight_only and not key:
+        raise ValueError("trusted credential unavailable")
     llm = DefaultLLM(
         model="openai/" + MODEL,
         api_key=key,
@@ -1037,6 +1094,10 @@ def main():
                         },
                     )
                 try:
+                    result.update(
+                        final_report=parse_report(content, version=args.report_version),
+                        report_schema_version=args.report_version,
+                    )
                     report = validate_report(
                         content,
                         finish_reason,

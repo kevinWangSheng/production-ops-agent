@@ -214,7 +214,7 @@ def replay_projection(record, context, *, revision=None):
     return record
 
 
-def extract_registered_views(messages, registered):
+def extract_registered_views(messages, registered, *, initial_view_ids=()):
     """Parse exactly the fixed tool envelope; telemetry is never searched for IDs."""
     if not isinstance(messages, list):
         raise ValueError("BUSINESS_PROJECTION_INVALID")
@@ -226,6 +226,31 @@ def extract_registered_views(messages, registered):
         if message["role"] == "user":
             if set(message) != {"role", "content"}:
                 raise ValueError("BUSINESS_PROJECTION_INVALID")
+            if initial_view_ids:
+                try:
+                    document = json.loads(message["content"])
+                except (ValueError, TypeError):
+                    document = None
+                candidates = (
+                    document.get("business_tool_views", [])
+                    if isinstance(document, dict)
+                    else []
+                )
+                if isinstance(candidates, list):
+                    for view in candidates:
+                        evidence_id = (
+                            view.get("evidence_id") if isinstance(view, dict) else None
+                        )
+                        if (
+                            isinstance(evidence_id, str)
+                            and evidence_id in initial_view_ids
+                        ):
+                            if (
+                                evidence_id in found
+                                or registered.get(evidence_id) != view
+                            ):
+                                raise ValueError("INITIAL_USER_VIEW_MISMATCH")
+                            found[evidence_id] = view
             continue
         if (
             set(message) != {"role", "content", "tool_call_id"}
@@ -268,6 +293,76 @@ def extract_registered_views(messages, registered):
             raise ValueError("TOOL_MESSAGE_STATUS_MISMATCH")
         found[evidence_id] = view
     return found
+
+
+def _initial_records(run_dir, supplied, context, scope, report_only):
+    """Only verify trusted imported copies; absent provenance remains an audit."""
+    from scripts.m0_environment.initial_evidence import (
+        context_signature,
+        verify_initial_entry,
+    )
+
+    def unknown(reason):
+        values = supplied if isinstance(supplied, list) else [supplied]
+        if not values:
+            values = [{"initial_manifest": "unusable"}]
+        return [
+            {
+                "location": f"business_tool_views[{index}]",
+                "content": canonical(value),
+                "content_sha256": hashlib.sha256(canonical(value).encode()).hexdigest(),
+                "reason": reason,
+            }
+            for index, value in enumerate(values)
+        ]
+
+    path = run_dir / "initial-evidence.json"
+    if not path.exists():
+        return [], context, unknown("INITIAL_PROVENANCE_MISSING") if supplied else []
+    try:
+        bundle = json.loads(path.read_bytes())
+        if bundle.get("schema_version") != "m0-initial-evidence-v1":
+            raise ValueError("INITIAL_PROVENANCE_INVALID")
+        producer = ProjectionContext.model_validate_json(
+            json.dumps(bundle["projection_context"])
+        )
+        original = ProjectionContext.model_validate_json(
+            json.dumps(bundle["original_projection_context"])
+        )
+        if (
+            context_signature(producer) != context_signature(original)
+            or producer.registry_hash != context.registry_hash
+        ):
+            return [], context, unknown("INITIAL_CONTEXT_INCOMPATIBLE")
+        if not report_only and context_signature(producer) != context_signature(
+            context
+        ):
+            return [], context, unknown("INITIAL_MIXED_CONTEXT_UNSUPPORTED")
+        if not isinstance(supplied, list) or any(
+            not isinstance(v, dict) for v in supplied
+        ):
+            return [], context, unknown("INITIAL_VIEW_LIST_INVALID")
+        ids = [v.get("evidence_id") for v in supplied]
+        if any(
+            not isinstance(key, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", key)
+            for key in ids
+        ) or len(set(ids)) != len(ids):
+            return [], context, unknown("INITIAL_EVIDENCE_ID_INVALID_OR_DUPLICATE")
+        loaded = []
+        for entry in bundle["entries"]:
+            value = verify_initial_entry(entry, producer, scope, base_dir=run_dir)
+            value["evidence_id"] = entry["evidence_id"]
+            loaded.append(value)
+        if (
+            len({x["evidence_id"] for x in loaded}) != len(loaded)
+            or len(loaded) != len(supplied)
+            or any(x["view"] != supplied[ids.index(x["evidence_id"])] for x in loaded)
+        ):
+            return [], context, unknown("INITIAL_USER_VIEW_MISMATCH")
+        return loaded, producer if report_only else context, []
+    except (ValueError, KeyError, TypeError, OSError):
+        return [], context, unknown("INITIAL_PROVENANCE_INVALID")
 
 
 def compose_target(row, registry, registry_hash):
@@ -324,6 +419,46 @@ def observed_targets(view, registry, registry_hash):
     if unknown_services or not targets:
         targets.append(integration_target(registry, registry_hash, unknown_services))
     return targets
+
+
+def _input_scope(run_dir, scope, registry, registry_hash):
+    run_id = run_dir.name
+    initial = json.loads((run_dir / "input-business.json").read_bytes())
+    users = [json.loads(m["content"]) for m in initial if m.get("role") == "user"]
+    if len(users) != 1 or users[0]["run_id"] != run_id:
+        raise ValueError("INITIAL_REQUEST_BINDING")
+    focus = users[0]["investigation_subject"]
+    rows = [
+        r for r in registry["containers"] if r["container_id"] == focus["container_id"]
+    ]
+    if len(rows) != 1:
+        raise ValueError("SUBJECT_IDENTITY_UNKNOWN")
+    target = compose_target(rows[0], registry, registry_hash)
+    if (target.service, target.image_digest, target.config_revision) != (
+        focus["service"],
+        focus["image_id"],
+        focus["config_revision"],
+    ):
+        raise ValueError("SUBJECT_IDENTITY_MISMATCH")
+    subject = Subject(id=run_id, kind="incident", target=target)
+    window = Window(
+        start=datetime.fromtimestamp(scope["window"]["start"], timezone.utc),
+        end=datetime.fromtimestamp(scope["window"]["end"], timezone.utc),
+    )
+    allowed_targets = [
+        compose_target(r, registry, registry_hash)
+        for r in registry["containers"]
+        if r.get("labels", {}).get("com.docker.compose.service") in scope["services"]
+    ]
+    allowed_targets.append(integration_target(registry, registry_hash, []))
+    access = AccessScope(
+        revision=scope["policy_revision"],
+        targets=allowed_targets,
+        interfaces=["otel_services", "otel_metrics", "otel_logs", "otel_traces"],
+        window=window,
+        services=scope["services"],
+    )
+    return initial, users, subject, access
 
 
 def _load_common(
@@ -390,43 +525,69 @@ def _load_common(
         report = report_type.model_validate_json(results["final_business_content"])
     except ValueError:
         raise ValueError("FINAL_REPORT_SCHEMA_INVALID") from None
-    initial = read("input-business.json")
-    users = [json.loads(m["content"]) for m in initial if m.get("role") == "user"]
-    if len(users) != 1 or users[0]["run_id"] != run_id:
-        raise ValueError("INITIAL_REQUEST_BINDING")
-    focus = users[0]["investigation_subject"]
-    rows = [
-        r for r in registry["containers"] if r["container_id"] == focus["container_id"]
-    ]
-    if len(rows) != 1:
-        raise ValueError("SUBJECT_IDENTITY_UNKNOWN")
-    target = compose_target(rows[0], registry, registry_hash)
-    if (target.service, target.image_digest, target.config_revision) != (
-        focus["service"],
-        focus["image_id"],
-        focus["config_revision"],
-    ):
-        raise ValueError("SUBJECT_IDENTITY_MISMATCH")
-    subject = Subject(id=run_id, kind="incident", target=target)
-    window = Window(
-        start=datetime.fromtimestamp(scope["window"]["start"], timezone.utc),
-        end=datetime.fromtimestamp(scope["window"]["end"], timezone.utc),
+    initial, users, subject, access = _input_scope(
+        run_dir, scope, registry, registry_hash
     )
-    allowed_targets = [
-        compose_target(r, registry, registry_hash)
-        for r in registry["containers"]
-        if r.get("labels", {}).get("com.docker.compose.service") in scope["services"]
-    ]
-    allowed_targets.append(integration_target(registry, registry_hash, []))
-    access = AccessScope(
-        revision=scope["policy_revision"],
-        targets=allowed_targets,
-        interfaces=["otel_services", "otel_metrics", "otel_logs", "otel_traces"],
-        window=window,
-        services=scope["services"],
+    report_only = (
+        config.get("phase") == "report"
+        and type(config.get("max_steps")) is int
+        and config["max_steps"] == 1
     )
-    observations = read("observations.json")
+    observations_path = run_dir / "observations.json"
+    if observations_path.exists():
+        observations = read("observations.json")
+    elif report_only:
+        observations = []
+    else:
+        raise ValueError("DYNAMIC_OBSERVATIONS_UNKNOWN")
+    if report_only and observations:
+        raise ValueError("REPORT_ONLY_DYNAMIC_OPERATIONS")
+    supplied = users[0].get("business_tool_views", [])
+    imported, context, unverified = _initial_records(
+        run_dir, supplied, context, scope, report_only
+    )
     artifacts, views, registered, actions = [], {}, {}, []
+    initial_ids = set()
+    for item in imported:
+        raw, view = item["raw"], item["view"]
+        evidence_id = item["evidence_id"]
+        try:
+            bounds = raw.get("query", {})
+            if "start" not in bounds or "end" not in bounds:
+                bounds = raw["trusted_access_scope"]["window"]
+            original_window = Window(
+                start=datetime.fromtimestamp(bounds["start"], timezone.utc),
+                end=datetime.fromtimestamp(bounds["end"], timezone.utc),
+            )
+            artifact = Artifact(
+                id=evidence_id,
+                interface=raw["tool"],
+                targets=observed_targets(view, context.registry, context.registry_hash),
+                query=canonical(raw["query"]),
+                window=original_window,
+                captured_at=datetime.fromisoformat(raw["observed_at"]),
+                status="ok"
+                if raw.get("http_status") == 200 and not raw.get("error")
+                else "failed",
+                raw=item["raw_bytes"].decode(),
+                raw_hash=hashlib.sha256(item["raw_bytes"]).hexdigest(),
+                projection_revision=item["projection_revision"],
+            )
+        except (ValueError, KeyError, TypeError, OverflowError):
+            content = canonical(view)
+            unverified.append(
+                {
+                    "location": f"initial-evidence[{evidence_id}]",
+                    "content": content,
+                    "content_sha256": hashlib.sha256(content.encode()).hexdigest(),
+                    "reason": "INITIAL_METADATA_UNKNOWN",
+                }
+            )
+            continue
+        artifacts.append(artifact)
+        views[evidence_id] = project(artifact, [], evidence_id, context=context)
+        registered[evidence_id] = view
+        initial_ids.add(evidence_id)
     for operation in observations:
         evidence_id = operation["evidence_id"]
         if (
@@ -458,7 +619,7 @@ def _load_common(
             interface=raw["tool"],
             targets=targets,
             query=canonical(raw["query"]),
-            window=window,
+            window=access.window,
             captured_at=datetime.fromisoformat(raw["observed_at"]),
             status="ok" if ok else "failed",
             raw=raw_bytes.decode(),
@@ -493,9 +654,17 @@ def _load_common(
         != delivered["business_messages_sha256"]
     ):
         raise ValueError("BUSINESS_PROJECTION_MISMATCH")
-    actual_views = extract_registered_views(delivered["messages"], registered)
-    if any(
-        ref not in actual_views for claim in report.claims for ref in claim.evidence_ids
+    actual_views = extract_registered_views(
+        delivered["messages"], registered, initial_view_ids=initial_ids
+    )
+    if (
+        report_type is ModelReport
+        and not unverified
+        and any(
+            ref not in actual_views
+            for claim in report.claims
+            for ref in claim.evidence_ids
+        )
     ):
         raise ValueError("REPORT_EVIDENCE_NOT_DELIVERED")
     request_id = f"{run_id}:http:{final_ordinal}"
@@ -514,7 +683,7 @@ def _load_common(
     )
     versions = {
         "adapter": "holmes-v3-bridge-1",
-        "projection_code": projection_source_sha256,
+        "projection_code": context.source_sha256,
         "registry": registry_hash,
         "model": config["model"],
         "prompt": config["prompt_sha256"],
@@ -525,12 +694,18 @@ def _load_common(
             ]
         ),
     }
+    if isinstance(config.get("upstream_commit"), str):
+        versions["upstream_commit"] = config["upstream_commit"]
+    if isinstance(config.get("tool_schema"), list):
+        versions["tool_schema_sha256"] = canonical_hash(config["tool_schema"])
     scenario = IncidentScenario(
         schema_version="m0-public-v3",
         scenario_id=run_id,
         versions=versions,
         agent_input=AgentInput(
-            subject=subject, request=users[0]["request"], initial_views=[]
+            subject=subject,
+            request=users[0]["request"],
+            initial_views=[views[key] for key in views if key in initial_ids],
         ),
         trusted=TrustedFacts(
             scope=access,
@@ -565,7 +740,23 @@ def _load_common(
         handoff=report.assessment_status == "incomplete",
         health="unknown",
     )
-    return scenario, outcome, report, config, delivered, response, results
+    input_details = {
+        "actual_user_content": next(
+            m["content"] for m in initial if m["role"] == "user"
+        ),
+        "unverified_initial_views": unverified,
+        "first_context": deliveries[0].get("evidence_context") if deliveries else None,
+    }
+    return (
+        scenario,
+        outcome,
+        report,
+        config,
+        delivered,
+        response,
+        results,
+        input_details,
+    )
 
 
 def load_legacy_packet(run_dir, **kwargs):
@@ -595,6 +786,110 @@ def legacy_report_audit(run_dir):
     }
 
 
+def _initial_handoff_packet(run_dir, config, generation, result, kwargs):
+    """Preserve an import-blocked input and any unparseable safe report, without proof."""
+    from . import outcomes_v4 as strict
+
+    scope = config["trusted_access_scope"]
+    registry = json.loads((run_dir / "deployment-registry.json").read_bytes())
+    registry_hash = canonical_hash(registry)
+    if (
+        registry_hash != scope["deployment_registry_sha256"]
+        or registry["integration_id"] != scope["integration_id"]
+    ):
+        raise ValueError("REGISTRY_MISMATCH")
+    initial, users, subject, access = _input_scope(
+        run_dir, scope, registry, registry_hash
+    )
+    actual = next(m["content"] for m in initial if m["role"] == "user")
+    original_path = run_dir / "question-original.txt"
+    original = (
+        original_path.read_bytes().decode("utf-8") if original_path.exists() else None
+    )
+    audit_path = run_dir / "initial-import-audit.json"
+    audit = (
+        json.loads(audit_path.read_bytes()).get("unverified", [])
+        if audit_path.exists()
+        else []
+    )
+    if not audit:
+        supplied = users[0].get("business_tool_views", [])
+        if not supplied:
+            raise ValueError("FINAL_RESPONSE_REQUIRED")
+        values = supplied if isinstance(supplied, list) else [supplied]
+        audit = [
+            {
+                "location": f"business_tool_views[{i}]",
+                "content": canonical(v),
+                "content_sha256": strict.content_hash(canonical(v)),
+                "reason": "INITIAL_PROVENANCE_UNVERIFIED",
+            }
+            for i, v in enumerate(values)
+        ]
+    versions = {
+        "adapter": "holmes-v4-bridge-1",
+        "report": "m0-report-v2",
+        "projection_code": kwargs["projection_source_sha256"],
+        "registry": registry_hash,
+    }
+    if isinstance(config.get("upstream_commit"), str):
+        versions["upstream_commit"] = config["upstream_commit"]
+    if isinstance(config.get("tool_schema"), list):
+        versions["tool_schema_sha256"] = canonical_hash(config["tool_schema"])
+    agent_input = strict.AgentInput.model_validate_json(
+        json.dumps(
+            {
+                "subject": subject.model_dump(mode="json"),
+                "request": users[0]["request"],
+                "initial_views": [],
+                "actual_user_content": actual,
+                "actual_user_content_sha256": strict.content_hash(actual),
+                "original_user_content": original,
+                "original_user_content_sha256": strict.content_hash(original)
+                if original is not None
+                else None,
+                "unverified_initial_views": audit,
+            }
+        )
+    )
+    scenario = strict.IncidentScenario(
+        schema_version="m0-public-v4",
+        scenario_id=run_dir.name,
+        versions=versions,
+        agent_input=agent_input,
+        trusted=strict.TrustedFacts(
+            scope=access,
+            artifacts=[],
+            deliveries=[],
+            controls=list(kwargs.get("controls", ())),
+            final_generation=generation,
+            current_run=run_dir.name,
+            execution="blocked",
+            observed_actions=[],
+            time_policies=[],
+        ),
+    )
+    raw_report = result.get("final_business_content")
+    raw_report = raw_report if isinstance(raw_report, str) and raw_report else None
+    outcome = strict.IncidentOutcome(
+        schema_version="m0-public-v4",
+        scenario_id=run_dir.name,
+        versions=versions,
+        subject=subject,
+        run_id=run_dir.name,
+        control_generation=generation,
+        execution="blocked",
+        report=None,
+        report_content=raw_report,
+        report_content_sha256=strict.content_hash(raw_report) if raw_report else None,
+        evidence_ids=[],
+        handoff=True,
+        handoff_reasons=["UNVERIFIED_INITIAL_EVIDENCE"],
+        health="unknown",
+    )
+    return scenario, outcome
+
+
 def load_packet(run_dir, **kwargs):
     """Current strict v4 entry. Old payloads require explicit legacy replay."""
     from . import outcomes_v4 as strict
@@ -611,8 +906,22 @@ def load_packet(run_dir, **kwargs):
     if type(generation) is not int or generation < 0:
         raise ValueError("STRICT_CONTROL_UNKNOWN")
     kwargs["final_generation"] = generation
-    base, old_outcome, report, config, record, response, result = _load_common(
-        run_dir, report_type=strict.ModelReportV2, **kwargs
+    result = read("result-business.json")
+    if result.get("run_id") != run_dir.name:
+        raise ValueError("REPORT_REQUEST_BINDING")
+    content = result.get("final_business_content")
+    if not content:
+        return _initial_handoff_packet(run_dir, config, generation, result, kwargs)
+    from scripts.m0_environment.report_contract import parse_report
+
+    try:
+        if result.get("finish_reason") != "stop":
+            raise ValueError("FINAL_RESPONSE_REQUIRED")
+        parse_report(content, version="m0-report-v2")
+    except ValueError:
+        return _initial_handoff_packet(run_dir, config, generation, result, kwargs)
+    base, old_outcome, report, config, record, response, result, input_details = (
+        _load_common(run_dir, report_type=strict.ModelReportV2, **kwargs)
     )
     policies_raw = read("time-policies.json")
     if policies_raw != config.get("time_policies") or canonical_hash(
@@ -644,7 +953,9 @@ def load_packet(run_dir, **kwargs):
         or capture.content != response["choices"][0]["content"]
     ):
         raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
-    if result.get("final_report") != report.model_dump(mode="json"):
+    if "final_report" in result and result["final_report"] != report.model_dump(
+        mode="json"
+    ):
         raise ValueError("REPORT_PARSED_OBJECT_MISMATCH")
     base_delivery = base.trusted.deliveries[0]
     delivery = strict.Delivery.model_validate_json(
@@ -661,7 +972,11 @@ def load_packet(run_dir, **kwargs):
     )
     timing_records = {
         key: strict.TimingRecord.model_validate_json(json.dumps(value))
-        for key, value in read("evidence-timings.json").items()
+        for key, value in (
+            read("evidence-timings.json")
+            if (run_dir / "evidence-timings.json").exists()
+            else {}
+        ).items()
     }
     facts = strict.TrustedFacts.model_validate(
         base.trusted.model_dump(exclude={"deliveries"})
@@ -678,11 +993,59 @@ def load_packet(run_dir, **kwargs):
         "report": "m0-report-v2",
         "temporal_policies": canonical_hash(policies_raw),
     }
+    actual_content = input_details["actual_user_content"]
+    original_path = run_dir / "question-original.txt"
+    original_content = (
+        original_path.read_bytes().decode("utf-8") if original_path.exists() else None
+    )
+    provenance = (
+        read("input-provenance.json")
+        if (run_dir / "input-provenance.json").exists()
+        else {}
+    )
+    unverified = list(input_details["unverified_initial_views"])
+    if (run_dir / "initial-import-audit.json").exists():
+        for entry in read("initial-import-audit.json").get("unverified", []):
+            if entry not in unverified:
+                unverified.append(entry)
+    if provenance and (
+        provenance.get("actual_user_content_sha256")
+        != strict.content_hash(actual_content)
+        or original_content is None
+        or provenance.get("original_user_content_sha256")
+        != strict.content_hash(original_content)
+    ):
+        unverified.append(
+            {
+                "location": "input-provenance",
+                "content": actual_content,
+                "content_sha256": strict.content_hash(actual_content),
+                "reason": "INITIAL_INPUT_PROVENANCE_MISMATCH",
+            }
+        )
+    initial_context = (
+        input_details["first_context"] if base.agent_input.initial_views else None
+    )
+    agent_input = strict.AgentInput.model_validate_json(
+        json.dumps(
+            base.agent_input.model_dump(mode="json")
+            | {
+                "evidence_context": initial_context,
+                "actual_user_content": actual_content,
+                "actual_user_content_sha256": strict.content_hash(actual_content),
+                "original_user_content": original_content,
+                "original_user_content_sha256": strict.content_hash(original_content)
+                if original_content is not None
+                else None,
+                "unverified_initial_views": unverified,
+            }
+        )
+    )
     scenario = strict.IncidentScenario(
         schema_version="m0-public-v4",
         scenario_id=base.scenario_id,
         versions=versions,
-        agent_input=strict.AgentInput.model_validate(base.agent_input.model_dump()),
+        agent_input=agent_input,
         trusted=facts,
     )
     outcome = strict.IncidentOutcome(

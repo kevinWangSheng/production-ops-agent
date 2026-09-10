@@ -199,6 +199,36 @@ def prepare_wire(
     return json.dumps(result, ensure_ascii=False).encode()
 
 
+def parse_report(content, *, version=REPORT_VERSION):
+    """Preserve a schema-valid candidate independently of its evidence qualification."""
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("final report incomplete")
+    if re.search(r"<[^>\n]*DSML", content, flags=re.IGNORECASE):
+        raise ValueError("final report contains tool protocol")
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate report field")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(content, object_pairs_hook=unique_object)
+    except (ValueError, RecursionError):
+        raise ValueError("final report JSON invalid") from None
+    if version == REPORT_VERSION:
+        from scripts.m0.outcomes_v4 import ModelReportV2
+
+        return ModelReportV2.model_validate(value).model_dump(mode="json")
+    if version == LEGACY_REPORT_VERSION:
+        from scripts.m0.outcomes_v3 import ModelReport
+
+        return ModelReport.model_validate(value).model_dump(mode="json")
+    raise ValueError("unsupported report version")
+
+
 def validate_report(
     content,
     finish_reason,
@@ -222,19 +252,7 @@ def validate_report(
         validate_report_context,
     )
 
-    def unique_object(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError("duplicate report field")
-            result[key] = value
-        return result
-
-    try:
-        value = json.loads(content, object_pairs_hook=unique_object)
-    except (ValueError, RecursionError):
-        raise ValueError("final report JSON invalid") from None
-    report = ModelReportV2.model_validate(value)
+    report = ModelReportV2.model_validate(parse_report(content, version=version))
     if context is None:
         raise ValueError("strict evidence context required")
     context_model = (

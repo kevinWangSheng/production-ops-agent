@@ -113,7 +113,9 @@ def run_case(
             json.dumps(
                 {
                     "question": "Investigate the observed window.",
-                    "business_tool_views": [initial],
+                    "business_tool_views": [initial]
+                    if use_initial_timing or final_content == "unauthorized-initial"
+                    else [],
                 }
             )
         )
@@ -344,8 +346,13 @@ def run_case(
             ).read_text()
         )
         assert result["status"] == expect_status, result
-        if final_content == "unauthorized-initial":
+        if final_content == "invalid-target":
+            assert result["final_report"]["claims"][0]["target_refs"] == [
+                "target:invented"
+            ]
+        if final_content == "unauthorized-initial" or use_initial_timing:
             assert len(model_requests) == 0
+            assert result["initial_evidence_status"] == "unknown"
             print(
                 json.dumps(
                     {
@@ -398,11 +405,7 @@ def run_case(
             assert datetime.fromisoformat(
                 receipt["dispatch_started_at"]
             ) <= datetime.fromisoformat(receipt["response_received_at"])
-        assert "initial-e1" in deliveries[0]["evidence_context"]["view_bindings"]
-        initial_collection = deliveries[0]["evidence_context"]["view_bindings"][
-            "initial-e1"
-        ]["timing"]["collection_completed_at"]
-        assert (initial_collection is not None) == use_initial_timing
+        assert deliveries[0]["evidence_context"]["view_bindings"] == {}
         last_context = deliveries[-1]["evidence_context"]
         assert last_context == json.loads(final["messages"][-2]["content"])
         assert (
@@ -453,5 +456,5 @@ def run_case(
 run_case("valid", "investigation_returned")
 run_case("invalid-target", "incomplete")
 
-run_case("valid", "investigation_returned", use_initial_timing=True)
-run_case("unauthorized-initial", "failed")
+run_case("valid", "incomplete", use_initial_timing=True)
+run_case("unauthorized-initial", "incomplete")
