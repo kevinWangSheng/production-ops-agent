@@ -54,6 +54,7 @@ def strict_captured(captured):
     raw = json.loads((run / "case-01-e1-raw.json").read_text())
     raw.update(
         tool="otel_traces",
+        query={"service": "checkout", **scope["window"]},
         trusted_access_scope=scope,
         operation_started_at=raw["observed_at"],
         collection_completed_at="2026-09-10T01:00:01Z",
@@ -462,3 +463,83 @@ def test_candidate_parse_reuses_protocol_rules_without_losing_initial_audit(
     assert outcome.report is None
     assert outcome.report_content == result["final_business_content"]
     assert "UNVERIFIED_INITIAL_EVIDENCE" in v4.check_outcome(scenario, outcome)
+
+
+@pytest.mark.parametrize("mode", ["import_blocked", "invalid_report", "valid_report"])
+def test_cli_reportless_audit_survives_subprocess(initial_captured, mode):
+    import subprocess
+    import sys
+
+    run, code = initial_captured
+    if mode != "valid_report":
+        (run / "initial-evidence.json").unlink()
+        result = {"run_id": run.name, "status": "incomplete"}
+        if mode == "invalid_report":
+            result.update(
+                finish_reason="stop",
+                final_business_content='{"claims": "invalid-sentinel"}',
+            )
+        save(run / "result-business.json", result)
+    output = run / "cli-audit.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == (0 if mode == "valid_report" else 1)
+    assert not process.stderr
+    summary = json.loads(process.stdout)
+    saved = json.loads(output.read_bytes())
+    if mode == "valid_report":
+        assert saved["assessment_status"] == "completed"
+        assert saved["conclusion"] == "supported"
+        assert saved["violations"] == []
+    else:
+        assert saved["assessment_status"] is None and saved["conclusion"] is None
+        assert saved["execution"] == "blocked" and saved["handoff"] is True
+        assert saved["report"] is None
+        assert "UNVERIFIED_INITIAL_EVIDENCE" in saved["violations"]
+        assert saved["agent_input"]["original_user_content"].endswith("\r\n")
+        assert saved["agent_input"]["actual_user_content"]
+        assert "agent_input" not in summary and "report_content" not in summary
+        if mode == "invalid_report":
+            assert saved["report_content"] == result["final_business_content"]
+            assert saved["report_content_sha256"] == v4.content_hash(
+                result["final_business_content"]
+            )
+            assert "MISSING_REPORT_OR_HANDOFF" in saved["violations"]
+
+
+@pytest.mark.parametrize("interfaces", [["otel_traces"], ["otel_logs"]])
+def test_bridge_preserves_current_interface_restriction(initial_captured, interfaces):
+    run, code = initial_captured
+    config = json.loads((run / "configuration.json").read_bytes())
+    config["trusted_access_scope"]["interfaces"] = interfaces
+    save(run / "configuration.json", config)
+    deliveries = json.loads((run / "delivered-business.json").read_bytes())
+    deliveries[0]["trusted_access_scope"] = config["trusted_access_scope"]
+    save(run / "delivered-business.json", deliveries)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert scenario.trusted.scope.interfaces == interfaces
+    if interfaces == ["otel_traces"]:
+        assert v4.check_outcome(scenario, outcome) == []
+        raw = json.loads((run / "case-01-e1-raw.json").read_bytes())
+        window = scenario.trusted.artifacts[0].window
+        assert window.start.timestamp() == raw["query"]["start"]
+        assert window.end.timestamp() == raw["query"]["end"]
+    else:
+        assert scenario.trusted.artifacts == []
+        assert "UNVERIFIED_INITIAL_EVIDENCE" in v4.check_outcome(scenario, outcome)

@@ -454,7 +454,9 @@ def _input_scope(run_dir, scope, registry, registry_hash):
     access = AccessScope(
         revision=scope["policy_revision"],
         targets=allowed_targets,
-        interfaces=["otel_services", "otel_metrics", "otel_logs", "otel_traces"],
+        interfaces=scope.get(
+            "interfaces", ["otel_services", "otel_metrics", "otel_logs", "otel_traces"]
+        ),
         window=window,
         services=scope["services"],
     )
@@ -552,9 +554,7 @@ def _load_common(
         raw, view = item["raw"], item["view"]
         evidence_id = item["evidence_id"]
         try:
-            bounds = raw.get("query", {})
-            if "start" not in bounds or "end" not in bounds:
-                bounds = raw["trusted_access_scope"]["window"]
+            bounds = item["query_window"]
             original_window = Window(
                 start=datetime.fromtimestamp(bounds["start"], timezone.utc),
                 end=datetime.fromtimestamp(bounds["end"], timezone.utc),
@@ -1112,15 +1112,29 @@ def main():
             "delivered_views": len(outcome.evidence_ids),
             "assessment_status": outcome.assessment_status
             if args.legacy_v3
-            else outcome.report.assessment_status,
+            else outcome.report.assessment_status
+            if outcome.report is not None
+            else None,
             "conclusion": outcome.conclusion
             if args.legacy_v3
-            else outcome.report.conclusion,
+            else outcome.report.conclusion
+            if outcome.report is not None
+            else None,
             "assurance_mode": "explicit-legacy-v3" if args.legacy_v3 else "strict-v4",
             "boundary": "Contract consistency only; report quality/causality require independent review. No private protocol read.",
         }
         if args.legacy_v3:
             result.update(legacy_report_audit(args.run_dir))
+        elif outcome.report is None:
+            result.update(
+                execution=outcome.execution,
+                handoff=outcome.handoff,
+                handoff_reasons=outcome.handoff_reasons,
+                report=None,
+                report_content=outcome.report_content,
+                report_content_sha256=outcome.report_content_sha256,
+                agent_input=scenario.agent_input.model_dump(mode="json"),
+            )
     except (ValueError, KeyError, OSError, TypeError) as exc:
         code = str(exc)
         if len(code) > 80 or not re.fullmatch(r"[A-Z][A-Z_]+", code):
@@ -1141,7 +1155,13 @@ def main():
             {
                 key: value
                 for key, value in result.items()
-                if key not in {"original_report_content", "original_report"}
+                if key
+                not in {
+                    "original_report_content",
+                    "original_report",
+                    "report_content",
+                    "agent_input",
+                }
             }
         )
     )

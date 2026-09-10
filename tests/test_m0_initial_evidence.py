@@ -215,7 +215,7 @@ def test_verified_source_outside_current_scope_is_not_imported(tmp_path):
         runtime_source_sha256="0" * 64,
     )
     assert result["verified_views"] == {}
-    assert result["unverified"][0]["reason"] == "TARGET_SCOPE_DENIED"
+    assert result["unverified"][0]["reason"] == "INITIAL_QUERY_SERVICE_DENIED"
 
 
 def test_bad_entry_shape_is_audited_with_original_manifest_bytes(tmp_path):
@@ -300,3 +300,80 @@ def test_active_same_source_but_different_dependencies_is_mixed(tmp_path):
     )
     assert result["unverified"][0]["reason"] == "INITIAL_MIXED_CONTEXT_UNSUPPORTED"
     assert not result["verified_views"]
+
+
+def test_current_time_and_interface_scope_gate_precedes_import(tmp_path):
+    manifest, scope, _, _ = bundle(tmp_path)
+    for name, current in [
+        (
+            "narrow",
+            {
+                **scope,
+                "window": {
+                    "start": scope["window"]["start"] + 1,
+                    "end": scope["window"]["end"],
+                },
+            },
+        ),
+        ("interface", {**scope, "interfaces": ["otel_metrics"]}),
+    ]:
+        out = tmp_path / name
+        out.mkdir()
+        result = import_initial_evidence(
+            '{"request":"review"}',
+            manifest,
+            out,
+            current,
+            run_id="newrun",
+            report_only=True,
+            runtime_source_sha256="0" * 64,
+        )
+        assert result["unverified"] and not result["verified_views"]
+        assert not (out / "initial-evidence.json").exists()
+
+
+def test_query_window_is_not_replaced_by_wider_original_scope():
+    from scripts.m0_environment.initial_evidence import authorized_query_window
+
+    raw = {
+        "tool": "otel_logs",
+        "query": {"service": "checkout", "start": 100, "end": 200},
+    }
+    prior = {"scope": {"services": ["checkout"], "window": {"start": 0, "end": 300}}}
+    current = {
+        "services": ["checkout"],
+        "interfaces": ["otel_logs"],
+        "window": {"start": 100, "end": 200},
+    }
+    assert authorized_query_window(raw, prior, current) == {"start": 100, "end": 200}
+    assert raw["query"]["start"] == 100
+
+
+def test_missing_time_and_metric_escapes_are_denied():
+    import pytest
+
+    from scripts.m0_environment.initial_evidence import (
+        InitialEvidenceError,
+        authorized_query_window,
+    )
+
+    scope = {
+        "services": ["checkout"],
+        "metrics_scope": "integration",
+        "window": {"start": 0, "end": 600},
+    }
+    for raw in [
+        {"tool": "otel_services", "query": {}},
+        {"tool": "otel_logs", "query": {"service": "checkout"}},
+        {
+            "tool": "otel_metrics",
+            "query": {"query": "rate(x[20m])", "start": 0, "end": 600},
+        },
+        {
+            "tool": "otel_metrics",
+            "query": {"query": "x offset 1h", "start": 0, "end": 600},
+        },
+        {"tool": "otel_metrics", "query": {"query": "x @ 100", "start": 0, "end": 600}},
+    ]:
+        with pytest.raises(InitialEvidenceError):
+            authorized_query_window(raw, {"scope": scope}, scope)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -61,6 +62,98 @@ def context_signature(context):
     }
 
 
+TOOL_INTERFACES = frozenset(
+    {"otel_services", "otel_metrics", "otel_logs", "otel_traces"}
+)
+
+
+def allowed_interfaces(scope):
+    """Absent field means exactly the existing fixed read-only tool surface."""
+    values = scope.get("interfaces", sorted(TOOL_INTERFACES))
+    if not isinstance(values, list) or any(
+        not isinstance(value, str) or value not in TOOL_INTERFACES for value in values
+    ):
+        raise InitialEvidenceError("INITIAL_INTERFACE_SCOPE_UNKNOWN")
+    return frozenset(values)
+
+
+def _window(value):
+    if not isinstance(value, dict):
+        raise InitialEvidenceError("INITIAL_QUERY_TIME_UNKNOWN")
+    start, end = value.get("start"), value.get("end")
+    if (
+        any(
+            type(item) not in (int, float) or not math.isfinite(item)
+            for item in (start, end)
+        )
+        or not start < end
+    ):
+        raise InitialEvidenceError("INITIAL_QUERY_TIME_UNKNOWN")
+    return {"start": start, "end": end}
+
+
+def authorized_query_window(raw, origin, scope):
+    """Disclosure gate, separate from whether a fact later meets a time policy."""
+    tool = raw.get("tool")
+    original_scope = origin["scope"]
+    if (
+        not isinstance(tool, str)
+        or tool not in allowed_interfaces(scope)
+        or tool not in allowed_interfaces(original_scope)
+    ):
+        raise InitialEvidenceError("INITIAL_INTERFACE_DENIED")
+    query = raw.get("query")
+    if tool == "otel_services":
+        # This fixed inventory endpoint accepts no time filter. A scope window
+        # cannot be relabeled as a query or event-time guarantee.
+        raise InitialEvidenceError("INITIAL_QUERY_TIME_UNKNOWN")
+    required = (
+        {"start", "end", "query"}
+        if tool == "otel_metrics"
+        else {"start", "end", "service"}
+    )
+    if not isinstance(query, dict) or set(query) != required:
+        raise InitialEvidenceError("INITIAL_QUERY_SHAPE_UNKNOWN")
+    actual, prior, current = (
+        _window(query),
+        _window(original_scope.get("window")),
+        _window(scope.get("window")),
+    )
+    if actual["start"] < prior["start"] or actual["end"] > prior["end"]:
+        raise InitialEvidenceError("INITIAL_ORIGINAL_QUERY_SCOPE_MISMATCH")
+    if actual["start"] < current["start"] or actual["end"] > current["end"]:
+        raise InitialEvidenceError("INITIAL_QUERY_WINDOW_DENIED")
+    if tool in {"otel_logs", "otel_traces"}:
+        if query["service"] not in scope.get("services", []) or query[
+            "service"
+        ] not in original_scope.get("services", []):
+            raise InitialEvidenceError("INITIAL_QUERY_SERVICE_DENIED")
+    else:
+        if (
+            scope.get("metrics_scope") != "integration"
+            or original_scope.get("metrics_scope") != "integration"
+        ):
+            raise InitialEvidenceError("INITIAL_INTERFACE_SCOPE_UNKNOWN")
+        expression = query["query"]
+        width = actual["end"] - actual["start"]
+        if (
+            not isinstance(expression, str)
+            or len(expression) > 2000
+            or width < 300
+            or "@" in expression
+            or re.search(r"\boffset\b", expression)
+        ):
+            raise InitialEvidenceError("INITIAL_METRIC_QUERY_TIME_UNKNOWN")
+        units = {"s": 1, "m": 60, "h": 3600}
+        for value in re.findall(r"\[([^]]+)\]", expression):
+            if (
+                not re.fullmatch(r"[1-9][0-9]*[smh]", value)
+                or int(value[:-1]) * units[value[-1]] > width
+            ):
+                raise InitialEvidenceError("INITIAL_METRIC_QUERY_TIME_UNKNOWN")
+    return actual
+
+
 def verify_initial_entry(entry, context, scope, *, base_dir=None):
     """Verify one operator-selected original entry; never copy or invent provenance."""
     from scripts.m0.holmes_bridge import replay_projection
@@ -111,6 +204,7 @@ def verify_initial_entry(entry, context, scope, *, base_dir=None):
         or entry.get("projection_revision", revision) != revision
     ):
         raise InitialEvidenceError("INITIAL_MANIFEST_BINDING_MISMATCH")
+    query_window = authorized_query_window(raw, origin, scope)
     try:
         projected = replay_projection(raw, context, revision=revision)
     except (ValueError, KeyError, TypeError, AttributeError, OSError):
@@ -155,6 +249,7 @@ def verify_initial_entry(entry, context, scope, *, base_dir=None):
         "raw": raw,
         "view": view,
         "projection_revision": revision,
+        "query_window": query_window,
         "timing": timing,
     }
 

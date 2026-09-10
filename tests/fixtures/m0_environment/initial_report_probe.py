@@ -264,6 +264,73 @@ with tempfile.TemporaryDirectory() as directory:
         )
         index_path.write_bytes(original_index)
     print(json.dumps({"negative_report_only_cases": negative_results, "real_http": 0}))
+    scope_gate_results = []
+    for case, override in (
+        (
+            "deny-window",
+            {
+                "window": {
+                    "start": scope["window"]["start"] + 1,
+                    "end": scope["window"]["end"],
+                }
+            },
+        ),
+        ("deny-interface", {"interfaces": ["otel_metrics"]}),
+    ):
+        denied_scope = {**scope, **override}
+        denied_scope_path = task / (case + "-scope.json")
+        save(denied_scope_path, denied_scope)
+        denied_question = task / (case + "-question.json")
+        question_value = json.loads(question.read_bytes())
+        question_value["run_id"] = case
+        denied_question.write_text(json.dumps(question_value))
+        denied_argv = [
+            "wrapper",
+            "--run-id",
+            case,
+            "--phase",
+            "report",
+            "--max-steps",
+            "1",
+            "--question-file",
+            str(denied_question),
+            "--scope-file",
+            str(denied_scope_path),
+            "--time-policy-file",
+            str(policy_path),
+            "--initial-evidence-manifest",
+            str(manifest),
+        ]
+        with (
+            patch.object(wrapper, "ROOT", task),
+            patch.object(
+                wrapper,
+                "run_child",
+                side_effect=AssertionError("transport must not run"),
+            ) as transport,
+            patch.object(
+                dotenv, "dotenv_values", return_value={"DEEPSEEK_API_KEY": "synthetic"}
+            ) as credential_reader,
+            patch.object(sys, "argv", denied_argv),
+        ):
+            wrapper.main()
+        denied_folder = task / "tmp/m0-environment/holmes-runs" / case
+        denied_result = json.loads((denied_folder / "result-business.json").read_text())
+        assert denied_result["initial_evidence_status"] == "unknown"
+        assert (
+            denied_result["model_http_requests"] == denied_result["tool_queries"] == 0
+        )
+        assert transport.call_count == credential_reader.call_count == 0
+        assert not (denied_folder / "initial-evidence").exists()
+        scope_gate_results.append(
+            {
+                "case": case,
+                "model_or_tool_transports": 0,
+                "credential_reads": 0,
+                "reasons": denied_result["initial_evidence_errors"],
+            }
+        )
+    print(json.dumps({"scope_gate_cases": scope_gate_results, "real_http": 0}))
     print(
         json.dumps(
             {
