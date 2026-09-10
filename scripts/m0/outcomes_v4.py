@@ -565,6 +565,55 @@ def input_provenance_errors(initial):
     return errors
 
 
+def control_time_errors(facts):
+    """Control epochs bound initiation; late historical responses stay auditable."""
+    errors = set()
+    events = {event.generation: event for event in facts.controls}
+    if any(a.at > b.at for a, b in zip(facts.controls, facts.controls[1:])):
+        errors.add("CONTROL_TIME_ORDER")
+
+    def lower_bound(generation):
+        if generation == 0:
+            return None  # Intake time was not captured; do not invent it.
+        event = events.get(generation)
+        if event is None:
+            errors.add("CONTROL_GENERATION_UNKNOWN")
+        return event
+
+    for delivery in facts.deliveries:
+        event = lower_bound(delivery.control_generation)
+        if (
+            delivery.state == "prepared"
+            and delivery.dispatch_started_at is None
+            and delivery.response_received_at is None
+        ):
+            continue
+        successor = events.get(delivery.control_generation + 1)
+        started = delivery.dispatch_started_at
+        if started is None:
+            errors.add("CONTROL_TIME_UNKNOWN")
+        elif (event is not None and started < event.at) or (
+            successor is not None and started >= successor.at
+        ):
+            errors.add("CONTROL_DISPATCH_TIME_MISMATCH")
+        if event is not None and event.action != "new_run":
+            errors.add("CONTROL_DISPATCH_NOT_AUTHORIZED")
+        received = delivery.response_received_at
+        if delivery.state == "response_committed" and received is None:
+            errors.add("CONTROL_TIME_UNKNOWN")
+        if event is not None and received is not None and received < event.at:
+            errors.add("CONTROL_RESPONSE_TIME_MISMATCH")
+        # No successor bound on response receipt: old in-flight replies may arrive late.
+    capture = facts.report_capture
+    if capture is not None:
+        event = lower_bound(capture.control_generation)
+        if capture.response_received_at is None:
+            errors.add("CONTROL_TIME_UNKNOWN")
+        elif event is not None and capture.response_received_at < event.at:
+            errors.add("CONTROL_CAPTURE_TIME_MISMATCH")
+    return errors
+
+
 def check_outcome(scenario, outcome):
     """Strict current seam; legacy projection below reuses structural checks only."""
     facts, report = scenario.trusted, outcome.report
@@ -652,6 +701,7 @@ def check_outcome(scenario, outcome):
         and (facts.execution != "completed" or outcome.execution != "completed")
     ):
         errors.add("ASSESSMENT_EXECUTION_MISMATCH")
+    errors |= control_time_errors(facts)
     initial = scenario.agent_input
     errors |= input_provenance_errors(initial)
     errors |= context_errors(

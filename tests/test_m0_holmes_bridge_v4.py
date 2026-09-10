@@ -828,7 +828,9 @@ def test_reportless_holmes_business_payload_still_binds_actual_input(
         handoff_reasons=["Review"],
     )
     delivery = s["trusted"]["deliveries"][0]
-    delivery.update(state=state, response_received_at=None)
+    delivery["state"] = state
+    if state != "response_committed":
+        delivery["response_received_at"] = None
     if state == "prepared":
         delivery["dispatch_started_at"] = None
     messages = json.loads(delivery["business_projection_content"])

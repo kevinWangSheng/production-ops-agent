@@ -1,13 +1,12 @@
 {
-  "checked_at": "2026-09-10T13:18:54.047294+00:00",
+  "checked_at": "2026-09-10T13:49:02.517657+00:00",
   "code_review": {
-    "status": "awaiting_bot_review_after_fix",
-    "user_workflow": "resume GitHub bot after completed local review round",
-    "reviewed_base": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
-    "finding": 3979271073,
-    "fix_patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
-    "implementer_tests": "615 passed; 44 PG default skipped; 11 actual Holmes fake-pipe cases",
-    "evidence": "round-02-bot-timing-sidecar-fix.md"
+    "status": "awaiting_bot_review_after_control_chronology_fix",
+    "base": "61850c163b9f7e42551b24978ec61afb905285dc",
+    "finding": 3979613299,
+    "patch_sha256": "4a088c7dbdfa2d6dd439250841bc510521f627490079af54c20c7f9a5c2ba008",
+    "implementer_tests": "636 passed; 44 PG default skipped",
+    "evidence": "round-02-bot-control-time-fix.md"
   },
   "security_review": {
     "current_head_status": "no_acknowledgement_or_result",
@@ -58,13 +57,12 @@
   },
   "historical_implementation_commit": "a100c90",
   "implementation_ref": {
-    "base_commit": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
-    "patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
-    "code_hashes": {
-      "scripts/m0_environment/initial_evidence.py": "52c4eb7a811bdfa0db1ab0faa7881ca179af95093b45ba2f6ab2de1c3673d064",
-      "scripts/m0_environment/holmes_baseline.py": "3cf11cca6dcc7a3ef7614ce0977dfd6c924745bf7440516e5221adf9d5356e27",
-      "tests/test_m0_timing_echo.py": "7562b5f8c0b14f4d74dbaa21389d78dde49e41078c79e870f48349fa2ea28d33",
-      "tests/fixtures/m0_environment/timing_override_probe.py": "001fbcf2bfb41c59a944681fd5ab4f74868b19fae7e077967e4254bcc5d8f387"
+    "base_commit": "61850c163b9f7e42551b24978ec61afb905285dc",
+    "patch_sha256": "4a088c7dbdfa2d6dd439250841bc510521f627490079af54c20c7f9a5c2ba008",
+    "changed_file_hashes": {
+      "scripts/m0/outcomes_v4.py": "9d6b2efbcf7f2de9cc44dd2383e0dfc8bf0812d523c1a2b8aadb404be05b9fe2",
+      "tests/test_m0_outcomes_v4.py": "ea96fe90b7bef64c9da99412f0ad727e036460b21a663a9dd642619a444b0552",
+      "tests/test_m0_holmes_bridge_v4.py": "c0b10174378409f772363ba19ab5f208d41738ccfaacb853756ad142170f9bdd"
     }
   },
   "historical_ci_snapshot": {
@@ -73,5 +71,16 @@
     "checks": "success",
     "m0_postgres": "success"
   },
-  "current_ci_status": "pending_for_new_commit"
+  "current_ci_status": "pending_for_new_commit",
+  "prior_bot_fix_rounds": [
+    {
+      "status": "awaiting_bot_review_after_fix",
+      "user_workflow": "resume GitHub bot after completed local review round",
+      "reviewed_base": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
+      "finding": 3979271073,
+      "fix_patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
+      "implementer_tests": "615 passed; 44 PG default skipped; 11 actual Holmes fake-pipe cases",
+      "evidence": "round-02-bot-timing-sidecar-fix.md"
+    }
+  ]
 }

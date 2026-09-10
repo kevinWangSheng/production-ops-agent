@@ -242,3 +242,9 @@ f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189
 bot已恢复接收，cec52d2两项CI成功（34478903940）。12:56:16Z bot返回P1 3979271073：initial-timings-file可覆盖bundle已验证时钟。实现者以实际Holmes fakepipe先复现缺时钟却补造成功，再改为完整已验证Timing回显，删除赋值覆盖；匹配/等价UTC/no-flag保持，补造/清空/身份或来源依据变更在凭据读取与transport前拒绝。完整11场景及615 passed/44 PG默认skip通过。见[修复与hash](../evidence/m0-real-investigation/round-02-bot-timing-sidecar-fix.md)。
 
 此组按用户最新要求直接交GitHub bot复审，没有再次本地双轴流程；不是新的产品功能或付费实验。所有既有数据/worktree/服务停止状态保持，M1仍因真实质量FAIL不开放。当前修复待最新CI/Code/Security结果，不自动合并。
+
+## bot 控制代次时间关系修复（2026-09-10）
+
+61850c1两项CI通过（34482332739）。bot返回P1 3979613299：旧dispatch能重标签为稍后创建的新Run/generation并通过；已以cancel/correct两反例现场复现。严格v4增加本代控制事件下界、下一事件的dispatch上界、控制时间顺序及缺钟/未知代次检查；不对迟到response/capture加下一代时间上界，仍由原身份/最终控制绑定防止旧结果成为当前结论。见[实现与版本](../evidence/m0-real-investigation/round-02-bot-control-time-fix.md)。
+
+最终636 passed/44 PG默认skip、ruff通过；仅v4与两测试文件，旧schema/legacy/DB未改。原合成正例时序错误纠正且保留对应负例，真实历史时间没有重写。按照用户最新要求等待GitHub bot对该补丁复审，没有本地双轴流程或真实模型/服务操作。现行Code/Security仍待最新提交结果，M1继续not cleared。

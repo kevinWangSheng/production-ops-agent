@@ -453,7 +453,9 @@ def test_reportless_payload_input_binding_applies_to_every_delivery(state, input
     scenario, outcome = reportless_packet()
     delivery = scenario["trusted"]["deliveries"][0]
     delivery["state"] = state
-    delivery["response_received_at"] = None
+    # A committed synthetic response has a recorded receipt; pending attempts do not.
+    if state != "response_committed":
+        delivery["response_received_at"] = None
     delivery["dispatch_started_at"] = (
         None if state == "prepared" else delivery["dispatch_started_at"]
     )
@@ -567,7 +569,7 @@ def test_new_run_followed_by_human_control_accepts_the_controlled_state(action, 
 @pytest.mark.parametrize("prior", ["cancel", "correct"])
 def test_human_control_followed_by_new_run_allows_completion(prior):
     scenario, outcome = strict_packet()
-    scenario["trusted"]["controls"][0]["action"] = prior
+    scenario["trusted"]["controls"][0].update(action=prior, at="2026-09-10T00:01:59Z")
     scenario["trusted"]["controls"].append(
         {"generation": 2, "action": "new_run", "at": "2026-09-10T00:02:00Z"}
     )
@@ -620,3 +622,178 @@ def test_synthetic_envelope_cannot_hide_extra_user_instructions():
         full_wire_hash=v4.content_hash(content),
     )
     assert "UNEXPECTED_USER_MESSAGE" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize("prior", ["cancel", "correct"])
+def test_relabelled_dispatch_cannot_predate_new_generation(prior):
+    scenario, outcome = strict_packet()
+    scenario["trusted"]["controls"] = [
+        {"generation": 1, "action": prior, "at": "2026-09-10T00:03:01Z"},
+        {"generation": 2, "action": "new_run", "at": "2026-09-10T00:03:05Z"},
+    ]
+    scenario["trusted"]["final_generation"] = outcome["control_generation"] = 2
+    scenario["trusted"]["deliveries"][0]["control_generation"] = 2
+    scenario["trusted"]["report_capture"]["control_generation"] = 2
+    assert "CONTROL_DISPATCH_TIME_MISMATCH" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "started,denied",
+    [
+        ("2026-09-10T00:03:00Z", False),
+        ("2026-09-10T00:03:05Z", True),
+        ("2026-09-10T00:03:06Z", True),
+    ],
+)
+def test_prior_generation_late_response_is_history_but_late_dispatch_is_denied(
+    started, denied
+):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": "cancel", "at": "2026-09-10T00:03:05Z"}
+    )
+    scenario["trusted"].update(final_generation=2, execution="cancelled")
+    outcome.update(control_generation=2, execution="cancelled")
+    delivery = scenario["trusted"]["deliveries"][0]
+    delivery.update(
+        dispatch_started_at=started, response_received_at="2026-09-10T00:03:10Z"
+    )
+    errors = checked(scenario, outcome)
+    if denied:
+        assert "CONTROL_DISPATCH_TIME_MISMATCH" in errors
+    else:
+        assert (
+            errors == []
+        )  # Old response arrived after cancellation, never adopted as final.
+
+
+@pytest.mark.parametrize(
+    "state,missing",
+    [
+        ("dispatched", "dispatch_started_at"),
+        ("response_committed", "dispatch_started_at"),
+        ("response_committed", "response_received_at"),
+    ],
+)
+def test_missing_actual_control_chronology_remains_unknown(state, missing):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["deliveries"][0].update(state=state, **{missing: None})
+    assert "CONTROL_TIME_UNKNOWN" in checked(scenario, outcome)
+
+
+def test_prepared_unsent_handoff_needs_no_fabricated_operation_time():
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["deliveries"][0].update(
+        state="prepared", dispatch_started_at=None, response_received_at=None
+    )
+    assert checked(scenario, outcome) == []
+
+
+def test_generation_zero_has_no_synthetic_control_start():
+    scenario, outcome = strict_packet()
+    scenario["trusted"].update(controls=[], final_generation=0)
+    outcome["control_generation"] = 0
+    scenario["trusted"]["deliveries"][0]["control_generation"] = 0
+    scenario["trusted"]["report_capture"]["control_generation"] = 0
+    assert checked(scenario, outcome) == []
+
+
+def test_control_event_timestamps_cannot_reverse_generation_order():
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": "new_run", "at": "2026-09-10T00:02:00Z"}
+    )
+    scenario["trusted"]["final_generation"] = outcome["control_generation"] = 2
+    scenario["trusted"]["deliveries"][0]["control_generation"] = 2
+    assert "CONTROL_TIME_ORDER" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize("kind", ["capture", "response"])
+def test_received_timestamp_cannot_predate_its_claimed_generation(kind):
+    scenario, outcome = strict_packet()
+    if kind == "capture":
+        scenario["trusted"]["report_capture"]["response_received_at"] = (
+            "2026-09-10T00:02:59Z"
+        )
+        expected = "CONTROL_CAPTURE_TIME_MISMATCH"
+    else:
+        scenario["trusted"]["deliveries"][0]["response_received_at"] = (
+            "2026-09-10T00:02:59Z"
+        )
+        expected = "CONTROL_RESPONSE_TIME_MISMATCH"
+    assert expected in checked(scenario, outcome)
+
+
+def test_missing_capture_clock_is_unknown_even_without_matching_report():
+    scenario, outcome = reportless_packet(captured=True)
+    scenario["trusted"]["report_capture"]["response_received_at"] = None
+    assert "CONTROL_TIME_UNKNOWN" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "action,state", [("cancel", "cancelled"), ("correct", "waiting_human")]
+)
+def test_human_control_generation_itself_never_authorizes_new_dispatch(action, state):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": action, "at": "2026-09-10T00:03:05Z"}
+    )
+    scenario["trusted"].update(final_generation=2, execution=state)
+    outcome.update(control_generation=2, execution=state)
+    scenario["trusted"]["deliveries"][0].update(
+        control_generation=2, dispatch_started_at="2026-09-10T00:03:06Z"
+    )
+    assert "CONTROL_DISPATCH_NOT_AUTHORIZED" in checked(scenario, outcome)
+
+
+def test_relabelled_dispatch_after_new_run_boundary_is_valid():
+    scenario, outcome = strict_packet()
+    scenario["trusted"]["controls"] = [
+        {"generation": 1, "action": "correct", "at": "2026-09-10T00:03:01Z"},
+        {"generation": 2, "action": "new_run", "at": "2026-09-10T00:03:05Z"},
+    ]
+    scenario["trusted"]["final_generation"] = outcome["control_generation"] = 2
+    scenario["trusted"]["deliveries"][0].update(
+        control_generation=2, dispatch_started_at="2026-09-10T00:03:05Z"
+    )
+    scenario["trusted"]["report_capture"]["control_generation"] = 2
+    assert checked(scenario, outcome) == []
+
+
+def test_late_old_capture_is_not_time_clipped_but_cannot_be_current_final():
+    scenario, outcome = reportless_packet(captured=True)
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": "cancel", "at": "2026-09-10T00:03:05Z"}
+    )
+    scenario["trusted"].update(final_generation=2, execution="cancelled")
+    outcome.update(control_generation=2, execution="cancelled")
+    errors = checked(scenario, outcome)
+    assert "REPORT_OUTPUT_BINDING_MISMATCH" in errors
+    assert not any(code.startswith("CONTROL_") for code in errors)
+
+
+@pytest.mark.parametrize(
+    "started,denied", [("2026-09-10T00:02:59Z", False), ("2026-09-10T00:03:00Z", True)]
+)
+def test_generation_zero_dispatch_still_ends_at_first_control_event(started, denied):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["deliveries"][0].update(
+        control_generation=0, dispatch_started_at=started
+    )
+    errors = checked(scenario, outcome)
+    assert ("CONTROL_DISPATCH_TIME_MISMATCH" in errors) == denied
+    if not denied:
+        assert errors == []
+
+
+def test_prepared_unsent_still_requires_a_known_generation():
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["deliveries"][0].update(
+        state="prepared",
+        control_generation=999,
+        dispatch_started_at=None,
+        response_received_at=None,
+    )
+    errors = checked(scenario, outcome)
+    assert "CONTROL_GENERATION_UNKNOWN" in errors
+    assert "CONTROL_TIME_UNKNOWN" not in errors
