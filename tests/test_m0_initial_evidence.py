@@ -377,3 +377,165 @@ def test_missing_time_and_metric_escapes_are_denied():
     ]:
         with pytest.raises(InitialEvidenceError):
             authorized_query_window(raw, {"scope": scope}, scope)
+
+
+def clock_case(directory, raw_change, timing_change):
+    manifest, scope, raw, _ = bundle(directory)
+    value = json.loads(manifest.read_text())
+    context = ProjectionContext.model_validate_json(
+        json.dumps(value["projection_context"])
+    )
+    raw_change(raw)
+    view = replay_projection(raw, context, revision="m0-02-logs-v3")
+    save(directory / "raw.json", raw)
+    save(directory / "view.json", view)
+    origin = json.loads((directory / "manifest.json").read_text())
+    origin.update(
+        raw_sha256=canonical_hash(raw),
+        view_sha256=canonical_hash(view),
+        raw_file_sha256=hashlib.sha256(
+            (directory / "raw.json").read_bytes()
+        ).hexdigest(),
+        view_file_sha256=hashlib.sha256(
+            (directory / "view.json").read_bytes()
+        ).hexdigest(),
+    )
+    save(directory / "manifest.json", origin)
+    entry = value["entries"][0]
+    entry.update(
+        raw_file_sha256=origin["raw_file_sha256"],
+        view_file_sha256=origin["view_file_sha256"],
+        manifest_file_sha256=hashlib.sha256(
+            (directory / "manifest.json").read_bytes()
+        ).hexdigest(),
+    )
+    timing_change(entry["timing"])
+    return entry, context, scope
+
+
+def test_manifest_cannot_invent_capture_clocks_absent_or_null_in_raw(tmp_path):
+    import pytest
+
+    from scripts.m0_environment.initial_evidence import (
+        InitialEvidenceError,
+        verify_initial_entry,
+    )
+
+    for field in ("operation_started_at", "collection_completed_at"):
+        for state in ("missing", "null"):
+            directory = tmp_path / (field + state)
+            directory.mkdir()
+
+            def remove_clock(raw):
+                if state == "missing":
+                    raw.pop(field)
+                else:
+                    raw[field] = None
+
+            entry, context, scope = clock_case(
+                directory, remove_clock, lambda timing: None
+            )
+            with pytest.raises(
+                InitialEvidenceError, match="INITIAL_COLLECTION_TIME_MISMATCH"
+            ):
+                verify_initial_entry(entry, context, scope)
+
+
+def test_missing_raw_clocks_remain_none_and_recorded_values_match(tmp_path):
+    from scripts.m0_environment.initial_evidence import verify_initial_entry
+
+    for state in ("recorded", "missing", "null"):
+        directory = tmp_path / state
+        directory.mkdir()
+
+        def raw_change(raw):
+            for field in ("operation_started_at", "collection_completed_at"):
+                if state == "missing":
+                    raw.pop(field)
+                elif state == "null":
+                    raw[field] = None
+
+        def timing_change(timing):
+            if state != "recorded":
+                timing["operation_started_at"] = timing["collection_completed_at"] = (
+                    None
+                )
+
+        entry, context, scope = clock_case(directory, raw_change, timing_change)
+        result = verify_initial_entry(entry, context, scope)
+        assert (result["timing"]["collection_completed_at"] is None) == (
+            state != "recorded"
+        )
+        assert (result["timing"]["operation_started_at"] is None) == (
+            state != "recorded"
+        )
+
+
+def test_unknown_source_basis_cannot_carry_invented_source_bounds(tmp_path):
+    import pytest
+
+    from scripts.m0_environment.initial_evidence import (
+        InitialEvidenceError,
+        verify_initial_entry,
+    )
+
+    entry, context, scope = clock_case(
+        tmp_path,
+        lambda raw: None,
+        lambda timing: timing.update(source_time_basis="unknown"),
+    )
+    with pytest.raises(InitialEvidenceError, match="INITIAL_SOURCE_TIME_MISMATCH"):
+        verify_initial_entry(entry, context, scope)
+
+
+def test_entry_null_clock_cannot_erase_known_raw_clock(tmp_path):
+    import pytest
+
+    from scripts.m0_environment.initial_evidence import (
+        InitialEvidenceError,
+        verify_initial_entry,
+    )
+
+    for field in ("operation_started_at", "collection_completed_at"):
+        directory = tmp_path / field
+        directory.mkdir()
+        entry, context, scope = clock_case(
+            directory, lambda raw: None, lambda timing: timing.update({field: None})
+        )
+        with pytest.raises(
+            InitialEvidenceError, match="INITIAL_COLLECTION_TIME_MISMATCH"
+        ):
+            verify_initial_entry(entry, context, scope)
+
+
+def test_omitted_timing_does_not_recover_clocks_from_observed_at(tmp_path):
+    from scripts.m0_environment.initial_evidence import verify_initial_entry
+
+    def remove(raw):
+        raw.pop("operation_started_at")
+        raw.pop("collection_completed_at")
+
+    entry, context, scope = clock_case(tmp_path, remove, lambda timing: None)
+    entry.pop("timing")
+    result = verify_initial_entry(entry, context, scope)
+    assert result["timing"]["operation_started_at"] is None
+    assert result["timing"]["collection_completed_at"] is None
+
+
+def test_entire_null_timing_is_auditable_unknown(tmp_path):
+    manifest, scope, _, _ = bundle(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["entries"][0]["timing"] = None
+    save(manifest, data)
+    out = tmp_path / "run"
+    out.mkdir()
+    result = import_initial_evidence(
+        '{"request":"review"}',
+        manifest,
+        out,
+        scope,
+        run_id="newrun",
+        report_only=True,
+        runtime_source_sha256="0" * 64,
+    )
+    assert result["unverified"] and not result["verified_views"]

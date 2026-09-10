@@ -235,13 +235,14 @@ def verify_initial_entry(entry, context, scope, *, base_dir=None):
         or supplied.source_end_at != visible.source_end_at
     ):
         raise InitialEvidenceError("INITIAL_SOURCE_TIME_MISMATCH")
+    if supplied.source_time_basis == "unknown" and (
+        supplied.source_start_at is not None or supplied.source_end_at is not None
+    ):
+        raise InitialEvidenceError("INITIAL_SOURCE_TIME_MISMATCH")
     for field in ("operation_started_at", "collection_completed_at"):
-        if raw.get(field) is not None:
-            recorded = Timing.model_validate_json(json.dumps({field: raw[field]}))
-            if getattr(supplied, field) is not None and getattr(
-                recorded, field
-            ) != getattr(supplied, field):
-                raise InitialEvidenceError("INITIAL_COLLECTION_TIME_MISMATCH")
+        recorded = Timing.model_validate_json(json.dumps({field: raw.get(field)}))
+        if getattr(recorded, field) != getattr(supplied, field):
+            raise InitialEvidenceError("INITIAL_COLLECTION_TIME_MISMATCH")
     return {
         "raw_bytes": raw_bytes,
         "view_bytes": view_bytes,
