@@ -1,0 +1,11 @@
+{
+  "run_id": "m002-saved-report-01",
+  "parent_business_evidence_run": "fault-02",
+  "not_original_run_recovery": true,
+  "active_tool_queries_authorized": 0,
+  "source_input_sha256": "13a778424fdfd9011d5ee20ed8bbb087220244867e5bcf1f219298d0be866f32",
+  "new_input_sha256": "5473e27cde173a33e614bc1de802c7f809762612c910e519d1e1b8384fdf7ea1",
+  "business_views": 12,
+  "status": "prepared_not_sent",
+  "private_protocol_inherited": false
+}

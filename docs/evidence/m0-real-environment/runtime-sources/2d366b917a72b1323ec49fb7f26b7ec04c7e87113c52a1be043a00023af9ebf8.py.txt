@@ -18,10 +18,7 @@ FLAGS = (
 )
 parser = argparse.ArgumentParser()
 parser.add_argument("action", choices=["inject", "restore"])
-parser.add_argument(
-    "--experiment-id",
-    help="New independent development experiment; old history remains unchanged.",
-)
+parser.add_argument("--experiment-id", help="New independent development experiment; old history remains unchanged.")
 args = parser.parse_args()
 if args.experiment_id is not None and (
     not args.experiment_id or not args.experiment_id.replace("-", "").isalnum()

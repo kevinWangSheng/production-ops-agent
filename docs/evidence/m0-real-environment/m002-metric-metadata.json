@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-10T03:15:40.663276+00:00",
+  "source": "http://127.0.0.1:19090/api/v1/metadata?limit=1000",
+  "raw_sha256": "33913d055081924c5e30b81bbab55e0a68df0397f2e3ae3c9606467c2d00da64",
+  "status": "success",
+  "metadata": {
+    "traces_span_metrics_calls_total": [],
+    "app_payment_transactions_total": [],
+    "rpc_client_duration_milliseconds_bucket": [],
+    "rpc_client_duration_milliseconds_count": [],
+    "rpc_server_duration_milliseconds_bucket": [],
+    "rpc_server_duration_milliseconds_count": []
+  },
+  "note": "empty metadata means unavailable; no values or incident answers provided"
+}

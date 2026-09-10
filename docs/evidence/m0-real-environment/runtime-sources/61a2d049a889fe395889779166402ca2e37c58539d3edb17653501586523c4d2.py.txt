@@ -23,7 +23,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from scripts.m0_environment.legacy_projections import log_projection_v2  # noqa: E402
 from scripts.m0_environment.report_contract import (  # noqa: E402
     REPORT_VERSION,
     prepare_wire,
@@ -256,12 +255,8 @@ def persist_observation(out, record, view, scope):
         save(manifest_path, manifest)
 
 
-def log_projection(record, registry=None, version="m0-02-logs-v3"):
-    """Preserve complete displayed bodies; explicitly replay historic v2 when requested."""
-    if version == "m0-02-v2":
-        return log_projection_v2(record, registry)
-    if version != "m0-02-logs-v3":
-        raise ValueError("unsupported log projection version")
+def log_projection(record, registry=None):
+    """Preserve complete displayed log bodies, omit redundant backend metadata."""
     raw = json.dumps(record, ensure_ascii=False, sort_keys=True).encode()
     backend = record.get("data", {}).get("data", {})
     hits = backend.get("hits", {})
