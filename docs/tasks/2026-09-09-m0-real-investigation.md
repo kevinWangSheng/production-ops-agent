@@ -198,3 +198,15 @@ f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189
 实现与独立证据提交f1df631；[新Run候选源码清单](../evidence/m0-real-environment/round-02-new-run-offline-source-manifest.json)逐项验证14源/5schema/20依赖引用，明确上一时钟/权限候选为历史。root工作文件与本清单source hash全部相符，旧快照不覆盖。
 
 本批提交前扫描出现一次SCANNER_SELFTEST_FAILED（尚未报告仓库泄密）；保留失败且不改扫描器/规则。一次有界诊断复跑原check函数，只增加阶段编号/计数输出：五项自检计数1/0/0/1/1符合预期，index/worktree/history均0，SECRET_SCAN_PASSED。首次数值未记录，具体自检失败原因仍未知，不倒推成泄密或已修复扫描器缺陷。
+
+## PR16 完整user输入与报告状态一致性
+
+65d3624两项CI成功（34469634597），完整分页复审3978469715/3978469724指出额外user消息被相等过滤忽略、completed assessment配failed/blocked仍可过。全新上下文delivered_input_state_review在本机复现额外user及四组状态组合误过，并于实施前批准有界方案：可信运行记录final_phase，固定报告指令hash纳入版本，完整user序列按actual input/本次context/可选final instruction核验，旧缺元数据保持unknown。
+
+状态范围按SPEC70与既有v3:354限定：completed assessment必须有completed可信执行；不从模型状态反写execution。既有completed有界执行返回incomplete/inconclusive/gaps/handoff保持可表达，不把它称为调查完成。两作者按独立方案实施，0新增模型/trace/环境操作；Security新请求5617707259仍无运行确认/结果，旧通过不冒覆盖。
+
+作者完整user合同/阶段字段/指令指纹与单向状态一致性已冻结，278组合回归、固定Holmes假pipe及初始拒绝正反例通过；当前Scenario schema兼容新增final_phase，旧schema快照保留，Outcome schema不变。root完整检查与新上下文独立终审正在收尾，0真实模型/trace/后端操作。
+
+[本组全新上下文独立终验](../evidence/m0-real-investigation/round-02-delivered-input-state-review.md)通过：137项定向、独立CLI注入/状态/reportless矩阵、实际prepare_wire及4步固定Holmes假传输、两份schema与DTO一致性均通过；源码hash稳定，历史快照不改，本组无P1/P2。root make check582 passed/44 PG默认skip（17.86s；tmp/m002-user-state-final-check.txt）。完整assistant/tool私有协议保留，新增元数据不改变真实消息；0真实HTTP/trace/环境启动。
+
+本组实现与独立证据提交a100c90；[完整输入候选源码清单](../evidence/m0-real-environment/round-02-delivered-input-state-offline-source-manifest.json)验证14源/5schema/26引用。清单Git字段是生成时历史参考，工作文件实际hash与a100c90对应；旧source/schema快照不覆盖。

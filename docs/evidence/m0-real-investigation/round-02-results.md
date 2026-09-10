@@ -54,3 +54,5 @@ PR交付及最新CI/Code/Security Review结果在当前任务收尾段补记；�
 [采集时钟与私有输出独立终验](round-02-import-clock-output-mode-review.md)补齐原时钟不可补造/擦除和CLI输出首次创建0600：18独立时钟组合、7实际CLI、122回归通过；root make check529 passed/43 PG默认skip。只修导入/审计边界，真实报告与隔离结论不变。
 
 [新Run边界独立复验](round-02-new-run-boundary-review.md)现场先红后绿：8项真实PG定向/70离线通过；作者全27PG通过，root make check562 passed/44 PG默认skip。空版本在事务前拒绝，旧取消/纠正状态不能无后续事件留在新Run；预算、版本阻断和旧fence约束保留。专属PG已再次停止，见round-02-new-run-pg-stop.json。
+
+[完整user输入与状态独立终验](round-02-delivered-input-state-review.md)验证全部user序列、可信final_phase/固定指令hash及completed assessment的运行完成前提；137项定向、CLI反例、实际wire和4步假Holmes通过。root make check582 passed/44 PG默认skip。合法提前收束及incomplete交接保留，旧缺元数据仍unknown，未新增真实模型质量证据。
