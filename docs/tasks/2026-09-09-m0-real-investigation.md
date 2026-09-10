@@ -158,3 +158,13 @@ ced7fd4的CI checks/m0-postgres成功（run34459556690）；09:21Z Code Review39
 e5357a8的CI checks/m0-postgres成功（run34461762937）；09:45Z Code Review3977733293指出无initial的普通malformed/empty/length报告仍抛FINAL_RESPONSE_REQUIRED。本组删除初始专用旁路，统一先重建input/所有Artifact/Action/Delivery，再形成report=None的严格handoff，保留实际执行状态、原文/hash（None与真实空串区分），不放宽合法报告解析。实际3×3 CLI矩阵红9→绿9，root make check467 passed/43 PG默认skip（15.12s）；独立矩阵、None/早期unknown delivery以及184项回归已通过，终审记录为[报告失败交接](../evidence/m0-real-investigation/round-02-report-failure-handoff-review.md)。旧schema/source快照仍保留，当前仅原始内容载体兼容空字符串，空报告本身仍拒绝。无新增真实模型/trace/后端/PG。
 
 Security在GitHub仍无确认/结果；有界只读Codex Cloud list查询按官方JSON键核实tasks为空，仅表明该CLI列表未提供审查入口，不能推断服务健康或审查通过。查询自产日志仅保留tmp/m002-codex-cloud-error.log（0600）与hash说明，无内容导出、无平台配置更改、新任务或新付费执行。
+
+## PR16 输入来源必需性补正
+
+10:00Z GitHub首次明确确认96e89e3的Security Review正在运行，取代此前“无确认”的当前状态；尚未取得结果。10:09Z Code Review3977946891指出严格入口缺失/空input-provenance时跳过校验，原始question也可缺失却标合同一致。独立审查者已复现三种缺失组合错误通过，现统一补bridge保真unverified与直接checker的原始输入必需性；不改旧schema，不重放付费请求。96e89e3的两项CI成功（34463673924），PR仍待修复及最新审查闭环。
+
+10:16Z Security对96e89e3明确完成且无安全发现；该结果只覆盖该提交。输入来源修复作者205项通过，root完整make check为488 passed/43 PG默认skip（17.26s；tmp/m002-provenance-final-check.txt），ruff/format与离线锁文件核查通过。正在等待本组独立复验，之后提交新head取得对应复审；原真实报告qualityFAIL和20请求用尽均不变。
+
+本组[独立终验](../evidence/m0-real-investigation/round-02-input-provenance-review.md)完成：18项实际CLI矩阵、6项自写null/非法UTF8/双缺失反例、direct checker及输入导出拒绝均通过，完整Outcome/Artifacts/Actions/Deliveries逐对象保留、stdout仅metadata；205项组合回归亲跑通过，最终两源hash一致，无本组未处置P1/P2。新源码快照将记录该离线候选，等待最新远端复审。
+
+实现与独立证据提交d66db41；[本组源码清单](../evidence/m0-real-environment/round-02-input-provenance-offline-source-manifest.json)记录13源/5schema/12审查依赖，旧快照不覆盖。清单Git reference是生成时历史参考，实际source hash与d66db41工作文件一致，不能将旧base字段误作当前实现版本。
