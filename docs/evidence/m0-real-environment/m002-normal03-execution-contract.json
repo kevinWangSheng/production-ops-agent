@@ -1,0 +1,16 @@
+{
+  "run_id": "m002-normal-03",
+  "max_model_http": 3,
+  "remaining_global_http_before_start": 3,
+  "window": {
+    "start": 1789011776.0,
+    "end": 1789012076.0
+  },
+  "question_sha256": "0288289f7b58e5ed1eb814cd583b78e0a29a9dd96805674bb80893ad6c47d1e0",
+  "scope_sha256": "d87c913353bb5a5c782ca8862bb3377c5edee2667bf023a2e11f63fec373ebe4",
+  "runtime_snapshot": "m002-fault-runtime-snapshot.json",
+  "code_commit": "bc573cd",
+  "precondition": "independent7rawhashes/actualcheckout-paymentflow/noobservederror inthose2services, backgroundad/recommendationerrorsretained; tarsha checked",
+  "no_final_evidence_in_initial_input": true,
+  "not_product_recovery_certification": true
+}
