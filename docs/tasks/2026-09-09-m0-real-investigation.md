@@ -178,3 +178,23 @@ f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189
 [本组独立终验](../evidence/m0-real-investigation/round-02-report-independent-binding-review.md)通过：31项reportless定向、12项多交付前错后对反例、9项实际CLI状态/输入矩阵和233项组合回归。核对通用identity/hash/context/control/已知clock/capture约束均在提前返回前，后部仅报告资格条件；完整packet保留，v4最终hash955cdc0b一致，无本组P1/P2。待本批最新CI/Code/Security。
 
 本组代码与独立审查提交90e251c；[离线来源清单](../evidence/m0-real-environment/round-02-report-independent-offline-source-manifest.json)保留新v4源码955cdc0b，13源/5schema/13审查引用逐项核对。旧源码/清单及真实失败不改写。
+
+## 同批审查清单补查与两项补正
+
+完整分页评论与GraphQL reviewThreads（hasNextPage=false）复核确认，f923897在10:31:22Z同批实际有三条发现。root先前只处置了3978118760，漏将3978118746（raw缺采集时钟却允许bundle补值）和3978118777（CLI完整审计输出按umask创建）纳入清单；这是审查汇总遗漏，不能把它们说成新发现或已闭环。78f7af0已推送且CI成功（34467375083），现并行补这两条并独立联合复验，保留该批原意见及处理记录，不修改审查平台。最新Code请求5617339224已确认，Security5617339609尚未确认。
+
+两项作者修复冻结：bridge4b25735c原子独占0600且不覆盖已有/符号链接，7项实际CLI与82桥接回归通过；initial_evidence f3309cd4逐字段raw时钟匹配及unknown来源边界，17定向回归通过。联合独立复验与root完整检查进行中，无模型/trace/环境操作。
+
+[时钟与私有输出联合独立终验](../evidence/m0-real-investigation/round-02-import-clock-output-mode-review.md)通过：18项自写raw/manifest时钟组合、7项实际CLI权限/已有路径保护、122项组合回归。root make check529 passed/43 PG默认skip（18.00s；tmp/m002-clock-permission-final-check.txt）。源码确认首次创建即0600、finally关闭fd，raw时钟双向匹配不补造/擦除；最终helper/bridge hash一致，无本组P1/P2。后续核对完整远端线程及最新head审查，不以本地通过代替。
+
+## PR16 新Run版本与控制状态边界
+
+78f7af0的完整分页复审返回3978285916/3978285917：new_run空versions未经accept式检查可被claim，及最后new_run仍允许旧cancelled/waiting_human。统筹按同组共享版本验证/人控状态约束补正，新上下文new_run_boundary_review独立核验。root已仅重启并验证原专属PG身份，供随机隔离回归；OTel/Colima保持停止，其他PG不操作，0新增模型/trace。前一批时钟/私有输出修复分别提交0e44dc7/f0e7f03，来源清单保留该时点候选，不冒覆盖后续new_run变更。
+
+本组作者27项真实PG/180项离线回归通过，root make check562 passed/44 PG默认skip（17.70s；tmp/m002-new-run-final-check.txt）。版本验证共享于accept/new_run/claim并在事务前执行；非法新Run不改状态/预算/输入/审计。新上下文独立验证尚在进行，专属PG暂为该验证保持运行，验证后由root停库。
+
+[新上下文独立复验](../evidence/m0-real-investigation/round-02-new-run-boundary-review.md)通过：先现场复现空版本new_run/claim和两旧状态错误，再以8项真实PG定向/70项离线验证拒绝零持久变化、合法迁移/旧fence拒绝、预算保留、不兼容blocked及final清除。源码hash与冻结一致，无范围内未处置P1/P2。root随后验证身份并停止专属PG，见[停库记录](../evidence/m0-real-investigation/round-02-new-run-pg-stop.json)；数据保留，其他PG不操作。无新增模型或trace，M1仍not cleared。
+
+实现与独立证据提交f1df631；[新Run候选源码清单](../evidence/m0-real-environment/round-02-new-run-offline-source-manifest.json)逐项验证14源/5schema/20依赖引用，明确上一时钟/权限候选为历史。root工作文件与本清单source hash全部相符，旧快照不覆盖。
+
+本批提交前扫描出现一次SCANNER_SELFTEST_FAILED（尚未报告仓库泄密）；保留失败且不改扫描器/规则。一次有界诊断复跑原check函数，只增加阶段编号/计数输出：五项自检计数1/0/0/1/1符合预期，index/worktree/history均0，SECRET_SCAN_PASSED。首次数值未记录，具体自检失败原因仍未知，不倒推成泄密或已修复扫描器缺陷。
