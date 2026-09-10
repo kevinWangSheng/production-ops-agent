@@ -168,3 +168,13 @@ Security在GitHub仍无确认/结果；有界只读Codex Cloud list查询按官�
 本组[独立终验](../evidence/m0-real-investigation/round-02-input-provenance-review.md)完成：18项实际CLI矩阵、6项自写null/非法UTF8/双缺失反例、direct checker及输入导出拒绝均通过，完整Outcome/Artifacts/Actions/Deliveries逐对象保留、stdout仅metadata；205项组合回归亲跑通过，最终两源hash一致，无本组未处置P1/P2。新源码快照将记录该离线候选，等待最新远端复审。
 
 实现与独立证据提交d66db41；[本组源码清单](../evidence/m0-real-environment/round-02-input-provenance-offline-source-manifest.json)记录13源/5schema/12审查依赖，旧快照不覆盖。清单Git reference是生成时历史参考，实际source hash与d66db41工作文件一致，不能将旧base字段误作当前实现版本。
+
+## PR16 无报告交接的实际输入交付核验
+
+f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189已确认接收；10:31:22Z返回3978118760：report=None提前返回跳过ACTUAL_INITIAL_INPUT_NOT_DELIVERED，合法hash但实际请求漏/替换输入仍可合同一致。统一核对提前返回后的公共约束并补准备/发送/提交状态及无请求交接矩阵；Security新请求5617086835尚未确认，旧96e89e3的无发现不覆盖新实质变更。无新增模型/trace/环境操作。
+
+作者沿同一路径统一前置actual input与已有capture的身份/hash/唯一交付/响应时间检查；两种投影×准备/发送/提交×缺失/替换/合法矩阵及相邻capture回归通过。root make check516 passed/43 PG默认skip（17.03s，tmp/m002-independent-binding-final-check.txt）；仅验收代码/测试，等待独立终验，不修改旧质量结果。
+
+[本组独立终验](../evidence/m0-real-investigation/round-02-report-independent-binding-review.md)通过：31项reportless定向、12项多交付前错后对反例、9项实际CLI状态/输入矩阵和233项组合回归。核对通用identity/hash/context/control/已知clock/capture约束均在提前返回前，后部仅报告资格条件；完整packet保留，v4最终hash955cdc0b一致，无本组P1/P2。待本批最新CI/Code/Security。
+
+本组代码与独立审查提交90e251c；[离线来源清单](../evidence/m0-real-environment/round-02-report-independent-offline-source-manifest.json)保留新v4源码955cdc0b，13源/5schema/13审查引用逐项核对。旧源码/清单及真实失败不改写。

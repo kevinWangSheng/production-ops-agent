@@ -48,3 +48,5 @@ PG有界机制覆盖接收幂等、ModelStep/ToolOperation提交前后、只补�
 PR交付及最新CI/Code/Security Review结果在当前任务收尾段补记；没有合并授权，不自动合并。
 
 [输入来源独立复验](round-02-input-provenance-review.md)覆盖18项实际CLI矩阵和6项自写反例，严格拒绝缺失/损坏来源证明，保留完整input/report/采集状态；直接checker和导出同样拒绝缺失原文/hash。205项组合回归、root make check488 passed/43 PG默认skip。本组只补离线验收真实性，不补真实报告质量证据。
+
+[无报告公共绑定独立终验](round-02-report-independent-binding-review.md)验证失败交接也逐条检查actual input和已有capture的身份/hash/交付/时间；31项定向、12项多交付反例、9项实际CLI、233项组合回归通过。root make check516 passed/43 PG默认skip。本修复不扩大运行证据范围。
