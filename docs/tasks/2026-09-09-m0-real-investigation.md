@@ -248,3 +248,11 @@ bot已恢复接收，cec52d2两项CI成功（34478903940）。12:56:16Z bot返�
 61850c1两项CI通过（34482332739）。bot返回P1 3979613299：旧dispatch能重标签为稍后创建的新Run/generation并通过；已以cancel/correct两反例现场复现。严格v4增加本代控制事件下界、下一事件的dispatch上界、控制时间顺序及缺钟/未知代次检查；不对迟到response/capture加下一代时间上界，仍由原身份/最终控制绑定防止旧结果成为当前结论。见[实现与版本](../evidence/m0-real-investigation/round-02-bot-control-time-fix.md)。
 
 最终636 passed/44 PG默认skip、ruff通过；仅v4与两测试文件，旧schema/legacy/DB未改。原合成正例时序错误纠正且保留对应负例，真实历史时间没有重写。按照用户最新要求等待GitHub bot对该补丁复审，没有本地双轴流程或真实模型/服务操作。现行Code/Security仍待最新提交结果，M1继续not cleared。
+
+## bot projector 源码认证安全修复（2026-09-10）
+
+d61f80a两项CI成功（34509309368），bot返回安全P1 3981914677：report-only跳过runtime绑定，bundle自报source/dependency路径+hash可导致选中Python函数在guard前执行。已增加独立于输入的固定可信组合清单，所有import/replay/standalone dependency入口在执行前验证整组字节；不从目录或bundle自动信任，不增加生产测试开关。default SOURCE回归当前仓库固定路径，历史source仍明确指定保留。见[修复与证据](../evidence/m0-real-investigation/round-02-bot-projector-trust-fix.md)。
+
+实现者先用无害marker复现5类代码执行，再验证拒绝；不读取真实秘密或provider reasoning。651 passed/44 PG默认skip、333相关安全/合同及实际wrapper report-only正反例通过；真实历史重放只读保原结果。active fakeprobe在原基线和候选均受旧2026-09-10T17:14:30Z查询截止限制而失败，两个日志保留；未延长旧授权、未重跑真实模型。该限制及新版真实质量验证仍需下一独立实验合同，不影响原已在有效期内采集的历史证据。
+
+本修复没有schema/PG/服务变化，旧数据/代码快照保留。按用户最新要求等待bot最新Code/Security，不调用本地审查Agent、不自动合并；M1仍因完整报告质量FAIL保持not cleared。

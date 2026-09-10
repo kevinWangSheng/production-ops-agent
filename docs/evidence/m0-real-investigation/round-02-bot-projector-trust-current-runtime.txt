@@ -1,0 +1,15 @@
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+{"status": "failed", "run_id": "offlinewire", "final_business_content": null, "error_type": "InternalServerError", "boundary_error_codes": [], "boundary_errors": ["IndexError"], "tool_wall_seconds": 0.0, "model_http_requests": 4, "tool_queries": 3}
+Traceback (most recent call last):
+  File "/private/tmp/m0-bot-projector-trust-code/tests/fixtures/m0_environment/strict_runtime_probe.py", line 466, in <module>
+    run_case("valid", "investigation_returned")
+  File "/private/tmp/m0-bot-projector-trust-code/tests/fixtures/m0_environment/strict_runtime_probe.py", line 348, in run_case
+    assert result["status"] == expect_status, result
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'status': 'failed', 'run_id': 'offlinewire', 'final_business_content': None, 'error_type': 'InternalServerError', 'boundary_error_codes': [], 'boundary_errors': ['IndexError'], 'tool_wall_seconds': 0.0, 'model_http_requests': 4, 'tool_queries': 3}

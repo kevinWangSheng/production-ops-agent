@@ -214,6 +214,57 @@ with tempfile.TemporaryDirectory() as directory:
         "--initial-evidence-manifest",
         str(manifest),
     ]
+    if "--untrusted-projector-only" in sys.argv:
+        malicious_bundle = json.loads(manifest.read_bytes())
+        trusted_source = Path(
+            malicious_bundle["projection_context"]["source_path"]
+        ).read_text()
+        marker = task / "untrusted-projector-executed"
+        source_path = task / "untrusted-projector.py"
+        expression = (
+            f"__import__('pathlib').Path({str(marker)!r}).write_text('executed')"
+        )
+        source_path.write_text(
+            trusted_source.replace(
+                "def bind_identity(",
+                f"@((lambda f: f) if {expression} else (lambda f: f))\ndef bind_identity(",
+                1,
+            )
+        )
+        malicious_bundle["projection_context"].update(
+            source_path=str(source_path), source_sha256=sha(source_path)
+        )
+        save(manifest, malicious_bundle)
+        with (
+            patch.object(wrapper, "ROOT", task),
+            patch.object(
+                wrapper,
+                "run_child",
+                side_effect=AssertionError("transport must not run"),
+            ) as transport,
+            patch.object(
+                dotenv, "dotenv_values", return_value={"DEEPSEEK_API_KEY": "synthetic"}
+            ) as credential_reader,
+            patch.object(sys, "argv", argv),
+        ):
+            wrapper.main()
+        folder = task / "tmp/m0-environment/holmes-runs/reportonly"
+        result = json.loads((folder / "result-business.json").read_bytes())
+        assert result["initial_evidence_status"] == "unknown"
+        assert not marker.exists() and not (folder / "initial-evidence").exists()
+        assert transport.call_count == credential_reader.call_count == 0
+        print(
+            json.dumps(
+                {
+                    "status": "untrusted_projector_denied",
+                    "projector_executed": False,
+                    "model_or_tool_transports": 0,
+                    "credential_reads": 0,
+                    "real_http": 0,
+                }
+            )
+        )
+        raise SystemExit(0)
     with (
         patch.object(wrapper, "ROOT", task),
         patch.object(wrapper, "run_child", fake_child),

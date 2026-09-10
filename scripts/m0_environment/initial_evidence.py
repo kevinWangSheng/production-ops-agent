@@ -175,6 +175,9 @@ def authorized_query_window(raw, origin, scope):
 def verify_initial_entry(entry, context, scope, *, base_dir=None):
     """Verify one operator-selected original entry; never copy or invent provenance."""
     from scripts.m0.holmes_bridge import replay_projection
+    from scripts.m0.projector_trust import authenticate_projection
+
+    authenticate_projection(context)
     from scripts.m0_environment.report_contract import source_timing
 
     if canonical_hash(
@@ -369,6 +372,21 @@ def import_initial_evidence(
             context = context.model_copy(
                 update={"source_path": str(resolved(context.source_path))}
             )
+            from scripts.m0.projector_trust import authenticate_projection
+
+            context = context.model_copy(
+                update={
+                    "dependencies": [
+                        dependency.model_copy(
+                            update={
+                                "source_path": str(resolved(dependency.source_path))
+                            }
+                        )
+                        for dependency in context.dependencies
+                    ]
+                }
+            )
+            authenticate_projection(context)
             source_bytes = _bytes(context.source_path, context.source_sha256)
             dependency_bytes = []
             for dependency in context.dependencies:

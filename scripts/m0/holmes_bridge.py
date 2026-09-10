@@ -33,9 +33,10 @@ from .outcomes_v3 import (
     check_outcome,
     project,
 )
+from .projector_trust import authenticate_projection
 
-SOURCE = Path(
-    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/scripts/m0_environment/holmes_baseline.py"
+SOURCE = (
+    Path(__file__).resolve().parents[2] / "scripts/m0_environment/holmes_baseline.py"
 )
 
 
@@ -60,6 +61,7 @@ DEPENDENCY_FUNCTIONS = {
 
 def load_dependencies(context, namespace):
     """Only explicit trusted dependency snapshots; no imports or paths from raw."""
+    _, verified_dependencies = authenticate_projection(context, fallback_source=SOURCE)
     deps = {d.module: d for d in context.dependencies}
     if len(deps) != len(context.dependencies):
         raise ValueError("PROJECTION_DEPENDENCY_DUPLICATE")
@@ -70,7 +72,7 @@ def load_dependencies(context, namespace):
         path = Path(dependency.source_path)
         if path.is_symlink() or path.suffix not in {".py", ".txt"}:
             raise ValueError("PROJECTION_DEPENDENCY_INVALID")
-        raw = path.read_bytes()
+        raw = verified_dependencies[name]
         if hashlib.sha256(raw).hexdigest() != dependency.source_sha256:
             raise ValueError("PROJECTION_DEPENDENCY_HASH_MISMATCH")
         tree = ast.parse(raw)
@@ -129,7 +131,7 @@ def replay_projection(record, context, *, revision=None):
     source_path = Path(context.source_path) if context.source_path else SOURCE
     if source_path.is_symlink() or source_path.suffix not in {".py", ".txt"}:
         raise ValueError("PROJECTION_SOURCE_INVALID")
-    source = source_path.read_bytes()
+    source, _ = authenticate_projection(context, fallback_source=SOURCE)
     if (
         hashlib.sha256(source).hexdigest() != context.source_sha256
         or canonical_hash(context.registry) != context.registry_hash

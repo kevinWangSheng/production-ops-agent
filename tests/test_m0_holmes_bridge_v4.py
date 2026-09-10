@@ -5,8 +5,8 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from test_m0_holmes_bridge import bridge_cli, save
 from test_m0_holmes_bridge import captured as _captured_fixture
-from test_m0_holmes_bridge import save
 
 from scripts.m0 import holmes_bridge as bridge
 from scripts.m0 import outcomes_v4 as v4
@@ -508,7 +508,6 @@ def test_candidate_parse_reuses_protocol_rules_without_losing_initial_audit(
 @pytest.mark.parametrize("mode", ["import_blocked", "invalid_report", "valid_report"])
 def test_cli_reportless_audit_survives_subprocess(initial_captured, mode):
     import subprocess
-    import sys
 
     run, code = initial_captured
     if mode != "valid_report":
@@ -532,9 +531,7 @@ def test_cli_reportless_audit_survives_subprocess(initial_captured, mode):
     output = run / "cli-audit.json"
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",
@@ -600,7 +597,6 @@ def test_cli_report_failure_matrix_preserves_common_packet(
     request, initial_kind, failure
 ):
     import subprocess
-    import sys
 
     run, code = request.getfixturevalue(
         "strict_captured" if initial_kind == "none" else "initial_captured"
@@ -626,9 +622,7 @@ def test_cli_report_failure_matrix_preserves_common_packet(
     output = run / "failure-cli.json"
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",
@@ -731,7 +725,6 @@ def test_prior_deliveries_survive_report_failure_with_their_actual_states(
 )
 def test_cli_strict_input_provenance_is_required(request, mode, failure):
     import subprocess
-    import sys
 
     run, code = request.getfixturevalue(
         "strict_captured" if mode == "normal" else "initial_captured"
@@ -783,9 +776,7 @@ def test_cli_strict_input_provenance_is_required(request, mode, failure):
     output = run / "provenance-cli.json"
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",
@@ -861,7 +852,6 @@ def test_reportless_holmes_business_payload_still_binds_actual_input(
 def test_cli_output_is_created_private_under_permissive_umask(request, mask, mode):
     import stat
     import subprocess
-    import sys
 
     run, code = request.getfixturevalue(
         "strict_captured" if mode == "strict" else "captured"
@@ -872,9 +862,7 @@ def test_cli_output_is_created_private_under_permissive_umask(request, mask, mod
         ).unlink()  # Full failed packet, not just summary.
     output = run / "private-output.json"
     args = [
-        sys.executable,
-        "-m",
-        "scripts.m0.holmes_bridge",
+        *bridge_cli(),
         "--run-dir",
         str(run),
         "--projection-source-sha256",
@@ -914,7 +902,6 @@ def test_cli_output_is_created_private_under_permissive_umask(request, mask, mod
 @pytest.mark.parametrize("existing", ["file", "symlink", "dangling_symlink"])
 def test_cli_output_exclusive_creation_never_overwrites(existing, strict_captured):
     import subprocess
-    import sys
 
     run, code = strict_captured
     output = run / "occupied-output.json"
@@ -928,9 +915,7 @@ def test_cli_output_exclusive_creation_never_overwrites(existing, strict_capture
         output.symlink_to(target)
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",
@@ -1120,7 +1105,6 @@ def test_runtime_failure_cannot_be_upgraded_by_parseable_report(
     strict_captured, runtime
 ):
     import subprocess
-    import sys
 
     run, code = strict_captured
     result = json.loads((run / "result-business.json").read_bytes())
@@ -1159,9 +1143,7 @@ def test_runtime_failure_cannot_be_upgraded_by_parseable_report(
     output = run / "runtime-failure-output.json"
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",
@@ -1281,7 +1263,6 @@ def test_legitimate_incomplete_handoff_cli_keeps_runtime_audit(
     strict_captured, protocol_rejected
 ):
     import subprocess
-    import sys
 
     run, code = strict_captured
     result = json.loads((run / "result-business.json").read_bytes())
@@ -1304,9 +1285,7 @@ def test_legitimate_incomplete_handoff_cli_keeps_runtime_audit(
     output = run / "incomplete-audit.json"
     process = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "scripts.m0.holmes_bridge",
+            *bridge_cli(),
             "--run-dir",
             str(run),
             "--projection-source-sha256",

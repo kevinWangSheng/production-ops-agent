@@ -7,7 +7,23 @@ from copy import deepcopy
 import pytest
 
 from scripts.m0 import holmes_bridge as bridge
+from scripts.m0 import projector_trust
 from scripts.m0.outcomes_v3 import check_outcome
+
+TEST_PROJECTOR = "def bind_identity(*args): return {}\ndef trace_projection(record, registry=None): return record\ndef log_projection(record, registry=None): return record\n"
+TEST_PROJECTOR_SHA = hashlib.sha256(TEST_PROJECTOR.encode()).hexdigest()
+
+
+def bridge_cli():
+    """Test-only fixed fixture pin; production CLI has no trust override."""
+    import sys
+
+    bootstrap = (
+        "from scripts.m0 import projector_trust as t; "
+        f"t.HISTORICAL_BUNDLES=t.HISTORICAL_BUNDLES|{{({TEST_PROJECTOR_SHA!r},())}}; "
+        "from scripts.m0.holmes_bridge import main; raise SystemExit(main())"
+    )
+    return [sys.executable, "-c", bootstrap]
 
 
 def save(path, value):
@@ -17,8 +33,11 @@ def save(path, value):
 @pytest.fixture
 def captured(tmp_path, monkeypatch):
     source = tmp_path / "pure.py"
-    source.write_text(
-        "def bind_identity(*args): return {}\ndef trace_projection(record, registry=None): return record\ndef log_projection(record, registry=None): return record\n"
+    source.write_text(TEST_PROJECTOR)
+    monkeypatch.setattr(
+        projector_trust,
+        "HISTORICAL_BUNDLES",
+        projector_trust.HISTORICAL_BUNDLES | {(TEST_PROJECTOR_SHA, ())},
     )
     monkeypatch.setattr(bridge, "SOURCE", source)
     code = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -333,7 +352,7 @@ def test_explicit_frozen_source_survives_current_source_change(captured):
     frozen = run.parent / "frozen-holmes.py"
     frozen.write_bytes(bridge.SOURCE.read_bytes())
     bridge.SOURCE.write_text(bridge.SOURCE.read_text() + "\n# later runtime revision\n")
-    with pytest.raises(ValueError, match="PROJECTION_CONTEXT_MISMATCH"):
+    with pytest.raises(ValueError, match="PROJECTION_AUTHENTICITY_HASH_MISMATCH"):
         bridge.load_legacy_packet(run, projection_source_sha256=code)
     scenario, outcome = bridge.load_legacy_packet(
         run, projection_source_sha256=code, projection_source_path=frozen
@@ -342,7 +361,7 @@ def test_explicit_frozen_source_survives_current_source_change(captured):
     assert scenario.trusted.projection_context.source_path == str(frozen)
 
 
-def test_metric_and_log_projection_revision_dispatch(captured):
+def test_metric_and_log_projection_revision_dispatch(captured, monkeypatch):
     from scripts.m0.outcomes_v3 import ProjectionContext
 
     run, _ = captured
@@ -356,6 +375,11 @@ def test_metric_and_log_projection_revision_dispatch(captured):
         registry_hash=bridge.canonical_hash(registry),
         source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         source_path=str(source),
+    )
+    monkeypatch.setattr(
+        projector_trust,
+        "HISTORICAL_BUNDLES",
+        projector_trust.HISTORICAL_BUNDLES | {(context.source_sha256, ())},
     )
     raw = json.loads((run / "case-01-e1-raw.json").read_text())
     assert bridge.replay_projection(raw, context, revision="m0-02-v2") == raw
@@ -449,14 +473,14 @@ def test_latest_frozen_dependency_bundle_through_highest_seam(captured):
             }
         },
     )
-    with pytest.raises(ValueError, match="PROJECTION_DEPENDENCY_MISSING"):
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
         bridge.replay_projection(
             trace,
             context.model_copy(update={"dependencies": []}),
             revision="m0-02-traces-v3",
         )
     altered = deps[0].model_copy(update={"source_sha256": "0" * 64})
-    with pytest.raises(ValueError, match="PROJECTION_DEPENDENCY_HASH_MISMATCH"):
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
         bridge.replay_projection(
             trace,
             context.model_copy(update={"dependencies": [altered, *deps[1:]]}),
