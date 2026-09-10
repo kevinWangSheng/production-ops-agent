@@ -1,0 +1,71 @@
+{
+  "status": "offline_replay_pass",
+  "real_http": 0,
+  "model_quality": "not_evaluated; prior failures unchanged",
+  "cases": [
+    {
+      "run": "m002-fault-01",
+      "evidence_id": "m002-fault-01-e8",
+      "old_view_exact_replay": true,
+      "raw_sha256": "29829333ea40c69007295f7f0e03fe466e5dcb272688fc702856b45aac1cd97c",
+      "new_projection": "m0-02-traces-v3",
+      "query_service": "checkout",
+      "raw_traces": 11,
+      "raw_spans": 349,
+      "visible_spans": 7,
+      "visible_traces": 7,
+      "view_bytes": 13755,
+      "raw_detail_fields": 143,
+      "shown_detail_fields": 14,
+      "omitted_detail_fields": 129
+    },
+    {
+      "run": "m002-fault-01",
+      "evidence_id": "m002-fault-01-e9",
+      "old_view_exact_replay": true,
+      "raw_sha256": "a2a385fd8e93913a427b5e6e528d4cd6782b287ec4b0c7e8b6b37e95a7053704",
+      "new_projection": "m0-02-traces-v3",
+      "query_service": "payment",
+      "raw_traces": 11,
+      "raw_spans": 349,
+      "visible_spans": 5,
+      "visible_traces": 5,
+      "view_bytes": 13381,
+      "raw_detail_fields": 143,
+      "shown_detail_fields": 20,
+      "omitted_detail_fields": 123
+    },
+    {
+      "run": "m002-normal-03",
+      "evidence_id": "m002-normal-03-e11",
+      "old_view_exact_replay": true,
+      "raw_sha256": "48eb966394f0449ea01a843f5da10f4584b3e3643899c48c03d9ead0a2974df9",
+      "new_projection": "m0-02-traces-v3",
+      "query_service": "checkout",
+      "raw_traces": 5,
+      "raw_spans": 248,
+      "visible_spans": 14,
+      "visible_traces": 5,
+      "view_bytes": 13497,
+      "raw_detail_fields": 0,
+      "shown_detail_fields": 0,
+      "omitted_detail_fields": 0
+    },
+    {
+      "run": "m002-normal-03",
+      "evidence_id": "m002-normal-03-e12",
+      "old_view_exact_replay": true,
+      "raw_sha256": "7d0ce1f3d1ef30074862087128d6c2048d5df14a606b7770d566437c09471fff",
+      "new_projection": "m0-02-traces-v3",
+      "query_service": "payment",
+      "raw_traces": 5,
+      "raw_spans": 248,
+      "visible_spans": 13,
+      "visible_traces": 5,
+      "view_bytes": 12963,
+      "raw_detail_fields": 0,
+      "shown_detail_fields": 0,
+      "omitted_detail_fields": 0
+    }
+  ]
+}

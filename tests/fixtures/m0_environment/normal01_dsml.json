@@ -1,0 +1,5 @@
+{
+  "run_id": "m002-normal-01",
+  "final_business_content": "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"otel_traces\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">frontend</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_traces\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">load-generator</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by (rpc_service, rpc_method, rpc_grpc_status_code) (rpc_client_duration_milliseconds_bucket{le=\"+Inf\", service_name=\"checkout\"})</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by (service_name, status_code) (traces_span_metrics_calls_total{service_name=~\"checkout|payment|frontend-proxy|load-generator|frontend\"})</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>",
+  "finish_reason": "stop"
+}
