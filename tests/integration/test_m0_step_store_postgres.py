@@ -464,3 +464,110 @@ def test_transport_grant_one_use_and_snapshot_binding(lab):
     with pytest.raises(BudgetError, match="SEND_GRANT_CONSUMED"):
         with store.send_guard(fence, rid, input_hash=digest({})):
             pytest.fail("duplicate send")
+
+
+@pytest.mark.parametrize("prior_action", [None, "cancel", "correct"])
+def test_current_control_snapshot_crosses_v3_seam_after_new_run(lab, prior_action):
+    import json
+
+    from scripts.m0.outcomes_v3 import IncidentOutcome, IncidentScenario, check_outcome
+
+    store, _, run, subject = lab
+    old = store.claim(subject, run, uuid4(), VERSION)
+    generation = 0
+    if prior_action:
+        generation = store.control(
+            subject, 0, prior_action, payload={"text": "CONTROL_PAYLOAD_NOT_PUBLIC"}
+        )
+    fresh = replace(run, run_id=uuid4())
+    generation = store.new_run(
+        subject, generation, fresh, {"business": "allowed facts"}, VERSION
+    )
+    current = store.claim(subject, fresh, uuid4(), VERSION)
+    # Exercise independently stale Run and generation, not only the old combined fence.
+    assert not store.publish(replace(current, run=run), {}, step=uuid4())
+    assert not store.publish(
+        replace(current, generation=generation - 1), {}, step=uuid4()
+    )
+    assert not store.publish(old, {}, step=uuid4())
+    # Non-control accepted audit events and rejected control events must not
+    # appear in the public generation history or create duplicate generations.
+    with store.ledger._transaction() as conn:
+        for event in ("claim", "model_response", "publish"):
+            store._audit(conn, subject, event, True, generation)
+        store._audit(conn, subject, "new_run", False, generation)
+    snapshot = store.control_snapshot(subject)
+    expected_actions = ([prior_action] if prior_action else []) + ["new_run"]
+    assert [e["action"] for e in snapshot["controls"]] == expected_actions
+    assert [e["generation"] for e in snapshot["controls"]] == list(
+        range(1, generation + 1)
+    )
+    assert snapshot["current_run"] == str(fresh.run_id)
+    assert set(snapshot) == {"current_run", "final_generation", "controls"}
+    assert all(set(e) == {"generation", "action", "at"} for e in snapshot["controls"])
+    assert "CONTROL_PAYLOAD_NOT_PUBLIC" not in json.dumps(snapshot)
+    target = {
+        "kind": "compose",
+        "integration_id": "test",
+        "deployment_instance": "fixture",
+        "service": "test",
+        "container_id": "fixture-cid",
+        "image_digest": "sha256:fixture",
+        "telemetry_instance": "fixture-host",
+        "mapping_revision": "fixture-v1",
+        "config_revision": "fixture-v1",
+    }
+    subject_dto = {"kind": "incident", "id": str(subject), "target": target}
+    scenario = IncidentScenario.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "m0-public-v3",
+                "scenario_id": str(subject),
+                "versions": VERSION,
+                "agent_input": {
+                    "subject": subject_dto,
+                    "request": "Continue the investigation",
+                    "initial_views": [],
+                },
+                "trusted": {
+                    **snapshot,
+                    "scope": {
+                        "revision": "fixture-v1",
+                        "targets": [target],
+                        "interfaces": [],
+                        "window": {
+                            "start": "2026-09-10T00:00:00Z",
+                            "end": "2026-09-10T00:01:00Z",
+                        },
+                    },
+                    "artifacts": [],
+                    "deliveries": [],
+                    "execution": "running",
+                    "observed_actions": [],
+                },
+            }
+        )
+    )
+    outcome = IncidentOutcome.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "m0-public-v3",
+                "scenario_id": str(subject),
+                "versions": VERSION,
+                "subject": subject_dto,
+                "run_id": snapshot["current_run"],
+                "report_step_id": "not_started",
+                "report_request_id": "not_started",
+                "control_generation": generation,
+                "execution": "running",
+                "assessment_status": "incomplete",
+                "conclusion": "inconclusive",
+                "claims": [],
+                "evidence_ids": [],
+                "gaps": ["Fresh Run has not queried evidence yet"],
+                "handoff": True,
+                "health": "unknown",
+            }
+        )
+    )
+    assert check_outcome(scenario, outcome) == []

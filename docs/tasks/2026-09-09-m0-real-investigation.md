@@ -110,3 +110,7 @@ normal02实际形成JSON报告，15份最后交付raw/view/hash/完整refs可核
 环境代码/证据先本地提交bc573cd、22b4d8f，再按范围cherry-pick到主任务0f20ed2、da4d464。当前只做最终提交/推送/PR和最新远端CI及Code/Security审查；不合并。
 
 PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree导致收集失败：隔离subprocess阻断外部lab来源，原版1 failed；改为从本仓库package导入相同round02配置（live数据目录仍原地），9项offline通过。六份实际PG执行源码已在修改前逐字节SHA核验并保全，真实PG两stage仍对应历史版本，不声称新import版本已新增live复验；未改预算、数据或模型逻辑。
+
+## PR #16 审查闭环（进行中）
+
+[PR #16](https://github.com/kevinWangSheng/production-ops-agent/pull/16)初次head58e10b1，两项CI34439757538成功。Code Review3975793064发现new_run递增generation但v3控制事件不能表示，合法新Run Outcome被误拒；[修复记录](../evidence/m0-real-investigation/round-02-pr16-review-fixes.md)与[独立复验](../evidence/m0-real-investigation/round-02-pr16-control-review.md)覆盖直接new_run/cancel+new_run/correct+new_run和旧结果拒绝，104tests通过。为必要跨层验证仅临时启动原PG，随后再次停止；无模型/trace新增。Security仍待返回，不据CI或本地复验宣布最新PR已就绪，修复尚未推送。

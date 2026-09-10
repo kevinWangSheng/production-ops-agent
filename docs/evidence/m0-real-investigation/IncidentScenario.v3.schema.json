@@ -371,7 +371,8 @@
         "action": {
           "enum": [
             "cancel",
-            "correct"
+            "correct",
+            "new_run"
           ],
           "title": "Action",
           "type": "string"

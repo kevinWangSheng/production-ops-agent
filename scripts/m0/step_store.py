@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from typing import get_args
 from uuid import UUID, uuid4, uuid5
 
 import psycopg
@@ -18,6 +19,7 @@ from psycopg.types.json import Jsonb
 
 from .budget import PostgresBudget
 from .contracts import BudgetError, RequestIdentity, RunContext
+from .outcomes_v3 import ControlAction, ControlEvent
 from .protocol import ProtocolError, continuation
 
 
@@ -718,6 +720,34 @@ class StepStore:
                 )
             self._audit(conn, fence.subject, "publish", accepted, fence.generation)
         return accepted
+
+    def control_snapshot(self, subject):
+        """Atomic public control watermark and accepted transitions only.
+
+        m0_v3_control holds human payloads, not the complete generation history:
+        new_run is recorded in the same committed audit as cancel/correct.
+        Never expose payloads, model responses, evidence or private protocol.
+        """
+        with self.ledger._transaction() as conn:
+            self._lock(conn, subject)
+            row = conn.execute(
+                "SELECT current_run,generation FROM m0_v3_subject WHERE id=%s",
+                (subject,),
+            ).fetchone()
+            if row is None:
+                raise BudgetError("UNKNOWN_IDENTITY")
+            events = conn.execute(
+                "SELECT generation,event AS action,created_at AS at FROM m0_v3_audit WHERE subject=%s AND accepted AND event=ANY(%s) ORDER BY sequence",
+                (subject, list(get_args(ControlAction))),
+            ).fetchall()
+        return {
+            "current_run": str(row["current_run"]),
+            "final_generation": row["generation"],
+            "controls": [
+                ControlEvent.model_validate(event).model_dump(mode="json")
+                for event in events
+            ],
+        }
 
     def summary(self, subject):
         """Safe metadata only: no private payload, input, tool content or report."""

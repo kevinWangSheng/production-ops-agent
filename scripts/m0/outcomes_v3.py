@@ -183,9 +183,12 @@ class AgentInput(DTO):
     initial_views: list[EvidenceView]
 
 
+ControlAction = Literal["cancel", "correct", "new_run"]
+
+
 class ControlEvent(DTO):
     generation: Annotated[int, Field(ge=1)]
-    action: Literal["cancel", "correct"]
+    action: ControlAction
     at: AwareDatetime
 
 

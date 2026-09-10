@@ -1,6 +1,8 @@
 import json
 from copy import deepcopy
 
+import pytest
+
 from scripts.m0.outcomes_v3 import (
     Artifact,
     IncidentOutcome,
@@ -152,3 +154,30 @@ def test_initial_view_is_checked_before_investigator_projection():
     scenario = IncidentScenario.model_validate_json(json.dumps(s))
     with pytest.raises(ValueError, match="INITIAL_EVIDENCE_INVALID"):
         scenario.investigator_input()
+
+
+@pytest.mark.parametrize(
+    "actions", [("new_run",), ("cancel", "new_run"), ("correct", "new_run")]
+)
+def test_new_run_generations_cross_highest_acceptance_seam(actions):
+    scenario, outcome = packet()
+    generation = len(actions)
+    scenario["trusted"]["controls"] = [
+        {"generation": index, "action": action, "at": f"2026-09-10T00:03:0{index}Z"}
+        for index, action in enumerate(actions, 1)
+    ]
+    scenario["trusted"].update(final_generation=generation, current_run="fresh-run")
+    scenario["trusted"]["deliveries"][0].update(
+        run_id="fresh-run", control_generation=generation
+    )
+    outcome.update(run_id="fresh-run", control_generation=generation)
+    assert check(scenario, outcome) == []
+    stale_run = deepcopy(outcome)
+    stale_run["run_id"] = "run"
+    assert "IDENTITY_OR_VERSION_MISMATCH" in check(scenario, stale_run)
+    stale_generation = deepcopy(outcome)
+    stale_generation["control_generation"] = generation - 1
+    assert "CONTROL_MISMATCH" in check(scenario, stale_generation)
+    missing = deepcopy(scenario)
+    missing["trusted"]["controls"].pop()
+    assert "CONTROL_AUDIT_MISMATCH" in check(missing, outcome)
