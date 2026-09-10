@@ -14,6 +14,22 @@ from scripts.m0 import outcomes_v4 as v4
 captured = _captured_fixture
 
 
+def sync_report_attempt(run, result):
+    """Synthetic wire/result/capture describe the same attempt, including failures."""
+    response = json.loads((run / "response-2-business.json").read_bytes())
+    response["choices"][0].update(
+        content=result.get("final_business_content"),
+        finish_reason=result.get("finish_reason"),
+    )
+    save(run / "response-2-business.json", response)
+    capture = json.loads((run / "report-capture-business.json").read_bytes())
+    capture.update(
+        content=result["final_business_content"],
+        content_sha256=v4.content_hash(result["final_business_content"]),
+    )
+    save(run / "report-capture-business.json", capture)
+
+
 @pytest.fixture
 def strict_captured(captured):
     run, code = captured
@@ -366,6 +382,8 @@ def test_import_blocked_before_model_retains_input_without_observations(
     run, code = initial_captured
     (run / "initial-evidence.json").unlink()
     (run / "delivered-business.json").unlink()
+    (run / "report-capture-business.json").unlink()
+    (run / "response-2-business.json").unlink()
     save(run / "result-business.json", {"run_id": run.name, "status": "incomplete"})
     scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
     assert outcome.execution == "blocked" and outcome.handoff and outcome.report is None
@@ -430,6 +448,7 @@ def test_invalid_report_is_retained_as_audit_without_fabricated_report(
     result["final_business_content"] = raw_content
     result.pop("final_report")
     save(run / "result-business.json", result)
+    sync_report_attempt(run, result)
     scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
     assert outcome.report is None and outcome.report_content == raw_content
     assert outcome.report_content_sha256 == v4.content_hash(raw_content)
@@ -459,6 +478,7 @@ def test_candidate_parse_reuses_protocol_rules_without_losing_initial_audit(
     else:
         result["finish_reason"] = "length"
     save(run / "result-business.json", result)
+    sync_report_attempt(run, result)
     scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
     assert outcome.report is None
     assert outcome.report_content == result["final_business_content"]
@@ -480,6 +500,15 @@ def test_cli_reportless_audit_survives_subprocess(initial_captured, mode):
                 final_business_content='{"claims": "invalid-sentinel"}',
             )
         save(run / "result-business.json", result)
+        if mode == "invalid_report":
+            sync_report_attempt(run, result)
+        else:
+            for name in (
+                "delivered-business.json",
+                "report-capture-business.json",
+                "response-2-business.json",
+            ):
+                (run / name).unlink()
     output = run / "cli-audit.json"
     process = subprocess.run(
         [
@@ -543,3 +572,123 @@ def test_bridge_preserves_current_interface_restriction(initial_captured, interf
     else:
         assert scenario.trusted.artifacts == []
         assert "UNVERIFIED_INITIAL_EVIDENCE" in v4.check_outcome(scenario, outcome)
+
+
+@pytest.mark.parametrize("initial_kind", ["none", "verified", "unverified"])
+@pytest.mark.parametrize("failure", ["malformed", "empty", "length"])
+def test_cli_report_failure_matrix_preserves_common_packet(
+    request, initial_kind, failure
+):
+    import subprocess
+    import sys
+
+    run, code = request.getfixturevalue(
+        "strict_captured" if initial_kind == "none" else "initial_captured"
+    )
+    if initial_kind == "unverified":
+        (run / "initial-evidence.json").unlink()
+    result = json.loads((run / "result-business.json").read_bytes())
+    content = {
+        "malformed": '{"summary":',
+        "empty": "",
+        "length": result["final_business_content"],
+    }[failure]
+    finish = "length" if failure == "length" else "stop"
+    result.update(final_business_content=content, finish_reason=finish)
+    result.pop("final_report", None)
+    save(run / "result-business.json", result)
+    response = json.loads((run / "response-2-business.json").read_bytes())
+    response["choices"][0].update(content=content, finish_reason=finish)
+    save(run / "response-2-business.json", response)
+    capture = json.loads((run / "report-capture-business.json").read_bytes())
+    capture.update(content=content, content_sha256=v4.content_hash(content))
+    save(run / "report-capture-business.json", capture)
+    output = run / "failure-cli.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 1 and not process.stderr
+    saved = json.loads(output.read_bytes())
+    assert saved["handoff"] is True and saved["execution"] != "completed"
+    assert saved["report"] is None and saved["report_content"] == content
+    assert saved["report_content_sha256"] == v4.content_hash(content)
+    assert saved["violations"] and saved["agent_input"]["actual_user_content"]
+    facts = saved["scenario"]["trusted"]
+    assert len(facts["artifacts"]) == (0 if initial_kind == "unverified" else 1)
+    assert len(facts["observed_actions"]) == (1 if initial_kind == "none" else 0)
+    assert len(facts["deliveries"]) == 1
+    assert facts["deliveries"][0]["full_wire_hash"] == "a" * 64
+    assert saved["outcome"]["report_content"] == content
+    summary = json.loads(process.stdout)
+    assert all(
+        key not in summary
+        for key in ["scenario", "outcome", "agent_input", "report_content"]
+    )
+
+
+def test_incomplete_response_retains_attempt_without_committing_it(strict_captured):
+    run, code = strict_captured
+    save(
+        run / "result-business.json",
+        {"run_id": run.name, "finish_reason": None, "final_business_content": None},
+    )
+    (run / "report-capture-business.json").unlink()
+    (run / "response-2-business.json").unlink()
+    deliveries = json.loads((run / "delivered-business.json").read_bytes())
+    deliveries[0].update(state="attempt_outcome_unknown", response_received_at=None)
+    save(run / "delivered-business.json", deliveries)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert outcome.report is None and outcome.report_content is None
+    assert outcome.report_content_sha256 is None and outcome.handoff
+    assert (
+        len(scenario.trusted.artifacts) == len(scenario.trusted.observed_actions) == 1
+    )
+    assert scenario.trusted.deliveries[0].state == "dispatched"
+    assert scenario.trusted.report_capture is None
+
+
+def test_prior_deliveries_survive_report_failure_with_their_actual_states(
+    strict_captured,
+):
+    from copy import deepcopy
+
+    run, code = strict_captured
+    deliveries = json.loads((run / "delivered-business.json").read_bytes())
+    prior = deepcopy(deliveries[0])
+    prior.update(
+        request_ordinal=1,
+        request_id="case-01-http-1",
+        state="attempt_outcome_unknown",
+        response_received_at=None,
+    )
+    save(run / "delivered-business.json", [prior, *deliveries])
+    result = json.loads((run / "result-business.json").read_bytes())
+    result.update(final_business_content="", finish_reason="stop")
+    result.pop("final_report")
+    save(run / "result-business.json", result)
+    sync_report_attempt(run, result)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert [d.state for d in scenario.trusted.deliveries] == [
+        "dispatched",
+        "response_committed",
+    ]
+    assert (
+        outcome.report_content == ""
+        and outcome.report_content_sha256 == v4.content_hash("")
+    )
+    assert "MISSING_REPORT_OR_HANDOFF" in v4.check_outcome(scenario, outcome)

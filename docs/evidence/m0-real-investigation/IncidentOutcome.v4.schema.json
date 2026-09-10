@@ -412,7 +412,6 @@
     "report_content": {
       "anyOf": [
         {
-          "minLength": 1,
           "type": "string"
         },
         {

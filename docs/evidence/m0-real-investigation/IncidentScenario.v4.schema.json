@@ -952,7 +952,6 @@
           "type": "integer"
         },
         "content": {
-          "minLength": 1,
           "title": "Content",
           "type": "string"
         },

@@ -498,35 +498,84 @@ def _load_common(
         source_path=str(projection_source_path) if projection_source_path else None,
         dependencies=list(projection_dependencies),
     )
-    deliveries = read("delivered-business.json")
+    strict_mode = report_type is not ModelReport
+    deliveries = (
+        read("delivered-business.json")
+        if (run_dir / "delivered-business.json").exists()
+        else []
+    )
     results = read("result-business.json")
-    if (
-        results["run_id"] != run_id
-        or results["finish_reason"] != "stop"
-        or not results["final_business_content"]
-    ):
-        raise ValueError("FINAL_RESPONSE_REQUIRED")
-    final_ordinal = max(d["request_ordinal"] for d in deliveries)
+    if results["run_id"] != run_id:
+        raise ValueError("REPORT_REQUEST_BINDING")
+    report = None
+    report_error = None
+    try:
+        if results.get("finish_reason") != "stop":
+            raise ValueError("FINAL_RESPONSE_REQUIRED")
+        if strict_mode:
+            from scripts.m0_environment.report_contract import parse_report
+
+            report = report_type.model_validate(
+                parse_report(
+                    results.get("final_business_content"), version="m0-report-v2"
+                )
+            )
+        else:
+            report = report_type.model_validate_json(results["final_business_content"])
+    except (ValueError, TypeError):
+        if not strict_mode:
+            raise ValueError("FINAL_REPORT_SCHEMA_INVALID") from None
+        report_error = (
+            "FINAL_RESPONSE_INCOMPLETE"
+            if results.get("finish_reason") != "stop"
+            else "FINAL_REPORT_SCHEMA_INVALID"
+        )
     if len({d["request_ordinal"] for d in deliveries}) != len(deliveries):
         raise ValueError("DUPLICATE_PHYSICAL_REQUEST")
-    delivered = next(d for d in deliveries if d["request_ordinal"] == final_ordinal)
-    response = read(f"response-{final_ordinal}-business.json")
-    if (
-        delivered["state"] != "response_received"
-        or delivered.get("http_status") != 200
-        or response["run_id"] != run_id
-        or response["request_ordinal"] != final_ordinal
-        or not response["response_complete"]
-        or not response["identity_accepted"]
-        or len(response["choices"]) != 1
-        or response["choices"][0]["finish_reason"] != "stop"
-        or response["choices"][0]["content"] != results["final_business_content"]
-    ):
-        raise ValueError("REPORT_REQUEST_BINDING")
-    try:
-        report = report_type.model_validate_json(results["final_business_content"])
-    except ValueError:
-        raise ValueError("FINAL_REPORT_SCHEMA_INVALID") from None
+    deliveries = sorted(deliveries, key=lambda d: d["request_ordinal"])
+    delivered = deliveries[-1] if deliveries else None
+    final_ordinal = delivered["request_ordinal"] if delivered else None
+    response_records = {}
+    delivery_states = {}
+    for item in deliveries:
+        ordinal = item["request_ordinal"]
+        path = run_dir / f"response-{ordinal}-business.json"
+        observed = read(path.name) if path.exists() else None
+        response_records[ordinal] = observed
+        if observed is not None and (
+            observed.get("run_id"),
+            observed.get("request_ordinal"),
+        ) != (run_id, ordinal):
+            raise ValueError("REPORT_REQUEST_BINDING")
+        accepted = (
+            item.get("state") == "response_received"
+            and item.get("http_status") == 200
+            and observed is not None
+            and observed.get("response_complete") is True
+            and observed.get("identity_accepted") is True
+        )
+        delivery_states[ordinal] = (
+            "response_committed"
+            if accepted
+            else "dispatched"
+            if item.get("dispatch_started_at")
+            else "prepared"
+        )
+    response = response_records.get(final_ordinal)
+    if delivered and delivery_states[final_ordinal] == "response_committed":
+        if (
+            len(response.get("choices", [])) != 1
+            or response["choices"][0].get("finish_reason")
+            != results.get("finish_reason")
+            or response["choices"][0].get("content")
+            != results.get("final_business_content")
+        ):
+            raise ValueError("REPORT_REQUEST_BINDING")
+    else:
+        if not strict_mode:
+            raise ValueError("FINAL_RESPONSE_REQUIRED")
+        report = None
+        report_error = "FINAL_RESPONSE_INCOMPLETE"
     initial, users, subject, access = _input_scope(
         run_dir, scope, registry, registry_hash
     )
@@ -648,17 +697,39 @@ def _load_common(
                 else "Tool operation recorded; actual dispatch, backend execution and permission decision remain unknown.",
             )
         )
+    base_deliveries = []
+    actual_views = {}
+    request_id, step_id = "not_started", "not_started"
+    for record in deliveries if strict_mode else [delivered]:
+        if (
+            record["trusted_access_scope"] != scope
+            or canonical_hash(record["messages"]) != record["business_messages_sha256"]
+        ):
+            raise ValueError("BUSINESS_PROJECTION_MISMATCH")
+        found = extract_registered_views(
+            record["messages"], registered, initial_view_ids=initial_ids
+        )
+        if record is delivered:
+            actual_views = found
+        ordinal = record["request_ordinal"]
+        request_id = f"{run_id}:http:{ordinal}"
+        step_id = f"{run_id}:report-step:{ordinal}"
+        base_deliveries.append(
+            Delivery(
+                run_id=run_id,
+                step_id=step_id,
+                request_id=request_id,
+                control_generation=final_generation,
+                business_projection="holmes-user-tool-v1",
+                business_projection_hash=record["business_messages_sha256"],
+                business_projection_content=canonical(record["messages"]),
+                full_wire_hash=record["actual_request_sha256"],
+                views=[views[e] for e in found],
+                state=delivery_states[ordinal],
+            )
+        )
     if (
-        delivered["trusted_access_scope"] != scope
-        or canonical_hash(delivered["messages"])
-        != delivered["business_messages_sha256"]
-    ):
-        raise ValueError("BUSINESS_PROJECTION_MISMATCH")
-    actual_views = extract_registered_views(
-        delivered["messages"], registered, initial_view_ids=initial_ids
-    )
-    if (
-        report_type is ModelReport
+        not strict_mode
         and not unverified
         and any(
             ref not in actual_views
@@ -667,20 +738,7 @@ def _load_common(
         )
     ):
         raise ValueError("REPORT_EVIDENCE_NOT_DELIVERED")
-    request_id = f"{run_id}:http:{final_ordinal}"
-    step_id = f"{run_id}:report-step:{final_ordinal}"
-    delivery = Delivery(
-        run_id=run_id,
-        step_id=step_id,
-        request_id=request_id,
-        control_generation=final_generation,
-        business_projection="holmes-user-tool-v1",
-        business_projection_hash=delivered["business_messages_sha256"],
-        business_projection_content=canonical(delivered["messages"]),
-        full_wire_hash=delivered["actual_request_sha256"],
-        views=[views[e] for e in actual_views],
-        state="response_committed",
-    )
+    execution = "completed" if report is not None else "blocked"
     versions = {
         "adapter": "holmes-v3-bridge-1",
         "projection_code": context.source_sha256,
@@ -710,11 +768,11 @@ def _load_common(
         trusted=TrustedFacts(
             scope=access,
             artifacts=artifacts,
-            deliveries=[delivery],
+            deliveries=base_deliveries,
             controls=list(controls),
             final_generation=final_generation,
             current_run=run_id,
-            execution="completed",
+            execution=execution,
             observed_actions=actions,
             projection_context=context,
         ),
@@ -728,16 +786,16 @@ def _load_common(
         report_step_id=step_id,
         report_request_id=request_id,
         control_generation=final_generation,
-        execution="completed",
-        assessment_status=report.assessment_status,
-        conclusion=report.conclusion,
+        execution=execution,
+        assessment_status=report.assessment_status if report else "incomplete",
+        conclusion=report.conclusion if report else "inconclusive",
         claims=[
             {"kind": claim.kind, "text": claim.text, "evidence_ids": claim.evidence_ids}
-            for claim in report.claims
+            for claim in (report.claims if report else [])
         ],
         evidence_ids=list(actual_views),
-        gaps=report.gaps,
-        handoff=report.assessment_status == "incomplete",
+        gaps=report.gaps if report else [report_error],
+        handoff=report is None or report.assessment_status == "incomplete",
         health="unknown",
     )
     input_details = {
@@ -746,6 +804,8 @@ def _load_common(
         ),
         "unverified_initial_views": unverified,
         "first_context": deliveries[0].get("evidence_context") if deliveries else None,
+        "delivery_records": deliveries,
+        "report_error": report_error,
     }
     return (
         scenario,
@@ -786,110 +846,6 @@ def legacy_report_audit(run_dir):
     }
 
 
-def _initial_handoff_packet(run_dir, config, generation, result, kwargs):
-    """Preserve an import-blocked input and any unparseable safe report, without proof."""
-    from . import outcomes_v4 as strict
-
-    scope = config["trusted_access_scope"]
-    registry = json.loads((run_dir / "deployment-registry.json").read_bytes())
-    registry_hash = canonical_hash(registry)
-    if (
-        registry_hash != scope["deployment_registry_sha256"]
-        or registry["integration_id"] != scope["integration_id"]
-    ):
-        raise ValueError("REGISTRY_MISMATCH")
-    initial, users, subject, access = _input_scope(
-        run_dir, scope, registry, registry_hash
-    )
-    actual = next(m["content"] for m in initial if m["role"] == "user")
-    original_path = run_dir / "question-original.txt"
-    original = (
-        original_path.read_bytes().decode("utf-8") if original_path.exists() else None
-    )
-    audit_path = run_dir / "initial-import-audit.json"
-    audit = (
-        json.loads(audit_path.read_bytes()).get("unverified", [])
-        if audit_path.exists()
-        else []
-    )
-    if not audit:
-        supplied = users[0].get("business_tool_views", [])
-        if not supplied:
-            raise ValueError("FINAL_RESPONSE_REQUIRED")
-        values = supplied if isinstance(supplied, list) else [supplied]
-        audit = [
-            {
-                "location": f"business_tool_views[{i}]",
-                "content": canonical(v),
-                "content_sha256": strict.content_hash(canonical(v)),
-                "reason": "INITIAL_PROVENANCE_UNVERIFIED",
-            }
-            for i, v in enumerate(values)
-        ]
-    versions = {
-        "adapter": "holmes-v4-bridge-1",
-        "report": "m0-report-v2",
-        "projection_code": kwargs["projection_source_sha256"],
-        "registry": registry_hash,
-    }
-    if isinstance(config.get("upstream_commit"), str):
-        versions["upstream_commit"] = config["upstream_commit"]
-    if isinstance(config.get("tool_schema"), list):
-        versions["tool_schema_sha256"] = canonical_hash(config["tool_schema"])
-    agent_input = strict.AgentInput.model_validate_json(
-        json.dumps(
-            {
-                "subject": subject.model_dump(mode="json"),
-                "request": users[0]["request"],
-                "initial_views": [],
-                "actual_user_content": actual,
-                "actual_user_content_sha256": strict.content_hash(actual),
-                "original_user_content": original,
-                "original_user_content_sha256": strict.content_hash(original)
-                if original is not None
-                else None,
-                "unverified_initial_views": audit,
-            }
-        )
-    )
-    scenario = strict.IncidentScenario(
-        schema_version="m0-public-v4",
-        scenario_id=run_dir.name,
-        versions=versions,
-        agent_input=agent_input,
-        trusted=strict.TrustedFacts(
-            scope=access,
-            artifacts=[],
-            deliveries=[],
-            controls=list(kwargs.get("controls", ())),
-            final_generation=generation,
-            current_run=run_dir.name,
-            execution="blocked",
-            observed_actions=[],
-            time_policies=[],
-        ),
-    )
-    raw_report = result.get("final_business_content")
-    raw_report = raw_report if isinstance(raw_report, str) and raw_report else None
-    outcome = strict.IncidentOutcome(
-        schema_version="m0-public-v4",
-        scenario_id=run_dir.name,
-        versions=versions,
-        subject=subject,
-        run_id=run_dir.name,
-        control_generation=generation,
-        execution="blocked",
-        report=None,
-        report_content=raw_report,
-        report_content_sha256=strict.content_hash(raw_report) if raw_report else None,
-        evidence_ids=[],
-        handoff=True,
-        handoff_reasons=["UNVERIFIED_INITIAL_EVIDENCE"],
-        health="unknown",
-    )
-    return scenario, outcome
-
-
 def load_packet(run_dir, **kwargs):
     """Current strict v4 entry. Old payloads require explicit legacy replay."""
     from . import outcomes_v4 as strict
@@ -906,20 +862,6 @@ def load_packet(run_dir, **kwargs):
     if type(generation) is not int or generation < 0:
         raise ValueError("STRICT_CONTROL_UNKNOWN")
     kwargs["final_generation"] = generation
-    result = read("result-business.json")
-    if result.get("run_id") != run_dir.name:
-        raise ValueError("REPORT_REQUEST_BINDING")
-    content = result.get("final_business_content")
-    if not content:
-        return _initial_handoff_packet(run_dir, config, generation, result, kwargs)
-    from scripts.m0_environment.report_contract import parse_report
-
-    try:
-        if result.get("finish_reason") != "stop":
-            raise ValueError("FINAL_RESPONSE_REQUIRED")
-        parse_report(content, version="m0-report-v2")
-    except ValueError:
-        return _initial_handoff_packet(run_dir, config, generation, result, kwargs)
     base, old_outcome, report, config, record, response, result, input_details = (
         _load_common(run_dir, report_type=strict.ModelReportV2, **kwargs)
     )
@@ -931,45 +873,63 @@ def load_packet(run_dir, **kwargs):
     policies = [
         strict.TimePolicy.model_validate_json(json.dumps(p)) for p in policies_raw
     ]
-    context_raw = record.get("evidence_context")
-    if canonical_hash(context_raw) != record.get("evidence_context_sha256"):
-        raise ValueError("CONTEXT_CAPTURE_MISMATCH")
-    context = strict.EvidenceContext.model_validate_json(json.dumps(context_raw))
-    if record.get("control_generation") != generation:
-        raise ValueError("CONTROL_CAPTURE_MISMATCH")
-    capture = strict.ReportCapture.model_validate_json(
-        json.dumps(read("report-capture-business.json"))
-    )
-    expected_step = f"{run_dir.name}:report-step:{record['request_ordinal']}"
-    if (
-        capture.run_id,
-        capture.step_id,
-        capture.request_id,
-        capture.control_generation,
-    ) != (run_dir.name, expected_step, record.get("request_id"), generation):
-        raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
-    if (
-        capture.content != result["final_business_content"]
-        or capture.content != response["choices"][0]["content"]
+    strict_deliveries = []
+    for base_delivery, item in zip(
+        base.trusted.deliveries, input_details["delivery_records"], strict=True
     ):
+        context_raw = item.get("evidence_context")
+        if canonical_hash(context_raw) != item.get("evidence_context_sha256"):
+            raise ValueError("CONTEXT_CAPTURE_MISMATCH")
+        context = strict.EvidenceContext.model_validate_json(json.dumps(context_raw))
+        if item.get("control_generation") != generation:
+            raise ValueError("CONTROL_CAPTURE_MISMATCH")
+        ordinal = item["request_ordinal"]
+        strict_deliveries.append(
+            strict.Delivery.model_validate_json(
+                json.dumps(
+                    base_delivery.model_dump(mode="json")
+                    | {
+                        "request_id": item["request_id"],
+                        "step_id": f"{run_dir.name}:report-step:{ordinal}",
+                        "context": context.model_dump(mode="json"),
+                        "dispatch_started_at": item.get("dispatch_started_at"),
+                        "response_received_at": item.get("response_received_at"),
+                    }
+                )
+            )
+        )
+    expected_step = (
+        f"{run_dir.name}:report-step:{record['request_ordinal']}" if record else None
+    )
+    capture_path = run_dir / "report-capture-business.json"
+    capture = (
+        strict.ReportCapture.model_validate_json(capture_path.read_bytes())
+        if capture_path.exists()
+        else None
+    )
+    if capture is not None:
+        if record is None or (
+            capture.run_id,
+            capture.step_id,
+            capture.request_id,
+            capture.control_generation,
+        ) != (run_dir.name, expected_step, record.get("request_id"), generation):
+            raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
+        if (
+            response is None
+            or len(response.get("choices", [])) != 1
+            or capture.content != result.get("final_business_content")
+            or capture.content != response["choices"][0].get("content")
+        ):
+            raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
+    elif report is not None:
         raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
-    if "final_report" in result and result["final_report"] != report.model_dump(
-        mode="json"
+    if (
+        report is not None
+        and "final_report" in result
+        and result["final_report"] != report.model_dump(mode="json")
     ):
         raise ValueError("REPORT_PARSED_OBJECT_MISMATCH")
-    base_delivery = base.trusted.deliveries[0]
-    delivery = strict.Delivery.model_validate_json(
-        json.dumps(
-            base_delivery.model_dump(mode="json")
-            | {
-                "request_id": record["request_id"],
-                "step_id": expected_step,
-                "context": context.model_dump(mode="json"),
-                "dispatch_started_at": record.get("dispatch_started_at"),
-                "response_received_at": record.get("response_received_at"),
-            }
-        )
-    )
     timing_records = {
         key: strict.TimingRecord.model_validate_json(json.dumps(value))
         for key, value in (
@@ -981,10 +941,10 @@ def load_packet(run_dir, **kwargs):
     facts = strict.TrustedFacts.model_validate(
         base.trusted.model_dump(exclude={"deliveries"})
         | {
-            "deliveries": [delivery],
+            "deliveries": strict_deliveries,
             "time_policies": policies,
             "report_capture": capture,
-            "evaluation_at": capture.response_received_at,
+            "evaluation_at": capture.response_received_at if capture else None,
             "timing_records": timing_records,
         }
     )
@@ -1057,13 +1017,15 @@ def load_packet(run_dir, **kwargs):
         control_generation=generation,
         execution=old_outcome.execution,
         report_step_id=expected_step,
-        report_request_id=record["request_id"],
+        report_request_id=record["request_id"] if record else None,
         report=report,
-        report_content=capture.content,
-        report_content_sha256=capture.content_sha256,
+        report_content=result.get("final_business_content"),
+        report_content_sha256=strict.content_hash(result["final_business_content"])
+        if isinstance(result.get("final_business_content"), str)
+        else None,
         evidence_ids=old_outcome.evidence_ids,
         handoff=old_outcome.handoff,
-        handoff_reasons=report.gaps if old_outcome.handoff else [],
+        handoff_reasons=old_outcome.gaps if old_outcome.handoff else [],
         health="unknown",
     )
     return scenario, outcome
@@ -1134,6 +1096,8 @@ def main():
                 report_content=outcome.report_content,
                 report_content_sha256=outcome.report_content_sha256,
                 agent_input=scenario.agent_input.model_dump(mode="json"),
+                scenario=scenario.model_dump(mode="json"),
+                outcome=outcome.model_dump(mode="json"),
             )
     except (ValueError, KeyError, OSError, TypeError) as exc:
         code = str(exc)
@@ -1161,6 +1125,8 @@ def main():
                     "original_report",
                     "report_content",
                     "agent_input",
+                    "scenario",
+                    "outcome",
                 }
             }
         )

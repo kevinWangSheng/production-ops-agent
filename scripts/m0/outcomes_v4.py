@@ -144,7 +144,7 @@ class ReportCapture(DTO):
     step_id: Text
     request_id: Text
     control_generation: Annotated[int, Field(ge=0)]
-    content: Text
+    content: str
     content_sha256: Hash
     response_received_at: AwareDatetime | None = None
 
@@ -206,7 +206,7 @@ class IncidentOutcome(DTO):
     report_step_id: Text | None = None
     report_request_id: Text | None = None
     report: ModelReportV2 | None = None
-    report_content: Text | None = None
+    report_content: str | None = None
     report_content_sha256: Hash | None = None
     evidence_ids: list[Text]
     handoff: bool
