@@ -1,22 +1,13 @@
 {
-  "checked_at": "2026-09-10T12:47:27.154052+00:00",
-  "implementation_commit": "a100c90",
-  "review_requested_head": "56b17f718f2d410b958678deaa0661479b0dafe3",
-  "ci_run": 34471557918,
-  "ci_checks": "success",
-  "ci_m0_postgres": "success",
+  "checked_at": "2026-09-10T13:18:54.047294+00:00",
   "code_review": {
-    "status": "completed_local_user_authorized_substitute",
-    "skill": "eng:code-review",
-    "reviewed_base": "e9d22e9183601ae322f006f4a42d9dd2bbcbae84",
-    "reviewed_head": "af24646eb02da3de2839005a7a3ea361fd7ac914",
-    "patch_sha256": "1b0553501438c50722c6c8d88daaeaa08414d19428f63660ebd9067fe58aa319",
-    "standards_hard_violations": 0,
-    "standards_nonblocking_suggestions": 2,
-    "spec_original_P2": 1,
-    "spec_P2_resolved": 1,
-    "blocking_findings_remaining": 0,
-    "evidence": "round-02-local-code-review.md"
+    "status": "awaiting_bot_review_after_fix",
+    "user_workflow": "resume GitHub bot after completed local review round",
+    "reviewed_base": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
+    "finding": 3979271073,
+    "fix_patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
+    "implementer_tests": "615 passed; 44 PG default skipped; 11 actual Holmes fake-pipe cases",
+    "evidence": "round-02-bot-timing-sidecar-fix.md"
   },
   "security_review": {
     "current_head_status": "no_acknowledgement_or_result",
@@ -51,5 +42,36 @@
     "evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5617957215",
     "message": "You have reached your Codex usage limits for code reviews."
   },
-  "remaining_review_blocker": "User restored bot workflow; current fixed implementation awaits Code and Security review"
+  "remaining_review_blocker": "Latest fixed code requires bot Code/Security review",
+  "local_code_review_completed_round": {
+    "status": "completed_local_user_authorized_substitute",
+    "skill": "eng:code-review",
+    "reviewed_base": "e9d22e9183601ae322f006f4a42d9dd2bbcbae84",
+    "reviewed_head": "af24646eb02da3de2839005a7a3ea361fd7ac914",
+    "patch_sha256": "1b0553501438c50722c6c8d88daaeaa08414d19428f63660ebd9067fe58aa319",
+    "standards_hard_violations": 0,
+    "standards_nonblocking_suggestions": 2,
+    "spec_original_P2": 1,
+    "spec_P2_resolved": 1,
+    "blocking_findings_remaining": 0,
+    "evidence": "round-02-local-code-review.md"
+  },
+  "historical_implementation_commit": "a100c90",
+  "implementation_ref": {
+    "base_commit": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
+    "patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
+    "code_hashes": {
+      "scripts/m0_environment/initial_evidence.py": "52c4eb7a811bdfa0db1ab0faa7881ca179af95093b45ba2f6ab2de1c3673d064",
+      "scripts/m0_environment/holmes_baseline.py": "3cf11cca6dcc7a3ef7614ce0977dfd6c924745bf7440516e5221adf9d5356e27",
+      "tests/test_m0_timing_echo.py": "7562b5f8c0b14f4d74dbaa21389d78dde49e41078c79e870f48349fa2ea28d33",
+      "tests/fixtures/m0_environment/timing_override_probe.py": "001fbcf2bfb41c59a944681fd5ab4f74868b19fae7e077967e4254bcc5d8f387"
+    }
+  },
+  "historical_ci_snapshot": {
+    "head": "56b17f718f2d410b958678deaa0661479b0dafe3",
+    "run": 34471557918,
+    "checks": "success",
+    "m0_postgres": "success"
+  },
+  "current_ci_status": "pending_for_new_commit"
 }

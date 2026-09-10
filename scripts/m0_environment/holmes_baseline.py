@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.m0_environment.initial_evidence import (  # noqa: E402
     allowed_interfaces,
     import_initial_evidence,
+    validate_timing_echo,
 )
 from scripts.m0_environment.legacy_projections import (  # noqa: E402
     log_projection_v2,
@@ -460,29 +461,7 @@ def main():
         if args.report_version != REPORT_VERSION:
             raise ValueError("initial timing input requires strict report version")
         initial_timing_input = json.loads(args.initial_timings_file.read_text())
-        if not isinstance(initial_timing_input, dict):
-            raise ValueError("initial timing input must be a mapping")
-        for evidence_id, timing_record in initial_timing_input.items():
-            if (
-                evidence_id not in registered_views
-                or timing_record.get("view_hash") != registered_views[evidence_id]
-            ):
-                raise ValueError("initial timing view hash mismatch")
-            supplied_timing = Timing.model_validate_json(
-                json.dumps(timing_record["timing"])
-            )
-            visible_timing = Timing.model_validate_json(
-                json.dumps(source_timing({}, registered_view_values[evidence_id]))
-            )
-            if supplied_timing.source_time_basis not in {"unknown", "event_time"}:
-                raise ValueError("initial source timing proof unsupported")
-            if supplied_timing.source_time_basis == "event_time" and (
-                visible_timing.source_time_basis != "event_time"
-                or supplied_timing.source_start_at != visible_timing.source_start_at
-                or supplied_timing.source_end_at != visible_timing.source_end_at
-            ):
-                raise ValueError("initial source event time mismatch")
-            registered_timings[evidence_id] = supplied_timing.model_dump(mode="json")
+        validate_timing_echo(initial_timing_input, registered_views, registered_timings)
         save(out / "initial-timings-input.json", initial_timing_input)
     query_lock = threading.Lock()
     calls = []

@@ -236,3 +236,9 @@ f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189
 [Spec独立复验](../evidence/m0-real-investigation/round-02-local-spec-revalidation.md)10状态/CLI+8来源反例+真实Holmes假传输0HTTP+244回归通过；[Standards增量](../evidence/m0-real-investigation/round-02-local-standards-fix-review.md)0新增问题。root隔离tracked代码副本全量复跑601 passed/44 PG默认skip，首次缺.venv相对入口导致的1项环境失败保留，未安装依赖。补丁应用后SHA须与已验证3文件一致，秘密扫描通过后按原流程提交推送。
 
 本轮本地Code Review完成后，用户表示bot额度恢复，要求后续直接使用GitHub bot。最新修复将提交Code/Security复审，不再启动本地双轴流程；旧额度拒绝保留为历史，新的服务端结果现场核验。PR不自动合并。M1仍因真实报告质量FAIL不开放，任何新模型实验仍须新授权；本次0模型/trace/后端/服务操作。主工作区.playwright-mcp/无关工作未触碰。
+
+## 恢复bot后的时钟sidecar修复（2026-09-10）
+
+bot已恢复接收，cec52d2两项CI成功（34478903940）。12:56:16Z bot返回P1 3979271073：initial-timings-file可覆盖bundle已验证时钟。实现者以实际Holmes fakepipe先复现缺时钟却补造成功，再改为完整已验证Timing回显，删除赋值覆盖；匹配/等价UTC/no-flag保持，补造/清空/身份或来源依据变更在凭据读取与transport前拒绝。完整11场景及615 passed/44 PG默认skip通过。见[修复与hash](../evidence/m0-real-investigation/round-02-bot-timing-sidecar-fix.md)。
+
+此组按用户最新要求直接交GitHub bot复审，没有再次本地双轴流程；不是新的产品功能或付费实验。所有既有数据/worktree/服务停止状态保持，M1仍因真实质量FAIL不开放。当前修复待最新CI/Code/Security结果，不自动合并。

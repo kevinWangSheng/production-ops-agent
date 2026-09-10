@@ -17,6 +17,24 @@ class InitialEvidenceError(ValueError):
     pass
 
 
+def validate_timing_echo(supplied, view_hashes, verified_timings):
+    """The legacy sidecar may confirm imported timing, never provide new clocks."""
+    if not isinstance(supplied, dict):
+        raise InitialEvidenceError("INITIAL_TIMING_ECHO_MISMATCH")
+    for evidence_id, record in supplied.items():
+        if (
+            evidence_id not in verified_timings
+            or evidence_id not in view_hashes
+            or not isinstance(record, dict)
+            or record.get("view_hash") != view_hashes[evidence_id]
+        ):
+            raise InitialEvidenceError("INITIAL_TIMING_ECHO_MISMATCH")
+        proposed = Timing.model_validate_json(json.dumps(record.get("timing")))
+        verified = Timing.model_validate_json(json.dumps(verified_timings[evidence_id]))
+        if proposed != verified:
+            raise InitialEvidenceError("INITIAL_TIMING_ECHO_MISMATCH")
+
+
 def _bytes(path, expected=None):
     path = Path(path)
     resolved = path.resolve()
