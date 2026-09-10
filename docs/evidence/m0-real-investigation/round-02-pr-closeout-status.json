@@ -1,0 +1,28 @@
+{
+  "checked_at": "2026-09-10T11:33:52.655660+00:00",
+  "implementation_commit": "a100c90",
+  "review_requested_head": "56b17f718f2d410b958678deaa0661479b0dafe3",
+  "ci_run": 34471557918,
+  "ci_checks": "success",
+  "ci_m0_postgres": "success",
+  "code_review": {
+    "status": "unavailable_usage_limit",
+    "evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5617957215",
+    "message": "You have reached your Codex usage limits for code reviews."
+  },
+  "security_review": {
+    "current_head_status": "no_acknowledgement_or_result",
+    "request": 5617955725,
+    "last_completed_head": "96e89e35f2f1896d4b24fb9bbfc1f2fcb6ab412b",
+    "last_completed_result": "no_security_issues_found",
+    "old_result_covers_current_substantive_changes": false
+  },
+  "pr_ready": false,
+  "merged": false,
+  "product_M1_gate": "not_cleared_report_quality_FAIL",
+  "model_http_requests": 20,
+  "trace_uploads": 0,
+  "dedicated_services_stopped": true,
+  "data_worktrees_preserved": true,
+  "next": "Review quota/availability recovery and current-code remote review; M0-03 real report quality revalidation requires new separate experiment authorization."
+}

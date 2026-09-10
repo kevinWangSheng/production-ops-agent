@@ -1,5 +1,7 @@
 # M0 技术验证执行计划
 
+当前工程交付阻塞（2026-09-10）：PR16当前实现已自测/独立验证，远端Code Review额度耗尽、Security当前提交无结果，尚未就绪或合并。该阻塞与真实报告质量FAIL分开；M1仍不开放，具体证据见现有真实调查任务最新交接。
+
 日期：2026-09-07。状态：**P2 已完成隔离上下文的独立全文复审，用户授权修补并持久化；部分本地合成机制已执行，完整 M0 仍未完成。**
 
 本计划落实 [C3 技术方案](../design/technical-proposal-2026-09-07.md)，不重新选择产品或架构。入口条件以 [SPEC](../../SPEC.md#conditions-for-entering-implementation) 为准；原功能验收由 [feature_list.json](../../feature_list.json) 维护，本计划不修改验收步骤或 passes。[审查记录](../reviews/m0-plan-adversarial-review-2026-09-07.md)记录两项补齐及全文复审结论。
