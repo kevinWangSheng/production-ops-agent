@@ -810,3 +810,46 @@ def test_process_exit_after_prepare_preserves_unclaimed_barrier(lab):
             request_id=request_id,
         )
     assert ledger.snapshot(run.experiment_id)["reserved"] == 10
+
+
+@pytest.mark.parametrize("action", ["cancel", "correct"])
+def test_control_clears_active_final_and_preserves_report_history(lab, action):
+    store, ledger, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    request_id = uuid4()
+    step, _ = store.dispatch(fence, "published", 0, {}, request_id, 10, 4, lambda: None)
+    candidate = {"summary": "historical synthetic report"}
+    import json
+
+    assert store.commit_response(
+        fence,
+        step,
+        {"role": "assistant", "content": json.dumps(candidate)},
+        request_id=request_id,
+    )
+    assert store.publish(fence, candidate, step=step)
+    with ledger._transaction() as conn:
+        before = conn.execute(
+            "SELECT * FROM m0_v3_report WHERE run_id=%s", (run.run_id,)
+        ).fetchone()
+    assert store.summary(subject)["state"]["published"] is True
+    assert store.control(subject, 0, action) == 1
+    assert store.summary(subject)["state"]["published"] is False
+    assert not store.publish(fence, candidate, step=step)
+    with ledger._transaction() as conn:
+        after = conn.execute(
+            "SELECT * FROM m0_v3_report WHERE run_id=%s", (run.run_id,)
+        ).fetchone()
+        current = conn.execute(
+            "SELECT state,generation,final FROM m0_v3_subject WHERE id=%s", (subject,)
+        ).fetchone()
+    assert after == before
+    assert current == {
+        "state": "cancelled" if action == "cancel" else "waiting_human",
+        "generation": 1,
+        "final": None,
+    }
+    fresh = replace(run, run_id=uuid4())
+    store.new_run(subject, 1, fresh, {"business": "allowed follow-up"}, VERSION)
+    assert store.claim(subject, fresh, uuid4(), VERSION).generation == 2
+    assert store.summary(subject)["state"]["published"] is False

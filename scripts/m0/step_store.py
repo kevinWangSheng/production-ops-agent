@@ -228,7 +228,7 @@ class StepStore:
         with self.ledger._transaction() as conn:
             self._lock(conn, subject)
             row = conn.execute(
-                "UPDATE m0_v3_subject SET generation=generation+1,state=%s WHERE id=%s AND generation=%s RETURNING generation",
+                "UPDATE m0_v3_subject SET generation=generation+1,state=%s,final=NULL WHERE id=%s AND generation=%s RETURNING generation",
                 (
                     "cancelled" if action == "cancel" else "waiting_human",
                     subject,
