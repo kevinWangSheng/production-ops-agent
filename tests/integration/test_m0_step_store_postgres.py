@@ -853,3 +853,40 @@ def test_control_clears_active_final_and_preserves_report_history(lab, action):
     store.new_run(subject, 1, fresh, {"business": "allowed follow-up"}, VERSION)
     assert store.claim(subject, fresh, uuid4(), VERSION).generation == 2
     assert store.summary(subject)["state"]["published"] is False
+
+
+def test_new_run_empty_versions_rejects_without_any_durable_transition(lab):
+    store, ledger, run, subject = lab
+    old = store.claim(subject, run, uuid4(), VERSION)
+    fresh = replace(run, run_id=uuid4())
+    before = store.summary(subject)
+    budget_before = ledger.snapshot(run.experiment_id)
+    with pytest.raises(BudgetError, match="INVALID_INPUT"):
+        store.new_run(subject, 0, fresh, {"business": "new request"}, {})
+    assert store.summary(subject) == before
+    assert ledger.snapshot(run.experiment_id) == budget_before
+    with ledger._transaction() as conn:
+        assert (
+            conn.execute(
+                "SELECT id FROM m0_runs WHERE id=%s", (fresh.run_id,)
+            ).fetchone()
+            is None
+        )
+        assert (
+            conn.execute(
+                "SELECT run_id FROM m0_v3_run_input WHERE run_id=%s", (fresh.run_id,)
+            ).fetchone()
+            is None
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) AS count FROM m0_v3_audit WHERE subject=%s AND event='new_run'",
+                (subject,),
+            ).fetchone()["count"]
+            == 0
+        )
+    assert store.new_run(subject, 0, fresh, {"business": "new request"}, VERSION) == 1
+    current = store.claim(subject, fresh, uuid4(), VERSION)
+    assert current.generation == 1
+    assert not store.publish(old, {}, step=uuid4())
+    assert ledger.snapshot(run.experiment_id) == budget_before

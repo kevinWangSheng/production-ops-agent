@@ -83,3 +83,5 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 公共交付真实性不依赖最终报告是否可解析：每条已有Delivery均绑定actual input；已有ReportCapture须绑定身份、原文/hash、唯一已提交Delivery和响应时钟。没有请求/采集的合法handoff不补造记录；报告解析、声明和时效资格仍按其适用前提检查。
 
 初始证据的采集时钟逐字段与原raw精确一致，原值缺失/null不能由bundle补齐，已知原值不能擦为None；unknown来源时间不得带无依据边界。CLI完整审计输出以原子独占方式创建为0600，保留已有文件及符号链接，不依赖调用者默认umask。
+
+new_run边界：接收/新建/领取都在事务前验证非空版本映射，非法快照不得写入或推进控制版本；最后接受事件为new_run时，cancelled/waiting_human须有后续cancel/correct来源，不能继承旧Run人控状态。合法运行终态仍按各自证据检查。

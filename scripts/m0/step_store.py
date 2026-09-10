@@ -54,8 +54,24 @@ class StepStore:
         fn = "pg_advisory_lock" if session else "pg_advisory_xact_lock"
         conn.execute(f"SELECT {fn}(hashtextextended(%s,0))", (str(subject),))
 
+    @staticmethod
+    def _validate_versions(versions):
+        if (
+            not isinstance(versions, dict)
+            or not versions
+            or any(
+                not isinstance(key, str)
+                or not key
+                or not isinstance(value, str)
+                or not value
+                for key, value in versions.items()
+            )
+        ):
+            raise BudgetError("INVALID_INPUT")
+
     def accept(self, run, key, initial, versions):
-        if not key or not versions:
+        self._validate_versions(versions)
+        if not key:
             raise BudgetError("INVALID_INPUT")
         with self.ledger._transaction() as conn:
             exp = self.ledger._experiment(conn, run.experiment_id)
@@ -114,6 +130,7 @@ class StepStore:
 
         Never copies old protocol columns. Old run input/steps/budget remain.
         """
+        self._validate_versions(versions)
         with self.ledger._transaction() as conn:
             self._lock(conn, subject)
             row = conn.execute(
@@ -149,6 +166,7 @@ class StepStore:
         return expected_generation + 1
 
     def claim(self, subject, run, owner, versions, lease_seconds=30):
+        self._validate_versions(versions)
         if not isinstance(owner, UUID) or not 0 < lease_seconds <= 300:
             raise BudgetError("INVALID_INPUT")
         incompatible = False

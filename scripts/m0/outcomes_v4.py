@@ -612,6 +612,8 @@ def check_outcome(scenario, outcome):
     required_state = {"cancel": "cancelled", "correct": "waiting_human"}.get(last)
     if required_state and facts.execution != required_state:
         errors.add("CONTROL_STATE_MISMATCH")
+    if last == "new_run" and facts.execution in {"cancelled", "waiting_human"}:
+        errors.add("CONTROL_STATE_MISMATCH")
     if required_state and report is not None:
         errors.add("CONTROL_REPORT_NOT_AUTHORIZED")
     for delivery in facts.deliveries:

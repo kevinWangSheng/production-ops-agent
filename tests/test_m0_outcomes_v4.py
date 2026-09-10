@@ -525,3 +525,48 @@ def test_reportless_capture_conditional_delivery_proof(failure):
     assert expected in checked(scenario, outcome)
     if failure == "none":
         assert checked(scenario, outcome) == ["MISSING_REPORT_OR_HANDOFF"]
+
+
+@pytest.mark.parametrize("execution", ["cancelled", "waiting_human"])
+def test_latest_new_run_cannot_retain_preceding_human_control_state(execution):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["execution"] = outcome["execution"] = execution
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "execution",
+    ["running", "paused", "blocked", "failed", "budget_exhausted", "completed"],
+)
+def test_latest_new_run_allows_runtime_progress_and_terminal_results(execution):
+    scenario, outcome = (
+        strict_packet() if execution == "completed" else reportless_packet()
+    )
+    scenario["trusted"]["execution"] = outcome["execution"] = execution
+    assert checked(scenario, outcome) == []
+
+
+@pytest.mark.parametrize(
+    "action,state", [("cancel", "cancelled"), ("correct", "waiting_human")]
+)
+def test_new_run_followed_by_human_control_accepts_the_controlled_state(action, state):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": action, "at": "2026-09-10T00:04:00Z"}
+    )
+    scenario["trusted"].update(final_generation=2, execution=state)
+    outcome.update(control_generation=2, execution=state)
+    assert checked(scenario, outcome) == []
+
+
+@pytest.mark.parametrize("prior", ["cancel", "correct"])
+def test_human_control_followed_by_new_run_allows_completion(prior):
+    scenario, outcome = strict_packet()
+    scenario["trusted"]["controls"][0]["action"] = prior
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": "new_run", "at": "2026-09-10T00:02:00Z"}
+    )
+    scenario["trusted"]["final_generation"] = outcome["control_generation"] = 2
+    scenario["trusted"]["report_capture"]["control_generation"] = 2
+    scenario["trusted"]["deliveries"][0]["control_generation"] = 2
+    assert checked(scenario, outcome) == []
