@@ -32,7 +32,7 @@ ENV_ROOT = Path("/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment
 LEDGER = ENV_ROOT / "tmp/m0-environment/m0-02-request-ledger.json"
 VERSIONS = {
     "state": "m0-step-v3",
-    "adapter": "pg-private-pipe-v2-content-normalization",
+    "adapter": "pg-private-pipe-v3-atomic-send-grant",
     "tool": "read_fixture-v1",
     "model": "deepseek-v4-flash",
 }

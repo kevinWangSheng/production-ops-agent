@@ -256,6 +256,7 @@ class StepStore:
         starter,
         *,
         before_lock=None,
+        _prepare_only=False,
     ):
         """Atomically prepare snapshot/reservation, then initiate under control lock.
 
@@ -273,6 +274,7 @@ class StepStore:
             or not segment
             or type(max_requests) is not int
             or max_requests <= 0
+            or type(_prepare_only) is not bool
         ):
             raise BudgetError("INVALID_INPUT")
         step = uuid5(fence.run.run_id, f"{segment}:{round_number}")
@@ -332,12 +334,17 @@ class StepStore:
                         "INSERT INTO m0_v3_model_execution VALUES(%s,%s,%s,%s)",
                         (request_id, fence.generation, fence.owner, fence.epoch),
                     )
+                    if _prepare_only:
+                        conn.execute(
+                            "INSERT INTO m0_v3_send_grant(request) VALUES(%s)",
+                            (request_id,),
+                        )
                 # The durable request now exists. A crash here leaves reserved;
                 # neither this API nor recovery reuses its send permission.
                 conn.autocommit = True
                 if not self._valid(conn, fence):
                     raise BudgetError("CONTROL_DENIED")
-                handle = starter()
+                handle = None if _prepare_only else starter()
                 conn.execute(
                     "SELECT pg_advisory_unlock(hashtextextended(%s,0))",
                     (str(fence.subject),),
@@ -426,11 +433,8 @@ class StepStore:
             reserved,
             max_requests,
             lambda: None,
+            _prepare_only=True,
         )
-        with self.ledger._transaction() as conn:
-            conn.execute(
-                "INSERT INTO m0_v3_send_grant(request) VALUES(%s)", (request_id,)
-            )
         return step
 
     @contextmanager
@@ -546,6 +550,12 @@ class StepStore:
                 ).fetchone()
                 if attempt is None:
                     raise BudgetError("UNKNOWN_MODEL_ATTEMPT")
+                grant = conn.execute(
+                    "SELECT claimed FROM m0_v3_send_grant WHERE request=%s",
+                    (request_id,),
+                ).fetchone()
+                if grant is not None and not grant["claimed"]:
+                    raise BudgetError("MODEL_REQUEST_NOT_INITIATED")
                 row = conn.execute(
                     "SELECT * FROM m0_v3_step WHERE id=%s AND subject=%s AND run_id=%s FOR UPDATE",
                     (step, fence.subject, fence.run.run_id),
@@ -688,7 +698,8 @@ class StepStore:
                 try:
                     response = row["response"]
                     valid = (
-                        not response.get("tool_calls")
+                        isinstance(response, dict)
+                        and not response.get("tool_calls")
                         and json.loads(response["content"]) == candidate
                     )
                 except (KeyError, TypeError, ValueError):

@@ -130,3 +130,9 @@ PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree
 全新上下文[最终入口审查](../evidence/m0-real-investigation/round-02-final-entry-v4-review.md)亲核31份manifest/raw/view hash、两次真实最终delivery及报告/legacy保真，并核当前四源码hash。有限核心定位成立，但实际事实错误仍可复现；v4只有离线/替身证据，M1仍not cleared。当前入口导航已指向该最新判断，前一entry-review文件保留历史。下一步完成本组提交、最新CI及适用Code/Security审查；不自动合并。
 
 联合离线候选[源码清单](../evidence/m0-real-environment/round-02-pr16-v4-offline-source-manifest.json)保全12个必要Python源、5份schema及6项依赖/审查引用；root逐项验证23项当前文件及对应snapshot hash一致。原快照未覆盖，明确不是实际Run。完整回放仍ignored、Git只含安全摘要；旧预算/PG/产品passes未改。本组待批量推送后的最新CI与Code/Security结果仍按PR确认，不能用离线终审替代。
+
+## PR16 发送许可后续修复
+
+aa485f9的CI checks/m0-postgres均SUCCESS（run34449729273）；07:30Z Code Review3976615675指出未领取send_grant仍可提交响应。独立真实PG复现并发现prepare两事务窗口；[修复](../evidence/m0-real-investigation/round-02-pr16-send-grant-fix.md)把grant与dispatch/预留原子提交，采纳要求已有grant已领取，保留直接路径合同。[独立复验](../evidence/m0-real-investigation/round-02-send-grant-review.md)24项PG及6个自写实验通过，历史真实两请求只读查到claimed/response/execution相容；这不是新真实模型验证。adapter标识同步pg-private-pipe-v3-atomic-send-grant，原code/profile hash门槛本已存在，10项离线检查及actual execute到claim替身验证版本传递。旧无grant歧义记录不回写，不授权静默续跑。
+
+root检查425 passed/41 PG默认skip（13.92s）；审查文档Python示例格式失败原输出与原文已保留，格式前后AST相同。随后专属PG已再次停止，见[停止记录](../evidence/m0-real-investigation/round-02-send-grant-pg-stop.json)；模型/trace新增0，原账本、v4报告源、旧schema/工件不变。此项待推送最新CI/Code/Security复审；此前六项发现已有修复/独立证据，不因安全审查长期无确认就视为通过。

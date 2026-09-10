@@ -636,3 +636,177 @@ def test_new_run_has_own_limits_without_resetting_experiment_budget(lab):
         ).fetchone()["deadline"]
     assert (count, queries) == (5, 21)
     assert deadline == run.deadline == fresh.deadline
+
+
+def test_prepared_unclaimed_request_cannot_commit_or_publish(lab):
+    store, ledger, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    request_id = uuid4()
+    step = store.prepare_request(fence, "unclaimed", 0, {}, request_id, 10, 4)
+    with pytest.raises(BudgetError, match="MODEL_REQUEST_NOT_INITIATED"):
+        store.commit_response(
+            fence,
+            step,
+            {"role": "assistant", "content": '{"ok":true}'},
+            request_id=request_id,
+        )
+    with pytest.raises(BudgetError, match="UNCOMMITTED_CANDIDATE"):
+        store.publish(fence, {"ok": True}, step=step)
+    assert store.rebuild(fence, step)["status"] == "retry_model"
+    assert ledger.snapshot(run.experiment_id)["reserved"] == 10
+
+
+def test_failed_prepare_grant_insert_leaves_no_direct_dispatch_lookalike(
+    lab, monkeypatch
+):
+    from contextlib import contextmanager
+
+    import psycopg
+
+    import scripts.m0.step_store as module
+
+    store, ledger, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    request_id = uuid4()
+    connect = module.psycopg.connect
+
+    class FailGrant:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __getattr__(self, key):
+            return getattr(self.conn, key)
+
+        @property
+        def autocommit(self):
+            return self.conn.autocommit
+
+        @autocommit.setter
+        def autocommit(self, value):
+            self.conn.autocommit = value
+
+        def execute(self, sql, params=None):
+            if "INSERT INTO m0_v3_send_grant" in sql:
+                raise psycopg.OperationalError("synthetic grant persistence failure")
+            return self.conn.execute(sql, params)
+
+    @contextmanager
+    def failing_connect(*args, **kwargs):
+        with connect(*args, **kwargs) as conn:
+            yield FailGrant(conn)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module.psycopg, "connect", failing_connect)
+        with pytest.raises(BudgetError, match="STORAGE_UNAVAILABLE"):
+            store.prepare_request(fence, "atomic-grant", 0, {}, request_id, 10, 4)
+    with ledger._transaction() as conn:
+        dispatches = conn.execute(
+            "SELECT count(*) AS n FROM m0_v3_dispatch WHERE request=%s", (request_id,)
+        ).fetchone()["n"]
+        grants = conn.execute(
+            "SELECT count(*) AS n FROM m0_v3_send_grant WHERE request=%s", (request_id,)
+        ).fetchone()["n"]
+    assert (dispatches, grants, ledger.snapshot(run.experiment_id)["reserved"]) == (
+        0,
+        0,
+        0,
+    )
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_claimed_prepare_and_direct_dispatch_both_can_commit_and_publish(lab, prepared):
+    from scripts.m0.step_store import digest
+
+    store, _, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    request_id = uuid4()
+    if prepared:
+        step = store.prepare_request(fence, "positive", 0, {}, request_id, 10, 4)
+        with store.send_guard(fence, request_id, input_hash=digest({})) as (
+            release,
+            check,
+        ):
+            check()
+            release()  # Simulated initiation, never a provider request.
+    else:
+        step, _ = store.dispatch(
+            fence, "positive", 0, {}, request_id, 10, 4, lambda: None
+        )
+    assert store.commit_response(
+        fence,
+        step,
+        {"role": "assistant", "content": '{"ok":true}'},
+        request_id=request_id,
+    )
+    assert store.publish(fence, {"ok": True}, step=step)
+
+
+def test_claimed_grant_never_replaces_latest_attempt_or_fence(lab):
+    from scripts.m0.step_store import digest
+
+    store, _, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    first, latest = uuid4(), uuid4()
+    step = store.prepare_request(fence, "fences", 0, {}, first, 10, 4)
+    with store.send_guard(fence, first, input_hash=digest({})) as (release, check):
+        check()
+        release()
+    store.prepare_request(fence, "fences", 0, {}, latest, 10, 4)
+    assistant = {"role": "assistant", "content": '{"ok":true}'}
+    with pytest.raises(BudgetError, match="UNKNOWN_MODEL_ATTEMPT"):
+        store.commit_response(fence, step, assistant, request_id=first)
+    with store.send_guard(fence, latest, input_hash=digest({})) as (release, check):
+        check()
+        release()
+    for wrong in (
+        replace(fence, run=replace(run, run_id=uuid4())),
+        replace(fence, owner=uuid4()),
+        replace(fence, epoch=fence.epoch + 1),
+        replace(fence, generation=fence.generation + 1),
+    ):
+        assert not store.commit_response(wrong, step, assistant, request_id=latest)
+    assert store.commit_response(fence, step, assistant, request_id=latest)
+    with store.ledger._transaction() as conn:
+        conn.execute(
+            "UPDATE m0_v3_subject SET lease_until=clock_timestamp()-interval '1 second' WHERE id=%s",
+            (subject,),
+        )
+    assert not store.commit_response(fence, step, assistant, request_id=latest)
+    assert not store.publish(fence, {"ok": True}, step=step)
+
+
+def child_crash_after_prepare(run, subject, request_id, output):
+    store = StepStore(PostgresBudget(DSN))
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    step = store.prepare_request(fence, "crashed-prepare", 0, {}, request_id, 10, 4)
+    output.put((fence, step))
+    output.close()
+    output.join_thread()
+    os._exit(23)
+
+
+def test_process_exit_after_prepare_preserves_unclaimed_barrier(lab):
+    store, ledger, run, subject = lab
+    request_id = uuid4()
+    output = CTX.Queue()
+    child = CTX.Process(
+        target=child_crash_after_prepare, args=(run, subject, request_id, output)
+    )
+    child.start()
+    fence, step = output.get(timeout=10)
+    child.join(10)
+    assert child.exitcode == 23
+    with ledger._transaction() as conn:
+        row = conn.execute(
+            "SELECT g.claimed FROM m0_v3_dispatch d JOIN m0_v3_send_grant g ON g.request=d.request WHERE d.request=%s",
+            (request_id,),
+        ).fetchone()
+    assert row == {"claimed": False}
+    with pytest.raises(BudgetError, match="MODEL_REQUEST_NOT_INITIATED"):
+        store.commit_response(
+            fence,
+            step,
+            {"role": "assistant", "content": '{"ok":true}'},
+            request_id=request_id,
+        )
+    assert ledger.snapshot(run.experiment_id)["reserved"] == 10
