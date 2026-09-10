@@ -79,3 +79,5 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 本轮取得主动正常/故障 JSON 报告、有限核心结论、真实 PG 跨进程组合及多项确定性机制证据；但 fault/normal03 的独立完整报告质量均 FAIL，最新 view 修复仅离线；v4/v2新协议也尚无真实模型复验。因此本轮不满足上述入口，不写 feature passes=true、不启动 M1。下一项只做报告事实与实际可见证据的有界复验，保留本轮失败；新模型执行仍需新的明确次数/费用授权。
 
 严格入口必须具备原始操作员输入、实际送模输入及各自精确hash；缺失/空/损坏来源记录不得跳过验证。缺失事实可保留在审计packet中，但不能获得合同一致结论，直接checker及investigator_input导出同样执行该约束；旧schema和历史工件不改写。
+
+公共交付真实性不依赖最终报告是否可解析：每条已有Delivery均绑定actual input；已有ReportCapture须绑定身份、原文/hash、唯一已提交Delivery和响应时钟。没有请求/采集的合法handoff不补造记录；报告解析、声明和时效资格仍按其适用前提检查。

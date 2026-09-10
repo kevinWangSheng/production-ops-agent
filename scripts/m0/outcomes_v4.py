@@ -615,6 +615,22 @@ def check_outcome(scenario, outcome):
     if required_state and report is not None:
         errors.add("CONTROL_REPORT_NOT_AUTHORIZED")
     for delivery in facts.deliveries:
+        if initial.actual_user_content is not None:
+            try:
+                business = json.loads(delivery.business_projection_content)
+                if delivery.business_projection == "envelope-v1":
+                    inputs = [business.get("actual_user_content")]
+                else:
+                    inputs = [
+                        m.get("content")
+                        for m in business
+                        if m.get("role") == "user"
+                        and m.get("content") == initial.actual_user_content
+                    ]
+                if inputs != [initial.actual_user_content]:
+                    errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
+            except (ValueError, TypeError, AttributeError):
+                errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
         if not _context_in_payload(delivery):
             errors.add("CONTEXT_NOT_DELIVERED")
         errors |= context_errors(
@@ -632,44 +648,31 @@ def check_outcome(scenario, outcome):
             and delivery.response_received_at > facts.evaluation_at
         ):
             errors.add("DELIVERY_TIME_MISMATCH")
-    if report is None:
-        if (
-            outcome.execution == "completed"
-            or outcome.report_content is not None
-            or outcome.report_content_sha256 is not None
-            or not outcome.handoff
-            or not outcome.handoff_reasons
-        ):
-            errors.add("MISSING_REPORT_OR_HANDOFF")
-        return sorted(errors)
     capture = facts.report_capture
-    if capture is None or (
-        capture.run_id,
-        capture.step_id,
-        capture.request_id,
-        capture.control_generation,
-    ) != (
-        outcome.run_id,
-        outcome.report_step_id,
-        outcome.report_request_id,
-        outcome.control_generation,
+    if (outcome.report_content is None) != (outcome.report_content_sha256 is None) or (
+        outcome.report_content is not None
+        and content_hash(outcome.report_content) != outcome.report_content_sha256
     ):
         errors.add("REPORT_OUTPUT_BINDING_MISMATCH")
-    elif (
-        capture.content != outcome.report_content
-        or capture.content_sha256 != content_hash(capture.content)
-        or outcome.report_content_sha256 != capture.content_sha256
-    ):
-        errors.add("REPORT_OUTPUT_BINDING_MISMATCH")
-    from scripts.m0_environment.report_contract import parse_report
-
-    try:
-        if parse_report(
-            outcome.report_content or "", version="m0-report-v2"
-        ) != report.model_dump(mode="json"):
-            errors.add("REPORT_CONTENT_MISMATCH")
-    except ValueError:
-        errors.add("REPORT_CONTENT_MISMATCH")
+    if report is not None or capture is not None:
+        if capture is None or (
+            capture.run_id,
+            capture.step_id,
+            capture.request_id,
+            capture.control_generation,
+        ) != (
+            outcome.run_id,
+            outcome.report_step_id,
+            outcome.report_request_id,
+            outcome.control_generation,
+        ):
+            errors.add("REPORT_OUTPUT_BINDING_MISMATCH")
+        elif (
+            capture.content != outcome.report_content
+            or capture.content_sha256 != content_hash(capture.content)
+            or outcome.report_content_sha256 != capture.content_sha256
+        ):
+            errors.add("REPORT_OUTPUT_BINDING_MISMATCH")
     matching = [
         d
         for d in facts.deliveries
@@ -682,26 +685,38 @@ def check_outcome(scenario, outcome):
             "response_committed",
         )
     ]
-    if len(matching) != 1:
+    delivery = matching[0] if len(matching) == 1 else None
+    if (report is not None or capture is not None) and delivery is None:
         errors.add("REPORT_DELIVERY_MISMATCH")
+    if capture is not None and delivery is not None:
+        if (
+            capture.response_received_at is None
+            or delivery.response_received_at is None
+        ):
+            errors.add("REPORT_TIME_UNKNOWN")
+        elif capture.response_received_at != delivery.response_received_at:
+            errors.add("REPORT_TIME_MISMATCH")
+    if report is None:
+        if (
+            outcome.execution == "completed"
+            or outcome.report_content is not None
+            or outcome.report_content_sha256 is not None
+            or not outcome.handoff
+            or not outcome.handoff_reasons
+        ):
+            errors.add("MISSING_REPORT_OR_HANDOFF")
         return sorted(errors)
-    delivery = matching[0]
-    if initial.actual_user_content is not None:
-        try:
-            business = json.loads(delivery.business_projection_content)
-            if delivery.business_projection == "envelope-v1":
-                inputs = [business.get("actual_user_content")]
-            else:
-                inputs = [
-                    m.get("content")
-                    for m in business
-                    if m.get("role") == "user"
-                    and m.get("content") == initial.actual_user_content
-                ]
-            if inputs != [initial.actual_user_content]:
-                errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
-        except (ValueError, TypeError, AttributeError):
-            errors.add("ACTUAL_INITIAL_INPUT_NOT_DELIVERED")
+    from scripts.m0_environment.report_contract import parse_report
+
+    try:
+        if parse_report(
+            outcome.report_content or "", version="m0-report-v2"
+        ) != report.model_dump(mode="json"):
+            errors.add("REPORT_CONTENT_MISMATCH")
+    except ValueError:
+        errors.add("REPORT_CONTENT_MISMATCH")
+    if delivery is None:
+        return sorted(errors)
     if (
         not delivery.dispatch_started_at
         or not delivery.response_received_at
@@ -716,8 +731,6 @@ def check_outcome(scenario, outcome):
         == capture.response_received_at
         <= facts.evaluation_at
     ):
-        errors.add("REPORT_TIME_MISMATCH")
-    if capture and capture.response_received_at != delivery.response_received_at:
         errors.add("REPORT_TIME_MISMATCH")
     errors.update(validate_report_context(report, delivery.context))
     policies = {p.id: p for p in facts.time_policies}

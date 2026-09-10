@@ -415,3 +415,113 @@ def test_missing_original_provenance_cannot_export_investigator_input():
     parsed = v4.IncidentScenario.model_validate_json(json.dumps(scenario))
     with pytest.raises(ValueError, match="INITIAL_CONTEXT_INVALID"):
         parsed.investigator_input()
+
+
+def reportless_packet(*, captured=False):
+    scenario, outcome = strict_packet()
+    scenario["trusted"]["execution"] = outcome["execution"] = "blocked"
+    outcome.update(
+        report=None,
+        evidence_ids=[],
+        handoff=True,
+        handoff_reasons=["Human review required"],
+    )
+    if not captured:
+        scenario["trusted"]["report_capture"] = None
+        scenario["trusted"]["evaluation_at"] = None
+        outcome.update(
+            report_content=None,
+            report_content_sha256=None,
+            report_step_id=None,
+            report_request_id=None,
+        )
+    return scenario, outcome
+
+
+@pytest.mark.parametrize("state", ["prepared", "dispatched", "response_committed"])
+@pytest.mark.parametrize("input_kind", ["valid", "missing", "wrong"])
+def test_reportless_payload_input_binding_applies_to_every_delivery(state, input_kind):
+    import json
+
+    from scripts.m0 import outcomes_v4 as v4
+
+    scenario, outcome = reportless_packet()
+    delivery = scenario["trusted"]["deliveries"][0]
+    delivery["state"] = state
+    delivery["response_received_at"] = None
+    delivery["dispatch_started_at"] = (
+        None if state == "prepared" else delivery["dispatch_started_at"]
+    )
+    payload = json.loads(delivery["business_projection_content"])
+    if input_kind == "missing":
+        payload.pop("actual_user_content")
+    elif input_kind == "wrong":
+        payload["actual_user_content"] = "substituted query"
+    content = json.dumps(payload)
+    delivery.update(
+        business_projection_content=content,
+        business_projection_hash=v4.content_hash(content),
+        full_wire_hash=v4.content_hash(content),
+    )
+    errors = checked(scenario, outcome)
+    if input_kind == "valid":
+        assert errors == []
+    else:
+        assert "ACTUAL_INITIAL_INPUT_NOT_DELIVERED" in errors
+
+
+def test_reportless_no_delivery_handoff_does_not_require_a_physical_request():
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["deliveries"] = []
+    outcome["evidence_ids"] = []
+    assert checked(scenario, outcome) == []
+
+
+@pytest.mark.parametrize("failure", ["hash", "request", "time", "raw_hash"])
+def test_reportless_capture_is_still_bound_and_audited(failure):
+    scenario, outcome = reportless_packet(captured=True)
+    capture = scenario["trusted"]["report_capture"]
+    if failure == "hash":
+        capture["content_sha256"] = "a" * 64
+    elif failure == "request":
+        capture["request_id"] = "other-attempt"
+    elif failure == "time":
+        capture["response_received_at"] = "2026-09-10T00:03:09Z"
+    else:
+        outcome["report_content_sha256"] = "b" * 64
+    expected = (
+        "REPORT_TIME_MISMATCH"
+        if failure == "time"
+        else "REPORT_OUTPUT_BINDING_MISMATCH"
+    )
+    assert expected in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "none",
+        "missing_capture_time",
+        "missing_delivery_time",
+        "wrong_generation",
+        "noncommitted",
+    ],
+)
+def test_reportless_capture_conditional_delivery_proof(failure):
+    scenario, outcome = reportless_packet(captured=True)
+    expected = "MISSING_REPORT_OR_HANDOFF"
+    if failure == "missing_capture_time":
+        scenario["trusted"]["report_capture"]["response_received_at"] = None
+        expected = "REPORT_TIME_UNKNOWN"
+    elif failure == "missing_delivery_time":
+        scenario["trusted"]["deliveries"][0]["response_received_at"] = None
+        expected = "REPORT_TIME_UNKNOWN"
+    elif failure == "wrong_generation":
+        scenario["trusted"]["report_capture"]["control_generation"] = 0
+        expected = "REPORT_OUTPUT_BINDING_MISMATCH"
+    elif failure == "noncommitted":
+        scenario["trusted"]["deliveries"][0]["state"] = "dispatched"
+        expected = "REPORT_DELIVERY_MISMATCH"
+    assert expected in checked(scenario, outcome)
+    if failure == "none":
+        assert checked(scenario, outcome) == ["MISSING_REPORT_OR_HANDOFF"]

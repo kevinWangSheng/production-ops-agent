@@ -793,3 +793,48 @@ def test_cli_strict_input_provenance_is_required(request, mode, failure):
     assert (
         saved["captured_artifacts"] == 1 and saved["assessment_status"] == "completed"
     )
+
+
+@pytest.mark.parametrize("state", ["prepared", "dispatched", "response_committed"])
+@pytest.mark.parametrize("input_kind", ["valid", "missing", "wrong"])
+def test_reportless_holmes_business_payload_still_binds_actual_input(
+    strict_captured, state, input_kind
+):
+    run, code = strict_captured
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    s, o = scenario.model_dump(mode="json"), outcome.model_dump(mode="json")
+    s["trusted"].update(execution="blocked", report_capture=None, evaluation_at=None)
+    o.update(
+        execution="blocked",
+        report=None,
+        report_content=None,
+        report_content_sha256=None,
+        report_step_id=None,
+        report_request_id=None,
+        evidence_ids=[],
+        handoff=True,
+        handoff_reasons=["Review"],
+    )
+    delivery = s["trusted"]["deliveries"][0]
+    delivery.update(state=state, response_received_at=None)
+    if state == "prepared":
+        delivery["dispatch_started_at"] = None
+    messages = json.loads(delivery["business_projection_content"])
+    actual = s["agent_input"]["actual_user_content"]
+    if input_kind == "missing":
+        messages = [m for m in messages if m.get("content") != actual]
+    elif input_kind == "wrong":
+        for message in messages:
+            if message.get("content") == actual:
+                message["content"] = "Different input"
+    delivery.update(
+        business_projection_content=bridge.canonical(messages),
+        business_projection_hash=bridge.canonical_hash(messages),
+    )
+    errors = v4.check_outcome(
+        v4.IncidentScenario.model_validate_json(json.dumps(s)),
+        v4.IncidentOutcome.model_validate_json(json.dumps(o)),
+    )
+    assert errors == (
+        [] if input_kind == "valid" else ["ACTUAL_INITIAL_INPUT_NOT_DELIVERED"]
+    )
