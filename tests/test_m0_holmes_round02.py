@@ -451,7 +451,10 @@ def test_actual_dsml_content_is_not_a_final_report():
     actual = json.loads(fixture.read_text())
     with pytest.raises(ValueError, match="tool protocol"):
         validate_report(
-            actual["final_business_content"], actual["finish_reason"], set()
+            actual["final_business_content"],
+            actual["finish_reason"],
+            set(),
+            version="m0-report-v1",
         )
 
 
@@ -487,8 +490,8 @@ def test_final_wire_preserves_all_private_protocol_and_closes_collection():
             "function": {"name": "otel_logs", "parameters": {"type": "object"}},
         }
     ]
-    assert prepare_wire(raw, schemas, False) == raw
-    final = json.loads(prepare_wire(raw, schemas, True))
+    assert prepare_wire(raw, schemas, False, version="m0-report-v1") == raw
+    final = json.loads(prepare_wire(raw, schemas, True, version="m0-report-v1"))
     assert final["messages"][:-1] == original["messages"]
     assert final["messages"][0]["reasoning_content"] == "synthetic-private"
     assert "tools" not in final and "tool_choice" not in final
@@ -505,9 +508,15 @@ def test_valid_partial_and_incomplete_reports_are_allowed():
     from scripts.m0_environment.report_contract import validate_report
 
     report = report_example()
-    assert validate_report(json.dumps(report), "stop", {"r-e1"}) == report
+    assert (
+        validate_report(json.dumps(report), "stop", {"r-e1"}, version="m0-report-v1")
+        == report
+    )
     report.update(assessment_status="incomplete", conclusion="inconclusive", claims=[])
-    assert validate_report(json.dumps(report), "stop", set()) == report
+    assert (
+        validate_report(json.dumps(report), "stop", set(), version="m0-report-v1")
+        == report
+    )
 
 
 @pytest.mark.parametrize(
@@ -525,7 +534,7 @@ def test_invalid_report_contracts_fail_closed(mutation):
     report = report_example()
     mutation(report)
     with pytest.raises(ValueError):
-        validate_report(json.dumps(report), "stop", {"r-e1"})
+        validate_report(json.dumps(report), "stop", {"r-e1"}, version="m0-report-v1")
 
 
 @pytest.mark.parametrize(
@@ -535,7 +544,7 @@ def test_empty_length_and_non_json_never_become_returned(content, finish):
     from scripts.m0_environment.report_contract import validate_report
 
     with pytest.raises(ValueError):
-        validate_report(content, finish, set())
+        validate_report(content, finish, set(), version="m0-report-v1")
 
 
 def test_actual_counter_view_exposes_time_semantics_without_rewriting_query():

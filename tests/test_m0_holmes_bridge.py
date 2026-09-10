@@ -161,7 +161,7 @@ def captured(tmp_path, monkeypatch):
 
 def test_real_shape_bridge_uses_only_last_request_and_initial_request(captured):
     run, code = captured
-    s, o = bridge.load_packet(run, projection_source_sha256=code)
+    s, o = bridge.load_legacy_packet(run, projection_source_sha256=code)
     assert check_outcome(s, o) == []
     assert s.investigator_input().initial_views == []
     assert o.report_request_id == "case-01:http:2"
@@ -173,7 +173,7 @@ def test_real_shape_bridge_uses_only_last_request_and_initial_request(captured):
 
 def test_integration_evidence_cannot_prove_instance_fact(captured):
     run, code = captured
-    s, o = bridge.load_packet(run, projection_source_sha256=code)
+    s, o = bridge.load_legacy_packet(run, projection_source_sha256=code)
     claim = o.claims[0].model_copy(update={"target": o.subject.target})
     altered = o.model_copy(update={"claims": [claim]})
     assert "CLAIM_TARGET_NOT_OBSERVED" in check_outcome(s, altered)
@@ -181,7 +181,7 @@ def test_integration_evidence_cannot_prove_instance_fact(captured):
 
 def test_other_physical_attempt_not_union_visible(captured):
     run, code = captured
-    s, o = bridge.load_packet(run, projection_source_sha256=code)
+    s, o = bridge.load_legacy_packet(run, projection_source_sha256=code)
     altered = o.model_copy(update={"report_request_id": "case-01:http:1"})
     assert "EVIDENCE_NOT_VISIBLE" in check_outcome(s, altered)
     duplicate = s.model_copy(
@@ -240,12 +240,12 @@ def test_tampering_and_unclosed_reports_rejected(captured, change):
         response["choices"][0]["content"] = content
         save(run / "response-2-business.json", response)
     with pytest.raises(ValueError):
-        bridge.load_packet(run, projection_source_sha256=code)
+        bridge.load_legacy_packet(run, projection_source_sha256=code)
 
 
 def test_nested_telemetry_id_is_not_a_registered_operation(captured):
     run, code = captured
-    s, o = bridge.load_packet(run, projection_source_sha256=code)
+    s, o = bridge.load_legacy_packet(run, projection_source_sha256=code)
     assert "fabricated" not in o.evidence_ids
     messages = json.loads(s.trusted.deliveries[0].business_projection_content)
     registered = {"case-01-e1": json.loads(s.trusted.deliveries[0].views[0].content)}
@@ -255,7 +255,7 @@ def test_nested_telemetry_id_is_not_a_registered_operation(captured):
 
 def test_action_observation_does_not_invent_backend_execution(captured):
     run, code = captured
-    scenario, _ = bridge.load_packet(run, projection_source_sha256=code)
+    scenario, _ = bridge.load_legacy_packet(run, projection_source_sha256=code)
     action = scenario.trusted.observed_actions[0]
     assert action.attempted is True
     assert action.authorized is None and action.executed is None
@@ -290,7 +290,7 @@ def test_action_observation_does_not_invent_backend_execution(captured):
         deliveries[0]["messages"]
     )
     save(run / "delivered-business.json", deliveries)
-    altered, _ = bridge.load_packet(run, projection_source_sha256=code)
+    altered, _ = bridge.load_legacy_packet(run, projection_source_sha256=code)
     action = altered.trusted.observed_actions[0]
     assert (
         action.attempted is None
@@ -334,8 +334,8 @@ def test_explicit_frozen_source_survives_current_source_change(captured):
     frozen.write_bytes(bridge.SOURCE.read_bytes())
     bridge.SOURCE.write_text(bridge.SOURCE.read_text() + "\n# later runtime revision\n")
     with pytest.raises(ValueError, match="PROJECTION_CONTEXT_MISMATCH"):
-        bridge.load_packet(run, projection_source_sha256=code)
-    scenario, outcome = bridge.load_packet(
+        bridge.load_legacy_packet(run, projection_source_sha256=code)
+    scenario, outcome = bridge.load_legacy_packet(
         run, projection_source_sha256=code, projection_source_path=frozen
     )
     assert check_outcome(scenario, outcome) == []
@@ -527,7 +527,7 @@ def test_latest_frozen_dependency_bundle_through_highest_seam(captured):
     response = json.loads((run / "response-2-business.json").read_text())
     response["choices"][0]["content"] = result["final_business_content"]
     save(run / "response-2-business.json", response)
-    scenario, outcome = bridge.load_packet(
+    scenario, outcome = bridge.load_legacy_packet(
         run,
         projection_source_sha256=wrapper["sha256"],
         projection_source_path=source,

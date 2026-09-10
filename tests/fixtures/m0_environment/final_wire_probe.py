@@ -151,6 +151,8 @@ def run_case(final_content, expect_status, final_tools=False, max_steps=4):
 
         argv = [
             "holmes_baseline.py",
+            "--report-version",
+            "m0-report-v1",
             "--run-id",
             "offlinewire",
             "--phase",

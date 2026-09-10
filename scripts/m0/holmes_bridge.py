@@ -326,7 +326,7 @@ def observed_targets(view, registry, registry_hash):
     return targets
 
 
-def load_packet(
+def _load_common(
     run_dir,
     *,
     projection_source_sha256,
@@ -334,6 +334,7 @@ def load_packet(
     projection_dependencies=(),
     final_generation=0,
     controls=(),
+    report_type=ModelReport,
 ):
     """Build from one actual final closed report; quality remains independent."""
     run_dir = Path(run_dir)
@@ -386,7 +387,7 @@ def load_packet(
     ):
         raise ValueError("REPORT_REQUEST_BINDING")
     try:
-        report = ModelReport.model_validate_json(results["final_business_content"])
+        report = report_type.model_validate_json(results["final_business_content"])
     except ValueError:
         raise ValueError("FINAL_REPORT_SCHEMA_INVALID") from None
     initial = read("input-business.json")
@@ -555,10 +556,151 @@ def load_packet(
         execution="completed",
         assessment_status=report.assessment_status,
         conclusion=report.conclusion,
-        claims=[claim.model_dump() for claim in report.claims],
+        claims=[
+            {"kind": claim.kind, "text": claim.text, "evidence_ids": claim.evidence_ids}
+            for claim in report.claims
+        ],
         evidence_ids=list(actual_views),
         gaps=report.gaps,
         handoff=report.assessment_status == "incomplete",
+        health="unknown",
+    )
+    return scenario, outcome, report, config, delivered, response, results
+
+
+def load_legacy_packet(run_dir, **kwargs):
+    """Explicit historical v3 structure only; never the current strict contract."""
+    return _load_common(run_dir, **kwargs)[:2]
+
+
+def legacy_report_audit(run_dir):
+    """Preserve the whole safe historical report without inventing v2 claims."""
+    result = json.loads((Path(run_dir) / "result-business.json").read_bytes())
+    content = result.get("final_business_content")
+    parsed = None
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except ValueError:
+            pass
+    return {
+        "original_report_content": content,
+        "original_report_sha256": hashlib.sha256(content.encode()).hexdigest()
+        if isinstance(content, str)
+        else None,
+        "original_report": parsed,
+        "strict_scope": "unknown",
+        "strict_freshness": "unknown",
+        "current_acceptance_pass": False,
+    }
+
+
+def load_packet(run_dir, **kwargs):
+    """Current strict v4 entry. Old payloads require explicit legacy replay."""
+    from . import outcomes_v4 as strict
+
+    run_dir = Path(run_dir)
+
+    def read(name):
+        return json.loads((run_dir / name).read_bytes())
+
+    config = read("configuration.json")
+    if config.get("report_schema_version") != "m0-report-v2":
+        raise ValueError("LEGACY_REPORT_REQUIRES_EXPLICIT_REPLAY")
+    generation = config["trusted_access_scope"].get("control_generation")
+    if type(generation) is not int or generation < 0:
+        raise ValueError("STRICT_CONTROL_UNKNOWN")
+    kwargs["final_generation"] = generation
+    base, old_outcome, report, config, record, response, result = _load_common(
+        run_dir, report_type=strict.ModelReportV2, **kwargs
+    )
+    policies_raw = read("time-policies.json")
+    if policies_raw != config.get("time_policies") or canonical_hash(
+        policies_raw
+    ) != config.get("time_policies_sha256"):
+        raise ValueError("TIME_POLICY_FILE_MISMATCH")
+    policies = [
+        strict.TimePolicy.model_validate_json(json.dumps(p)) for p in policies_raw
+    ]
+    context_raw = record.get("evidence_context")
+    if canonical_hash(context_raw) != record.get("evidence_context_sha256"):
+        raise ValueError("CONTEXT_CAPTURE_MISMATCH")
+    context = strict.EvidenceContext.model_validate_json(json.dumps(context_raw))
+    if record.get("control_generation") != generation:
+        raise ValueError("CONTROL_CAPTURE_MISMATCH")
+    capture = strict.ReportCapture.model_validate_json(
+        json.dumps(read("report-capture-business.json"))
+    )
+    expected_step = f"{run_dir.name}:report-step:{record['request_ordinal']}"
+    if (
+        capture.run_id,
+        capture.step_id,
+        capture.request_id,
+        capture.control_generation,
+    ) != (run_dir.name, expected_step, record.get("request_id"), generation):
+        raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
+    if (
+        capture.content != result["final_business_content"]
+        or capture.content != response["choices"][0]["content"]
+    ):
+        raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
+    if result.get("final_report") != report.model_dump(mode="json"):
+        raise ValueError("REPORT_PARSED_OBJECT_MISMATCH")
+    base_delivery = base.trusted.deliveries[0]
+    delivery = strict.Delivery.model_validate_json(
+        json.dumps(
+            base_delivery.model_dump(mode="json")
+            | {
+                "request_id": record["request_id"],
+                "step_id": expected_step,
+                "context": context.model_dump(mode="json"),
+                "dispatch_started_at": record.get("dispatch_started_at"),
+                "response_received_at": record.get("response_received_at"),
+            }
+        )
+    )
+    timing_records = {
+        key: strict.TimingRecord.model_validate_json(json.dumps(value))
+        for key, value in read("evidence-timings.json").items()
+    }
+    facts = strict.TrustedFacts.model_validate(
+        base.trusted.model_dump(exclude={"deliveries"})
+        | {
+            "deliveries": [delivery],
+            "time_policies": policies,
+            "report_capture": capture,
+            "evaluation_at": capture.response_received_at,
+            "timing_records": timing_records,
+        }
+    )
+    versions = base.versions | {
+        "adapter": "holmes-v4-bridge-1",
+        "report": "m0-report-v2",
+        "temporal_policies": canonical_hash(policies_raw),
+    }
+    scenario = strict.IncidentScenario(
+        schema_version="m0-public-v4",
+        scenario_id=base.scenario_id,
+        versions=versions,
+        agent_input=strict.AgentInput.model_validate(base.agent_input.model_dump()),
+        trusted=facts,
+    )
+    outcome = strict.IncidentOutcome(
+        schema_version="m0-public-v4",
+        scenario_id=old_outcome.scenario_id,
+        versions=versions,
+        subject=old_outcome.subject,
+        run_id=old_outcome.run_id,
+        control_generation=generation,
+        execution=old_outcome.execution,
+        report_step_id=expected_step,
+        report_request_id=record["request_id"],
+        report=report,
+        report_content=capture.content,
+        report_content_sha256=capture.content_sha256,
+        evidence_ids=old_outcome.evidence_ids,
+        handoff=old_outcome.handoff,
+        handoff_reasons=report.gaps if old_outcome.handoff else [],
         health="unknown",
     )
     return scenario, outcome
@@ -566,16 +708,22 @@ def load_packet(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Offline safe-business Holmes -> v3 contract check"
+        description="Offline safe-business Holmes -> current strict v4 contract check"
     )
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--projection-source-sha256", required=True)
     parser.add_argument("--projection-source-file", type=Path)
     parser.add_argument("--projection-dependencies-manifest", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--legacy-v3",
+        action="store_true",
+        help="Explicit historical replay; never current strict acceptance",
+    )
     args = parser.parse_args()
     try:
-        scenario, outcome = load_packet(
+        loader = load_legacy_packet if args.legacy_v3 else load_packet
+        scenario, outcome = loader(
             args.run_dir,
             projection_source_sha256=args.projection_source_sha256,
             projection_source_path=args.projection_source_file,
@@ -585,7 +733,12 @@ def main():
             if args.projection_dependencies_manifest
             else (),
         )
-        errors = check_outcome(scenario, outcome)
+        if args.legacy_v3:
+            errors = check_outcome(scenario, outcome)
+        else:
+            from .outcomes_v4 import check_outcome as strict_check
+
+            errors = strict_check(scenario, outcome)
         result = {
             "run_id": scenario.scenario_id,
             "contract_consistent": not errors,
@@ -594,10 +747,17 @@ def main():
             "initial_views": len(scenario.agent_input.initial_views),
             "captured_artifacts": len(scenario.trusted.artifacts),
             "delivered_views": len(outcome.evidence_ids),
-            "assessment_status": outcome.assessment_status,
-            "conclusion": outcome.conclusion,
+            "assessment_status": outcome.assessment_status
+            if args.legacy_v3
+            else outcome.report.assessment_status,
+            "conclusion": outcome.conclusion
+            if args.legacy_v3
+            else outcome.report.conclusion,
+            "assurance_mode": "explicit-legacy-v3" if args.legacy_v3 else "strict-v4",
             "boundary": "Contract consistency only; report quality/causality require independent review. No private protocol read.",
         }
+        if args.legacy_v3:
+            result.update(legacy_report_audit(args.run_dir))
     except (ValueError, KeyError, OSError, TypeError) as exc:
         code = str(exc)
         if len(code) > 80 or not re.fullmatch(r"[A-Z][A-Z_]+", code):
@@ -607,11 +767,21 @@ def main():
             "contract_consistent": False,
             "violations": [code],
         }
+        if code == "LEGACY_REPORT_REQUIRES_EXPLICIT_REPLAY":
+            result.update(legacy_report_audit(args.run_dir))
     if args.output:
         with args.output.open("x") as handle:
             json.dump(result, handle, indent=2)
             handle.write("\n")
-    print(json.dumps(result))
+    print(
+        json.dumps(
+            {
+                key: value
+                for key, value in result.items()
+                if key not in {"original_report_content", "original_report"}
+            }
+        )
+    )
     return 0 if result["contract_consistent"] else 1
 
 
