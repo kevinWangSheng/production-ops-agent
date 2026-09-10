@@ -5,6 +5,8 @@ Investigation mechanism: **confirmed by the user on 2026-09-07** (ADR-0002).
 Technical design: **C3 reviewed and approved for persistence by the user on 2026-09-07**. Exact compatibility, capacity and quantitative acceptance calibration remain for M0.
 Feature implementation gate: **not cleared**; M0 compatibility evidence and the corresponding frozen acceptance packet remain prerequisites. The next work is M0 design validation, not another review of the same architecture. No product implementation or production deployment evidence exists yet. Bounded M0 protocol and real-software environment evidence are recorded separately.
 
+2026-09-10 M0-02 update: real normal/fault investigations now return structured reports, and a related real DeepSeek/PostgreSQL cross-process protocol reconstruction has passed independent checks. The [first-flow v3 acceptance packet](docs/testing/first-investigation-v3-2026-09-10.md) is frozen. **The gate remains not cleared because the actual reports still contain independently confirmed factual/visibility errors; the subsequent projection fixes have only offline evidence.** See the [round result](docs/evidence/m0-real-investigation/round-02-results.md) and [independent entry review](docs/evidence/m0-real-investigation/round-02-entry-review.md). No product feature passes or M1 implementation are authorized by these partial results.
+
 ## Purpose
 
 Build an effective, continuously running read-only operations investigation Agent to demonstrate complete Agent engineering for a job-search portfolio. Real-software simulated environments support this goal; operating an unrelated personal application is not a prerequisite.

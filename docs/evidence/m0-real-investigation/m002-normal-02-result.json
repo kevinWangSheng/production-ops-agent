@@ -1,0 +1,195 @@
+{
+  "status": "investigation_returned",
+  "run_id": "m002-normal-02",
+  "final_business_content": "{\"schema_version\":\"m0-report-v1\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Within the authorized window (1789007908–1789008208, ~2026-09-10T02:38:28Z–02:43:28Z) on integration m0-otel-20260909, no supported defect was found on the checkout request path itself: checkout emitted 136 spans in the window and every one carried status_code=STATUS_CODE_UNSET with zero ERROR-status spans (m002-normal-02-e2, m002-normal-02-e15); checkout's 96 outbound gRPC client calls across 7 methods (Charge, GetProduct, EmptyCart, GetCart, GetQuote, ShipOrder, Convert) all reported rpc_grpc_status_code=0 (m002-normal-02-e9); in the 9 sampled traces, checkout's longest span was 72981 µs and error_spans_by_visible_tags was 0 (m002-normal-02-e5, m002-normal-02-e14); frontend-proxy access logs in the window show POST /api/checkout returning 200 (m002-normal-02-e7). Separately, ERROR-status span counters do exist for other services in the same window (payment 5, frontend 6, frontend-proxy 4, load-generator 3) (m002-normal-02-e12); the available data does not establish whether these are propagated, injected, or checkout-related, and checkout's own Charge calls all succeeded (m002-normal-02-e9). The conclusion is partial, not a health certification: checkout application logs were never collected in this Run, error spans lack denominators/baseline, and three metric queries that would have given error-code and percentile detail were denied as out-of-scope (m002-normal-02-e10, m002-normal-02-e11, m002-normal-02-e13).\",\"claims\":[{\"kind\":\"fact\",\"text\":\"checkout produced 136 trace-derived spans in the window (traces_span_metrics_calls_total for service_name=checkout = 136).\",\"evidence_ids\":[\"m002-normal-02-e2\"]},{\"kind\":\"fact\",\"text\":\"checkout's spans carry no ERROR status: the only status_code series for service_name=checkout is STATUS_CODE_UNSET = 136; there is no STATUS_CODE_ERROR series for checkout.\",\"evidence_ids\":[\"m002-normal-02-e15\"]},{\"kind\":\"fact\",\"text\":\"checkout's outbound gRPC client call counts by method in the window were Charge 10, GetProduct 18, EmptyCart 10, GetCart 10, GetQuote 10, ShipOrder 10, Convert 28 (sum 96), and every one of those series has rpc_grpc_status_code=0 (no non-zero status series returned for checkout).\",\"evidence_ids\":[\"m002-normal-02-e9\"]},{\"kind\":\"fact\",\"text\":\"rpc_client_duration_milliseconds_bucket for checkout summed to 1394 and rpc_server_duration_milliseconds_bucket to 109, both only under rpc_grpc_status_code=0; these are cumulative histogram bucket sums, not call or request counts.\",\"evidence_ids\":[\"m002-normal-02-e3\",\"m002-normal-02-e4\"]},{\"kind\":\"fact\",\"text\":\"The trace projection returned 9 traces / 462 spans (449 omitted by the 20-span display limit); over those traces checkout had 124 spans, 0 error spans by visible tags, max duration 72981 µs. The selection policy is visible-error-first then longest-duration, so this is biased sampling, not a population failure rate.\",\"evidence_ids\":[\"m002-normal-02-e5\",\"m002-normal-02-e14\"]},{\"kind\":\"fact\",\"text\":\"The sampled spans include one complete-looking checkout request chain for trace d8a8c1612f3bc272814510a67387fcd0: load-generator POST → frontend-proxy ingress/router frontend egress → frontend POST /api/checkout → frontend grpc.oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 0) → checkout oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 0, 72981 µs); all visible status tags in this trace are 200/0.\",\"evidence_ids\":[\"m002-normal-02-e5\",\"m002-normal-02-e14\"]},{\"kind\":\"fact\",\"text\":\"ERROR-status span counter series exist for services other than checkout in the same window: payment STATUS_CODE_ERROR = 5 (vs payment UNSET = 24), frontend STATUS_CODE_ERROR = 6 (vs 740 UNSET), frontend-proxy STATUS_CODE_ERROR = 4 (vs 354 UNSET), load-generator STATUS_CODE_ERROR = 3 (vs 173 UNSET); checkout has no ERROR series.\",\"evidence_ids\":[\"m002-normal-02-e12\"]},{\"kind\":\"fact\",\"text\":\"app_payment_transactions_total = 10 for service_name=payment in the window; this is not a count of unique orders.\",\"evidence_ids\":[\"m002-normal-02-e8\"]},{\"kind\":\"fact\",\"text\":\"cart logs in the window: backend_total_hits 75, 20 returned newest-first, all Information severity (GetCartAsync / AddItemAsync / EmptyCartAsync), no warning or error entries, timestamps 2026-09-10T02:41:18Z–02:43:25Z.\",\"evidence_ids\":[\"m002-normal-02-e6\"]},{\"kind\":\"fact\",\"text\":\"frontend-proxy access logs in the window: backend_total_hits 148, 20 returned newest-first, all HTTP 200 or 308 (no 4xx/5xx), timestamps 2026-09-10T02:43:00Z–02:43:25Z; includes POST /api/checkout → 200 via_upstream at 02:43:25.366Z.\",\"evidence_ids\":[\"m002-normal-02-e7\"]},{\"kind\":\"fact\",\"text\":\"Log evidence was collected only for cart and frontend-proxy in this Run; no checkout application log evidence was collected (checkout is not among the log sources queried).\",\"evidence_ids\":[\"m002-normal-02-e6\",\"m002-normal-02-e7\"]},{\"kind\":\"fact\",\"text\":\"Three metric queries were refused with 'returned service outside scope' and data withheld: the cross-service rpc_client_duration_milliseconds_count breakdown (m002-normal-02-e10), the cross-service rpc_server_duration_milliseconds_count breakdown (m002-normal-02-e11), and histogram_quantile(0.95, rpc_server_duration_milliseconds_bucket) (m002-normal-02-e13).\",\"evidence_ids\":[\"m002-normal-02-e10\",\"m002-normal-02-e11\",\"m002-normal-02-e13\"]},{\"kind\":\"hypothesis\",\"text\":\"The 5 payment STATUS_CODE_ERROR spans may indicate intermittent payment-side failures in the window; whether they propagated to checkout cannot be determined from the available data, and the mirror counter-evidence (all 10 checkout→PaymentService/Charge calls reporting rpc_grpc_status_code=0) argues against systematic checkout-visible payment failure. Grounded in m002-normal-02-e12 and m002-normal-02-e9; error-span operation names, status messages and error spans embedded in these specific traces were not retrieved.\",\"evidence_ids\":[\"m002-normal-02-e12\",\"m002-normal-02-e9\",\"m002-normal-02-e5\"]},{\"kind\":\"hypothesis\",\"text\":\"Provisional: the ERROR span counters at load-generator (3), frontend (6), frontend-proxy (4) and payment (5) could reflect injected/negative-path test traffic rather than an organic outage, since the same services also carry large UNSET (success-path) counters and no corresponding 5xx appears in the sampled frontend-proxy access logs. This is an untested idea, not established by the data.\",\"evidence_ids\":[\"m002-normal-02-e12\",\"m002-normal-02-e7\"]},{\"kind\":\"counter_evidence\",\"text\":\"Direct counter-evidence against a checkout-path failure in this window: checkout has zero ERROR-status spans (m002-normal-02-e15), all 96 observed checkout client gRPC calls returned status 0 (m002-normal-02-e9), the sampled checkout server span for the frontend PlaceOrder call returned rpc.grpc.status_code 0 (m002-normal-02-e5), and the sampled frontend-proxy access logs include POST /api/checkout → 200 with no 5xx (m002-normal-02-e7).\",\"evidence_ids\":[\"m002-normal-02-e15\",\"m002-normal-02-e9\",\"m002-normal-02-e5\",\"m002-normal-02-e7\"]},{\"kind\":\"counter_evidence\",\"text\":\"Latency context is limited and non-comparable: the only duration figures available are a single bucket sum (1394 client / 109 server, m002-normal-02-e3, m002-normal-02-e4) and a max span duration of 72981 µs for checkout over a biased 9-trace sample (m002-normal-02-e5, m002-normal-02-e14); no baseline or previous window was supplied, so no latency trend is claimed.\",\"evidence_ids\":[\"m002-normal-02-e3\",\"m002-normal-02-e4\",\"m002-normal-02-e5\",\"m002-normal-02-e14\"]},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected on the observed evidence: that checkout itself was returning gRPC errors to frontend during this window. Checkout spans show no ERROR status (m002-normal-02-e15), all checkout client calls report status 0 (m002-normal-02-e9), and the sampled frontend→checkout PlaceOrder call is status 0 (m002-normal-02-e5). This rejection is limited to the counters, logs and biased trace sample actually retrieved.\",\"evidence_ids\":[\"m002-normal-02-e15\",\"m002-normal-02-e9\",\"m002-normal-02-e5\"]},{\"kind\":\"recommendation\",\"text\":\"Retrieve the raw spans behind the non-zero ERROR counters (payment 5, frontend 6, frontend-proxy 4, load-generator 3) with their operation names, rpc.grpc.status_code / http.status_code and status messages, to determine whether those errors are checkout-path observable (e.g. Charge failures) or unrelated/injected. Grounded in m002-normal-02-e12 and m002-normal-02-e5.\",\"evidence_ids\":[\"m002-normal-02-e12\",\"m002-normal-02-e5\"]},{\"kind\":\"recommendation\",\"text\":\"Enable a checkout log source (checkout was not queryable for logs in this Run) and re-run with a declared comparison window, so checkout warnings/errors and latency percentiles can be compared against a baseline rather than judged in isolation. Grounded in m002-normal-02-e6 and m002-normal-02-e7 (only cart and frontend-proxy logs were obtainable).\",\"evidence_ids\":[\"m002-normal-02-e6\",\"m002-normal-02-e7\"]},{\"kind\":\"recommendation\",\"text\":\"Re-issue the denied error-code and percentile queries scoped to in-scope service_name values (checkout, payment, frontend, frontend-proxy) instead of integration-wide selectors, since the integration-wide forms were refused with data withheld. Grounded in m002-normal-02-e10, m002-normal-02-e11 and m002-normal-02-e13.\",\"evidence_ids\":[\"m002-normal-02-e10\",\"m002-normal-02-e11\",\"m002-normal-02-e13\"]}],\"gaps\":[\"No checkout application logs were collected in this Run (only cart and frontend-proxy log sources were queried), so checkout-internal warnings/errors cannot be assessed.\",\"Error-status span counters (payment 5, frontend 6, frontend-proxy 4, load-generator 3) have no denominator usable as a request count and no sampled error span details (operation, status code, message); trace span counts are not unique request counts.\",\"No SLO, baseline or comparison window was provided, so no latency trend or threshold breach can be claimed; p95/p99 could not be computed because the histogram_quantile query was denied.\",\"Cross-service rpc_client/server_duration_milliseconds_count and quantile queries were refused as out-of-scope, so per-error-code duration distributions for the checkout path are unknown.\",\"The trace sample is biased (error-tag-first, longest-duration, 20-span/14000-byte cap with 449 spans omitted), and the four services with ERROR counters were not represented by visible error spans in the returned sample, so the failure modes behind those counters remain unknown.\"],\"next_steps\":[\"Pull the spans underlying the payment/frontend/frontend-proxy/load-generator STATUS_CODE_ERROR counters with full status attributes and parent references, and check whether any trace contains both a checkout Charge call and a payment error.\",\"Compare the same metrics over an adjacent or historical window to establish whether the ERROR counters and checkout durations are anomalous, once a comparison window is authorized.\",\"Enable and query checkout service logs for the same window and correlate by trace_id with the existing cart and frontend-proxy log evidence.\",\"Do not treat this window as healthy or recovered: only the sampled/counter evidence listed above was observed, and checkout log and percentile data were unavailable.\"]}",
+  "finish_reason": "stop",
+  "quality_assessment": "pending_independent_evidence_check",
+  "report_request_id": "m002-normal-02-http-11",
+  "final_report": {
+    "schema_version": "m0-report-v1",
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "summary": "Within the authorized window (1789007908–1789008208, ~2026-09-10T02:38:28Z–02:43:28Z) on integration m0-otel-20260909, no supported defect was found on the checkout request path itself: checkout emitted 136 spans in the window and every one carried status_code=STATUS_CODE_UNSET with zero ERROR-status spans (m002-normal-02-e2, m002-normal-02-e15); checkout's 96 outbound gRPC client calls across 7 methods (Charge, GetProduct, EmptyCart, GetCart, GetQuote, ShipOrder, Convert) all reported rpc_grpc_status_code=0 (m002-normal-02-e9); in the 9 sampled traces, checkout's longest span was 72981 µs and error_spans_by_visible_tags was 0 (m002-normal-02-e5, m002-normal-02-e14); frontend-proxy access logs in the window show POST /api/checkout returning 200 (m002-normal-02-e7). Separately, ERROR-status span counters do exist for other services in the same window (payment 5, frontend 6, frontend-proxy 4, load-generator 3) (m002-normal-02-e12); the available data does not establish whether these are propagated, injected, or checkout-related, and checkout's own Charge calls all succeeded (m002-normal-02-e9). The conclusion is partial, not a health certification: checkout application logs were never collected in this Run, error spans lack denominators/baseline, and three metric queries that would have given error-code and percentile detail were denied as out-of-scope (m002-normal-02-e10, m002-normal-02-e11, m002-normal-02-e13).",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "checkout produced 136 trace-derived spans in the window (traces_span_metrics_calls_total for service_name=checkout = 136).",
+        "evidence_ids": [
+          "m002-normal-02-e2"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "checkout's spans carry no ERROR status: the only status_code series for service_name=checkout is STATUS_CODE_UNSET = 136; there is no STATUS_CODE_ERROR series for checkout.",
+        "evidence_ids": [
+          "m002-normal-02-e15"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "checkout's outbound gRPC client call counts by method in the window were Charge 10, GetProduct 18, EmptyCart 10, GetCart 10, GetQuote 10, ShipOrder 10, Convert 28 (sum 96), and every one of those series has rpc_grpc_status_code=0 (no non-zero status series returned for checkout).",
+        "evidence_ids": [
+          "m002-normal-02-e9"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "rpc_client_duration_milliseconds_bucket for checkout summed to 1394 and rpc_server_duration_milliseconds_bucket to 109, both only under rpc_grpc_status_code=0; these are cumulative histogram bucket sums, not call or request counts.",
+        "evidence_ids": [
+          "m002-normal-02-e3",
+          "m002-normal-02-e4"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "The trace projection returned 9 traces / 462 spans (449 omitted by the 20-span display limit); over those traces checkout had 124 spans, 0 error spans by visible tags, max duration 72981 µs. The selection policy is visible-error-first then longest-duration, so this is biased sampling, not a population failure rate.",
+        "evidence_ids": [
+          "m002-normal-02-e5",
+          "m002-normal-02-e14"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "The sampled spans include one complete-looking checkout request chain for trace d8a8c1612f3bc272814510a67387fcd0: load-generator POST → frontend-proxy ingress/router frontend egress → frontend POST /api/checkout → frontend grpc.oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 0) → checkout oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 0, 72981 µs); all visible status tags in this trace are 200/0.",
+        "evidence_ids": [
+          "m002-normal-02-e5",
+          "m002-normal-02-e14"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "ERROR-status span counter series exist for services other than checkout in the same window: payment STATUS_CODE_ERROR = 5 (vs payment UNSET = 24), frontend STATUS_CODE_ERROR = 6 (vs 740 UNSET), frontend-proxy STATUS_CODE_ERROR = 4 (vs 354 UNSET), load-generator STATUS_CODE_ERROR = 3 (vs 173 UNSET); checkout has no ERROR series.",
+        "evidence_ids": [
+          "m002-normal-02-e12"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "app_payment_transactions_total = 10 for service_name=payment in the window; this is not a count of unique orders.",
+        "evidence_ids": [
+          "m002-normal-02-e8"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "cart logs in the window: backend_total_hits 75, 20 returned newest-first, all Information severity (GetCartAsync / AddItemAsync / EmptyCartAsync), no warning or error entries, timestamps 2026-09-10T02:41:18Z–02:43:25Z.",
+        "evidence_ids": [
+          "m002-normal-02-e6"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "frontend-proxy access logs in the window: backend_total_hits 148, 20 returned newest-first, all HTTP 200 or 308 (no 4xx/5xx), timestamps 2026-09-10T02:43:00Z–02:43:25Z; includes POST /api/checkout → 200 via_upstream at 02:43:25.366Z.",
+        "evidence_ids": [
+          "m002-normal-02-e7"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Log evidence was collected only for cart and frontend-proxy in this Run; no checkout application log evidence was collected (checkout is not among the log sources queried).",
+        "evidence_ids": [
+          "m002-normal-02-e6",
+          "m002-normal-02-e7"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Three metric queries were refused with 'returned service outside scope' and data withheld: the cross-service rpc_client_duration_milliseconds_count breakdown (m002-normal-02-e10), the cross-service rpc_server_duration_milliseconds_count breakdown (m002-normal-02-e11), and histogram_quantile(0.95, rpc_server_duration_milliseconds_bucket) (m002-normal-02-e13).",
+        "evidence_ids": [
+          "m002-normal-02-e10",
+          "m002-normal-02-e11",
+          "m002-normal-02-e13"
+        ]
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The 5 payment STATUS_CODE_ERROR spans may indicate intermittent payment-side failures in the window; whether they propagated to checkout cannot be determined from the available data, and the mirror counter-evidence (all 10 checkout→PaymentService/Charge calls reporting rpc_grpc_status_code=0) argues against systematic checkout-visible payment failure. Grounded in m002-normal-02-e12 and m002-normal-02-e9; error-span operation names, status messages and error spans embedded in these specific traces were not retrieved.",
+        "evidence_ids": [
+          "m002-normal-02-e12",
+          "m002-normal-02-e9",
+          "m002-normal-02-e5"
+        ]
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Provisional: the ERROR span counters at load-generator (3), frontend (6), frontend-proxy (4) and payment (5) could reflect injected/negative-path test traffic rather than an organic outage, since the same services also carry large UNSET (success-path) counters and no corresponding 5xx appears in the sampled frontend-proxy access logs. This is an untested idea, not established by the data.",
+        "evidence_ids": [
+          "m002-normal-02-e12",
+          "m002-normal-02-e7"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Direct counter-evidence against a checkout-path failure in this window: checkout has zero ERROR-status spans (m002-normal-02-e15), all 96 observed checkout client gRPC calls returned status 0 (m002-normal-02-e9), the sampled checkout server span for the frontend PlaceOrder call returned rpc.grpc.status_code 0 (m002-normal-02-e5), and the sampled frontend-proxy access logs include POST /api/checkout → 200 with no 5xx (m002-normal-02-e7).",
+        "evidence_ids": [
+          "m002-normal-02-e15",
+          "m002-normal-02-e9",
+          "m002-normal-02-e5",
+          "m002-normal-02-e7"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Latency context is limited and non-comparable: the only duration figures available are a single bucket sum (1394 client / 109 server, m002-normal-02-e3, m002-normal-02-e4) and a max span duration of 72981 µs for checkout over a biased 9-trace sample (m002-normal-02-e5, m002-normal-02-e14); no baseline or previous window was supplied, so no latency trend is claimed.",
+        "evidence_ids": [
+          "m002-normal-02-e3",
+          "m002-normal-02-e4",
+          "m002-normal-02-e5",
+          "m002-normal-02-e14"
+        ]
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected on the observed evidence: that checkout itself was returning gRPC errors to frontend during this window. Checkout spans show no ERROR status (m002-normal-02-e15), all checkout client calls report status 0 (m002-normal-02-e9), and the sampled frontend→checkout PlaceOrder call is status 0 (m002-normal-02-e5). This rejection is limited to the counters, logs and biased trace sample actually retrieved.",
+        "evidence_ids": [
+          "m002-normal-02-e15",
+          "m002-normal-02-e9",
+          "m002-normal-02-e5"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Retrieve the raw spans behind the non-zero ERROR counters (payment 5, frontend 6, frontend-proxy 4, load-generator 3) with their operation names, rpc.grpc.status_code / http.status_code and status messages, to determine whether those errors are checkout-path observable (e.g. Charge failures) or unrelated/injected. Grounded in m002-normal-02-e12 and m002-normal-02-e5.",
+        "evidence_ids": [
+          "m002-normal-02-e12",
+          "m002-normal-02-e5"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Enable a checkout log source (checkout was not queryable for logs in this Run) and re-run with a declared comparison window, so checkout warnings/errors and latency percentiles can be compared against a baseline rather than judged in isolation. Grounded in m002-normal-02-e6 and m002-normal-02-e7 (only cart and frontend-proxy logs were obtainable).",
+        "evidence_ids": [
+          "m002-normal-02-e6",
+          "m002-normal-02-e7"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Re-issue the denied error-code and percentile queries scoped to in-scope service_name values (checkout, payment, frontend, frontend-proxy) instead of integration-wide selectors, since the integration-wide forms were refused with data withheld. Grounded in m002-normal-02-e10, m002-normal-02-e11 and m002-normal-02-e13.",
+        "evidence_ids": [
+          "m002-normal-02-e10",
+          "m002-normal-02-e11",
+          "m002-normal-02-e13"
+        ]
+      }
+    ],
+    "gaps": [
+      "No checkout application logs were collected in this Run (only cart and frontend-proxy log sources were queried), so checkout-internal warnings/errors cannot be assessed.",
+      "Error-status span counters (payment 5, frontend 6, frontend-proxy 4, load-generator 3) have no denominator usable as a request count and no sampled error span details (operation, status code, message); trace span counts are not unique request counts.",
+      "No SLO, baseline or comparison window was provided, so no latency trend or threshold breach can be claimed; p95/p99 could not be computed because the histogram_quantile query was denied.",
+      "Cross-service rpc_client/server_duration_milliseconds_count and quantile queries were refused as out-of-scope, so per-error-code duration distributions for the checkout path are unknown.",
+      "The trace sample is biased (error-tag-first, longest-duration, 20-span/14000-byte cap with 449 spans omitted), and the four services with ERROR counters were not represented by visible error spans in the returned sample, so the failure modes behind those counters remain unknown."
+    ],
+    "next_steps": [
+      "Pull the spans underlying the payment/frontend/frontend-proxy/load-generator STATUS_CODE_ERROR counters with full status attributes and parent references, and check whether any trace contains both a checkout Charge call and a payment error.",
+      "Compare the same metrics over an adjacent or historical window to establish whether the ERROR counters and checkout durations are anomalous, once a comparison window is authorized.",
+      "Enable and query checkout service logs for the same window and correlate by trace_id with the existing cart and frontend-proxy log evidence.",
+      "Do not treat this window as healthy or recovered: only the sampled/counter evidence listed above was observed, and checkout log and percentile data were unavailable."
+    ]
+  },
+  "report_schema_version": "m0-report-v1",
+  "boundary_errors": [],
+  "tool_wall_seconds": 2.587535665021278,
+  "model_http_requests": 4,
+  "tool_queries": 15
+}

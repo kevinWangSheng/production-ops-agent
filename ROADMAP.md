@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛仍未打开。Flash固定工具→严格JSON→PG→LangSmith单次通过；固定OTel/Holmes真实正常、故障及工程还原证据已取得，但两次主动故障调查无最终报告，最后业务证据接续也输出耗尽。[最终报告](docs/evidence/m0-real-investigation/results.md)与[当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)保留全部失败。下一项M0-02为有界故障报告收束/动态证据验收冻结，满足条件后实施M1-01完整纵向流程。
+Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3首片验收包已冻结；但完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-entry-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
 
 ## Completed decisions and documentation
 
@@ -42,6 +42,8 @@ Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛
 
 ## Next: M0 validation and acceptance calibration
 
+- [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3合同/质量/重复与非退化包已冻结，下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
+
 - [-] 2026-09-09 新一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
 
 - [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。该离线批次不自动授权真实调用或打开M0退出/产品实施门槛；后续真实调用授权与结果见当前M0任务。
@@ -53,10 +55,10 @@ Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛
 - [x] C3 complete technical design accepted for persistence — 2026-09-07. Three whole-candidate adversarial rounds closed observer/control races, independent release-observation identity and provider-private-field export contradictions. See [technical plan](docs/design/technical-proposal-2026-09-07.md), [review record](docs/reviews/technical-design-c3-review-2026-09-07.md) and [ADR-0003](docs/adr/0003-business-state-recovery-authority.md).
 - [x] Technical direction: Python/FastAPI, PostgreSQL business recovery authority, DeepSeek-compatible adapter, LangSmith, Compose/Helm. LangGraph loop benefit and exact versions remain to be validated; graph checkpoints have no cross-attempt authority.
 - [x] Source-first research for HolmesGPT/OpenSRE/Stratus and runtime/platform comparisons completed as static evidence; not feature completion.
-- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; successful active fault report and complete reuse/candidate comparison remain pending.
-- [-] M0模型/协议与控制快照已有子集真实证据；调查步骤重建、完整取消/lease/observer/升级与目标范围仍待对应有界验证。
+- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; a bounded active fault report now localizes payment/Charge, while full report quality and matched candidate comparison remain pending.
+- [-] M0模型/协议与控制快照已有子集真实证据；首流程步骤重建、取消/owner/epoch/lease与版本阻塞已有本轮有界证据；完整observer/发布/升级及产品集成仍待对应后续验证。
 - [-] M0 pinned OTel Demo实际部署、正常/故障/还原、来源/权限探针和资源费用已记录；按服务日志/身份缺口、实际Holmes进程隔离、HealthProfile等仍待对应任务。
-- [ ] F1 detailed IncidentScenario/IncidentOutcome packet, development calibration, frozen sample/repeat/scoring/non-regression thresholds before candidate evaluation. Retain existing acceptance inventory; no passes changed.
+- [-] F1 首片v3 IncidentScenario/IncidentOutcome及开发案例规模/重复/评分/非退化已冻结，见[首片包](docs/testing/first-investigation-v3-2026-09-10.md)；模型候选尚未通过，完整保留集/产品验收在后续阶段。原验收steps/passes不变。
 - [-] 已形成[M0-02 / M1-01具体任务与入口缺项](docs/plans/first-vertical-investigation-2026-09-09.md)；故障报告收束、动态验收/目标及步骤恢复前提未满足，SPEC保留not cleared，不更新passes。
 
 The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historical. Both product entry points remain in one complete release; symptom categories remain testing only.

@@ -1,0 +1,67 @@
+{
+  "experiment_id": "10e0b870-4db4-4fda-b2fd-991dc68e3368",
+  "run_id": "5822fb34-c343-4085-aca5-6337ff2ad40d",
+  "subject_id": "0f388fcf-ab06-46fb-acd5-ec8c226efdb6",
+  "deadline": 1789011847.01405,
+  "first_pid": 39801,
+  "status": "completed",
+  "model": "deepseek-v4-flash",
+  "provider_models_response_sha256": "0c5d2ba6ebb791e893b0e7efed32c64415a633ed774e8d89dad8e33c4d69ae77",
+  "boundary": "synthetic fixture plus real model/PG protocol; not active investigation",
+  "code_hashes": {
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_pg_live_probe.py": "6d86a7dc64462709b33936b0d3eac0cb9ea5dba05795f1853a2937f57cc1fac6",
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_pg_private_transport.py": "50cd86e99941b6ad076ad77f7e369429f1ac5b6baf95de4df820fd6c2823fcb8",
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0/step_store.py": "71bf4c2452ee44e73c9c7b438296d2e6451fd722329975d1d542b69324f2e02b",
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0/step_store.sql": "e3cba8e242aedc329dac605736b52b5e3f31b9225293a7fcbadf4830ba73ddaf",
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0/budget.py": "0eee8b60ab91d21df7fe5f97a4116bb6c74a0afbccf4407857effb9e3262408b",
+    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/scripts/m0_environment/round02.py": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12"
+  },
+  "profile_hash": "2e51d029e5ec5b04d290382b0c3a8f008a246d5836033009e752b12dfcec12e5",
+  "step_id": "605a54dc-c3ee-59d2-b0c3-53c1adc1d5c1",
+  "evidence_hash": "771798de450854c0d774ebdef7b350b9aba01fd4cd3bccff9e115dac913b849c",
+  "observed_at": "2026-09-08T00:01:00Z",
+  "reported_models": [
+    "deepseek-flash",
+    "deepseek-flash"
+  ],
+  "safe_pg_summary": {
+    "subject": "0f388fcf-ab06-46fb-acd5-ec8c226efdb6",
+    "state": {
+      "state": "completed",
+      "generation": 0,
+      "epoch": 2,
+      "published": true
+    },
+    "audit": [
+      {
+        "event": "model_response",
+        "accepted": true,
+        "generation": 0
+      },
+      {
+        "event": "tool_result",
+        "accepted": true,
+        "generation": 0
+      },
+      {
+        "event": "model_response",
+        "accepted": true,
+        "generation": 0
+      },
+      {
+        "event": "publish",
+        "accepted": true,
+        "generation": 0
+      }
+    ]
+  },
+  "second_pid": 44306,
+  "pid_changed": true,
+  "evidence_preserved": true,
+  "message_pairing": true,
+  "final_contract": true,
+  "wire_assistant_content_normalized": false,
+  "wire_history_version": "v4-non-null-assistant-content-v1",
+  "source_record_sha256": "8b18213b860aed21c2789087119b6634b2431ebe68c3e2424757c60b1e55e6fc",
+  "actual_invoice_cost_cny": null
+}

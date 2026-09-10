@@ -1,0 +1,60 @@
+{
+  "round_start": "2026-09-10T01:49:00Z",
+  "new_download_install_count": 0,
+  "known_model_http_wall_seconds": 265.6188108921051,
+  "sum_run_http_spans_seconds": 389.72781801223755,
+  "fixed_observation_window_seconds": 900,
+  "activities": [
+    {
+      "activity": "existing_VM_start",
+      "start": "2026-09-10T02:34:41.805103+00:00",
+      "end": "2026-09-10T02:34:57.365833+00:00",
+      "seconds": 15.56072998046875,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "existing_26_containers_start",
+      "start": "2026-09-10T02:36:13.480446+00:00",
+      "end": "2026-09-10T02:36:31.366986+00:00",
+      "seconds": 17.886539936065674,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "existing_containers_stop",
+      "start": "2026-09-10T04:07:24.695432+00:00",
+      "end": "2026-09-10T04:08:02.516636+00:00",
+      "seconds": 37.82120370864868,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "VM_stop",
+      "start": "2026-09-10T04:11:11.631546+00:00",
+      "end": "2026-09-10T04:11:16.228473+00:00",
+      "seconds": 4.596926689147949,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "normal_control_1",
+      "start": "2026-09-10T02:38:28+00:00",
+      "end": "2026-09-10T02:43:28+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "fault_observation",
+      "start": "2026-09-10T03:29:12+00:00",
+      "end": "2026-09-10T03:34:12+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "post_restoration_normal_control",
+      "start": "2026-09-10T03:42:56+00:00",
+      "end": "2026-09-10T03:47:56+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    }
+  ],
+  "other_work": "Source/contract inspection, coding/debugging, tests and independent reviews ran in parallel during 01:49Z onward; exact exclusive CPU/operator time was not instrumented. Final closeout/CI/review continue after paid phase. No invented percentage distribution.",
+  "parallelism": "root orchestrator and sole environment operator; report implementation and mechanism implementation initially parallel; independent reviews in fresh contexts; paid model operations sequential under one ledger lock."
+}

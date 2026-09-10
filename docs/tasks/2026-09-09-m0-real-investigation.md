@@ -1,8 +1,12 @@
 # M0：从协议链路进入真实调查
 
-日期：2026-09-09；状态：本轮有界实验结束、服务停止保全；产品入口未满足。目标为取得首个产品纵向流程所需真实环境/上游/协议证据，依据SPEC实施门槛、C3、M0计划及F1/F2/F3/F7/F8/F12/F14。产品实施与passes未打开。
+创建：2026-09-09；当前收尾：2026-09-10 M0-02付费执行已结束、资源已停止保全，报告质量尚未通过，M1入口仍not cleared。
 
-当前摘要：[完整结果](../evidence/m0-real-investigation/results.md)。20模型/1trace；Flash链路单次通过，正常第三次报告有质量限制，主动故障0/2交付、最后新Run输出耗尽。下一项M0-02收束预算/动态证据验收与首片必要状态前提；对应产品任务M1-01，SPEC不开放。下面各“进行中/等待”是按顺序保留的过程，最终事实以本摘要、最终用量及环境closeout为准。PR #15交付当前修复和失败证据，合并仍由用户审核。
+当前结果见[round-02-results.md](../evidence/m0-real-investigation/round-02-results.md)、[独立入口审查](../evidence/m0-real-investigation/round-02-entry-review.md)及[冻结首片包](../testing/first-investigation-v3-2026-09-10.md)。20模型HTTP/0trace，真实PG组合与有限核心调查结果有据，事实/可见范围P2仍未闭环；PR最新CI/review收尾下文继续更新。
+
+## 历史：2026-09-09上一轮与PR #15过程
+
+以下旧日期、旧分支、旧预算和进行中措辞保留为历史，不授权重跑；本轮接续从后面的2026-09-10小节开始。
 
 ## 工作区与合同
 
@@ -72,3 +76,37 @@ f79e84f两项CI34389374955成功；Code Review与Security Review均已返回，�
 1efa66c复审Code Review再指出P2：四个生成配置hash未覆盖全部bind输入；Security Review已完成无新增可见发现。775e51e按原已锁SHA的OTel tar及既有生成文件hash核查全部9bind，目录集合/字节/软链接/未知路径拒绝在写入前完成；未建立事后新基线、未追溯认证原时点。26CLI回归与独立复验、实际当前9bind只读核对通过，原archive/runtime不变。连同同类trace-manifest保护一起推送最终复审；模型仍20/20，服务停止。
 
 6d1b736的Code复审补充P2：observe_window只拒绝ignored raw目录，在干净checkout仍会覆盖已提交summary。按相同原则增加query/mkdir前的旧summary拒绝与最终独占创建；真实runpy临时树回归红1fail→绿，并一并核对本组所有docs/evidence输出：capture已有tracked目录独占、freeze只读、export已保护，observe这次补齐。仅本地保全修复、0模型/网络，不改原调查/还原事实。
+
+## 2026-09-10 M0-02 本轮接续
+
+新授权与绝对时间见 [round-02-authorization.json](../evidence/m0-real-investigation/round-02-authorization.json)。先故障保存证据新Run报告实验，再真实正常/故障主动Holmes；随后冻结首流程动态合同和最小PG步骤恢复/取消。旧4+20 CNY未核账占用保留，不算实花，也不占用新的20 CNY授权；新账本不得覆盖旧账本。实际付费前需补齐相互一致的子额度、参数、通过与停止条件。
+
+现场核对：PR #15已于2026-09-10T01:22:37Z合并，merge e9d22e9183601ae322f006f4a42d9dd2bbcbae84；交付bc46370两项CI成功，最新Code Review 19:35:24Z无major issues、Security Review已返回。main CI34425221461成功，主工作区从738b5c7快进同步e9d22e9。两个旧实验worktree无未提交改动，原地创建chore/m0-02-convergence和chore/m0-02-environment并快进同起点；tmp数据库/业务证据/归档保留，没有重建、清理或搬运。Colima两个profile实际Stopped。
+
+唯一环境负责人root；report_calibration只读核对真实源码/失败与官方参数，contract_recovery_plan只读准备首流程合同/恢复设计，preflight_independent全新上下文核查旧证据/账本。各自不启停环境、不付费；共享文件系统不算隔离。重大方案实施前及最终关键结果另做独立审查。
+
+活动时间：01:49Z开始现场核对；约01:53Z起上述三个只读工作与父调度并行。下载/安装0，新增模型/trace0。后续阶段在此追加起止与原始证据。
+
+02:01Z起报告wrapper与v3/最小PG模块并行实施；[实施前独立审查](../evidence/m0-real-investigation/round-02-plan-review.md)允许本地实施，真实付费前要求完成硬停止、账本未知占用、实际交付与取消竞态验证。02:09:59Z原专属PG按所属脚本启动，server data_directory再次匹配；原7表53行安全hash快照见[PG起点](../evidence/m0-real-investigation/round-02-pg-before.json)。允许机制实现者仅添加隔离随机实验，不重建/删除原库。OTel仍停止。准备好m002-saved-report-01的新Run业务输入12 views及hash，尚未发送。
+
+02:19–02:27Z两次saved有界请求：首HTTP200后响应身份拒绝且返回值未保留，unknown3.44064；补拒绝前诊断保全后第二stop15104输出tokens、有正文，但reported model=deepseek-flash被旧strict equality拒绝。独立质量发现6P2，模型原文及失败保留。02:28Z单次官方/models只读metadata确认当前列表deepseek-flash与deepseek-v4-pro；独立兼容审查允许请求v4flash/返回双Flash名合同，权重不保证。第二usage峰值上界0.243099追加核算而非账单。后续直接在真实active验证通用报告约束/来源view修复，report phase不再重打。
+
+## 本轮真实组合与故障报告进展
+
+normal02实际形成JSON报告，15份最后交付raw/view/hash/完整refs可核对，但独立发现累计counter当5分钟增量及backend20/view19误概括；质量未过，不把格式成功算质量通过。之后按真实缺陷补metric时间语义、logs可见/后台计数及3步Run同样的权限/终止检查，48项定向及实际Holmes离线3/4步独立复验通过。旧7fd732完整源码已按SHA精确恢复、只读保全；每次后续真实Run前另存全部源码快照，不只hash。
+
+真实PG首请求400强制tool_choice不兼容已保留；新Run5822fb34-c343-4085-aca5-6337ff2ad40d采用官方thinking适用的省略参数，同一Run两stage PID39801→44306、epoch1→2，完整响应/工具/同provider私有协议从PG重建后实际续传成功。独立只用DB端布尔/安全业务核验，2HTTP/0.003051CNY峰值上界（非账单）；原7表53行hash全不变。它是正常进程退出后的实际组合，精确中途崩溃/取消证据另由真实PG+可控替身提供，不混称真实故障恢复。
+
+唯一新故障在专属环境注入并观察1789010952..1789011252，独立7raw哈希/多个真实trace关联/增量/日志核查成立。fault Run m002-fault-01实际4HTTP/19工具，http17输出JSON，独立确认近因payment Charge(code2)向checkout(code13)再到HTTP500的有限定位有据。仍保留3组P2：cart跨trace误关联和样本泛化、实际14/349写20/349、把投影省略误作原始遥测缺失，不能记完整报告质量通过。工程于03:42Z按原字节还原，继续5分钟正常观察供最后3HTTP复验；不由模型认证恢复。
+
+本轮累计17模型HTTP（含1次400），剩余3用于normal03；trace0。当前子额度report4/2HTTP、normal6/11、fault5.5/4、pg4/3、trace0.5/5且禁用，总20CNY/20HTTP不变。两项unknown各3.44064及旧24CNY保留。最终SPEC入口需在normal03与整体独立审查后决定，目前仍not cleared。
+
+## 本地检查与最终入口结论
+
+最新整合make check：370 passed/31显式PG默认skip；新增PG机制/driver定向22 passed，bridge/v3含旧v2回归98 passed。第一次整合检查仅被Markdown代码块格式拒绝，格式修复后通过，原输出保留。离线view49tests及独立UTF8/身份/字节上限/旧版本重放通过；新依赖snapshot桥接18tests与独立恶意路径/缺依赖/hash探针通过。
+
+[最终入口审查](../evidence/m0-real-investigation/round-02-entry-review.md)已以新上下文亲自核验源码、实际PG安全元数据、fault/normal03真实raw/delivery及冻结包；无新增实现阻断发现，但实际报告P2未经最新候选复验仍阻M1。OS隔离明确为运行边界限制，不额外要求首片编码前搭完整平台。20HTTP已尽，0trace；root已停止专属PG和26容器/VM，系统PG4391仍在。所有历史数据和依赖worktree保留。
+
+环境代码/证据先本地提交bc573cd、22b4d8f，再按范围cherry-pick到主任务0f20ed2、da4d464。当前只做最终提交/推送/PR和最新远端CI及Code/Security审查；不合并。
+
+PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree导致收集失败：隔离subprocess阻断外部lab来源，原版1 failed；改为从本仓库package导入相同round02配置（live数据目录仍原地），9项offline通过。六份实际PG执行源码已在修改前逐字节SHA核验并保全，真实PG两stage仍对应历史版本，不声称新import版本已新增live复验；未改预算、数据或模型逻辑。

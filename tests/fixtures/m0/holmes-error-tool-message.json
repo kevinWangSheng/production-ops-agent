@@ -1,0 +1,25 @@
+{
+  "source_run": "m002-normal-02",
+  "upstream_commit": "5e983c17f30e93099c7d775167266d4cd1d586c4",
+  "formatter_source": "holmes/core/models.py:98",
+  "message": {
+    "role": "tool",
+    "content": "tool_call_metadata={\"tool_name\": \"otel_metrics\", \"tool_call_id\": \"call_00_irUxkVs2ZoKt8VzT22sH5803\"}Tool execution failed:\n\n{\"evidence_id\":\"m002-normal-02-e10\",\"tool\":\"otel_metrics\",\"query\":{\"query\":\"sum by (service_name, rpc_service, rpc_method, rpc_grpc_status_code) (rpc_client_duration_milliseconds_count)\",\"start\":1789007908.0,\"end\":1789008208.0},\"observed_at\":\"2026-09-10T03:06:08.620556+00:00\",\"http_status\":200,\"error\":\"returned service outside scope\",\"data_withheld\":true}",
+    "tool_call_id": "call_00_irUxkVs2ZoKt8VzT22sH5803"
+  },
+  "registered": {
+    "m002-normal-02-e10": {
+      "evidence_id": "m002-normal-02-e10",
+      "tool": "otel_metrics",
+      "query": {
+        "query": "sum by (service_name, rpc_service, rpc_method, rpc_grpc_status_code) (rpc_client_duration_milliseconds_count)",
+        "start": 1789007908.0,
+        "end": 1789008208.0
+      },
+      "observed_at": "2026-09-10T03:06:08.620556+00:00",
+      "http_status": 200,
+      "error": "returned service outside scope",
+      "data_withheld": true
+    }
+  }
+}

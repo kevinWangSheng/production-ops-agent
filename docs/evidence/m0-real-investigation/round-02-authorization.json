@@ -1,0 +1,63 @@
+{
+  "experiment_id": "m0-02-20260910-convergence",
+  "started_at": "2026-09-10T01:49:00Z",
+  "start_time_basis": "Conservative minute before first clock reading 2026-09-10T01:50:02Z; deadline is not extended by preparation.",
+  "absolute_deadline": "2026-09-11T01:49:00Z",
+  "authorization": "User current turn: new bounded model/trace calls and reversible dedicated local fault injection",
+  "max_cny": 20,
+  "max_physical_model_http": 20,
+  "max_trace_uploads": 5,
+  "prior_unreconciled_reservations_cny": 24,
+  "prior_reservations_released_cny": 0,
+  "actual_attributable_cost_cny": null,
+  "model": "deepseek-v4-flash",
+  "thinking": {
+    "type": "enabled"
+  },
+  "reasoning_effort": "high",
+  "status": "17modelHTTP spent; fault report and new realPG combination returned; fault quality findings retained; final3HTTP reserved for post-restoration normal control",
+  "environment_owner": "root",
+  "primary_worktree": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01",
+  "environment_worktree": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment",
+  "credentials_path": "/Users/shenghuikevin/dev/AI/production-ops-agent/.env",
+  "isolation": "Development evidence, not held-out or OS isolation proof",
+  "suballocations": {
+    "saved_report": {
+      "cny": 4,
+      "model_http": 2
+    },
+    "normal": {
+      "cny": 6,
+      "model_http": 11
+    },
+    "fault": {
+      "cny": 5.5,
+      "model_http": 4
+    },
+    "pg": {
+      "cny": 4,
+      "model_http": 3
+    },
+    "trace": {
+      "cny": 0.5,
+      "uploads": 5,
+      "enabled": false
+    }
+  },
+  "calibrated_candidate": {
+    "context_tokens": 131072,
+    "estimated_input_tokens_after_output_reserve": 98304,
+    "output_tokens": 32768,
+    "request_bytes": 524288,
+    "response_bytes": 2097152,
+    "model_wall_seconds": 360,
+    "run_wall_seconds": 1800,
+    "tool_wall_seconds": 30,
+    "tool_total_wall_seconds": 240,
+    "per_http_reservation_cny": "3.44064",
+    "known_usage_accounting": "conservative published peak all-cache-miss upper bound, not attributable invoice; new round only",
+    "unknown_accounting": "retain full reservation",
+    "old_24_cny_released": false
+  },
+  "cleared_saved_run": "m002-saved-report-02"
+}

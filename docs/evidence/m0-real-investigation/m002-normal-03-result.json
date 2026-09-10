@@ -1,0 +1,161 @@
+{
+  "status": "investigation_returned",
+  "run_id": "m002-normal-03",
+  "final_business_content": "{\"schema_version\": \"m0-report-v1\", \"assessment_status\": \"completed\", \"conclusion\": \"partial\", \"summary\": \"Within the authorized fixed window (1789011776–1789012076 UTC, 2026-09-10 03:42:56–03:47:56Z) for integration m0-otel-20260909, the visible data show no checkout request failures. Window-scoped rate queries (`increase(...[5m])` evaluated at the window end) on checkout spans return 67.5 spans with STATUS_CODE_UNSET and 0 with STATUS_CODE_ERROR, and 0 error spans for both SERVER and CLIENT span kinds. Checkout's outbound gRPC client histogram counts all show rpc_grpc_status_code 0 (Convert 13.75, GetProduct 8.75, GetCart 5, EmptyCart 5, GetQuote 5, ShipOrder 5, Charge 5), with status 2 (UNKNOWN) Charge = 0; checkout's gRPC server counts show 5 for status 0 and 0 for status 13. The returned trace set (5 traces, 248 spans) reports 0 error spans by visible tags for every visible service including checkout (66 spans). Displayed logs (cart, frontend-proxy) show no error-severity records and no 5xx proxy responses. However, checkout has no log source, the trace view is a biased sample (20 of 248 spans), and backend log hits exceed displayed rows (cart 54, frontend-proxy 128), so the evidence supports 'no observed failures' rather than certification that no failures occurred; no baseline or SLO was supplied.\", \"claims\": [{\"kind\": \"fact\", \"text\": \"Window-scoped rate query `increase(traces_span_metrics_calls_total{service_name=\\\"checkout\\\"}[5m])` at evaluation time 1789012076 returns checkout STATUS_CODE_UNSET = 67.5 and STATUS_CODE_ERROR = 0 (increase values are extrapolated, not unique request counts).\", \"evidence_ids\": [\"m002-normal-03-e2\", \"m002-normal-03-e4\"]}, {\"kind\": \"fact\", \"text\": \"Grouped by span kind, checkout's window increase is SPAN_KIND_SERVER UNSET 5 / ERROR 0, SPAN_KIND_CLIENT UNSET 52.5 / ERROR 0, SPAN_KIND_INTERNAL 5, SPAN_KIND_PRODUCER 5.\", \"evidence_ids\": [\"m002-normal-03-e4\"]}, {\"kind\": \"fact\", \"text\": \"Checkout's outbound gRPC client duration histogram (+Inf bucket increase over 5m) shows all calls with rpc_grpc_status_code=\\\"0\\\": Convert/oteldemo.CurrencyService 13.75, GetProduct/oteldemo.ProductCatalogService 8.75, GetCart 5 and EmptyCart 5 (oteldemo.CartService), GetQuote 5 and ShipOrder 5 (oteldemo.ShippingService), Charge/oteldemo.PaymentService 5; the only non-zero-status series, Charge with rpc_grpc_status_code=\\\"2\\\", is 0. Bucket values are cumulative histogram buckets and increase is extrapolated.\", \"evidence_ids\": [\"m002-normal-03-e8\"]}, {\"kind\": \"fact\", \"text\": \"Checkout's inbound gRPC server duration histogram (+Inf bucket increase over 5m) shows rpc_grpc_status_code=\\\"0\\\" = 5 and rpc_grpc_status_code=\\\"13\\\" = 0.\", \"evidence_ids\": [\"m002-normal-03-e9\"]}, {\"kind\": \"fact\", \"text\": \"Service-wide span increase for the window shows STATUS_CODE_ERROR = 0 for checkout, frontend, frontend-proxy, payment, load-generator, fraud-detection and accounting, with non-zero error status only for recommendation (1.25) and ad (1.25); currency reports STATUS_CODE_OK 13.75.\", \"evidence_ids\": [\"m002-normal-03-e2\"]}, {\"kind\": \"fact\", \"text\": \"The returned trace set for the window contains 5 trace IDs and 248 spans with per-service error_spans_by_visible_tags = 0 for all visible services, including checkout (66 spans, max duration 66424 µs) and payment (10 spans); it is a biased sample of 20 displayed spans, omitting 234 spans.\", \"evidence_ids\": [\"m002-normal-03-e11\", \"m002-normal-03-e12\"]}, {\"kind\": \"fact\", \"text\": \"Displayed sampled spans show successful checkout-path requests: load-generator POST http.status_code 200 -> frontend-proxy ingress 200 -> frontend POST /api/checkout 200 -> frontend grpc.oteldemo.CheckoutService/PlaceOrder with rpc.grpc.status_code 0 (traces ef94f6ad35ad2a47fecf672989d8ad6f and 0486232d8e10ce9cb3fb014b79ef8ae0).\", \"evidence_ids\": [\"m002-normal-03-e11\", \"m002-normal-03-e12\"]}, {\"kind\": \"fact\", \"text\": \"Cart logs for the window (newest-first, limit 20, 20 of 54 backend hits displayed) show only severity Information entries: GetCartAsync, AddItemAsync and EmptyCartAsync calls; no error-severity records are displayed.\", \"evidence_ids\": [\"m002-normal-03-e5\"]}, {\"kind\": \"fact\", \"text\": \"frontend-proxy access logs for the window (limit 20, 18 of 128 backend hits displayed) show HTTP 200 for every displayed request except two 308 redirects (`GET /api/data/` at 03:47:33 and 03:47:29); no 5xx status appears in displayed rows.\", \"evidence_ids\": [\"m002-normal-03-e6\"]}, {\"kind\": \"fact\", \"text\": \"Cart's EmptyCartAsync log entry at 2026-09-10T03:44:46.3211852Z carries trace_id 0486232d8e10ce9cb3fb014b79ef8ae0, which is one of the trace IDs in the window's returned trace set; cart log trace_id 78e17a0d6a3b4ab0e49f5e2499f609b9 matches the frontend-proxy `GET /api/cart` 200 access log record, showing log-trace alignment between those two sources. Neither record is attributable to a checkout span (returned trace set is aggregate, not per-trace, for checkout spans).\", \"evidence_ids\": [\"m002-normal-03-e5\", \"m002-normal-03-e6\", \"m002-normal-03-e11\"]}, {\"kind\": \"fact\", \"text\": \"app_payment_transactions_total increases by ~4.9996 over the 5m range for service_name=payment in the window; the returned series exposes only the service_name label, so no success/failure breakdown is visible.\", \"evidence_ids\": [\"m002-normal-03-e10\"]}, {\"kind\": \"counter_evidence\", \"text\": \"The visible absence of checkout errors is bounded: logs are available only for cart and frontend-proxy (no checkout log source), the trace projection displayed 20 of 248 spans and does not enumerate per-trace checkout membership, and displayed log rows cover 20 of 54 cart hits and 18 of 128 frontend-proxy hits — omitted records were not examined.\", \"evidence_ids\": [\"m002-normal-03-e5\", \"m002-normal-03-e6\", \"m002-normal-03-e11\"]}, {\"kind\": \"hypothesis\", \"text\": \"Provisional: the window appears to be a normal-operation period for checkout, since zero error-status spans, zero non-zero gRPC statuses on checkout client/server calls (except 0-valued series) and successful sampled checkout traces co-occur. This is correlation within the observed window only and is not a health or recovery certification.\", \"evidence_ids\": [\"m002-normal-03-e4\", \"m002-normal-03-e8\", \"m002-normal-03-e9\", \"m002-normal-03-e11\"]}, {\"kind\": \"rejected_hypothesis\", \"text\": \"Rejected on visible evidence for this window: a checkout payment RPC failure burst — the only series with a non-zero gRPC status label for checkout's Charge call (rpc_grpc_status_code=\\\"2\\\") shows an increase of 0, and payment-related error status is 0 for both payment and checkout.\", \"evidence_ids\": [\"m002-normal-03-e8\", \"m002-normal-03-e2\"]}, {\"kind\": \"rejected_hypothesis\", \"text\": \"Rejected on visible evidence for this window: checkout HTTP/frontend-facing 5xx failures — no 5xx appears in the displayed frontend-proxy access rows and frontend shows STATUS_CODE_ERROR = 0 with POST /api/checkout returning 200 in the sampled traces.\", \"evidence_ids\": [\"m002-normal-03-e6\", \"m002-normal-03-e2\", \"m002-normal-03-e11\"]}, {\"kind\": \"recommendation\", \"text\": \"Provisional: treat the non-zero error-status increases seen for recommendation (1.25) and ad (1.25), and the ad EventStream rpc_grpc_status_code=\\\"4\\\" increase (1.24999), as separate follow-ups outside the checkout question rather than checkout failures; they were not escalated into checkout-path evidence in this run.\", \"evidence_ids\": [\"m002-normal-03-e2\", \"m002-normal-03-e8\"]}], \"gaps\": [\"No checkout application logs exist among the available log sources (cart, frontend-proxy), so checkout-side exceptions/errors cannot be inspected directly for this window.\", \"Trace evidence is a biased sample: 20 of 248 returned spans displayed, 5 trace IDs only, and checkout span counts (66) are aggregated over the returned trace set rather than per trace, so per-request checkout outcomes and total trace volume in the window are unknown.\", \"Backend log hits exceed displayed rows (cart 54 total vs 20 displayed; frontend-proxy 128 total vs 18 displayed); statuses of omitted records were not observed.\", \"app_payment_transactions_total returned without a status/label dimension, so payment transaction success vs failure mix in the window is unknown.\", \"No SLO, error budget or comparison baseline was supplied, so no trend or health/recovery judgement is possible.\", \"The 5m increase range covers the 300s window length only approximately at instant evaluation; no per-minute breakdown was retrieved to confirm the error-free character across every sub-interval.\"], \"next_steps\": [\"Enable or add a checkout log source (e.g. kubernetes/logs, grafana/loki, opensearch/logs, datadog/logs for the checkout container) so checkout-side errors can be read directly for this window.\", \"Re-query the window with per-minute `rate`/`increase` series on traces_span_metrics_calls_total{service_name=\\\"checkout\\\",status_code=\\\"STATUS_CODE_ERROR\\\"} and on rpc_server/rpc_client histograms with non-zero rpc_grpc_status_code filters to confirm the zero-error result holds across sub-intervals.\", \"Retrieve traces for individual checkout trace IDs and compare against cart/frontend-proxy log trace_ids to attribute specific checkout requests, rather than relying on the aggregate returned trace set.\", \"Investigate the separately observed non-zero error rates for recommendation and ad as independent follow-ups, without attributing them to checkout.\"]}",
+  "finish_reason": "stop",
+  "quality_assessment": "pending_independent_evidence_check",
+  "report_request_id": "m002-normal-03-http-20",
+  "final_report": {
+    "schema_version": "m0-report-v1",
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "summary": "Within the authorized fixed window (1789011776–1789012076 UTC, 2026-09-10 03:42:56–03:47:56Z) for integration m0-otel-20260909, the visible data show no checkout request failures. Window-scoped rate queries (`increase(...[5m])` evaluated at the window end) on checkout spans return 67.5 spans with STATUS_CODE_UNSET and 0 with STATUS_CODE_ERROR, and 0 error spans for both SERVER and CLIENT span kinds. Checkout's outbound gRPC client histogram counts all show rpc_grpc_status_code 0 (Convert 13.75, GetProduct 8.75, GetCart 5, EmptyCart 5, GetQuote 5, ShipOrder 5, Charge 5), with status 2 (UNKNOWN) Charge = 0; checkout's gRPC server counts show 5 for status 0 and 0 for status 13. The returned trace set (5 traces, 248 spans) reports 0 error spans by visible tags for every visible service including checkout (66 spans). Displayed logs (cart, frontend-proxy) show no error-severity records and no 5xx proxy responses. However, checkout has no log source, the trace view is a biased sample (20 of 248 spans), and backend log hits exceed displayed rows (cart 54, frontend-proxy 128), so the evidence supports 'no observed failures' rather than certification that no failures occurred; no baseline or SLO was supplied.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "Window-scoped rate query `increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[5m])` at evaluation time 1789012076 returns checkout STATUS_CODE_UNSET = 67.5 and STATUS_CODE_ERROR = 0 (increase values are extrapolated, not unique request counts).",
+        "evidence_ids": [
+          "m002-normal-03-e2",
+          "m002-normal-03-e4"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Grouped by span kind, checkout's window increase is SPAN_KIND_SERVER UNSET 5 / ERROR 0, SPAN_KIND_CLIENT UNSET 52.5 / ERROR 0, SPAN_KIND_INTERNAL 5, SPAN_KIND_PRODUCER 5.",
+        "evidence_ids": [
+          "m002-normal-03-e4"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's outbound gRPC client duration histogram (+Inf bucket increase over 5m) shows all calls with rpc_grpc_status_code=\"0\": Convert/oteldemo.CurrencyService 13.75, GetProduct/oteldemo.ProductCatalogService 8.75, GetCart 5 and EmptyCart 5 (oteldemo.CartService), GetQuote 5 and ShipOrder 5 (oteldemo.ShippingService), Charge/oteldemo.PaymentService 5; the only non-zero-status series, Charge with rpc_grpc_status_code=\"2\", is 0. Bucket values are cumulative histogram buckets and increase is extrapolated.",
+        "evidence_ids": [
+          "m002-normal-03-e8"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's inbound gRPC server duration histogram (+Inf bucket increase over 5m) shows rpc_grpc_status_code=\"0\" = 5 and rpc_grpc_status_code=\"13\" = 0.",
+        "evidence_ids": [
+          "m002-normal-03-e9"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Service-wide span increase for the window shows STATUS_CODE_ERROR = 0 for checkout, frontend, frontend-proxy, payment, load-generator, fraud-detection and accounting, with non-zero error status only for recommendation (1.25) and ad (1.25); currency reports STATUS_CODE_OK 13.75.",
+        "evidence_ids": [
+          "m002-normal-03-e2"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "The returned trace set for the window contains 5 trace IDs and 248 spans with per-service error_spans_by_visible_tags = 0 for all visible services, including checkout (66 spans, max duration 66424 µs) and payment (10 spans); it is a biased sample of 20 displayed spans, omitting 234 spans.",
+        "evidence_ids": [
+          "m002-normal-03-e11",
+          "m002-normal-03-e12"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Displayed sampled spans show successful checkout-path requests: load-generator POST http.status_code 200 -> frontend-proxy ingress 200 -> frontend POST /api/checkout 200 -> frontend grpc.oteldemo.CheckoutService/PlaceOrder with rpc.grpc.status_code 0 (traces ef94f6ad35ad2a47fecf672989d8ad6f and 0486232d8e10ce9cb3fb014b79ef8ae0).",
+        "evidence_ids": [
+          "m002-normal-03-e11",
+          "m002-normal-03-e12"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Cart logs for the window (newest-first, limit 20, 20 of 54 backend hits displayed) show only severity Information entries: GetCartAsync, AddItemAsync and EmptyCartAsync calls; no error-severity records are displayed.",
+        "evidence_ids": [
+          "m002-normal-03-e5"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "frontend-proxy access logs for the window (limit 20, 18 of 128 backend hits displayed) show HTTP 200 for every displayed request except two 308 redirects (`GET /api/data/` at 03:47:33 and 03:47:29); no 5xx status appears in displayed rows.",
+        "evidence_ids": [
+          "m002-normal-03-e6"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Cart's EmptyCartAsync log entry at 2026-09-10T03:44:46.3211852Z carries trace_id 0486232d8e10ce9cb3fb014b79ef8ae0, which is one of the trace IDs in the window's returned trace set; cart log trace_id 78e17a0d6a3b4ab0e49f5e2499f609b9 matches the frontend-proxy `GET /api/cart` 200 access log record, showing log-trace alignment between those two sources. Neither record is attributable to a checkout span (returned trace set is aggregate, not per-trace, for checkout spans).",
+        "evidence_ids": [
+          "m002-normal-03-e5",
+          "m002-normal-03-e6",
+          "m002-normal-03-e11"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "app_payment_transactions_total increases by ~4.9996 over the 5m range for service_name=payment in the window; the returned series exposes only the service_name label, so no success/failure breakdown is visible.",
+        "evidence_ids": [
+          "m002-normal-03-e10"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The visible absence of checkout errors is bounded: logs are available only for cart and frontend-proxy (no checkout log source), the trace projection displayed 20 of 248 spans and does not enumerate per-trace checkout membership, and displayed log rows cover 20 of 54 cart hits and 18 of 128 frontend-proxy hits — omitted records were not examined.",
+        "evidence_ids": [
+          "m002-normal-03-e5",
+          "m002-normal-03-e6",
+          "m002-normal-03-e11"
+        ]
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Provisional: the window appears to be a normal-operation period for checkout, since zero error-status spans, zero non-zero gRPC statuses on checkout client/server calls (except 0-valued series) and successful sampled checkout traces co-occur. This is correlation within the observed window only and is not a health or recovery certification.",
+        "evidence_ids": [
+          "m002-normal-03-e4",
+          "m002-normal-03-e8",
+          "m002-normal-03-e9",
+          "m002-normal-03-e11"
+        ]
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected on visible evidence for this window: a checkout payment RPC failure burst — the only series with a non-zero gRPC status label for checkout's Charge call (rpc_grpc_status_code=\"2\") shows an increase of 0, and payment-related error status is 0 for both payment and checkout.",
+        "evidence_ids": [
+          "m002-normal-03-e8",
+          "m002-normal-03-e2"
+        ]
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected on visible evidence for this window: checkout HTTP/frontend-facing 5xx failures — no 5xx appears in the displayed frontend-proxy access rows and frontend shows STATUS_CODE_ERROR = 0 with POST /api/checkout returning 200 in the sampled traces.",
+        "evidence_ids": [
+          "m002-normal-03-e6",
+          "m002-normal-03-e2",
+          "m002-normal-03-e11"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Provisional: treat the non-zero error-status increases seen for recommendation (1.25) and ad (1.25), and the ad EventStream rpc_grpc_status_code=\"4\" increase (1.24999), as separate follow-ups outside the checkout question rather than checkout failures; they were not escalated into checkout-path evidence in this run.",
+        "evidence_ids": [
+          "m002-normal-03-e2",
+          "m002-normal-03-e8"
+        ]
+      }
+    ],
+    "gaps": [
+      "No checkout application logs exist among the available log sources (cart, frontend-proxy), so checkout-side exceptions/errors cannot be inspected directly for this window.",
+      "Trace evidence is a biased sample: 20 of 248 returned spans displayed, 5 trace IDs only, and checkout span counts (66) are aggregated over the returned trace set rather than per trace, so per-request checkout outcomes and total trace volume in the window are unknown.",
+      "Backend log hits exceed displayed rows (cart 54 total vs 20 displayed; frontend-proxy 128 total vs 18 displayed); statuses of omitted records were not observed.",
+      "app_payment_transactions_total returned without a status/label dimension, so payment transaction success vs failure mix in the window is unknown.",
+      "No SLO, error budget or comparison baseline was supplied, so no trend or health/recovery judgement is possible.",
+      "The 5m increase range covers the 300s window length only approximately at instant evaluation; no per-minute breakdown was retrieved to confirm the error-free character across every sub-interval."
+    ],
+    "next_steps": [
+      "Enable or add a checkout log source (e.g. kubernetes/logs, grafana/loki, opensearch/logs, datadog/logs for the checkout container) so checkout-side errors can be read directly for this window.",
+      "Re-query the window with per-minute `rate`/`increase` series on traces_span_metrics_calls_total{service_name=\"checkout\",status_code=\"STATUS_CODE_ERROR\"} and on rpc_server/rpc_client histograms with non-zero rpc_grpc_status_code filters to confirm the zero-error result holds across sub-intervals.",
+      "Retrieve traces for individual checkout trace IDs and compare against cart/frontend-proxy log trace_ids to attribute specific checkout requests, rather than relying on the aggregate returned trace set.",
+      "Investigate the separately observed non-zero error rates for recommendation and ad as independent follow-ups, without attributing them to checkout."
+    ]
+  },
+  "report_schema_version": "m0-report-v1",
+  "boundary_errors": [],
+  "tool_wall_seconds": 1.7066865430097096,
+  "model_http_requests": 3,
+  "tool_queries": 12
+}
