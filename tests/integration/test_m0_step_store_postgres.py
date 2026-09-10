@@ -571,3 +571,68 @@ def test_current_control_snapshot_crosses_v3_seam_after_new_run(lab, prior_actio
         )
     )
     assert check_outcome(scenario, outcome) == []
+
+
+def test_new_run_has_own_limits_without_resetting_experiment_budget(lab):
+    store, ledger, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    requests = []
+    for _ in range(4):
+        rid = uuid4()
+        step, _ = store.dispatch(fence, "limit", 0, {}, rid, 10, 4, lambda: None)
+        requests.append(rid)
+    ledger.retain_unknown(RequestIdentity(run, requests[0]))
+    store.commit_response(fence, step, response(), request_id=requests[-1])
+    for _ in range(20):
+        store.dispatch_tool(fence, step, 0, uuid4(), 20, lambda: None)
+    with pytest.raises(BudgetError, match="REQUEST_LIMIT"):
+        store.dispatch(fence, "limit", 1, {}, uuid4(), 10, 4, lambda: None)
+    with pytest.raises(BudgetError, match="QUERY_LIMIT"):
+        store.dispatch_tool(fence, step, 0, uuid4(), 20, lambda: None)
+    # A new worker/epoch on this same Run must not reset either Run counter.
+    with ledger._transaction() as conn:
+        conn.execute(
+            "UPDATE m0_v3_subject SET lease_until=clock_timestamp()-interval '1 second' WHERE id=%s",
+            (subject,),
+        )
+    recovered = store.claim(subject, run, uuid4(), VERSION)
+    with pytest.raises(BudgetError, match="REQUEST_LIMIT"):
+        store.dispatch(recovered, "limit", 1, {}, uuid4(), 10, 4, lambda: None)
+    with pytest.raises(BudgetError, match="QUERY_LIMIT"):
+        store.dispatch_tool(recovered, step, 0, uuid4(), 20, lambda: None)
+    fresh = replace(run, run_id=uuid4())
+    store.new_run(subject, 0, fresh, {"business": "continued"}, VERSION)
+    current = store.claim(subject, fresh, uuid4(), VERSION)
+    rid = uuid4()
+    fresh_step, _ = store.dispatch(current, "fresh", 0, {}, rid, 10, 4, lambda: None)
+    store.commit_response(current, fresh_step, response(), request_id=rid)
+    store.dispatch_tool(current, fresh_step, 0, uuid4(), 20, lambda: None)
+    totals = ledger.snapshot(run.experiment_id)
+    assert totals["unknown"] == 10 and totals["reserved"] == 40
+    # Fresh Run has local headroom, but prior reservations still consume ceiling.
+    with pytest.raises(BudgetError, match="BUDGET_EXHAUSTED"):
+        store.dispatch(current, "fresh", 1, {}, uuid4(), 60, 4, lambda: None)
+    with pytest.raises(BudgetError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            subject,
+            1,
+            replace(
+                fresh, run_id=uuid4(), deadline=run.deadline + timedelta(seconds=1)
+            ),
+            {},
+            VERSION,
+        )
+    with ledger._transaction() as conn:
+        count = conn.execute(
+            "SELECT count(*) AS n FROM m0_v3_dispatch d JOIN m0_v3_step s ON s.id=d.step JOIN m0_runs r ON r.id=s.run_id WHERE r.experiment_id=%s",
+            (run.experiment_id,),
+        ).fetchone()["n"]
+        queries = conn.execute(
+            "SELECT count(*) AS n FROM m0_v3_tool_attempt a JOIN m0_v3_step s ON s.id=a.step JOIN m0_runs r ON r.id=s.run_id WHERE r.experiment_id=%s",
+            (run.experiment_id,),
+        ).fetchone()["n"]
+        deadline = conn.execute(
+            "SELECT deadline FROM m0_experiments WHERE id=%s", (run.experiment_id,)
+        ).fetchone()["deadline"]
+    assert (count, queries) == (5, 21)
+    assert deadline == run.deadline == fresh.deadline

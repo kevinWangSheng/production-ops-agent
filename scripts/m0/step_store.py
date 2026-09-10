@@ -263,6 +263,8 @@ class StepStore:
         and MUST NOT wait for its response. It must use the parent's shared round
         HTTP guard. No coroutine or deferred unscheduled work is a valid starter.
         An uncertain initiation consumes this request; retry uses a new identity.
+        max_requests is per Run. Experiment fees/deadline remain in the PG
+        ledger; the caller's shared authorization guard owns total HTTP limits.
         before_lock is a deterministic test barrier, outside authority checks.
         """
         if (
@@ -291,8 +293,8 @@ class StepStore:
                         raise BudgetError("CONTROL_DENIED")
                     self.ledger._experiment(conn, fence.run.experiment_id)
                     count = conn.execute(
-                        "SELECT count(*) AS n FROM m0_v3_dispatch d JOIN m0_v3_subject s ON s.id=d.subject WHERE s.experiment_id=%s",
-                        (fence.run.experiment_id,),
+                        "SELECT count(*) AS n FROM m0_v3_dispatch d JOIN m0_v3_step s ON s.id=d.step WHERE s.run_id=%s AND d.kind='model'",
+                        (fence.run.run_id,),
                     ).fetchone()["n"]
                     if count >= max_requests:
                         raise BudgetError("REQUEST_LIMIT")
@@ -356,7 +358,7 @@ class StepStore:
         *,
         before_lock=None,
     ):
-        """Same initiation contract as dispatch; gateway owns read authorization."""
+        """Per-Run query limit; gateway owns authorization and source budgets."""
         if type(max_queries) is not int or max_queries <= 0:
             raise BudgetError("INVALID_INPUT")
         if before_lock:
@@ -379,8 +381,8 @@ class StepStore:
                     if row is None or row["result"] is not None:
                         raise BudgetError("OPERATION_NOT_PENDING")
                     count = conn.execute(
-                        "SELECT count(*) AS n FROM m0_v3_tool_attempt a JOIN m0_v3_step s ON s.id=a.step JOIN m0_v3_subject j ON j.id=s.subject WHERE j.experiment_id=%s",
-                        (fence.run.experiment_id,),
+                        "SELECT count(*) AS n FROM m0_v3_tool_attempt a JOIN m0_v3_step s ON s.id=a.step WHERE s.run_id=%s",
+                        (fence.run.run_id,),
                     ).fetchone()["n"]
                     if count >= max_queries:
                         raise BudgetError("QUERY_LIMIT")

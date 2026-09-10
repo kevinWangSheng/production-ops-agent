@@ -259,3 +259,39 @@ assert callable(m0_pg_live_probe.wire_history)
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_shared_authorization_http_limit_survives_new_runs_and_reload(
+    tmp_path, monkeypatch
+):
+    import fcntl
+
+    from scripts.m0_environment import round02
+
+    monkeypatch.setattr(round02.time, "time", lambda: round02.PROFILE.deadline - 60)
+    path = tmp_path / "isolated-count-ledger.json"
+    usage = {
+        key: 0
+        for key in (
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "prompt_cache_hit_tokens",
+            "prompt_cache_miss_tokens",
+        )
+    }
+    with path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for index in range(20):
+            budget = round02.Budget(path)
+            if index == 0:
+                # Isolated synthetic phase headroom exposes the independent
+                # authorization-wide ceiling; never edits the real ledger.
+                budget.data["phase_limits"]["normal"]["http"] = 20
+            entry = budget.reserve(f"new-run-{index // 4}", "normal", 1)
+            budget.finish(entry, 200, usage)
+        reloaded = round02.Budget(path)
+        with pytest.raises(ValueError, match="total HTTP budget"):
+            reloaded.reserve("another-new-run", "normal", 1)
+        assert len(reloaded.data["attempts"]) == 20
+        assert reloaded.data["previous_allocation_reserved_cny"] == 24
