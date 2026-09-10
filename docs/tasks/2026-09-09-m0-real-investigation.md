@@ -226,3 +226,13 @@ f923897的CI checks/m0-postgres成功（34465716757），新Code请求5617086189
 用户要求继续后，核实任务worktree干净、PR16仍OPEN未合并、f642020的两项CI成功（34472031328）。重新请求Code5618109992与Security5618110448；GitHub于11:42:39Z再次明确[Code Review额度已达上限](https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5618111383)，Security未确认或返回。不能据用户表示恢复就覆盖服务端实际拒绝，也不继续重复触发或扩大额度。两条最新发现仍有a100c90修复/独立验证，待当前实现远端复审；PR未就绪。
 
 未追加模型/trace或启动服务，旧20请求账本及未知占用保持。主工作区发现用户新增.playwright-mcp/未跟踪目录，未读取/修改/清理；任务worktree不吸收该工作。该次仅补重试证据，M1入口与M0-03所需新实验授权不变。
+
+## 本地双轴 Code Review 替代与修复（2026-09-10）
+
+用户明确指定本地eng:code-review替代远端Code Review。按PR16固定base e9d22e9→af24646，Standards和Spec由两个全新上下文Agent并行独立审查；仓库已有SPEC/C3/M0计划与冻结合同，未安装issue-tracker/setup平台。完整报告见[本地双轴审查](../evidence/m0-real-investigation/round-02-local-code-review.md)。Standards确认0硬违规、2非阻塞维护建议，未做无关重构。Spec发现P2：bridge仅凭可解析JSON覆盖运行器incomplete/failed终态，已先复现后修复。
+
+修复仅涉及bridge及两份测试/探针：严格状态由可信运行器记录决定，合法handoff保留完整CLI审计。实际Holmes假传输发现运行器未采纳正文但safe response有候选时，仅failed/incomplete允许保全同次未采纳候选并明确NULL/MISSING来源，不补capture、不改原result、不认证完成。错Run/请求或非空正文冲突仍拒绝。原schema和真实失败不改写。
+
+[Spec独立复验](../evidence/m0-real-investigation/round-02-local-spec-revalidation.md)10状态/CLI+8来源反例+真实Holmes假传输0HTTP+244回归通过；[Standards增量](../evidence/m0-real-investigation/round-02-local-standards-fix-review.md)0新增问题。root隔离tracked代码副本全量复跑601 passed/44 PG默认skip，首次缺.venv相对入口导致的1项环境失败保留，未安装依赖。补丁应用后SHA须与已验证3文件一致，秘密扫描通过后按原流程提交推送。
+
+本轮本地Code Review完成后，用户表示bot额度恢复，要求后续直接使用GitHub bot。最新修复将提交Code/Security复审，不再启动本地双轴流程；旧额度拒绝保留为历史，新的服务端结果现场核验。PR不自动合并。M1仍因真实报告质量FAIL不开放，任何新模型实验仍须新授权；本次0模型/trace/后端/服务操作。主工作区.playwright-mcp/无关工作未触碰。

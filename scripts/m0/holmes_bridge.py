@@ -510,6 +510,8 @@ def _load_common(
         raise ValueError("REPORT_REQUEST_BINDING")
     report = None
     report_error = None
+    candidate_content = results.get("final_business_content")
+    candidate_from_response = False
     try:
         if results.get("finish_reason") != "stop":
             raise ValueError("FINAL_RESPONSE_REQUIRED")
@@ -564,12 +566,34 @@ def _load_common(
         )
     response = response_records.get(final_ordinal)
     if delivered and delivery_states[final_ordinal] == "response_committed":
+        if len(response.get("choices", [])) != 1:
+            raise ValueError("REPORT_REQUEST_BINDING")
+        choice = response["choices"][0]
         if (
-            len(response.get("choices", [])) != 1
-            or response["choices"][0].get("finish_reason")
-            != results.get("finish_reason")
-            or response["choices"][0].get("content")
-            != results.get("final_business_content")
+            strict_mode
+            and candidate_content is None
+            and results.get("status") in {"failed", "incomplete"}
+            and isinstance(choice.get("content"), str)
+        ):
+            # Runner failed before accepting an answer. Preserve the safe response
+            # as an unaccepted candidate; never invent its missing ReportCapture.
+            candidate_from_response = True
+            candidate_content = choice["content"]
+            from scripts.m0_environment.report_contract import parse_report
+
+            try:
+                if choice.get("finish_reason") != "stop":
+                    raise ValueError("FINAL_RESPONSE_INCOMPLETE")
+                report = report_type.model_validate(
+                    parse_report(candidate_content, version="m0-report-v2")
+                )
+                report_error = None
+            except (ValueError, TypeError):
+                report = None
+                report_error = "FINAL_REPORT_SCHEMA_INVALID"
+        elif (
+            choice.get("finish_reason") != results.get("finish_reason")
+            or choice.get("content") != candidate_content
         ):
             raise ValueError("REPORT_REQUEST_BINDING")
     else:
@@ -740,6 +764,43 @@ def _load_common(
     ):
         raise ValueError("REPORT_EVIDENCE_NOT_DELIVERED")
     execution = "completed" if report is not None else "blocked"
+    runtime_reasons = []
+    if strict_mode:
+        # Successful parsing is only a candidate. The runner owns execution status.
+        status = results.get("status")
+        if status == "failed":
+            execution = "failed"
+            runtime_reasons.append("RUNTIME_EXECUTION_FAILED")
+        elif status == "incomplete":
+            execution = "blocked"
+            runtime_reasons.append("RUNTIME_EXECUTION_INCOMPLETE")
+        elif status != "investigation_returned":
+            execution = "blocked"
+            runtime_reasons.append("RUNTIME_STATUS_UNKNOWN")
+        for present, code in (
+            ("report_validation_error" in results, "RUNTIME_REPORT_VALIDATION_FAILED"),
+            ("error_type" in results, "RUNTIME_EXCEPTION_RECORDED"),
+            (
+                bool(
+                    results.get("boundary_errors")
+                    or results.get("boundary_error_codes")
+                ),
+                "RUNTIME_BOUNDARY_FAILURE",
+            ),
+        ):
+            if present:
+                if execution == "completed":
+                    execution = "blocked"
+                runtime_reasons.append(code)
+    if candidate_from_response:
+        runtime_reasons.extend(
+            [
+                "UNACCEPTED_CANDIDATE_FROM_RESPONSE",
+                "RUNNER_FINAL_CONTENT_NULL"
+                if "final_business_content" in results
+                else "RUNNER_FINAL_CONTENT_MISSING",
+            ]
+        )
     versions = {
         "adapter": "holmes-v3-bridge-1",
         "projection_code": context.source_sha256,
@@ -795,8 +856,10 @@ def _load_common(
             for claim in (report.claims if report else [])
         ],
         evidence_ids=list(actual_views),
-        gaps=report.gaps if report else [report_error],
-        handoff=report is None or report.assessment_status == "incomplete",
+        gaps=(report.gaps if report else [report_error]) + runtime_reasons,
+        handoff=execution != "completed"
+        or report is None
+        or report.assessment_status == "incomplete",
         health="unknown",
     )
     input_details = {
@@ -807,6 +870,8 @@ def _load_common(
         "first_context": deliveries[0].get("evidence_context") if deliveries else None,
         "delivery_records": deliveries,
         "report_error": report_error,
+        "candidate_content": candidate_content,
+        "candidate_from_response": candidate_from_response,
     }
     return (
         scenario,
@@ -926,7 +991,7 @@ def load_packet(run_dir, **kwargs):
             or capture.content != response["choices"][0].get("content")
         ):
             raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
-    elif report is not None:
+    elif report is not None and not input_details["candidate_from_response"]:
         raise ValueError("REPORT_OUTPUT_BINDING_MISMATCH")
     if (
         report is not None
@@ -1026,9 +1091,9 @@ def load_packet(run_dir, **kwargs):
         report_step_id=expected_step,
         report_request_id=record["request_id"] if record else None,
         report=report,
-        report_content=result.get("final_business_content"),
-        report_content_sha256=strict.content_hash(result["final_business_content"])
-        if isinstance(result.get("final_business_content"), str)
+        report_content=input_details["candidate_content"],
+        report_content_sha256=strict.content_hash(input_details["candidate_content"])
+        if isinstance(input_details["candidate_content"], str)
         else None,
         evidence_ids=old_outcome.evidence_ids,
         handoff=old_outcome.handoff,
@@ -1094,7 +1159,7 @@ def main():
         }
         if args.legacy_v3:
             result.update(legacy_report_audit(args.run_dir))
-        elif errors or outcome.report is None:
+        elif errors or outcome.report is None or outcome.handoff:
             result.update(
                 execution=outcome.execution,
                 handoff=outcome.handoff,

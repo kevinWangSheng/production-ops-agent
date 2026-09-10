@@ -201,6 +201,7 @@ def strict_captured(captured):
         run / "result-business.json",
         {
             "run_id": "case-01",
+            "status": "investigation_returned",
             "finish_reason": "stop",
             "final_business_content": content,
             "final_report": report.model_dump(mode="json"),
@@ -1099,3 +1100,234 @@ def test_missing_phase_and_instruction_hash_are_not_inferred_from_wire(
     assert "report_instruction_sha256" not in scenario.versions
     assert "USER_MESSAGE_CONTRACT_UNKNOWN" in v4.check_outcome(scenario, outcome)
     assert outcome.report_content and scenario.agent_input.actual_user_content
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        "incomplete",
+        "failed",
+        "missing",
+        "unknown",
+        "contradictory_validation",
+        "contradictory_exception",
+        "contradictory_boundary",
+    ],
+)
+def test_runtime_failure_cannot_be_upgraded_by_parseable_report(
+    strict_captured, runtime
+):
+    import subprocess
+    import sys
+
+    run, code = strict_captured
+    result = json.loads((run / "result-business.json").read_bytes())
+    if runtime == "missing":
+        result.pop("status", None)
+    elif runtime.startswith("contradictory"):
+        result["status"] = "investigation_returned"
+        if runtime == "contradictory_validation":
+            result["report_validation_error"] = "final response contains tool calls"
+        elif runtime == "contradictory_exception":
+            result["error_type"] = "TimeoutError"
+        else:
+            result["boundary_errors"] = ["HTTP response byte limit exceeded"]
+    else:
+        result["status"] = runtime
+    if runtime == "incomplete":
+        result["report_validation_error"] = "final response contains tool calls"
+    save(run / "result-business.json", result)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert (
+        scenario.trusted.execution
+        == outcome.execution
+        == ("failed" if runtime == "failed" else "blocked")
+    )
+    assert outcome.handoff and outcome.handoff_reasons
+    assert outcome.report_content == result["final_business_content"]
+    assert outcome.report.model_dump(mode="json") == result["final_report"]
+    assert (
+        len(scenario.trusted.artifacts)
+        == len(scenario.trusted.observed_actions)
+        == len(scenario.trusted.deliveries)
+        == 1
+    )
+    assert scenario.trusted.report_capture.content == outcome.report_content
+    assert "ASSESSMENT_EXECUTION_MISMATCH" in v4.check_outcome(scenario, outcome)
+    output = run / "runtime-failure-output.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 1 and not process.stderr
+    stored = json.loads(output.read_bytes())
+    assert (
+        stored["handoff"]
+        and stored["outcome"]["report_content"] == result["final_business_content"]
+    )
+    assert stored["scenario"]["trusted"]["observed_actions"]
+    summary = json.loads(process.stdout)
+    assert (
+        not {"scenario", "outcome", "agent_input", "report", "report_content"}
+        & summary.keys()
+    )
+
+
+def test_completed_runtime_may_preserve_incomplete_assessment(strict_captured):
+    run, code = strict_captured
+    result = json.loads((run / "result-business.json").read_bytes())
+    result["status"] = "investigation_returned"
+    result["final_report"].update(
+        assessment_status="incomplete",
+        conclusion="inconclusive",
+        gaps=["More observations required"],
+    )
+    result["final_business_content"] = json.dumps(result["final_report"])
+    save(run / "result-business.json", result)
+    sync_report_attempt(run, result)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert scenario.trusted.execution == outcome.execution == "completed"
+    assert outcome.report.assessment_status == "incomplete" and outcome.handoff
+    assert v4.check_outcome(scenario, outcome) == []
+
+
+@pytest.mark.parametrize("state", ["failed", "incomplete"])
+@pytest.mark.parametrize("missing", [False, True])
+def test_failed_runner_preserves_unaccepted_response_candidate(
+    strict_captured, state, missing
+):
+    run, code = strict_captured
+    result = json.loads((run / "result-business.json").read_bytes())
+    original_report = result.pop("final_report")
+    original_content = result["final_business_content"]
+    result.update(
+        status=state,
+        finish_reason=None,
+        report_validation_error="final response contains tool calls",
+    )
+    if missing:
+        result.pop("final_business_content")
+    else:
+        result["final_business_content"] = None
+    save(run / "result-business.json", result)
+    (run / "report-capture-business.json").unlink()
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert outcome.report_content == original_content
+    assert outcome.report.model_dump(mode="json") == original_report
+    assert scenario.trusted.report_capture is None and outcome.handoff
+    assert "UNACCEPTED_CANDIDATE_FROM_RESPONSE" in outcome.handoff_reasons
+    assert (
+        "RUNNER_FINAL_CONTENT_MISSING" if missing else "RUNNER_FINAL_CONTENT_NULL"
+    ) in outcome.handoff_reasons
+    assert json.loads((run / "result-business.json").read_bytes()) == result
+    assert "REPORT_OUTPUT_BINDING_MISMATCH" in v4.check_outcome(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "success_missing",
+        "unknown_missing",
+        "other_run",
+        "other_attempt",
+        "different_nonempty",
+    ],
+)
+def test_response_candidate_fallback_never_weakens_authority_bindings(
+    strict_captured, case
+):
+    run, code = strict_captured
+    result = json.loads((run / "result-business.json").read_bytes())
+    result.update(status="failed", final_business_content=None, finish_reason=None)
+    result.pop("final_report")
+    (run / "report-capture-business.json").unlink()
+    if case == "success_missing":
+        result["status"] = "investigation_returned"
+    elif case == "unknown_missing":
+        result.pop("status")
+    elif case == "different_nonempty":
+        result.update(
+            final_business_content='{"different":"candidate"}', finish_reason="stop"
+        )
+    else:
+        response = json.loads((run / "response-2-business.json").read_bytes())
+        response["run_id" if case == "other_run" else "request_ordinal"] = (
+            "other" if case == "other_run" else 99
+        )
+        save(run / "response-2-business.json", response)
+    save(run / "result-business.json", result)
+    with pytest.raises(ValueError, match="REPORT_REQUEST_BINDING"):
+        bridge.load_packet(run, projection_source_sha256=code)
+
+
+@pytest.mark.parametrize("protocol_rejected", [False, True])
+def test_legitimate_incomplete_handoff_cli_keeps_runtime_audit(
+    strict_captured, protocol_rejected
+):
+    import subprocess
+    import sys
+
+    run, code = strict_captured
+    result = json.loads((run / "result-business.json").read_bytes())
+    result["status"] = "incomplete" if protocol_rejected else "failed"
+    if protocol_rejected:
+        result["report_validation_error"] = "final response contains tool calls"
+    result["final_report"].update(
+        assessment_status="incomplete",
+        conclusion="inconclusive",
+        gaps=["Need human follow-up"],
+    )
+    result["final_business_content"] = json.dumps(result["final_report"])
+    save(run / "result-business.json", result)
+    sync_report_attempt(run, result)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert outcome.handoff and outcome.execution != "completed"
+    assert (
+        v4.check_outcome(scenario, outcome) == []
+    )  # Accurate incomplete outcome, not model success.
+    output = run / "incomplete-audit.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 0 and not process.stderr
+    stored = json.loads(output.read_bytes())
+    assert stored["handoff"] and stored["execution"] == outcome.execution
+    assert stored["report_content"] == result["final_business_content"]
+    assert stored["scenario"]["trusted"]["deliveries"]
+    assert stored["handoff_reasons"] == outcome.handoff_reasons
+    if protocol_rejected:
+        assert "RUNTIME_REPORT_VALIDATION_FAILED" in stored["handoff_reasons"]
+    summary = json.loads(process.stdout)
+    assert (
+        not {"scenario", "outcome", "agent_input", "report", "report_content"}
+        & summary.keys()
+    )

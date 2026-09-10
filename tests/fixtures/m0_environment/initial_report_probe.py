@@ -20,6 +20,7 @@ from scripts.m0.outcomes_v4 import check_outcome  # noqa: E402
 from scripts.m0_environment import holmes_baseline as wrapper  # noqa: E402
 
 wrapper.UPSTREAM = Path(os.environ["HOLMES_TEST_UPSTREAM"])
+MIXED_FINAL_TOOL_CALL = "--mixed-final-tool-call" in sys.argv
 make_bundle = runpy.run_path(str(ROOT / "tests/test_m0_initial_evidence.py"))["bundle"]
 metadata = (
     ROOT / "docs/evidence/m0-real-environment/round-02-provider-models.json"
@@ -179,6 +180,14 @@ with tempfile.TemporaryDirectory() as directory:
                 "prompt_cache_miss_tokens": 100,
             },
         }
+        if MIXED_FINAL_TOOL_CALL:
+            response["choices"][0]["message"]["tool_calls"] = [
+                {
+                    "id": "forbidden-final-call",
+                    "type": "function",
+                    "function": {"name": "otel_services", "arguments": "{}"},
+                }
+            ]
         return json.dumps(
             {
                 "status": 200,
@@ -240,6 +249,40 @@ with tempfile.TemporaryDirectory() as directory:
         projection_dependencies=copied_context.dependencies,
     )
     errors = check_outcome(scenario, outcome)
+    if MIXED_FINAL_TOOL_CALL:
+        result = json.loads((folder / "result-business.json").read_bytes())
+        assert result["status"] == "incomplete"
+        assert result["report_validation_error"] == "final response contains tool calls"
+        observed = json.loads((folder / "response-1-business.json").read_bytes())
+        assert observed["choices"][0]["finish_reason"] == "stop"
+        assert result["final_business_content"] is None
+        assert outcome.report_content == observed["choices"][0]["content"]
+        assert outcome.report.model_dump(mode="json") == json.loads(
+            outcome.report_content
+        )
+        assert scenario.trusted.report_capture is None
+        assert "UNACCEPTED_CANDIDATE_FROM_RESPONSE" in outcome.handoff_reasons
+        assert "RUNNER_FINAL_CONTENT_NULL" in outcome.handoff_reasons
+        assert scenario.trusted.execution == outcome.execution == "blocked"
+        assert (
+            outcome.handoff
+            and "RUNTIME_REPORT_VALIDATION_FAILED" in outcome.handoff_reasons
+        )
+        assert len(scenario.trusted.artifacts) == len(scenario.trusted.deliveries) == 1
+        assert "ASSESSMENT_EXECUTION_MISMATCH" in errors
+        print(
+            json.dumps(
+                {
+                    "status": "mixed_final_protocol_rejected",
+                    "real_http": 0,
+                    "fake_model_steps": len(calls),
+                    "report_preserved": True,
+                    "execution": outcome.execution,
+                    "violations": errors,
+                }
+            )
+        )
+        raise SystemExit(0)
     assert errors == [], errors
     assert len(scenario.agent_input.initial_views) == 1
     assert scenario.trusted.observed_actions == []

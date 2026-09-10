@@ -1,6 +1,6 @@
 # Roadmap
 
-当前工程交付阻塞（2026-09-10）：PR16当前实现已自测/独立验证，远端Code Review额度耗尽、Security当前提交无结果，尚未就绪或合并。该阻塞与真实报告质量FAIL分开；M1仍不开放，具体证据见现有真实调查任务最新交接。
+当前工程交付状态（2026-09-10）：按用户本次授权，以本地eng:code-review双轴独立审查替代远端Code Review；Spec发现1个P2已修复复验，Standards仅2项非阻塞建议。用户随后要求本轮后恢复GitHub bot，最新修复待Code/Security复审，PR16未合并；M1因真实报告质量FAIL保持关闭。见真实调查任务最新交接。
 
 Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3包作为历史保留，PR审查后的[严格v4包](docs/testing/first-investigation-v4-2026-09-10.md)已离线补齐并独立验证/冻结，尚无新版真实模型证据；完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-final-delivery-gate-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
 

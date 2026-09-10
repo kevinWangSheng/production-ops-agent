@@ -1,14 +1,22 @@
 {
-  "checked_at": "2026-09-10T11:33:52.655660+00:00",
+  "checked_at": "2026-09-10T12:47:27.154052+00:00",
   "implementation_commit": "a100c90",
   "review_requested_head": "56b17f718f2d410b958678deaa0661479b0dafe3",
   "ci_run": 34471557918,
   "ci_checks": "success",
   "ci_m0_postgres": "success",
   "code_review": {
-    "status": "unavailable_usage_limit",
-    "evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5617957215",
-    "message": "You have reached your Codex usage limits for code reviews."
+    "status": "completed_local_user_authorized_substitute",
+    "skill": "eng:code-review",
+    "reviewed_base": "e9d22e9183601ae322f006f4a42d9dd2bbcbae84",
+    "reviewed_head": "af24646eb02da3de2839005a7a3ea361fd7ac914",
+    "patch_sha256": "1b0553501438c50722c6c8d88daaeaa08414d19428f63660ebd9067fe58aa319",
+    "standards_hard_violations": 0,
+    "standards_nonblocking_suggestions": 2,
+    "spec_original_P2": 1,
+    "spec_P2_resolved": 1,
+    "blocking_findings_remaining": 0,
+    "evidence": "round-02-local-code-review.md"
   },
   "security_review": {
     "current_head_status": "no_acknowledgement_or_result",
@@ -24,7 +32,7 @@
   "trace_uploads": 0,
   "dedicated_services_stopped": true,
   "data_worktrees_preserved": true,
-  "next": "Review quota/availability recovery and current-code remote review; M0-03 real report quality revalidation requires new separate experiment authorization.",
+  "next": "Use GitHub bot Code/Security review after this completed local round; M0-03 quality revalidation still needs a new separate real-model experiment authorization.",
   "resume_attempts": [
     {
       "checked_at": "2026-09-10T11:44:22.906974+00:00",
@@ -37,5 +45,11 @@
       "new_model_http": 0,
       "new_trace_uploads": 0
     }
-  ]
+  ],
+  "prior_remote_code_review": {
+    "status": "unavailable_usage_limit",
+    "evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5617957215",
+    "message": "You have reached your Codex usage limits for code reviews."
+  },
+  "remaining_review_blocker": "User restored bot workflow; current fixed implementation awaits Code and Security review"
 }
