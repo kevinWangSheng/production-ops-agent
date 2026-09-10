@@ -152,3 +152,9 @@ root检查425 passed/41 PG默认skip（13.92s）；审查文档Python示例格�
 ced7fd4的CI checks/m0-postgres成功（run34459556690）；09:21Z Code Review3977531749/3977531762指出初始导入缺current接口/时间前置校验、无report的CLI handoff会解引用None。runtime/bridge作者与独立审查者正在补实际wrapper发送前0请求反例和真实CLI保真输出；目标/时间必须在模型数据出口前执行，不能仅靠事后checker。仍无新增真实模型/trace/后端/PG操作，旧原文和schema快照保留。
 
 本组[独立复验](../evidence/m0-real-investigation/round-02-initial-scope-cli-review.md)通过：真实wrapper缩窗/禁接口0复制/0dotenv/0model/tool、原scope宽但query窄的合法正例、实际CLI无报告三组及58组合回归/6自写边界通过。bridge只使用已验证query_window，不再从scope补值；reportless原文/input/violation完整保留。root make check456 passed/43 PG默认skip（14.35s）；全程0真实模型/trace/后端/PG。旧候选manifest/审查仍保留原覆盖范围，新source manifest将记录本组三源修复。待本批最新CI/Code/Security。
+
+## PR16 普通报告失败的统一交接
+
+e5357a8的CI checks/m0-postgres成功（run34461762937）；09:45Z Code Review3977733293指出无initial的普通malformed/empty/length报告仍抛FINAL_RESPONSE_REQUIRED。本组删除初始专用旁路，统一先重建input/所有Artifact/Action/Delivery，再形成report=None的严格handoff，保留实际执行状态、原文/hash（None与真实空串区分），不放宽合法报告解析。实际3×3 CLI矩阵红9→绿9，root make check467 passed/43 PG默认skip（15.12s）；独立矩阵、None/早期unknown delivery以及184项回归已通过，终审记录为[报告失败交接](../evidence/m0-real-investigation/round-02-report-failure-handoff-review.md)。旧schema/source快照仍保留，当前仅原始内容载体兼容空字符串，空报告本身仍拒绝。无新增真实模型/trace/后端/PG。
+
+Security在GitHub仍无确认/结果；有界只读Codex Cloud list查询按官方JSON键核实tasks为空，仅表明该CLI列表未提供审查入口，不能推断服务健康或审查通过。查询自产日志仅保留tmp/m002-codex-cloud-error.log（0600）与hash说明，无内容导出、无平台配置更改、新任务或新付费执行。

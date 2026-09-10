@@ -1,0 +1,478 @@
+{
+  "$defs": {
+    "ClaimV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "fact",
+            "hypothesis",
+            "recommendation",
+            "counter_evidence",
+            "rejected_hypothesis"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "target_refs": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Target Refs",
+          "type": "array"
+        },
+        "time_scope_ref": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Scope Ref"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "evidence_ids"
+      ],
+      "title": "ClaimV2",
+      "type": "object"
+    },
+    "ComposeTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "compose",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "deployment_instance": {
+          "minLength": 1,
+          "title": "Deployment Instance",
+          "type": "string"
+        },
+        "service": {
+          "minLength": 1,
+          "title": "Service",
+          "type": "string"
+        },
+        "container_id": {
+          "minLength": 1,
+          "title": "Container Id",
+          "type": "string"
+        },
+        "image_digest": {
+          "minLength": 1,
+          "title": "Image Digest",
+          "type": "string"
+        },
+        "telemetry_instance": {
+          "minLength": 1,
+          "title": "Telemetry Instance",
+          "type": "string"
+        },
+        "mapping_revision": {
+          "minLength": 1,
+          "title": "Mapping Revision",
+          "type": "string"
+        },
+        "config_revision": {
+          "minLength": 1,
+          "title": "Config Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "deployment_instance",
+        "service",
+        "container_id",
+        "image_digest",
+        "telemetry_instance",
+        "mapping_revision",
+        "config_revision"
+      ],
+      "title": "ComposeTarget",
+      "type": "object"
+    },
+    "IntegrationTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "integration",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "deployment_instance": {
+          "minLength": 1,
+          "title": "Deployment Instance",
+          "type": "string"
+        },
+        "mapping_revision": {
+          "minLength": 1,
+          "title": "Mapping Revision",
+          "type": "string"
+        },
+        "service_identity": {
+          "const": "unknown",
+          "title": "Service Identity",
+          "type": "string"
+        },
+        "observed_services": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Observed Services",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "deployment_instance",
+        "mapping_revision",
+        "service_identity",
+        "observed_services"
+      ],
+      "title": "IntegrationTarget",
+      "type": "object"
+    },
+    "KubernetesTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "kubernetes",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "cluster_uid": {
+          "minLength": 1,
+          "title": "Cluster Uid",
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "resource_uid": {
+          "minLength": 1,
+          "title": "Resource Uid",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "cluster_uid",
+        "namespace",
+        "resource_uid",
+        "revision"
+      ],
+      "title": "KubernetesTarget",
+      "type": "object"
+    },
+    "ModelReportV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "m0-report-v2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "assessment_status": {
+          "enum": [
+            "completed",
+            "incomplete"
+          ],
+          "title": "Assessment Status",
+          "type": "string"
+        },
+        "conclusion": {
+          "enum": [
+            "supported",
+            "partial",
+            "inconclusive"
+          ],
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/ClaimV2"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "next_steps": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Next Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "assessment_status",
+        "conclusion",
+        "summary",
+        "claims",
+        "gaps",
+        "next_steps"
+      ],
+      "title": "ModelReportV2",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "incident",
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "discriminator": {
+            "mapping": {
+              "compose": "#/$defs/ComposeTarget",
+              "integration": "#/$defs/IntegrationTarget",
+              "kubernetes": "#/$defs/KubernetesTarget"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/KubernetesTarget"
+            },
+            {
+              "$ref": "#/$defs/ComposeTarget"
+            },
+            {
+              "$ref": "#/$defs/IntegrationTarget"
+            }
+          ],
+          "title": "Target"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "target"
+      ],
+      "title": "Subject",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "m0-public-v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scenario_id": {
+      "minLength": 1,
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Versions",
+      "type": "object"
+    },
+    "subject": {
+      "$ref": "#/$defs/Subject"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "control_generation": {
+      "minimum": 0,
+      "title": "Control Generation",
+      "type": "integer"
+    },
+    "execution": {
+      "enum": [
+        "queued",
+        "running",
+        "waiting_human",
+        "paused",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exhausted"
+      ],
+      "title": "Execution",
+      "type": "string"
+    },
+    "report_step_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Step Id"
+    },
+    "report_request_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Request Id"
+    },
+    "report": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelReportV2"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "report_content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Content"
+    },
+    "report_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Content Sha256"
+    },
+    "evidence_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "handoff": {
+      "title": "Handoff",
+      "type": "boolean"
+    },
+    "handoff_reasons": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Handoff Reasons",
+      "type": "array"
+    },
+    "health": {
+      "const": "unknown",
+      "title": "Health",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "versions",
+    "subject",
+    "run_id",
+    "control_generation",
+    "execution",
+    "evidence_ids",
+    "handoff",
+    "handoff_reasons",
+    "health"
+  ],
+  "title": "IncidentOutcome",
+  "type": "object"
+}

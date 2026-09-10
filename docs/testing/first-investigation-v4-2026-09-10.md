@@ -44,6 +44,8 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 
 无报告的strict handoff CLI必须保留原文/输入/hash和违规项，并把不存在的报告字段输出为null；不因空对象解引用崩溃，也不伪造模型assessment或conclusion。完整业务仅保留在本地输出，stdout为摘要。
 
+[普通报告失败独立复验](../evidence/m0-real-investigation/round-02-report-failure-handoff-review.md)要求失败路径与是否存在initial evidence无关：malformed、empty、length等均重建已发生的输入、动态证据、动作及逐次交付，并形成明确handoff。原始内容载体允许真实空串且保留其空字节hash；None表示无原文，不能混同。有效ModelReport仍须非空、协议完整且符合资格，原始载体可空不等于报告通过。
+
 ## 有界候选与案例前提
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。

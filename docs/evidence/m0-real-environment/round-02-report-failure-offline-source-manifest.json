@@ -1,0 +1,284 @@
+{
+  "status": "offline_candidate_independently_reviewed_not_a_real_Run",
+  "candidate_id": "pr16-unified-report-failure-offline",
+  "git": {
+    "base_commit": "e5357a843274879d4b556e88bd3520d7ae1d076f",
+    "branch": "chore/m0-02-convergence",
+    "worktree": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01",
+    "meaning": "Working-file Git blobs identify the independently reviewed candidate; base HEAD is not claimed to include current edits."
+  },
+  "validation_boundary": {
+    "independent_review": "docs/evidence/m0-real-investigation/round-02-report-failure-handoff-review.md",
+    "review_stability_confirmation": "Fresh independent reviewer confirmed final record and two code/two schema hashes stable before this snapshot.",
+    "real_model_requests": 0,
+    "real_backend_queries": 0,
+    "trace_uploads": 0,
+    "prior_quality_failures_unchanged": true,
+    "product_gate_opened": false,
+    "scope": "Snapshot closeout only; no tests, code, index, model, backend, PG or environment operations were performed."
+  },
+  "sources": [
+    {
+      "source": "scripts/m0_environment/holmes_baseline.py",
+      "sha256": "f7db2c7401693c61ed962d350d8a01a09205aa263da80d1703e093216f528543",
+      "bytes": 52395,
+      "git_worktree_blob": "256dce8fee6c68467579d7ad0a04631d8a354c84",
+      "git_head_blob": "256dce8fee6c68467579d7ad0a04631d8a354c84",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/f7db2c7401693c61ed962d350d8a01a09205aa263da80d1703e093216f528543.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/report_contract.py",
+      "sha256": "0714c3ed612f362475a86af74c2dfe8034c8d05de709d03e22c0af409be47fda",
+      "bytes": 13498,
+      "git_worktree_blob": "6dae76ba4822b380d68a658027c9e7a09f4ca607",
+      "git_head_blob": "6dae76ba4822b380d68a658027c9e7a09f4ca607",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0714c3ed612f362475a86af74c2dfe8034c8d05de709d03e22c0af409be47fda.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/initial_evidence.py",
+      "sha256": "2eda43af210ee9146451ebb01689960b5d69f1b57d7fdbeab2e44819dadf493f",
+      "bytes": 21437,
+      "git_worktree_blob": "e6a949c412e777a011c21ac26d34bca6385a6f60",
+      "git_head_blob": "e6a949c412e777a011c21ac26d34bca6385a6f60",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/2eda43af210ee9146451ebb01689960b5d69f1b57d7fdbeab2e44819dadf493f.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/round02.py",
+      "sha256": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+      "bytes": 17386,
+      "git_worktree_blob": "358fb16dfa5bfff43c9fafea1357ae96ae35923a",
+      "git_head_blob": "358fb16dfa5bfff43c9fafea1357ae96ae35923a",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/transport_worker.py",
+      "sha256": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+      "bytes": 2125,
+      "git_worktree_blob": "dad78f81ff84554fc95cd6537f36d354a28b5353",
+      "git_head_blob": "dad78f81ff84554fc95cd6537f36d354a28b5353",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/run_bounded.py",
+      "sha256": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24",
+      "bytes": 1983,
+      "git_worktree_blob": "b25957d48060f6580813ac6e3913463ae4a1f57b",
+      "git_head_blob": "b25957d48060f6580813ac6e3913463ae4a1f57b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/trace_view.py",
+      "sha256": "0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b",
+      "bytes": 8949,
+      "git_worktree_blob": "c83f82122fbd524377c702ab84b8b845f120326b",
+      "git_head_blob": "c83f82122fbd524377c702ab84b8b845f120326b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/legacy_projections.py",
+      "sha256": "0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc",
+      "bytes": 11010,
+      "git_worktree_blob": "e770f9a834c95e43c6852cbb9f46a47878190367",
+      "git_head_blob": "e770f9a834c95e43c6852cbb9f46a47878190367",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/outcomes_v4.py",
+      "sha256": "15fe3c71db54574b5091f5d98d9ed49092bb5fb24b33f9d6810763de2ab8aeb7",
+      "bytes": 26030,
+      "git_worktree_blob": "594a1d84d34073e80b714ffd794a8059793e7af3",
+      "git_head_blob": "9fc5b19dcd66d088407fbbedc3aa4593d505b57b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/15fe3c71db54574b5091f5d98d9ed49092bb5fb24b33f9d6810763de2ab8aeb7.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": false
+    },
+    {
+      "source": "scripts/m0/holmes_bridge.py",
+      "sha256": "5eda13d28d9d273688e6ffcabaffeb00c59929ff520da4c5b4a1ffacabb9ae9b",
+      "bytes": 44557,
+      "git_worktree_blob": "271ef5619d7e4f7d880ec64ddf6cbf61a93e4a4f",
+      "git_head_blob": "d1533fb8252cb2fd1edb638efdf203a08892d35b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/5eda13d28d9d273688e6ffcabaffeb00c59929ff520da4c5b4a1ffacabb9ae9b.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": false
+    },
+    {
+      "source": "scripts/m0/outcomes_v3.py",
+      "sha256": "3e0a82dd1abc53e932efb2bc4ff994a2b92142415d24ba9c2c576a8fb16dac57",
+      "bytes": 15994,
+      "git_worktree_blob": "199d89330e6a35dd21308ed786bd6a84e8881f14",
+      "git_head_blob": "199d89330e6a35dd21308ed786bd6a84e8881f14",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/3e0a82dd1abc53e932efb2bc4ff994a2b92142415d24ba9c2c576a8fb16dac57.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/outcomes.py",
+      "sha256": "79d0fb80c82d5e72ff95a93567112712e9413a535edeb9d0358e2559a899f992",
+      "bytes": 13328,
+      "git_worktree_blob": "89c140a8480e997fd6744de2c6983c5911a620b5",
+      "git_head_blob": "89c140a8480e997fd6744de2c6983c5911a620b5",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/79d0fb80c82d5e72ff95a93567112712e9413a535edeb9d0358e2559a899f992.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/__init__.py",
+      "sha256": "eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4",
+      "bytes": 69,
+      "git_worktree_blob": "6057fac611032a99809416def9036d190ca3405d",
+      "git_head_blob": "6057fac611032a99809416def9036d190ca3405d",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    }
+  ],
+  "schemas": [
+    {
+      "source": "docs/evidence/m0-real-environment/ModelReport.v1.schema.json",
+      "sha256": "c5c493f432a466d1b2ec2d1e0482118eb248d305a56155a598d488833b2c0036",
+      "bytes": 2003,
+      "git_worktree_blob": "144e8b950afa2c45d0e875b2e5a954adf2d0ada4",
+      "git_head_blob": "144e8b950afa2c45d0e875b2e5a954adf2d0ada4",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c5c493f432a466d1b2ec2d1e0482118eb248d305a56155a598d488833b2c0036.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/ModelReport.v2.schema.json",
+      "sha256": "11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b",
+      "bytes": 2506,
+      "git_worktree_blob": "3d28c1ebe3b4d98a1b964a757dd33870dd9d9a9b",
+      "git_head_blob": "3d28c1ebe3b4d98a1b964a757dd33870dd9d9a9b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/ModelReport.v2.schema.json",
+      "sha256": "11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b",
+      "bytes": 2506,
+      "git_worktree_blob": "3d28c1ebe3b4d98a1b964a757dd33870dd9d9a9b",
+      "git_head_blob": "3d28c1ebe3b4d98a1b964a757dd33870dd9d9a9b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json",
+      "sha256": "0468e2f7805aef189acfeea6196098ed6d5f97dcbed58ac40e6d51e3c19f81a0",
+      "bytes": 34792,
+      "git_worktree_blob": "140a449cfee529c6a8ef3ae24d7f53ef90cf3f60",
+      "git_head_blob": "9b7da0cce29fbde3feddad383a4e740b584b84df",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0468e2f7805aef189acfeea6196098ed6d5f97dcbed58ac40e6d51e3c19f81a0.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": false
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/IncidentOutcome.v4.schema.json",
+      "sha256": "84ed7977a33b503abd13ea2591ab85dbdba8584038ce0ddc438bb5a00864ad8b",
+      "bytes": 10469,
+      "git_worktree_blob": "eceefb7c1eb1759d4d674f583db9dfd467272b28",
+      "git_head_blob": "661744d6ef7e255476d763afc0c33117802a5112",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/84ed7977a33b503abd13ea2591ab85dbdba8584038ce0ddc438bb5a00864ad8b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": false
+    }
+  ],
+  "dependency_and_review_references": [
+    {
+      "source": "pyproject.toml",
+      "sha256": "d8065c41bde26e1ed3171827764bf9c9fc260ba4b06c401b980a92305526f976",
+      "bytes": 532,
+      "git_worktree_blob": "0fd08c5cbb2f0edce750a53dacf6dd8283b1adac",
+      "git_head_blob": "0fd08c5cbb2f0edce750a53dacf6dd8283b1adac"
+    },
+    {
+      "source": "uv.lock",
+      "sha256": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce",
+      "bytes": 86331,
+      "git_worktree_blob": "e3ab26ef5794fbc7586941bcb422f291ab054d36",
+      "git_head_blob": "e3ab26ef5794fbc7586941bcb422f291ab054d36"
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/holmes-installed-versions.json",
+      "sha256": "2b471332d581bd978fd9e42980a4dc00af05a47d3b15d80406d797888a5dba3b",
+      "bytes": 117,
+      "git_worktree_blob": "fa46f8c2b6ac1d9bc0bfba6449e924e834299c4c",
+      "git_head_blob": "fa46f8c2b6ac1d9bc0bfba6449e924e834299c4c"
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/holmes-source-hashes.json",
+      "sha256": "4008d2e2d5fbfc22b4bfb5db214498826aaa3147aa90ffa6d2a0e9d7f9a0070e",
+      "bytes": 1112,
+      "git_worktree_blob": "690b5a046b51d9b929c1b5ec04e1ea6795ec65d1",
+      "git_head_blob": "690b5a046b51d9b929c1b5ec04e1ea6795ec65d1"
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-evidence-design-review.md",
+      "sha256": "74114fd39267ef55cb12c447f33bbb1953ec34788bd19f6fd948dcd8ca70fe05",
+      "bytes": 6205,
+      "git_worktree_blob": "d3007a25aceee61ea168b3418fad96046e42d0b1",
+      "git_head_blob": "d3007a25aceee61ea168b3418fad96046e42d0b1"
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-evidence-final-review.md",
+      "sha256": "da2e603f3df0795156ef78607fd9618bf9888486a279be7e1b68800489f6fa52",
+      "bytes": 5644,
+      "git_worktree_blob": "09dccfa82be483a9bbaf1a325f0c399620c82887",
+      "git_head_blob": "09dccfa82be483a9bbaf1a325f0c399620c82887"
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-final-pointer-review.md",
+      "sha256": "247a76779289f62ff62f9cdbc0e3705013955e6f08252dc3d63603973a5abb04",
+      "bytes": 8136,
+      "git_worktree_blob": "110766448c3b9f6a39015d3259174e508adda021",
+      "git_head_blob": "110766448c3b9f6a39015d3259174e508adda021"
+    },
+    {
+      "source": "scripts/m0/step_store.py",
+      "sha256": "9e865752d0d4acfc0dcd7c41e81175e944cbc99b0f87d199cbd5cd52c1aed599",
+      "bytes": 34179,
+      "git_worktree_blob": "14999b5505cdbf0ec70979d90ef2dc261ffd1cf1",
+      "git_head_blob": "14999b5505cdbf0ec70979d90ef2dc261ffd1cf1"
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-scope-cli-review.md",
+      "sha256": "f9f066c6fe5b5953a66ade606221dc4fed654ad0ca5040c5fa741b5b91dcee57",
+      "bytes": 4588,
+      "git_worktree_blob": "077aa96e12c28ac9b903c3bb31c6d6105ab95e77",
+      "git_head_blob": "077aa96e12c28ac9b903c3bb31c6d6105ab95e77"
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-report-failure-handoff-review.md",
+      "sha256": "3e3b36a2d233cf44436247be61bb6551ee78a600976eda3cfa860fed4745f28e",
+      "bytes": 5312,
+      "git_worktree_blob": "3c6f7d13fbae48f8df083b82eea616edf77be784",
+      "git_head_blob": null
+    }
+  ],
+  "external_upstream": {
+    "repository": "HolmesGPT",
+    "commit": "5e983c17f30e93099c7d775167266d4cd1d586c4",
+    "version_evidence": "docs/evidence/m0-real-environment/holmes-installed-versions.json",
+    "source_hash_evidence": "docs/evidence/m0-real-environment/holmes-source-hashes.json",
+    "boundary": "Existing read-only checkout/interpreter borrowed explicitly by offline fake-transport probes. Production ROOT/UPSTREAM remain execution-worktree-relative; no new live deployment or dependency installation."
+  },
+  "preservation": "Existing source/schema snapshots and manifests were verified and not rewritten. Only new content-addressed readonly snapshots and this manifest were created; no original business/private artifacts copied."
+}
