@@ -1,0 +1,24 @@
+{
+  "environment_tests": "78 passed in16.11s; tests/test_m0_holmes_round02.py + test_m0_trace_archive.py + test_m0_freeze_images.py",
+  "ruff_check": "passed",
+  "format_fix": "development_fault.py only formatting; AST equal to preserved injection source",
+  "secret_scan": {
+    "first_cli_result": "SCANNER_SELFTEST_FAILED; exact failed random selftest not retained",
+    "bounded_diagnostic": "Same check() and scan() functions rerun with only stage/count logging; no scanner/rule edits",
+    "selftest_counts": [
+      1,
+      0,
+      0,
+      1,
+      1
+    ],
+    "index_findings": 0,
+    "tracked_worktree_findings": 0,
+    "all_refs_history_findings": 0,
+    "result": "SECRET_SCAN_PASSED",
+    "binary_version": "8.30.1",
+    "binary_sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f"
+  },
+  "new_downloads": 0,
+  "model_calls_from_validation": 0
+}

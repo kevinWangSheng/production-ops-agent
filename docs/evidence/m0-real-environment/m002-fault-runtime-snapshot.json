@@ -1,0 +1,37 @@
+[
+  {
+    "source": "scripts/m0_environment/holmes_baseline.py",
+    "sha256": "22a96b87cf6575c8246abeb7edbed5101e1c6951fcc62b5e8243b6e589c6efd8",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/22a96b87cf6575c8246abeb7edbed5101e1c6951fcc62b5e8243b6e589c6efd8.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/legacy_projections.py",
+    "sha256": "507d4205fb5e65cdd831003ae45096703050534873018cbb0016c4f4678e4caf",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/507d4205fb5e65cdd831003ae45096703050534873018cbb0016c4f4678e4caf.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/report_contract.py",
+    "sha256": "c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/round02.py",
+    "sha256": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/transport_worker.py",
+    "sha256": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/run_bounded.py",
+    "sha256": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24.py.txt"
+  },
+  {
+    "source": "scripts/m0_environment/development_fault.py",
+    "sha256": "2d366b917a72b1323ec49fb7f26b7ec04c7e87113c52a1be043a00023af9ebf8",
+    "snapshot": "docs/evidence/m0-real-environment/runtime-sources/2d366b917a72b1323ec49fb7f26b7ec04c7e87113c52a1be043a00023af9ebf8.py.txt"
+  }
+]

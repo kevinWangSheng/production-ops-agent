@@ -1,0 +1,22 @@
+{
+  "run_id": "m002-normal-01",
+  "phase": "normal",
+  "question_sha256": "275dd03623fb174d6c7c9a609ccc2d89d6120b5c9969875c8ec3a209266eeb70",
+  "scope_sha256": "b5c21bd3045a821065de1d2f4af459409268ea5db30e3b33044d37c529ab939f",
+  "registry_sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e",
+  "window": {
+    "start": 1789007908.0,
+    "end": 1789008208.0
+  },
+  "runtime_hashes": {
+    "holmes_baseline.py": "6f01c71303bd0ddce79eed91e99ae5a3186cd8386a86d4577b235ae8de36bb8b",
+    "round02.py": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+    "transport_worker.py": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+    "run_bounded.py": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24"
+  },
+  "evidence_not_preloaded": true,
+  "independent_preflight": "31 tests and actual Holmes schema preflight; independent normal raw hashes/traffic checked",
+  "max_run_http": 4,
+  "max_tools": 20,
+  "not_held_out": true
+}
