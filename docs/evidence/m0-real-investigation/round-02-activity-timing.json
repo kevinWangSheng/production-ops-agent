@@ -53,6 +53,13 @@
       "end": "2026-09-10T03:47:56+00:00",
       "seconds": 300.0,
       "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "PR16_remote_review_wait_with_P1_fix",
+      "start": "2026-09-10T05:09:16Z",
+      "end": null,
+      "basis": "GitHub manual request timestamp; overlaps P1 implementation, independent PG regression and full checks; Code and Security results required",
+      "status": "second_P1_batch_locally_verified_await_latest_remote_reviews"
     }
   ],
   "other_work": "Source/contract inspection, coding/debugging, tests and independent reviews ran in parallel during 01:49Z onward; exact exclusive CPU/operator time was not instrumented. Final closeout/CI/review continue after paid phase. No invented percentage distribution.",

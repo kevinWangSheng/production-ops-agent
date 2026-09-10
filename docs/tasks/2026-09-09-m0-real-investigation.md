@@ -113,4 +113,12 @@ PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree
 
 ## PR #16 审查闭环（进行中）
 
-[PR #16](https://github.com/kevinWangSheng/production-ops-agent/pull/16)初次head58e10b1，两项CI34439757538成功。Code Review3975793064发现new_run递增generation但v3控制事件不能表示，合法新Run Outcome被误拒；[修复记录](../evidence/m0-real-investigation/round-02-pr16-review-fixes.md)与[独立复验](../evidence/m0-real-investigation/round-02-pr16-control-review.md)覆盖直接new_run/cancel+new_run/correct+new_run和旧结果拒绝，104tests通过。为必要跨层验证仅临时启动原PG，随后再次停止；无模型/trace新增。Security仍待返回，不据CI或本地复验宣布最新PR已就绪，修复尚未推送。
+[PR #16](https://github.com/kevinWangSheng/production-ops-agent/pull/16)初次head58e10b1，两项CI34439757538成功。Code Review3975793064发现new_run递增generation但v3控制事件不能表示，合法新Run Outcome被误拒；[修复记录](../evidence/m0-real-investigation/round-02-pr16-review-fixes.md)与[独立复验](../evidence/m0-real-investigation/round-02-pr16-control-review.md)覆盖直接new_run/cancel+new_run/correct+new_run和旧结果拒绝，104tests通过。为必要跨层验证仅临时启动原PG，随后再次停止；无模型/trace新增。此段为修复完成时快照：Security待返回，修复当时尚未推送。
+
+05:40Z修复1462e2d已推送PR16；make check 374 passed/34默认PG跳过、秘密扫描通过。首轮Security请求超过30分钟仍无运行确认/结果，补发一次同head后仍未知；因此推进已修复版本，同时保留所有旧/新请求的审查未完成状态。最新Code/Security请求5613751787/5613752083，等待CI与审查结果；原P1已回复具体修复及独立104项回归，不将pending当作通过。
+
+05:46Z最新Code Review返回3975937306/3975937313：completed空事实结论缺少唯一匹配committed报告交付要求，及Run子限额错误按experiment计数。统筹指派统一复现修复，保留experiment总授权/unknown/绝对期限约束；05:48Z临时重启原PG并验证身份，仅用于随机隔离回归。Security各请求仍无确认/结果，未据此结束审查。
+
+第二组P1实现者修复见[报告绑定与Run限额](../evidence/m0-real-investigation/round-02-pr16-report-binding-run-limit-fixes.md)：先复现14项报告绑定失败与新Run REQUEST_LIMIT，再修复；152项组合回归通过。root完整make check为398 passed/35 PG默认skip（13.93s，原输出tmp/m002-pr16-second-full-check.txt），独立复验与真实旧证据桥接重放正在进行。该组不修改实际模型账本/质量FAIL，未新增真实模型或trace。
+
+第二组[独立复验](../evidence/m0-real-investigation/round-02-pr16-second-review.md)152 passed/8.86s、5项源码hash一致；原fault01/normal03使用原22a96投影重放仍19/19与12/12结构通过，原质量FAIL保留。root于复验后再次停止专属PG，见[停止记录](../evidence/m0-real-investigation/round-02-pr16-second-pg-stop.json)。修复按两个逻辑提交与状态记录一起批量推送后，继续核对最新CI和已请求审查；Security首次请求至此仍无确认/结果。
