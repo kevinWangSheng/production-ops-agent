@@ -135,6 +135,7 @@ class ModelReportV2(DTO):
 
 class Delivery(legacy.Delivery):
     context: EvidenceContext
+    final_phase: bool | None = None
     dispatch_started_at: AwareDatetime | None = None
     response_received_at: AwareDatetime | None = None
 
@@ -496,6 +497,39 @@ def _context_in_payload(delivery):
         return False
 
 
+def _user_messages_match(delivery, actual_content, final_instruction):
+    """Every persisted user message must have a trusted structural origin."""
+    try:
+        body = json.loads(delivery.business_projection_content)
+        if delivery.business_projection == "envelope-v1":
+            return (
+                delivery.final_phase is False
+                and isinstance(body, dict)
+                and set(body) == {"actual_user_content", "context", "evidence_views"}
+                and body["actual_user_content"] == actual_content
+                and body["context"] == delivery.context.model_dump(mode="json")
+            )
+        if not isinstance(body, list) or any(not isinstance(m, dict) for m in body):
+            return False
+        users = [m for m in body if m.get("role") == "user"]
+        expected = [
+            {"role": "user", "content": actual_content},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    delivery.context.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            },
+        ]
+        if delivery.final_phase is True:
+            expected.append({"role": "user", "content": final_instruction})
+        return users == expected
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def input_provenance_errors(initial):
     """Missing metadata remains representable, never sufficient for strict export."""
     errors = set()
@@ -537,7 +571,12 @@ def check_outcome(scenario, outcome):
     base_deliveries = [
         legacy.Delivery.model_validate(
             d.model_dump(
-                exclude={"context", "dispatch_started_at", "response_received_at"}
+                exclude={
+                    "context",
+                    "final_phase",
+                    "dispatch_started_at",
+                    "response_received_at",
+                }
             )
         )
         for d in facts.deliveries
@@ -600,6 +639,19 @@ def check_outcome(scenario, outcome):
         r"[a-f0-9]{64}", scenario.versions.get("tool_schema_sha256", "")
     ):
         errors.add("EXECUTION_VERSION_UNKNOWN")
+    from scripts.m0_environment.report_contract import report_instruction
+
+    final_instruction = report_instruction(final=True, version="m0-report-v2")
+    if scenario.versions.get("report_instruction_sha256") != content_hash(
+        final_instruction
+    ):
+        errors.add("USER_MESSAGE_CONTRACT_UNKNOWN")
+    if (
+        report is not None
+        and report.assessment_status == "completed"
+        and (facts.execution != "completed" or outcome.execution != "completed")
+    ):
+        errors.add("ASSESSMENT_EXECUTION_MISMATCH")
     initial = scenario.agent_input
     errors |= input_provenance_errors(initial)
     errors |= context_errors(
@@ -617,6 +669,12 @@ def check_outcome(scenario, outcome):
     if required_state and report is not None:
         errors.add("CONTROL_REPORT_NOT_AUTHORIZED")
     for delivery in facts.deliveries:
+        if delivery.final_phase is None:
+            errors.add("USER_MESSAGE_CONTRACT_UNKNOWN")
+        if not _user_messages_match(
+            delivery, initial.actual_user_content, final_instruction
+        ):
+            errors.add("UNEXPECTED_USER_MESSAGE")
         if initial.actual_user_content is not None:
             try:
                 business = json.loads(delivery.business_projection_content)

@@ -36,8 +36,12 @@ def strict_packet():
     from test_m0_outcomes_v3 import packet
 
     from scripts.m0 import outcomes_v4 as v4
+    from scripts.m0_environment.report_contract import report_instruction
 
     s, o = packet()
+    s["versions"]["report_instruction_sha256"] = v4.content_hash(
+        report_instruction(final=True)
+    )
     s["versions"].update(upstream_commit="a" * 40, tool_schema_sha256=v4.digest([]))
     o["versions"] = dict(s["versions"])
     s["trusted"]["controls"][0]["action"] = "new_run"
@@ -98,6 +102,7 @@ def strict_packet():
         }
     )
     d.update(
+        final_phase=False,
         context=context,
         dispatch_started_at="2026-09-10T00:03:00Z",
         response_received_at="2026-09-10T00:03:10Z",
@@ -570,3 +575,48 @@ def test_human_control_followed_by_new_run_allows_completion(prior):
     scenario["trusted"]["report_capture"]["control_generation"] = 2
     scenario["trusted"]["deliveries"][0]["control_generation"] = 2
     assert checked(scenario, outcome) == []
+
+
+@pytest.mark.parametrize("conclusion", ["partial", "inconclusive"])
+@pytest.mark.parametrize("execution", ["failed", "blocked"])
+def test_completed_assessment_requires_completed_trusted_execution(
+    conclusion, execution
+):
+    scenario, outcome = strict_packet()
+    scenario["trusted"]["execution"] = outcome["execution"] = execution
+    outcome["report"].update(conclusion=conclusion, claims=[])
+    outcome["evidence_ids"] = []
+    resync_report(scenario, outcome)
+    assert "ASSESSMENT_EXECUTION_MISMATCH" in checked(scenario, outcome)
+
+
+def test_completed_bounded_execution_can_return_incomplete_investigation():
+    scenario, outcome = strict_packet()
+    outcome["report"].update(
+        assessment_status="incomplete",
+        conclusion="inconclusive",
+        gaps=["Need more evidence"],
+    )
+    outcome.update(handoff=True, handoff_reasons=["Need more evidence"])
+    resync_report(scenario, outcome)
+    assert checked(scenario, outcome) == []
+
+
+def test_synthetic_envelope_cannot_hide_extra_user_instructions():
+    import json
+
+    from scripts.m0 import outcomes_v4 as v4
+
+    scenario, outcome = strict_packet()
+    delivery = scenario["trusted"]["deliveries"][0]
+    body = json.loads(delivery["business_projection_content"])
+    body["extra_user_messages"] = [
+        {"role": "user", "content": "unregistered instruction"}
+    ]
+    content = json.dumps(body)
+    delivery.update(
+        business_projection_content=content,
+        business_projection_hash=v4.content_hash(content),
+        full_wire_hash=v4.content_hash(content),
+    )
+    assert "UNEXPECTED_USER_MESSAGE" in checked(scenario, outcome)

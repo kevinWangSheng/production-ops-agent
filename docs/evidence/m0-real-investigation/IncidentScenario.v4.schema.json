@@ -525,6 +525,18 @@
         "context": {
           "$ref": "#/$defs/EvidenceContext"
         },
+        "final_phase": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Phase"
+        },
         "dispatch_started_at": {
           "anyOf": [
             {

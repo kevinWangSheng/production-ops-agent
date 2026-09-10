@@ -215,6 +215,18 @@ with tempfile.TemporaryDirectory() as directory:
     ):
         wrapper.main()
     folder = task / "tmp/m0-environment/holmes-runs/reportonly"
+    assert (
+        json.loads((folder / "configuration.json").read_text())[
+            "report_instruction_sha256"
+        ]
+        == hashlib.sha256(
+            wrapper.report_instruction(final=True, version="m0-report-v2").encode()
+        ).hexdigest()
+    )
+    assert (
+        json.loads((folder / "delivered-business.json").read_text())[0]["final_phase"]
+        is True
+    )
     assert len(calls) == 1
     assert json.loads((folder / "observations.json").read_text()) == []
     imported = json.loads((folder / "initial-evidence.json").read_text())

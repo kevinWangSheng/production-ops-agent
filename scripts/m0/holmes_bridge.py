@@ -893,6 +893,9 @@ def load_packet(run_dir, **kwargs):
                         "request_id": item["request_id"],
                         "step_id": f"{run_dir.name}:report-step:{ordinal}",
                         "context": context.model_dump(mode="json"),
+                        "final_phase": item.get("final_phase")
+                        if type(item.get("final_phase")) is bool
+                        else None,
                         "dispatch_started_at": item.get("dispatch_started_at"),
                         "response_received_at": item.get("response_received_at"),
                     }
@@ -954,6 +957,8 @@ def load_packet(run_dir, **kwargs):
         "report": "m0-report-v2",
         "temporal_policies": canonical_hash(policies_raw),
     }
+    if isinstance(config.get("report_instruction_sha256"), str):
+        versions["report_instruction_sha256"] = config["report_instruction_sha256"]
     actual_content = input_details["actual_user_content"]
     original_path = run_dir / "question-original.txt"
     try:

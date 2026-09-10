@@ -669,6 +669,7 @@ def main():
             request_ordinal=entry["ordinal"],
             request_id=f"{args.run_id}-http-{entry['ordinal']}",
             state="attempt_reserved",
+            final_phase=final_phase,
             trusted_access_scope=scope,
             control_generation=scope.get("control_generation") if scope else None,
             evidence_context=evidence_context,
@@ -973,6 +974,11 @@ def main():
             if initial_import["unverified"]
             else "verified",
             "report_schema_version": args.report_version,
+            "report_instruction_sha256": hashlib.sha256(
+                report_instruction(final=True, version=args.report_version).encode(
+                    "utf-8"
+                )
+            ).hexdigest(),
             "assurance_mode": "strict-candidate"
             if args.report_version == REPORT_VERSION
             else "explicit-legacy",

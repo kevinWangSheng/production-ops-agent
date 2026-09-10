@@ -377,6 +377,16 @@ def run_case(
         folder = task_root / "tmp/m0-environment/holmes-runs/offlinewire"
         deliveries = json.loads((folder / "delivered-business.json").read_text())
         captures = json.loads((folder / "report-capture-business.json").read_text())
+        config = json.loads((folder / "configuration.json").read_text())
+        assert (
+            config["report_instruction_sha256"]
+            == hashlib.sha256(
+                wrapper.report_instruction(final=True, version="m0-report-v2").encode()
+            ).hexdigest()
+        )
+        assert [record["final_phase"] for record in deliveries] == [False] * (
+            max_steps - 1
+        ) + [True]
         timing_records = json.loads((folder / "evidence-timings.json").read_text())
         assert (
             json.loads((folder / "time-policies.json").read_text())

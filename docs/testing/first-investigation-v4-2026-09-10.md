@@ -85,3 +85,5 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 初始证据的采集时钟逐字段与原raw精确一致，原值缺失/null不能由bundle补齐，已知原值不能擦为None；unknown来源时间不得带无依据边界。CLI完整审计输出以原子独占方式创建为0600，保留已有文件及符号链接，不依赖调用者默认umask。
 
 new_run边界：接收/新建/领取都在事务前验证非空版本映射，非法快照不得写入或推进控制版本；最后接受事件为new_run时，cancelled/waiting_human须有后续cancel/correct来源，不能继承旧Run人控状态。合法运行终态仍按各自证据检查。
+
+完整user输入合同：Holmes每次业务投影中的全部user消息依次为actual input、本次可信context，且仅可信final_phase=true时再含固定final report instruction。final_phase来自实际运行记录，指令hash绑定固定生成器，不从待审wire自签或倒推；旧缺元数据保真unknown。assistant/tool完整协议历史继续由宿主保留。completed assessment须有completed可信执行；completed有界执行返回incomplete调查时仍须inconclusive/gaps/handoff，不改写可信执行状态。
