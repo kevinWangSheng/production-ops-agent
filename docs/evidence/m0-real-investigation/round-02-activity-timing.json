@@ -55,11 +55,11 @@
       "basis": "frozen workload observation window; overlaps local engineering/review"
     },
     {
-      "activity": "PR16_remote_review_wait_with_P1_fix",
+      "activity": "PR16_reviews_and_followup_fixes",
       "start": "2026-09-10T05:09:16Z",
       "end": null,
-      "basis": "GitHub manual request timestamp; overlaps P1 implementation, independent PG regression and full checks; Code and Security results required",
-      "status": "second_P1_batch_locally_verified_await_latest_remote_reviews"
+      "basis": "GitHub first manual request timestamp; interval includes remote waiting, local fixes, PG regressions, strict-contract design/implementation and independent review; not exclusive remote latency",
+      "status": "strict_v4_independent_verified_await_latest_PR_reviews"
     }
   ],
   "other_work": "Source/contract inspection, coding/debugging, tests and independent reviews ran in parallel during 01:49Z onward; exact exclusive CPU/operator time was not instrumented. Final closeout/CI/review continue after paid phase. No invented percentage distribution.",

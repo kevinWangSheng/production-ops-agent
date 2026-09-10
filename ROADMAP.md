@@ -1,6 +1,6 @@
 # Roadmap
 
-Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3首片验收包已冻结；但完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-entry-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
+Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故障有限定位、正常核心观察和真实PG重建组合有据，v3包作为历史保留，PR审查后的[严格v4包](docs/testing/first-investigation-v4-2026-09-10.md)已离线补齐并独立验证/冻结，尚无新版真实模型证据；完整报告事实质量仍FAIL，SPEC不开放M1。下一项仅M0-03报告事实/实际可见证据一致性复验（新付费执行须新授权）。[结果](docs/evidence/m0-real-investigation/round-02-results.md) / [独立入口审查](docs/evidence/m0-real-investigation/round-02-final-entry-v4-review.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
 
 ## Completed decisions and documentation
 
@@ -42,7 +42,7 @@ Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3合同/质量/重复与非退化包已冻结，下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
+- [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3为历史包；严格v4已补齐PR发现并经联合独立终审，案例/重复/非退化不削弱。下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
 
 - [-] 2026-09-09 新一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
 
@@ -58,7 +58,7 @@ Current phase: M0-02本轮已用完20模型HTTP并停止服务保全。真实故
 - [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; a bounded active fault report now localizes payment/Charge, while full report quality and matched candidate comparison remain pending.
 - [-] M0模型/协议与控制快照已有子集真实证据；首流程步骤重建、取消/owner/epoch/lease与版本阻塞已有本轮有界证据；完整observer/发布/升级及产品集成仍待对应后续验证。
 - [-] M0 pinned OTel Demo实际部署、正常/故障/还原、来源/权限探针和资源费用已记录；按服务日志/身份缺口、实际Holmes进程隔离、HealthProfile等仍待对应任务。
-- [-] F1 首片v3 IncidentScenario/IncidentOutcome及开发案例规模/重复/评分/非退化已冻结，见[首片包](docs/testing/first-investigation-v3-2026-09-10.md)；模型候选尚未通过，完整保留集/产品验收在后续阶段。原验收steps/passes不变。
+- [-] F1 历史v3包保留，当前[严格v4首片包](docs/testing/first-investigation-v4-2026-09-10.md)已完成实现/schema及独立复验冻结；开发案例规模/重复/评分/非退化不变；模型候选尚未通过，完整保留集/产品验收在后续阶段。原验收steps/passes不变。
 - [-] 已形成[M0-02 / M1-01具体任务与入口缺项](docs/plans/first-vertical-investigation-2026-09-09.md)；故障报告收束、动态验收/目标及步骤恢复前提未满足，SPEC保留not cleared，不更新passes。
 
 The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historical. Both product entry points remain in one complete release; symptom categories remain testing only.

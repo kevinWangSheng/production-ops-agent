@@ -1,6 +1,6 @@
 # M0-02 本轮结果与入口决定
 
-日期：2026-09-10 UTC。**本轮取得真实正常/故障最终报告与真实 PG 跨进程组合，但完整报告事实质量仍未通过，M1 入口不打开。** 20 次模型 HTTP 已用尽，全部付费执行停止；原失败不改写，feature passes 未改。完整入口判断见 [独立整体审查](round-02-entry-review.md)。
+日期：2026-09-10 UTC。**本轮取得真实正常/故障最终报告与真实 PG 跨进程组合，但完整报告事实质量仍未通过，M1 入口不打开。** 20 次模型 HTTP 已用尽，全部付费执行停止；原失败不改写，feature passes 未改。完整入口判断见 [独立整体审查](round-02-final-entry-v4-review.md)。
 
 ## 实际取得的结果
 
@@ -10,6 +10,10 @@
 - **真实主动故障报告收束并有限定位成功**：新 fault01 的4HTTP/19工具在固定真实故障窗得到 JSON 报告，核心 payment Charge(code2)→checkout(code13)→HTTP500 有据。独立核19份实际交付和raw/hash/refs；仍有 cart 跨trace误关联/样本泛化、实际14/349误写20/349、把投影省略误作原始遥测缺失等P2，完整质量FAIL。[故障独立结果](round-02-fault-outcome-review.md)。
 - **真实正常报告有据核心结论但质量未过**：normal01最后只有DSML工具调用文本；normal02经明确末步JSON协议后仍混淆累计/窗口及日志可见数量；normal03最后3HTTP/12工具形成JSON，checkout本窗未观察到失败有据，但仍有14显示写20、accounting缺ERROR序列写0、跨trace扩展未显示gRPC路径三项P2。[normal03独立结果](round-02-normal03-outcome-review.md)。正常对照不等于全环境healthy，ad/recommendation背景异常保留。
 - **真实 DeepSeek/PG 同Run重建组合通过**：新Run 5822fb34-c343-4085-aca5-6337ff2ad40d，两个进程PID39801→44306/epoch1→2，PG完整响应/工具观察和配对消息重建后真实续传，最终固定JSON通过。独立只做DB端布尔/安全业务检查，不读推理正文；原7表53行hash不变。[独立组合结果](round-02-pg-live-outcome-review.md)。它是两个stage正常退出后的真实组合，中途崩溃/取消用例另有真实PG+可控替身，不冒充真实Holmes Run整体恢复。
+
+## PR 审查后的合同接续
+
+本文件下面的v3结构通过是当时evaluator的历史结果。PR16后续发现完整summary/next_steps没有进入Outcome、事实性claim缺目标/时间约束以及最终控制一致性遗漏；[新上下文设计审查](round-02-pr16-full-report-design-review.md)已独立复现并批准有界修复设计。[v4/report-v2严格包](../../testing/first-investigation-v4-2026-09-10.md)已离线实现并经[联合独立终审](round-02-pr16-v4-final-review.md)冻结，旧schema、原全文和原投影保留。历史v1缺target/time字段时只能标unknown、不能通过当前strict入口，不替模型补造字段来维持旧结构PASS。该变化不提升任何真实报告质量，也没有新增模型/trace样本。
 
 ## 合同、机制和保留缺口
 

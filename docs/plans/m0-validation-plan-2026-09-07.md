@@ -4,7 +4,7 @@
 
 本计划落实 [C3 技术方案](../design/technical-proposal-2026-09-07.md)，不重新选择产品或架构。入口条件以 [SPEC](../../SPEC.md#conditions-for-entering-implementation) 为准；原功能验收由 [feature_list.json](../../feature_list.json) 维护，本计划不修改验收步骤或 passes。[审查记录](../reviews/m0-plan-adversarial-review-2026-09-07.md)记录两项补齐及全文复审结论。
 
-最新接续（2026-09-10）：[M0-02结果](../evidence/m0-real-investigation/round-02-results.md)已取得真实报告收束与PG组合、[首片v3包](../testing/first-investigation-v3-2026-09-10.md)已冻结；完整报告质量仍未过，M1不开放。20模型HTTP已用尽，服务停止保全，下一有界项为M0-03事实/视图一致性复验。下面2026-09-09“当前/本轮”段落为上一轮历史，不能复用其授权或账本。
+最新接续（2026-09-10）：[M0-02结果](../evidence/m0-real-investigation/round-02-results.md)已取得真实报告收束与PG组合、原v3包保留，PR审查后的[严格v4包](../testing/first-investigation-v4-2026-09-10.md)已离线补齐并独立验证/冻结完整报告/来源/时效/人控；完整报告质量仍未过，M1不开放。20模型HTTP已用尽，服务停止保全，下一有界项为M0-03事实/视图一致性复验。下面2026-09-09“当前/本轮”段落为上一轮历史，不能复用其授权或账本。
 
 当前执行接续（2026-09-09）：[真实调查任务](../tasks/2026-09-09-m0-real-investigation.md)按用户本轮20 CNY/20模型/5trace、2026-09-10T17:14:30Z截止授权推进。PR14/main CI与同步已核对；新Flash诊断明确最终JSON围栏，最小JSON mode修复后固定工具→PG→LangSmith回读单次通过，失败原样保留。真实OTel正常/故障与HolmesGPT基线同步准备；下面早期单次执行及“未重跑”描述仅其历史状态，不限制本轮必要复验。产品实施门槛待对应真实调查、权限、恢复与冻结验收证据。
 

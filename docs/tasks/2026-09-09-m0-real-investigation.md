@@ -2,7 +2,7 @@
 
 创建：2026-09-09；当前收尾：2026-09-10 M0-02付费执行已结束、资源已停止保全，报告质量尚未通过，M1入口仍not cleared。
 
-当前结果见[round-02-results.md](../evidence/m0-real-investigation/round-02-results.md)、[独立入口审查](../evidence/m0-real-investigation/round-02-entry-review.md)及[冻结首片包](../testing/first-investigation-v3-2026-09-10.md)。20模型HTTP/0trace，真实PG组合与有限核心调查结果有据，事实/可见范围P2仍未闭环；PR最新CI/review收尾下文继续更新。
+当前结果见[round-02-results.md](../evidence/m0-real-investigation/round-02-results.md)、[独立入口审查](../evidence/m0-real-investigation/round-02-final-entry-v4-review.md)及[当前v4冻结首片包](../testing/first-investigation-v4-2026-09-10.md)。20模型HTTP/0trace，真实PG组合与有限核心调查结果有据，事实/可见范围P2仍未闭环；PR最新CI/review收尾下文继续更新。
 
 ## 历史：2026-09-09上一轮与PR #15过程
 
@@ -105,7 +105,7 @@ normal02实际形成JSON报告，15份最后交付raw/view/hash/完整refs可核
 
 最新整合make check：370 passed/31显式PG默认skip；新增PG机制/driver定向22 passed，bridge/v3含旧v2回归98 passed。第一次整合检查仅被Markdown代码块格式拒绝，格式修复后通过，原输出保留。离线view49tests及独立UTF8/身份/字节上限/旧版本重放通过；新依赖snapshot桥接18tests与独立恶意路径/缺依赖/hash探针通过。
 
-[最终入口审查](../evidence/m0-real-investigation/round-02-entry-review.md)已以新上下文亲自核验源码、实际PG安全元数据、fault/normal03真实raw/delivery及冻结包；无新增实现阻断发现，但实际报告P2未经最新候选复验仍阻M1。OS隔离明确为运行边界限制，不额外要求首片编码前搭完整平台。20HTTP已尽，0trace；root已停止专属PG和26容器/VM，系统PG4391仍在。所有历史数据和依赖worktree保留。
+[初次本地入口审查（历史）](../evidence/m0-real-investigation/round-02-entry-review.md)已以新上下文亲自核验源码、实际PG安全元数据、fault/normal03真实raw/delivery及冻结包；无新增实现阻断发现，但实际报告P2未经最新候选复验仍阻M1。OS隔离明确为运行边界限制，不额外要求首片编码前搭完整平台。20HTTP已尽，0trace；root已停止专属PG和26容器/VM，系统PG4391仍在。所有历史数据和依赖worktree保留。
 
 环境代码/证据先本地提交bc573cd、22b4d8f，再按范围cherry-pick到主任务0f20ed2、da4d464。当前只做最终提交/推送/PR和最新远端CI及Code/Security审查；不合并。
 
@@ -122,3 +122,11 @@ PR前fresh-checkout检查另复现PG probe在import时依赖本机外部worktree
 第二组P1实现者修复见[报告绑定与Run限额](../evidence/m0-real-investigation/round-02-pr16-report-binding-run-limit-fixes.md)：先复现14项报告绑定失败与新Run REQUEST_LIMIT，再修复；152项组合回归通过。root完整make check为398 passed/35 PG默认skip（13.93s，原输出tmp/m002-pr16-second-full-check.txt），独立复验与真实旧证据桥接重放正在进行。该组不修改实际模型账本/质量FAIL，未新增真实模型或trace。
 
 第二组[独立复验](../evidence/m0-real-investigation/round-02-pr16-second-review.md)152 passed/8.86s、5项源码hash一致；原fault01/normal03使用原22a96投影重放仍19/19与12/12结构通过，原质量FAIL保留。root于复验后再次停止专属PG，见[停止记录](../evidence/m0-real-investigation/round-02-pr16-second-pg-stop.json)。修复按两个逻辑提交与状态记录一起批量推送后，继续核对最新CI和已请求审查；Security首次请求至此仍无确认/结果。
+
+06:11Z da02563 Code Review返回3976067577/3976067579/3976067585：Outcome缺完整summary/next_steps、事实target缺失可绕来源绑定、freshness缺可信可检查策略。统筹以新上下文启动[整组合同设计审查](../evidence/m0-real-investigation/round-02-pr16-full-report-design-review.md)，另复现反证/排除假设的状态/目标检查遗漏和最后cancel/correct与completed不一致。实现前统一审查最小兼容方案；保留旧schema/原报告，历史缺字段标unknown/fail，不填模型未返回的target，不改变质量FAIL。仍0新增真实模型/trace，PG/Colima保持停止；Security首次请求至此超过一小时无确认/结果，不能宣称PR就绪。
+
+严格v4/report-v2完成[联合独立终审](../evidence/m0-real-investigation/round-02-pr16-v4-final-review.md)：62项定向测试、9组自写反例、3份schema与DTO一致，原fault/normal03四份本地回放全文/hash逐字保真；strict均明确不通过/unknown，显式legacy只保留历史结构结果。runtime另经[独立替身审查](../evidence/m0-real-environment/round-02-strict-runtime-review.md)验证目录/时钟/权限及530KB目录发起前拒绝。root make check425 passed/35 PG默认skip；原PG模块未改，不重启服务。完整回放按既有数据出口规则保留tmp/m002-v4-replays（0600），Git仅元数据摘要，接口未删全文。当前v4包据此冻结，旧v2/v3/report-v1保留，仍无新版真实模型或质量通过证据；新上下文最终入口审查及PR最新远端闭环继续。
+
+全新上下文[最终入口审查](../evidence/m0-real-investigation/round-02-final-entry-v4-review.md)亲核31份manifest/raw/view hash、两次真实最终delivery及报告/legacy保真，并核当前四源码hash。有限核心定位成立，但实际事实错误仍可复现；v4只有离线/替身证据，M1仍not cleared。当前入口导航已指向该最新判断，前一entry-review文件保留历史。下一步完成本组提交、最新CI及适用Code/Security审查；不自动合并。
+
+联合离线候选[源码清单](../evidence/m0-real-environment/round-02-pr16-v4-offline-source-manifest.json)保全12个必要Python源、5份schema及6项依赖/审查引用；root逐项验证23项当前文件及对应snapshot hash一致。原快照未覆盖，明确不是实际Run。完整回放仍ignored、Git只含安全摘要；旧预算/PG/产品passes未改。本组待批量推送后的最新CI与Code/Security结果仍按PR确认，不能用离线终审替代。

@@ -1,17 +1,30 @@
-# 首流程 v3 开发验收包（冻结）
+# 首流程 v4 开发验收包（冻结）
 
-历史包：PR16后续审查揭示的严格接缝缺口由[当前v4冻结包](first-investigation-v4-2026-09-10.md)接续。本文原案例/判据及旧schema保留，不能将旧结构结果当当前strict通过。
-
-冻结日期：2026-09-10 UTC。依据 SPEC 当前实施门槛、C3 §5–8/13、M0 执行计划和本轮真实开发证据。此包在**下一候选模型评估之前**冻结；本轮已发生的失败、次数、报告原文和原 v2 均保持。冻结不是通过，也不授权新的付费调用。全量产品验收、保留集、72 小时 soak 不在此处删减。
+冻结日期：2026-09-10 UTC。[联合独立终审](../evidence/m0-real-investigation/round-02-pr16-v4-final-review.md)已核稳定代码、schema、运行时替身及旧报告保真；新版真实模型尚未执行。依据 SPEC 当前实施门槛、C3 §5–8/13、M0 执行计划和本轮真实开发证据。此包在**下一候选模型评估之前**冻结；本轮已发生的失败、次数、报告原文和原 v2 均保持。冻结不是通过，也不授权新的付费调用。全量产品验收、保留集、72 小时 soak 不在此处删减。
 
 ## 入口与权威
 
-外部入口仍为 `IncidentScenario -> IncidentOutcome`。机器 schema 固定在 `docs/evidence/m0-real-investigation/IncidentScenario.v3.schema.json`、`IncidentOutcome.v3.schema.json`、`ModelReport.v1.schema.json`，实现为 `scripts/m0/outcomes_v3.py`；旧 v2/fixture 不变。
+外部入口仍为 `IncidentScenario -> IncidentOutcome`。机器 schema 固定在 `docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json`、`IncidentOutcome.v4.schema.json`、`ModelReport.v2.schema.json`，实现为 `scripts/m0/outcomes_v4.py`；旧 v2/v3/report-v1 schema、fixture及原报告保留。当前默认严格入口使用 v4/v2，旧版只能显式历史重放。
 
 - 关注主体、可信授权范围、实际证据来源分开。Compose 使用真实 integration、deployment/service、container/hostname、image/config revision 与 mapping hash；不能伪造 Kubernetes UID。integration 级来源不能替代具体 Compose 实例事实。
 - 初始模型输入只有请求、允许的初始证据和接入说明；最终查询结果不能提前塞入。可信运行器登记 raw 精确文件 hash、canonical view hash/版本、查询窗/采集时间/身份、保留与省略字段，以及**实际发出的** business projection/full wire hash。两种 hash 不混用；模型自述不能建立可见性。
 - 报告绑定实际 `report_request_id`，不能 union 同 step 的不同尝试。生产首片的最终控制版本/当前 Run 必须来自 PG 当前业务权威；本轮 Holmes 固定 generation0 仅是无控制事件的基线适配，不冒充已与 PG 恢复整体集成。
 - 候选事实不得把失败/未交付内容作为服务事实；查询失败/拒绝展示在 gaps 与可信动作审计中。权限、执行状态和事实质量分别判断，HTTP200 不等于后端动作/模型质量全部通过。
+
+## 完整报告、来源与时效
+
+依据[统一设计](../evidence/m0-real-investigation/round-02-pr16-strict-seam-design.md)与[独立设计审查](../evidence/m0-real-investigation/round-02-pr16-full-report-design-review.md)：
+
+- Outcome保留完整安全报告原文、hash及解析对象，包含summary、claims、gaps、next_steps。任何完成声明须有唯一匹配当前Run/step/physical request/最终控制版本的committed delivery，并与可信捕获的实际输出逐项绑定。不能只核报告输入或只评claims；无模型报告的真实未完成/取消交接单独表达。
+- fact、counter_evidence、rejected_hypothesis共同要求模型显式选择已交付的target_refs、evidence_ids、time_scope_ref。每个目标须由该claim实际引用的view佐证，授权catalog存在本身不足。Integration未知实例不升级为Compose实例；失败、陈旧、缺测或时间依据unknown不能作为合格服务事实。
+- 目标catalog、每view绑定与时间policy须进入同一实际business payload，计入既有请求字节/token限制并hash绑定。模型自述、bridge事后推断、raw中未交付的内容均不能建立可见性。
+- 可信policy在请求前固定版本、用途、适用源/目标、reference规则和阈值，模型仅可引用。query window、源观察/覆盖及依据、操作开始、采集完成、dispatch开始至response接收的区间分别记录；不伪造精确服务端读取时刻，不把Prom求值时间当底层sample时间。
+- historical_window依原指定窗与可信源时间依据解释，不因今天重放自动陈旧；current须有符合可信reference和阈值的源age依据。缺失依据为unknown；未来时间或明确越界拒绝。初始/动态证据共用判据。后续具体实验须显式固定适用阈值，本包不新增无据统一SLA或HealthProfile平台。
+- 最后accepted cancel对应cancelled，correct对应waiting_human；后续显式new_run才允许新Run继续。历史cancel不永久阻断新Run，真实PG发起/采纳屏障仍是运行权威。
+
+结构化引用/时间用途可确定性检查；正文中的目标、currently、数值、因果和建议是否与结构化声明一致，仍由完整独立证据审查判断，不能声称机器理解文字即可认证。
+
+历史v1/v3报告重新检查时保留全文、原版本和hash。缺scope/时间字段标unknown并不通过当前strict入口，不替历史模型补target、不重签旧view，也不改写旧evaluator当时的结构结果或原质量FAIL。
 
 ## 有界候选与案例前提
 
@@ -29,6 +42,8 @@
 
 每个必要机制用例至少1次确定性验证：接收确认/幂等；ModelStep 响应与工具计划提交前后；ToolOperation 结果提交前后及部分完成；已提交观察原时间/来源/消息配对保留；unknown费用/次数/绝对期限跨进程不减；取消/纠正与实际发起屏障；错 Run/owner/epoch/过期 lease 迟到拒绝；不兼容 blocked/handoff 且原记录保留。精确断点可用可控替身，但须有实际 PG 和相关真实 DeepSeek/PG 组合，分别标证据层级。
 
+额外确定性反例包括完整summary/next_steps删改、输出原文/hash/解析对象篡改、错report request、三类事实无scope/错scope/失败引用、授权但未交付目标、历史/当前时效与未来时间、初始/动态一致判据、最后cancel/correct矛盾和new_run接续；另验证显式legacy保真且不能误获strict通过。
+
 每份候选报告必须全部满足：
 
 1. 有可解析最终报告，完成但不确定与未完成区分；预算/连接失败不能冒充完成。无法调查可有准确 handoff，但不能抵作正常/故障正向能力通过。
@@ -41,4 +56,4 @@
 
 ## 本轮状态
 
-本轮取得主动正常/故障 JSON 报告、有限核心结论、真实 PG 跨进程组合及多项确定性机制证据；但 fault/normal03 的独立完整报告质量均 FAIL，最新 view 修复仅离线。因此本轮不满足上述入口，不写 feature passes=true、不启动 M1。下一项只做报告事实与实际可见证据的有界复验，保留本轮失败；新模型执行仍需新的明确次数/费用授权。
+本轮取得主动正常/故障 JSON 报告、有限核心结论、真实 PG 跨进程组合及多项确定性机制证据；但 fault/normal03 的独立完整报告质量均 FAIL，最新 view 修复仅离线；v4/v2新协议也尚无真实模型复验。因此本轮不满足上述入口，不写 feature passes=true、不启动 M1。下一项只做报告事实与实际可见证据的有界复验，保留本轮失败；新模型执行仍需新的明确次数/费用授权。
