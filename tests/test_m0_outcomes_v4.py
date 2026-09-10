@@ -83,8 +83,20 @@ def strict_packet():
     context = v4.EvidenceContext.model_validate_json(json.dumps(context)).model_dump(
         mode="json"
     )
+    s["agent_input"].update(
+        original_user_content="investigate",
+        original_user_content_sha256=v4.content_hash("investigate"),
+        actual_user_content="investigate",
+        actual_user_content_sha256=v4.content_hash("investigate"),
+    )
     d = s["trusted"]["deliveries"][0]
-    payload = json.dumps({"evidence_views": [view], "context": context})
+    payload = json.dumps(
+        {
+            "evidence_views": [view],
+            "context": context,
+            "actual_user_content": "investigate",
+        }
+    )
     d.update(
         context=context,
         dispatch_started_at="2026-09-10T00:03:00Z",
@@ -170,7 +182,13 @@ def resync_context(s):
     d["context"] = v4.EvidenceContext.model_validate_json(
         json.dumps(d["context"])
     ).model_dump(mode="json")
-    payload = json.dumps({"evidence_views": d["views"], "context": d["context"]})
+    payload = json.dumps(
+        {
+            "evidence_views": d["views"],
+            "context": d["context"],
+            "actual_user_content": s["agent_input"]["actual_user_content"],
+        }
+    )
     d.update(
         business_projection_content=payload,
         business_projection_hash=v4.content_hash(payload),
@@ -376,3 +394,24 @@ def test_duplicate_json_keys_cannot_pass_full_report_output_seam():
     scenario["trusted"]["report_capture"]["content"] = content
     scenario["trusted"]["report_capture"]["content_sha256"] = v4.content_hash(content)
     assert "REPORT_CONTENT_MISMATCH" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize("which", ["original", "actual"])
+def test_strict_input_content_and_hash_cannot_both_be_absent(which):
+    scenario, outcome = strict_packet()
+    scenario["agent_input"][which + "_user_content"] = None
+    scenario["agent_input"][which + "_user_content_sha256"] = None
+    assert "INITIAL_INPUT_PROVENANCE_UNKNOWN" in checked(scenario, outcome)
+
+
+def test_missing_original_provenance_cannot_export_investigator_input():
+    import json
+
+    from scripts.m0 import outcomes_v4 as v4
+
+    scenario, _ = strict_packet()
+    scenario["agent_input"]["original_user_content"] = None
+    scenario["agent_input"]["original_user_content_sha256"] = None
+    parsed = v4.IncidentScenario.model_validate_json(json.dumps(scenario))
+    with pytest.raises(ValueError, match="INITIAL_CONTEXT_INVALID"):
+        parsed.investigator_input()

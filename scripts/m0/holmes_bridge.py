@@ -955,21 +955,22 @@ def load_packet(run_dir, **kwargs):
     }
     actual_content = input_details["actual_user_content"]
     original_path = run_dir / "question-original.txt"
-    original_content = (
-        original_path.read_bytes().decode("utf-8") if original_path.exists() else None
-    )
-    provenance = (
-        read("input-provenance.json")
-        if (run_dir / "input-provenance.json").exists()
-        else {}
-    )
+    try:
+        original_content = original_path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeError):
+        original_content = None
+    try:
+        provenance = read("input-provenance.json")
+    except (OSError, ValueError):
+        provenance = None
     unverified = list(input_details["unverified_initial_views"])
     if (run_dir / "initial-import-audit.json").exists():
         for entry in read("initial-import-audit.json").get("unverified", []):
             if entry not in unverified:
                 unverified.append(entry)
-    if provenance and (
-        provenance.get("actual_user_content_sha256")
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("actual_user_content_sha256")
         != strict.content_hash(actual_content)
         or original_content is None
         or provenance.get("original_user_content_sha256")
@@ -1087,12 +1088,14 @@ def main():
         }
         if args.legacy_v3:
             result.update(legacy_report_audit(args.run_dir))
-        elif outcome.report is None:
+        elif errors or outcome.report is None:
             result.update(
                 execution=outcome.execution,
                 handoff=outcome.handoff,
                 handoff_reasons=outcome.handoff_reasons,
-                report=None,
+                report=outcome.report.model_dump(mode="json")
+                if outcome.report
+                else None,
                 report_content=outcome.report_content,
                 report_content_sha256=outcome.report_content_sha256,
                 agent_input=scenario.agent_input.model_dump(mode="json"),
@@ -1124,6 +1127,7 @@ def main():
                     "original_report_content",
                     "original_report",
                     "report_content",
+                    "report",
                     "agent_input",
                     "scenario",
                     "outcome",

@@ -134,6 +134,14 @@ def strict_captured(captured):
         },
     )
     user = json.loads((run / "input-business.json").read_text())[0]
+    (run / "question-original.txt").write_bytes(user["content"].encode())
+    save(
+        run / "input-provenance.json",
+        {
+            "original_user_content_sha256": v4.content_hash(user["content"]),
+            "actual_user_content_sha256": v4.content_hash(user["content"]),
+        },
+    )
     messages = [
         user,
         {
@@ -692,3 +700,96 @@ def test_prior_deliveries_survive_report_failure_with_their_actual_states(
         and outcome.report_content_sha256 == v4.content_hash("")
     )
     assert "MISSING_REPORT_OR_HANDOFF" in v4.check_outcome(scenario, outcome)
+
+
+@pytest.mark.parametrize("mode", ["normal", "import"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "valid",
+        "missing",
+        "empty_object",
+        "empty_file",
+        "non_mapping",
+        "malformed",
+        "missing_original",
+        "missing_hash",
+        "wrong_hash",
+    ],
+)
+def test_cli_strict_input_provenance_is_required(request, mode, failure):
+    import subprocess
+    import sys
+
+    run, code = request.getfixturevalue(
+        "strict_captured" if mode == "normal" else "initial_captured"
+    )
+    actual = json.loads((run / "input-business.json").read_bytes())[0]["content"]
+    if mode == "normal":
+        (run / "question-original.txt").write_bytes(actual.encode())
+        save(
+            run / "input-provenance.json",
+            {
+                "original_user_content_sha256": v4.content_hash(actual),
+                "actual_user_content_sha256": v4.content_hash(actual),
+            },
+        )
+    provenance = run / "input-provenance.json"
+    if failure == "missing":
+        provenance.unlink()
+    elif failure == "empty_object":
+        save(provenance, {})
+    elif failure == "empty_file":
+        provenance.write_bytes(b"")
+    elif failure == "non_mapping":
+        save(provenance, [])
+    elif failure == "malformed":
+        provenance.write_bytes(b"{")
+    elif failure == "missing_original":
+        (run / "question-original.txt").unlink()
+    elif failure in {"missing_hash", "wrong_hash"}:
+        doc = json.loads(provenance.read_bytes())
+        if failure == "missing_hash":
+            doc.pop("original_user_content_sha256")
+        else:
+            doc["actual_user_content_sha256"] = "a" * 64
+        save(provenance, doc)
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert outcome.report is not None and outcome.report.summary
+    assert scenario.agent_input.actual_user_content == actual
+    assert len(scenario.trusted.artifacts) == len(scenario.trusted.deliveries) == 1
+    assert len(scenario.trusted.observed_actions) == (1 if mode == "normal" else 0)
+    errors = v4.check_outcome(scenario, outcome)
+    if failure == "valid":
+        assert errors == []
+    else:
+        assert "UNVERIFIED_INITIAL_EVIDENCE" in errors
+        assert any(
+            item.location == "input-provenance"
+            for item in scenario.agent_input.unverified_initial_views
+        )
+    output = run / "provenance-cli.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == (0 if failure == "valid" else 1) and not process.stderr
+    saved = json.loads(output.read_bytes())
+    assert saved["violations"] == errors
+    assert (
+        saved["captured_artifacts"] == 1 and saved["assessment_status"] == "completed"
+    )

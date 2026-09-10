@@ -183,7 +183,7 @@ class IncidentScenario(DTO):
     def investigator_input(self):
         if self.agent_input.unverified_initial_views:
             raise ValueError("UNVERIFIED_INITIAL_EVIDENCE")
-        errors = context_errors(
+        errors = input_provenance_errors(self.agent_input) | context_errors(
             self.agent_input.evidence_context,
             self.agent_input.initial_views,
             self.trusted,
@@ -496,6 +496,41 @@ def _context_in_payload(delivery):
         return False
 
 
+def input_provenance_errors(initial):
+    """Missing metadata remains representable, never sufficient for strict export."""
+    errors = set()
+    if initial.unverified_initial_views:
+        errors.add("UNVERIFIED_INITIAL_EVIDENCE")
+        if any(
+            content_hash(item.content) != item.content_sha256
+            for item in initial.unverified_initial_views
+        ):
+            errors.add("INITIAL_AUDIT_HASH_MISMATCH")
+    if any(
+        value is None
+        for value in (
+            initial.original_user_content,
+            initial.original_user_content_sha256,
+            initial.actual_user_content,
+            initial.actual_user_content_sha256,
+        )
+    ):
+        errors.add("INITIAL_INPUT_PROVENANCE_UNKNOWN")
+    for text, sha in (
+        (initial.original_user_content, initial.original_user_content_sha256),
+        (initial.actual_user_content, initial.actual_user_content_sha256),
+    ):
+        if (text is None) != (sha is None) or (
+            text is not None and content_hash(text) != sha
+        ):
+            errors.add("INITIAL_INPUT_HASH_MISMATCH")
+    if (
+        initial.initial_views or initial.unverified_initial_views
+    ) and initial.actual_user_content is None:
+        errors.add("ACTUAL_INITIAL_INPUT_UNKNOWN")
+    return errors
+
+
 def check_outcome(scenario, outcome):
     """Strict current seam; legacy projection below reuses structural checks only."""
     facts, report = scenario.trusted, outcome.report
@@ -566,25 +601,7 @@ def check_outcome(scenario, outcome):
     ):
         errors.add("EXECUTION_VERSION_UNKNOWN")
     initial = scenario.agent_input
-    if initial.unverified_initial_views:
-        errors.add("UNVERIFIED_INITIAL_EVIDENCE")
-        if any(
-            content_hash(item.content) != item.content_sha256
-            for item in initial.unverified_initial_views
-        ):
-            errors.add("INITIAL_AUDIT_HASH_MISMATCH")
-    for text, sha in (
-        (initial.original_user_content, initial.original_user_content_sha256),
-        (initial.actual_user_content, initial.actual_user_content_sha256),
-    ):
-        if (text is None) != (sha is None) or (
-            text is not None and content_hash(text) != sha
-        ):
-            errors.add("INITIAL_INPUT_HASH_MISMATCH")
-    if (
-        initial.initial_views or initial.unverified_initial_views
-    ) and initial.actual_user_content is None:
-        errors.add("ACTUAL_INITIAL_INPUT_UNKNOWN")
+    errors |= input_provenance_errors(initial)
     errors |= context_errors(
         scenario.agent_input.evidence_context,
         scenario.agent_input.initial_views,
