@@ -1,0 +1,44 @@
+[
+  {
+    "public_file": "docs/evidence/m0-real-environment/compose-up.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/compose-up.txt",
+    "raw_sha256": "6495d92a3f077157000133f14a70a26edf7281502cd7a12d059c03c3edd13aaf",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/load-reduction.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/load-reduction.txt",
+    "raw_sha256": "0f9f13a5c4b5dec0bdb1d62936b7dbf5411c7a498c3e346aaad46b8f447610af",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/prometheus-restart.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/prometheus-restart.txt",
+    "raw_sha256": "dd0332d03e1a2c16b1b8eb2baeccc85db1f5da0f615fd264be60d38c86f7ad41",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/proxy-and-prometheus-update.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/proxy-and-prometheus-update.txt",
+    "raw_sha256": "4375205d03731882a228ddd0596c6f3f237ed9edf68ca7bf09a0fb75f1637645",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/proxy-error-classification-restart.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/proxy-error-classification-restart.txt",
+    "raw_sha256": "9f57f19823a7360c746f6fbed1f55f62eed9fe77943c9ddba0dfb05540041ce9",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/proxy-format-restart.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/proxy-format-restart.txt",
+    "raw_sha256": "9f57f19823a7360c746f6fbed1f55f62eed9fe77943c9ddba0dfb05540041ce9",
+    "normalization": "trailing whitespace only; exact raw retained"
+  },
+  {
+    "public_file": "docs/evidence/m0-real-environment/proxy-restart.txt",
+    "raw_path": "tmp/m0-environment/raw-evidence/command-output/proxy-restart.txt",
+    "raw_sha256": "9f57f19823a7360c746f6fbed1f55f62eed9fe77943c9ddba0dfb05540041ce9",
+    "normalization": "trailing whitespace only; exact raw retained"
+  }
+]

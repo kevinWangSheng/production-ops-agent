@@ -1,0 +1,75 @@
+{
+  "mode": "Real current bind tree/tar/config; fake Docker inspect only, no daemon or model",
+  "command": "freeze_images.py --check-only",
+  "returncode": 0,
+  "stdout": "Verified candidate: 26 archived images, 9 bind inputs and configuration; runtime unchanged (check-only), evidence unchanged.\n",
+  "stderr": "",
+  "before": {
+    "docs/evidence/m0-real-environment/image-lock.json": "0a6f0c23498b25d377a3e660997da5bec0a266ce8d9e71f7d18959938849685c",
+    "docs/evidence/m0-real-environment/configuration-hashes.json": "2fda2d69162eb158f8ad2dd80d8e1100fdabb9e250ded7f320dfd1af1bb246ac",
+    "docs/evidence/m0-real-environment/source-downloads.json": "e90881df41a3b0d743e400b5917078fe17b843dd24b80016fa214fcd40de5231",
+    "tmp/m0-environment/compose-pinned.json": "3b4f664e2754189a718b4d541797137c360be019c761cae3e8f0f73a1dd65e2c",
+    "tmp/m0-environment/collector.yml": "5e8f6cb4e9a998a34ffa5025f0d956ff92bbac66dc93f24e929ee13b3edf81af",
+    "tmp/m0-environment/prometheus.yaml": "083b6fbaaade97f4ee27528aff31438a182cafc41da21acf66d6b2164a9ef6d2",
+    "tmp/m0-environment/read_proxy.py": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
+  },
+  "after": {
+    "docs/evidence/m0-real-environment/image-lock.json": "0a6f0c23498b25d377a3e660997da5bec0a266ce8d9e71f7d18959938849685c",
+    "docs/evidence/m0-real-environment/configuration-hashes.json": "2fda2d69162eb158f8ad2dd80d8e1100fdabb9e250ded7f320dfd1af1bb246ac",
+    "docs/evidence/m0-real-environment/source-downloads.json": "e90881df41a3b0d743e400b5917078fe17b843dd24b80016fa214fcd40de5231",
+    "tmp/m0-environment/compose-pinned.json": "3b4f664e2754189a718b4d541797137c360be019c761cae3e8f0f73a1dd65e2c",
+    "tmp/m0-environment/collector.yml": "5e8f6cb4e9a998a34ffa5025f0d956ff92bbac66dc93f24e929ee13b3edf81af",
+    "tmp/m0-environment/prometheus.yaml": "083b6fbaaade97f4ee27528aff31438a182cafc41da21acf66d6b2164a9ef6d2",
+    "tmp/m0-environment/read_proxy.py": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
+  },
+  "unchanged": true,
+  "limitation": "Current post-experiment verification, not continuous or retrospective certification of the historical run.",
+  "bind_sources": [
+    {
+      "service": "flagd",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd",
+      "target": "/etc/flagd"
+    },
+    {
+      "service": "flagd-ui",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd",
+      "target": "/app/data"
+    },
+    {
+      "service": "grafana",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/grafana/grafana.ini",
+      "target": "/etc/grafana/grafana.ini"
+    },
+    {
+      "service": "grafana",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/grafana/provisioning",
+      "target": "/etc/grafana/provisioning"
+    },
+    {
+      "service": "otel-collector",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/collector.yml",
+      "target": "/etc/otelcol-config.yml"
+    },
+    {
+      "service": "otel-collector",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/otel-collector/otelcol-config-extras.yml",
+      "target": "/etc/otelcol-config-extras.yml"
+    },
+    {
+      "service": "product-catalog",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/product-catalog/products",
+      "target": "/usr/src/app/products"
+    },
+    {
+      "service": "prometheus",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/prometheus.yaml",
+      "target": "/etc/prometheus/prometheus-config.yaml"
+    },
+    {
+      "service": "read-proxy",
+      "source": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/read_proxy.py",
+      "target": "/app/read_proxy.py"
+    }
+  ],
+  "docker_boundary": "Docker inspect is supplied by archived records; this does not independently re-check stopped-daemon images."
+}

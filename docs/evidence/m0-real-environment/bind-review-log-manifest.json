@@ -1,0 +1,12 @@
+{
+  "red": {
+    "raw_path": "tmp/m0-environment/bind-review-red-raw.txt",
+    "raw_sha256": "59d74188c3715566744842ab4b25c4629ff40979da59aeb3feeac9a94a88dacc",
+    "normalization": "Trailing whitespace only; exact raw preserved."
+  },
+  "green": {
+    "raw_path": "tmp/m0-environment/bind-review-green-raw.txt",
+    "raw_sha256": "3db46a8cab742e85fd6fb07a996d861366db8cbddb89ed8df71df04c03e17116",
+    "normalization": "Trailing whitespace only; exact raw preserved."
+  }
+}

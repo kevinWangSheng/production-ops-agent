@@ -1,0 +1,125 @@
+{
+  "invoice_reconciled": false,
+  "pricing_reference": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+  "rates_cny_per_million_peak": {
+    "cache_miss_input": 3,
+    "cache_hit_input": 0.1,
+    "output": 9
+  },
+  "runs": [
+    {
+      "run_id": "normal-01",
+      "status": "failed",
+      "actual_http_requests": 3,
+      "tool_queries": 11,
+      "first_model_request_at": "2026-09-09T17:38:25.717664+00:00",
+      "last_model_response_at": "2026-09-09T17:39:21.847833+00:00",
+      "first_request_to_last_response_seconds": 56.130169,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 14216,
+        "completion_tokens": 6973,
+        "prompt_cache_hit_tokens": 8576,
+        "prompt_cache_miss_tokens": 5640
+      },
+      "peak_cache_aware_estimate_cny": 0.0805346,
+      "offpeak_half_rate_estimate_cny": 0.0402673,
+      "peak_cache_miss_upper_estimate_cny": 0.105405
+    },
+    {
+      "run_id": "normal-02",
+      "status": "failed",
+      "actual_http_requests": 2,
+      "tool_queries": 8,
+      "first_model_request_at": "2026-09-09T17:46:51.518691+00:00",
+      "last_model_response_at": "2026-09-09T17:47:31.996226+00:00",
+      "first_request_to_last_response_seconds": 40.477535,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 12405,
+        "completion_tokens": 5537,
+        "prompt_cache_hit_tokens": 6400,
+        "prompt_cache_miss_tokens": 6005
+      },
+      "peak_cache_aware_estimate_cny": 0.068488,
+      "offpeak_half_rate_estimate_cny": 0.034244,
+      "peak_cache_miss_upper_estimate_cny": 0.087048
+    },
+    {
+      "run_id": "normal-03",
+      "status": "investigation_returned",
+      "actual_http_requests": 4,
+      "tool_queries": 14,
+      "first_model_request_at": "2026-09-09T17:49:48.764852+00:00",
+      "last_model_response_at": "2026-09-09T17:51:12.272413+00:00",
+      "first_request_to_last_response_seconds": 83.507561,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 41494,
+        "completion_tokens": 10720,
+        "prompt_cache_hit_tokens": 13440,
+        "prompt_cache_miss_tokens": 28054
+      },
+      "peak_cache_aware_estimate_cny": 0.181986,
+      "offpeak_half_rate_estimate_cny": 0.090993,
+      "peak_cache_miss_upper_estimate_cny": 0.220962
+    },
+    {
+      "run_id": "fault-01",
+      "status": "failed",
+      "actual_http_requests": 3,
+      "tool_queries": 14,
+      "first_model_request_at": "2026-09-09T18:06:26.055899+00:00",
+      "last_model_response_at": "2026-09-09T18:07:08.515960+00:00",
+      "first_request_to_last_response_seconds": 42.460061,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 33459,
+        "completion_tokens": 5690,
+        "prompt_cache_hit_tokens": 11520,
+        "prompt_cache_miss_tokens": 21939
+      },
+      "peak_cache_aware_estimate_cny": 0.118179,
+      "offpeak_half_rate_estimate_cny": 0.0590895,
+      "peak_cache_miss_upper_estimate_cny": 0.151587
+    },
+    {
+      "run_id": "fault-02",
+      "status": "failed",
+      "actual_http_requests": 3,
+      "tool_queries": 12,
+      "first_model_request_at": "2026-09-09T18:11:12.383927+00:00",
+      "last_model_response_at": "2026-09-09T18:12:24.871717+00:00",
+      "first_request_to_last_response_seconds": 72.48779,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 39913,
+        "completion_tokens": 9523,
+        "prompt_cache_hit_tokens": 16896,
+        "prompt_cache_miss_tokens": 23017
+      },
+      "peak_cache_aware_estimate_cny": 0.1564476,
+      "offpeak_half_rate_estimate_cny": 0.0782238,
+      "peak_cache_miss_upper_estimate_cny": 0.205446
+    },
+    {
+      "run_id": "fault-handoff-01",
+      "status": "incomplete",
+      "actual_http_requests": 1,
+      "tool_queries": 0,
+      "first_model_request_at": "2026-09-09T18:19:02.333376+00:00",
+      "last_model_response_at": "2026-09-09T18:20:08.399292+00:00",
+      "first_request_to_last_response_seconds": 66.065916,
+      "timing_scope": "Includes intervening tools; excludes process startup and any tools or failure after last model response. Not full process wall time.",
+      "usage": {
+        "prompt_tokens": 26618,
+        "completion_tokens": 8191,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 26618
+      },
+      "peak_cache_aware_estimate_cny": 0.153573,
+      "offpeak_half_rate_estimate_cny": 0.0767865,
+      "peak_cache_miss_upper_estimate_cny": 0.153573
+    }
+  ]
+}

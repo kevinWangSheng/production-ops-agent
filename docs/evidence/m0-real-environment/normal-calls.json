@@ -1,0 +1,274 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source": "metrics",
+  "query": {
+    "query": [
+      "sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))"
+    ],
+    "start": [
+      "1788975149.660874"
+    ],
+    "end": [
+      "1788975449.660874"
+    ]
+  },
+  "collected_at": 1788975450.5329587,
+  "data": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "1255.880411440795"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "flagd",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "100.26989312900558"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "100.26989312900557"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "checkout",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "112.80362977013127"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "15.040483969350836"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "shipping",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "22.560725954026253"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "fraud-detection",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "12.533736641125696"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "cart",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "285.76919541766586"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "product-catalog",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "253.18148015073908"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "currency",
+            "status_code": "STATUS_CODE_OK"
+          },
+          "value": [
+            1788975449.661,
+            "78.9625408390919"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "recommendation",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "101.52326679311814"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "1159.370639304127"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "image-provider",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "96.50977213666786"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-web",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "300.80967938701673"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "accounting",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "quote",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "22.560725954026253"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "accounting",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "6.266868320562848"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "email",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "30.080967938701672"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "fraud-detection",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "ad",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1788975449.661,
+            "13.787110305238265"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "ad",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1788975449.661,
+            "0"
+          ]
+        }
+      ]
+    }
+  }
+}

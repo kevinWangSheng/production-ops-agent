@@ -1,0 +1,26 @@
+[
+  {
+    "path": "tmp/m0-environment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/LICENSE",
+    "sha256": "4e8d756a1bc4796e15973df082cf72b91f5e61fec4ec68d6799104670c108d08"
+  },
+  {
+    "path": "tmp/m0-environment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/pyproject.toml",
+    "sha256": "4a1e43a64a60437761633be496048dacc1dcb14a595c89476126fde273018e60"
+  },
+  {
+    "path": "tmp/m0-environment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/poetry.lock",
+    "sha256": "890762eb1ee1abc15d96d6ade9a6fa01f10ce760a3e900f6f0d8041c3de571a7"
+  },
+  {
+    "path": "tmp/m0-environment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/llm.py",
+    "sha256": "c0309dd1529e77087586abb1b24b23e2bdec577700b28acdccf91367d658796e"
+  },
+  {
+    "path": "tmp/m0-environment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/tool_calling_llm.py",
+    "sha256": "3558249b383c2d172dd4a7ea615347054f358ab987439c565718518b3111b3f7"
+  },
+  {
+    "path": "tmp/m0-environment/holmes-requirements.txt",
+    "sha256": "fff00b8a3f772f0931c0cb55c09fed75c4e7004fbe971ee3d781da6166df5de4"
+  }
+]

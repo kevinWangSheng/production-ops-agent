@@ -1,0 +1,27 @@
+{
+  "start": 1788974760.204875,
+  "end": 1788975360.204875,
+  "results": [
+    {
+      "route": "logs",
+      "status": 200,
+      "bytes": 384,
+      "count": {
+        "value": 0,
+        "relation": "eq"
+      }
+    },
+    {
+      "route": "traces",
+      "status": 200,
+      "bytes": 625118,
+      "count": 9
+    },
+    {
+      "route": "metrics",
+      "status": 200,
+      "bytes": 3141,
+      "count": 25
+    }
+  ]
+}

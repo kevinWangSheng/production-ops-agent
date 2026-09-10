@@ -1,0 +1,10 @@
+{
+  "kind": "preflight_local_serialized_body_estimate_not_sent",
+  "request_bytes": 90493,
+  "max_bytes": 131072,
+  "tools": 0,
+  "max_steps": 1,
+  "source_views": 12,
+  "runner_sha256": "d24ae3d6649088172d812b1c9193c9696407a446f1d7bffc978de5db3b869bc2",
+  "question_sha256": "13a778424fdfd9011d5ee20ed8bbb087220244867e5bcf1f219298d0be866f32"
+}

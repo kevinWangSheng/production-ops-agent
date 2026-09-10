@@ -1,0 +1,6 @@
+{
+  "tmp/m0-environment/compose-pinned.json": "3b4f664e2754189a718b4d541797137c360be019c761cae3e8f0f73a1dd65e2c",
+  "tmp/m0-environment/collector.yml": "5e8f6cb4e9a998a34ffa5025f0d956ff92bbac66dc93f24e929ee13b3edf81af",
+  "tmp/m0-environment/prometheus.yaml": "083b6fbaaade97f4ee27528aff31438a182cafc41da21acf66d6b2164a9ef6d2",
+  "tmp/m0-environment/read_proxy.py": "6dbd6a6369effa93bf935bef799f948ceb2003a766426b67e7f7c84f9eedf88b"
+}

@@ -1,0 +1,39 @@
+{
+  "integration_id": "m0-otel-20260909",
+  "source": "metrics",
+  "query": {
+    "query": [
+      "app_payment_transactions_total"
+    ],
+    "start": [
+      "1788975149.660874"
+    ],
+    "end": [
+      "1788975449.660874"
+    ]
+  },
+  "collected_at": 1788975450.5447297,
+  "data": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "__name__": "app_payment_transactions_total",
+            "app_payment_currency": "USD",
+            "job": "opentelemetry-demo/payment",
+            "opspilot_integration_id": "m0-otel-20260909",
+            "service_name": "payment",
+            "service_namespace": "opentelemetry-demo",
+            "service_version": "2.0.2"
+          },
+          "value": [
+            1788975449.661,
+            "11"
+          ]
+        }
+      ]
+    }
+  }
+}

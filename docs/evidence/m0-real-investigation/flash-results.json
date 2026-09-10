@@ -1,0 +1,141 @@
+[
+  {
+    "result": {
+      "business": "failed",
+      "business_code": "LIVE_FINAL_JSON_INVALID",
+      "trace": "pending",
+      "trace_code": "TRACE_NOT_ATTEMPTED",
+      "request_count": 2,
+      "unreconciled_reserved_cny": "2.00",
+      "actual_cost_cny": null
+    },
+    "elapsed_seconds": 3.4534798330278136,
+    "row": {
+      "experiment_id": "011db117-4eb6-47ac-aab1-c092c2d970b6",
+      "run_id": "66d05079-8daf-4242-b30d-c468d1d8bdea",
+      "deadline": "2026-09-10T10:14:30-07:00",
+      "reserved_cny": 2.0,
+      "cost_state": "unreconciled",
+      "attempts": [
+        "project",
+        "model-1",
+        "model-2"
+      ],
+      "business": "failed",
+      "outbox": {
+        "run_id": "66d05079-8daf-4242-b30d-c468d1d8bdea",
+        "status": "failed",
+        "adapter": "m0-normal-1-v1",
+        "attempt": 1,
+        "fixture": "m0-protocol-v1",
+        "subject": "m0-target-a",
+        "code_sha256": "f19eccb1d1b5ddbea6ed08459a94809613cfa99f96a8825da4c1c95b3b5db317",
+        "evidence_id": "m0-evidence-a",
+        "experiment_id": "011db117-4eb6-47ac-aab1-c092c2d970b6",
+        "request_count": 2
+      },
+      "usage": [
+        {
+          "total_tokens": 471,
+          "prompt_tokens": 394,
+          "reported_model": "deepseek-v4-flash",
+          "completion_tokens": 77
+        },
+        {
+          "total_tokens": 605,
+          "prompt_tokens": 580,
+          "reported_model": "deepseek-v4-flash",
+          "completion_tokens": 25
+        }
+      ],
+      "trace_status": "pending"
+    },
+    "diagnostics": {
+      "experiment_id": "011db117-4eb6-47ac-aab1-c092c2d970b6",
+      "business_code": "LIVE_FINAL_JSON_INVALID",
+      "trace_code": "TRACE_NOT_ATTEMPTED"
+    },
+    "ended": "2026-09-09 17:18:01.943746+00:00",
+    "version": {
+      "started": "2026-09-09 17:17:58.489461+00:00",
+      "experiment_id": "011db117-4eb6-47ac-aab1-c092c2d970b6",
+      "run_id": "66d05079-8daf-4242-b30d-c468d1d8bdea",
+      "code_sha256": "f19eccb1d1b5ddbea6ed08459a94809613cfa99f96a8825da4c1c95b3b5db317"
+    },
+    "prompt_tokens": 974,
+    "completion_tokens": 102,
+    "peak_estimate_cny": 0.00384,
+    "offpeak_estimate_cny": 0.00192
+  },
+  {
+    "result": {
+      "business": "completed",
+      "business_code": "LIVE_PROTOCOL_COMPLETED",
+      "trace": "verified",
+      "trace_code": "TRACE_VERIFIED",
+      "request_count": 2,
+      "unreconciled_reserved_cny": "2.00",
+      "actual_cost_cny": null
+    },
+    "elapsed_seconds": 10.792376500030514,
+    "row": {
+      "experiment_id": "60eef401-f408-4e4d-bf57-aa5a32a3a41b",
+      "run_id": "f9cd755e-7663-468d-bf97-8424bc2a2974",
+      "deadline": "2026-09-10T10:14:30-07:00",
+      "reserved_cny": 2.0,
+      "cost_state": "unreconciled",
+      "attempts": [
+        "project",
+        "model-1",
+        "model-2",
+        "trace-post",
+        "trace-read-1",
+        "trace-read-2"
+      ],
+      "business": "completed",
+      "outbox": {
+        "run_id": "f9cd755e-7663-468d-bf97-8424bc2a2974",
+        "status": "completed",
+        "adapter": "m0-normal-1-v1",
+        "attempt": 1,
+        "fixture": "m0-protocol-v1",
+        "subject": "m0-target-a",
+        "code_sha256": "7d8cd410de941b1b6c294a744e7976211ac3ec38078937579beffba7cbc48c0c",
+        "evidence_id": "m0-evidence-a",
+        "experiment_id": "60eef401-f408-4e4d-bf57-aa5a32a3a41b",
+        "request_count": 2
+      },
+      "usage": [
+        {
+          "total_tokens": 476,
+          "prompt_tokens": 394,
+          "reported_model": "deepseek-v4-flash",
+          "completion_tokens": 82
+        },
+        {
+          "total_tokens": 626,
+          "prompt_tokens": 605,
+          "reported_model": "deepseek-v4-flash",
+          "completion_tokens": 21
+        }
+      ],
+      "trace_status": "verified"
+    },
+    "diagnostics": {
+      "experiment_id": "60eef401-f408-4e4d-bf57-aa5a32a3a41b",
+      "business_code": "LIVE_PROTOCOL_COMPLETED",
+      "trace_code": "TRACE_VERIFIED"
+    },
+    "ended": "2026-09-09 17:19:45.866538+00:00",
+    "version": {
+      "started": "2026-09-09 17:19:35.073161+00:00",
+      "experiment_id": "60eef401-f408-4e4d-bf57-aa5a32a3a41b",
+      "run_id": "f9cd755e-7663-468d-bf97-8424bc2a2974",
+      "code_sha256": "7d8cd410de941b1b6c294a744e7976211ac3ec38078937579beffba7cbc48c0c"
+    },
+    "prompt_tokens": 999,
+    "completion_tokens": 103,
+    "peak_estimate_cny": 0.003924,
+    "offpeak_estimate_cny": 0.001962
+  }
+]

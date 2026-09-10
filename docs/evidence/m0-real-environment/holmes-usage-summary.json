@@ -1,0 +1,38 @@
+{
+  "scope": "Holmes baseline and separately authorized business-evidence handoff; all model execution stopped",
+  "actual_model_http_requests": 16,
+  "all_response_models": [
+    "deepseek-v4-flash"
+  ],
+  "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "allocated_model_http_limit": 16,
+  "unused_calls_not_executed": 0,
+  "trace_uploads": 0,
+  "peak_cache_miss_cost_upper_cny": 0.924021,
+  "peak_cache_aware_estimate_cny": 0.7592082,
+  "offpeak_half_rate_estimate_cny": 0.3796041,
+  "provider_invoice_reconciled": false,
+  "usage_totals": {
+    "prompt_tokens": 168105,
+    "completion_tokens": 46634,
+    "prompt_cache_hit_tokens": 56832,
+    "prompt_cache_miss_tokens": 111273
+  }
+}

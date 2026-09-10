@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "rejected_existing_label": true,
+  "original_unchanged": true,
+  "original_sha256": "de01d70d65f8cda2c4c8af6be0eef5985db5e06f5e1ec32bc430df9e659f962c",
+  "capture_repeat": {
+    "exit_code": 1,
+    "rejected_existing_label": true,
+    "original_unchanged": true,
+    "original_sha256": "c5d2e40567f9a7b5bc4d90bbb5b91a8a4d8ba54de117ec7d046eeb0e5e2ca2eb"
+  }
+}

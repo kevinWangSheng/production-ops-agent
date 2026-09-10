@@ -1,0 +1,19 @@
+{
+  "timeline_path": "tmp/m0-environment/engineer-only/fault-timeline.jsonl",
+  "sha256": "9f9feb4f02ad2324734af6b428707b80798825b6d51c9e73906743ab6f2fa858",
+  "events": [
+    {
+      "at": "2026-09-09T17:51:53.605619+00:00",
+      "action": "inject",
+      "before_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "after_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d"
+    },
+    {
+      "at": "2026-09-09T18:12:46.026643+00:00",
+      "action": "restore",
+      "before_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "after_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6"
+    }
+  ],
+  "restored_bytes_equal_original": true
+}

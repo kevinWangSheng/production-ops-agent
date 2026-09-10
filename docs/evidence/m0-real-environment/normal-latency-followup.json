@@ -1,0 +1,48 @@
+[
+  {
+    "label": "normal-01-original",
+    "query": "histogram_quantile(0.95, sum by (le, service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=~\"checkout|payment\"}[5m])))",
+    "start": 1788975149.661,
+    "end": 1788975449.661,
+    "result": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "service_name": "checkout"
+            },
+            "value": [
+              1788975449.661,
+              "10000"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "label": "current",
+    "query": "histogram_quantile(0.95, sum by (le, service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=~\"checkout|payment\"}[5m])))",
+    "start": 1788975699.9291909,
+    "end": 1788975999.9291909,
+    "result": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "service_name": "checkout"
+            },
+            "value": [
+              1788975999.929,
+              "71.24999999999999"
+            ]
+          }
+        ]
+      }
+    }
+  }
+]

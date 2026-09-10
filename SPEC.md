@@ -3,7 +3,7 @@
 Product boundary: **confirmed by the user on 2026-09-06**.
 Investigation mechanism: **confirmed by the user on 2026-09-07** (ADR-0002).
 Technical design: **C3 reviewed and approved for persistence by the user on 2026-09-07**. Exact compatibility, capacity and quantitative acceptance calibration remain for M0.
-Feature implementation gate: **not cleared**; M0 compatibility evidence and the corresponding frozen acceptance packet remain prerequisites. The next work is M0 design validation, not another review of the same architecture. No implementation or deployment evidence exists yet.
+Feature implementation gate: **not cleared**; M0 compatibility evidence and the corresponding frozen acceptance packet remain prerequisites. The next work is M0 design validation, not another review of the same architecture. No product implementation or production deployment evidence exists yet. Bounded M0 protocol and real-software environment evidence are recorded separately.
 
 ## Purpose
 
@@ -125,11 +125,13 @@ All active features and approved checks must pass before completion. Claims dist
 
 The approved [technical plan](docs/design/technical-proposal-2026-09-07.md) is the current engineering contract. The [C1–C3 full-review record](docs/reviews/technical-design-c3-review-2026-09-07.md) records independent adversarial review; [ADR-0003](docs/adr/0003-business-state-recovery-authority.md) explains the recovery authority decision. PostgreSQL committed business records own cross-process recovery; graph checkpoints are attempt-local rebuildable caches, not accepted cross-epoch recovery pointers.
 
-Next is M0: pin and validate dependencies/model protocol, persistent reconstruction and cancellation/upgrade behavior; establish workload/data-source/permission mappings and measured capacity; calibrate and freeze the eval packet before candidate assessment. F14 baseline execution/reproduction, detailed IncidentScenario/IncidentOutcome schemas, measurable thresholds and task estimates still require this work. They are explicit validation and acceptance deliverables, not unreviewed product scope or an invitation to repeat the same technical selection.
+Next is M0: pin and validate dependencies/model protocol, persistent reconstruction and cancellation/upgrade behavior; establish workload/data-source/permission mappings and measured capacity; calibrate and freeze the eval packet before candidate assessment. F14 now has bounded real upstream attempts, but successful active fault reporting, complete reuse mapping, live-compatible IncidentScenario/IncidentOutcome contracts, calibrated thresholds and task estimates still require this work. They are explicit validation and acceptance deliverables, not unreviewed product scope or an invitation to repeat the same technical selection.
 
 The reviewed [M0 execution plan](docs/plans/m0-validation-plan-2026-09-07.md) now details experiment coverage, evidence, sequence and decision ownership. Its [isolated-context review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md) closed two planning omissions; persistence does not constitute runtime evidence.
 
 ### Conditions for entering implementation
+
+2026-09-09 bounded evidence update: [the real investigation report](docs/evidence/m0-real-investigation/results.md) records one complete Flash fixture/PG/trace chain, pinned OTel/Holmes operation, a qualified normal report, independently confirmed fault and post-restoration observations. Both active fault investigations produced no final report; the final business-evidence handoff exhausted its output allowance without final content. The gate remains **not cleared**. The next bounded packet is [fault-report completion and dynamic evidence acceptance](docs/plans/first-vertical-investigation-2026-09-09.md): calibrate input/output/time/cost together, resolve dynamic visible evidence and real target/dependency identity contracts, and validate the first slice's step reconstruction and current control authority. This does not require completing all future fault cases or product UI before implementation. All feature passes remain unchanged.
 
 The C3 architecture user review is complete. Before starting feature implementation, obtain the relevant M0 evidence, resolve any incompatibility it exposes, and freeze the corresponding acceptance criteria and required environment/resources under this approved design. Low-level reversible implementation details need not all be specified in advance. Design-validation experiments that resolve open questions are separately scoped design work; they do not require the finished product to have already passed acceptance.
 

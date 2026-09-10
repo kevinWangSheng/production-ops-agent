@@ -1,0 +1,15 @@
+{
+  "schema": "m0_vertical_probe_20260909",
+  "source_experiment": "60eef401-f408-4e4d-bf57-aa5a32a3a41b",
+  "source_sha256": "1fe6c56dd483fbd4c6dcf2443bec110e880b97de73185c1d26d3410083f0fa64",
+  "snapshot_sha256": "879a29c45c703aa186fce5c34876f1f0bd5ad083cb6c752e5954ac2fca40c705",
+  "normal_adoption": 1,
+  "late_cancel_epoch_expiry_rejected": 4,
+  "restart_pid_changed": true,
+  "snapshots_preserved": 4,
+  "live_business_and_diagnostics_unchanged": true,
+  "incompatible_reconstruction": "blocked(INCOMPATIBLE_STATE)",
+  "model_requests": 0,
+  "trace_uploads": 0,
+  "boundary": "probe SQL mechanics and persisted known business snapshot only; no product worker or provider-private continuation"
+}

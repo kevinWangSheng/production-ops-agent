@@ -1,0 +1,216 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+Resolved 38 packages in 114ms
+.venv/bin/ruff check .
+E401 [*] Multiple imports on one line
+ --> docs/evidence/m0-real-investigation/diagnostic-harness.py:1:1
+  |
+1 | import asyncio,json,os,time,sys
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 | from pathlib import Path
+3 | import psycopg
+  |
+help: Split imports
+  |
+  - import asyncio,json,os,time,sys
+1 + import asyncio
+2 + import json
+3 + import os
+4 + import time
+5 + import sys
+6 | from pathlib import Path
+  |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> docs/evidence/m0-real-investigation/diagnostic-harness.py:1:1
+  |
+1 | / import asyncio,json,os,time,sys
+2 | | from pathlib import Path
+3 | | import psycopg
+4 | | from scripts.m0 import live
+5 | | from scripts.m0.config import load_config
+6 | | from scripts.m0.postgres_lab import verify_server
+  | |_________________________________________________^
+7 |   p=Path('tmp/m0-real-investigation'); n=sys.argv[1]
+8 |   def save(name,obj):
+  |
+help: Organize imports
+   |
+   - import asyncio,json,os,time,sys
+1  + import asyncio
+2  + import json
+3  + import os
+4  + import sys
+5  + import time
+6  | from pathlib import Path
+7  +
+8  | import psycopg
+9  +
+10 | from scripts.m0 import live
+11 | from scripts.m0.config import load_config
+12 | from scripts.m0.postgres_lab import verify_server
+13 +
+14 | p=Path('tmp/m0-real-investigation'); n=sys.argv[1]
+   |
+
+E702 Multiple statements on one line (semicolon)
+ --> docs/evidence/m0-real-investigation/diagnostic-harness.py:7:36
+  |
+5 | from scripts.m0.config import load_config
+6 | from scripts.m0.postgres_lab import verify_server
+7 | p=Path('tmp/m0-real-investigation'); n=sys.argv[1]
+  |                                    ^
+8 | def save(name,obj):
+9 |  fd=os.open(p/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:10:29
+   |
+ 8 | def save(name,obj):
+ 9 |  fd=os.open(p/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+10 |  with os.fdopen(fd,'w') as f: json.dump(obj,f,indent=2,default=str)
+   |                             ^
+11 | c=load_config(Path('/Users/shenghuikevin/dev/AI/production-ops-agent/.env'))
+12 | a=live.read_contract((p/('approval-'+n+'.json')).resolve())
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:13:59
+   |
+11 | c=load_config(Path('/Users/shenghuikevin/dev/AI/production-ops-agent/.env'))
+12 | a=live.read_contract((p/('approval-'+n+'.json')).resolve())
+13 | c.values['OPSPILOT_EXPERIMENT_DEADLINE_UTC']=a['deadline']; c.values['OPSPILOT_EXPERIMENT_BUDGET_CNY']='2.00'
+   |                                                           ^
+14 | live.validate(a,c); verify_server()
+15 | original=live.Wire.request
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:14:19
+   |
+12 | a=live.read_contract((p/('approval-'+n+'.json')).resolve())
+13 | c.values['OPSPILOT_EXPERIMENT_DEADLINE_UTC']=a['deadline']; c.values['OPSPILOT_EXPERIMENT_BUDGET_CNY']='2.00'
+14 | live.validate(a,c); verify_server()
+   |                   ^
+15 | original=live.Wire.request
+16 | async def observed(self,slot,*args,**kwargs):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:17:20
+   |
+15 | original=live.Wire.request
+16 | async def observed(self,slot,*args,**kwargs):
+17 |  t=time.monotonic();r=await original(self,slot,*args,**kwargs)
+   |                    ^
+18 |  if slot=='model-2':
+19 |   content=r.get('choices',[{}])[0].get('message',{}).get('content')
+   |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:23:7
+   |
+21 |   if type(content)is str:
+22 |    s.update(starts_json_fence=content.startswith('```json\n'),ends_fence=content.rstrip().endswith('```'))
+23 |    try: value=json.loads(content);s['json_valid']=True
+   |       ^
+24 |    except ValueError: value=None;s['json_valid']=False
+25 |    s['strict_contract_match']=value=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:23:34
+   |
+21 |   if type(content)is str:
+22 |    s.update(starts_json_fence=content.startswith('```json\n'),ends_fence=content.rstrip().endswith('```'))
+23 |    try: value=json.loads(content);s['json_valid']=True
+   |                                  ^
+24 |    except ValueError: value=None;s['json_valid']=False
+25 |    s['strict_contract_match']=value=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+   |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:24:21
+   |
+22 |    s.update(starts_json_fence=content.startswith('```json\n'),ends_fence=content.rstrip().endswith('```'))
+23 |    try: value=json.loads(content);s['json_valid']=True
+24 |    except ValueError: value=None;s['json_valid']=False
+   |                     ^
+25 |    s['strict_contract_match']=value=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+26 |    s['fenced_inner_strict_match']=False
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:24:33
+   |
+22 |    s.update(starts_json_fence=content.startswith('```json\n'),ends_fence=content.rstrip().endswith('```'))
+23 |    try: value=json.loads(content);s['json_valid']=True
+24 |    except ValueError: value=None;s['json_valid']=False
+   |                                 ^
+25 |    s['strict_contract_match']=value=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+26 |    s['fenced_inner_strict_match']=False
+   |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:28:8
+   |
+26 |    s['fenced_inner_strict_match']=False
+27 |    if s['starts_json_fence'] and s['ends_fence']:
+28 |     try:s['fenced_inner_strict_match']=json.loads(content.rstrip()[8:-3])=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+   |        ^
+29 |     except ValueError:pass
+30 |    # Only persist exact known synthetic content or its JSON Markdown wrapper, never arbitrary text.
+   |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:29:22
+   |
+27 |    if s['starts_json_fence'] and s['ends_fence']:
+28 |     try:s['fenced_inner_strict_match']=json.loads(content.rstrip()[8:-3])=={'target':'m0-target-a','evidence_id':'m0-evidence-a'}
+29 |     except ValueError:pass
+   |                      ^
+30 |    # Only persist exact known synthetic content or its JSON Markdown wrapper, never arbitrary text.
+31 |    if s['strict_contract_match'] or s['fenced_inner_strict_match']:s['known_fixture_final_content']=content
+   |
+
+E701 Multiple statements on one line (colon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:31:67
+   |
+29 |     except ValueError:pass
+30 |    # Only persist exact known synthetic content or its JSON Markdown wrapper, never arbitrary text.
+31 |    if s['strict_contract_match'] or s['fenced_inner_strict_match']:s['known_fixture_final_content']=content
+   |                                                                   ^
+32 |   save('final-diagnostic-'+n+'.json',s)
+33 |  return r
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:36:19
+   |
+34 | live.Wire.request=observed
+35 | save('started-'+n+'.json',{'started':live.utcnow(),'experiment_id':a['experiment_id'],'run_id':a['run_id'],'code_sha256':live.code_dig…
+36 | t=time.monotonic();result=asyncio.run(live.execute(a,c,live.LiveLedger(a['database_dsn'])))
+   |                   ^
+37 | with psycopg.connect(a['database_dsn']) as db:
+38 |  row=db.execute('SELECT row_to_json(t) FROM m0_live_once t WHERE experiment_id=%s',(a['experiment_id'],)).fetchone()[0]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> docs/evidence/m0-real-investigation/diagnostic-harness.py:41:26
+   |
+39 |  diag=db.execute('SELECT row_to_json(t) FROM m0_live_diagnostics t WHERE experiment_id=%s',(a['experiment_id'],)).fetchone()[0]
+40 | save('result-'+n+'.json',{'result':result,'elapsed_seconds':time.monotonic()-t,'row':row,'diagnostics':diag,'ended':live.utcnow()})
+41 | print(json.dumps(result));print('elapsed_seconds',round(time.monotonic()-t,3))
+   |                          ^
+
+Found 16 errors.
+[*] 2 fixable with the `--fix` option.
+make: *** [check] Error 1

@@ -1,0 +1,49 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+________________ test_observation_keeps_existing_summary[True] _________________
+
+tmp_path = PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-116/test_observation_keeps_existin0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109956e40>
+archive_exists = True
+
+    @pytest.mark.parametrize("archive_exists", [True, False])
+    def test_observation_keeps_existing_summary(tmp_path, monkeypatch, archive_exists):
+        root = tmp_path / "checkout"
+        scripts = root / "scripts/m0_environment"
+        scripts.mkdir(parents=True)
+        entry = scripts / "observe_window.py"
+        shutil.copyfile(
+            Path(__file__).resolve().parents[1] / "scripts/m0_environment/observe_window.py",
+            entry,
+        )
+        evidence = root / "docs/evidence/m0-real-environment"
+        evidence.mkdir(parents=True)
+        summary = evidence / "recovery-01-observation.json"
+        original = b'{"historical_window":"preserve-original"}\n'
+        if archive_exists:
+            summary.write_bytes(original)
+        requests = []
+
+        class Response(io.BytesIO):
+            status = 200
+
+        def get(url, **kwargs):
+            requests.append(url)
+            if "/logs?" in url:
+                return Response(b'{"data":{"hits":{"total":0,"hits":[]}}}')
+            return Response(b'{"data":[]}')
+
+        monkeypatch.setattr("urllib.request.urlopen", get)
+        monkeypatch.setattr("sys.argv", [str(entry), "recovery-01", "1", "301"])
+        raw_dir = root / "tmp/m0-environment/raw-evidence/recovery-01"
+        if archive_exists:
+>           with pytest.raises(SystemExit):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE SystemExit
+
+tests/test_m0_trace_archive.py:82: Failed
+----------------------------- Captured stdout call -----------------------------
+{"calls": 200, "transactions": 200, "checkout-rpc": 200, "latency": 200, "traces-checkout": 200, "traces-payment": 200, "logs-frontend-proxy": 200}
+=========================== short test summary info ============================
+FAILED tests/test_m0_trace_archive.py::test_observation_keeps_existing_summary[True]
+1 failed, 1 passed, 2 deselected in 0.09s

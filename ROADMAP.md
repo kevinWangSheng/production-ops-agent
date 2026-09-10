@@ -1,10 +1,10 @@
 # Roadmap
 
-Current phase: technical design approved and persisted; local M0 A/B/C and integration are merged with independent review and main CI evidence; M0-01 one-shot live experiment was authorized and executed: model business completed; follow-up read-only diagnosis confirmed stored trace data and fixed a platform-metadata validation error. The initial failed exit is preserved; no full rerun or product gate clearance. Product boundary confirmed 2026-09-06; C3 design reviewed 2026-09-07. Product feature implementation has not started.
+Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛仍未打开。Flash固定工具→严格JSON→PG→LangSmith单次通过；固定OTel/Holmes真实正常、故障及工程还原证据已取得，但两次主动故障调查无最终报告，最后业务证据接续也输出耗尽。[最终报告](docs/evidence/m0-real-investigation/results.md)与[当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)保留全部失败。下一项M0-02为有界故障报告收束/动态证据验收冻结，满足条件后实施M1-01完整纵向流程。
 
 ## Completed decisions and documentation
 
-- [x] 2026-09-09 用户指定默认DeepSeek Flash：直接使用deepseek-v4-flash，保留thinking/high。Pro实验记录保留；当前仅切换配置/入口与合成检查，不重跑付费实验。
+- [x] 2026-09-09 用户指定默认DeepSeek Flash：直接使用deepseek-v4-flash，保留thinking/high。Pro及首次Flash记录保留；本轮新的真实Flash/上游实验见当前报告，不复用旧批准。
 
 - [x] Operating constraints clarified — 2026-09-07: no backup/disk-disaster recovery; retain process/task recovery; CNY 1,000 adjustable initial budget reference; effectiveness first; data-use plan prepared by assistant then reviewed by user. F8 backup step retired with history, not passed.
 
@@ -42,20 +42,22 @@ Current phase: technical design approved and persisted; local M0 A/B/C and integ
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。真实调用、M0 退出与产品实施门槛保持关闭。
+- [-] 2026-09-09 新一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
 
-- [-] M0-01 — 2026-09-09：PR #12 已合并为 `55539bc`，#13 已关闭、自动审查门禁暂缓。原 Pro 两轮完成及 trace 后续只读确认保留，原 2 CNY 未核账；本轮按新的 [Flash 单次合同](docs/evidence/m0-01-live/flash-contract.md)运行，2 次 Flash 请求后最终 JSON 合同失败，未上传 trace；[结果与诊断修复](docs/evidence/m0-01-live/flash-execution.md)保留。[当前任务](docs/tasks/2026-09-08-m0-01-preflight.md)接续运行证据，完整矩阵/恢复与产品门槛仍未完成。
+- [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。该离线批次不自动授权真实调用或打开M0退出/产品实施门槛；后续真实调用授权与结果见当前M0任务。
 
-- [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). Experiments remain unexecuted.
+- [-] M0-01 — 2026-09-09：PR #14已合并为738b5c7，main CI34380825700成功，本地已同步。旧Pro/首次Flash失败及4CNY未核账保留；本轮Flash JSON mode最小修复后完整链路单次通过。[本轮报告](docs/evidence/m0-real-investigation/results.md)接续真实OTel/Holmes正常、故障及还原证据；主动故障报告与M0/产品入口仍未通过。
+
+- [x] M0 P2 execution plan patched and persisted — 2026-09-07; isolated-context full review passed after restoring upgrade compatibility and explicit eval rules. See [execution plan](docs/plans/m0-validation-plan-2026-09-07.md) and [review](docs/reviews/m0-plan-adversarial-review-2026-09-07.md). 部分真实协议已执行，其他工作包按当前任务继续。
 
 - [x] C3 complete technical design accepted for persistence — 2026-09-07. Three whole-candidate adversarial rounds closed observer/control races, independent release-observation identity and provider-private-field export contradictions. See [technical plan](docs/design/technical-proposal-2026-09-07.md), [review record](docs/reviews/technical-design-c3-review-2026-09-07.md) and [ADR-0003](docs/adr/0003-business-state-recovery-authority.md).
 - [x] Technical direction: Python/FastAPI, PostgreSQL business recovery authority, DeepSeek-compatible adapter, LangSmith, Compose/Helm. LangGraph loop benefit and exact versions remain to be validated; graph checkpoints have no cross-attempt authority.
 - [x] Source-first research for HolmesGPT/OpenSRE/Stratus and runtime/platform comparisons completed as static evidence; not feature completion.
-- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned runtime baseline, real reproductions and measured reuse costs pending.
-- [ ] M0 dependency/model protocol validation, persistent reconstruction, cancellation/lease/observer races, upgrade compatibility and target-scoped identities.
-- [ ] M0 pinned OTel Demo source/permission/label/retention/HealthProfile mapping; normal telemetry prerequisites and measured resource/cost estimates.
+- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; successful active fault report and complete reuse/candidate comparison remain pending.
+- [-] M0模型/协议与控制快照已有子集真实证据；调查步骤重建、完整取消/lease/observer/升级与目标范围仍待对应有界验证。
+- [-] M0 pinned OTel Demo实际部署、正常/故障/还原、来源/权限探针和资源费用已记录；按服务日志/身份缺口、实际Holmes进程隔离、HealthProfile等仍待对应任务。
 - [ ] F1 detailed IncidentScenario/IncidentOutcome packet, development calibration, frozen sample/repeat/scoring/non-regression thresholds before candidate evaluation. Retain existing acceptance inventory; no passes changed.
-- [ ] Use M0 results to resolve incompatibilities and produce bounded implementation tasks/effort estimates; update the conditional SPEC gate with evidence.
+- [-] 已形成[M0-02 / M1-01具体任务与入口缺项](docs/plans/first-vertical-investigation-2026-09-09.md)；故障报告收束、动态验收/目标及步骤恢复前提未满足，SPEC保留not cleared，不更新passes。
 
 The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historical. Both product entry points remain in one complete release; symptom categories remain testing only.
 
@@ -66,7 +68,7 @@ The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historic
 3. **M2 — full lifecycle and failures:** both entries, human control, delayed/duplicate inputs, knowledge versions and recovery; F2/F3/F6/F7/F11/F12/F13 acceptance evidence.
 4. **M3 — complete release evidence:** matched baseline/held-out comparisons, soak, upgrade/recovery and delivery; F1/F8/F9/F14 and every active acceptance check.
 
-F7/F8/F9 requirements apply from the first runnable system. No internal milestone substitutes for the complete product. No V2 scope or delivery date is promised; estimate effort after M0. Architecture is approved, runtime validation and feature implementation have not run.
+F7/F8/F9 requirements apply from the first runnable system. No internal milestone substitutes for the complete product. No V2 scope or delivery date is promised; estimate effort after M0. Architecture is approved; runtime validation is partial and feature implementation has not started.
 
 ## Retired scope
 

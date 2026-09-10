@@ -1,0 +1,184 @@
+{
+  "start": 1788974407.760764,
+  "end": 1788978007.760764,
+  "services": [
+    {
+      "service": "payment",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=payment&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/0.json.gz",
+      "raw_sha256": "3f25759a28c4f9772c6cebb586cabaa10add2a1bfb953deb2ae8f83fd85c9e90",
+      "raw_bytes": 4197684,
+      "trace_count": 75,
+      "at_limit": false
+    },
+    {
+      "service": "image-provider",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=image-provider&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/1.json.gz",
+      "raw_sha256": "7255b34edc7ce3a3f21ff0f92fba43f6a25bb52936efca716b546d42d54be74b",
+      "raw_bytes": 1197027,
+      "trace_count": 222,
+      "at_limit": false
+    },
+    {
+      "service": "product-catalog",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=product-catalog&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/2.json.gz",
+      "raw_sha256": "79aaef1b3a28da331cde1184323cebdcf60e29eb7086bcbe890e3f9f906d4554",
+      "raw_bytes": 14754499,
+      "trace_count": 805,
+      "at_limit": false
+    },
+    {
+      "service": "recommendation",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=recommendation&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/3.json.gz",
+      "raw_sha256": "5432864ca021fadbe8d487fa17397da5ef1b35f13f54d2ec3d370f57b65081fe",
+      "raw_bytes": 3849262,
+      "trace_count": 157,
+      "at_limit": false
+    },
+    {
+      "service": "quote",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=quote&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/4.json.gz",
+      "raw_sha256": "cbc1af4f2f572c7f3bc7066bd1f77fb85e83267fd5f1f1841d13ccb795645b69",
+      "raw_bytes": 4186476,
+      "trace_count": 72,
+      "at_limit": false
+    },
+    {
+      "service": "frontend",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=frontend&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/5.json.gz",
+      "raw_sha256": "03dd6a4f08bef9ee8643f8a47739ec285f07639d5eec9661d2f6aa52a361df72",
+      "raw_bytes": 26870537,
+      "trace_count": 1979,
+      "at_limit": false
+    },
+    {
+      "service": "jaeger-all-in-one",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=jaeger-all-in-one&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/6.json.gz",
+      "raw_sha256": "fcf950811a099d90b1cd0cf797dc9f52badba73cd4d59bc8393d19ddb5f304f8",
+      "raw_bytes": 27574,
+      "trace_count": 17,
+      "at_limit": false
+    },
+    {
+      "service": "accounting",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=accounting&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/7.json.gz",
+      "raw_sha256": "25b2e1486cb30055fd8f5b80831eeb6c4fbdb0f1c352f3ad9716d3c0841a14e6",
+      "raw_bytes": 105943,
+      "trace_count": 43,
+      "at_limit": false
+    },
+    {
+      "service": "frontend-proxy",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=frontend-proxy&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/8.json.gz",
+      "raw_sha256": "9a7210daeff54821e4f9d99363845a1a5b0056a96573de0f82a13069d1e19deb",
+      "raw_bytes": 28421752,
+      "trace_count": 2270,
+      "at_limit": false
+    },
+    {
+      "service": "load-generator",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=load-generator&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/9.json.gz",
+      "raw_sha256": "32fb24979d8d8a64cff0266bb820e91853e7b0166fdd1247fa87547097d49746",
+      "raw_bytes": 20410527,
+      "trace_count": 1362,
+      "at_limit": false
+    },
+    {
+      "service": "cart",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=cart&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/10.json.gz",
+      "raw_sha256": "3d7c173e26944377c1c44828503ee2a5e0836bc31fa4ec6d6a50c9020f8d0e9e",
+      "raw_bytes": 10169236,
+      "trace_count": 461,
+      "at_limit": false
+    },
+    {
+      "service": "flagd",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=flagd&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/11.json.gz",
+      "raw_sha256": "7a663f708a2a9b7b698feafdcc745f60b506bd2a1736a51f2f745ddc5e8cac70",
+      "raw_bytes": 3937795,
+      "trace_count": 323,
+      "at_limit": false
+    },
+    {
+      "service": "fraud-detection",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=fraud-detection&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/12.json.gz",
+      "raw_sha256": "d230dd20697a8d272e6824235a170b8d06e5031dd326c9dfb6d4b85235c2573d",
+      "raw_bytes": 274070,
+      "trace_count": 47,
+      "at_limit": false
+    },
+    {
+      "service": "ad",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=ad&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/13.json.gz",
+      "raw_sha256": "fe9982b4f009ce71dce4327d865b94e82c414e4391753c410d51374d09d72ecc",
+      "raw_bytes": 2006093,
+      "trace_count": 114,
+      "at_limit": false
+    },
+    {
+      "service": "currency",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=currency&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/14.json.gz",
+      "raw_sha256": "f0e538393d4f6e6d630faa1190de03b086e71214b8f7342b7cae7c711639006f",
+      "raw_bytes": 5108401,
+      "trace_count": 125,
+      "at_limit": false
+    },
+    {
+      "service": "checkout",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=checkout&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/15.json.gz",
+      "raw_sha256": "f7af5b7a16ec5753237bf9883fd5d4b1019775dba60b292fe7968d59b90eec39",
+      "raw_bytes": 4186462,
+      "trace_count": 72,
+      "at_limit": false
+    },
+    {
+      "service": "shipping",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=shipping&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/16.json.gz",
+      "raw_sha256": "5daacfe5661ffcd98d27f5273a5c74a8ebedd1d096b70196889c50dcae91184b",
+      "raw_bytes": 4186461,
+      "trace_count": 72,
+      "at_limit": false
+    },
+    {
+      "service": "email",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=email&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/17.json.gz",
+      "raw_sha256": "1c4174cfc171e4941874b2ad861221e442de92586e759b8e5e41f97c2afd7f73",
+      "raw_bytes": 2878100,
+      "trace_count": 44,
+      "at_limit": false
+    },
+    {
+      "service": "frontend-web",
+      "query": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=frontend-web&start=1788974407760764&end=1788978007760764&limit=25000",
+      "raw_path": "tmp/m0-environment/jaeger-final-export/18.json.gz",
+      "raw_sha256": "f6c2c6924f6258bc18ac12e0e1bef2765d01136cd0668e3dc6ad284e3072132d",
+      "raw_bytes": 2288857,
+      "trace_count": 183,
+      "at_limit": false
+    }
+  ],
+  "unique_trace_ids": 2792,
+  "scope": "Jaeger retained one-hour window per discovered service; not a transactional snapshot or proof of no earlier eviction",
+  "archive_hash_verification": {
+    "checked": 19,
+    "passed": true,
+    "at": "2026-09-09T18:20:36.646178+00:00"
+  }
+}

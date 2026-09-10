@@ -117,7 +117,7 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 
 ### 模型接入
 
-2026-09-09 用户决定默认使用 Flash；当前配置为 DeepSeek 官方 Chat Completions 兼容接口、`deepseek-v4-flash`、thinking 开启和 high effort，直接请求 Flash，不依赖 Pro 别名转路由。此前 Pro 实验作为历史证据保留，不代表 Flash 已真实验证。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。该组合需要兼容性实验，不能视为已经验证。
+2026-09-09 用户决定默认使用 Flash；当前配置为 DeepSeek 官方 Chat Completions 兼容接口、`deepseek-v4-flash`、thinking 开启和 high effort，直接请求 Flash，不依赖 Pro 别名转路由。此前 Pro 实验作为历史证据保留，不替代 Flash 验证。2026-09-09 新 Flash 固定工具/严格 JSON/PG/白名单 trace 链路已单次通过，真实调查基线另见[本轮证据](../tasks/2026-09-09-m0-real-investigation.md)；不代表全部协议/恢复矩阵或产品验收。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。完整协议/恢复兼容矩阵仍需实验，单次链路通过不代表该矩阵通过。
 
 使用 OpenAI 兼容客户端不意味着使用 OpenAI 模型服务，也不意味着采用 OpenAI Agents SDK。
 

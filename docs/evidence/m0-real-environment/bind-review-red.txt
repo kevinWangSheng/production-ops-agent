@@ -1,0 +1,770 @@
+.........FFFFFFFFFFFF                                                    [100%]
+=================================== FAILURES ===================================
+_________ test_all_bind_inputs_are_checked_before_runtime_write[flagd] _________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'flagd'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+______ test_all_bind_inputs_are_checked_before_runtime_write[added-file] _______
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'added-file'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+____ test_all_bind_inputs_are_checked_before_runtime_write[added-empty-dir] ____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'added-empty-dir'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+_____ test_all_bind_inputs_are_checked_before_runtime_write[removed-file] ______
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'removed-file'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+________ test_all_bind_inputs_are_checked_before_runtime_write[grafana] ________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'grafana'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+________ test_all_bind_inputs_are_checked_before_runtime_write[extras] _________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'extras'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+_______ test_all_bind_inputs_are_checked_before_runtime_write[products] ________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'products'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+_____ test_all_bind_inputs_are_checked_before_runtime_write[file-symlink] ______
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'file-symlink'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+____ test_all_bind_inputs_are_checked_before_runtime_write[parent-symlink] _____
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'parent-symlink'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+___ test_all_bind_inputs_are_checked_before_runtime_write[generated-symlink] ___
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'generated-symlink'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+_______ test_all_bind_inputs_are_checked_before_runtime_write[tar-drift] _______
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_all_bind_... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+mutation = 'tar-drift'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "flagd",
+            "added-file",
+            "added-empty-dir",
+            "removed-file",
+            "grafana",
+            "extras",
+            "products",
+            "file-symlink",
+            "parent-symlink",
+            "generated-symlink",
+            "tar-drift",
+        ],
+    )
+    def test_all_bind_inputs_are_checked_before_runtime_write(lab, mutation):
+        root, _, _, _ = lab
+        runtime = root / "tmp/m0-environment"
+        source = runtime / SOURCE_NAME
+        flag = source / "src/flagd/demo.flagd.json"
+        if mutation == "flagd":
+            flag.write_text('{"flags": {"changed": true}}')
+        elif mutation == "added-file":
+            (flag.parent / "extra.json").write_text("{}")
+        elif mutation == "added-empty-dir":
+            (flag.parent / "extra-directory").mkdir()
+        elif mutation == "removed-file":
+            flag.unlink()
+        elif mutation in ("grafana", "extras", "products"):
+            name = {
+                "grafana": "src/grafana/grafana.ini",
+                "extras": "src/otel-collector/otelcol-config-extras.yml",
+                "products": "src/product-catalog/products/products.json",
+            }[mutation]
+            (source / name).write_text("changed")
+        elif mutation == "file-symlink":
+            target = root / "same-bytes"
+            target.write_bytes(flag.read_bytes())
+            flag.unlink()
+            flag.symlink_to(target)
+        elif mutation == "parent-symlink":
+            target = root / "same-directory"
+            flag.parent.rename(target)
+            flag.parent.symlink_to(target, target_is_directory=True)
+        elif mutation == "generated-symlink":
+            original = runtime / "collector.yml"
+            target = root / "same-generated-bytes"
+            target.write_bytes(original.read_bytes())
+            original.unlink()
+            original.symlink_to(target)
+        else:
+            with (runtime / "otel.tar.gz").open("ab") as stream:
+                stream.write(b"changed archive")
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:275: AssertionError
+________ test_unapproved_bind_is_rejected_even_if_compose_hash_matches _________
+
+lab = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-109/test_unapprove... },\n  "volumes": {\n    "prometheus-data": {},\n    "opensearch-data": {}\n  }\n}\n', b"print('test proxy source')\n")
+
+    def test_unapproved_bind_is_rejected_even_if_compose_hash_matches(lab):
+        root, _, expected_compose, _ = lab
+        runtime = root / "tmp/m0-environment"
+        # A FIFO outside the allowed source tree would block if opened as input.
+        unknown = root.parent / "unapproved-input"
+        os.mkfifo(unknown)
+        candidate = json.loads((runtime / "compose.json").read_text())
+        frozen = json.loads(expected_compose)
+        for config in (candidate, frozen):
+            config["services"]["grafana"]["volumes"][0]["source"] = str(unknown)
+        (runtime / "compose.json").write_text(json.dumps(candidate))
+        path = root / "docs/evidence/m0-real-environment/configuration-hashes.json"
+        hashes = json.loads(path.read_text())
+        hashes["tmp/m0-environment/compose-pinned.json"] = hashlib.sha256(
+            (json.dumps(frozen, indent=2) + "\n").encode()
+        ).hexdigest()
+        path.write_text(json.dumps(hashes))
+        before = snapshot(root)
+        result = run_freeze(root)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent/.venv/bin/python', '/private/var/folders/nh/0...turncode=0, stdout='Verified 26 archived images/configuration; runtime materialized, evidence unchanged.\n', stderr='').returncode
+
+tests/test_m0_freeze_images.py:298: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[flagd]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[added-file]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[added-empty-dir]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[removed-file]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[grafana]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[extras]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[products]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[file-symlink]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[parent-symlink]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[generated-symlink]
+FAILED tests/test_m0_freeze_images.py::test_all_bind_inputs_are_checked_before_runtime_write[tar-drift]
+FAILED tests/test_m0_freeze_images.py::test_unapproved_bind_is_rejected_even_if_compose_hash_matches
+12 failed, 9 passed in 17.82s

@@ -1,0 +1,11 @@
+{
+  "content_is_string": true,
+  "length": 57,
+  "request_seconds": 1.1301383749814704,
+  "starts_json_fence": false,
+  "ends_fence": false,
+  "json_valid": true,
+  "strict_contract_match": true,
+  "fenced_inner_strict_match": false,
+  "known_fixture_final_content": "{\"target\": \"m0-target-a\", \"evidence_id\": \"m0-evidence-a\"}"
+}

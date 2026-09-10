@@ -1,0 +1,37 @@
+{
+  "at": "2026-09-09T18:23:15.577172+00:00",
+  "stopped_workload_containers": 26,
+  "all_containers_exited": true,
+  "colima_list_exit_code": 0,
+  "colima_profiles": "PROFILE    STATUS     ARCH       CPUS    MEMORY    DISK     RUNTIME    ADDRESS\ndefault    Stopped    aarch64    4       6GiB      30GiB               \nm0-otel    Stopped    aarch64    4       6GiB      24GiB               \n",
+  "memory_last_line": "System-wide memory free percentage: 64%",
+  "raw_commands": {
+    "stop-workload-raw.txt": {
+      "path": "tmp/m0-environment/stop-workload-raw.txt",
+      "sha256": "83e90c3452005e8d09080442a474ff21b6605145aa12fffb3a07b9b531d13276",
+      "bytes": 1700
+    },
+    "stop-all-raw.txt": {
+      "path": "tmp/m0-environment/stop-all-raw.txt",
+      "sha256": "0f50ffd03ea7b237681aa98af0e1b42c2a284540ab32dca6ee262e3ef809ebd3",
+      "bytes": 2216
+    },
+    "colima-stop-raw.txt": {
+      "path": "tmp/m0-environment/colima-stop-raw.txt",
+      "sha256": "e9487e81a3a3dbadb4bdfac86f62edccd7031da2d0ac0f9dbb3af637d44e7655",
+      "bytes": 3873
+    }
+  },
+  "retained": [
+    "all workload containers and volumes",
+    "m0-otel profile and disk",
+    "tmp/m0-environment including source, raw telemetry and Holmes business views/ledger"
+  ],
+  "not_run": [
+    "compose down",
+    "volume removal",
+    "docker prune",
+    "profile removal"
+  ],
+  "model_status": "Holmes actor completed final one-request handoff and stopped model calls; this environment actor made no model/trace calls"
+}

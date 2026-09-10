@@ -4,6 +4,10 @@
 
 本计划落实 [C3 技术方案](../design/technical-proposal-2026-09-07.md)，不重新选择产品或架构。入口条件以 [SPEC](../../SPEC.md#conditions-for-entering-implementation) 为准；原功能验收由 [feature_list.json](../../feature_list.json) 维护，本计划不修改验收步骤或 passes。[审查记录](../reviews/m0-plan-adversarial-review-2026-09-07.md)记录两项补齐及全文复审结论。
 
+当前执行接续（2026-09-09）：[真实调查任务](../tasks/2026-09-09-m0-real-investigation.md)按用户本轮20 CNY/20模型/5trace、2026-09-10T17:14:30Z截止授权推进。PR14/main CI与同步已核对；新Flash诊断明确最终JSON围栏，最小JSON mode修复后固定工具→PG→LangSmith回读单次通过，失败原样保留。真实OTel正常/故障与HolmesGPT基线同步准备；下面早期单次执行及“未重跑”描述仅其历史状态，不限制本轮必要复验。产品实施门槛待对应真实调查、权限、恢复与冻结验收证据。
+
+本轮结束更新：20实际模型请求已用满，1trace上传；固定OTel/Holmes环境与正常/故障/还原事实已实际执行，主动故障报告0/2完成，单次业务接续length空正文。实例已停止、原数据保全；[最终报告](../evidence/m0-real-investigation/results.md)。下一有界工作为[故障报告收束/动态证据验收冻结](first-vertical-investigation-2026-09-09.md)，未完成项具体保留，不打开产品门槛。上段进行中描述为本轮启动时状态。
+
 ## 目标与阶段边界
 
 M0 以有界设计验证取得实施所需证据。目标仍是求职用途的有效、持续运行、只读运维调查 Agent，完整首版保留事故和发布后入口、人工控制、独立恢复观察及审核知识。
