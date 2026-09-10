@@ -357,6 +357,23 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
     if len(artifacts) != len(facts.artifacts):
         errors.add("DUPLICATE_EVIDENCE")
     visible = {}
+
+    def matches_report(delivery):
+        return (
+            delivery.run_id == outcome.run_id == facts.current_run
+            and delivery.step_id == outcome.report_step_id
+            and delivery.request_id == outcome.report_request_id
+            and delivery.control_generation
+            == facts.final_generation
+            == outcome.control_generation
+            and delivery.state == "response_committed"
+        )
+
+    matching_reports = [d for d in facts.deliveries if matches_report(d)]
+    if (
+        outcome.execution == "completed" or outcome.assessment_status == "completed"
+    ) and len(matching_reports) != 1:
+        errors.add("REPORT_DELIVERY_MISMATCH")
     identities = [(d.run_id, d.request_id) for d in facts.deliveries]
     if len(set(identities)) != len(identities):
         errors.add("DUPLICATE_PHYSICAL_REQUEST")
@@ -413,13 +430,7 @@ def check_outcome(scenario: IncidentScenario, outcome: IncidentOutcome) -> list[
                 errors.add("UNAUTHORIZED_DELIVERY")
             if artifact.window.end > artifact.captured_at:
                 errors.add("EVIDENCE_TIME_MISMATCH")
-            if (
-                delivery.run_id == outcome.run_id
-                and delivery.step_id == outcome.report_step_id
-                and delivery.request_id == outcome.report_request_id
-                and delivery.control_generation == facts.final_generation
-                and delivery.state == "response_committed"
-            ):
+            if matches_report(delivery):
                 if view.id in visible and visible[view.id] != view:
                     errors.add("DUPLICATE_EVIDENCE")
                 visible[view.id] = view

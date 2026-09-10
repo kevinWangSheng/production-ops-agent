@@ -181,3 +181,100 @@ def test_new_run_generations_cross_highest_acceptance_seam(actions):
     missing = deepcopy(scenario)
     missing["trusted"]["controls"].pop()
     assert "CONTROL_AUDIT_MISMATCH" in check(missing, outcome)
+
+
+@pytest.mark.parametrize("conclusion", ["partial", "inconclusive"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "valid_empty",
+        "missing",
+        "wrong_run",
+        "wrong_step",
+        "wrong_request",
+        "old_generation",
+        "not_committed",
+        "duplicate",
+    ],
+)
+def test_completed_report_requires_exact_committed_delivery_even_without_evidence(
+    conclusion, case
+):
+    scenario, outcome = packet()
+    outcome.update(conclusion=conclusion, claims=[], evidence_ids=[])
+    delivery = scenario["trusted"]["deliveries"][0]
+    content = json.dumps({"evidence_views": []})
+    delivery.update(
+        views=[],
+        business_projection_content=content,
+        business_projection_hash=sha(content),
+        full_wire_hash=sha(content),
+    )
+    if case == "missing":
+        scenario["trusted"]["deliveries"] = []
+    elif case == "wrong_run":
+        delivery["run_id"] = "old-run"
+    elif case == "wrong_step":
+        delivery["step_id"] = "other-step"
+    elif case == "wrong_request":
+        delivery["request_id"] = "other-request"
+    elif case == "old_generation":
+        delivery["control_generation"] = 0
+    elif case == "not_committed":
+        delivery["state"] = "dispatched"
+    elif case == "duplicate":
+        scenario["trusted"]["deliveries"].append(deepcopy(delivery))
+    errors = check(scenario, outcome)
+    if case == "valid_empty":
+        assert errors == []
+    else:
+        assert "REPORT_DELIVERY_MISMATCH" in errors
+
+
+@pytest.mark.parametrize(
+    "execution", ["waiting_human", "blocked", "cancelled", "budget_exhausted"]
+)
+def test_trusted_incomplete_handoff_needs_no_model_report(execution):
+    scenario, outcome = packet()
+    scenario["trusted"].update(execution=execution, deliveries=[])
+    outcome.update(
+        execution=execution,
+        assessment_status="incomplete",
+        conclusion="inconclusive",
+        claims=[],
+        evidence_ids=[],
+        gaps=["Investigation could not proceed"],
+        handoff=True,
+        report_step_id="not_started",
+        report_request_id="not_started",
+    )
+    assert check(scenario, outcome) == []
+
+
+@pytest.mark.parametrize(
+    "execution,assessment",
+    [("completed", "incomplete"), ("running", "completed"), ("completed", "completed")],
+)
+def test_either_completion_dimension_requires_exact_report(execution, assessment):
+    scenario, outcome = packet()
+    scenario["trusted"]["execution"] = execution
+    outcome.update(
+        execution=execution,
+        assessment_status=assessment,
+        conclusion="inconclusive",
+        claims=[],
+        evidence_ids=[],
+        gaps=["Uncertain finding"],
+        handoff=True,
+    )
+    delivery = scenario["trusted"]["deliveries"][0]
+    content = json.dumps({"evidence_views": []})
+    delivery.update(
+        views=[],
+        business_projection_content=content,
+        business_projection_hash=sha(content),
+        full_wire_hash=sha(content),
+    )
+    assert check(scenario, outcome) == []
+    scenario["trusted"]["deliveries"] = []
+    assert "REPORT_DELIVERY_MISMATCH" in check(scenario, outcome)
