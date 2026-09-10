@@ -24,5 +24,18 @@
   "trace_uploads": 0,
   "dedicated_services_stopped": true,
   "data_worktrees_preserved": true,
-  "next": "Review quota/availability recovery and current-code remote review; M0-03 real report quality revalidation requires new separate experiment authorization."
+  "next": "Review quota/availability recovery and current-code remote review; M0-03 real report quality revalidation requires new separate experiment authorization.",
+  "resume_attempts": [
+    {
+      "checked_at": "2026-09-10T11:44:22.906974+00:00",
+      "head": "f642020e1ad1f9fdffde7601d9d63724d7f27920",
+      "code_request": 5618109992,
+      "security_request": 5618110448,
+      "code_result": "usage_limit_repeated",
+      "code_result_evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5618111383",
+      "security_status": "no_acknowledgement_or_result",
+      "new_model_http": 0,
+      "new_trace_uploads": 0
+    }
+  ]
 }
