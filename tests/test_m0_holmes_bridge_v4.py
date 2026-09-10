@@ -838,3 +838,104 @@ def test_reportless_holmes_business_payload_still_binds_actual_input(
     assert errors == (
         [] if input_kind == "valid" else ["ACTUAL_INITIAL_INPUT_NOT_DELIVERED"]
     )
+
+
+@pytest.mark.parametrize("mask", [0o022, 0o000])
+@pytest.mark.parametrize("mode", ["strict", "legacy"])
+def test_cli_output_is_created_private_under_permissive_umask(request, mask, mode):
+    import stat
+    import subprocess
+    import sys
+
+    run, code = request.getfixturevalue(
+        "strict_captured" if mode == "strict" else "captured"
+    )
+    if mode == "strict":
+        (
+            run / "input-provenance.json"
+        ).unlink()  # Full failed packet, not just summary.
+    output = run / "private-output.json"
+    args = [
+        sys.executable,
+        "-m",
+        "scripts.m0.holmes_bridge",
+        "--run-dir",
+        str(run),
+        "--projection-source-sha256",
+        code,
+        "--projection-source-file",
+        str(bridge.SOURCE),
+        "--output",
+        str(output),
+    ]
+    if mode == "legacy":
+        args.append("--legacy-v3")
+    process = subprocess.run(
+        args, umask=mask, capture_output=True, text=True, check=False
+    )
+    assert not process.stderr and process.returncode in (0, 1)
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    saved, summary = json.loads(output.read_bytes()), json.loads(process.stdout)
+    assert (
+        not {
+            "scenario",
+            "outcome",
+            "agent_input",
+            "report_content",
+            "report",
+            "original_report_content",
+            "original_report",
+        }
+        & summary.keys()
+    )
+    if mode == "strict":
+        assert saved["scenario"]["agent_input"]["actual_user_content"]
+        assert saved["outcome"]["report_content"]
+    else:
+        assert saved["original_report_content"]
+
+
+@pytest.mark.parametrize("existing", ["file", "symlink", "dangling_symlink"])
+def test_cli_output_exclusive_creation_never_overwrites(existing, strict_captured):
+    import subprocess
+    import sys
+
+    run, code = strict_captured
+    output = run / "occupied-output.json"
+    target = run / "target.json"
+    sentinel = b"must-remain-unchanged"
+    if existing == "file":
+        output.write_bytes(sentinel)
+    else:
+        if existing == "symlink":
+            target.write_bytes(sentinel)
+        output.symlink_to(target)
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.m0.holmes_bridge",
+            "--run-dir",
+            str(run),
+            "--projection-source-sha256",
+            code,
+            "--projection-source-file",
+            str(bridge.SOURCE),
+            "--output",
+            str(output),
+        ],
+        umask=0,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode != 0
+    if existing == "file":
+        assert output.read_bytes() == sentinel
+    else:
+        assert output.is_symlink() and output.readlink() == target
+        if existing == "symlink":
+            assert target.read_bytes() == sentinel
+        else:
+            assert not target.exists()
+    assert "Complete synthetic" not in process.stdout + process.stderr

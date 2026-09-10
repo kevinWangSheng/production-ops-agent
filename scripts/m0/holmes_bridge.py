@@ -9,6 +9,7 @@ import copy
 import hashlib
 import inspect
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1114,9 +1115,13 @@ def main():
         if code == "LEGACY_REPORT_REQUIRES_EXPLICIT_REPLAY":
             result.update(legacy_report_audit(args.run_dir))
     if args.output:
-        with args.output.open("x") as handle:
-            json.dump(result, handle, indent=2)
-            handle.write("\n")
+        fd = os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", closefd=False) as handle:
+                json.dump(result, handle, indent=2)
+                handle.write("\n")
+        finally:
+            os.close(fd)
     print(
         json.dumps(
             {
