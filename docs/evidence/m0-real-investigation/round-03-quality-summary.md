@@ -47,3 +47,15 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 ## 独立审查结果（2026-09-11，取代上文计数）
 
 四份候选经全新上下文独立 Agent 审查：m003c-normal-02 PASS、m003e-normal-02 FAIL（1 P2）、m003d-fault-02 FAIL（2 P2）、m003e-fault-05 PASS。**v4 计数正常 1/2、故障 1/2，有界开发包未通过。** 上文“包结果”表与 m003d/m003e 段落为协调者自查记录，保留为历史。五条 unknown 的接受决定、裁定依据与后续归属见 [独立审查汇总](round-03-independent-review-summary.md)。
+
+## 2026-09-11 用户接受的已披露限制
+
+用户明确接受本组五条 unknown 作为固定环境/工具契约的已披露限制，不将其计为当前报告质量错误或 M0-03 阻塞：
+
+1. trace/log view 有界采样导致未展示记录不可判定；
+2. checkout/payment 等服务日志源在当前集成不可用；
+3. 日志过滤/查询视图受当前 read-only allow-list 与展示上限约束；
+4. HTTP 500 不能总由当前 bounded access-log view 直接映射；
+5. 缺少产品 HealthProfile/SLO 时不能认证总体健康、恢复或失败率。
+
+归属后续任务：日志源接入、日志过滤/查询能力、HealthProfile/SLO 与更完整的 trace view。以上接受不改写原始报告、不把 unknown 改成 zero、不改变只读和证据来源约束。

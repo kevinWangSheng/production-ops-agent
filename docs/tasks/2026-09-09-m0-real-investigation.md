@@ -369,3 +369,7 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - 用户决定接受报告保留的五条 unknown 为已披露限制；三项后续归属（checkout/payment OTLP 日志、代理日志 path/status 过滤、HealthProfile）记入汇总，不随接受关闭。
 - 附带发现：m003e-fault-05 送模 question 含 m003d 残留窗口字段，报告未受影响，runner 拼装需修正并加回归。
 - SPEC gate 保持 not cleared。下一步需新授权：离线修 runner 输入拼装，再补 1 正常 + 1 故障真实 Run 并独立审查；不重用旧账本、不改 passes。
+
+## 2026-09-11 用户决策：接受已披露限制
+
+用户明确接受 M0-03 报告中的五条 unknown 为当前环境与工具契约的固有限制，不把它们视为报告错误或当前 M0-03 通过条件：bounded trace/log sampling、当前集成日志源缺失、日志过滤/allow-list 与展示上限、HTTP 500 无法总由当前 access-log view 直接映射、缺少 HealthProfile/SLO 因而不能认证总体健康/恢复/失败率。日志源、日志过滤和 HealthProfile/SLO 记录为后续任务。原始报告、raw/view/hash、失败和 unknown 原样保留；本决策不自动打开 M1 gate 或修改 feature passes。
