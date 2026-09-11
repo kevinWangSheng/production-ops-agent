@@ -198,27 +198,39 @@ def persist_observation(out, record, view, scope):
 
 
 def _envoy_access_fields(body):
-    """Parse the pinned Envoy access-log token layout, never a substring."""
+    """Parse the exact pinned Envoy access-log token layout."""
     import re
     import shlex
+    from datetime import datetime
 
-    if not isinstance(body, str) or "\n" in body.strip():
+    if not isinstance(body, str) or "\n" in body.strip() or "\r" in body.strip():
         return None
     try:
         tokens = shlex.split(body.strip(), posix=True)
     except ValueError:
         return None
-    if len(tokens) < 12:
+    if len(tokens) != 22:
         return None
-    if not re.fullmatch(r"\[[0-9T:.+Z-]+\]", tokens[0]):
+    if not re.fullmatch(r"\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z\]", tokens[0]):
+        return None
+    try:
+        if (
+            datetime.fromisoformat(tokens[0][1:-1].replace("Z", "+00:00")).tzinfo
+            is None
+        ):
+            return None
+    except ValueError:
         return None
     if not re.fullmatch(
-        r"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) .+ HTTP/[0-9.]+", tokens[1]
+        r"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \S+ HTTP/(?:1\.[01]|2|3)",
+        tokens[1],
     ):
         return None
     if not re.fullmatch(r"[1-5][0-9]{2}", tokens[2]):
         return None
-    if any(not re.fullmatch(r"[0-9]+", tokens[index]) for index in (7, 8, 9, 10)):
+    if any(not re.fullmatch(r"[0-9]+", tokens[index]) for index in (7, 8, 9)):
+        return None
+    if tokens[10] != "-" and not re.fullmatch(r"[0-9]+", tokens[10]):
         return None
     return {
         "format": "envoy_access_log_v1",
@@ -226,13 +238,7 @@ def _envoy_access_fields(body):
         "bytes_received": int(tokens[7]),
         "bytes_sent": int(tokens[8]),
         "duration_ms": int(tokens[9]),
-        "upstream_service_time_ms": int(tokens[10]),
-        "semantics": {
-            "bytes_received": "%BYTES_RECEIVED%",
-            "bytes_sent": "%BYTES_SENT%",
-            "duration_ms": "%DURATION%",
-            "upstream_service_time_ms": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-        },
+        "upstream_service_time_ms": None if tokens[10] == "-" else int(tokens[10]),
     }
 
 
