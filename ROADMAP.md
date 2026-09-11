@@ -92,3 +92,7 @@ Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has 
 ## M0-03 用户接受的已披露限制（2026-09-11）
 
 用户接受当前五条 evidence unknown 为环境/工具契约的固有限制，不视为 M0-03 报告错误：bounded trace/log sampling、当前集成日志源缺失、日志过滤/allow-list 与展示上限、HTTP 500 无法总由 access-log view 直接映射、缺少 HealthProfile/SLO。日志源、过滤能力和 HealthProfile/SLO 归入后续任务；原始 evidence 和 unknown 保留，SPEC gate 是否开放另行决策。
+
+## M0-04 独立质量包更新（2026-09-11）
+
+M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文独立复核，7/7 hash 各自匹配，均无 P1/P2；v4 有界开发包计数更新为 normal 2/2、fault 2/2。报告仍保留 partial 与五条已接受 unknown；SPEC gate 是否开放、PR #16 是否合并仍由用户最终判断。
