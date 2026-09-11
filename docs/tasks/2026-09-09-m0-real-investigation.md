@@ -379,3 +379,10 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - 独立复验 Agent 对 `f6e9c53` 全新只读复验：定向 11 passed，Ruff 通过，无新 P1/P2。
 - 修复内容：Envoy parser 严格要求完整 22-token pinned 格式、有效 ISO 时间、拒绝嵌入/截断/尾部垃圾；v4 对正常/错误 proxy.access 行统一接线；v2/v3 legacy replay 保真；bridge AST replay 白名单包含 `_envoy_access_fields`/`_log_projection_v3` 及 legacy 依赖；question scope/run metadata stale mismatch 在发送前拒绝。
 - 旧 m003e-normal-02 的模型报告原文及其独立 P2 仍保留为历史失败；代码修复不能倒推旧报告已通过。当前未新增模型/trace，若要取得新报告质量正向样本需另行真实 Run；在当前约束下不重跑。
+
+## 2026-09-11 Envoy P2 最终复验与环境收尾
+
+- `f6e9c53` 的独立只读复验通过：定向 11 passed、Ruff 通过；parser 严格 22-token/ISO/CRLF/尾部校验，正常 200 与错误 500 v4 接线，v2/v3 replay 保真，bridge helper/legacy dependency whitelist 完整，stale scope/window/revision/run_id 拒绝通过；无 P1/P2。
+- 任务分支完整 `make check`：699 passed / 44 skipped；CI 对当前 PR 仍需以最终 HEAD 结果为准。
+- 本轮复用专属 OTel 后已停止，default Colima 未操作；原始容器/卷/VM/observations/账本保留。
+- 旧 m003e-normal-02 与 m003d-fault-02 报告质量失败原样保留；新 projection 修复不倒推旧报告通过。在当前不新增模型/trace约束下不重跑旧报告；SPEC gate 继续按既有决策处理。
