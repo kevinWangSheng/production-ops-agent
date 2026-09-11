@@ -37,3 +37,8 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 - `m003e-normal-02`：3 HTTP / 11 工具，strict completed/supported；time policy 已送达，未复现 normal-01 的 span 计数 P2。
 - `m003e-fault-05`：4 HTTP / 14 工具，strict completed/supported；time policy 已送达，支持 checkout→payment Charge/PlaceOrder 故障方向。
 - 两个报告均保留日志/采样/baseline unknown，不认证 healthy/recovery；原 m003e-fault-04 time-policy 失败与旧质量失败保留。
+
+
+## 相邻窗口 baseline 补充
+
+`m003e-baseline-comparison.json` 对同一 integration 的 normal/fault calls 与 checkout-rpc 原始返回做了确定性对照。它支持窗口间错误状态差异，但不解决 trace/log 截断、checkout/payment 日志缺失、唯一请求数和 SLO 缺失；这些仍保持 unknown/gap。
