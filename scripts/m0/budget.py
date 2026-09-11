@@ -135,64 +135,78 @@ class PostgresBudget:
         if not isinstance(request, RequestIdentity):
             raise BudgetError("INVALID_INPUT")
         with self._transaction() as conn:
-            exp = self._experiment(conn, request.run.experiment_id)
-            self._run(conn, request.run)
-            row = conn.execute(
-                "SELECT * FROM m0_requests WHERE id=%s", (request.request_id,)
-            ).fetchone()
-            created = False
-            if row is not None and row["run_id"] != request.run.run_id:
-                raise BudgetError("IDENTITY_CONFLICT")
-            if operation == "reserve":
-                if row is not None:
-                    if row["reserved"] != value:
-                        raise BudgetError("IDENTITY_CONFLICT")
-                else:
-                    now = conn.execute("SELECT clock_timestamp() AS now").fetchone()[
-                        "now"
-                    ]
-                    if now >= min(exp["deadline"], request.run.deadline):
-                        raise BudgetError("DEADLINE_EXCEEDED")
-                    totals = self._snapshot(conn, request.run.experiment_id)
-                    if (
-                        exp["blocked"]
-                        or sum(int(total) for total in totals.values()) + value
-                        > exp["ceiling"]
-                    ):
-                        raise BudgetError("BUDGET_EXHAUSTED")
-                    # Global request identity conflicts across experiments also fail closed.
-                    row = conn.execute(
-                        "INSERT INTO m0_requests VALUES(%s,%s,%s,'reserved',NULL) ON CONFLICT DO NOTHING RETURNING *",
-                        (request.request_id, request.run.run_id, value),
-                    ).fetchone()
-                    if row is None:
-                        raise BudgetError("IDENTITY_CONFLICT")
-                    created = True
-            elif row is None:
-                raise BudgetError("UNKNOWN_IDENTITY")
-            elif operation == "settle":
-                if row["state"] == "settled" and row["actual"] != value:
-                    raise BudgetError("SETTLEMENT_CONFLICT")
-                row = conn.execute(
-                    "UPDATE m0_requests SET state='settled',actual=%s WHERE id=%s RETURNING *",
-                    (value, request.request_id),
-                ).fetchone()
-                if value > row["reserved"]:
-                    conn.execute(
-                        "UPDATE m0_experiments SET blocked=true WHERE id=%s",
-                        (request.run.experiment_id,),
-                    )
-            elif row["state"] != "settled":
-                row = conn.execute(
-                    "UPDATE m0_requests SET state='unknown' WHERE id=%s RETURNING *",
-                    (request.request_id,),
-                ).fetchone()
-            result = Reservation(
-                request,
-                int(row["reserved"]),
-                row["state"],
-                None if row["actual"] is None else int(row["actual"]),
-                created,
-            )
+            result = self.change_in_transaction(conn, request, operation, value)
         # Commit has returned successfully before created=True is visible.
+        return result
+
+    def change_in_transaction(self, conn, request, operation, value=None):
+        """Compose with an experimental business transaction; caller owns commit.
+
+        A created reservation grants no send until the outer commit succeeds.
+        """
+        if not isinstance(request, RequestIdentity) or operation not in {
+            "reserve",
+            "settle",
+            "unknown",
+        }:
+            raise BudgetError("INVALID_INPUT")
+        if operation in {"reserve", "settle"}:
+            amount(value, positive=operation == "reserve")
+        exp = self._experiment(conn, request.run.experiment_id)
+        self._run(conn, request.run)
+        row = conn.execute(
+            "SELECT * FROM m0_requests WHERE id=%s", (request.request_id,)
+        ).fetchone()
+        created = False
+        if row is not None and row["run_id"] != request.run.run_id:
+            raise BudgetError("IDENTITY_CONFLICT")
+        if operation == "reserve":
+            if row is not None:
+                if row["reserved"] != value:
+                    raise BudgetError("IDENTITY_CONFLICT")
+            else:
+                now = conn.execute("SELECT clock_timestamp() AS now").fetchone()["now"]
+                if now >= min(exp["deadline"], request.run.deadline):
+                    raise BudgetError("DEADLINE_EXCEEDED")
+                totals = self._snapshot(conn, request.run.experiment_id)
+                if (
+                    exp["blocked"]
+                    or sum(int(total) for total in totals.values()) + value
+                    > exp["ceiling"]
+                ):
+                    raise BudgetError("BUDGET_EXHAUSTED")
+                # Global request identity conflicts across experiments also fail closed.
+                row = conn.execute(
+                    "INSERT INTO m0_requests VALUES(%s,%s,%s,'reserved',NULL) ON CONFLICT DO NOTHING RETURNING *",
+                    (request.request_id, request.run.run_id, value),
+                ).fetchone()
+                if row is None:
+                    raise BudgetError("IDENTITY_CONFLICT")
+                created = True
+        elif row is None:
+            raise BudgetError("UNKNOWN_IDENTITY")
+        elif operation == "settle":
+            if row["state"] == "settled" and row["actual"] != value:
+                raise BudgetError("SETTLEMENT_CONFLICT")
+            row = conn.execute(
+                "UPDATE m0_requests SET state='settled',actual=%s WHERE id=%s RETURNING *",
+                (value, request.request_id),
+            ).fetchone()
+            if value > row["reserved"]:
+                conn.execute(
+                    "UPDATE m0_experiments SET blocked=true WHERE id=%s",
+                    (request.run.experiment_id,),
+                )
+        elif row["state"] != "settled":
+            row = conn.execute(
+                "UPDATE m0_requests SET state='unknown' WHERE id=%s RETURNING *",
+                (request.request_id,),
+            ).fetchone()
+        result = Reservation(
+            request,
+            int(row["reserved"]),
+            row["state"],
+            None if row["actual"] is None else int(row["actual"]),
+            created,
+        )
         return result

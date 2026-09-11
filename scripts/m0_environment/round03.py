@@ -15,7 +15,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Profile:
-    allocation: str = "m0-02-20260910-convergence"
+    allocation: str = "m0-03c-20260911-normal-facts"
     model: str = "deepseek-v4-flash"
     reported_models: tuple[str, ...] = ("deepseek-v4-flash", "deepseek-flash")
     provider_models_response_sha256: str = (
@@ -25,7 +25,7 @@ class Profile:
         "37a7903d6cc9ade127bd5d688953237d0c419de581a17351089bf62ee0eb900b"
     )
     model_metadata_at: str = "2026-09-10T02:28:19.494432+00:00"
-    deadline: float = datetime.fromisoformat("2026-09-11T01:49:00+00:00").timestamp()
+    deadline: float = datetime.fromisoformat("2026-09-12T05:30:00+00:00").timestamp()
     context_tokens: int = 131072
     output_tokens: int = 32768
     input_tokens: int = 98304
@@ -41,9 +41,9 @@ class Profile:
 
 PROFILE = Profile()
 PHASES = {
-    "report": (4, 2),
-    "normal": (6, 7),
-    "fault": (6, 7),
+    "report": (32, 0),
+    "normal": (32, 8),
+    "fault": (32, 8),
     "pg": (3.5, 4),
     "contingency": (0, 0),
 }
@@ -180,27 +180,19 @@ class Budget:
             )
         )
 
-    @staticmethod
-    def _clock():
-        return time.time()
-
     def reserve(self, run_id, phase, request_bytes):
-        if self._clock() >= PROFILE.deadline:
+        if time.time() >= PROFILE.deadline:
             raise ValueError("allocation deadline")
         if self.data.get("blocked_reason") or any(
             e.get("usage_invalid") for e in self.data["attempts"]
         ):
             raise ValueError("invalid usage requires review")
         limits = self.data["phase_limits"][phase]
-        if len(self.data["attempts"]) >= 20:
+        if len(self.data["attempts"]) >= 16:
             raise ValueError("total HTTP budget")
         if sum(e["phase"] == phase for e in self.data["attempts"]) >= limits["http"]:
             raise ValueError("phase HTTP budget")
-        # The trace half-CNY remains reserved and no uploads are enabled here.
-        if Decimal(str(self.used())) + Decimal(str(PROFILE.reservation_cny)) > Decimal(
-            "19.5"
-        ):
-            raise ValueError("total money budget")
+        # Per-phase technical reservation remains bounded; aggregate user authorization is uncapped.
         if Decimal(str(self.used(phase))) + Decimal(
             str(PROFILE.reservation_cny)
         ) > Decimal(str(limits["cny"])):
@@ -209,7 +201,7 @@ class Budget:
             "run_id": run_id,
             "phase": phase,
             "ordinal": len(self.data["attempts"]) + 1,
-            "started_at": self._clock(),
+            "started_at": time.time(),
             "request_bytes": request_bytes,
             "status": "reserved",
             "reservation_cny": PROFILE.reservation_cny,
@@ -221,7 +213,7 @@ class Budget:
         return e
 
     def finish(self, entry, status, usage):
-        entry.update(status=status, ended_at=self._clock())
+        entry.update(status=status, ended_at=time.time())
         keys = (
             "prompt_tokens",
             "completion_tokens",
