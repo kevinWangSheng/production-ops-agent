@@ -266,3 +266,37 @@ a783fc2两项CI成功（34515962307），Code Review返回P1 3982439739/39824397
 ## CI 截止时间 rollover 修复（2026-09-11T02:25:28.885466+00:00）
 
 CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reserve前失败；生产deadline保持真实值。补丁仅增加Budget默认real-clock seam和四个测试的显式predeadline fixture，作者48项定向通过；root在合并现有修复后`make check`全量通过（详见round-02-bot-budget-full-check.txt），无模型/trace/PG/服务操作。旧失败及原因保留，不把它改写为产品质量证据；最新代码仍需bot复审。
+
+## 2026-09-10 当前交接更新：M0 仍未完成
+
+### 现场状态
+
+- 当前任务 worktree：`/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01`。
+- 当前提交：`055e646`（`fix: tighten M0 evidence and control validation`）。
+- 本地 `make check`：689 passed，44 skipped；ruff 与 format check 通过。
+- PR #16 仍为 OPEN；当前 HEAD 的 `checks` 与 `m0-postgres` CI 均 SUCCESS。
+- Code Review 已返回并覆盖 `055e646`，未产生新的 finding。
+- Security Review 已多次触发，但对 `055e646` 没有运行反应、完成评论或失败/限额结果；按外部服务不可用处理，不记为通过。
+
+### 已核实的实现
+
+`055e646` 已包含并通过本地回归：输入重组与实际交付绑定、prepared generation 控制授权、Holmes 实际 checkout 代码摘要、日志凭据投影拒绝；历史 schema、旧账本、原始失败和旧工作区保留。
+
+### M0 未完成项
+
+- 真实主动故障调查的最终报告质量仍 FAIL；本地/离线 v4 证据不能替代新的真实模型复验。
+- 动态证据、目标/依赖授权范围、实际来源、查询、时间窗、view/artifact hash、截断与缺失字段仍需对应 M0-03 验收证据。
+- 首流程逐步骤恢复、取消后迟到结果、版本不兼容 handoff 的真实组合证据仍不完整。
+- 实际 Holmes 宿主 OS 隔离仍是明确边界限制，不能用容器探针拒绝证据替代。
+- SPEC 的 feature implementation gate 继续为 `not cleared`；不得更新 feature passes 或安排 M1-01 实施。
+
+### 当前授权与额度边界
+
+- 历史轮次的 `20 CNY / 20 模型 HTTP / 5 trace`、旧 deadline、实际用量和费用估算均为历史记录，不能改写或复用旧账本。
+- 当前没有新的具体费用上限记录；不得自行推断无限付费或自行创建额度规则。
+- 在没有新明确预算合同前，继续执行本地代码、测试、证据核对和文档交接；不新增模型/trace 请求。
+- 当前执行入口的过期保护不得通过改写历史合同解除；如需真实复验，先记录新的独立授权与预算合同。
+
+### Handoff
+
+接手者先核对 `git status`、`git log -1`、PR #16 HEAD、CI 和 bot review 是否覆盖当前提交。然后从 M0-03 开始：逐项把动态 evidence provenance、主体/依赖授权、当前 control generation、步骤恢复与取消结果写成确定性合同和测试；每项保留失败样例、修复 diff、测试输出和来源 hash。不要启动已停止的专属 OTel/PG 环境，不要读取或复制凭据，不要重用旧 20 请求账本。真实模型/trace 复验只有在新合同落盘并核对账户状态后才能执行。完成本地工作后更新本记录、ROADMAP、SPEC 决定证据，推送 PR #16；Security Review 仍需以当前 HEAD 的实际返回为准，不能用旧提交结果替代。

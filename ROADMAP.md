@@ -79,3 +79,10 @@ F7/F8/F9 requirements apply from the first runnable system. No internal mileston
 F4 action broker, F5 rollout executor and F10 autonomous promotion are retired, not completed. IDs remain reserved. The original steps and migration mapping are in `docs/archive/pre-readonly-scope-2026-09-06/`.
 
 Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has passed its acceptance checks.
+## Current handoff (2026-09-10)
+
+- PR #16 HEAD `055e646`：本地 `make check` 689 passed / 44 skipped，CI `checks` 与 `m0-postgres` 成功；Code Review 覆盖当前 HEAD 无新发现。
+- Security Review 对当前 HEAD 无运行或完成结果，不能记为通过；PR 仍 OPEN/BLOCKED。
+- M0-03、真实报告质量、动态证据与完整恢复/取消验收仍未完成；SPEC gate 继续 `not cleared`。
+- 历史 20 CNY/20 HTTP/5 trace 合同和账本保留，不改写、不复用；无新预算合同前不追加模型/trace。
+- 接手入口：`docs/tasks/2026-09-09-m0-real-investigation.md` 的“当前交接更新：M0 仍未完成”。
