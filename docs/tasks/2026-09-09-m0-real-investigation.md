@@ -256,3 +256,9 @@ d61f80a两项CI成功（34509309368），bot返回安全P1 3981914677：report-o
 实现者先用无害marker复现5类代码执行，再验证拒绝；不读取真实秘密或provider reasoning。651 passed/44 PG默认skip、333相关安全/合同及实际wrapper report-only正反例通过；真实历史重放只读保原结果。active fakeprobe在原基线和候选均受旧2026-09-10T17:14:30Z查询截止限制而失败，两个日志保留；未延长旧授权、未重跑真实模型。该限制及新版真实质量验证仍需下一独立实验合同，不影响原已在有效期内采集的历史证据。
 
 本修复没有schema/PG/服务变化，旧数据/代码快照保留。按用户最新要求等待bot最新Code/Security，不调用本地审查Agent、不自动合并；M1仍因完整报告质量FAIL保持not cleared。
+
+## bot question 文件与人工状态修复（2026-09-10）
+
+a783fc2两项CI成功（34515962307），Code Review返回P1 3982439739/3982439749；同提交Security 18:54:30Z完成无发现。已将question敏感路径检查放在所有内容读取前，合法问题仍在原scope/phase校验后才读，归档前完成检查；使用合成路径/read-spy证明无真实秘密读取。paused无当前审计能力故严格拒绝，cancelled/waiting_human须匹配最后接受控制；无控制状态同样不能认证。
+
+[合并修复与版本](../evidence/m0-real-investigation/round-02-bot-question-human-fix.md)记录原红例、校验顺序回归及最终677 passed/44 PG默认skip。保留原测试语义，未增加pause平台、schema/DB/legacy变化或本地review流程；0真实模型/trace/服务操作。安全/审查通过不替代仍失败的真实报告质量，M1不开放。此批提交后等最新bot Code/Security，不自动合并。

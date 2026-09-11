@@ -1,19 +1,23 @@
 {
-  "checked_at": "2026-09-10T18:21:38.482360+00:00",
+  "checked_at": "2026-09-10T19:16:37.564909+00:00",
   "code_review": {
-    "status": "awaiting_bot_review_after_projector_authenticity_fix",
-    "base": "d61f80a4f6b5797bd0c02d3ff2a7c8ee58844ee6",
-    "finding": 3981914677,
-    "patch_sha256": "df936571883011a91a8a4d11c7a21f0098bbab048df336516f60a368fa7c52ea",
-    "implementer_tests": "651 passed; 44 PG default skipped",
-    "evidence": "round-02-bot-projector-trust-fix.md"
+    "status": "awaiting_bot_review_after_question_and_human_state_fixes",
+    "base": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
+    "findings": [
+      3982439739,
+      3982439749
+    ],
+    "patch_sha256": "a78b8c179285db66b2f1b82236478c2bd4d58beb1cf8e74a8d90699821956d04",
+    "implementer_tests": "677 passed; 44 PG default skipped",
+    "evidence": "round-02-bot-question-human-fix.md"
   },
   "security_review": {
-    "current_head_status": "no_acknowledgement_or_result",
+    "current_head_status": "awaiting_new_commit_review",
     "request": 5617955725,
-    "last_completed_head": "96e89e35f2f1896d4b24fb9bbfc1f2fcb6ab412b",
+    "last_completed_head": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
     "last_completed_result": "no_security_issues_found",
-    "old_result_covers_current_substantive_changes": false
+    "old_result_covers_current_substantive_changes": false,
+    "evidence_comment": 5623855528
   },
   "pr_ready": false,
   "merged": false,
@@ -57,16 +61,14 @@
   },
   "historical_implementation_commit": "a100c90",
   "implementation_ref": {
-    "base_commit": "d61f80a4f6b5797bd0c02d3ff2a7c8ee58844ee6",
-    "patch_sha256": "df936571883011a91a8a4d11c7a21f0098bbab048df336516f60a368fa7c52ea",
+    "base_commit": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
+    "patch_sha256": "a78b8c179285db66b2f1b82236478c2bd4d58beb1cf8e74a8d90699821956d04",
     "changed_file_hashes": {
-      "scripts/m0/projector_trust.py": "638a141ac5b73baff37768d5470142b909c763dda3053f7131f434dd73257398",
-      "scripts/m0/holmes_bridge.py": "49a0e36f7fa9796345e2324a4675fdfb9063c97606d9d601218b277c86449e8f",
-      "scripts/m0_environment/initial_evidence.py": "52bea426a73d6ffe35b8f41b14f683accb31b522fb3c714c77e8a98a949bda5b",
-      "tests/test_m0_projector_trust.py": "d5f1d88a3cbedcef0b008c7b3a2ae16b82f44f0f24af2e386fee6b9cb0e6ba6f",
-      "tests/test_m0_holmes_bridge.py": "ab3ab00e5e8f42c45a2a2c0e3bf5dbf2ee3827e2b42335f2d2f2393ee6747a83",
-      "tests/test_m0_holmes_bridge_v4.py": "414b9d87fffe4749ee8f51cbeb3199d74caee92e927a467cf22b32a884d9100f",
-      "tests/fixtures/m0_environment/initial_report_probe.py": "c4d34760de96300d1e209a07a112f0f6c6c108c1feb9a2cbf9adfe5f5f7e6412"
+      "scripts/m0_environment/holmes_baseline.py": "c3b7a353dbde8f2f7095e7d8b918a04959336711f56a5f13c7fd800bf8b42eb6",
+      "scripts/m0_environment/initial_evidence.py": "5e28e5b7f705593ea8cf7ab77a18167e5e4ed9ba65c418679d90e88f7d109732",
+      "tests/test_m0_question_paths.py": "bb93c64e7e07c469955979eac423f09389372056893ba5c284d5b8c8792a9dc5",
+      "scripts/m0/outcomes_v4.py": "445db5cf77cee4960130026e6feca4c89877347ca3420d019c97629a353a6487",
+      "tests/test_m0_outcomes_v4.py": "ff143d067d95668304e364f8b0634c5da09792a75ed3efc060a1579336876bdd"
     }
   },
   "historical_ci_snapshot": {
@@ -93,6 +95,14 @@
       "patch_sha256": "4a088c7dbdfa2d6dd439250841bc510521f627490079af54c20c7f9a5c2ba008",
       "implementer_tests": "636 passed; 44 PG default skipped",
       "evidence": "round-02-bot-control-time-fix.md"
+    },
+    {
+      "status": "awaiting_bot_review_after_projector_authenticity_fix",
+      "base": "d61f80a4f6b5797bd0c02d3ff2a7c8ee58844ee6",
+      "finding": 3981914677,
+      "patch_sha256": "df936571883011a91a8a4d11c7a21f0098bbab048df336516f60a368fa7c52ea",
+      "implementer_tests": "651 passed; 44 PG default skipped",
+      "evidence": "round-02-bot-projector-trust-fix.md"
     }
   ],
   "active_fake_probe_limit": "Candidate and d61 baseline both failed after the pre-existing 2026-09-10T17:14:30Z query authorization deadline; not renewed, not claimed as pass."
