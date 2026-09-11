@@ -14,7 +14,9 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 | m003b-fault-01 | 通过 | 所见自洽 | 否（窗无可诊断失败） |
 | m003c-fault-02 | 通过 | FAIL（P2：e4 rate0 写成累计 PlaceOrder code13） | 否（前提+质量） |
 
-**有界开发包未通过。** 正常侧 1/2 质量通过；故障侧 0/2 正向通过。失败未从分母删除。
+**有界开发包仍未通过。** 正常侧 1/2 质量通过（normal-02）；故障侧现有 **1/2** 正向样本（m003d-fault-02，协调者核对、非独立 Agent）。失败未从分母删除。
+
+2026-09-11 一次完整故障案：注入保持 300s → 独立观察 10 条失败 checkout trace / Charge code2 increase 7.5 → Holmes 4 HTTP returned。详见 [m003d-fault-02 审查](round-03-m003d-fault-02-review.md)。`m0-03c` fault HTTP 现 8/8；总 14/16。
 
 相对 M0-02：缺 series≠零、累计≠increase、query limit≠可见数，在 returned 报告里多数已显式处理。剩余是更小的计数/引用错误，以及故障窗本身没有本窗失败 trace。
 

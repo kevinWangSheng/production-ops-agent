@@ -44,7 +44,7 @@ Current phase: M0-03 质量审查未通过完整 v4 包。m0-otel 仍 Running。
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-11 M0-03：真实 Holmes 已跑；协调者质量审查正常 1/2 通过、故障 0/2 正向通过（合同失败 3 次保留分母）。m0-otel 仍 Running。不写产品 passes。[汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md)。
+- [-] 2026-09-11 M0-03：正常 1/2 通过；故障现有 1/2 正向样本（m003d-fault-02，本窗 10 条失败 trace 后 4 HTTP）。v4 包未齐。m0-otel 仍 Running。[汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md)。
 
 - [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3为历史包；严格v4已补齐PR发现并经联合独立终审，案例/重复/非退化不削弱。下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
 

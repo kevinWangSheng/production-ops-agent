@@ -332,3 +332,7 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 质量审查合同已落盘。协调者已完成四份 returned 报告与三份合同失败的只读核对（独立子代理宿主 402，结论不标独立 Agent 通过）：[汇总](../evidence/m0-real-investigation/round-03-quality-summary.md)。正常 1/2 质量通过（仅 normal-02）；故障 0/2 正向通过。SPEC 门槛保持 not cleared。
 
 下一步：先取得本窗可诊断故障工程前提，再决定是否用 `m0-03c` 剩余 fault HTTP 做新 Run；不打开 M1，不新增未授权模型调用。
+
+### 一次完整故障案（2026-09-11）
+
+已执行注入保持 300s + 独立观察 + Holmes `m003d-fault-02`（4 HTTP / 16 工具，returned）。前提：10 条失败 checkout trace，Charge code2 increase=7.5。flag 已 restore。协调者审查见 [m003d-fault-02](../evidence/m0-real-investigation/round-03-m003d-fault-02-review.md)。`m0-03c` fault 8/8、总 14/16。v4 故障仍缺第 2 个独立 Run。M1 不开放。
