@@ -99,7 +99,9 @@ def validate_question_scope_binding(content, *, run_id, scope):
     for key in ("window", "requested_window"):
         if key in value and value[key] != expected_window:
             raise ValueError("QUESTION_SCOPE_MISMATCH")
-    if "scope_revision" in value and value["scope_revision"] != scope.get("policy_revision"):
+    if "scope_revision" in value and value["scope_revision"] != scope.get(
+        "policy_revision"
+    ):
         raise ValueError("QUESTION_SCOPE_MISMATCH")
     if "run_id" in value and value["run_id"] != run_id:
         raise ValueError("QUESTION_RUN_MISMATCH")
@@ -199,6 +201,7 @@ def _envoy_access_fields(body):
     """Parse the pinned Envoy access-log token layout, never a substring."""
     import re
     import shlex
+
     if not isinstance(body, str) or "\n" in body.strip():
         return None
     try:
@@ -209,13 +212,28 @@ def _envoy_access_fields(body):
         return None
     if not re.fullmatch(r"\[[0-9T:.+Z-]+\]", tokens[0]):
         return None
-    if not re.fullmatch(r"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) .+ HTTP/[0-9.]+", tokens[1]):
+    if not re.fullmatch(
+        r"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) .+ HTTP/[0-9.]+", tokens[1]
+    ):
         return None
     if not re.fullmatch(r"[1-5][0-9]{2}", tokens[2]):
         return None
     if any(not re.fullmatch(r"[0-9]+", tokens[index]) for index in (7, 8, 9, 10)):
         return None
-    return {"format":"envoy_access_log_v1","response_status":int(tokens[2]),"bytes_received":int(tokens[7]),"bytes_sent":int(tokens[8]),"duration_ms":int(tokens[9]),"upstream_service_time_ms":int(tokens[10]),"semantics":{"bytes_received":"%BYTES_RECEIVED%","bytes_sent":"%BYTES_SENT%","duration_ms":"%DURATION%","upstream_service_time_ms":"%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"}}
+    return {
+        "format": "envoy_access_log_v1",
+        "response_status": int(tokens[2]),
+        "bytes_received": int(tokens[7]),
+        "bytes_sent": int(tokens[8]),
+        "duration_ms": int(tokens[9]),
+        "upstream_service_time_ms": int(tokens[10]),
+        "semantics": {
+            "bytes_received": "%BYTES_RECEIVED%",
+            "bytes_sent": "%BYTES_SENT%",
+            "duration_ms": "%DURATION%",
+            "upstream_service_time_ms": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+        },
+    }
 
 
 def log_projection(record, registry=None, version="m0-02-logs-v3"):
@@ -273,15 +291,36 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
                     )
                     if k in attrs
                 },
-                "envoy_access_fields": _envoy_access_fields(source.get("body"))
-                if attrs.get("event.name") == "proxy.access"
-                else None,
+                "envoy_access_fields": (
+                    (
+                        lambda parsed: {
+                            "status": parsed["response_status"],
+                            "bytes_received": parsed["bytes_received"],
+                            "bytes_sent": parsed["bytes_sent"],
+                            "duration_ms": parsed["duration_ms"],
+                            "upstream_service_time_ms": parsed[
+                                "upstream_service_time_ms"
+                            ],
+                        }
+                    )(_envoy_access_fields(source.get("body")))
+                    if attrs.get("event.name") == "proxy.access"
+                    and source.get("resource", {}).get("log_name")
+                    == "otel_envoy_access_log"
+                    and _envoy_access_fields(source.get("body")) is not None
+                    and _envoy_access_fields(source.get("body"))["response_status"]
+                    >= 400
+                    else None
+                ),
             }
         )
+    for row in rows:
+        if row.get("envoy_access_fields") is None:
+            row.pop("envoy_access_fields", None)
     view = {k: v for k, v in record.items() if k != "data"}
     view["projection_version"] = "m0-02-logs-v3"
     view["data"] = {
         "source": "logs",
+        "envoy_field_semantics": "Pinned Envoy proxy.access positions after route/status: bytes_received=%BYTES_RECEIVED%, bytes_sent=%BYTES_SENT%, duration_ms=%DURATION%, upstream_service_time_ms=%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%; do not infer timing from byte fields.",
         "raw_observation_sha256": hashlib.sha256(raw).hexdigest(),
         "source_identity_table": identities,
         "backend_total_hits": hits.get("total"),
@@ -293,6 +332,8 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
         "displayed_logs": rows,
         "omitted_returned_hit_count": 0,
     }
+    if not any("envoy_access_fields" in row for row in rows):
+        view["data"].pop("envoy_field_semantics", None)
     while len(json.dumps(view, ensure_ascii=False).encode()) > 14000 and rows:
         rows.pop()
         view["data"]["omitted_returned_hit_count"] += 1
@@ -442,7 +483,9 @@ def main():
         raise ValueError("invalid run id")
     question_content = read_business_question(args.question_file)
     if args.report_version == REPORT_VERSION and scope is not None:
-        validate_question_scope_binding(question_content, run_id=args.run_id, scope=scope)
+        validate_question_scope_binding(
+            question_content, run_id=args.run_id, scope=scope
+        )
     out = ROOT / "tmp/m0-environment/holmes-runs" / args.run_id
     out.mkdir(parents=True, exist_ok=False)
     out.chmod(0o700)
