@@ -28,6 +28,8 @@ sys.path.insert(0, str(ROOT))
 from scripts.m0_environment.initial_evidence import (  # noqa: E402
     allowed_interfaces,
     import_initial_evidence,
+    read_business_question,
+    validate_source_path,
     validate_timing_echo,
 )
 from scripts.m0_environment.legacy_projections import (  # noqa: E402
@@ -268,6 +270,7 @@ def main():
     parser.add_argument("--initial-evidence-manifest", type=Path)
     parser.add_argument("--max-steps", type=int, choices=(1, 3, 4), default=4)
     args = parser.parse_args()
+    validate_source_path(args.question_file)
     metadata_path = (
         ROOT / "docs/evidence/m0-real-environment/round-02-provider-models.json"
     )
@@ -344,6 +347,7 @@ def main():
                 raise ValueError("time policy scope revision mismatch")
     if not args.run_id.replace("-", "").isalnum():
         raise ValueError("invalid run id")
+    question_content = read_business_question(args.question_file)
     out = ROOT / "tmp/m0-environment/holmes-runs" / args.run_id
     out.mkdir(parents=True, exist_ok=False)
     out.chmod(0o700)
@@ -352,7 +356,6 @@ def main():
             out / "time-policies.json",
             [policy.model_dump(mode="json") for policy in time_policies],
         )
-    question_content = args.question_file.read_bytes().decode("utf-8")
     initial_import = {
         "actual_question_content": question_content,
         "verified_views": {},

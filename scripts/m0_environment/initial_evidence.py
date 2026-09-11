@@ -35,19 +35,26 @@ def validate_timing_echo(supplied, view_hashes, verified_timings):
             raise InitialEvidenceError("INITIAL_TIMING_ECHO_MISMATCH")
 
 
-def _bytes(path, expected=None):
+def validate_source_path(path):
+    """Check known private and nonregular paths without reading their content."""
     path = Path(path)
     resolved = path.resolve()
-    if (
-        path.is_symlink()
-        or ".env" in resolved.parts
-        or "private-protocol" in resolved.parts
+    if path.is_symlink() or any(
+        part.casefold() == ".env"
+        or part.casefold().startswith(".env.")
+        or part.casefold() == "private-protocol"
+        for part in (*path.parts, *resolved.parts)
     ):
         raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")
+    if path.exists() and not path.is_file():
+        raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")
+    return path
+
+
+def _bytes(path, expected=None):
+    path = validate_source_path(path)
     if not path.exists():
         raise InitialEvidenceError("INITIAL_SOURCE_MISSING")
-    if not path.is_file():
-        raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")
     data = path.read_bytes()
     if expected is not None and (
         not re.fullmatch(r"[a-f0-9]{64}", str(expected))
@@ -55,6 +62,11 @@ def _bytes(path, expected=None):
     ):
         raise InitialEvidenceError("INITIAL_SOURCE_HASH_MISMATCH")
     return data
+
+
+def read_business_question(path):
+    """Reject restricted/nonregular sources before reading business input bytes."""
+    return _bytes(path).decode("utf-8")
 
 
 def _copy(path, data):
