@@ -30,3 +30,10 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 4. pg phase 仍未跑，不在本步扩大。
 
 `m0-otel` 目前仍 Running，26 容器未 stop。补故障观察前保持；若改为保全，按原约定 compose stop + colima stop，不 down。
+
+
+## m003e 新 Run（2026-09-11）
+
+- `m003e-normal-02`：3 HTTP / 11 工具，strict completed/supported；time policy 已送达，未复现 normal-01 的 span 计数 P2。
+- `m003e-fault-05`：4 HTTP / 14 工具，strict completed/supported；time policy 已送达，支持 checkout→payment Charge/PlaceOrder 故障方向。
+- 两个报告均保留日志/采样/baseline unknown，不认证 healthy/recovery；原 m003e-fault-04 time-policy 失败与旧质量失败保留。
