@@ -345,3 +345,10 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - `m003c-normal-01/02` 真实报告均为 partial，明确“可见证据未发现失败”及日志/trace/baseline 缺口；`m003c-fault-02` 真实报告支持 checkout→PaymentService/Charge 依赖方向，但明确窗口 residency 和逐请求因果未知。报告没有宣称 healthy 或故障因果已证实。
 - 当前 PR #16 HEAD 为 `038401b`。Code Review 已返回“Didn't find any major issues”，明确覆盖该 HEAD。Security Review 于 2026-09-11 10:13Z 重试后出现 `eyes`，截至本记录没有完成或失败结果；不能记为通过。
 - 当前可执行 M0-03 证据已从“无最终报告”推进到“正常与故障均有最终 partial 报告”，但 M0 gate 仍因报告覆盖缺口、完整恢复/取消验收、动态证据边界及 Security Review 未闭环保持 `not cleared`。下一步是安全审查结果出现后逐项处理，或将其记录为外部服务阻塞；不得用本地测试替代真实证据。
+
+## 2026-09-11 本地安全替代与环境收尾
+
+- 按用户指示不再等待 GitHub Security Review，改用本地确定性安全检查：秘密扫描、凭据投影、projector trust、question path、runtime strict 共 57 passed。
+- GitHub Code Review 已明确覆盖 `038401b` 无 major issues；Security Review 对后续 HEAD 未形成可用结果，不记为通过。
+- 专属 `m0-otel` 已停止；`default` Colima 未操作，容器/卷/VM 和原始证据保留。`m003d-fault-observation.json` 作为开发观察原样保留，明确不构成完整健康或故障因果证明。
+- 当前 PR 仍需根据最新 HEAD 的 CI/Code Review 重新核对；本地安全替代不改变 SPEC gate，M0 仍保留真实报告覆盖、动态证据完整性和恢复/取消边界缺口。
