@@ -88,3 +88,7 @@ Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has 
 - M0-03、真实报告质量、动态证据与完整恢复/取消验收仍未完成；SPEC gate 继续 `not cleared`。
 - 历史 20 CNY/20 HTTP/5 trace 合同和账本保留，不改写、不复用；无新预算合同前不追加模型/trace。
 - 接手入口：`docs/tasks/2026-09-09-m0-real-investigation.md` 的“当前交接更新：M0 仍未完成”。
+
+## M0-03 用户接受的已披露限制（2026-09-11）
+
+用户接受当前五条 evidence unknown 为环境/工具契约的固有限制，不视为 M0-03 报告错误：bounded trace/log sampling、当前集成日志源缺失、日志过滤/allow-list 与展示上限、HTTP 500 无法总由 access-log view 直接映射、缺少 HealthProfile/SLO。日志源、过滤能力和 HealthProfile/SLO 归入后续任务；原始 evidence 和 unknown 保留，SPEC gate 是否开放另行决策。
