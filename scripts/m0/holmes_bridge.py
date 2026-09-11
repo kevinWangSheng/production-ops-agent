@@ -818,6 +818,8 @@ def _load_common(
     }
     if isinstance(config.get("upstream_commit"), str):
         versions["upstream_commit"] = config["upstream_commit"]
+    if isinstance(config.get("upstream_code_sha256"), str):
+        versions["upstream_code_sha256"] = config["upstream_code_sha256"]
     if isinstance(config.get("tool_schema"), list):
         versions["tool_schema_sha256"] = canonical_hash(config["tool_schema"])
     scenario = IncidentScenario(

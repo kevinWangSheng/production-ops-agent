@@ -562,6 +562,60 @@ def input_provenance_errors(initial):
         initial.initial_views or initial.unverified_initial_views
     ) and initial.actual_user_content is None:
         errors.add("ACTUAL_INITIAL_INPUT_UNKNOWN")
+    if (
+        initial.original_user_content is not None
+        and initial.actual_user_content is not None
+    ):
+        if (
+            not initial.initial_views
+            and initial.original_user_content != initial.actual_user_content
+        ):
+            errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
+        elif initial.initial_views:
+            try:
+                original = json.loads(initial.original_user_content)
+                actual = json.loads(initial.actual_user_content)
+                if not isinstance(original, dict) or not isinstance(actual, dict):
+                    raise ValueError
+                if (
+                    not set(original).issubset(actual)
+                    or set(actual) - set(original) != {"business_tool_views"}
+                    or any(original.get(key) != actual.get(key) for key in original)
+                ):
+                    errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
+                else:
+                    before = original.get("business_tool_views", [])
+                    after = actual.get("business_tool_views", [])
+                    suffix = (
+                        after[len(before) :]
+                        if isinstance(before, list)
+                        and isinstance(after, list)
+                        and after[: len(before)] == before
+                        else None
+                    )
+                    if (
+                        suffix is None
+                        or len(
+                            {
+                                v.get("evidence_id")
+                                for v in suffix
+                                if isinstance(v, dict)
+                            }
+                        )
+                        != len(suffix)
+                        or any(
+                            not isinstance(v, dict)
+                            or v.get("evidence_id")
+                            not in {view.id for view in initial.initial_views}
+                            for v in suffix
+                        )
+                    ):
+                        errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
+            except (ValueError, TypeError, json.JSONDecodeError):
+                # Opaque DTO-only text is allowed only when it is byte-identical;
+                # imported evidence cannot silently replace a non-JSON question.
+                if initial.original_user_content != initial.actual_user_content:
+                    errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
     return errors
 
 
@@ -582,6 +636,8 @@ def control_time_errors(facts):
 
     for delivery in facts.deliveries:
         event = lower_bound(delivery.control_generation)
+        if event is not None and event.action != "new_run":
+            errors.add("CONTROL_DISPATCH_NOT_AUTHORIZED")
         if (
             delivery.state == "prepared"
             and delivery.dispatch_started_at is None
@@ -596,8 +652,6 @@ def control_time_errors(facts):
             successor is not None and started >= successor.at
         ):
             errors.add("CONTROL_DISPATCH_TIME_MISMATCH")
-        if event is not None and event.action != "new_run":
-            errors.add("CONTROL_DISPATCH_NOT_AUTHORIZED")
         received = delivery.response_received_at
         if delivery.state == "response_committed" and received is None:
             errors.add("CONTROL_TIME_UNKNOWN")
@@ -682,10 +736,16 @@ def check_outcome(scenario, outcome):
             _initial_view_ids={v.id for v in scenario.agent_input.initial_views},
         )
     )
-    if not re.fullmatch(
-        r"[a-f0-9]{40}|[a-f0-9]{64}", scenario.versions.get("upstream_commit", "")
-    ) or not re.fullmatch(
-        r"[a-f0-9]{64}", scenario.versions.get("tool_schema_sha256", "")
+    if (
+        not re.fullmatch(
+            r"[a-f0-9]{40}|[a-f0-9]{64}", scenario.versions.get("upstream_commit", "")
+        )
+        or not re.fullmatch(
+            r"[a-f0-9]{64}", scenario.versions.get("upstream_code_sha256", "")
+        )
+        or not re.fullmatch(
+            r"[a-f0-9]{64}", scenario.versions.get("tool_schema_sha256", "")
+        )
     ):
         errors.add("EXECUTION_VERSION_UNKNOWN")
     from scripts.m0_environment.report_contract import report_instruction

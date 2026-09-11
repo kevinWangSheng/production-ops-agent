@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -251,6 +252,52 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
         view["data"]["omitted_returned_hit_count"] += 1
         view["data"]["model_visible_hit_count"] = len(rows)
     return view
+
+
+def _checkout_code_digest(path):
+    """Hash the actual pinned checkout's Python source files; no provider data."""
+    if not path.is_dir() or path.is_symlink():
+        raise ValueError("upstream checkout invalid")
+    files = []
+    for candidate in sorted(path.rglob("*.py")):
+        if candidate.is_symlink() or not candidate.is_file():
+            raise ValueError("upstream checkout invalid")
+        relative = candidate.relative_to(path).as_posix()
+        files.append((relative, hashlib.sha256(candidate.read_bytes()).hexdigest()))
+    if not files:
+        raise ValueError("upstream checkout empty")
+    return hashlib.sha256(canonical_hash(files).encode()).hexdigest()
+
+
+def _credential_like(value):
+    sensitive = {
+        "authorization",
+        "proxy_authorization",
+        "x-api-key",
+        "api_key",
+        "apikey",
+        "access_token",
+        "secret",
+    }
+    if isinstance(value, dict):
+        return any(
+            (
+                "authorization" in str(key).lower()
+                or "api_key" in str(key).lower()
+                or str(key).lower() in sensitive
+            )
+            or _credential_like(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_credential_like(item) for item in value)
+    if isinstance(value, str):
+        return bool(
+            re.search(
+                r"(?i)\bbearer\s+[A-Za-z0-9._~-]{8,}|\bsk-[A-Za-z0-9_-]{12,}", value
+            )
+        )
+    return False
 
 
 def main():
@@ -554,6 +601,8 @@ def main():
             raise RuntimeError("preflight model egress denied")
         body = request.content
         payload = json.loads(body)
+        if _credential_like(payload):
+            raise RuntimeError("CREDENTIAL_LIKE_EVIDENCE")
         final_phase = len(calls) == args.max_steps - 1
         evidence_context = None
         if args.report_version == REPORT_VERSION:
@@ -937,11 +986,14 @@ def main():
     save(out / "input-business.json", messages)
     if registry is not None:
         save(out / "deployment-registry.json", registry)
+    upstream_commit = UPSTREAM.name.removeprefix("holmesgpt-")
+    upstream_code_sha256 = _checkout_code_digest(UPSTREAM)
     save(
         out / "configuration.json",
         {
             "allocation_id": ALLOCATION,
-            "upstream_commit": UPSTREAM.name.removeprefix("holmesgpt-"),
+            "upstream_commit": upstream_commit,
+            "upstream_code_sha256": upstream_code_sha256,
             "model": MODEL,
             "thinking": "enabled/high",
             "max_steps": args.max_steps,

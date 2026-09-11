@@ -38,6 +38,7 @@ def strict_captured(captured):
     config = json.loads((run / "configuration.json").read_text())
     config.update(
         upstream_commit="a" * 40,
+        upstream_code_sha256="b" * 64,
         tool_schema=[],
         report_instruction_sha256=v4.content_hash(report_instruction(final=True)),
     )

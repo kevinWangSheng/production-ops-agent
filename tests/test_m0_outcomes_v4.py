@@ -1,9 +1,11 @@
 """Strict-version contracts; historical v3 payloads are not silently upgraded."""
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
-from scripts.m0.outcomes_v4 import ModelReportV2
+from scripts.m0.outcomes_v4 import ModelReportV2, content_hash
 
 
 def test_factlike_claims_require_explicit_model_scope():
@@ -42,7 +44,11 @@ def strict_packet():
     s["versions"]["report_instruction_sha256"] = v4.content_hash(
         report_instruction(final=True)
     )
-    s["versions"].update(upstream_commit="a" * 40, tool_schema_sha256=v4.digest([]))
+    s["versions"].update(
+        upstream_commit="a" * 40,
+        upstream_code_sha256="b" * 64,
+        tool_schema_sha256=v4.digest([]),
+    )
     o["versions"] = dict(s["versions"])
     s["trusted"]["controls"][0]["action"] = "new_run"
     target = s["trusted"]["artifacts"][0]["targets"][0]
@@ -840,3 +846,66 @@ def test_paused_does_not_borrow_an_unrelated_control_action(action):
     scenario["trusted"].update(final_generation=2, execution="paused")
     outcome.update(control_generation=2, execution="paused")
     assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+
+
+def test_no_initial_views_require_original_and_actual_bytes_equal():
+    scenario, outcome = reportless_packet()
+    actual = "substituted question"
+    scenario["agent_input"].update(
+        actual_user_content=actual, actual_user_content_sha256=content_hash(actual)
+    )
+    delivery = scenario["trusted"]["deliveries"][0]
+    body = json.loads(delivery["business_projection_content"])
+    body["actual_user_content"] = actual
+    value = json.dumps(body)
+    delivery.update(
+        business_projection_content=value, business_projection_hash=content_hash(value)
+    )
+    assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" in checked(scenario, outcome)
+
+
+def test_imported_views_allow_only_an_explicit_business_view_append():
+    scenario, outcome = reportless_packet()
+    view = scenario["trusted"]["deliveries"][0]["views"][0]
+    original = json.dumps({"request": "investigate"}, sort_keys=True)
+    actual = json.dumps(
+        {
+            "request": "investigate",
+            "business_tool_views": [{"evidence_id": view["id"]}],
+        },
+        sort_keys=True,
+    )
+    scenario["agent_input"].update(
+        evidence_context=scenario["trusted"]["deliveries"][0]["context"],
+        initial_views=[view],
+        original_user_content=original,
+        original_user_content_sha256=content_hash(original),
+        actual_user_content=actual,
+        actual_user_content_sha256=content_hash(actual),
+    )
+    delivery = scenario["trusted"]["deliveries"][0]
+    body = json.loads(delivery["business_projection_content"])
+    body["actual_user_content"] = actual
+    value = json.dumps(body)
+    delivery.update(
+        business_projection_content=value, business_projection_hash=content_hash(value)
+    )
+    assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" not in checked(scenario, outcome)
+    altered = json.loads(actual)
+    altered["request"] = "replaced"
+    scenario["agent_input"]["actual_user_content"] = json.dumps(altered, sort_keys=True)
+    scenario["agent_input"]["actual_user_content_sha256"] = content_hash(
+        scenario["agent_input"]["actual_user_content"]
+    )
+    assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize("action", ["cancel", "correct"])
+def test_prepared_unsent_requires_new_run_authority(action):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"][0]["action"] = action
+    delivery = scenario["trusted"]["deliveries"][0]
+    delivery.update(
+        state="prepared", dispatch_started_at=None, response_received_at=None
+    )
+    assert "CONTROL_DISPATCH_NOT_AUTHORIZED" in checked(scenario, outcome)
