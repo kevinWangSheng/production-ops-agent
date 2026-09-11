@@ -373,3 +373,9 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 ## 2026-09-11 用户决策：接受已披露限制
 
 用户明确接受 M0-03 报告中的五条 unknown 为当前环境与工具契约的固有限制，不把它们视为报告错误或当前 M0-03 通过条件：bounded trace/log sampling、当前集成日志源缺失、日志过滤/allow-list 与展示上限、HTTP 500 无法总由当前 access-log view 直接映射、缺少 HealthProfile/SLO 因而不能认证总体健康/恢复/失败率。日志源、日志过滤和 HealthProfile/SLO 记录为后续任务。原始报告、raw/view/hash、失败和 unknown 原样保留；本决策不自动打开 M1 gate 或修改 feature passes。
+
+## 2026-09-11 Envoy projection P2 修复与独立复验
+
+- 独立复验 Agent 对 `f6e9c53` 全新只读复验：定向 11 passed，Ruff 通过，无新 P1/P2。
+- 修复内容：Envoy parser 严格要求完整 22-token pinned 格式、有效 ISO 时间、拒绝嵌入/截断/尾部垃圾；v4 对正常/错误 proxy.access 行统一接线；v2/v3 legacy replay 保真；bridge AST replay 白名单包含 `_envoy_access_fields`/`_log_projection_v3` 及 legacy 依赖；question scope/run metadata stale mismatch 在发送前拒绝。
+- 旧 m003e-normal-02 的模型报告原文及其独立 P2 仍保留为历史失败；代码修复不能倒推旧报告已通过。当前未新增模型/trace，若要取得新报告质量正向样本需另行真实 Run；在当前约束下不重跑。
