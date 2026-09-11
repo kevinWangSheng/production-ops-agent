@@ -1,0 +1,10 @@
+{
+  "authorization_id": "m0-04-20260911-quality-closure",
+  "authorized_by": "user in active session",
+  "scope": "new real DeepSeek model runs and trace uploads needed to close M0 report quality findings",
+  "aggregate_budget": "user explicitly removed previous fixed aggregate cap; actual usage and unknown cost remain recorded",
+  "run_constraints": {"thinking": "enabled/high", "per_run_deadline": true, "request_and_tool_budgets": true, "read_only_target": true, "unknown_cost_retained": true},
+  "deadline": "2026-09-13T00:00:00Z",
+  "security_review": "user instructed to ignore GitHub Security Review and use local checks",
+  "historical_ledgers": "retain; do not rewrite"
+}
