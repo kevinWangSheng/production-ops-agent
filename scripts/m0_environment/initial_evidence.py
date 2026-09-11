@@ -39,12 +39,18 @@ def validate_source_path(path):
     """Check known private and nonregular paths without reading their content."""
     path = Path(path)
     resolved = path.resolve()
-    if path.is_symlink() or any(
+    parts = tuple((*path.parts, *resolved.parts))
+    private_names = {".netrc", ".npmrc", ".pypirc", "credentials", "id_rsa", "id_ed25519"}
+    private_dirs = {".aws", ".docker", ".ssh", "private-protocol"}
+    restricted = any(
         part.casefold() == ".env"
         or part.casefold().startswith(".env.")
-        or part.casefold() == "private-protocol"
-        for part in (*path.parts, *resolved.parts)
-    ):
+        or part.casefold() in private_names
+        or part.casefold() in private_dirs
+        or (index and part.casefold() in {"credentials", "config.json"} and parts[index - 1].casefold() in {".aws", ".docker"})
+        for index, part in enumerate(parts)
+    )
+    if path.is_symlink() or restricted:
         raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")
     if path.exists() and not path.is_file():
         raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")

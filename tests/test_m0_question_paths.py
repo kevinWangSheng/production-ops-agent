@@ -184,3 +184,12 @@ def test_invalid_scope_does_not_read_an_ordinary_question(tmp_path, monkeypatch)
         with pytest.raises(ValueError, match="trusted scope required"):
             wrapper.main()
     assert reads == []
+
+@pytest.mark.parametrize("name", [".netrc", ".npmrc", ".aws/credentials", ".aws/config", ".docker/config.json", ".ssh/id_rsa"])
+def test_standard_credential_paths_denied_before_read(tmp_path, name):
+    source = tmp_path / name
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("SYNTHETIC_CREDENTIAL")
+    with patch.object(Path, "read_bytes", side_effect=AssertionError("must not read")):
+        with pytest.raises(ValueError, match="INITIAL_SOURCE_PATH_DENIED"):
+            _bytes(source)

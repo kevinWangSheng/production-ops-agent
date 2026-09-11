@@ -386,3 +386,10 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - 任务分支完整 `make check`：699 passed / 44 skipped；CI 对当前 PR 仍需以最终 HEAD 结果为准。
 - 本轮复用专属 OTel 后已停止，default Colima 未操作；原始容器/卷/VM/observations/账本保留。
 - 旧 m003e-normal-02 与 m003d-fault-02 报告质量失败原样保留；新 projection 修复不倒推旧报告通过。在当前不新增模型/trace约束下不重跑旧报告；SPEC gate 继续按既有决策处理。
+
+## 2026-09-11 PR16 最终 review disposition
+
+- `original/actual` 输入绑定、prepared stopped generation、标准凭据路径 denylist、Envoy v4 projection/replay P2 已修复并通过定向/完整测试及独立复验。
+- Security Review 按用户明确指示忽略，采用本地确定性安全检查；旧 security findings 不作为未处置代码门。
+- aggregate paid-request limit 评论与当前 AGENTS 的用户授权冲突；当前实现保留 per-Run deadline/request/tool/query、usage ledger、unknown 费用和只读出口边界，不恢复上一轮固定总量 cap。
+- 旧 m003e-normal-02/m003d-fault-02 报告质量 P2 仍是历史失败；修复代码不倒推旧报告变绿，当前 no-new-model/trace 约束下不重跑。
