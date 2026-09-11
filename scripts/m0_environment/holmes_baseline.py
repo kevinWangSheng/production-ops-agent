@@ -85,6 +85,26 @@ def save(path, value):
         os.close(directory)
 
 
+def validate_question_scope_binding(content, *, run_id, scope):
+    """Reject stale embedded run/window metadata before any model or tool dispatch."""
+    if not isinstance(content, str):
+        raise ValueError("QUESTION_SCOPE_UNKNOWN")
+    try:
+        value = json.loads(content)
+    except (ValueError, TypeError):
+        return
+    if not isinstance(value, dict):
+        return
+    expected_window = scope.get("window")
+    for key in ("window", "requested_window"):
+        if key in value and value[key] != expected_window:
+            raise ValueError("QUESTION_SCOPE_MISMATCH")
+    if "scope_revision" in value and value["scope_revision"] != scope.get("policy_revision"):
+        raise ValueError("QUESTION_SCOPE_MISMATCH")
+    if "run_id" in value and value["run_id"] != run_id:
+        raise ValueError("QUESTION_RUN_MISMATCH")
+
+
 def bind_identity(service, attributes, registry):
     candidates = []
     for row in (registry or {}).get("containers", []):
@@ -176,14 +196,26 @@ def persist_observation(out, record, view, scope):
 
 
 def _envoy_access_fields(body):
-    """Parse pinned Envoy positional access-log fields with explicit labels."""
+    """Parse the pinned Envoy access-log token layout, never a substring."""
     import re
-    if not isinstance(body, str):
+    import shlex
+    if not isinstance(body, str) or "\n" in body.strip():
         return None
-    m = re.search(r'"\s+(\d{3})\s+\S+\s+\S+\s+\S+\s+"[^"\n]*"\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)' , body)
-    if not m:
+    try:
+        tokens = shlex.split(body.strip(), posix=True)
+    except ValueError:
         return None
-    return {"format":"envoy_access_log_v1","response_status":int(m.group(1)),"bytes_received":int(m.group(2)),"bytes_sent":int(m.group(3)),"duration_ms":int(m.group(4)),"upstream_service_time_ms":int(m.group(5)),"semantics":{"bytes_received":"%BYTES_RECEIVED%","bytes_sent":"%BYTES_SENT%","duration_ms":"%DURATION%","upstream_service_time_ms":"%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"}}
+    if len(tokens) < 12:
+        return None
+    if not re.fullmatch(r"\[[0-9T:.+Z-]+\]", tokens[0]):
+        return None
+    if not re.fullmatch(r"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) .+ HTTP/[0-9.]+", tokens[1]):
+        return None
+    if not re.fullmatch(r"[1-5][0-9]{2}", tokens[2]):
+        return None
+    if any(not re.fullmatch(r"[0-9]+", tokens[index]) for index in (7, 8, 9, 10)):
+        return None
+    return {"format":"envoy_access_log_v1","response_status":int(tokens[2]),"bytes_received":int(tokens[7]),"bytes_sent":int(tokens[8]),"duration_ms":int(tokens[9]),"upstream_service_time_ms":int(tokens[10]),"semantics":{"bytes_received":"%BYTES_RECEIVED%","bytes_sent":"%BYTES_SENT%","duration_ms":"%DURATION%","upstream_service_time_ms":"%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"}}
 
 
 def log_projection(record, registry=None, version="m0-02-logs-v3"):
@@ -409,6 +441,8 @@ def main():
     if not args.run_id.replace("-", "").isalnum():
         raise ValueError("invalid run id")
     question_content = read_business_question(args.question_file)
+    if args.report_version == REPORT_VERSION and scope is not None:
+        validate_question_scope_binding(question_content, run_id=args.run_id, scope=scope)
     out = ROOT / "tmp/m0-environment/holmes-runs" / args.run_id
     out.mkdir(parents=True, exist_ok=False)
     out.chmod(0o700)
