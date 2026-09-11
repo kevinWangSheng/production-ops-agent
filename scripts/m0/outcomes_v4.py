@@ -714,7 +714,14 @@ def check_outcome(scenario, outcome):
     required_state = {"cancel": "cancelled", "correct": "waiting_human"}.get(last)
     if required_state and facts.execution != required_state:
         errors.add("CONTROL_STATE_MISMATCH")
-    if last == "new_run" and facts.execution in {"cancelled", "waiting_human"}:
+    required_action = {"cancelled": "cancel", "waiting_human": "correct"}.get(
+        facts.execution
+    )
+    # This bounded runtime has no pause transition. Keep unsupported states
+    # representable for audit, but never certify unaudited human control.
+    if facts.execution == "paused" or (
+        required_action is not None and last != required_action
+    ):
         errors.add("CONTROL_STATE_MISMATCH")
     if required_state and report is not None:
         errors.add("CONTROL_REPORT_NOT_AUTHORIZED")

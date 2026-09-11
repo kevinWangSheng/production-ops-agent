@@ -550,7 +550,10 @@ def test_latest_new_run_allows_runtime_progress_and_terminal_results(execution):
         strict_packet() if execution == "completed" else reportless_packet()
     )
     scenario["trusted"]["execution"] = outcome["execution"] = execution
-    assert checked(scenario, outcome) == []
+    if execution == "paused":
+        assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+    else:
+        assert checked(scenario, outcome) == []
 
 
 @pytest.mark.parametrize(
@@ -797,3 +800,43 @@ def test_prepared_unsent_still_requires_a_known_generation():
     errors = checked(scenario, outcome)
     assert "CONTROL_GENERATION_UNKNOWN" in errors
     assert "CONTROL_TIME_UNKNOWN" not in errors
+
+
+@pytest.mark.parametrize("execution", ["paused", "cancelled", "waiting_human"])
+def test_human_state_without_control_audit_is_not_certified(execution):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"].update(controls=[], final_generation=0, execution=execution)
+    outcome.update(control_generation=0, execution=execution)
+    scenario["trusted"]["deliveries"][0]["control_generation"] = 0
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+
+
+@pytest.mark.parametrize(
+    "action,state", [("cancel", "cancelled"), ("correct", "waiting_human")]
+)
+@pytest.mark.parametrize("match", [True, False])
+def test_human_state_requires_matching_latest_accepted_control(action, state, match):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": action, "at": "2026-09-10T00:04:00Z"}
+    )
+    actual = (
+        state if match else ("waiting_human" if state == "cancelled" else "cancelled")
+    )
+    scenario["trusted"].update(final_generation=2, execution=actual)
+    outcome.update(control_generation=2, execution=actual)
+    errors = checked(scenario, outcome)
+    assert ("CONTROL_STATE_MISMATCH" in errors) != match
+    if match:
+        assert errors == []
+
+
+@pytest.mark.parametrize("action", ["cancel", "correct"])
+def test_paused_does_not_borrow_an_unrelated_control_action(action):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"].append(
+        {"generation": 2, "action": action, "at": "2026-09-10T00:04:00Z"}
+    )
+    scenario["trusted"].update(final_generation=2, execution="paused")
+    outcome.update(control_generation=2, execution="paused")
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
