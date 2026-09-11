@@ -2,7 +2,7 @@
 
 当前工程交付状态（2026-09-11）：PR #16 仍 OPEN。M0-03 已有真实 Holmes returned 报告；协调者质量审查结论为正常 1/2 通过、故障 0/2 正向通过，SPEC 不开放 M1。[M0-03 汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
 
-Current phase: M0-03 质量审查未通过完整 v4 包。m0-otel 仍 Running。下一项是本窗可诊断故障前提，而不是 M1。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
+Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline 对照；专属 m0-otel 已停止，历史容器/卷/VM/证据保留。Code/CI 交付门已通过，Security 按用户决定忽略；SPEC gate 仍 not cleared，等待最终入口决策。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
 
 ## Completed decisions and documentation
 
@@ -44,7 +44,7 @@ Current phase: M0-03 质量审查未通过完整 v4 包。m0-otel 仍 Running。
 
 ## Next: M0 validation and acceptance calibration
 
-- [-] 2026-09-11 M0-03：正常 1/2 通过；故障现有 1/2 正向样本（m003d-fault-02，本窗 10 条失败 trace 后 4 HTTP）。v4 包未齐。m0-otel 仍 Running。[汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md)。
+- [-] 2026-09-11 M0-03：新增 m003e-normal-02 与 m003e-fault-05，均 strict completed/supported；补齐相邻 normal/fault baseline 对照。报告仍保留日志/采样/SLO unknown，未打开 SPEC gate；m0-otel 已停止，原始证据保全。[汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md)。
 
 - [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3为历史包；严格v4已补齐PR发现并经联合独立终审，案例/重复/非退化不削弱。下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
 

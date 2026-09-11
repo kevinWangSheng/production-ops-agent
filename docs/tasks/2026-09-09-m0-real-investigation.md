@@ -352,3 +352,12 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - GitHub Code Review 已明确覆盖 `038401b` 无 major issues；Security Review 对后续 HEAD 未形成可用结果，不记为通过。
 - 专属 `m0-otel` 已停止；`default` Colima 未操作，容器/卷/VM 和原始证据保留。`m003d-fault-observation.json` 作为开发观察原样保留，明确不构成完整健康或故障因果证明。
 - 当前 PR 仍需根据最新 HEAD 的 CI/Code Review 重新核对；本地安全替代不改变 SPEC gate，M0 仍保留真实报告覆盖、动态证据完整性和恢复/取消边界缺口。
+
+## 2026-09-11 最终入口审计前状态
+
+- m003e-fault-05：4 HTTP / 14 工具，strict `completed/supported`，time policy 已送达；支持 checkout→payment Charge code2 / PlaceOrder code13，保留 HTTP 直接映射、payment 日志、采样和 SLO gaps。
+- m003e-normal-02：3 HTTP / 11 工具，strict `completed/supported`，time policy 已送达；关键 checkout ERROR/PlaceOrder/Charge error rate 为 0，保留采样、日志源和 SLO gaps。
+- `m003e-baseline-comparison.json` 已对同 integration 相邻 normal/fault window 的 calls 与 checkout-rpc 做确定性对照；不把比较写成总体失败率或健康认证。
+- m0-otel 已停止，default Colima 未操作；原始 observations、raw/view/hash、容器/卷/VM 和所有历史失败保留。
+- 最新任务 HEAD：`08800ed`。本地 `make check`：689 passed / 44 skipped；CI `checks`、`m0-postgres` 对该提交通过。Code Review 最新明确覆盖代码提交 `f10ebe0` 无 major issues；其后仅为文档/证据提交。Security Review 按用户指示忽略；本地 57 项安全替代检查通过。
+- 当前剩余不是代码执行阻塞，而是人类入口判断：是否接受仍明确披露的 telemetry coverage、日志来源、HTTP 直接映射、唯一请求数和 SLO unknown；以及是否审核/合并 PR、是否保持 SPEC gate not cleared 或另行记录 M1 入口决定。未经该判断不更新 feature passes、不开始 M1 产品实施。
