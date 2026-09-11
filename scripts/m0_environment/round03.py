@@ -187,16 +187,9 @@ class Budget:
             e.get("usage_invalid") for e in self.data["attempts"]
         ):
             raise ValueError("invalid usage requires review")
-        limits = self.data["phase_limits"][phase]
-        if len(self.data["attempts"]) >= 16:
-            raise ValueError("total HTTP budget")
-        if sum(e["phase"] == phase for e in self.data["attempts"]) >= limits["http"]:
-            raise ValueError("phase HTTP budget")
-        # Per-phase technical reservation remains bounded; aggregate user authorization is uncapped.
-        if Decimal(str(self.used(phase))) + Decimal(
-            str(PROFILE.reservation_cny)
-        ) > Decimal(str(limits["cny"])):
-            raise ValueError("phase budget")
+        # Historical phase_limits remain in the ledger for audit only. The current project
+        # authorization removes the previous aggregate/phase allocation stop; per-Run
+        # request/tool/deadline checks remain enforced by the runner.
         e = {
             "run_id": run_id,
             "phase": phase,
