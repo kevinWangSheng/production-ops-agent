@@ -915,7 +915,10 @@ def test_prepared_unsent_requires_new_run_authority(action):
 def test_verified_preembedded_business_views_preserve_original(mutation):
     scenario, outcome = reportless_packet()
     view = scenario["trusted"]["deliveries"][0]["views"][0]
-    original_object = {"request": "investigate", "business_tool_views": [{"evidence_id": view["id"]}]}
+    original_object = {
+        "request": "investigate",
+        "business_tool_views": [{"evidence_id": view["id"]}],
+    }
     original = json.dumps(original_object, sort_keys=True)
     actual_object = json.loads(original)
     if mutation == "request":
@@ -927,14 +930,18 @@ def test_verified_preembedded_business_views_preserve_original(mutation):
     actual = json.dumps(actual_object, sort_keys=True)
     scenario["agent_input"].update(
         evidence_context=scenario["trusted"]["deliveries"][0]["context"],
-        initial_views=[view], original_user_content=original,
+        initial_views=[view],
+        original_user_content=original,
         original_user_content_sha256=content_hash(original),
-        actual_user_content=actual, actual_user_content_sha256=content_hash(actual),
+        actual_user_content=actual,
+        actual_user_content_sha256=content_hash(actual),
     )
     delivery = scenario["trusted"]["deliveries"][0]
     body = json.loads(delivery["business_projection_content"])
     body["actual_user_content"] = actual
     value = json.dumps(body)
-    delivery.update(business_projection_content=value, business_projection_hash=content_hash(value))
+    delivery.update(
+        business_projection_content=value, business_projection_hash=content_hash(value)
+    )
     errors = checked(scenario, outcome)
     assert ("INITIAL_INPUT_REASSEMBLY_MISMATCH" in errors) == (mutation is not None)

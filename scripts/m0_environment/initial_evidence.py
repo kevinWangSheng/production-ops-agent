@@ -40,14 +40,25 @@ def validate_source_path(path):
     path = Path(path)
     resolved = path.resolve()
     parts = tuple((*path.parts, *resolved.parts))
-    private_names = {".netrc", ".npmrc", ".pypirc", "credentials", "id_rsa", "id_ed25519"}
+    private_names = {
+        ".netrc",
+        ".npmrc",
+        ".pypirc",
+        "credentials",
+        "id_rsa",
+        "id_ed25519",
+    }
     private_dirs = {".aws", ".docker", ".ssh", "private-protocol"}
     restricted = any(
         part.casefold() == ".env"
         or part.casefold().startswith(".env.")
         or part.casefold() in private_names
         or part.casefold() in private_dirs
-        or (index and part.casefold() in {"credentials", "config.json"} and parts[index - 1].casefold() in {".aws", ".docker"})
+        or (
+            index
+            and part.casefold() in {"credentials", "config.json"}
+            and parts[index - 1].casefold() in {".aws", ".docker"}
+        )
         for index, part in enumerate(parts)
     )
     if path.is_symlink() or restricted:

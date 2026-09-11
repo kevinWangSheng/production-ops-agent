@@ -577,7 +577,20 @@ def input_provenance_errors(initial):
                 actual = json.loads(initial.actual_user_content)
                 if not isinstance(original, dict) or not isinstance(actual, dict):
                     raise ValueError
-                if (
+                if original == actual:
+                    embedded = original.get("business_tool_views", [])
+                    expected = [view.id for view in initial.initial_views]
+                    if (
+                        not isinstance(embedded, list)
+                        or [
+                            value.get("evidence_id")
+                            for value in embedded
+                            if isinstance(value, dict)
+                        ]
+                        != expected
+                    ):
+                        errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
+                elif (
                     not set(original).issubset(actual)
                     or set(actual) - set(original) != {"business_tool_views"}
                     or any(original.get(key) != actual.get(key) for key in original)

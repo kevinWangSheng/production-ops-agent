@@ -185,7 +185,18 @@ def test_invalid_scope_does_not_read_an_ordinary_question(tmp_path, monkeypatch)
             wrapper.main()
     assert reads == []
 
-@pytest.mark.parametrize("name", [".netrc", ".npmrc", ".aws/credentials", ".aws/config", ".docker/config.json", ".ssh/id_rsa"])
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        ".netrc",
+        ".npmrc",
+        ".aws/credentials",
+        ".aws/config",
+        ".docker/config.json",
+        ".ssh/id_rsa",
+    ],
+)
 def test_standard_credential_paths_denied_before_read(tmp_path, name):
     source = tmp_path / name
     source.parent.mkdir(parents=True, exist_ok=True)
