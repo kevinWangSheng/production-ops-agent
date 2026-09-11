@@ -59,3 +59,9 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 5. 缺少产品 HealthProfile/SLO 时不能认证总体健康、恢复或失败率。
 
 归属后续任务：日志源接入、日志过滤/查询能力、HealthProfile/SLO 与更完整的 trace view。以上接受不改写原始报告、不把 unknown 改成 zero、不改变只读和证据来源约束。
+
+## 2026-09-11 M0-04 quality closure candidates
+
+- `m004-normal-01`: strict completed/partial; new trusted window, no old Envoy P2; coverage/SLO unknowns explicit.
+- `m004-fault-01`: strict completed/partial; direct `/api/checkout` 500 + shared trace ID + checkout/payment error evidence; parent edges and payment token origin unknown.
+- Both new safe business summaries and observations are committed; old failed reports remain historical. Independent review pending.

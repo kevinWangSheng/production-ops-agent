@@ -1,0 +1,162 @@
+{
+  "run_id": "m004-fault-01",
+  "status": "investigation_returned",
+  "finish_reason": "stop",
+  "report_request_id": "m004-fault-01-http-37",
+  "model_http_requests": 3,
+  "tool_queries": 9,
+  "report_schema_version": "m0-report-v2",
+  "report_sha256": "d1f9b2d39be8d9ff64c9dec3b1b1895f05d5ea1370b48dfc99857e3e1d833257",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within the fixed window 2026-09-11T17:27:19Z–17:32:19Z (policy m004-fault-window, integration m0-otel-20260909), the user-visible failure is POST /api/checkout returning 500 via_upstream at the frontend-proxy edge, and it traces to the payment dependency: checkout spans for oteldemo.CheckoutService/PlaceOrder carry otel.status_code=ERROR / rpc.grpc.status_code=13 with the description 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token', while payment spans for grpc.oteldemo.PaymentService/Charge carry the same message with a stacktrace pointing at module.exports.charge (/usr/src/app/charge.js:37) in the payment container (service.version 2.0.2, host 8d8e65e2ed9f). The proxy's 500 log row, the checkout error span and the payment error span all share trace_id c5b88bf37781c7a44fa58df56c19fc9e. Error counters increased over the window (extrapolated increase over 5m: checkout 17.09, frontend 25.64, payment 8.55 error spans), but trace views are truncated/sampled (7 of 9 returned traces visible; 276–278 spans omitted) and no parent references are visible, so the checkout→payment call edge is a well-grounded inference, not a directly observed parent-child edge. The underlying reason payment rejects the token is not determinable from the authorized telemetry (no payment logs; no configuration data) and remains unknown. Cart is not implicated. No SLO or baseline was supplied, so no health/recovery certification is made.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "frontend-proxy access log shows 'POST /api/checkout HTTP/1.1' returning 500 via_upstream at 2026-09-11T17:32:11.652303Z (bytes_received 372, bytes_sent 21, duration_ms 61, upstream_service_time_ms 61), trace_id c5b88bf37781c7a44fa58df56c19fc9e; this row is the only /api/checkout 500 among the 14 displayed log rows (of backend_total_hits 151, backend_returned_hit_count 20).",
+      "evidence_ids": [
+        "m004-fault-01-e4"
+      ],
+      "target_refs": [
+        "target:6f3625a442daea498f271da236f94d3f5a228e79cd8d1ac6be03c5309078ac8e"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "fact",
+      "text": "All 7 visible checkout spans are error spans on operation oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 13, otel.status_code ERROR), e.g. trace ab1a5608703b83a8ba5ea4751569651f (duration 243123us) and c5b88bf37781c7a44fa58df56c19fc9e (50647us); their otel.status_description and exception.message are 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token'. In the same returned artifact, checkout has 90 spans with 18 error spans by listed status tags; frontend 36/36 error spans and frontend-proxy 18/18 error spans are also reported.",
+      "evidence_ids": [
+        "m004-fault-01-e3"
+      ],
+      "target_refs": [
+        "target:70928fa1dce1d14d7c6fdbd86f66e6af75cf111b24a694bc3f7b80759fdea857",
+        "target:5dbb08ffca7e2e6094e14b30d3672fa94910d608f1396bc3342c57840d5d3a9e"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "fact",
+      "text": "All 5 visible payment spans are errors on operation grpc.oteldemo.PaymentService/Charge (otel.status_code ERROR, error=true) with span tag grpc.error_message 'Payment request failed. Invalid token. app.loyalty.level=gold' and exception.stacktrace 'Error: Payment request failed. Invalid token. app.loyalty.level=gold at module.exports.charge (/usr/src/app/charge.js:37:13) ... Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)'; spans are short (8479–17842us). payment identity: container 8d8e65e2ed9f99ddf60b05d230eff40c68dc66a7afbd434ac6b959d122286571, service.version 2.0.2.",
+      "evidence_ids": [
+        "m004-fault-01-e5"
+      ],
+      "target_refs": [
+        "target:05656a5f484845ded47b825e482282f822d2ee882ecefc0dda8ec0441238ef57",
+        "target:f7824294ac755aff20b22e7d8e983b453f2bcc841f20fee583d7087a266b36e1"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "fact",
+      "text": "Trace c5b88bf37781c7a44fa58df56c19fc9e appears in three independent views: the frontend-proxy 500 access log row (trace_id field), the checkout PlaceOrder error span, and the payment Charge error span; the same trace-id co-occurrence of the checkout and payment error spans also holds for traces 69e7fcd253f200859acff824ce558ed1, ab1a5608703b83a8ba5ea4751569651f, c0baa50f88c529912bb1a1a431fa3b09 and d5eb47bc2cf60eacef3fdbdca987a0d8.",
+      "evidence_ids": [
+        "m004-fault-01-e3",
+        "m004-fault-01-e4",
+        "m004-fault-01-e5"
+      ],
+      "target_refs": [
+        "target:70928fa1dce1d14d7c6fdbd86f66e6af75cf111b24a694bc3f7b80759fdea857",
+        "target:6f3625a442daea498f271da236f94d3f5a228e79cd8d1ac6be03c5309078ac8e",
+        "target:05656a5f484845ded47b825e482282f822d2ee882ecefc0dda8ec0441238ef57"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "fact",
+      "text": "Error counters are cumulative at instant evaluation time 1789147939: checkout status_code=STATUS_CODE_ERROR had raw value 16 while STATUS_CODE_UNSET had 260 (cumulative since reset, not a window count). Explicit window deltas: sum by service of increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[5m]) returned checkout 17.0947, frontend 25.6421, payment 8.5474 (extrapolated, fractional, not unique request counts); total span-call increase over 5m per service included frontend 640.76, frontend-proxy 306.92, cart 223.34, checkout 94.45, payment 19.78.",
+      "evidence_ids": [
+        "m004-fault-01-e2",
+        "m004-fault-01-e6",
+        "m004-fault-01-e7"
+      ],
+      "target_refs": [
+        "target:a0dac369e02053204c42d22ab8bc49ce1630b641ab4ad866fbc8a5727134eec9",
+        "target:a6b0235888f35b727bd7bae2768d0099d5575798f322c6a0a692079f6cdd481a",
+        "target:04c66c69c0a92716036a61dd09a60c4ab8ac7a62d8d9127ae4e90fad07a7310c"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "fact",
+      "text": "app_payment_transactions_total for service_name=payment evaluated to 14 at 1789147939; the expression's result carried no status_code/rpc_method/error label values, so no success/failure split can be derived from it, and as a raw counter value it does not establish in-window transaction events.",
+      "evidence_ids": [
+        "m004-fault-01-e8"
+      ],
+      "target_refs": [
+        "target:a88b98e4c13eadc24bf62d3f59274c1bf9e88872c02c6fc5ec38f2ba033cfcef"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "Cart is not the failing dependency in this window: cart has error_spans_by_listed_status_tags 0 in the returned trace artifacts, and all 20 displayed cart log rows (backend_total_hits 81) are severity Information for GetCartAsync/AddItemAsync, including rows in trace c5b88bf37781c7a44fa58df56c19fc9e at 17:32:11.656Z — the same trace as the checkout 500.",
+      "evidence_ids": [
+        "m004-fault-01-e9",
+        "m004-fault-01-e3"
+      ],
+      "target_refs": [
+        "target:3c2d6213f98bcc5e83cc978140ba73f9a9a77f1ee9b3ac032a21db83c96d3922",
+        "target:70928fa1dce1d14d7c6fdbd86f66e6af75cf111b24a694bc3f7b80759fdea857"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "Most likely failure path: payment's PaymentService/Charge rejects the charge ('Payment request failed. Invalid token'), checkout's PlaceOrder consequently fails (grpc code Unknown/13, 'failed to charge card'), and the frontend/frontend-proxy surface it as HTTP 500 on POST /api/checkout. Grounded in matching trace ids and error text across proxy, checkout and payment views plus the in-window error-counter increases; the parent-child edge itself is not visible (parent_is_visible=false in every displayed span), so this edge is inferred, not directly observed.",
+      "evidence_ids": [
+        "m004-fault-01-e4",
+        "m004-fault-01-e3",
+        "m004-fault-01-e5",
+        "m004-fault-01-e6"
+      ],
+      "target_refs": [
+        "target:05656a5f484845ded47b825e482282f822d2ee882ecefc0dda8ec0441238ef57",
+        "target:70928fa1dce1d14d7c6fdbd86f66e6af75cf111b24a694bc3f7b80759fdea857",
+        "target:6f3625a442daea498f271da236f94d3f5a228e79cd8d1ac6be03c5309078ac8e"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "Provisional: the rejection is generated inside payment itself by an explicit token-validation failure at charge.js:37 (error name 'Error', grpc code Unknown, message mentions app.loyalty.level=gold), i.e. a code-level rejection rather than an observed crash or transport failure. What makes the token invalid (client-side token generation, token/secret material, or a payment-side validity expectation) is not observable in the authorized telemetry and is not established here.",
+      "evidence_ids": [
+        "m004-fault-01-e5"
+      ],
+      "target_refs": [
+        "target:05656a5f484845ded47b825e482282f822d2ee882ecefc0dda8ec0441238ef57",
+        "target:f7824294ac755aff20b22e7d8e983b453f2bcc841f20fee583d7087a266b36e1"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "The trace evidence is a biased, truncated sample, not a complete call chain: of 9 returned traces only 7 (checkout query) and 5 (payment query) were visible, 276–278 spans were omitted, error-detail fields were omitted (97–103 per view), display_max_spans is 20, and no popped span had parent_is_visible=true — so no complete checkout→payment chain, population failure rate, or per-request uniqueness can be asserted. Logs cover only cart and frontend-proxy; payment/checkout log lines were not available.",
+      "evidence_ids": [
+        "m004-fault-01-e3",
+        "m004-fault-01-e5"
+      ],
+      "target_refs": [
+        "target:70928fa1dce1d14d7c6fdbd86f66e6af75cf111b24a694bc3f7b80759fdea857",
+        "target:05656a5f484845ded47b825e482282f822d2ee882ecefc0dda8ec0441238ef57"
+      ],
+      "time_scope_ref": "m004-fault-window"
+    }
+  ],
+  "gaps": [
+    "No telemetry for the origin of the invalid token: no payment or checkout application logs are available (log sources are limited to cart and frontend-proxy), so the trigger behind charge.js:37 could not be inspected.",
+    "No parent/child span references are visible (parent_is_visible=false), so the checkout→payment call edge is inferred from shared trace ids and error text rather than observed.",
+    "rpc_client_duration_milliseconds_bucket and rpc_server_duration_milliseconds_bucket were not queried in this run; latency analysis of the failing calls is absent and no matched baseline/SLO exists for comparison.",
+    "app_payment_transactions_total returned only the value 14 with no error/status label breakdown, so the failure ratio of Charge calls cannot be quantified from it.",
+    "Email, shipping, currency, quote, product-catalog, fraud-detection and flagd were not evaluated; equal error rates elsewhere are unknown (frontend reported 25.64 and load-generator 9 error spans in the returned artifacts, unexamined).",
+    "Only 14 of 151 frontend-proxy log hits were displayed, so the total count of /api/checkout 500s in the window is unknown."
+  ],
+  "next_steps": [
+    "Collect payment-service and checkout-service application logs (or broaden available log sources) around 2026-09-11T17:27–17:32Z to inspect charge.js:37 context and any token/validation configuration messages.",
+    "Have a human review the payment 'Invalid token' validation path (charge.js:37 in image sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87) and how checkout constructs/passes the charge token, without changing anything during this read-only assessment.",
+    "Provide a matched baseline window or SLO to quantify impact (error ratio, affected request count) — the current error counter increase is extrapolated and no baseline is supplied.",
+    "Query rpc_client_duration_milliseconds_bucket / rpc_server_duration_milliseconds_bucket for checkout→payment to characterize latency of the failing calls if needed."
+  ],
+  "quality_assessment": "pending_independent_evidence_check",
+  "report_validation_error": null,
+  "note": "Safe business summary; excludes provider reasoning, private protocol and credentials."
+}
