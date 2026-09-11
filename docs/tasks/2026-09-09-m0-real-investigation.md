@@ -300,3 +300,35 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 ### Handoff
 
 接手者先核对 `git status`、`git log -1`、PR #16 HEAD、CI 和 bot review 是否覆盖当前提交。然后从 M0-03 开始：逐项把动态 evidence provenance、主体/依赖授权、当前 control generation、步骤恢复与取消结果写成确定性合同和测试；每项保留失败样例、修复 diff、测试输出和来源 hash。不要启动已停止的专属 OTel/PG 环境，不要读取或复制凭据，不要重用旧 20 请求账本。真实模型/trace 复验只有在新合同落盘并核对账户状态后才能执行。完成本地工作后更新本记录、ROADMAP、SPEC 决定证据，推送 PR #16；Security Review 仍需以当前 HEAD 的实际返回为准，不能用旧提交结果替代。
+
+## 2026-09-11 M0-03 接续（质量审查）
+
+上段交接之后，环境已被后续执行者重启，`038401b` 已加入 round03 runner；真实 Holmes 已跑。本段起按 [M0-03 质量审查合同](../evidence/m0-real-investigation/round-03-quality-review-contract.md) 推进：**先审查已返回报告，不新增模型/trace**。旧交接中「不要启动已停止环境」对当前 Running 的 `m0-otel` 不再适用；本步也不 stop。
+
+### 现场核对
+
+- 任务 worktree：`/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01`，HEAD `038401b`，分支 `chore/m0-02-convergence` 与 origin 同步、工作区干净。
+- 环境 worktree：`/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment`，HEAD `2e73f7a`（同 runner 信息的本地分支，无 upstream）。tmp 运行数据只在此目录。
+- PR #16 OPEN；`038401b` 的 checks 与 m0-postgres SUCCESS。Code Review 对 HEAD 无 major issues。Security Review 对 HEAD 为 unknown error，不记通过。
+- Colima `m0-otel` Running，Compose `opspilot-m0` 约 26 容器在跑。专属实验 PG 55431 未监听。系统 PG 不动。
+- 主工作区 `main` 有用户未提交文档（取消历史 20/20/5 总量上限）及未跟踪 `.playwright-mcp/`；任务 worktree 不吸收。
+
+### 已执行但未审查的 M0-03 Run
+
+| Run | HTTP | 机器状态 | 处置 |
+|---|---|---|---|
+| m003-fault-01 | 4 | incomplete / FACT_SCOPE_REQUIRED | 失败保留 |
+| m003-fault-02 | 4 | incomplete / FACT_TIME_SCOPE_NOT_DELIVERED | 失败保留 |
+| m003-fault-03 | 0 | failed / phase HTTP budget | 失败保留 |
+| m003b-fault-01 | 4 | investigation_returned | 窗无可诊断失败，不计入故障正向 |
+| m003c-normal-01 | 3 | investigation_returned | 质量 FAIL（P2 span 计数） |
+| m003c-normal-02 | 3 | investigation_returned | 质量通过 |
+| m003c-fault-02 | 4 | investigation_returned | 质量 FAIL；本窗无失败 trace |
+
+`m0-03c` 账本 10/16 HTTP（normal 6/8，fault 4/8，pg 0/4），0 trace。所有 returned 的 `quality_assessment` 仍为 `pending_independent_evidence_check`。本步 0 新增模型请求。
+
+### 当前进展
+
+质量审查合同已落盘。协调者已完成四份 returned 报告与三份合同失败的只读核对（独立子代理宿主 402，结论不标独立 Agent 通过）：[汇总](../evidence/m0-real-investigation/round-03-quality-summary.md)。正常 1/2 质量通过（仅 normal-02）；故障 0/2 正向通过。SPEC 门槛保持 not cleared。
+
+下一步：先取得本窗可诊断故障工程前提，再决定是否用 `m0-03c` 剩余 fault HTTP 做新 Run；不打开 M1，不新增未授权模型调用。
