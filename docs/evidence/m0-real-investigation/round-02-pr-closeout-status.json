@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-09-10T19:16:37.564909+00:00",
+  "checked_at": "2026-09-11T02:25:28.885466+00:00",
   "code_review": {
     "status": "awaiting_bot_review_after_question_and_human_state_fixes",
     "base": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
@@ -77,7 +77,7 @@
     "checks": "success",
     "m0_postgres": "success"
   },
-  "current_ci_status": "pending_for_new_commit",
+  "current_ci_status": "passed_local_make_check_after_budget_clock_fix",
   "prior_bot_fix_rounds": [
     {
       "status": "awaiting_bot_review_after_fix",
@@ -105,5 +105,11 @@
       "evidence": "round-02-bot-projector-trust-fix.md"
     }
   ],
-  "active_fake_probe_limit": "Candidate and d61 baseline both failed after the pre-existing 2026-09-10T17:14:30Z query authorization deadline; not renewed, not claimed as pass."
+  "active_fake_probe_limit": "Candidate and d61 baseline both failed after the pre-existing 2026-09-10T17:14:30Z query authorization deadline; not renewed, not claimed as pass.",
+  "budget_test_clock_fix": {
+    "base": "aefa0d7eb7350bff836caf3504bf01e19611db78",
+    "patch_sha256": "126e3c41caca49a1f9f301028096fde3e177b42bc206767f1a8e4b9a2d74276b",
+    "full_check": "round-02-bot-budget-full-check.txt",
+    "production_deadline_unchanged": true
+  }
 }

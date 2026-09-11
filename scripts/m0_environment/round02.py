@@ -180,8 +180,12 @@ class Budget:
             )
         )
 
+    @staticmethod
+    def _clock():
+        return time.time()
+
     def reserve(self, run_id, phase, request_bytes):
-        if time.time() >= PROFILE.deadline:
+        if self._clock() >= PROFILE.deadline:
             raise ValueError("allocation deadline")
         if self.data.get("blocked_reason") or any(
             e.get("usage_invalid") for e in self.data["attempts"]
@@ -205,7 +209,7 @@ class Budget:
             "run_id": run_id,
             "phase": phase,
             "ordinal": len(self.data["attempts"]) + 1,
-            "started_at": time.time(),
+            "started_at": self._clock(),
             "request_bytes": request_bytes,
             "status": "reserved",
             "reservation_cny": PROFILE.reservation_cny,
@@ -217,7 +221,7 @@ class Budget:
         return e
 
     def finish(self, entry, status, usage):
-        entry.update(status=status, ended_at=time.time())
+        entry.update(status=status, ended_at=self._clock())
         keys = (
             "prompt_tokens",
             "completion_tokens",

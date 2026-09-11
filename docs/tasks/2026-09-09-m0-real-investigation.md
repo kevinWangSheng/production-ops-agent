@@ -262,3 +262,7 @@ d61f80a两项CI成功（34509309368），bot返回安全P1 3981914677：report-o
 a783fc2两项CI成功（34515962307），Code Review返回P1 3982439739/3982439749；同提交Security 18:54:30Z完成无发现。已将question敏感路径检查放在所有内容读取前，合法问题仍在原scope/phase校验后才读，归档前完成检查；使用合成路径/read-spy证明无真实秘密读取。paused无当前审计能力故严格拒绝，cancelled/waiting_human须匹配最后接受控制；无控制状态同样不能认证。
 
 [合并修复与版本](../evidence/m0-real-investigation/round-02-bot-question-human-fix.md)记录原红例、校验顺序回归及最终677 passed/44 PG默认skip。保留原测试语义，未增加pause平台、schema/DB/legacy变化或本地review流程；0真实模型/trace/服务操作。安全/审查通过不替代仍失败的真实报告质量，M1不开放。此批提交后等最新bot Code/Security，不自动合并。
+
+## CI 截止时间 rollover 修复（2026-09-11T02:25:28.885466+00:00）
+
+CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reserve前失败；生产deadline保持真实值。补丁仅增加Budget默认real-clock seam和四个测试的显式predeadline fixture，作者48项定向通过；root在合并现有修复后`make check`全量通过（详见round-02-bot-budget-full-check.txt），无模型/trace/PG/服务操作。旧失败及原因保留，不把它改写为产品质量证据；最新代码仍需bot复审。

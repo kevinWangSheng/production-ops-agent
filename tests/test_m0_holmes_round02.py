@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from scripts.m0_environment import round02
 from scripts.m0_environment.round02 import (
     PROFILE,
     Budget,
@@ -13,6 +14,16 @@ from scripts.m0_environment.round02 import (
     envelope_check,
     run_child,
 )
+
+
+@pytest.fixture
+def predeadline_budget_clock(monkeypatch):
+    real = round02.Budget._clock
+    monkeypatch.setattr(
+        round02.Budget, "_clock", staticmethod(lambda: round02.PROFILE.deadline - 1)
+    )
+    yield
+    monkeypatch.setattr(round02.Budget, "_clock", real)
 
 
 def payload():
@@ -49,6 +60,7 @@ def test_actual_wire_boundary_keeps_private_and_separates_units():
         envelope_check(json.dumps(p).encode())
 
 
+@pytest.mark.usefixtures("predeadline_budget_clock")
 def test_unknown_budget_survives_restart_and_stops_phase(tmp_path):
     path = tmp_path / "ledger.json"
     budget = Budget(path)
@@ -61,6 +73,7 @@ def test_unknown_budget_survives_restart_and_stops_phase(tmp_path):
     assert len(json.loads(path.read_text())["attempts"]) == 1
 
 
+@pytest.mark.usefixtures("predeadline_budget_clock")
 def test_complete_usage_releases_only_new_reservation(tmp_path):
     b = Budget(tmp_path / "ledger.json")
     e = b.reserve("r", "normal", 10)
@@ -80,6 +93,7 @@ def test_complete_usage_releases_only_new_reservation(tmp_path):
     b.reserve("r", "normal", 10)
 
 
+@pytest.mark.usefixtures("predeadline_budget_clock")
 def test_invalid_usage_keeps_full_reservation(tmp_path):
     b = Budget(tmp_path / "ledger.json")
     e = b.reserve("r", "normal", 10)
@@ -113,6 +127,7 @@ def test_child_that_ignores_terminate_is_killed_and_reaped():
     assert time.monotonic() - start < 2
 
 
+@pytest.mark.usefixtures("predeadline_budget_clock")
 def test_above_bound_usage_persistently_blocks_other_phase(tmp_path):
     path = tmp_path / "ledger.json"
     b = Budget(path)
