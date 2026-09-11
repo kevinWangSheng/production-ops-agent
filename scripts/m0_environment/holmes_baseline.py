@@ -175,6 +175,17 @@ def persist_observation(out, record, view, scope):
         save(manifest_path, manifest)
 
 
+def _envoy_access_fields(body):
+    """Parse pinned Envoy positional access-log fields with explicit labels."""
+    import re
+    if not isinstance(body, str):
+        return None
+    m = re.search(r'"\s+(\d{3})\s+\S+\s+\S+\s+\S+\s+"[^"\n]*"\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)' , body)
+    if not m:
+        return None
+    return {"format":"envoy_access_log_v1","response_status":int(m.group(1)),"bytes_received":int(m.group(2)),"bytes_sent":int(m.group(3)),"duration_ms":int(m.group(4)),"upstream_service_time_ms":int(m.group(5)),"semantics":{"bytes_received":"%BYTES_RECEIVED%","bytes_sent":"%BYTES_SENT%","duration_ms":"%DURATION%","upstream_service_time_ms":"%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"}}
+
+
 def log_projection(record, registry=None, version="m0-02-logs-v3"):
     """Preserve complete displayed bodies; explicitly replay historic v2 when requested."""
     if version == "m0-02-v2":
@@ -230,6 +241,9 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
                     )
                     if k in attrs
                 },
+                "envoy_access_fields": _envoy_access_fields(source.get("body"))
+                if attrs.get("event.name") == "proxy.access"
+                else None,
             }
         )
     view = {k: v for k, v in record.items() if k != "data"}
