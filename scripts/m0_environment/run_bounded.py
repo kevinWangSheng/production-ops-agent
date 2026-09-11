@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from scripts.m0_environment.round02 import PROFILE  # noqa: E402
+from scripts.m0_environment.round03 import PROFILE  # noqa: E402
 
 
 def supervise(command, timeout=1800, grace=2):

@@ -47,7 +47,7 @@ from scripts.m0_environment.report_contract import (  # noqa: E402
     source_timing,
     validate_report,
 )
-from scripts.m0_environment.round02 import (  # noqa: E402
+from scripts.m0_environment.round03 import (  # noqa: E402
     PROFILE,
     Budget,
     ModelResponseDenied,
@@ -359,7 +359,7 @@ def main():
         scope["deployment_registry_sha256"] = canonical_hash(registry)
         scope["effective_query_deadline"] = min(
             PROFILE.deadline,
-            datetime.fromisoformat("2026-09-10T17:14:30+00:00").timestamp(),
+            PROFILE.deadline,
         )
     permitted_interfaces = allowed_interfaces(scope) if scope else frozenset()
     time_policies = []
@@ -522,7 +522,7 @@ def main():
     tool_io_lock = threading.Lock()
     collection_closed = False
     final_protocol_error = None
-    ledger = ROOT / "tmp/m0-environment/m0-02-request-ledger.json"
+    ledger = ROOT / "tmp/m0-environment/m0-03c-request-ledger.json"
     # Hold one OS file lock for the full Run, including all model calls and writes.
     allocation_lock = ledger.with_suffix(".lock").open("a")
     fcntl.flock(allocation_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
