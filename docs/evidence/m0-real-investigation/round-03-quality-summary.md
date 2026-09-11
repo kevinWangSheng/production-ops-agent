@@ -42,3 +42,8 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 ## 相邻窗口 baseline 补充
 
 `m003e-baseline-comparison.json` 对同一 integration 的 normal/fault calls 与 checkout-rpc 原始返回做了确定性对照。它支持窗口间错误状态差异，但不解决 trace/log 截断、checkout/payment 日志缺失、唯一请求数和 SLO 缺失；这些仍保持 unknown/gap。
+
+
+## 独立审查结果（2026-09-11，取代上文计数）
+
+四份候选经全新上下文独立 Agent 审查：m003c-normal-02 PASS、m003e-normal-02 FAIL（1 P2）、m003d-fault-02 FAIL（2 P2）、m003e-fault-05 PASS。**v4 计数正常 1/2、故障 1/2，有界开发包未通过。** 上文“包结果”表与 m003d/m003e 段落为协调者自查记录，保留为历史。五条 unknown 的接受决定、裁定依据与后续归属见 [独立审查汇总](round-03-independent-review-summary.md)。
