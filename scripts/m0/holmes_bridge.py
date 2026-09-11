@@ -138,7 +138,11 @@ def replay_projection(record, context, *, revision=None):
     ):
         raise ValueError("PROJECTION_CONTEXT_MISMATCH")
     required = {"bind_identity", "trace_projection", "log_projection"}
-    names = required | {"metric_projection"}
+    names = required | {
+        "metric_projection",
+        "_log_projection_v3",
+        "_envoy_access_fields",
+    }
     nodes = [
         node
         for node in ast.parse(source).body

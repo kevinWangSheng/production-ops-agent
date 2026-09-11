@@ -236,7 +236,7 @@ def _envoy_access_fields(body):
     }
 
 
-def log_projection(record, registry=None, version="m0-02-logs-v3"):
+def _log_projection_v3(record, registry=None, version="m0-02-logs-v3"):
     """Preserve complete displayed bodies; explicitly replay historic v2 when requested."""
     if version == "m0-02-v2":
         return log_projection_v2(record, registry)
@@ -291,36 +291,12 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
                     )
                     if k in attrs
                 },
-                "envoy_access_fields": (
-                    (
-                        lambda parsed: {
-                            "status": parsed["response_status"],
-                            "bytes_received": parsed["bytes_received"],
-                            "bytes_sent": parsed["bytes_sent"],
-                            "duration_ms": parsed["duration_ms"],
-                            "upstream_service_time_ms": parsed[
-                                "upstream_service_time_ms"
-                            ],
-                        }
-                    )(_envoy_access_fields(source.get("body")))
-                    if attrs.get("event.name") == "proxy.access"
-                    and source.get("resource", {}).get("log_name")
-                    == "otel_envoy_access_log"
-                    and _envoy_access_fields(source.get("body")) is not None
-                    and _envoy_access_fields(source.get("body"))["response_status"]
-                    >= 400
-                    else None
-                ),
             }
         )
-    for row in rows:
-        if row.get("envoy_access_fields") is None:
-            row.pop("envoy_access_fields", None)
     view = {k: v for k, v in record.items() if k != "data"}
     view["projection_version"] = "m0-02-logs-v3"
     view["data"] = {
         "source": "logs",
-        "envoy_field_semantics": "Pinned Envoy proxy.access positions after route/status: bytes_received=%BYTES_RECEIVED%, bytes_sent=%BYTES_SENT%, duration_ms=%DURATION%, upstream_service_time_ms=%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%; do not infer timing from byte fields.",
         "raw_observation_sha256": hashlib.sha256(raw).hexdigest(),
         "source_identity_table": identities,
         "backend_total_hits": hits.get("total"),
@@ -332,12 +308,44 @@ def log_projection(record, registry=None, version="m0-02-logs-v3"):
         "displayed_logs": rows,
         "omitted_returned_hit_count": 0,
     }
-    if not any("envoy_access_fields" in row for row in rows):
-        view["data"].pop("envoy_field_semantics", None)
     while len(json.dumps(view, ensure_ascii=False).encode()) > 14000 and rows:
         rows.pop()
         view["data"]["omitted_returned_hit_count"] += 1
         view["data"]["model_visible_hit_count"] = len(rows)
+    return view
+
+
+def log_projection(record, registry=None, version="m0-03-logs-v4"):
+    """Versioned Envoy labels; explicit v2/v3 replay remains legacy."""
+    if version in {"m0-02-v2", "m0-02-logs-v3"}:
+        return _log_projection_v3(record, registry, version=version)
+    if version != "m0-03-logs-v4":
+        raise ValueError("unsupported log projection version")
+    view = _log_projection_v3(record, registry)
+    view["projection_version"] = version
+    data = view["data"]
+    data["envoy_field_semantics"] = (
+        "Pinned Envoy proxy.access fields: bytes_received, bytes_sent, duration_ms, upstream_service_time_ms."
+    )
+    for row in data["displayed_logs"]:
+        identity = data["source_identity_table"][row["resource_identity_ref"]][
+            "resource"
+        ]
+        if (
+            row["service"] == "frontend-proxy"
+            and identity.get("log_name") == "otel_envoy_access_log"
+            and row["diagnostic_attributes"].get("event.name") == "proxy.access"
+        ):
+            parsed = _envoy_access_fields(row["body"])
+            if parsed is not None:
+                row["envoy_access_fields"] = parsed
+    while (
+        len(json.dumps(view, ensure_ascii=False).encode()) > 14000
+        and data["displayed_logs"]
+    ):
+        data["displayed_logs"].pop()
+        data["omitted_returned_hit_count"] += 1
+    data["model_visible_hit_count"] = len(data["displayed_logs"])
     return view
 
 

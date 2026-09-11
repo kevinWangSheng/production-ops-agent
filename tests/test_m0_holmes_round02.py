@@ -669,4 +669,7 @@ def test_legacy_log_projection_reproduces_original_v2_view():
     assert legacy == log_projection(raw, version="m0-02-v2")
     assert legacy["data"]["returned_hit_count"] == 20
     assert "model_visible_hit_count" not in legacy["data"]
-    assert log_projection(raw)["data"]["model_visible_hit_count"] == 19
+    assert (
+        log_projection(raw, version="m0-02-logs-v3")["data"]["model_visible_hit_count"]
+        == 19
+    )
