@@ -393,3 +393,10 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - Security Review 按用户明确指示忽略，采用本地确定性安全检查；旧 security findings 不作为未处置代码门。
 - aggregate paid-request limit 评论与当前 AGENTS 的用户授权冲突；当前实现保留 per-Run deadline/request/tool/query、usage ledger、unknown 费用和只读出口边界，不恢复上一轮固定总量 cap。
 - 旧 m003e-normal-02/m003d-fault-02 报告质量 P2 仍是历史失败；修复代码不倒推旧报告变绿，当前 no-new-model/trace 约束下不重跑。
+
+## 2026-09-11 M004 独立复审完成
+
+- M004 normal/fault 两个新 Run 的 committed raw evidence 各 7/7 SHA-256 匹配 observation 引用。
+- 全新上下文独立审查确认两 Run 无 P1/P2，normal/fault 均可计入 v4 正向样本；质量计数更新为 normal 2/2、fault 2/2。
+- 报告仍为 partial、保留五条已接受 unknown 和日志/SLO/采样边界；没有把 partial 改写成 healthy/recovery。
+- 这完成了本轮可执行的 M0-03 质量包；SPEC gate 是否开放、PR 是否合并仍保留给用户最终判断。

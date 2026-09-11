@@ -65,3 +65,7 @@ v4 要求正常 2 次与可诊断故障 2 次均无未处置 P1/P2。
 - `m004-normal-01`: strict completed/partial; new trusted window, no old Envoy P2; coverage/SLO unknowns explicit.
 - `m004-fault-01`: strict completed/partial; direct `/api/checkout` 500 + shared trace ID + checkout/payment error evidence; parent edges and payment token origin unknown.
 - Both new safe business summaries and observations are committed; old failed reports remain historical. Independent review pending.
+
+## M0-04 独立复审结论
+
+全新上下文独立审查已复核 M004：normal/fault observation 各 7/7 raw SHA-256 与 committed raw evidence 匹配；两份新报告均无 P1/P2，分别计入 normal 与 fault 正向样本。v4 有界开发包计数更新为 normal 2/2、fault 2/2；五条用户接受 unknown 继续按已披露限制保留，partial/unknown 不改写为 zero 或 healthy。
