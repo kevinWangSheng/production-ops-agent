@@ -336,3 +336,12 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 ### 一次完整故障案（2026-09-11）
 
 已执行注入保持 300s + 独立观察 + Holmes `m003d-fault-02`（4 HTTP / 16 工具，returned）。前提：10 条失败 checkout trace，Charge code2 increase=7.5。flag 已 restore。协调者审查见 [m003d-fault-02](../evidence/m0-real-investigation/round-03-m003d-fault-02-review.md)。`m0-03c` fault 8/8、总 14/16。v4 故障仍缺第 2 个独立 Run。M1 不开放。
+
+## 2026-09-11 M0-03 真实调查线推进
+
+- 专属环境分支 `chore/m0-02-environment` 提交 `2e73f7a` 保存 round03 runner、真实 normal/fault/recovery 观察及 M003 环境证据；Ruff 通过。`m0-otel` 当时保持 Running，未清理旧数据。
+- 经过基线筛选，仅将新增 `round03.py`、M003 观察工件及 runner 配置切换带回任务分支；任务分支新提交 `038401b`，未带入环境分支的历史删除/差异。
+- `038401b` 本地完整测试：689 passed，44 skipped；CI run `34587894742` 的 `checks`、`m0-postgres` 均 SUCCESS。
+- `m003c-normal-01/02` 真实报告均为 partial，明确“可见证据未发现失败”及日志/trace/baseline 缺口；`m003c-fault-02` 真实报告支持 checkout→PaymentService/Charge 依赖方向，但明确窗口 residency 和逐请求因果未知。报告没有宣称 healthy 或故障因果已证实。
+- 当前 PR #16 HEAD 为 `038401b`。Code Review 已返回“Didn't find any major issues”，明确覆盖该 HEAD。Security Review 于 2026-09-11 10:13Z 重试后出现 `eyes`，截至本记录没有完成或失败结果；不能记为通过。
+- 当前可执行 M0-03 证据已从“无最终报告”推进到“正常与故障均有最终 partial 报告”，但 M0 gate 仍因报告覆盖缺口、完整恢复/取消验收、动态证据边界及 Security Review 未闭环保持 `not cleared`。下一步是安全审查结果出现后逐项处理，或将其记录为外部服务阻塞；不得用本地测试替代真实证据。
