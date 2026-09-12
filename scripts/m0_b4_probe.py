@@ -21,15 +21,17 @@ def main() -> int:
     parser.add_argument("--record", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--deadline", type=float, required=True)
+    parser.add_argument("--allocation", default="m0-05-b4-20260912")
+    parser.add_argument("--reservation", type=float, default=1.0)
     parser.add_argument("--crash-after", action="store_true")
     args = parser.parse_args()
     if args.crash_after and args.stage != "first":
         parser.error("--crash-after requires first stage")
     round02.PROFILE = replace(
         round02.PROFILE,
-        allocation="m0-05-b4-20260912",
+        allocation=args.allocation,
         deadline=args.deadline,
-        reservation_cny=1.0,
+        reservation_cny=args.reservation,
     )
     probe.LEDGER = args.ledger
     result = probe.execute(args.stage, args.record)

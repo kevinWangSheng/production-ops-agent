@@ -1,6 +1,6 @@
 # B6 上游 Holmes 与候选同条件比较合同
 
-状态：**session 内已授权，准备执行；总技术上限 4 个模型 HTTP，费用记录上界 8 CNY。** 这是独立于 B4 的新 allocation，不改历史账本。
+状态：**session 内已授权，已执行；候选完成 2 HTTP，上游因认证前提缺失证据不足。** 总技术上限 4 个模型 HTTP、费用记录上界 8 CNY；这是独立于 B4 的新 allocation，不改历史账本。结果见 [`round-06-upstream-comparison-results.md`](round-06-upstream-comparison-results.md)。
 
 ## 范围
 

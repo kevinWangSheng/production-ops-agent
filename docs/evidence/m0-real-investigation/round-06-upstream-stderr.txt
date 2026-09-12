@@ -1,0 +1,435 @@
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py │
+│ :101 in map_httpcore_exceptions                                              │
+│                                                                              │
+│    98 │   if len(HTTPCORE_EXC_MAP) == 0:                                     │
+│    99 │   │   HTTPCORE_EXC_MAP = _load_httpcore_exceptions()                 │
+│   100 │   try:                                                               │
+│ ❱ 101 │   │   yield                                                          │
+│   102 │   except Exception as exc:                                           │
+│   103 │   │   mapped_exc = None                                              │
+│   104                                                                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py │
+│ :250 in handle_request                                                       │
+│                                                                              │
+│   247 │   │   │   extensions=request.extensions,                             │
+│   248 │   │   )                                                              │
+│   249 │   │   with map_httpcore_exceptions():                                │
+│ ❱ 250 │   │   │   resp = self._pool.handle_request(req)                      │
+│   251 │   │                                                                  │
+│   252 │   │   assert isinstance(resp.stream, typing.Iterable)                │
+│   253                                                                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection_po │
+│ ol.py:256 in handle_request                                                  │
+│                                                                              │
+│   253 │   │   │   │   closing = self._assign_requests_to_connections()       │
+│   254 │   │   │                                                              │
+│   255 │   │   │   self._close_connections(closing)                           │
+│ ❱ 256 │   │   │   raise exc from None                                        │
+│   257 │   │                                                                  │
+│   258 │   │   # Return the response. Note that in this case we still have to │
+│   259 │   │   # the point at which the response is closed.                   │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection_po │
+│ ol.py:236 in handle_request                                                  │
+│                                                                              │
+│   233 │   │   │   │                                                          │
+│   234 │   │   │   │   try:                                                   │
+│   235 │   │   │   │   │   # Send the request on the assigned connection.     │
+│ ❱ 236 │   │   │   │   │   response = connection.handle_request(              │
+│   237 │   │   │   │   │   │   pool_request.request                           │
+│   238 │   │   │   │   │   )                                                  │
+│   239 │   │   │   │   except ConnectionNotAvailable:                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection.py │
+│ :103 in handle_request                                                       │
+│                                                                              │
+│   100 │   │   │   self._connect_failed = True                                │
+│   101 │   │   │   raise exc                                                  │
+│   102 │   │                                                                  │
+│ ❱ 103 │   │   return self._connection.handle_request(request)                │
+│   104 │                                                                      │
+│   105 │   def _connect(self, request: Request) -> NetworkStream:             │
+│   106 │   │   timeouts = request.extensions.get("timeout", {})               │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py:136 │
+│  in handle_request                                                           │
+│                                                                              │
+│   133 │   │   │   with ShieldCancellation():                                 │
+│   134 │   │   │   │   with Trace("response_closed", logger, request) as trac │
+│   135 │   │   │   │   │   self._response_closed()                            │
+│ ❱ 136 │   │   │   raise exc                                                  │
+│   137 │                                                                      │
+│   138 │   # Sending the request...                                           │
+│   139                                                                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py:86  │
+│ in handle_request                                                            │
+│                                                                              │
+│    83 │   │   │   │   with Trace(                                            │
+│    84 │   │   │   │   │   "send_request_headers", logger, request, kwargs    │
+│    85 │   │   │   │   ) as trace:                                            │
+│ ❱  86 │   │   │   │   │   self._send_request_headers(**kwargs)               │
+│    87 │   │   │   │   with Trace("send_request_body", logger, request, kwarg │
+│    88 │   │   │   │   │   self._send_request_body(**kwargs)                  │
+│    89 │   │   │   except WriteError:                                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py:144 │
+│  in _send_request_headers                                                    │
+│                                                                              │
+│   141 │   │   timeouts = request.extensions.get("timeout", {})               │
+│   142 │   │   timeout = timeouts.get("write", None)                          │
+│   143 │   │                                                                  │
+│ ❱ 144 │   │   with map_exceptions({h11.LocalProtocolError: LocalProtocolErro │
+│   145 │   │   │   event = h11.Request(                                       │
+│   146 │   │   │   │   method=request.method,                                 │
+│   147 │   │   │   │   target=request.url.target,                             │
+│                                                                              │
+│ /Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-no │
+│ ne/lib/python3.12/contextlib.py:158 in __exit__                              │
+│                                                                              │
+│   155 │   │   │   │   # tell if we get the same exception back               │
+│   156 │   │   │   │   value = typ()                                          │
+│   157 │   │   │   try:                                                       │
+│ ❱ 158 │   │   │   │   self.gen.throw(value)                                  │
+│   159 │   │   │   except StopIteration as exc:                               │
+│   160 │   │   │   │   # Suppress StopIteration *unless* it's the same except │
+│   161 │   │   │   │   # was passed to throw().  This prevents a StopIteratio │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpcore/_exceptions.py:14   │
+│ in map_exceptions                                                            │
+│                                                                              │
+│   11 │   except Exception as exc:  # noqa: PIE786                            │
+│   12 │   │   for from_exc, to_exc in map.items():                            │
+│   13 │   │   │   if isinstance(exc, from_exc):                               │
+│ ❱ 14 │   │   │   │   raise to_exc(exc) from exc                              │
+│   15 │   │   raise  # pragma: nocover                                        │
+│   16                                                                         │
+│   17                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ll │
+│ m_http_handler.py:265 in _make_common_sync_call                              │
+│                                                                              │
+│     262 │   │                                                                │
+│     263 │   │   for i in range(max(max_retry_on_unprocessable_entity_error,  │
+│     264 │   │   │   try:                                                     │
+│ ❱   265 │   │   │   │   response = sync_httpx_client.post(                   │
+│     266 │   │   │   │   │   url=api_base,                                    │
+│     267 │   │   │   │   │   headers=headers,                                 │
+│     268 │   │   │   │   │   data=(                                           │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ht │
+│ tp_handler.py:1202 in post                                                   │
+│                                                                              │
+│   1199 │   │   except httpx.HTTPStatusError as e:                            │
+│   1200 │   │   │   _raise_masked_sync_error(e, stream)                       │
+│   1201 │   │   except Exception as e:                                        │
+│ ❱ 1202 │   │   │   raise e                                                   │
+│   1203 │                                                                     │
+│   1204 │   def patch(                                                        │
+│   1205 │   │   self,                                                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ht │
+│ tp_handler.py:1190 in post                                                   │
+│                                                                              │
+│   1187 │   │   │   │   req = self.client.build_request(                      │
+│   1188 │   │   │   │   │   "POST", url, data=request_data, json=json, params │
+│   1189 │   │   │   │   )                                                     │
+│ ❱ 1190 │   │   │   response = self.client.send(req, stream=stream)           │
+│   1191 │   │   │   response.raise_for_status()                               │
+│   1192 │   │   │   return response                                           │
+│   1193 │   │   except httpx.TimeoutException:                                │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_client.py:914 in send │
+│                                                                              │
+│    911 │   │                                                                 │
+│    912 │   │   auth = self._build_request_auth(request, auth)                │
+│    913 │   │                                                                 │
+│ ❱  914 │   │   response = self._send_handling_auth(                          │
+│    915 │   │   │   request,                                                  │
+│    916 │   │   │   auth=auth,                                                │
+│    917 │   │   │   follow_redirects=follow_redirects,                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_client.py:942 in      │
+│ _send_handling_auth                                                          │
+│                                                                              │
+│    939 │   │   │   request = next(auth_flow)                                 │
+│    940 │   │   │                                                             │
+│    941 │   │   │   while True:                                               │
+│ ❱  942 │   │   │   │   response = self._send_handling_redirects(             │
+│    943 │   │   │   │   │   request,                                          │
+│    944 │   │   │   │   │   follow_redirects=follow_redirects,                │
+│    945 │   │   │   │   │   history=history,                                  │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_client.py:979 in      │
+│ _send_handling_redirects                                                     │
+│                                                                              │
+│    976 │   │   │   for hook in self._event_hooks["request"]:                 │
+│    977 │   │   │   │   hook(request)                                         │
+│    978 │   │   │                                                             │
+│ ❱  979 │   │   │   response = self._send_single_request(request)             │
+│    980 │   │   │   try:                                                      │
+│    981 │   │   │   │   for hook in self._event_hooks["response"]:            │
+│    982 │   │   │   │   │   hook(response)                                    │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_client.py:1014 in     │
+│ _send_single_request                                                         │
+│                                                                              │
+│   1011 │   │   │   )                                                         │
+│   1012 │   │                                                                 │
+│   1013 │   │   with request_context(request=request):                        │
+│ ❱ 1014 │   │   │   response = transport.handle_request(request)              │
+│   1015 │   │                                                                 │
+│   1016 │   │   assert isinstance(response.stream, SyncByteStream)            │
+│   1017                                                                       │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py │
+│ :249 in handle_request                                                       │
+│                                                                              │
+│   246 │   │   │   content=request.stream,                                    │
+│   247 │   │   │   extensions=request.extensions,                             │
+│   248 │   │   )                                                              │
+│ ❱ 249 │   │   with map_httpcore_exceptions():                                │
+│   250 │   │   │   resp = self._pool.handle_request(req)                      │
+│   251 │   │                                                                  │
+│   252 │   │   assert isinstance(resp.stream, typing.Iterable)                │
+│                                                                              │
+│ /Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-no │
+│ ne/lib/python3.12/contextlib.py:158 in __exit__                              │
+│                                                                              │
+│   155 │   │   │   │   # tell if we get the same exception back               │
+│   156 │   │   │   │   value = typ()                                          │
+│   157 │   │   │   try:                                                       │
+│ ❱ 158 │   │   │   │   self.gen.throw(value)                                  │
+│   159 │   │   │   except StopIteration as exc:                               │
+│   160 │   │   │   │   # Suppress StopIteration *unless* it's the same except │
+│   161 │   │   │   │   # was passed to throw().  This prevents a StopIteratio │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py │
+│ :118 in map_httpcore_exceptions                                              │
+│                                                                              │
+│   115 │   │   │   raise                                                      │
+│   116 │   │                                                                  │
+│   117 │   │   message = str(exc)                                             │
+│ ❱ 118 │   │   raise mapped_exc(message) from exc                             │
+│   119                                                                        │
+│   120                                                                        │
+│   121 class ResponseStream(SyncByteStream):                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+LocalProtocolError: Illegal header value b'Bearer '
+
+During handling of the above exception, another exception occurred:
+
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/main.py:1971 in      │
+│ completion                                                                   │
+│                                                                              │
+│   1968 │   │   │   │   │   original_response=str(e),                         │
+│   1969 │   │   │   │   │   additional_args={"headers": headers},             │
+│   1970 │   │   │   │   )                                                     │
+│ ❱ 1971 │   │   │   │   raise e                                               │
+│   1972 │   │                                                                 │
+│   1973 │   │   elif custom_llm_provider == "azure_ai":                       │
+│   1974 │   │   │   from litellm.llms.azure_ai.common_utils import AzureFound │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/main.py:1944 in      │
+│ completion                                                                   │
+│                                                                              │
+│   1941 │   │   │   ## COMPLETION CALL                                        │
+│   1942 │   │   │                                                             │
+│   1943 │   │   │   try:                                                      │
+│ ❱ 1944 │   │   │   │   response = base_llm_http_handler.completion(          │
+│   1945 │   │   │   │   │   model=model,                                      │
+│   1946 │   │   │   │   │   messages=messages,                                │
+│   1947 │   │   │   │   │   headers=headers,                                  │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ll │
+│ m_http_handler.py:589 in completion                                          │
+│                                                                              │
+│     586 │   │   else:                                                        │
+│     587 │   │   │   sync_httpx_client = client                               │
+│     588 │   │                                                                │
+│ ❱   589 │   │   response = self._make_common_sync_call(                      │
+│     590 │   │   │   sync_httpx_client=sync_httpx_client,                     │
+│     591 │   │   │   provider_config=provider_config,                         │
+│     592 │   │   │   api_base=api_base,                                       │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ll │
+│ m_http_handler.py:292 in _make_common_sync_call                              │
+│                                                                              │
+│     289 │   │   │   │   else:                                                │
+│     290 │   │   │   │   │   raise self._handle_error(e=e, provider_config=pr │
+│     291 │   │   │   except Exception as e:                                   │
+│ ❱   292 │   │   │   │   raise self._handle_error(e=e, provider_config=provid │
+│     293 │   │   │   break                                                    │
+│     294 │   │                                                                │
+│     295 │   │   if response is None:                                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/ll │
+│ m_http_handler.py:5259 in _handle_error                                      │
+│                                                                              │
+│    5256 │   │   │   │   headers=error_headers,                               │
+│    5257 │   │   │   )                                                        │
+│    5258 │   │                                                                │
+│ ❱  5259 │   │   raise provider_config.get_error_class(                       │
+│    5260 │   │   │   error_message=error_text,                                │
+│    5261 │   │   │   status_code=status_code,                                 │
+│    5262 │   │   │   headers=error_headers,                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+OpenAIError: Illegal header value b'Bearer '
+
+During handling of the above exception, another exception occurred:
+
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/main.py:412 │
+│  in ask                                                                      │
+│                                                                              │
+│    409 │   │   │   f'holmes ask "{prompt}"', span_type=SpanType.TASK         │
+│    410 │   │   ) as trace_span:                                              │
+│    411 │   │   │   trace_span.log(input=prompt, metadata={"type": "user_ques │
+│ ❱  412 │   │   │   response = ai.call(messages, trace_span=trace_span, reque │
+│    413 │   │   │   trace_span.log(                                           │
+│    414 │   │   │   │   output=response.result,                               │
+│    415 │   │   │   )                                                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/sentry_sdk/tracing_utils.py: │
+│ 1044 in sync_wrapper                                                         │
+│                                                                              │
+│   1041 │   │   │   │   │   "Please start a Sentry transaction before calling │
+│   1042 │   │   │   │   │   qualname_from_function(f),                        │
+│   1043 │   │   │   │   )                                                     │
+│ ❱ 1044 │   │   │   │   return f(*args, **kwargs)                             │
+│   1045 │   │   │                                                             │
+│   1046 │   │   │   if isinstance(current_span, StreamedSpan):                │
+│   1047 │   │   │   │   warnings.warn(                                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/tool_c │
+│ alling_llm.py:657 in call                                                    │
+│                                                                              │
+│    654 │   │   │   start_tool_count = 0                                      │
+│    655 │   │   │   saw_tool_results = False                                  │
+│    656 │   │   │                                                             │
+│ ❱  657 │   │   │   for event in stream:                                      │
+│    658 │   │   │   │   # Log blank line when a tool batch ends (transition a │
+│    659 │   │   │   │   if saw_tool_results and event.event != StreamEvents.T │
+│    660 │   │   │   │   │   display_logger.info("")                           │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/tool_c │
+│ alling_llm.py:1216 in call_stream                                            │
+│                                                                              │
+│   1213 │   │   │   with trace_span.start_span(name="gen_ai.chat") as llm_spa │
+│   1214 │   │   │     try:                                                    │
+│   1215 │   │   │   │   _llm_call_start = time.time()                         │
+│ ❱ 1216 │   │   │   │   full_response = self.llm.completion(                  │
+│   1217 │   │   │   │   │   messages=parse_messages_tags(messages),  # type:  │
+│   1218 │   │   │   │   │   tools=tools,                                      │
+│   1219 │   │   │   │   │   tool_choice=tool_choice,                          │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/llm.py │
+│ :763 in completion                                                           │
+│                                                                              │
+│    760 │   │   │   │   }                                                     │
+│    761 │   │   │   ]                                                         │
+│    762 │   │                                                                 │
+│ ❱  763 │   │   result = litellm_to_use.completion(                           │
+│    764 │   │   │   model=litellm_model_name,                                 │
+│    765 │   │   │   api_key=self.api_key,                                     │
+│    766 │   │   │   base_url=self.api_base,                                   │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/utils.py:1775 in     │
+│ wrapper                                                                      │
+│                                                                              │
+│   1772 │   │   │   │   logging_obj.failure_handler(                          │
+│   1773 │   │   │   │   │   e, traceback_exception, start_time, end_time      │
+│   1774 │   │   │   │   )  # DO NOT MAKE THREADED - router retry fallback rel │
+│ ❱ 1775 │   │   │   raise e                                                   │
+│   1776 │                                                                     │
+│   1777 │   @wraps(original_function)                                         │
+│   1778 │   async def wrapper_async(*args, **kwargs):  # noqa: PLR0915        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/utils.py:1596 in     │
+│ wrapper                                                                      │
+│                                                                              │
+│   1593 │   │   │   │   except Exception as e:                                │
+│   1594 │   │   │   │   │   print_verbose(f"Error while checking max token li │
+│   1595 │   │   │   # MODEL CALL                                              │
+│ ❱ 1596 │   │   │   result = original_function(*args, **kwargs)               │
+│   1597 │   │   │   end_time = datetime.datetime.now()                        │
+│   1598 │   │   │   if _is_streaming_request(                                 │
+│   1599 │   │   │   │   kwargs=kwargs,                                        │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/main.py:4614 in      │
+│ completion                                                                   │
+│                                                                              │
+│   4611 │   │   return response                                               │
+│   4612 │   except Exception as e:                                            │
+│   4613 │   │   ## Map to OpenAI Exception                                    │
+│ ❱ 4614 │   │   raise exception_type(                                         │
+│   4615 │   │   │   model=model,                                              │
+│   4616 │   │   │   custom_llm_provider=custom_llm_provider,                  │
+│   4617 │   │   │   original_exception=e,                                     │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/litellm_core_utils/e │
+│ xception_mapping_utils.py:2473 in exception_type                             │
+│                                                                              │
+│   2470 │   │   # don't let an error with mapping interrupt the user from rec │
+│   2471 │   │   if exception_mapping_worked:                                  │
+│   2472 │   │   │   setattr(e, "litellm_response_headers", litellm_response_h │
+│ ❱ 2473 │   │   │   raise e                                                   │
+│   2474 │   │   else:                                                         │
+│   2475 │   │   │   for error_type in litellm.LITELLM_EXCEPTION_TYPES:        │
+│   2476 │   │   │   │   if isinstance(e, error_type):                         │
+│                                                                              │
+│ /Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-envir │
+│ onment/holmes-venv/lib/python3.12/site-packages/litellm/litellm_core_utils/e │
+│ xception_mapping_utils.py:598 in exception_type                              │
+│                                                                              │
+│    595 │   │   │   │   │   │   )                                             │
+│    596 │   │   │   │   │   elif original_exception.status_code == 500:       │
+│    597 │   │   │   │   │   │   exception_mapping_worked = True               │
+│ ❱  598 │   │   │   │   │   │   raise InternalServerError(                    │
+│    599 │   │   │   │   │   │   │   message=f"InternalServerError: {exception │
+│    600 │   │   │   │   │   │   │   model=model,                              │
+│    601 │   │   │   │   │   │   │   llm_provider=custom_llm_provider,         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+InternalServerError: litellm.InternalServerError: InternalServerError: 
+DeepseekException - Illegal header value b'Bearer '
