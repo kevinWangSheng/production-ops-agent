@@ -356,12 +356,15 @@ def test_report_only_initial_raw_and_actual_input_reach_strict_seam(initial_capt
         scenario.agent_input.original_user_content_sha256
         != scenario.agent_input.actual_user_content_sha256
     )
-    assert len(
-        json.dumps(
-            scenario.agent_input.initial_views[0].model_dump(mode="json"),
-            ensure_ascii=False,
-        ).encode()
-    ) <= 14000
+    assert (
+        len(
+            json.dumps(
+                scenario.agent_input.initial_views[0].model_dump(mode="json"),
+                ensure_ascii=False,
+            ).encode()
+        )
+        <= 14000
+    )
     assert outcome.report.claims[0].kind == "fact"
 
 
