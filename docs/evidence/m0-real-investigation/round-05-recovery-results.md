@@ -22,6 +22,19 @@
 
 每份返回 `TRACE_VERIFIED`，仅包含 run/session/name/type、受限 inputs/outputs；`private_fields_persisted=false`，没有 provider reasoning、prompt 凭据或原始私有业务字段。404 采用有界回读重试；409 视为同一 run 的幂等 POST，不重复模型调用。
 
+## 工件 SHA-256
+
+| 工件 | SHA-256 |
+|---|---|
+| B4-1 first | `6f1f16b61c1be8d95902b396ccfec8963c405d7835576c3fb03672efa277f6a7` |
+| B4-1 second | `081356f54d0bc81262e1c723649a6402d8e2cb1a14eebdf64c17e553453c03ad` |
+| B4-1 trace | `1780489375caddcd6ec0101b0f58d5d44cc59073c46319fd3e9dcb03cd2cd9d8` |
+| B4-2 cancel | `a0785b36348e2426190ba47505cc969dac0ef2d300d80a596adac95110132d4b` |
+| B4-2 trace | `c29b435392a4adca5f5373c9695e7db4c0e510514a8c458a7156e44fc69fdf58` |
+| B4-3 incompatible | `0e1823fc1fec804e9c8f7971ed4e8ec2c536defb35cc977225673e05e4c3ef8e` |
+| B4-3 trace | `15ff426e46d7b252397611cceecb81f8404199ef88a4317239b28124df199ec8` |
+| B5 PG readonly | `07a5d21b09c41279b7cb1838f537718b6ade53bd571e34841f75505157d8fca6` |
+
 ## 用量与费用
 
 完整安全摘要：[`round-05-b4-usage-ledger.json`](round-05-b4-usage-ledger.json)。
