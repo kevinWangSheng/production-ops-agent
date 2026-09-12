@@ -28,7 +28,12 @@ def _validated_tool_calls(assistant):
     if not isinstance(assistant, dict):
         raise ProtocolError("ASSISTANT_INVALID")
     calls = assistant.get("tool_calls", [])
-    if not isinstance(calls, list) or any(not isinstance(call, dict) for call in calls):
+    if not isinstance(calls, list) or any(
+        not isinstance(call, dict)
+        or not isinstance(call.get("id"), str)
+        or not call["id"]
+        for call in calls
+    ):
         raise ProtocolError("TOOL_CALLS_INVALID")
     return calls
 
