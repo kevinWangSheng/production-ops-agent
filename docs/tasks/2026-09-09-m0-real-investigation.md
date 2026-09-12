@@ -491,3 +491,10 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - `7a4a4e0` 让每条记录严格只允许 `view_hash` 与 `timing`，额外字段立即抛出 `INITIAL_TIMING_ECHO_MISMATCH`；新增 `test_timing_sidecar_rejects_unknown_record_fields` 覆盖 `credential` 与 `untrusted_payload`。
 - 定向测试 16 passed；完整 `make check` 736 passed / 45 skipped，输出见 `round-06-timing-sidecar-fix-targeted.txt` 与 `round-06-timing-sidecar-fix-make-check.txt`。已回复并 resolve thread `PRRT_kwDOUSm_486hv06x`，提交已推送；独立代码复核无发现。
 - 当前最新 HEAD 的 CI 已通过；覆盖 `7a4a4e0` 的 bot review 已触发，结果尚未返回。SPEC gate、feature passes 与合并授权不变。
+
+## 2026-09-12 PR 尾项与工作包 3 控制合同
+
+- `e505f2b` 修复 `StepStore.commit_tool`：非 dict 的 list/str 结果在任何键访问前统一抛出 `TOOL_PAIRING_INVALID`；定向 8 passed，thread `PRRT_kwDOUSm_486hyT3t` 已回复并 resolve。
+- `round-07-merge-tree.txt` 记录 `git merge-tree --write-tree main HEAD` 无冲突；仅读检查未触碰 main 工作区的用户改动。
+- 新增真实专属 PG opt-in 合同 `round-06-control-contracts.md` 与 `test_m0_control_contracts_postgres.py`：generation 竞争、HealthProfile 旧版本/固定时钟存储、pause/resume fail-closed、investigation identity 隔离共 4 passed；PG 已停止并保留卷。初始失败样例单独保留。
+- pause/resume 与独立 observer 授权仍标为证据不足/部分，不把 fail-closed 输入拒绝冒称完整产品状态机通过；SPEC gate 与 feature passes 不变。

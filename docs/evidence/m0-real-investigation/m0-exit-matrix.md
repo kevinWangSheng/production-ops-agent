@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | 1. 实验合同与证据 | 部分 | 真实 + 替身 | M0-01/M0-02 合同、v4 严格报告、M003/M004 observation 与独立复审（[`first-investigation-v4`](../../testing/first-investigation-v4-2026-09-10.md)、[`round-04 review`](round-04-m004-independent-review.md)） | 八包逐项退出判据此前没有单一矩阵；失败/证据不足仍在各原始记录中，不能合并成通过。 |
 | 2. 模型与框架兼容 | 部分 | 真实 Flash + 替身 | Flash 多轮工具/JSON/PG/trace 回读见 [`trace-diagnosis`](../m0-01-live/trace-diagnosis.md)；malformed tool-call 合同见 `tests/test_m0_step_store_protocol.py`；B7 固定序列离线比较见 [`ADR-0004`](../../adr/0004-langgraph-orchestration.md) | 流式中断、工具错误续接的真实组合证据不足；LangGraph 只验证了最小离线步骤，不证明生产 checkpoint/性能收益。 |
-| 3. 持久恢复、人工控制与升级 | 部分 | 真实 PG 子集 + 替身 | PG 断点/取消/迟到拒绝见 [`test_m0_step_store_postgres.py`](../../../tests/integration/test_m0_step_store_postgres.py)；B4 三项真实组合见 [`round-05-recovery-results`](round-05-recovery-results.md)；v4 控制审查见 [`round-02-final-pointer-review`](round-02-final-pointer-review.md) | DB 短故障、发布→事故竞争、no-data/stale 交接、HealthProfile 乱序、全局/目标暂停和单独观察并发尚未形成完整矩阵。 |
+| 3. 持久恢复、人工控制与升级 | 部分 | 真实 PG 子集 + 替身 | PG 断点/取消/迟到拒绝见 [`test_m0_step_store_postgres.py`](../../../tests/integration/test_m0_step_store_postgres.py)；B4 三项真实组合见 [`round-05-recovery-results`](round-05-recovery-results.md)；工作包 3 新控制合同见 [`round-06-control-contracts`](round-06-control-contracts.md)；v4 控制审查见 [`round-02-final-pointer-review`](round-02-final-pointer-review.md) | DB 短故障全链路、HealthProfile 持久乱序重放、全局/目标暂停状态机、独立 observer 授权并发仍未形成完整矩阵。 |
 | 4. 真实环境与权限 | 部分 | 真实 OTel + 真实 PG + 离线权限合同 | OTel 2.0.2 正常/故障/恢复 observations 与 26 镜像冻结证据；B5 PG 只读角色实际拒绝见 [`round-05-isolation-plan`](round-05-isolation-plan.md)；工具 scope/只读边界回归见 [`round-03-quality-summary`](round-03-quality-summary.md) | Kubernetes RBAC 仍当前环境缺测；Holmes 宿主 OS 隔离明确未测，不能以容器探针替代。 |
 | 5. 上游基线与 eval 校准 | 部分 | 真实 Holmes + 离线 rubric | Holmes 固定 checkout 与 M004 独立报告复审；B6 认证线路后续复验返回模型内容见 [`round-06-upstream-auth-followup-results`](round-06-upstream-auth-followup-results.md)；报告质量由新上下文独立审查，正常/故障各 2/2 候选 | 尚无可比的上游最终报告 Run；人工 judge 校准和保留集盲测尚未就绪，当前样本仍是开发集，不代表泛化。 |
 | 6. Trace、审计与平台 | 部分 | 真实单链路 + 审计回归 | M0-01 LangSmith 白名单上传/回读 `TRACE_VERIFIED`（[`trace-diagnosis`](../m0-01-live/trace-diagnosis.md)）；v4 raw/view/hash 与业务报告摘要已提交 | Holmes M0-03 真实调查 trace 为 0；平台不可用恢复导出、完整白名单回读和跨 Run 关联尚未闭环。 |
@@ -64,10 +64,10 @@
 - [部分/真实 PG] ToolOperation 部分完成重建：同上。
 - [部分/真实 PG] 取消/纠正、迟到结果拒绝：同上。
 - [部分/替身] no-data/stale 交接与缺 profile→unknown：`tests/test_m0_outcomes.py`。
-- [无] 发布异常转事故与既有事故接管竞争。
-- [无] HealthProfile 变更与乱序采样。
-- [无] 全局/目标暂停与 resume。
-- [无] 单独观察授权并发。
+- [部分/真实 PG] 发布异常转事故与既有事故接管竞争：`test_release_failure_then_takeover_generation_race_keeps_first_control`；旧 generation 被 `CONTROL_CONFLICT` 拒绝。
+- [部分/真实 PG + 固定时钟] HealthProfile 变更与乱序采样：`test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock`；schema/旧版本保真已测，持久观察流乱序仍缺。
+- [证据不足/真实 PG fail-closed] 全局/目标暂停与 resume：`test_global_pause_and_resume_are_fail_closed_until_control_contract_exists`；当前 pause/resume API 尚不存在，未把 fail-closed 输入拒绝写成状态机通过。
+- [部分/真实 PG] 单独观察授权并发：`test_observer_authorization_cannot_borrow_investigation_identity`；investigation identity 不可借用，独立 observer 授权 API 仍缺。
 
 ### 工作包 4：真实环境与权限
 

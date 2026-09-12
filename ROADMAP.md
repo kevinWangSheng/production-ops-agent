@@ -138,3 +138,9 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 
 - [x] 受信任启动器从私有 `.env` 向固定 Holmes checkout 注入 DeepSeek 凭据，单步无工具请求已返回模型内容；未打印、导出或上传凭据。
 - [ ] 该次启动未持久化 wire HTTP 状态/usage，且模型输出未执行的 shell tool-call，不能计入正式同条件质量样本；B6 正式比较、judge 校准和盲测仍保持证据不足。详见 [`round-06-upstream-auth-followup-results`](docs/evidence/m0-real-investigation/round-06-upstream-auth-followup-results.md)。
+
+## 2026-09-12 PR 尾项与 B3 控制合同
+
+- [x] `commit_tool` 对非 mapping result 统一返回 `TOOL_PAIRING_INVALID`，list/str 回归通过；review thread 已回复并 resolve，见 `e505f2b`。
+- [x] `git merge-tree --write-tree main HEAD` 无冲突，结果树与 main 用户未提交改动均未被触碰；证据见 [`round-07-merge-tree`](docs/evidence/m0-real-investigation/round-07-merge-tree.txt)。
+- [x] 工作包 3 新增专属 PG opt-in 控制合同：generation 竞争、HealthProfile 旧版本/固定时钟存储、pause/resume fail-closed、investigation identity 隔离；4 passed，失败样例保留于 [`round-06-control-contracts`](docs/evidence/m0-real-investigation/round-06-control-contracts.md)。pause/resume 完整状态机与独立 observer 授权 API 仍缺，未汇总为 M0 通过。
