@@ -705,10 +705,14 @@ def main():
                 raise RuntimeError("query authorization deadline reached")
             nonlocal tool_elapsed
             with tool_io_lock:
+                now = time.time()
+                if now >= scope["effective_query_deadline"]:
+                    raise RuntimeError("query authorization deadline reached")
                 remaining = min(
                     PROFILE.tool_seconds,
                     PROFILE.tool_total_seconds - tool_elapsed,
-                    run_stop - time.time(),
+                    run_stop - now,
+                    scope["effective_query_deadline"] - now,
                 )
                 if remaining <= 4:
                     raise TimeoutError("tool total deadline")
