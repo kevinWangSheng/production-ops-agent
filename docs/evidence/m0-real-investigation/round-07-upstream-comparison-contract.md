@@ -1,6 +1,6 @@
 # B6 round-07 上游与候选同工具面比较合同
 
-状态：**执行前记录；每 Run 最多 2 个模型 HTTP，本项合计最多 8 HTTP / 8 CNY 预留；不上传 trace；不启动 m0-otel。**
+状态：**已执行；每 Run 最多 2 个模型 HTTP，本项实际 8 HTTP / known upper 0.228585 CNY；不上传 trace；未启动 m0-otel。**
 日期：2026-09-12。工作区 `production-ops-agent-m0-07-wp5`（分支 `chore/m0-07-wp5`，基线 `c618651`）。
 
 ## 问题与根因
