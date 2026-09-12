@@ -113,6 +113,8 @@ def tool_remaining(*, scope_deadline, run_stop, tool_elapsed, profile, now=None)
     if remaining <= 4:
         if scope_remaining <= 4:
             raise RuntimeError("query authorization deadline reached")
+        if run_stop - now <= 4:
+            raise RuntimeError("deadline reached")
         raise TimeoutError("tool total deadline")
     return remaining
 

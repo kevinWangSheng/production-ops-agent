@@ -107,6 +107,19 @@ def test_tool_remaining_under_four_seconds_reports_query_deadline(monkeypatch):
         )
 
 
+def test_tool_remaining_near_run_deadline_reports_run_deadline(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.m0_environment.holmes_baseline.time.time", lambda: 100.0
+    )
+    with pytest.raises(RuntimeError, match="deadline reached"):
+        tool_remaining(
+            scope_deadline=200.0,
+            run_stop=103.0,
+            tool_elapsed=0.0,
+            profile=PROFILE,
+        )
+
+
 def test_query_authorization_deadline_is_a_known_boundary_code():
     assert "query authorization deadline reached" in KNOWN_BOUNDARY_CODES
 
