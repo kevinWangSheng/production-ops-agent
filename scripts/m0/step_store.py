@@ -618,7 +618,8 @@ class StepStore:
         if status not in {"success", "failed", "cancelled", "unknown"}:
             raise BudgetError("INVALID_INPUT")
         if (
-            set(result) != {"role", "tool_call_id", "content"}
+            not isinstance(result, dict)
+            or set(result) != {"role", "tool_call_id", "content"}
             or result["role"] != "tool"
             or not isinstance(result["content"], str)
         ):
