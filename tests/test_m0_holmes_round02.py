@@ -16,6 +16,7 @@ from scripts.m0_environment.round02 import (
 )
 from scripts.m0_environment.holmes_baseline import (
     KNOWN_BOUNDARY_CODES,
+    effective_query_deadline,
     tool_remaining,
 )
 
@@ -108,6 +109,11 @@ def test_tool_remaining_under_four_seconds_reports_query_deadline(monkeypatch):
 
 def test_query_authorization_deadline_is_a_known_boundary_code():
     assert "query authorization deadline reached" in KNOWN_BOUNDARY_CODES
+
+
+def test_boolean_query_deadline_is_rejected():
+    with pytest.raises(ValueError, match="trusted query deadline invalid"):
+        effective_query_deadline(True, PROFILE.deadline)
 
 
 @pytest.mark.usefixtures("predeadline_budget_clock")

@@ -82,6 +82,17 @@ KNOWN_BOUNDARY_CODES = (
 )
 
 
+def effective_query_deadline(source_deadline, profile_deadline):
+    """Validate and combine source authorization with the profile ceiling."""
+    if (
+        isinstance(source_deadline, bool)
+        or not isinstance(source_deadline, (int, float))
+        or not math.isfinite(source_deadline)
+    ):
+        raise ValueError("trusted query deadline invalid")
+    return min(source_deadline, profile_deadline)
+
+
 def tool_remaining(*, scope_deadline, run_stop, tool_elapsed, profile, now=None):
     """Return a bounded tool timeout after lock acquisition.
 
@@ -512,12 +523,9 @@ def main():
         if registry.get("integration_id") != scope["integration_id"]:
             raise ValueError("registry integration mismatch")
         scope["deployment_registry_sha256"] = canonical_hash(registry)
-        source_deadline = scope.get("effective_query_deadline", PROFILE.deadline)
-        if not isinstance(source_deadline, (int, float)) or not math.isfinite(
-            source_deadline
-        ):
-            raise ValueError("trusted query deadline invalid")
-        scope["effective_query_deadline"] = min(source_deadline, PROFILE.deadline)
+        scope["effective_query_deadline"] = effective_query_deadline(
+            scope.get("effective_query_deadline", PROFILE.deadline), PROFILE.deadline
+        )
     permitted_interfaces = allowed_interfaces(scope) if scope else frozenset()
     time_policies = []
     if args.report_version == REPORT_VERSION:
