@@ -15,6 +15,7 @@ import fcntl
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -476,10 +477,12 @@ def main():
         if registry.get("integration_id") != scope["integration_id"]:
             raise ValueError("registry integration mismatch")
         scope["deployment_registry_sha256"] = canonical_hash(registry)
-        scope["effective_query_deadline"] = min(
-            PROFILE.deadline,
-            PROFILE.deadline,
-        )
+        source_deadline = scope.get("effective_query_deadline", PROFILE.deadline)
+        if not isinstance(source_deadline, (int, float)) or not math.isfinite(
+            source_deadline
+        ):
+            raise ValueError("trusted query deadline invalid")
+        scope["effective_query_deadline"] = min(source_deadline, PROFILE.deadline)
     permitted_interfaces = allowed_interfaces(scope) if scope else frozenset()
     time_policies = []
     if args.report_version == REPORT_VERSION:
