@@ -2,6 +2,8 @@
 
 执行日期：2026-09-12。依据已批准的 [`round-05-recovery-contract.md`](round-05-recovery-contract.md)。本轮使用新 allocation `m0-05-b4-20260912`，不改历史账本；专属 PG 与 `m0-otel` 已在本结果完成后停止。
 
+B4-1 启动时使用的短运行截止在等待人工/环境步骤期间过期；B4-2/B4-3 改用同一已批准 allocation 的新截止记录（[`round-05-b4-deadline-2.txt`](round-05-b4-deadline-2.txt)），没有重用旧账本、增加 HTTP 或扩大费用上界。该时间处置保留在原始输出中。
+
 ## 结果矩阵
 
 | 项目 | 结果 | 实际证据 |
