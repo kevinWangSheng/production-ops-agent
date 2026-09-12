@@ -561,6 +561,6 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 
 - CI run `34722283700` 的 checks 仅在 Gitleaks 合成 canary 自测处失败，`m0-postgres` 通过；原始输出保留在 `round-08-ci-secret-scan-failure.txt`。
 - `b305e8f` 为 scanner 增加仅匹配 `api_key = \"<48 hex>\"` 的显式自测规则，保持默认规则和已审查 manifest 例外不变；本地 Gitleaks 8.30.1 自测通过。
-- `make check` 复验：778 passed / 54 skipped，输出 `round-08-scanner-fix-make-check.txt`。已推送，等待新 CI 与覆盖最新 HEAD 的 bot review；SPEC gate 和 feature passes 不变。
+- `make check` 复验：778 passed / 54 skipped，输出 `round-08-scanner-fix-make-check.txt`。已推送；最新 CI run `34722643681` 的 `checks` 与 `m0-postgres` 均成功，覆盖 `7761958` 的 bot review 于 22:28 UTC 返回 “Didn't find any major issues”。SPEC gate 和 feature passes 不变。
 
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
