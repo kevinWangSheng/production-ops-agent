@@ -149,3 +149,13 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 
 - [x] 隔离 probe 在 6 HTTP 上界内实际执行 5 HTTP：stream 中断 2、工具 4xx continuation 2、手工配对视图 1；0 trace，费用按 ledger 记账，详见 [`round-06-protocol-results`](docs/evidence/m0-real-investigation/round-06-protocol-results.md)。
 - [ ] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计，context compressor 尚不存在；不修改主 transport 合同，不打开 SPEC gate。
+
+## 2026-09-12 B6 M004 上游复验
+
+- [x] M004 normal/fault 各完成 1 次固定 Holmes 上游复验（2 HTTP，0 trace，4 CNY unknown reservation）；均到达模型但只产生未执行 tool-call，没有最终报告。详见 [`round-06-upstream-comparison`](docs/evidence/m0-real-investigation/round-06-upstream-comparison.md)。
+- [ ] 同条件质量比较、judge 人工校准与保留集盲测仍证据不足；失败进入分母，不宣称候选优于上游。SPEC gate 继续 `not cleared`。
+
+## 2026-09-12 用户审核材料
+
+- [x] 已生成 6 份独立审查样本的 judge 人工校准包、ledger 账单对账模板和 SPEC gate 两选项草案；均只作审核材料，不修改 SPEC gate 或 feature passes。
+- [ ] 待用户确认 judge 分数、供应商账单差额、是否保持 gate `not cleared`；B5 K8s/OS 设施与采购仍不执行。

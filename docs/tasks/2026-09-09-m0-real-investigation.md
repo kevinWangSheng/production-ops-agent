@@ -506,3 +506,15 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 工具错误续接：首请求真实 tool call，注入固定无敏感 404 消息，第二请求 HTTP 200/stop；只记 provider 协议部分通过，未宣称 StepStore/PG 审计完成。
 - 上下文压缩：手工构造 assistant/tool 成对视图 HTTP 200/stop；仓库无 compressor，记证据不足，不把配对视图冒称压缩机制。
 - 原始摘要/hash/失败前置错误见 `round-06-protocol-results.md`；0 HTTP 的 `ModuleNotFoundError` 首次调用单独保留，后续模块调用才执行合同请求。SPEC gate 与 feature passes 不变。
+
+## 2026-09-12 工作包 5 M004 上游复验
+
+- 按独立 follow-up 合同对 M004 normal/fault 各执行 1 次固定 Holmes checkout，确认到达 DeepSeek 模型；总 2 HTTP、0 trace，4 CNY unknown reservation，未启动 OTel/故障注入。
+- 两次均在单步响应中生成未执行的 shell tool-call，没有最终报告或可比较 evidence view；失败进入分母，不计算候选与上游质量差异。差异披露见 [`round-06-upstream-comparison.md`](../evidence/m0-real-investigation/round-06-upstream-comparison.md)，ledger 见同目录 `round-06-upstream-comparison-ledger.json`。
+- 费用授权已使用本 session 既有批准，不再等待二次确认；wire usage 未返回的 4 CNY 预留保持 unknown。B6 judge/盲测与 B8 账单仍待后续条件。
+
+## 2026-09-12 用户审核材料
+
+- Judge 校准包：[`round-06-judge-annotation-packet.md`](../evidence/m0-real-investigation/round-06-judge-annotation-packet.md)，6 份既有独立审查样本已预填 rubric 分数和理由，保留人工确认列；不当作 held-out 成绩。
+- 账单对账模板：[`round-06-billing-reconciliation.md`](../evidence/m0-real-investigation/round-06-billing-reconciliation.md)，汇总历史与本轮 ledger，供应商金额/差额留空，unknown 不释放。
+- Gate 决策草案：[`round-06-gate-decision-draft.md`](../evidence/m0-real-investigation/round-06-gate-decision-draft.md)，提供保持 `not cleared` 与有界开放 M1-01 两个选项；未修改 SPEC 或 feature passes。
