@@ -103,4 +103,4 @@ M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文�
 - [ ] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，待用户批准。
 - [ ] B3 已补 `no_data/stale/缺 profile/观察缺口` 的可控语义回归并索引真实 PG 子集；DB 短故障、发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
 
-PR16 收尾 tip `cbf0364`：本地 `make check` 716 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`44932c9` 的 bot review 不覆盖当前 tip，当前 HEAD bot 结果缺失/可能受额度限制，已由全新上下文独立复验替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
+PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`0babc02` 的 bot review 无 major issues，覆盖其代码；`0774960` 当前 bot 结果尚未返回，已由全新上下文独立复验与父提交 review 边界替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
