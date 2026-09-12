@@ -102,3 +102,5 @@ M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文�
 - [ ] B1 八包退出矩阵与 M1-01 任务/工时估算已建立：[m0-exit-matrix](docs/evidence/m0-real-investigation/m0-exit-matrix.md)。矩阵仅作索引，未把 partial/证据不足汇总为通过。
 - [ ] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，待用户批准。
 - [ ] B3 已补 `no_data/stale/缺 profile/观察缺口` 的可控语义回归并索引真实 PG 子集；DB 短故障、发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
+
+PR16 收尾 tip `cbf0364`：本地 `make check` 716 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`44932c9` 的 bot review 不覆盖当前 tip，当前 HEAD bot 结果缺失/可能受额度限制，已由全新上下文独立复验替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。

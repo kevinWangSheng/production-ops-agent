@@ -422,3 +422,7 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 ### 验证与待办
 
 待运行本 worktree 的定向测试与完整 `make check`，输出保存到 `docs/evidence/m0-real-investigation/`。PR review thread 回复、最新 HEAD CI/bot 覆盖和 PR 描述更新属于 A1/A4 收尾；B4–B8 不在本轮离线授权内。
+
+### 收尾结果（2026-09-11）
+
+定向 162 passed，完整 `make check` 716 passed/44 skipped，B3 专属 PG 27+9+restart1 passed 后已停止并保留卷。PR #16 tip `cbf0364` 的 `checks` 与 `m0-postgres` 已成功；11 个遗留 threads 已逐条回复并 resolve。`44932c9` 的 bot review 无 major issues 但不覆盖后续 `cbf0364`；当前 HEAD 的新触发结果暂缺，PR 描述已记录额度拒绝原文和全新上下文独立审查替代。PR 不自动合并，SPEC gate 与 B4/B5/B8 决策仍待用户。
