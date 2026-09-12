@@ -484,3 +484,10 @@ B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0
 - 全新上下文独立复核见 [`round-06-auth-followup-independent-review.md`](../evidence/m0-real-investigation/round-06-auth-followup-independent-review.md)：工具定义暴露边界与候选 ledger 可回读性两项发现已修正，无剩余文档边界发现。
 
 PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先返回 `UNCOMMITTED_CANDIDATE`，专属 PG 回归通过；最终 `make check` 732 passed/45 skipped，输出 `round-05-final-make-check-after-publish.txt`。该修复已回复并 resolve review thread，当前代码/文档 tip 为 `db61c67`。
+
+## 2026-09-12 timing sidecar review 修复
+
+- bot 在 `holmes_baseline.py:689` 发现 `validate_timing_echo` 忽略 sidecar 记录额外字段，可能将未验证凭据字段原样归档到 `initial-timings-input.json`；该 P1 属实，已纳入修复，不视为误报。
+- `7a4a4e0` 让每条记录严格只允许 `view_hash` 与 `timing`，额外字段立即抛出 `INITIAL_TIMING_ECHO_MISMATCH`；新增 `test_timing_sidecar_rejects_unknown_record_fields` 覆盖 `credential` 与 `untrusted_payload`。
+- 定向测试 16 passed；完整 `make check` 736 passed / 45 skipped，输出见 `round-06-timing-sidecar-fix-targeted.txt` 与 `round-06-timing-sidecar-fix-make-check.txt`。已回复并 resolve thread `PRRT_kwDOUSm_486hv06x`，提交已推送；独立代码复核无发现。
+- 当前最新 HEAD 的 CI 已通过；覆盖 `7a4a4e0` 的 bot review 已触发，结果尚未返回。SPEC gate、feature passes 与合并授权不变。
