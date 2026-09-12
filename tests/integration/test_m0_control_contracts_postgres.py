@@ -61,7 +61,7 @@ def test_release_failure_then_takeover_generation_race_keeps_first_control(lab):
     assert "payload" not in snapshot["controls"][0]
 
 
-def test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock(lab):
+def test_health_profile_revision_and_capture_order_preserve_revision_mismatch(lab):
     _, ledger, run, subject = lab
     target = Target(
         integration_id="m0-otel",

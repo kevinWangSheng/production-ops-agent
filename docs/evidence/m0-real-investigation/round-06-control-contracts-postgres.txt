@@ -7,15 +7,15 @@ plugins: anyio-4.15.1
 collecting ... collected 4 items
 
 tests/integration/test_m0_control_contracts_postgres.py::test_release_failure_then_takeover_generation_race_keeps_first_control PASSED [ 25%]
-tests/integration/test_m0_control_contracts_postgres.py::test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock PASSED [ 50%]
+tests/integration/test_m0_control_contracts_postgres.py::test_health_profile_revision_and_capture_order_preserve_revision_mismatch PASSED [ 50%]
 tests/integration/test_m0_control_contracts_postgres.py::test_global_pause_and_resume_are_fail_closed_until_control_contract_exists PASSED [ 75%]
 tests/integration/test_m0_control_contracts_postgres.py::test_observer_authorization_cannot_borrow_investigation_identity PASSED [100%]
 
 ==================================== PASSES ====================================
 =========================== short test summary info ============================
 PASSED tests/integration/test_m0_control_contracts_postgres.py::test_release_failure_then_takeover_generation_race_keeps_first_control
-PASSED tests/integration/test_m0_control_contracts_postgres.py::test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock
+PASSED tests/integration/test_m0_control_contracts_postgres.py::test_health_profile_revision_and_capture_order_preserve_revision_mismatch
 PASSED tests/integration/test_m0_control_contracts_postgres.py::test_global_pause_and_resume_are_fail_closed_until_control_contract_exists
 PASSED tests/integration/test_m0_control_contracts_postgres.py::test_observer_authorization_cannot_borrow_investigation_identity
-============================== 4 passed in 0.89s ===============================
+============================== 4 passed in 0.79s ===============================
 pytest_exit=0
