@@ -4,6 +4,23 @@
 Current phase: M0 质量包已完成本轮可执行复验；专属 m0-otel 已停止，历史证据保全。CI/本地/独立复验完成，Security 按用户决定忽略；不自动合并 PR。
 Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline 对照；专属 m0-otel 已停止，历史容器/卷/VM/证据保留。Code/CI 交付门已通过，Security 按用户决定忽略；SPEC gate 仍 not cleared，等待最终入口决策。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
 
+## 当前有效状态（2026-09-12，覆盖下方历史 checklist）
+
+| 项目 | 当前状态 | 证据/下一步 |
+|---|---|---|
+| PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；当前 HEAD `c618651`，CI `checks`/`m0-postgres` 通过。 |
+| B1 退出矩阵 | **已完成** | [`m0-exit-matrix.md`](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 已建立并持续更新。 |
+| B2 预算校准 | **部分完成** | 候选值和历史分布已写入 v4 校准段；最终冻结仍待用户批准。 |
+| B3 控制合同 | **部分完成** | 专属 PG 4 项合同通过；pause/resume 完整状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
+| B4 真实恢复 | **已完成（机制范围）** | 三项 Run、PG 重建/取消/不兼容 handoff 和 LangSmith 白名单回读均有证据；不等于产品恢复验收。 |
+| B5 权限/隔离 | **部分完成** | PG 只读角色实际拒绝写/DDL；K8s RBAC 环境缺测，OS 隔离未采购。 |
+| B6 上游/eval | **部分完成** | provider probe 和 M004 upstream 复验已执行；正式可比报告未形成。judge 标注包已准备，人工校准/盲测待用户处理。 |
+| B7 LangGraph | **已完成（离线比较）** | 1.2.11 隔离比较无可见收益，ADR-0004 推荐推迟；是否采用仍待用户决定。 |
+| B8 账单 | **未完成** | 对账模板已准备，等待用户提供供应商账单导出/截图。 |
+| SPEC gate / feature passes | **未开放/未修改** | `SPEC.md` 仍 `not cleared`；11 个 feature passes 均保持原值。 |
+
+下方按日期排列的旧段落是历史过程记录；读取当前进度时以上表和文档末尾最新日期段为准。
+
 ## Completed decisions and documentation
 
 - [x] 2026-09-09 用户指定默认DeepSeek Flash：直接使用deepseek-v4-flash，保留thinking/high。Pro及首次Flash记录保留；本轮新的真实Flash/上游实验见当前报告，不复用旧批准。
@@ -99,9 +116,9 @@ M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文�
 
 ## M0 退出矩阵与离线补证（2026-09-11）
 
-- [ ] B1 八包退出矩阵与 M1-01 任务/工时估算已建立：[m0-exit-matrix](docs/evidence/m0-real-investigation/m0-exit-matrix.md)。矩阵仅作索引，未把 partial/证据不足汇总为通过。
-- [ ] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，待用户批准。
-- [ ] B3 已补 `no_data/stale/缺 profile/观察缺口` 的可控语义回归并索引真实 PG 子集；DB 短故障、发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
+- [x] B1 八包退出矩阵与 M1-01 任务/工时估算已建立：[m0-exit-matrix](docs/evidence/m0-real-investigation/m0-exit-matrix.md)。矩阵仅作索引，未把 partial/证据不足汇总为通过。
+- [-] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，最终冻结待用户批准。
+- [-] B3 已补 unknown 语义、真实 PG 子集和 4 项控制合同；pause/resume 完整状态机、HealthProfile 持久乱序和独立 observer 授权仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/round-06-control-contracts.md)。
 
 PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`0babc02` 的 bot review 无 major issues，覆盖其代码；`0774960` 当前 bot 结果尚未返回，已由全新上下文独立复验与父提交 review 边界替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
 
@@ -111,10 +128,10 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 
 - [x] C1–C5 代码修正已按独立提交完成，最终本地 `make check` 730 passed/44 skipped；没有模型/trace/OTel 操作。代码独立复审待记录。
 - [x] D1–D3 文档状态已拆分并修正：退出矩阵、B3 `-rA` PG 输出、v4 候选预算出处均已更新。
-- [ ] B4 真实恢复合同已准备但待用户批准（每项 ≤2 HTTP、各 2 CNY，上限总 6 CNY）；未执行。
-- [ ] B5 只读 PG/RBAC/OS 隔离方案已准备；当前 K8s 缺测，未采购、未创建角色。
-- [ ] B6 上游同条件比较与 judge rubric 已准备；6 份独立审查仅作待人工校准样本，未执行盲测。
-- [ ] B7 已用隔离 `uv run --with langgraph` 执行最小 StateGraph（版本 1.2.11）；与现有 loop 均 2 步/2 持久点/第二步取消，0 模型/工具 HTTP。ADR-0004 推荐推迟，是否加入主依赖待用户决定。
+- [x] B4 真实恢复合同已执行：每项 1 次、总 3 HTTP，三次 LangSmith 白名单回读 `TRACE_VERIFIED`；结果见 `round-05-recovery-results.md`。
+- [-] B5 只读 PG 子项已执行并保留角色；K8s RBAC 环境缺测，OS 隔离未采购。
+- [-] B6 上游比较已执行 provider/单步复验，judge 标注包已准备；正式可比报告、人工校准和盲测仍未完成。
+- [x] B7 已用隔离 `uv run --with langgraph` 执行最小 StateGraph（版本 1.2.11）；与现有 loop 均 2 步/2 持久点/第二步取消，0 模型/工具 HTTP。ADR-0004 推荐推迟，采用与否待用户决定。
 
 以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。
 
@@ -124,7 +141,7 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 
 - [x] B4 三项真实恢复/控制验证各执行 1 次；B4-1 恢复、B4-2 cancel 迟到拒绝、B4-3 `INCOMPATIBLE_STATE` handoff 均有结果记录。3 模型 HTTP、known cost 0.004293 CNY、unknown reservation 1.0 CNY，未超 6 CNY 合同上界；三次 LangSmith 白名单回读 `TRACE_VERIFIED`。
 - [x] B5 专属 PG 只读角色实际 SELECT 成功、写/DDL 拒绝；K8s 标环境缺测，OS 隔离方案不采购。
-- [ ] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
+- [x] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
 - [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。
 
 PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。
@@ -148,12 +165,12 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 ## 2026-09-12 工作包 2 真实协议补证
 
 - [x] 隔离 probe 在 6 HTTP 上界内实际执行 5 HTTP：stream 中断 2、工具 4xx continuation 2、手工配对视图 1；0 trace，费用按 ledger 记账，详见 [`round-06-protocol-results`](docs/evidence/m0-real-investigation/round-06-protocol-results.md)。
-- [ ] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计，context compressor 尚不存在；不修改主 transport 合同，不打开 SPEC gate。
+- [-] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计，context compressor 尚不存在；不修改主 transport 合同，不打开 SPEC gate。
 
 ## 2026-09-12 B6 M004 上游复验
 
 - [x] M004 normal/fault 各完成 1 次固定 Holmes 上游复验（2 HTTP，0 trace，4 CNY unknown reservation）；均到达模型但只产生未执行 tool-call，没有最终报告。详见 [`round-06-upstream-comparison`](docs/evidence/m0-real-investigation/round-06-upstream-comparison.md)。
-- [ ] 同条件质量比较、judge 人工校准与保留集盲测仍证据不足；失败进入分母，不宣称候选优于上游。SPEC gate 继续 `not cleared`。
+- [-] 同条件质量比较、judge 人工校准与保留集盲测仍证据不足；失败进入分母，不宣称候选优于上游。SPEC gate 继续 `not cleared`。
 
 ## 2026-09-12 用户审核材料
 

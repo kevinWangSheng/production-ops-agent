@@ -518,3 +518,20 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - Judge 校准包：[`round-06-judge-annotation-packet.md`](../evidence/m0-real-investigation/round-06-judge-annotation-packet.md)，6 份既有独立审查样本已预填 rubric 分数和理由，保留人工确认列；不当作 held-out 成绩。
 - 账单对账模板：[`round-06-billing-reconciliation.md`](../evidence/m0-real-investigation/round-06-billing-reconciliation.md)，汇总历史与本轮 ledger，供应商金额/差额留空，unknown 不释放。
 - Gate 决策草案：[`round-06-gate-decision-draft.md`](../evidence/m0-real-investigation/round-06-gate-decision-draft.md)，提供保持 `not cleared` 与有界开放 M1-01 两个选项；未修改 SPEC 或 feature passes。
+
+## 当前有效状态汇总（2026-09-12）
+
+以下汇总覆盖本记录中较早的“待批准/未执行”历史段落：
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| PR 尾项与 review threads | 已完成 | `commit_tool` P2 已修复、回复并 resolve；merge-tree 无冲突；当前 HEAD `c618651`，CI 通过。 |
+| B1 退出矩阵 | 已完成 | 矩阵与 M1-01 工时拆分已提交。 |
+| B2 预算校准 | 部分完成 | 候选值已写入 v4 校准段，最终冻结待用户批准。 |
+| B3 控制合同 | 部分完成 | 专属 PG 4 passed；pause/resume 状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
+| B4 真实恢复 | 已完成（机制范围） | 三项真实 Run、PG 重建/取消/不兼容 handoff 和 trace 白名单回读已完成；不等于产品验收。 |
+| B5 权限/隔离 | 部分完成 | PG 写/DDL 拒绝已取得；K8s/OS 隔离仍缺。 |
+| B6 上游/eval | 部分完成 | provider 与 M004 复验已运行；正式可比报告未形成。judge 标注包已准备，人工校准/盲测待用户。 |
+| B7 LangGraph | 已完成（离线比较） | 1.2.11 无可见收益，ADR 推荐推迟；采用与否待用户。 |
+| B8 账单 | 未完成 | 对账模板已准备，账单输入待用户提供。 |
+| SPEC gate / feature passes | 未开放/未修改 | SPEC 仍 `not cleared`，feature passes 未变更。 |
