@@ -525,7 +525,7 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
-| PR 尾项与 review threads | 已完成 | `commit_tool` P2 已修复、回复并 resolve；merge-tree 无冲突；当前 HEAD `960f85b`，CI 通过。 |
+| PR 尾项与 review threads | 已完成 | `commit_tool` P2 已修复、回复并 resolve；merge-tree 无冲突；代码/验证基线 `960f85b` 的 CI 通过，后续提交仅为状态文档同步。 |
 | B1 退出矩阵 | 已完成 | 矩阵与 M1-01 工时拆分已提交。 |
 | B2 预算校准 | 部分完成 | 候选值已写入 v4 校准段，最终冻结待用户批准。 |
 | B3 控制合同 | 部分完成 | 专属 PG 4 passed；pause/resume 状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
