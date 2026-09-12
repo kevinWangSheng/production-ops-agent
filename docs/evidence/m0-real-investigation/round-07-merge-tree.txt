@@ -1,8 +1,8 @@
 command: git merge-tree --write-tree main HEAD
 base: e9d22e9183601ae322f006f4a42d9dd2bbcbae84
 main: e9d22e9183601ae322f006f4a42d9dd2bbcbae84
-head: c1ce60e9b1d8e6e2f7f97fe6c06c839449bfc21c
-result_tree: 9def7e5339e030a1881cd5f1d92e9da73d787a48
+head: caa8946b10445902b234d16f4e15b72d651af7cf
+result_tree: 213f1f31a7bfdab2c1324265b1b76b6b2c4db4a1
 exit: 0
 conflicts: none
 note: main worktree has unrelated uncommitted user changes; merge-tree is read-only and did not touch them.
