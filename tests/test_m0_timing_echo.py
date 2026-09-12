@@ -75,3 +75,22 @@ def test_timing_sidecar_accepts_equivalent_normalized_timestamp_without_mutation
     }
     assert validate_timing_echo(sidecar, {"e1": "hash"}, registered) is None
     assert registered == preserved
+
+
+@pytest.mark.parametrize("extra", ["credential", "untrusted_payload"])
+def test_timing_sidecar_rejects_unknown_record_fields(extra):
+    from scripts.m0_environment.initial_evidence import validate_timing_echo
+
+    timing = {
+        "operation_started_at": "2026-09-10T01:00:00Z",
+        "source_time_basis": "unknown",
+    }
+    sidecar = {
+        "e1": {
+            "view_hash": "hash",
+            "timing": timing,
+            extra: "must not persist",
+        }
+    }
+    with pytest.raises(ValueError, match="INITIAL_TIMING_ECHO_MISMATCH"):
+        validate_timing_echo(sidecar, {"e1": "hash"}, {"e1": timing})

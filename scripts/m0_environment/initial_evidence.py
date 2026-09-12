@@ -26,6 +26,7 @@ def validate_timing_echo(supplied, view_hashes, verified_timings):
             evidence_id not in verified_timings
             or evidence_id not in view_hashes
             or not isinstance(record, dict)
+            or set(record) != {"view_hash", "timing"}
             or record.get("view_hash") != view_hashes[evidence_id]
         ):
             raise InitialEvidenceError("INITIAL_TIMING_ECHO_MISMATCH")
