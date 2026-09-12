@@ -23,6 +23,16 @@ from .outcomes_v3 import ControlAction, ControlEvent
 from .protocol import ProtocolError, continuation
 
 
+def _validated_tool_calls(assistant):
+    """Fail closed on malformed provider containers before iterating calls."""
+    if not isinstance(assistant, dict):
+        raise ProtocolError("ASSISTANT_INVALID")
+    calls = assistant.get("tool_calls", [])
+    if not isinstance(calls, list) or any(not isinstance(call, dict) for call in calls):
+        raise ProtocolError("TOOL_CALLS_INVALID")
+    return calls
+
+
 def digest(value):
     return hashlib.sha256(
         json.dumps(
@@ -525,7 +535,7 @@ class StepStore:
     def commit_response(self, fence, step, assistant, *, request_id):
         # Validate protocol without exposing it; synthetic result placeholders
         # validate the tool plan before any actual operation may run.
-        calls = assistant.get("tool_calls", [])
+        calls = _validated_tool_calls(assistant)
         if calls:
             placeholders = [
                 {"role": "tool", "tool_call_id": c.get("id"), "content": "pending"}
