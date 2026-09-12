@@ -456,3 +456,5 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - B5 方案：[`round-05-isolation-plan.md`](../evidence/m0-real-investigation/round-05-isolation-plan.md)，含只读 PG SQL/预期拒绝、K8s 环境缺测和三种 OS 隔离方案；未采购、未创建角色。
 - B6 协议：[`round-05-comparison-and-judge-protocol.md`](../evidence/m0-real-investigation/round-05-comparison-and-judge-protocol.md)，含差异披露、6 份独立审查人工样本和待校准 rubric；未跑新比较/盲测。
 - B7：`scripts/m0_lab/langgraph_compare/compare.py` 在固定替身序列上运行，因环境无 `langgraph` 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟，待用户决定”，无依赖/模型/工具 HTTP。
+
+第二个全新上下文文档复审见 [`round-05-docs-independent-review.md`](../evidence/m0-real-investigation/round-05-docs-independent-review.md) 与 [`round-05-docs-final-recheck.md`](../evidence/m0-real-investigation/round-05-docs-final-recheck.md)：确认 B4–B6 仍待批准/未执行，B7 两种依赖分支均 fail-closed，不伪造 compared；D1–D3 链接与状态无回退。当前代码/文档 tip 为 `75400ed`。

@@ -117,3 +117,5 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [ ] B7 LangGraph 离线脚本因可选依赖未安装返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟”，待用户决定，不加依赖。
 
 以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。
+
+文档最终独立复核已完成（`round-05-docs-final-recheck.md`），B4–B7 仅为待批准准备，未新增模型/trace/服务操作；SPEC gate 保持 not cleared。
