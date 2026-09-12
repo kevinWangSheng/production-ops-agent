@@ -79,6 +79,7 @@ KNOWN_BOUNDARY_CODES = (
     "response model identity mismatch",
     "run deadline",
     "query authorization deadline reached",
+    "tool total deadline",
 )
 
 

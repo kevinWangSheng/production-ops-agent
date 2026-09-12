@@ -124,6 +124,10 @@ def test_query_authorization_deadline_is_a_known_boundary_code():
     assert "query authorization deadline reached" in KNOWN_BOUNDARY_CODES
 
 
+def test_tool_total_deadline_is_a_known_boundary_code():
+    assert "tool total deadline" in KNOWN_BOUNDARY_CODES
+
+
 def test_boolean_query_deadline_is_rejected():
     with pytest.raises(ValueError, match="trusted query deadline invalid"):
         effective_query_deadline(True, PROFILE.deadline)
