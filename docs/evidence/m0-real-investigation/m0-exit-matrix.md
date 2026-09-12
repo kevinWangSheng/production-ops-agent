@@ -66,7 +66,7 @@
 - [部分/真实 PG] 取消/纠正、迟到结果拒绝：同上。
 - [部分/替身] no-data/stale 交接与缺 profile→unknown：`tests/test_m0_outcomes.py`。
 - [部分/真实 PG] 发布异常转事故与既有事故接管竞争：`test_release_failure_then_takeover_generation_race_keeps_first_control`；旧 generation 被 `CONTROL_CONFLICT` 拒绝。
-- [部分/真实 PG + 固定时钟] HealthProfile 变更与乱序采样：`test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock`；schema/旧版本保真已测，持久观察流乱序仍缺。
+- [部分/真实 PG + 固定时钟] HealthProfile 变更与乱序采样：`test_health_profile_revision_and_capture_order_preserve_revision_mismatch`；schema/旧版本保真已测，持久观察流乱序仍缺。
 - [证据不足/真实 PG fail-closed] 全局/目标暂停与 resume：`test_global_pause_and_resume_are_fail_closed_until_control_contract_exists`；当前 pause/resume API 尚不存在，未把 fail-closed 输入拒绝写成状态机通过。
 - [部分/真实 PG] 单独观察授权并发：`test_observer_authorization_cannot_borrow_investigation_identity`；investigation identity 不可借用，独立 observer 授权 API 仍缺。
 
@@ -74,7 +74,7 @@
 
 - [部分/真实 OTel] 固定 OTel Demo 2.0.2、正常/故障/恢复观察。
 - [部分/替身] 目标/scope/只读边界拒绝合同。
-- [无] DB 写权限拒绝的实际输出。
+- [部分/真实 PG] DB 写权限拒绝的实际输出：只读角色 INSERT/UPDATE/DELETE/DDL 均被拒绝，见 `round-05-isolation-plan.md` 与 `round-05-b5-pg-readonly-output.json`。
 - [无] Kubernetes RBAC 拒绝（当前环境缺测）。
 - [无] Holmes 宿主 OS 隔离拒绝。
 

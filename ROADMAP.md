@@ -8,7 +8,7 @@ Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline �
 
 | 项目 | 当前状态 | 证据/下一步 |
 |---|---|---|
-| PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；当前 HEAD `c618651`，CI `checks`/`m0-postgres` 通过。 |
+| PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；当前 HEAD `960f85b`，CI `checks`/`m0-postgres` 通过。 |
 | B1 退出矩阵 | **已完成** | [`m0-exit-matrix.md`](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 已建立并持续更新。 |
 | B2 预算校准 | **部分完成** | 候选值和历史分布已写入 v4 校准段；最终冻结仍待用户批准。 |
 | B3 控制合同 | **部分完成** | 专属 PG 4 项合同通过；pause/resume 完整状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
