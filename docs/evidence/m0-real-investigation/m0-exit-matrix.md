@@ -42,6 +42,7 @@
 - **工作包 6：部分**：B4 三个 Run 的 LangSmith 白名单 DTO POST/同 Run GET 均 `TRACE_VERIFIED`；M0-03 历史调查 trace 仍为 0，不能推广为全链路 trace 通过。
 - **工作包 7：部分**：B4 新 ledger 记录 3 模型 HTTP、known cost 0.004293 CNY、1.0 CNY unknown reservation；账单仍未核对。
 - **工作包 8：证据不足**：B4/B5/B7 产生了可回读证据，但 B6 同条件比较、B8 账单及完整 M0 gate 条件仍缺，SPEC gate 保持 not cleared。
+- **工作包 2 / B7：部分**：隔离 `langgraph 1.2.11` 最小 StateGraph 与现有 loop 在固定替身序列上均为 2 步、2 个持久点、第二步取消；未观察到收益，真实 provider/PG checkpoint/性能仍未测。ADR-0004 推荐推迟。
 
 ## 逐项状态拆分
 
