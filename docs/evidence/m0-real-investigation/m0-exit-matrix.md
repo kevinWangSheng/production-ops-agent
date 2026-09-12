@@ -38,7 +38,7 @@
 ## 2026-09-12 B4/B5/B7 实际更新
 
 - **工作包 3：部分**：B4-1/B4-2/B4-3 已各执行 1 次真实模型+PG/PG-only 机制验证；三项结果与局限见 [`round-05-recovery-results.md`](round-05-recovery-results.md)。这不是完整恢复、产品调查或 M1 通过。
-- **工作包 4：部分**：B5 专属 PG 只读角色 `opspilot_probe_20260912` 的 SELECT 成功、INSERT/UPDATE/DELETE/DDL 实际拒绝；K8s RBAC 仍环境缺测，Holmes OS 隔离仍未执行。见 [`round-05-isolation-plan.md`](round-05-isolation-plan.md)。
+- **工作包 4：部分**：B5 专属 PG 只读角色 `opspilot_probe_20260912` 的 SELECT 成功、INSERT/UPDATE/DELETE/DDL 实际拒绝；无宿主挂载容器对开发目录/答案/凭据路径拒绝/不可见；K8s RBAC 仍环境缺测，Holmes 宿主 OS 隔离尚未证明。见 [`round-05-isolation-plan.md`](round-05-isolation-plan.md) 与 [`round-07-container-isolation-refusal.txt`](round-07-container-isolation-refusal.txt)。
 - **工作包 6：部分**：B4 三个 Run 的 LangSmith 白名单 DTO POST/同 Run GET 均 `TRACE_VERIFIED`；M0-03 历史调查 trace 仍为 0，不能推广为全链路 trace 通过。
 - **工作包 7：部分**：B4 新 ledger 记录 3 模型 HTTP、known cost 0.004293 CNY、1.0 CNY unknown reservation；账单仍未核对。
 - **工作包 8：证据不足**：B4/B5/B7 产生了可回读证据，但 B6 同条件比较、B8 账单及完整 M0 gate 条件仍缺，SPEC gate 保持 not cleared。
@@ -67,7 +67,7 @@
 - [部分/替身] no-data/stale 交接与缺 profile→unknown：`tests/test_m0_outcomes.py`。
 - [部分/真实 PG] 发布异常转事故与既有事故接管竞争：`test_release_failure_then_takeover_generation_race_keeps_first_control`；旧 generation 被 `CONTROL_CONFLICT` 拒绝。
 - [部分/真实 PG + 固定时钟] HealthProfile 变更与乱序采样：`test_health_profile_revision_and_capture_order_preserve_revision_mismatch`；schema/旧版本保真已测，持久观察流乱序仍缺。
-- [证据不足/真实 PG fail-closed] 全局/目标暂停与 resume：`test_global_pause_and_resume_are_fail_closed_until_control_contract_exists`；当前 pause/resume API 尚不存在，未把 fail-closed 输入拒绝写成状态机通过。
+- [部分/真实 PG + 真实 Run] 全局/目标暂停与 resume：`test_target_pause_denies_dispatch_and_resume_requires_new_run`、`test_global_pause_covers_untargeted_subjects_and_is_idempotent_safe`；pause/resume API 已通过 PG 合同，真实 Run 见 `round-07-wp23-results.md`；完整产品生命周期仍未通过。
 - [部分/真实 PG] 单独观察授权并发：`test_observer_authorization_cannot_borrow_investigation_identity`；investigation identity 不可借用，独立 observer 授权 API 仍缺。
 
 ### 工作包 4：真实环境与权限
@@ -76,7 +76,7 @@
 - [部分/替身] 目标/scope/只读边界拒绝合同。
 - [部分/真实 PG] DB 写权限拒绝的实际输出：只读角色 INSERT/UPDATE/DELETE/DDL 均被拒绝，见 `round-05-isolation-plan.md` 与 `round-05-b5-pg-readonly-output.json`。
 - [无] Kubernetes RBAC 拒绝（当前环境缺测）。
-- [无] Holmes 宿主 OS 隔离拒绝。
+- [部分/容器实验] Holmes 宿主 OS 隔离：无宿主挂载容器已取得路径不可见证据，但容器 UID 0，不能替代非 root/独立 OS 隔离证明。
 
 ### 工作包 5：上游基线与评测
 
