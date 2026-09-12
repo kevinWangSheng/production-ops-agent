@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 4 items
+
+tests/test_m0_holmes_bridge_v4.py::test_report_only_initial_raw_and_actual_input_reach_strict_seam PASSED [ 25%]
+tests/test_m0_holmes_bridge_v4.py::test_report_only_embedded_raw_record_is_rejected PASSED [ 50%]
+tests/test_m0_outcomes_v4.py::test_imported_views_allow_only_an_explicit_business_view_append PASSED [ 75%]
+tests/test_m0_outcomes_v4.py::test_imported_view_append_must_match_the_complete_trusted_view PASSED [100%]
+
+============================== 4 passed in 0.24s ===============================

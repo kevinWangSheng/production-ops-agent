@@ -628,9 +628,12 @@ def input_provenance_errors(initial):
                             if evidence_id in trusted_views:
                                 expected = dict(trusted_views[evidence_id])
                                 item["id"] = item.pop("evidence_id")
-                                # A verified initial question may carry the exact
-                                # raw artifact; accept it only when its canonical
-                                # hash equals the trusted view's raw_hash.
+                                # The report-only initial-evidence importer
+                                # carries the verified raw record so the bridge
+                                # can replay its projection.  Accept that form
+                                # only when its stable artifact hash is the
+                                # trusted view's raw_hash; arbitrary raw drift
+                                # remains a provenance mismatch.
                                 raw_hash = expected.get("raw_hash")
                                 raw_hash_matches = any(
                                     content_hash(encoded) == raw_hash

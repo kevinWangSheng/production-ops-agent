@@ -317,7 +317,9 @@ def initial_captured(strict_captured):
     user = read("input-business.json")[0]
     original = user["content"] + "\r\n"
     document = json.loads(user["content"])
-    document["business_tool_views"] = [raw]
+    document["business_tool_views"] = [
+        json.loads((run / "case-01-e1-tool-model-view.json").read_bytes())
+    ]
     user["content"] = json.dumps(document)
     save(run / "input-business.json", [user])
     (run / "question-original.txt").write_bytes(original.encode())
@@ -354,7 +356,26 @@ def test_report_only_initial_raw_and_actual_input_reach_strict_seam(initial_capt
         scenario.agent_input.original_user_content_sha256
         != scenario.agent_input.actual_user_content_sha256
     )
+    assert len(
+        json.dumps(
+            scenario.agent_input.initial_views[0].model_dump(mode="json"),
+            ensure_ascii=False,
+        ).encode()
+    ) <= 14000
     assert outcome.report.claims[0].kind == "fact"
+
+
+def test_report_only_embedded_raw_record_is_rejected(initial_captured):
+    run, code = initial_captured
+    user = json.loads((run / "input-business.json").read_bytes())[0]
+    raw = json.loads((run / "case-01-e1-raw.json").read_bytes())
+    raw["raw_response_base64"] = "synthetic-unprojected-raw"
+    document = json.loads(user["content"])
+    document["business_tool_views"] = [raw]
+    user["content"] = json.dumps(document)
+    save(run / "input-business.json", [user])
+    scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+    assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" in v4.check_outcome(scenario, outcome)
 
 
 @pytest.mark.parametrize(
