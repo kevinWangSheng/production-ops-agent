@@ -153,6 +153,12 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [x] compressor 真实超阈值 Run：`m0-compressor-v1` 1 HTTP/200，paired transcript 保真；keep floor 仍 over-threshold，状态为部分。
 - [ ] M0 用户收尾仍待 judge 人工勾选、供应商账单对账、预算冻结值批准和 K8s 环境缺测处置；SPEC gate 保持 `not cleared`，M1 不启动。总账见 [`round-07-m0-final-results`](docs/evidence/m0-real-investigation/round-07-m0-final-results.md)。
 
+## 2026-09-12 review findings follow-up
+
+- [x] `observe()` 已移除调用方 `now` 覆盖路径，生产只使用 DB `clock_timestamp()`；测试通过独立 `_clock_timestamp` 接缝。
+- [x] compressor 已拒绝非 list `tool_calls`（包括 `{}`、`""`），新增 fail-closed 回归。
+- [ ] `768e235` 的 bot review 曾失败；修复后已重新触发当前 HEAD review，等待外部结果；不以旧 review 替代。
+
 PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。
 
 ## 2026-09-12 B6 上游比较结果

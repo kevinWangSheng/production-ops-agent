@@ -550,4 +550,11 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 三个 worktree 已顺序合入主分支，合入提交保留；最新 `make check` `776 passed / 54 skipped`，Ruff 通过；SPEC gate 保持 `not cleared`，M1 未授权。
 - 收尾清理：已确认 `db11d77/91134b8/4afa4f9`、`c65010d/985aefc/92eb074` 均在当前分支祖先中；三个 wp23/wp67/wp5 worktree 均干净后已移除，对应本地分支已删除。主工作区 main 未触碰。
 
+## 2026-09-12 review findings follow-up
+
+- bot P1：`observe()` 原先允许调用方传入 `now` 覆盖 DB 时钟；`7f70bb5` 已移除该参数，生产路径只调用数据库 `clock_timestamp()`。测试通过模块级 `_clock_timestamp` 接缝固定时间，未放宽权限边界。
+- bot P2：compressor 原先用 `message.get("tool_calls") or []` 放行 `{}`/空字符串；现先要求显式字段为 list，新增两条负例，统一 `TOOL_PAIRING_INVALID`。
+- 复验：定向控制/compressor 23 passed；专属 PG observer/控制 4 passed；完整 `make check` 778 passed / 54 skipped，输出见 `round-08-control-compressor-*` 与 `round-08-final-make-check.txt`。
+- 原 `768e235` bot review 失败已记录；修复后已重新触发覆盖最新 HEAD 的 review。SPEC gate 和 feature passes 不变。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
