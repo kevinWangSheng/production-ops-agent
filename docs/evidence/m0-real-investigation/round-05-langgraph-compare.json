@@ -1,0 +1,8 @@
+{
+  "status": "blocked_dependency",
+  "reason": "LANGGRAPH_EXTRA_UNAVAILABLE",
+  "decision": "推迟",
+  "model_http": 0,
+  "tool_http": 0,
+  "note": "脚本只运行现有 loop 的固定替身序列；未安装可选 LangGraph extra，因此没有伪造候选成绩或新增依赖。"
+}
