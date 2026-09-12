@@ -686,6 +686,9 @@ def input_provenance_errors(initial):
 def control_time_errors(facts):
     """Control epochs bound initiation; late historical responses stay auditable."""
     errors = set()
+    generations = [event.generation for event in facts.controls]
+    if any(a >= b for a, b in zip(generations, generations[1:])):
+        errors.add("CONTROL_GENERATION_ORDER")
     events = {event.generation: event for event in facts.controls}
     if any(a.at > b.at for a, b in zip(facts.controls, facts.controls[1:])):
         errors.add("CONTROL_TIME_ORDER")

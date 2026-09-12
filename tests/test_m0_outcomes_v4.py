@@ -736,6 +736,26 @@ def test_control_event_timestamps_cannot_reverse_generation_order():
     assert "CONTROL_TIME_ORDER" in checked(scenario, outcome)
 
 
+@pytest.mark.parametrize(
+    "controls",
+    [
+        [
+            {"generation": 2, "action": "new_run", "at": "2026-09-10T00:02:00Z"},
+            {"generation": 1, "action": "new_run", "at": "2026-09-10T00:03:00Z"},
+        ],
+        [
+            {"generation": 1, "action": "new_run", "at": "2026-09-10T00:02:00Z"},
+            {"generation": 1, "action": "new_run", "at": "2026-09-10T00:03:00Z"},
+        ],
+    ],
+)
+def test_control_generations_must_be_strictly_increasing(controls):
+    scenario, outcome = reportless_packet()
+    scenario["trusted"]["controls"] = controls
+    scenario["trusted"]["final_generation"] = outcome["control_generation"] = 1
+    assert "CONTROL_GENERATION_ORDER" in checked(scenario, outcome)
+
+
 @pytest.mark.parametrize("kind", ["capture", "response"])
 def test_received_timestamp_cannot_predate_its_claimed_generation(kind):
     scenario, outcome = strict_packet()
