@@ -429,4 +429,4 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 
 后续 bot review 发现的辅助来源、evidence view 和 malformed `tool_calls` 问题已分别在 `0babc02` 与 `0774960` 修复；最终 `make check` 为 723 passed/44 skipped（`round-03-tool-call-fix-final-make-check.txt`），所有新 review threads 均已回复并 resolve。`0774960` 的当前 HEAD bot 结果截至收尾仍未返回，沿用全新上下文独立审查与已返回父提交 review 的边界，不宣称直接 bot 覆盖。
 
-`da505dc` 修复 timing sidecar 读前路径 guard，`0a514a0` 修复 scope 较早 `effective_query_deadline` 被覆盖的问题；两项均有 `make check` 723 passed/44 skipped 输出（`round-03-timing-guard-final-make-check.txt`、`round-03-query-deadline-final-make-check.txt`）。当前 task tip 为 `0a514a0`，无新增模型/trace/OTel 操作，SPEC gate 仍 not cleared。
+`da505dc` 修复 timing sidecar 读前路径 guard，`0a514a0` 修复 scope 较早 `effective_query_deadline` 被覆盖的问题；两项均有 `make check` 723 passed/44 skipped 输出（`round-03-timing-guard-final-make-check.txt`、`round-03-query-deadline-final-make-check.txt`）。当前 task tip 为 `3e91523`（仅文档收尾），无新增模型/trace/OTel 操作，SPEC gate 仍 not cleared。
