@@ -548,5 +548,6 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 首次小规模 holdout：独立上下文生成 normal/fault 变体并评分 10/10、10/10；无宿主挂载容器对开发目录、答案和凭据路径返回 absent。完整 response 保存在 ignored `tmp/holdout/`，Git 只保留 hash/ledger/匿名汇总。见 `round-07-holdout-blind-results.md`。
 - wp67：trace linkage、wall-time/清理上界和 m003f observation 已合入；trace 仍 partial，wall-time 候选冻结待批准；账单、K8s RBAC、正式 judge/盲测和产品级 stream/PG 审计仍是用户收尾项。
 - 三个 worktree 已顺序合入主分支，合入提交保留；最新 `make check` `776 passed / 54 skipped`，Ruff 通过；SPEC gate 保持 `not cleared`，M1 未授权。
+- 收尾清理：已确认 `db11d77/91134b8/4afa4f9`、`c65010d/985aefc/92eb074` 均在当前分支祖先中；三个 wp23/wp67/wp5 worktree 均干净后已移除，对应本地分支已删除。主工作区 main 未触碰。
 
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。

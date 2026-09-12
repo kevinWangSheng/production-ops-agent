@@ -190,5 +190,6 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 
 - [x] M0 计划中本轮可执行的实验合同均已运行并保留证据：wp23 PG/控制/观察 5 passed + 1 真实 DeepSeek；wp2 compressor 真实 provider 1 HTTP；wp5 replay candidate/upstream 8 HTTP；首次 holdout 4 HTTP；全部未上传 trace。
 - [x] 三个 worktree 已按 wp23 → wp67 → wp5 顺序合入本分支，提交保留；主工作区 main 未触碰。
+- [x] 已确认三个 worktree 的全部提交均在当前分支祖先中；wp23/wp67/wp5 worktree 与本地分支已安全清理，主工作区 main 保留。
 - [x] SPEC.md 已追加 2026-09-12 M0 状态段，明确实验收敛不等于 M1 授权；gate 字面仍 `not cleared`。
 - [ ] 用户收尾：judge 标注包勾选/人工校准、供应商账单对账、预算冻结候选批准、K8s 环境缺测处置；不进入 M1、不合并 PR。
