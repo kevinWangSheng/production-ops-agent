@@ -9,7 +9,7 @@
 | OpsPilot candidate | **部分通过** | 2 | 两次 DeepSeek HTTP 200；固定 fixture/PG 步骤重建与最终合同完成。见 `round-06-candidate-first.txt`、`round-06-candidate-second.txt`。 |
 | Holmes upstream | **证据不足/阻塞** | 0 个确认成功请求 | 第一次缺 LiteLLM provider 前缀；第二次缺 `DEEPSEEK_API_KEY`；第三次空 Bearer header 在客户端/provider 前置校验失败。完整 stdout/stderr 保留。 |
 
-候选 ledger `m0-06-b6-20260912` 的 2 次模型请求 token 分别为 403、453，总已知成本上界 0.004086 CNY；每次 reservation 2 CNY，未超过合同 8 CNY。没有足够的上游真实样本，不能计算同条件质量差异、非退化或收益结论。
+候选 ledger [`m0-06-b6-ledger.json`](m0-06-b6-ledger.json) 的 2 次模型请求 token 分别为 403、453，总已知成本上界 0.004086 CNY；ledger SHA-256 为 `150c9d34d775e0b8950fd2aacd255301f166cf56e939a1e2674e7eafcdba46c9`。每次 reservation 2 CNY，未超过合同 8 CNY。没有足够的上游真实样本，不能计算同条件质量差异、非退化或收益结论。
 
 ## 差异与处置
 
