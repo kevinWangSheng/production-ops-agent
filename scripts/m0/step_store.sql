@@ -59,3 +59,40 @@ CREATE TABLE IF NOT EXISTS m0_v3_send_grant (
  request uuid PRIMARY KEY REFERENCES m0_v3_model_execution(request),
  claimed boolean NOT NULL DEFAULT false
 );
+-- Round-07 work package 3 additions: scope pause, observer authorization,
+-- persistent observation stream and work package 2 stream-interruption audit.
+ALTER TABLE m0_v3_subject ADD COLUMN IF NOT EXISTS target_key text;
+CREATE TABLE IF NOT EXISTS m0_v3_pause (
+ scope text NOT NULL CHECK(scope IN ('global','target')), target_key text NOT NULL,
+ active boolean NOT NULL DEFAULT false, version bigint NOT NULL DEFAULT 0,
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(scope,target_key)
+);
+CREATE TABLE IF NOT EXISTS m0_v3_pause_event (
+ sequence bigserial PRIMARY KEY, scope text NOT NULL, target_key text NOT NULL,
+ action text NOT NULL CHECK(action IN ('pause','resume')), version bigint NOT NULL,
+ reason text, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS m0_v3_observer (
+ id uuid PRIMARY KEY, subject uuid NOT NULL REFERENCES m0_v3_subject(id),
+ run_id uuid NOT NULL UNIQUE REFERENCES m0_runs(id),
+ experiment_id uuid NOT NULL REFERENCES m0_experiments(id),
+ window_start timestamptz NOT NULL, window_end timestamptz NOT NULL,
+ query_limit integer NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS m0_v3_observer_attempt (
+ id uuid PRIMARY KEY, observer uuid NOT NULL REFERENCES m0_v3_observer(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS m0_v3_observation_stream (
+ sequence bigserial PRIMARY KEY, subject uuid NOT NULL REFERENCES m0_v3_subject(id),
+ profile_revision text NOT NULL, observation_revision text NOT NULL,
+ captured_at timestamptz NOT NULL, evidence_ids jsonb NOT NULL, verdict text NOT NULL,
+ accepted boolean NOT NULL, code text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS m0_v3_stream_interruption (
+ request uuid PRIMARY KEY REFERENCES m0_v3_dispatch(request),
+ partial_sha256 text, partial_bytes integer NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);

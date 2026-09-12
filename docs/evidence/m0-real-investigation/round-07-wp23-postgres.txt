@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-07-wp23/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-07-wp23
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 5 items
+
+tests/integration/test_m0_pause_observer_postgres.py::test_target_pause_denies_dispatch_and_resume_requires_new_run PASSED [ 20%]
+tests/integration/test_m0_pause_observer_postgres.py::test_global_pause_covers_untargeted_subjects_and_is_idempotent_safe PASSED [ 40%]
+tests/integration/test_m0_pause_observer_postgres.py::test_observer_authorization_is_independent_of_investigation PASSED [ 60%]
+tests/integration/test_m0_pause_observer_postgres.py::test_observation_stream_rejects_out_of_order_and_unknown_revision PASSED [ 80%]
+tests/integration/test_m0_pause_observer_postgres.py::test_short_db_outage_resumes_from_committed_state_without_double_commit PASSED [100%]
+
+==================================== PASSES ====================================
+___ test_short_db_outage_resumes_from_committed_state_without_double_commit ____
+----------------------------- Captured stdout call -----------------------------
+waiting for server to shut down.... done
+server stopped
+waiting for server to start.... done
+server started
+=========================== short test summary info ============================
+PASSED tests/integration/test_m0_pause_observer_postgres.py::test_target_pause_denies_dispatch_and_resume_requires_new_run
+PASSED tests/integration/test_m0_pause_observer_postgres.py::test_global_pause_covers_untargeted_subjects_and_is_idempotent_safe
+PASSED tests/integration/test_m0_pause_observer_postgres.py::test_observer_authorization_is_independent_of_investigation
+PASSED tests/integration/test_m0_pause_observer_postgres.py::test_observation_stream_rejects_out_of_order_and_unknown_revision
+PASSED tests/integration/test_m0_pause_observer_postgres.py::test_short_db_outage_resumes_from_committed_state_without_double_commit
+============================== 5 passed in 1.19s ===============================
+pytest_exit=0
