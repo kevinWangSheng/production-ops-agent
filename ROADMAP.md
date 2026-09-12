@@ -1,7 +1,7 @@
 # Roadmap
 
-当前工程交付状态（2026-09-11）：PR #16 仍 OPEN。M0-03 已有真实 Holmes returned 报告；协调者质量审查结论为正常 1/2 通过、故障 0/2 正向通过，SPEC 不开放 M1。[M0-03 汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md) / [当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)。
-
+当前工程交付状态（2026-09-11）：M0-03 normal/fault v4 正向样本已达 2/2，M004 raw evidence 独立复核通过；PR #16 仍 OPEN，SPEC/M1 gate 等待用户决定。
+Current phase: M0 质量包已完成本轮可执行复验；专属 m0-otel 已停止，历史证据保全。CI/本地/独立复验完成，Security 按用户决定忽略；不自动合并 PR。
 Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline 对照；专属 m0-otel 已停止，历史容器/卷/VM/证据保留。Code/CI 交付门已通过，Security 按用户决定忽略；SPEC gate 仍 not cleared，等待最终入口决策。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
 
 ## Completed decisions and documentation
@@ -83,9 +83,9 @@ F4 action broker, F5 rollout executor and F10 autonomous promotion are retired, 
 Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has passed its acceptance checks.
 ## Current handoff (2026-09-10)
 
-- PR #16 HEAD `055e646`：本地 `make check` 689 passed / 44 skipped，CI `checks` 与 `m0-postgres` 成功；Code Review 覆盖当前 HEAD 无新发现。
+- PR #16：最新代码与文档 HEAD 以远端为准；CI 与本地验证已完成，历史段落保留为历史。
 - Security Review 对当前 HEAD 无运行或完成结果，不能记为通过；PR 仍 OPEN/BLOCKED。
-- M0-03、真实报告质量、动态证据与完整恢复/取消验收仍未完成；SPEC gate 继续 `not cleared`。
+- M0-03 正向样本 2/2 已完成；已披露 unknown 与后续任务边界保留，SPEC gate 由用户决定。
 - 历史 20 CNY/20 HTTP/5 trace 合同和账本保留，不改写、不复用；无新预算合同前不追加模型/trace。
 - 接手入口：`docs/tasks/2026-09-09-m0-real-investigation.md` 的“当前交接更新：M0 仍未完成”。
 
