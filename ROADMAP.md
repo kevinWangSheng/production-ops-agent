@@ -128,3 +128,8 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。
 
 PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。
+
+## 2026-09-12 B6 上游比较结果
+
+- [ ] 候选真实 fixture/PG 链路 2 HTTP 成功；Holmes 上游 0 个确认成功请求，因 provider/认证前置失败，B6 同条件质量比较保持证据不足。结果见 `round-06-upstream-comparison-results.md`。
+- [ ] B6 不继续重试或猜测凭据；待用户提供合法上游认证/环境前提后另立 Run。SPEC gate 仍 not cleared。

@@ -43,6 +43,7 @@
 - **工作包 7：部分**：B4 新 ledger 记录 3 模型 HTTP、known cost 0.004293 CNY、1.0 CNY unknown reservation；账单仍未核对。
 - **工作包 8：证据不足**：B4/B5/B7 产生了可回读证据，但 B6 同条件比较、B8 账单及完整 M0 gate 条件仍缺，SPEC gate 保持 not cleared。
 - **工作包 2 / B7：部分**：隔离 `langgraph 1.2.11` 最小 StateGraph 与现有 loop 在固定替身序列上均为 2 步、2 个持久点、第二步取消；未观察到收益，真实 provider/PG checkpoint/性能仍未测。ADR-0004 推荐推迟。
+- **工作包 5 / B6：部分**：候选真实 fixture/PG 链路 2 HTTP 完成；Holmes 上游 0 个确认成功请求，因 provider/认证前提失败，不能计算同条件质量差异。见 [`round-06-upstream-comparison-results.md`](round-06-upstream-comparison-results.md)。
 
 ## 逐项状态拆分
 
