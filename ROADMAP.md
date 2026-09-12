@@ -126,3 +126,5 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [x] B5 专属 PG 只读角色实际 SELECT 成功、写/DDL 拒绝；K8s 标环境缺测，OS 隔离方案不采购。
 - [ ] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
 - [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。
+
+PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。

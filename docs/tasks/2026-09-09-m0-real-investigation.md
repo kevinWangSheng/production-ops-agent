@@ -468,3 +468,5 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - `m0-otel`、专属 PG 和 Compose 已在证据保全后停止；不 `down`，卷/历史证据保留。SPEC gate 与 feature passes 不变。
 
 B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0-real-investigation/round-05-b4-b7-independent-review.md)，未发现将机制证据误称 M0 通过的越界声明；B7 依赖可用分支风险已在脚本中 fail-closed 后由最终复核确认。
+
+PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先返回 `UNCOMMITTED_CANDIDATE`，专属 PG 回归通过；最终 `make check` 732 passed/45 skipped，输出 `round-05-final-make-check-after-publish.txt`。该修复已回复并 resolve review thread，当前代码/文档 tip 为 `db61c67`。
