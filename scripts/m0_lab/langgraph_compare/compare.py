@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import importlib.util
 import json
 from dataclasses import dataclass
+from typing import TypedDict
 
 TOOLS = ("otel_services", "otel_traces", "otel_metrics")
 
@@ -28,13 +30,41 @@ def run_existing(cancel_after: int = 2) -> State:
 
 
 def run_langgraph_minimal(cancel_after: int = 2) -> State:
-    """Reserved seam; never claim a comparison without a real graph."""
+    """Run a real minimal LangGraph graph when the isolated extra is present."""
     if importlib.util.find_spec("langgraph") is None:
         raise RuntimeError("LANGGRAPH_EXTRA_UNAVAILABLE")
-    # Do not substitute the existing loop for a LangGraph implementation.  A
-    # future extra install must first add a real graph candidate and its own
-    # versioned state/persistence assertions.
-    raise RuntimeError("LANGGRAPH_COMPARISON_NOT_IMPLEMENTED")
+
+    from langgraph.graph import END, START, StateGraph
+
+    class GraphState(TypedDict):
+        steps: list[str]
+        persistence_points: int
+        cancelled: bool
+
+    graph = StateGraph(GraphState)
+    for index, tool in enumerate(TOOLS):
+
+        def visit(state, tool=tool, index=index):
+            return {
+                "steps": [*state["steps"], tool],
+                "persistence_points": state["persistence_points"] + 1,
+                "cancelled": index + 1 == cancel_after,
+            }
+
+        graph.add_node(tool, visit)
+    graph.add_edge(START, TOOLS[0])
+    for index in range(cancel_after - 1):
+        graph.add_edge(TOOLS[index], TOOLS[index + 1])
+    graph.add_edge(TOOLS[cancel_after - 1], END)
+    result = graph.compile().invoke(
+        {"steps": [], "persistence_points": 0, "cancelled": False}
+    )
+    result.pop("__interrupt__", None)
+    return State(
+        steps=result["steps"],
+        persistence_points=result["persistence_points"],
+        cancelled=result["cancelled"],
+    )
 
 
 def compare() -> dict:
@@ -59,6 +89,8 @@ def compare() -> dict:
     else:
         result["langgraph"] = candidate.__dict__
         result["status"] = "compared"
+        result["reason"] = None
+        result["langgraph_version"] = importlib.metadata.version("langgraph")
         result["decision"] = (
             "采用"
             if candidate.persistence_points < existing.persistence_points

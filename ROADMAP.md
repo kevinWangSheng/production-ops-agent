@@ -114,7 +114,7 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [ ] B4 真实恢复合同已准备但待用户批准（每项 ≤2 HTTP、各 2 CNY，上限总 6 CNY）；未执行。
 - [ ] B5 只读 PG/RBAC/OS 隔离方案已准备；当前 K8s 缺测，未采购、未创建角色。
 - [ ] B6 上游同条件比较与 judge rubric 已准备；6 份独立审查仅作待人工校准样本，未执行盲测。
-- [ ] B7 LangGraph 离线脚本因可选依赖未安装返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟”，待用户决定，不加依赖。
+- [ ] B7 已用隔离 `uv run --with langgraph` 执行最小 StateGraph（版本 1.2.11）；与现有 loop 均 2 步/2 持久点/第二步取消，0 模型/工具 HTTP。ADR-0004 推荐推迟，是否加入主依赖待用户决定。
 
 以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。
 

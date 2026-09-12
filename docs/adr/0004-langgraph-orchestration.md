@@ -8,14 +8,14 @@ M0 计划要求验证 LangGraph 对当前 PostgreSQL 业务恢复、取消和步
 
 ## 离线比较
 
-脚本 [`scripts/m0_lab/langgraph_compare/compare.py`](../../scripts/m0_lab/langgraph_compare/compare.py) 固定 `otel_services → otel_traces → otel_metrics`，在第 2 步取消，统计现有 loop 的步骤重建、取消状态和持久点数量；执行结果见 [`round-05-langgraph-compare.json`](../evidence/m0-real-investigation/round-05-langgraph-compare.json)。当前环境未安装 `langgraph`，脚本返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；即使未来安装 extra，在补入真实图实现前也会返回 `LANGGRAPH_COMPARISON_NOT_IMPLEMENTED`，不伪造候选成绩；模型/工具 HTTP 均为 0。
+脚本 [`scripts/m0_lab/langgraph_compare/compare.py`](../../scripts/m0_lab/langgraph_compare/compare.py) 固定 `otel_services → otel_traces → otel_metrics`，在第 2 步取消，统计步骤、持久点和取消状态；使用 `uv run --with langgraph` 隔离安装 `langgraph 1.2.11` 后，现有 loop 与真实最小 StateGraph 均为 2 步、2 个持久点、同样取消。结果见 [`round-05-langgraph-compare.json`](../evidence/m0-real-investigation/round-05-langgraph-compare.json)；模型/工具 HTTP 为 0，未改 `uv.lock`。
 
 ## 决定
 
-**推荐推迟**（待用户决定）：当前离线数据为现有 loop 2 个步骤、2 个持久点、在第 2 步取消；LangGraph 候选为 `null`，原因 `LANGGRAPH_EXTRA_UNAVAILABLE`，因此没有可量化的步骤/持久点收益。即使未来依赖可导入，脚本在真实图实现前也返回 `LANGGRAPH_COMPARISON_NOT_IMPLEMENTED`，不会制造伪比较。没有可复现的同条件基准和明确收益前不增加依赖；若用户批准继续，使用隔离 extra（例如 `uv run --with langgraph`）实现真实候选后再比较，最终采用与否仍待确认。
+**推荐推迟**（待用户决定）：隔离 `langgraph 1.2.11` 的最小 StateGraph 与现有 loop 在固定序列上均为 2 个步骤、2 个持久点、同样在第 2 步取消，未观察到编排收益。该比较只覆盖离线状态模型，不证明真实 provider、PG checkpoint 或生产性能。建议暂不加入主依赖；若用户需要扩大比较，再另立性能/恢复合同，最终采用与否仍待确认。
 
 ## 后果
 
 - 正面：保持主依赖、锁文件和运行时边界稳定，避免为比较建设第二套平台。
-- 负面：本 ADR 暂无 LangGraph 真实实现成绩，不能声称编排收益已验证。
+- 负面：本 ADR 只有最小离线图实现，不能声称真实 provider/恢复性能收益已验证。
 - 安全/费用：脚本不读凭据、不访问模型/工具、不采购；后续 extra 安装和任何实验仍需独立审查。

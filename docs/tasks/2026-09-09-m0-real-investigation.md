@@ -455,7 +455,7 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - B4 合同：[`round-05-recovery-contract.md`](../evidence/m0-real-investigation/round-05-recovery-contract.md)，三项各 1 次、各 ≤2 HTTP/2 CNY、trace 白名单、停机保全均写明；状态待用户批准，未执行。
 - B5 方案：[`round-05-isolation-plan.md`](../evidence/m0-real-investigation/round-05-isolation-plan.md)，含只读 PG SQL/预期拒绝、K8s 环境缺测和三种 OS 隔离方案；未采购、未创建角色。
 - B6 协议：[`round-05-comparison-and-judge-protocol.md`](../evidence/m0-real-investigation/round-05-comparison-and-judge-protocol.md)，含差异披露、6 份独立审查人工样本和待校准 rubric；未跑新比较/盲测。
-- B7：`scripts/m0_lab/langgraph_compare/compare.py` 在固定替身序列上运行，因环境无 `langgraph` 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟，待用户决定”，无依赖/模型/工具 HTTP。
+- B7：使用 `uv run --with langgraph` 隔离安装 `langgraph 1.2.11`，固定替身序列下现有 loop 与最小 StateGraph 均为 2 步、2 个持久点、第二步取消；0 模型/工具 HTTP，未改 `uv.lock`。ADR-0004 已改为带数据的“推荐推迟”（未观察到收益），仍待用户决定是否纳入主依赖。
 
 第二个全新上下文文档复审见 [`round-05-docs-independent-review.md`](../evidence/m0-real-investigation/round-05-docs-independent-review.md) 与 [`round-05-docs-final-recheck.md`](../evidence/m0-real-investigation/round-05-docs-final-recheck.md)：确认 B4–B6 仍待批准/未执行，B7 两种依赖分支均 fail-closed，不伪造 compared；D1–D3 链接与状态无回退。当前代码/文档 tip 为 `75400ed`。
 

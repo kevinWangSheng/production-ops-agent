@@ -8,8 +8,16 @@
       "otel_traces"
     ]
   },
-  "langgraph": null,
-  "reason": "LANGGRAPH_EXTRA_UNAVAILABLE",
+  "langgraph": {
+    "cancelled": true,
+    "persistence_points": 2,
+    "steps": [
+      "otel_services",
+      "otel_traces"
+    ]
+  },
+  "langgraph_version": "1.2.11",
+  "reason": null,
   "scenario": {
     "cancel_after": 2,
     "model_http": 0,
@@ -20,5 +28,5 @@
       "otel_metrics"
     ]
   },
-  "status": "blocked_dependency"
+  "status": "compared"
 }
