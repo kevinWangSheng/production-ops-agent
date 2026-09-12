@@ -14,7 +14,10 @@ from scripts.m0_environment.round02 import (
     envelope_check,
     run_child,
 )
-from scripts.m0_environment.holmes_baseline import tool_remaining
+from scripts.m0_environment.holmes_baseline import (
+    KNOWN_BOUNDARY_CODES,
+    tool_remaining,
+)
 
 
 @pytest.fixture
@@ -101,6 +104,10 @@ def test_tool_remaining_under_four_seconds_reports_query_deadline(monkeypatch):
             tool_elapsed=0.0,
             profile=PROFILE,
         )
+
+
+def test_query_authorization_deadline_is_a_known_boundary_code():
+    assert "query authorization deadline reached" in KNOWN_BOUNDARY_CODES
 
 
 @pytest.mark.usefixtures("predeadline_budget_clock")

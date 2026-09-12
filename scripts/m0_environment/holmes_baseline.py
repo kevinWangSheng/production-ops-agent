@@ -69,6 +69,17 @@ DEADLINE = PROFILE.deadline
 MODEL = "deepseek-v4-flash"
 PROXY = "http://127.0.0.1:18081/integrations/m0-otel-20260909/"
 ALLOCATION = PROFILE.allocation
+KNOWN_BOUNDARY_CODES = (
+    "deadline reached",
+    "model request envelope denied",
+    "thinking profile not preserved",
+    "HTTP egress denied",
+    "HTTP request budget reached",
+    "HTTP response byte limit exceeded",
+    "response model identity mismatch",
+    "run deadline",
+    "query authorization deadline reached",
+)
 
 
 def tool_remaining(*, scope_deadline, run_stop, tool_elapsed, profile, now=None):
@@ -1319,20 +1330,12 @@ def main():
                 except ValueError as exc:
                     result.update(status="incomplete", report_validation_error=str(exc))
     except Exception as exc:
-        known_codes = [
-            "deadline reached",
-            "model request envelope denied",
-            "thinking profile not preserved",
-            "HTTP egress denied",
-            "HTTP request budget reached",
-            "HTTP response byte limit exceeded",
-            "response model identity mismatch",
-            "run deadline",
-        ]
         result.update(
             status="failed",
             error_type=type(exc).__name__,
-            boundary_error_codes=[code for code in known_codes if code in str(exc)],
+            boundary_error_codes=[
+                code for code in KNOWN_BOUNDARY_CODES if code in str(exc)
+            ],
         )
     finally:
         signal.alarm(0)
