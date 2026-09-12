@@ -8,7 +8,7 @@ import hashlib
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import get_args
 from uuid import UUID, uuid4, uuid5
@@ -84,9 +84,12 @@ class StepStore:
         ):
             raise BudgetError("INVALID_INPUT")
 
-    def accept(self, run, key, initial, versions):
+    def accept(self, run, key, initial, versions, *, target=None):
+        """``target`` is the optional per-target pause scope key, never a credential."""
         self._validate_versions(versions)
-        if not key:
+        if not key or (
+            target is not None and (not isinstance(target, str) or not target)
+        ):
             raise BudgetError("INVALID_INPUT")
         with self.ledger._transaction() as conn:
             exp = self.ledger._experiment(conn, run.experiment_id)
@@ -109,8 +112,8 @@ class StepStore:
             )
             self.ledger._run(conn, run)
             row = conn.execute(
-                "INSERT INTO m0_v3_subject(id,experiment_id,intake_key,intake_hash,input,current_run,versions) "
-                "VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(experiment_id,intake_key) DO NOTHING RETURNING id",
+                "INSERT INTO m0_v3_subject(id,experiment_id,intake_key,intake_hash,input,current_run,versions,target_key) "
+                "VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(experiment_id,intake_key) DO NOTHING RETURNING id",
                 (
                     uuid4(),
                     run.experiment_id,
@@ -119,6 +122,7 @@ class StepStore:
                     Jsonb(initial),
                     run.run_id,
                     Jsonb(versions),
+                    target,
                 ),
             ).fetchone()
             if row:
@@ -146,6 +150,7 @@ class StepStore:
         Never copies old protocol columns. Old run input/steps/budget remain.
         """
         self._validate_versions(versions)
+        paused = None
         with self.ledger._transaction() as conn:
             self._lock(conn, subject)
             row = conn.execute(
@@ -156,6 +161,25 @@ class StepStore:
                 or row["generation"] != expected_generation
                 or row["experiment_id"] != run.experiment_id
                 or row["current_run"] == run.run_id
+            ):
+                raise BudgetError("CONTROL_CONFLICT")
+            if self._pause_active(conn, row["target_key"]):
+                paused = row["generation"]
+        if paused is not None:
+            # Resume never implicitly continues; a new Run is only admitted
+            # once no covering pause is active.
+            self._deny(subject, "PAUSED", paused)
+        with self.ledger._transaction() as conn:
+            self._lock(conn, subject)
+            row = conn.execute(
+                "SELECT * FROM m0_v3_subject WHERE id=%s FOR UPDATE", (subject,)
+            ).fetchone()
+            if (
+                row is None
+                or row["generation"] != expected_generation
+                or row["experiment_id"] != run.experiment_id
+                or row["current_run"] == run.run_id
+                or self._pause_active(conn, row["target_key"])
             ):
                 raise BudgetError("CONTROL_CONFLICT")
             exp = self.ledger._experiment(conn, run.experiment_id)
@@ -185,6 +209,7 @@ class StepStore:
         if not isinstance(owner, UUID) or not 0 < lease_seconds <= 300:
             raise BudgetError("INVALID_INPUT")
         incompatible = False
+        paused = None
         with self.ledger._transaction() as conn:
             self._lock(conn, subject)
             row = conn.execute(
@@ -202,7 +227,9 @@ class StepStore:
                 raise BudgetError("CONTROL_DENIED")
             if row["owner"] is not None and row["lease_until"] > row["now"]:
                 raise BudgetError("LEASE_ACTIVE")
-            if row["versions"] != versions:
+            if self._pause_active(conn, row["target_key"]):
+                paused = row["generation"]
+            elif row["versions"] != versions:
                 conn.execute(
                     "UPDATE m0_v3_subject SET state='blocked' WHERE id=%s", (subject,)
                 )
@@ -224,9 +251,369 @@ class StepStore:
                     ),
                 )
                 fence = Fence(subject, run, row["generation"], owner, epoch)
+        if paused is not None:
+            self._deny(subject, "PAUSED", paused)
         if incompatible:
             raise BudgetError("INCOMPATIBLE_STATE")
         return fence
+
+    @staticmethod
+    def _pause_active(conn, target_key):
+        """True when a global pause or a pause for this subject's target is active."""
+        return (
+            conn.execute(
+                "SELECT 1 FROM m0_v3_pause WHERE active AND (scope='global' OR (scope='target' AND target_key=%s))",
+                (target_key or "",),
+            ).fetchone()
+            is not None
+        )
+
+    def _deny(self, subject, event, generation):
+        """Persist an audited denial outside the rolled-back transaction, then raise."""
+        with self.ledger._transaction() as conn:
+            self._audit(conn, subject, event, False, generation)
+        raise BudgetError(event)
+
+    def _pause_denied(self, conn, fence):
+        """Audit a PAUSED denial on a session-locked autocommit-capable connection."""
+        row = conn.execute(
+            "SELECT target_key,generation FROM m0_v3_subject WHERE id=%s",
+            (fence.subject,),
+        ).fetchone()
+        if row is None or not self._pause_active(conn, row["target_key"]):
+            # End the implicit read transaction so autocommit can be toggled later.
+            conn.rollback()
+            return False
+        self._audit(conn, fence.subject, "PAUSED", False, row["generation"])
+        conn.commit()
+        conn.execute(
+            "SELECT pg_advisory_unlock(hashtextextended(%s,0))", (str(fence.subject),)
+        )
+        conn.commit()
+        return True
+
+    def _scope_control(self, scope, target, action, reason):
+        if scope not in {"global", "target"}:
+            raise BudgetError("INVALID_INPUT")
+        if scope == "target":
+            if not isinstance(target, str) or not target:
+                raise BudgetError("INVALID_INPUT")
+        elif target is not None:
+            raise BudgetError("INVALID_INPUT")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 200):
+            raise BudgetError("INVALID_INPUT")
+        key = target or ""
+        with self.ledger._transaction() as conn:
+            # Serialize scope control against every subject-level control lock.
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('m0-pause',0))")
+            conn.execute(
+                "INSERT INTO m0_v3_pause(scope,target_key) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                (scope, key),
+            )
+            state = conn.execute(
+                "SELECT * FROM m0_v3_pause WHERE scope=%s AND target_key=%s FOR UPDATE",
+                (scope, key),
+            ).fetchone()
+            if state["active"] == (action == "pause"):
+                raise BudgetError("CONTROL_CONFLICT")
+            version = state["version"] + 1
+            conn.execute(
+                "UPDATE m0_v3_pause SET active=%s,version=%s,updated_at=clock_timestamp() WHERE scope=%s AND target_key=%s",
+                (action == "pause", version, scope, key),
+            )
+            conn.execute(
+                "INSERT INTO m0_v3_pause_event(scope,target_key,action,version,reason) VALUES(%s,%s,%s,%s,%s)",
+                (scope, key, action, version, reason),
+            )
+            covered = conn.execute(
+                "SELECT id FROM m0_v3_subject WHERE state=%s AND (%s='global' OR target_key=%s) ORDER BY id",
+                ("running" if action == "pause" else "paused", scope, key),
+            ).fetchall()
+            affected = []
+            for item in covered:
+                self._lock(conn, item["id"])
+                if action == "pause":
+                    # Old Runs stop being claimable; their steps, evidence, ledger
+                    # reservations and deadlines remain untouched history.
+                    row = conn.execute(
+                        "UPDATE m0_v3_subject SET generation=generation+1,state='paused',owner=NULL,lease_until=NULL WHERE id=%s AND state='running' RETURNING generation",
+                        (item["id"],),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    conn.execute(
+                        "INSERT INTO m0_v3_control VALUES(%s,%s,'pause',%s)",
+                        (item["id"], row["generation"], Jsonb({"scope": scope})),
+                    )
+                    self._audit(conn, item["id"], "pause", True, row["generation"])
+                    affected.append(str(item["id"]))
+                else:
+                    row = conn.execute(
+                        "SELECT generation FROM m0_v3_subject WHERE id=%s AND state='paused'",
+                        (item["id"],),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    # No state or generation change: resume acknowledges only.
+                    self._audit(conn, item["id"], "resume", True, row["generation"])
+                    affected.append(str(item["id"]))
+        return {"scope": scope, "version": version, "subjects": affected}
+
+    def pause(self, scope, *, target=None, reason=None):
+        """Global or per-target pause. New queries/dispatches/claims are denied.
+
+        Running subjects under the scope move to ``paused`` with a new generation;
+        nothing already committed is deleted or re-executed.
+        """
+        return self._scope_control(scope, target, "pause", reason)
+
+    def resume(self, scope, *, target=None):
+        """Lift a pause. Paused subjects stay paused until an explicit ``new_run``.
+
+        Deadlines and ledger budgets are never reset by resume.
+        """
+        return self._scope_control(scope, target, "resume", None)
+
+    def pause_snapshot(self):
+        """Safe export: scope states and events only, no subject payloads."""
+        with self.ledger._transaction() as conn:
+            states = conn.execute(
+                "SELECT scope,target_key,active,version FROM m0_v3_pause ORDER BY scope,target_key"
+            ).fetchall()
+            events = conn.execute(
+                "SELECT scope,target_key,action,version,created_at AS at FROM m0_v3_pause_event ORDER BY sequence"
+            ).fetchall()
+        return {
+            "states": states,
+            "events": [
+                {**event, "at": event["at"].astimezone(timezone.utc).isoformat()}
+                for event in events
+            ],
+        }
+
+    def authorize_observer(
+        self, subject, run, *, window_start, window_end, query_limit
+    ):
+        """Independent observer authorization: own Run, experiment ledger and window.
+
+        It never becomes an investigation fence and cannot continue a paused,
+        cancelled or blocked investigation Run.
+        """
+        if (
+            not isinstance(run, RunContext)
+            or type(query_limit) is not int
+            or query_limit <= 0
+            or not all(
+                isinstance(v, datetime) and v.tzinfo is not None
+                for v in (window_start, window_end)
+            )
+            or window_end <= window_start
+        ):
+            raise BudgetError("INVALID_INPUT")
+        observer = uuid4()
+        with self.ledger._transaction() as conn:
+            self._lock(conn, subject)
+            row = conn.execute(
+                "SELECT * FROM m0_v3_subject WHERE id=%s FOR UPDATE", (subject,)
+            ).fetchone()
+            if row is None:
+                raise BudgetError("UNKNOWN_IDENTITY")
+            if row["experiment_id"] == run.experiment_id:
+                # Budget/query window must not be borrowed from the investigation.
+                raise BudgetError("AUTHORIZATION_SCOPE_CONFLICT")
+            exp = self.ledger._experiment(conn, run.experiment_id)
+            if run.deadline > exp["deadline"]:
+                raise BudgetError("IDENTITY_CONFLICT")
+            if conn.execute(
+                "SELECT id FROM m0_runs WHERE id=%s", (run.run_id,)
+            ).fetchone():
+                raise BudgetError("IDENTITY_CONFLICT")
+            conn.execute(
+                "INSERT INTO m0_runs VALUES(%s,%s,%s,%s)",
+                (run.run_id, run.experiment_id, run.provider, run.deadline),
+            )
+            conn.execute(
+                "INSERT INTO m0_v3_observer VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    observer,
+                    subject,
+                    run.run_id,
+                    run.experiment_id,
+                    window_start,
+                    window_end,
+                    query_limit,
+                ),
+            )
+            self._audit(conn, subject, "observer_authorized", True, row["generation"])
+        return observer
+
+    def observe(self, subject, run, attempt_id, starter, *, now=None):
+        """One bounded read-only observer query under its own authorization.
+
+        Denied while any covering pause is active, outside the window, or past
+        the observer's own query limit. Never touches investigation state.
+        """
+        if not isinstance(run, RunContext) or not isinstance(attempt_id, UUID):
+            raise BudgetError("INVALID_INPUT")
+        if now is not None and (not isinstance(now, datetime) or now.tzinfo is None):
+            raise BudgetError("INVALID_INPUT")
+        denial = None
+        with self.ledger._transaction() as conn:
+            self._lock(conn, subject)
+            row = conn.execute(
+                "SELECT o.*,s.target_key,s.generation AS subject_generation,clock_timestamp() AS now "
+                "FROM m0_v3_observer o JOIN m0_v3_subject s ON s.id=o.subject WHERE o.subject=%s AND o.run_id=%s FOR UPDATE OF o",
+                (subject, run.run_id),
+            ).fetchone()
+            if row is None:
+                raise BudgetError("UNKNOWN_IDENTITY")
+            self.ledger._run(conn, run)
+            moment = now or row["now"]
+            if self._pause_active(conn, row["target_key"]):
+                denial = "PAUSED"
+            elif not row["window_start"] <= moment < row["window_end"]:
+                denial = "OBSERVATION_WINDOW_CLOSED"
+            elif moment >= run.deadline:
+                denial = "DEADLINE_EXCEEDED"
+            else:
+                count = conn.execute(
+                    "SELECT count(*) AS n FROM m0_v3_observer_attempt WHERE observer=%s",
+                    (row["id"],),
+                ).fetchone()["n"]
+                if count >= row["query_limit"]:
+                    denial = "QUERY_LIMIT"
+            if denial is None:
+                inserted = conn.execute(
+                    "INSERT INTO m0_v3_observer_attempt(id,observer) VALUES(%s,%s) ON CONFLICT DO NOTHING RETURNING id",
+                    (attempt_id, row["id"]),
+                ).fetchone()
+                if inserted is None:
+                    raise BudgetError("REQUEST_ALREADY_RESERVED")
+                self._audit(
+                    conn, subject, "observer_query", True, row["subject_generation"]
+                )
+            generation = row["subject_generation"]
+        if denial is not None:
+            self._deny(subject, denial, generation)
+        return starter()
+
+    def record_observation(self, subject, observation, profile, *, captured_at):
+        """Persistent HealthProfile observation stream with ordering rules.
+
+        Older-than-last-accepted captures are rejected (``OUT_OF_ORDER``); a
+        profile revision mismatch is stored as ``unknown``. Every sample is kept.
+        """
+        if (
+            not isinstance(captured_at, datetime)
+            or captured_at.tzinfo is None
+            or not hasattr(observation, "signals")
+            or not hasattr(profile, "revision")
+        ):
+            raise BudgetError("INVALID_INPUT")
+        evidence_ids = [signal.evidence_id for signal in observation.signals]
+        verdicts = {signal.verdict for signal in observation.signals}
+        with self.ledger._transaction() as conn:
+            self._lock(conn, subject)
+            row = conn.execute(
+                "SELECT generation FROM m0_v3_subject WHERE id=%s", (subject,)
+            ).fetchone()
+            if row is None:
+                raise BudgetError("UNKNOWN_IDENTITY")
+            last = conn.execute(
+                "SELECT max(captured_at) AS last FROM m0_v3_observation_stream WHERE subject=%s AND accepted",
+                (subject,),
+            ).fetchone()["last"]
+            if last is not None and captured_at < last:
+                accepted, code, verdict = False, "OUT_OF_ORDER", "unknown"
+            elif last is not None and captured_at == last:
+                accepted, code, verdict = False, "DUPLICATE_CAPTURE", "unknown"
+            elif observation.profile_revision != profile.revision:
+                accepted, code, verdict = False, "PROFILE_REVISION_MISMATCH", "unknown"
+            elif not set(profile.required_signals) <= {
+                s.name for s in observation.signals
+            }:
+                accepted, code, verdict = False, "SIGNAL_MISSING", "unknown"
+            else:
+                accepted, code = True, "ACCEPTED"
+                verdict = (
+                    "degraded"
+                    if "degraded" in verdicts
+                    else "unknown"
+                    if "unknown" in verdicts
+                    else "healthy"
+                )
+            sequence = conn.execute(
+                "INSERT INTO m0_v3_observation_stream(subject,profile_revision,observation_revision,captured_at,evidence_ids,verdict,accepted,code) "
+                "VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING sequence",
+                (
+                    subject,
+                    profile.revision,
+                    observation.profile_revision,
+                    captured_at,
+                    Jsonb(evidence_ids),
+                    verdict,
+                    accepted,
+                    code,
+                ),
+            ).fetchone()["sequence"]
+            self._audit(conn, subject, "observation", accepted, row["generation"])
+        return {
+            "sequence": sequence,
+            "accepted": accepted,
+            "code": code,
+            "verdict": verdict,
+        }
+
+    def observation_stream(self, subject):
+        """Safe export of the persisted stream: no signal content, ids only."""
+        with self.ledger._transaction() as conn:
+            rows = conn.execute(
+                "SELECT sequence,profile_revision,observation_revision,captured_at,evidence_ids,verdict,accepted,code FROM m0_v3_observation_stream WHERE subject=%s ORDER BY sequence",
+                (subject,),
+            ).fetchall()
+        return [
+            {
+                **row,
+                "captured_at": row["captured_at"].astimezone(timezone.utc).isoformat(),
+            }
+            for row in rows
+        ]
+
+    def record_stream_interruption(
+        self, fence, request_id, *, partial_sha256, partial_bytes
+    ):
+        """Audit an interrupted streamed model request; partial bytes never become a step.
+
+        The reservation stays occupied (unknown); a retry needs a new request id.
+        """
+        if (
+            not isinstance(request_id, UUID)
+            or type(partial_bytes) is not int
+            or partial_bytes < 0
+            or (partial_sha256 is not None and not isinstance(partial_sha256, str))
+        ):
+            raise BudgetError("INVALID_INPUT")
+        with self.ledger._transaction() as conn:
+            self._lock(conn, fence.subject)
+            row = conn.execute(
+                "SELECT d.step,s.response FROM m0_v3_dispatch d JOIN m0_v3_step s ON s.id=d.step WHERE d.request=%s AND d.subject=%s AND s.run_id=%s",
+                (request_id, fence.subject, fence.run.run_id),
+            ).fetchone()
+            if row is None:
+                raise BudgetError("UNKNOWN_MODEL_ATTEMPT")
+            if row["response"] is not None:
+                raise BudgetError("STEP_ALREADY_COMMITTED")
+            conn.execute(
+                "INSERT INTO m0_v3_stream_interruption(request,partial_sha256,partial_bytes) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
+                (request_id, partial_sha256, partial_bytes),
+            )
+            self.ledger.change_in_transaction(
+                conn, RequestIdentity(fence.run, request_id), "unknown"
+            )
+            self._audit(
+                conn, fence.subject, "stream_interrupted", False, fence.generation
+            )
+        return row["step"]
 
     @staticmethod
     def _audit(conn, subject, event, accepted, generation):
@@ -323,6 +710,8 @@ class StepStore:
                 conn.execute("SET statement_timeout='5000ms'")
                 self._lock(conn, fence.subject, session=True)
                 conn.commit()
+                if self._pause_denied(conn, fence):
+                    raise BudgetError("PAUSED")
                 with conn.transaction():
                     if not self._valid(conn, fence):
                         raise BudgetError("CONTROL_DENIED")
@@ -410,6 +799,8 @@ class StepStore:
                 conn.execute("SET statement_timeout='5000ms'")
                 self._lock(conn, fence.subject, session=True)
                 conn.commit()
+                if self._pause_denied(conn, fence):
+                    raise BudgetError("PAUSED")
                 with conn.transaction():
                     if not self._valid(conn, fence):
                         raise BudgetError("CONTROL_DENIED")
@@ -486,6 +877,8 @@ class StepStore:
                 conn.execute("SET statement_timeout='5000ms'")
                 self._lock(conn, fence.subject, session=True)
                 conn.commit()
+                if self._pause_denied(conn, fence):
+                    raise BudgetError("PAUSED")
                 with conn.transaction():
                     if not self._valid(conn, fence):
                         raise BudgetError("CONTROL_DENIED")
