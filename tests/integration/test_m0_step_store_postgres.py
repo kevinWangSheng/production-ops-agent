@@ -466,6 +466,13 @@ def test_transport_grant_one_use_and_snapshot_binding(lab):
             pytest.fail("duplicate send")
 
 
+def test_publish_unknown_step_fails_closed(lab):
+    store, _, run, subject = lab
+    fence = store.claim(subject, run, uuid4(), VERSION)
+    with pytest.raises(BudgetError, match="UNCOMMITTED_CANDIDATE"):
+        store.publish(fence, {"supported": False}, step=uuid4())
+
+
 @pytest.mark.parametrize("prior_action", [None, "cancel", "correct"])
 def test_current_control_snapshot_crosses_v3_seam_after_new_run(lab, prior_action):
     import json

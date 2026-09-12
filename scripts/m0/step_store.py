@@ -728,6 +728,8 @@ class StepStore:
                     "SELECT response FROM m0_v3_step WHERE id=%s AND subject=%s AND run_id=%s",
                     (step, fence.subject, fence.run.run_id),
                 ).fetchone()
+                if row is None:
+                    raise BudgetError("UNCOMMITTED_CANDIDATE")
                 try:
                     response = row["response"]
                     valid = (
