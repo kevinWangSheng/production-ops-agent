@@ -24,6 +24,12 @@ TOTAL_RESERVATION_CNY = 8.0
 RESERVATION_PER_HTTP = 1.0
 
 
+def validate_max_http(value: int) -> int:
+    if type(value) is not int or value < 1:
+        raise ValueError("max-http must be a positive integer")
+    return value
+
+
 def read_key() -> str:
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
@@ -72,6 +78,10 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("runner_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    try:
+        args.max_http = validate_max_http(args.max_http)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.runner_args and args.runner_args[0] == "--":
         args.runner_args = args.runner_args[1:]
     ledger = load_ledger()

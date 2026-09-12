@@ -10,6 +10,6 @@
 | WP6 trace/平台 | **部分** | trace linkage 字段核查和白名单回归已完成；B4 真实出口尚未携带新增 subject/attempt，恢复导出仍缺。 |
 | WP7 资源/费用 | **部分** | wall-time/清理上界有候选测量；账单与最终冻结值待用户。 |
 
-失败与证据不足：wp5 candidate 首次启动参数转发失败（0 HTTP）已保留；wp23 真实 probe 首次 envelope allowance 失败（0 HTTP）已保留；upstream 两场没有最终报告；K8s RBAC、Holmes 宿主 OS 隔离、正式 judge/盲测和供应商账单仍缺。
+失败与证据不足：wp5 candidate 首次启动参数转发失败（0 HTTP）已保留；wp23 真实 probe 首次 envelope allowance 失败（0 HTTP）已保留；upstream 两场没有最终报告；compressor keep floor 仍可能 over-threshold；K8s RBAC、Holmes 宿主 OS 隔离、正式 judge/盲测和供应商账单仍缺。
 
 结论：M0 设计验证工件已集中到可回读终态，但“部分/证据不足”不能汇总成产品 M0 通过；SPEC gate 保持 `not cleared`，M1 未授权。
