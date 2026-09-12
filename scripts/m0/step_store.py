@@ -46,6 +46,11 @@ def digest(value):
     ).hexdigest()
 
 
+def _clock_timestamp(conn):
+    """Read the authoritative database clock; tests may monkeypatch this seam."""
+    return conn.execute("SELECT clock_timestamp() AS now").fetchone()["now"]
+
+
 @dataclass(frozen=True)
 class Fence:
     subject: UUID
@@ -447,15 +452,13 @@ class StepStore:
             self._audit(conn, subject, "observer_authorized", True, row["generation"])
         return observer
 
-    def observe(self, subject, run, attempt_id, starter, *, now=None):
+    def observe(self, subject, run, attempt_id, starter):
         """One bounded read-only observer query under its own authorization.
 
         Denied while any covering pause is active, outside the window, or past
         the observer's own query limit. Never touches investigation state.
         """
         if not isinstance(run, RunContext) or not isinstance(attempt_id, UUID):
-            raise BudgetError("INVALID_INPUT")
-        if now is not None and (not isinstance(now, datetime) or now.tzinfo is None):
             raise BudgetError("INVALID_INPUT")
         denial = None
         with self.ledger._transaction() as conn:
@@ -468,7 +471,7 @@ class StepStore:
             if row is None:
                 raise BudgetError("UNKNOWN_IDENTITY")
             self.ledger._run(conn, run)
-            moment = now or row["now"]
+            moment = _clock_timestamp(conn)
             if self._pause_active(conn, row["target_key"]):
                 denial = "PAUSED"
             elif not row["window_start"] <= moment < row["window_end"]:

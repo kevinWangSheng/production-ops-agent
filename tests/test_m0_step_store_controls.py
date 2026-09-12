@@ -87,10 +87,8 @@ def test_observer_authorization_validation(store):
         )
     with pytest.raises(BudgetError, match="INVALID_INPUT"):
         store.observe(uuid4(), run(), "not-a-uuid", lambda: None)
-    with pytest.raises(BudgetError, match="INVALID_INPUT"):
-        store.observe(
-            uuid4(), run(), uuid4(), lambda: None, now=now.replace(tzinfo=None)
-        )
+    with pytest.raises(TypeError, match="unexpected keyword argument 'now'"):
+        store.observe(uuid4(), run(), uuid4(), lambda: None, now=now)
 
 
 def test_observation_and_interruption_validation(store):

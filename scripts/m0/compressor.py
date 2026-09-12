@@ -60,7 +60,9 @@ def segments(messages):
             raise ProtocolError("TOOL_PAIRING_INVALID")
         if message["role"] == "tool":
             raise ProtocolError("TOOL_PAIRING_INVALID")
-        calls = message.get("tool_calls") or []
+        if "tool_calls" in message and not isinstance(message["tool_calls"], list):
+            raise ProtocolError("TOOL_PAIRING_INVALID")
+        calls = message.get("tool_calls", [])
         if message["role"] == "assistant" and calls:
             ids = [c.get("id") if isinstance(c, dict) else None for c in calls]
             if any(not isinstance(i, str) or not i for i in ids) or len(

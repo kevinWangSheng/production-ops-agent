@@ -157,10 +157,14 @@ def test_global_pause_covers_untargeted_subjects_and_is_idempotent_safe(lab):
     assert store.new_run(plain, 1, other_run, {"request": "synthetic"}, VERSION) == 2
 
 
-def test_observer_authorization_is_independent_of_investigation(lab):
+def test_observer_authorization_is_independent_of_investigation(lab, monkeypatch):
     store, ledger, run, subject, target = lab
     fence = store.claim(subject, run, uuid4(), VERSION, lease_seconds=60)
     now = datetime.now(timezone.utc)
+    clock = {"value": now}
+    monkeypatch.setattr(
+        "scripts.m0.step_store._clock_timestamp", lambda conn: clock["value"]
+    )
     observer_exp = uuid4()
     ledger.initialize(observer_exp, 10, run.deadline)
     observer_run = RunContext(observer_exp, uuid4(), "deepseek", run.deadline)
@@ -182,14 +186,15 @@ def test_observer_authorization_is_independent_of_investigation(lab):
     )
     # Observer queries run under their own window/limit and touch no fence.
     assert store.observe(subject, observer_run, uuid4(), lambda: "q1") == "q1"
+    clock["value"] = now + timedelta(minutes=3)
     with pytest.raises(BudgetError, match="OBSERVATION_WINDOW_CLOSED"):
         store.observe(
             subject,
             observer_run,
             uuid4(),
             lambda: None,
-            now=now + timedelta(minutes=3),
         )
+    clock["value"] = now
     assert store.observe(subject, observer_run, uuid4(), lambda: "q2") == "q2"
     with pytest.raises(BudgetError, match="QUERY_LIMIT"):
         store.observe(subject, observer_run, uuid4(), lambda: None)

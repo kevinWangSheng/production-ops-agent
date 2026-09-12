@@ -104,6 +104,8 @@ def test_keep_groups_floor_never_splits_a_group():
             },
             {"role": "tool", "tool_call_id": "b", "content": ""},
         ],
+        [{"role": "assistant", "content": "", "tool_calls": {}}],
+        [{"role": "assistant", "content": "", "tool_calls": ""}],
         [
             {
                 "role": "assistant",
