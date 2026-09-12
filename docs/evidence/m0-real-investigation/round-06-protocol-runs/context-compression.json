@@ -1,0 +1,34 @@
+{
+  "mode": "context-compression",
+  "model": "deepseek-v4-flash",
+  "http_attempts": 1,
+  "records": [
+    {
+      "http_status": 200,
+      "response_sha256": "27b82f99b20dffde3e28b4665574f3887f4e5328f23e1d048af614830bb3151a",
+      "response_bytes": 987,
+      "elapsed_ms": 1184,
+      "interrupted": false,
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 104,
+        "completion_tokens": 96,
+        "total_tokens": 200,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 89
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 104
+      },
+      "finish_reason": "stop",
+      "role": "assistant",
+      "content_sha256": "b5ab217f2b186486b7ab522d669e4c4e6333cb8042c43fb4c0a128f2cb15cb6b",
+      "tool_call_ids": []
+    }
+  ],
+  "verdict": "provider_accepts_hand_constructed_paired_view_not_product_compressor",
+  "trace_uploads": 0
+}

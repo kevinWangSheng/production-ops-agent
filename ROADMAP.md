@@ -144,3 +144,8 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 - [x] `commit_tool` 对非 mapping result 统一返回 `TOOL_PAIRING_INVALID`，list/str 回归通过；review thread 已回复并 resolve，见 `e505f2b`。
 - [x] `git merge-tree --write-tree main HEAD` 无冲突，结果树与 main 用户未提交改动均未被触碰；证据见 [`round-07-merge-tree`](docs/evidence/m0-real-investigation/round-07-merge-tree.txt)。
 - [x] 工作包 3 新增专属 PG opt-in 控制合同：generation 竞争、HealthProfile 旧版本/固定时钟存储、pause/resume fail-closed、investigation identity 隔离；4 passed，失败样例保留于 [`round-06-control-contracts`](docs/evidence/m0-real-investigation/round-06-control-contracts.md)。pause/resume 完整状态机与独立 observer 授权 API 仍缺，未汇总为 M0 通过。
+
+## 2026-09-12 工作包 2 真实协议补证
+
+- [x] 隔离 probe 在 6 HTTP 上界内实际执行 5 HTTP：stream 中断 2、工具 4xx continuation 2、手工配对视图 1；0 trace，费用按 ledger 记账，详见 [`round-06-protocol-results`](docs/evidence/m0-real-investigation/round-06-protocol-results.md)。
+- [ ] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计，context compressor 尚不存在；不修改主 transport 合同，不打开 SPEC gate。

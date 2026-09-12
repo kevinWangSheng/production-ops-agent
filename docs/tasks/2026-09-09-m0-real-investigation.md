@@ -498,3 +498,11 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - `round-07-merge-tree.txt` 记录 `git merge-tree --write-tree main HEAD` 无冲突；仅读检查未触碰 main 工作区的用户改动。
 - 新增真实专属 PG opt-in 合同 `round-06-control-contracts.md` 与 `test_m0_control_contracts_postgres.py`：generation 竞争、HealthProfile 旧版本/固定时钟存储、pause/resume fail-closed、investigation identity 隔离共 4 passed；PG 已停止并保留卷。初始失败样例单独保留。
 - pause/resume 与独立 observer 授权仍标为证据不足/部分，不把 fail-closed 输入拒绝冒称完整产品状态机通过；SPEC gate 与 feature passes 不变。
+
+## 2026-09-12 工作包 2 真实协议补证
+
+- 依据 `round-06-protocol-contract.md`，隔离 probe 共执行 5 个 DeepSeek HTTP（流式中断 2、工具错误续接 2、手工压缩配对 1），0 trace，ledger known cost upper 0.014244 CNY，首中断 usage unknown reservation 2 CNY，未超 6 CNY 上界。
+- 流式中断：首个 SSE chunk 后主动关闭，partial 未解析/采纳；新请求 HTTP 200 但 `finish_reason=length`，只记隔离 provider 部分通过；产品 transport 仍固定 `stream=false`。
+- 工具错误续接：首请求真实 tool call，注入固定无敏感 404 消息，第二请求 HTTP 200/stop；只记 provider 协议部分通过，未宣称 StepStore/PG 审计完成。
+- 上下文压缩：手工构造 assistant/tool 成对视图 HTTP 200/stop；仓库无 compressor，记证据不足，不把配对视图冒称压缩机制。
+- 原始摘要/hash/失败前置错误见 `round-06-protocol-results.md`；0 HTTP 的 `ModuleNotFoundError` 首次调用单独保留，后续模块调用才执行合同请求。SPEC gate 与 feature passes 不变。

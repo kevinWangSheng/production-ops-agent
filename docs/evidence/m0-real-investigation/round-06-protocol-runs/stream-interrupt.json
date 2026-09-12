@@ -1,0 +1,41 @@
+{
+  "mode": "stream-interrupt",
+  "model": "deepseek-v4-flash",
+  "http_attempts": 2,
+  "records": [
+    {
+      "http_status": 200,
+      "response_sha256": "b26f00b66922cb840da715188aab6b927cfa5bf598309015af312fad345a7932",
+      "response_bytes": 316,
+      "elapsed_ms": 180,
+      "interrupted": true
+    },
+    {
+      "http_status": 200,
+      "response_sha256": "0dfaeef076ea9864862f8c4cbaf2ab289b5aa312e42e6ab331f733f34d2b6224",
+      "response_bytes": 5021,
+      "elapsed_ms": 4948,
+      "interrupted": false,
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 58,
+        "completion_tokens": 1024,
+        "total_tokens": 1082,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1024
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 58
+      },
+      "finish_reason": "length",
+      "role": "assistant",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tool_call_ids": []
+    }
+  ],
+  "verdict": "evidence_insufficient_product_stream_contract_fixed_false",
+  "trace_uploads": 0
+}
