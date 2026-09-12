@@ -871,7 +871,10 @@ def test_imported_views_allow_only_an_explicit_business_view_append():
     actual = json.dumps(
         {
             "request": "investigate",
-            "business_tool_views": [{"evidence_id": view["id"]}],
+            "business_tool_views": [
+                {k: v for k, v in view.items() if k != "id"}
+                | {"evidence_id": view["id"]}
+            ],
         },
         sort_keys=True,
     )
@@ -917,7 +920,9 @@ def test_verified_preembedded_business_views_preserve_original(mutation):
     view = scenario["trusted"]["deliveries"][0]["views"][0]
     original_object = {
         "request": "investigate",
-        "business_tool_views": [{"evidence_id": view["id"]}],
+        "business_tool_views": [
+            {k: v for k, v in view.items() if k != "id"} | {"evidence_id": view["id"]}
+        ],
     }
     original = json.dumps(original_object, sort_keys=True)
     actual_object = json.loads(original)

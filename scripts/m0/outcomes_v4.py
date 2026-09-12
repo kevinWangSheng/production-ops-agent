@@ -579,16 +579,20 @@ def input_provenance_errors(initial):
                     raise ValueError
                 if original == actual:
                     embedded = original.get("business_tool_views", [])
-                    expected = [view.id for view in initial.initial_views]
-                    if (
-                        not isinstance(embedded, list)
-                        or [
-                            value.get("evidence_id")
-                            for value in embedded
-                            if isinstance(value, dict)
-                        ]
-                        != expected
-                    ):
+                    expected = [
+                        view.model_dump(mode="json") for view in initial.initial_views
+                    ]
+                    normalized = []
+                    if isinstance(embedded, list):
+                        for value in embedded:
+                            if not isinstance(value, dict):
+                                normalized = None
+                                break
+                            item = dict(value)
+                            if "evidence_id" in item and "id" not in item:
+                                item["id"] = item.pop("evidence_id")
+                            normalized.append(item)
+                    if normalized is None or normalized != expected:
                         errors.add("INITIAL_INPUT_REASSEMBLY_MISMATCH")
                 elif (
                     not set(original).issubset(actual)
