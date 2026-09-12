@@ -131,5 +131,10 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 
 ## 2026-09-12 B6 上游比较结果
 
-- [ ] 候选真实 fixture/PG 链路 2 HTTP 成功；Holmes 上游 0 个确认成功请求，因 provider/认证前置失败，B6 同条件质量比较保持证据不足。结果见 `round-06-upstream-comparison-results.md`。
-- [ ] B6 不继续重试或猜测凭据；待用户提供合法上游认证/环境前提后另立 Run。SPEC gate 仍 not cleared。
+- [ ] 候选真实 fixture/PG 链路 2 HTTP 成功；上游认证线路后续复验已返回模型内容，但未形成可比较最终报告，B6 同条件质量比较保持证据不足。结果见 `round-06-upstream-comparison-results.md` 与 `round-06-upstream-auth-followup-results.md`。
+- [ ] 本 session 费用授权已明确，不再等待费用确认；后续 B6 只需另立受控 Run，保留每 Run 上限、usage/unknown 账本和数据出口边界。judge 校准、盲测和 B8 账单仍未完成，SPEC gate 仍 not cleared。
+
+## 2026-09-12 B6 认证线路后续复验
+
+- [x] 受信任启动器从私有 `.env` 向固定 Holmes checkout 注入 DeepSeek 凭据，单步无工具请求已返回模型内容；未打印、导出或上传凭据。
+- [ ] 该次启动未持久化 wire HTTP 状态/usage，且模型输出未执行的 shell tool-call，不能计入正式同条件质量样本；B6 正式比较、judge 校准和盲测仍保持证据不足。详见 [`round-06-upstream-auth-followup-results`](docs/evidence/m0-real-investigation/round-06-upstream-auth-followup-results.md)。

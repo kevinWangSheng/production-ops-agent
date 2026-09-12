@@ -1,0 +1,6 @@
+child_exit_code=not-captured
+wrapper_note=zsh refused assignment to reserved variable after child process completed; no retry was performed
+model_output_observed=true
+wire_http_status=not-captured
+usage=not-captured
+tool_execution=0

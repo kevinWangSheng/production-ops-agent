@@ -475,4 +475,11 @@ B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0
 - Holmes 上游按固定 checkout/问题尝试 3 次均在 provider/认证前置失败，0 个确认成功模型请求；完整 stdout/stderr 保留。B6 结论为“候选链路真实通过、上游基线证据不足”，不计算质量差异。
 - 结果与合同：[`round-06-upstream-comparison-results.md`](../evidence/m0-real-investigation/round-06-upstream-comparison-results.md)、[`round-06-upstream-comparison-contract.md`](../evidence/m0-real-investigation/round-06-upstream-comparison-contract.md)。不读取或猜测凭据，不继续重试。
 
+### 2026-09-12 认证线路后续复验
+
+- 用户已明确本 session 内费用授权无需再次确认；本次不把费用作为阻塞条件。
+- 受信任启动器仅从私有 `.env` 向 Holmes 子进程注入 `DEEPSEEK_API_KEY`，未打印或导出凭据；固定上游 checkout 已返回模型内容，越过此前 provider/空 Bearer 前置错误。
+- 由于一次性命令未持久化 wire HTTP 状态/usage，且模型只返回了未经执行的 shell tool-call，没有形成最终报告；状态记为“认证/线路部分通过、同条件比较证据不足”，不计入正式质量样本。原始输出、hash 和预留见 [`round-06-upstream-auth-followup-results.md`](../evidence/m0-real-investigation/round-06-upstream-auth-followup-results.md)。
+- 不再等待费用授权；后续若继续 B6，只需另立受控 Run 合同，保持工具/数据出口与每 Run 上限，不复制或索取凭据。
+
 PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先返回 `UNCOMMITTED_CANDIDATE`，专属 PG 回归通过；最终 `make check` 732 passed/45 skipped，输出 `round-05-final-make-check-after-publish.txt`。该修复已回复并 resolve review thread，当前代码/文档 tip 为 `db61c67`。

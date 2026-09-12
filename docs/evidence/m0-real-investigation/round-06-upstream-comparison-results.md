@@ -17,6 +17,10 @@
 - 缺失凭据不是工程 Agent 可以猜测或从其他来源复制的内容；不继续重试，不把空 Bearer 错误写成供应商 HTTP 失败。
 - B6 的 LangSmith trace 出口已在 B4 三个 Run 中独立验证；本轮上游比较不新增 trace，避免在比较样本不足时扩大数据出口。
 
+## 认证线路后续复验
+
+在用户确认 session 费用授权后，另立 [`round-06-upstream-auth-followup-contract.md`](round-06-upstream-auth-followup-contract.md) 做了 1 次无工具认证/线路复验。固定 Holmes checkout 已返回模型内容，未再出现缺 provider 或空 Bearer 错误；但启动器没有持久化 wire HTTP 状态/usage，且模型输出了未执行的 shell tool-call，故仅记为“认证/线路部分通过”，不计入正式同条件质量样本。原始输出和 hash 见 [`round-06-upstream-auth-followup-results.md`](round-06-upstream-auth-followup-results.md)。
+
 ## 结论
 
-B6 当前为**候选协议链路真实通过、上游基线证据不足**。比较协议、差异披露和 judge rubric 仍有效，但正式质量比较与人工校准必须等用户提供合法的上游认证/环境前提后，另立明确 Run 记录；不修改 feature passes，不打开 SPEC gate。
+B6 当前为**候选协议链路真实通过、上游认证线路部分通过但基线证据仍不足**。费用授权已明确，无需再次等待费用确认；正式质量比较仍需一个受控的上游最终报告 Run，并在完成后再做人工校准/盲测。不修改 feature passes，不打开 SPEC gate。
