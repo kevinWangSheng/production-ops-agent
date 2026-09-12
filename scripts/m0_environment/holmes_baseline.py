@@ -634,7 +634,8 @@ def main():
     if args.initial_timings_file and not initial_import["unverified"]:
         if args.report_version != REPORT_VERSION:
             raise ValueError("initial timing input requires strict report version")
-        initial_timing_input = json.loads(args.initial_timings_file.read_text())
+        timing_path = validate_source_path(args.initial_timings_file)
+        initial_timing_input = json.loads(timing_path.read_text())
         validate_timing_echo(initial_timing_input, registered_views, registered_timings)
         save(out / "initial-timings-input.json", initial_timing_input)
     query_lock = threading.Lock()
