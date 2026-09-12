@@ -415,6 +415,10 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - B2：从 M002 token/timing 与 M003/M004 HTTP/工具计数回算可见分布；旧 128KiB/8192/4/20/180s/20s/780s 标为不得冻结，v4 写入候选 512KiB/2MiB、16384 output、4/20、360s/1800s、30s/240s，工具累计与清理上界仍待实测、最终待用户批准。
 - B3：新增 no-data/stale/缺 profile/HealthProfile 最小 schema 确定性回归；专属 55431 PG 实际运行 StepStore 27 passed、Budget 9 passed、DB stop/start 1 passed，服务已停止且数据目录保留。发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍保留失败样例和证据不足状态，见 [`m0-b3-deterministic-contracts.md`](../evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
 
+### 独立复验处置
+
+全新上下文独立复验见 [`round-03-convergence-independent-review.md`](../evidence/m0-real-investigation/round-03-convergence-independent-review.md)：初次发现 A3 的 `id_ed25519` 用例被 `.ssh` 父目录规则遮蔽、B2 统计把缺失 usage 当 0 且混入 M004 的 9 工具下界。已补普通目录 basename 用例并改正校准统计；最终定向 162 passed，完整 `make check` 716 passed/44 skipped，历史发现和原始输出均保留。
+
 ### 验证与待办
 
 待运行本 worktree 的定向测试与完整 `make check`，输出保存到 `docs/evidence/m0-real-investigation/`。PR review thread 回复、最新 HEAD CI/bot 覆盖和 PR 描述更新属于 A1/A4 收尾；B4–B8 不在本轮离线授权内。

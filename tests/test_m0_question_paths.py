@@ -195,6 +195,7 @@ def test_invalid_scope_does_not_read_an_ordinary_question(tmp_path, monkeypatch)
         ".aws/config",
         ".docker/config.json",
         ".ssh/id_rsa",
+        "id_ed25519",
         ".pypirc",
         ".ssh/id_ed25519",
         "credentials",
