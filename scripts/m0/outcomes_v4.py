@@ -508,6 +508,8 @@ def _user_messages_match(delivery, actual_content, final_instruction):
                 and set(body) == {"actual_user_content", "context", "evidence_views"}
                 and body["actual_user_content"] == actual_content
                 and body["context"] == delivery.context.model_dump(mode="json")
+                and body["evidence_views"]
+                == [view.model_dump(mode="json") for view in delivery.views]
             )
         if not isinstance(body, list) or any(not isinstance(m, dict) for m in body):
             return False
@@ -610,8 +612,50 @@ def input_provenance_errors(initial):
                         and after[: len(before)] == before
                         else None
                     )
+                    trusted_views = {
+                        view.id: view.model_dump(mode="json")
+                        for view in initial.initial_views
+                    }
+                    normalized_suffix = []
+                    if suffix is not None:
+                        for value in suffix:
+                            if not isinstance(value, dict):
+                                normalized_suffix = None
+                                break
+                            raw_candidate = dict(value)
+                            item = dict(value)
+                            evidence_id = item.get("evidence_id")
+                            if evidence_id in trusted_views:
+                                expected = dict(trusted_views[evidence_id])
+                                item["id"] = item.pop("evidence_id")
+                                # A verified initial question may carry the exact
+                                # raw artifact; accept it only when its canonical
+                                # hash equals the trusted view's raw_hash.
+                                raw_hash = expected.get("raw_hash")
+                                raw_hash_matches = any(
+                                    content_hash(encoded) == raw_hash
+                                    for encoded in (
+                                        json.dumps(raw_candidate, ensure_ascii=False),
+                                        json.dumps(raw_candidate, ensure_ascii=False)
+                                        + "\n",
+                                        json.dumps(
+                                            raw_candidate,
+                                            ensure_ascii=False,
+                                            indent=2,
+                                        )
+                                        + "\n",
+                                    )
+                                )
+                                if item != expected and not raw_hash_matches:
+                                    normalized_suffix = None
+                                    break
+                            else:
+                                normalized_suffix = None
+                                break
+                            normalized_suffix.append(item)
                     if (
                         suffix is None
+                        or normalized_suffix is None
                         or len(
                             {
                                 v.get("evidence_id")

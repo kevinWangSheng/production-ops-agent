@@ -441,6 +441,14 @@ def main():
         raise ValueError("one-step Run must use report phase")
     if args.max_steps != 1 and args.phase == "report":
         raise ValueError("report phase cannot query")
+    if (
+        args.report_version == LEGACY_REPORT_VERSION
+        and args.max_steps == 1
+        and args.scope_file is None
+    ):
+        raise ValueError("legacy report-only requires scope-file")
+    if args.scope_file:
+        validate_source_path(args.scope_file)
     scope = json.loads(args.scope_file.read_text()) if args.scope_file else None
     registry = None
     if args.max_steps != 1 or args.report_version == REPORT_VERSION:
@@ -463,7 +471,7 @@ def main():
             and 0 < window["end"] - window["start"] <= 3600
         ):
             raise ValueError("trusted window invalid")
-        registry_path = Path(scope["deployment_registry_file"])
+        registry_path = validate_source_path(scope["deployment_registry_file"])
         registry = json.loads(registry_path.read_text())
         if registry.get("integration_id") != scope["integration_id"]:
             raise ValueError("registry integration mismatch")
@@ -483,7 +491,8 @@ def main():
         ):
             raise ValueError("strict control generation required")
         if args.time_policy_file:
-            policy_input = json.loads(args.time_policy_file.read_text())
+            policy_path = validate_source_path(args.time_policy_file)
+            policy_input = json.loads(policy_path.read_text())
             if not isinstance(policy_input, list):
                 raise ValueError("time policy file must contain a list")
             time_policies = [

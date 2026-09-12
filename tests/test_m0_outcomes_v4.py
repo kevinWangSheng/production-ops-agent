@@ -633,6 +633,25 @@ def test_synthetic_envelope_cannot_hide_extra_user_instructions():
     assert "UNEXPECTED_USER_MESSAGE" in checked(scenario, outcome)
 
 
+def test_envelope_evidence_views_must_match_trusted_delivery():
+    scenario, outcome = reportless_packet()
+    delivery = scenario["trusted"]["deliveries"][0]
+    delivery["business_projection"] = "envelope-v1"
+    body = {
+        "actual_user_content": scenario["agent_input"]["actual_user_content"],
+        "context": delivery["context"],
+        "evidence_views": [dict(view) for view in delivery["views"]],
+    }
+    body["evidence_views"][0]["id"] = "tampered"
+    content = json.dumps(body)
+    delivery.update(
+        business_projection_content=content,
+        business_projection_hash=content_hash(content),
+        full_wire_hash=content_hash(content),
+    )
+    assert "UNEXPECTED_USER_MESSAGE" in checked(scenario, outcome)
+
+
 @pytest.mark.parametrize("prior", ["cancel", "correct"])
 def test_relabelled_dispatch_cannot_predate_new_generation(prior):
     scenario, outcome = strict_packet()
@@ -899,6 +918,37 @@ def test_imported_views_allow_only_an_explicit_business_view_append():
     scenario["agent_input"]["actual_user_content"] = json.dumps(altered, sort_keys=True)
     scenario["agent_input"]["actual_user_content_sha256"] = content_hash(
         scenario["agent_input"]["actual_user_content"]
+    )
+    assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" in checked(scenario, outcome)
+
+
+def test_imported_view_append_must_match_the_complete_trusted_view():
+    scenario, outcome = reportless_packet()
+    view = scenario["trusted"]["deliveries"][0]["views"][0]
+    original = json.dumps({"request": "investigate"}, sort_keys=True)
+    appended = {k: v for k, v in view.items() if k != "id"} | {
+        "evidence_id": view["id"]
+    }
+    appended["content"] = "tampered"
+    actual = json.dumps(
+        {"request": "investigate", "business_tool_views": [appended]},
+        sort_keys=True,
+    )
+    scenario["agent_input"].update(
+        evidence_context=scenario["trusted"]["deliveries"][0]["context"],
+        initial_views=[view],
+        original_user_content=original,
+        original_user_content_sha256=content_hash(original),
+        actual_user_content=actual,
+        actual_user_content_sha256=content_hash(actual),
+    )
+    delivery = scenario["trusted"]["deliveries"][0]
+    body = json.loads(delivery["business_projection_content"])
+    body["actual_user_content"] = actual
+    content = json.dumps(body)
+    delivery.update(
+        business_projection_content=content,
+        business_projection_hash=content_hash(content),
     )
     assert "INITIAL_INPUT_REASSEMBLY_MISMATCH" in checked(scenario, outcome)
 
