@@ -124,5 +124,5 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 
 - [x] B4 三项真实恢复/控制验证各执行 1 次；B4-1 恢复、B4-2 cancel 迟到拒绝、B4-3 `INCOMPATIBLE_STATE` handoff 均有结果记录。3 模型 HTTP、known cost 0.004293 CNY、unknown reservation 1.0 CNY，未超 6 CNY 合同上界；三次 LangSmith 白名单回读 `TRACE_VERIFIED`。
 - [x] B5 专属 PG 只读角色实际 SELECT 成功、写/DDL 拒绝；K8s 标环境缺测，OS 隔离方案不采购。
-- [ ] B7 脚本输出 0 HTTP、无 LangGraph 依赖；ADR-0004 推荐推迟，是否安装隔离 extra 仍待用户决定。
+- [ ] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
 - [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。

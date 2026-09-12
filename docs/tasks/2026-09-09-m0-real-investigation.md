@@ -464,5 +464,7 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - B4 已按用户批准合同执行：B4-1 真实模型响应提交后 exit17、真实 PG 重建续跑；B4-2 真实请求后 cancel、迟到结果拒绝；B4-3 不兼容版本返回 `INCOMPATIBLE_STATE`/blocked。三项各一次，详见 [`round-05-recovery-results.md`](../evidence/m0-real-investigation/round-05-recovery-results.md)。
 - B4 同步完成 3 个 Run 的 LangSmith 白名单 POST/GET，均 `TRACE_VERIFIED`；新 allocation 3 模型 HTTP，known cost 0.004293 CNY，1.0 CNY unknown reservation，合同 6 CNY 上界未超。
 - B5 创建并保留 `opspilot_probe_20260912` 只读角色；SELECT 成功，INSERT/UPDATE/DELETE/DDL 实际拒绝，见 [`round-05-b5-pg-readonly-output.json`](../evidence/m0-real-investigation/round-05-b5-pg-readonly-output.json)。K8s 仍环境缺测，OS 隔离不采购。
-- B7 离线脚本实际 0 model/tool HTTP；因无 LangGraph 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`，ADR-0004 已改为带数据的“推荐推迟”，仍待用户决定是否安装隔离 extra。
+- B7 离线脚本经 `uv run --with langgraph` 实际 0 model/tool HTTP；LangGraph 1.2.11 与现有 loop 均 2 步/2 持久点/第二步取消，ADR-0004 已改为带数据的“推荐推迟”，仍待用户决定是否纳入主依赖。
 - `m0-otel`、专属 PG 和 Compose 已在证据保全后停止；不 `down`，卷/历史证据保留。SPEC gate 与 feature passes 不变。
+
+B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0-real-investigation/round-05-b4-b7-independent-review.md)，未发现将机制证据误称 M0 通过的越界声明；B7 依赖可用分支风险已在脚本中 fail-closed 后由最终复核确认。
