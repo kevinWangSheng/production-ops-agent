@@ -481,5 +481,6 @@ B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0
 - 受信任启动器仅从私有 `.env` 向 Holmes 子进程注入 `DEEPSEEK_API_KEY`，未打印或导出凭据；固定上游 checkout 已返回模型内容，越过此前 provider/空 Bearer 前置错误。
 - 由于一次性命令未持久化 wire HTTP 状态/usage，且模型只返回了未经执行的 shell tool-call，没有形成最终报告；状态记为“认证/线路部分通过、同条件比较证据不足”，不计入正式质量样本。原始输出、hash 和预留见 [`round-06-upstream-auth-followup-results.md`](../evidence/m0-real-investigation/round-06-upstream-auth-followup-results.md)。
 - 不再等待费用授权；后续若继续 B6，只需另立受控 Run 合同，保持工具/数据出口与每 Run 上限，不复制或索取凭据。
+- 全新上下文独立复核见 [`round-06-auth-followup-independent-review.md`](../evidence/m0-real-investigation/round-06-auth-followup-independent-review.md)：工具定义暴露边界与候选 ledger 可回读性两项发现已修正，无剩余文档边界发现。
 
 PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先返回 `UNCOMMITTED_CANDIDATE`，专属 PG 回归通过；最终 `make check` 732 passed/45 skipped，输出 `round-05-final-make-check-after-publish.txt`。该修复已回复并 resolve review thread，当前代码/文档 tip 为 `db61c67`。
