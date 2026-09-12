@@ -104,3 +104,5 @@ M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文�
 - [ ] B3 已补 `no_data/stale/缺 profile/观察缺口` 的可控语义回归并索引真实 PG 子集；DB 短故障、发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
 
 PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`0babc02` 的 bot review 无 major issues，覆盖其代码；`0774960` 当前 bot 结果尚未返回，已由全新上下文独立复验与父提交 review 边界替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
+
+后续 `da505dc`/`0a514a0` 仅修复 timing sidecar 读前 guard 与较早 query deadline 保留，均通过本地 `make check` 723 passed/44 skipped；当前 PR tip 为 `0a514a0`，CI checks/m0-postgres 成功，threads 已处置并 resolve，SPEC gate 仍 not cleared。
