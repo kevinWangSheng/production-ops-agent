@@ -151,7 +151,43 @@ def test_actual_legacy_wrapper_rejects_before_archive_or_dispatch(
         with pytest.raises(ValueError, match="INITIAL_SOURCE_PATH_DENIED"):
             wrapper.main()
         transport.assert_not_called()
-    assert opened == []
+        assert opened == []
+
+
+def test_legacy_report_only_without_scope_is_rejected_before_question_read(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "question.txt"
+    source.write_text("ordinary investigation")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "holmes",
+            "--question-file",
+            str(source),
+            "--run-id",
+            "legacy-no-scope",
+            "--phase",
+            "report",
+            "--max-steps",
+            "1",
+            "--report-version",
+            wrapper.LEGACY_REPORT_VERSION,
+        ],
+    )
+    original = Path.read_bytes
+    reads = []
+
+    def spy(path):
+        if path == source:
+            reads.append(path)
+            raise AssertionError("question read before legacy scope rejection")
+        return original(path)
+
+    with patch.object(Path, "read_bytes", spy):
+        with pytest.raises(ValueError, match="legacy report-only requires scope-file"):
+            wrapper.main()
+    assert reads == []
     assert not (tmp_path / "tmp/m0-environment/holmes-runs/denied").exists()
 
 
