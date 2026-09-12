@@ -6,7 +6,6 @@ import importlib.util
 import json
 from dataclasses import dataclass
 
-
 TOOLS = ("otel_services", "otel_traces", "otel_metrics")
 
 
