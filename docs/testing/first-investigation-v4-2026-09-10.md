@@ -50,11 +50,11 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。
 
-首片候选资源上限：单活跃 Run/worker；每 Run 至多4物理模型请求、20工具；总 context131072 tokens含32768输出，HTTP请求512KiB/响应2MiB，模型360秒/Run1800秒总 wall；工具单个30秒/累计240秒，均含已验证的有限清理。授权绝对 deadline、剩余费用/次数及来源自身更早期限仍优先；上限不是可同时耗尽所有维度的保证。累计预算来自所属新授权，不重置旧 unknown。
+首片候选资源上限（**同为候选，待用户批准**）：单活跃 Run/worker；每 Run 至多4物理模型请求、20工具；总 context131072 tokens含32768输出，HTTP请求512KiB/响应2MiB，模型360秒/Run1800秒总 wall；工具单个30秒/累计240秒，均含已验证的有限清理。授权绝对 deadline、剩余费用/次数及来源自身更早期限仍优先；上限不是可同时耗尽所有维度的保证。累计预算来自所属新授权，不重置旧 unknown。
 
 ### 预算/时序校准（候选，待用户批准）
 
-旧入口中的 `input=128KiB`、`output=8192`、每 Run `4 HTTP/20 工具`、`180s/20s/780s` 只是上一轮排演值，**不得作为最终冻结值**。按已保留账本回算：M002 共 8 条 per-run 记录，其中 6 条有 token，已知 prompt 为 603–106,736 tokens、completion 为 138–15,104，另 2 条 usage missing；单 Run HTTP 为 1–4、工具为 0–19、首发到末响应为 0.65–114.89s。M003 可回读的真实 Run 为 3–4 HTTP/11–20 工具，M004 为 3 HTTP/9–12 工具。M003/M004 的逐请求 token 与完整 wall-time sidecar 没有随安全业务摘要提交，因此不能伪造分位数，记为证据不足。
+旧入口中的 `input=128KiB`、`output=8192`、每 Run `4 HTTP/20 工具`、`180s/20s/780s` 只是上一轮排演值，**不得作为最终冻结值**；`20s/780s` 的仓库出处是 [first-vertical-investigation §入口证据和待解接缝](../plans/first-vertical-investigation-2026-09-09.md) 的校准起点（该处同样明确不得冻结）。按已保留账本回算：M002 共 8 条 per-run 记录，其中 6 条有 token，已知 prompt 为 603–106,736 tokens、completion 为 138–15,104，另 2 条 usage missing；单 Run HTTP 为 1–4、工具为 0–19、首发到末响应为 0.65–114.89s。M003 可回读的真实 Run 为 3–4 HTTP/11–20 工具，M004 为 3 HTTP/9–12 工具。M003/M004 的逐请求 token 与完整 wall-time sidecar 没有随安全业务摘要提交，因此不能伪造分位数，记为证据不足。
 
 基于上述最大已观测值及 M002 两次大包被 128KiB 拦截的失败（131,799/158,029 bytes），提出下一候选而非冻结值：HTTP 请求/响应上限 512KiB/2MiB；模型输出 16,384 tokens；每 Run 至多 4 HTTP、20 工具；单请求 360s、Run 总 wall 1,800s；单工具 30s、工具累计 240s。工具总 wall-time、并行工具的清理上界和取消后的子任务收敛尚未实测，故累计 240s 与清理上界仍需确定性实验确认。该候选保留 per-Run deadline、查询/工具预算、unknown 费用和真实用量记账，不恢复任何历史 aggregate cap；**最终冻结须由用户在账单、B3/B4 证据后批准**。
 

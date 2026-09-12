@@ -1,4 +1,14 @@
 .....s....                                                               [100%]
+==================================== PASSES ====================================
 =========================== short test summary info ============================
+PASSED tests/integration/test_m0_budget_postgres.py::test_cross_process_competition_and_shared_runs
+PASSED tests/integration/test_m0_budget_postgres.py::test_same_request_only_one_sender_and_conflicts
+PASSED tests/integration/test_m0_budget_postgres.py::test_unknown_settlement_overage_and_block
+PASSED tests/integration/test_m0_budget_postgres.py::test_release_exact_cost_and_unknown_identity
+PASSED tests/integration/test_m0_budget_postgres.py::test_deadline_checked_after_lock_wait
+PASSED tests/integration/test_m0_budget_postgres.py::test_identity_conflicts_do_not_mutate_other_record
+PASSED tests/integration/test_m0_budget_postgres.py::test_expired_history_can_settle_without_new_authority
+PASSED tests/integration/test_m0_budget_postgres.py::test_large_integers_preserve_exact_budget
+PASSED tests/integration/test_m0_budget_postgres.py::test_lost_commit_acknowledgment_never_grants_second_send
 SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
-9 passed, 1 skipped in 2.02s
+9 passed, 1 skipped in 2.28s

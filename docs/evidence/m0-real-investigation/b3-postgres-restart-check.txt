@@ -1,2 +1,11 @@
 .                                                                        [100%]
-1 passed, 9 deselected in 0.40s
+==================================== PASSES ====================================
+__________ test_database_restart_retains_unknown_and_denies_when_down __________
+----------------------------- Captured stdout call -----------------------------
+waiting for server to shut down.... done
+server stopped
+waiting for server to start.... done
+server started
+=========================== short test summary info ============================
+PASSED tests/integration/test_m0_budget_postgres.py::test_database_restart_retains_unknown_and_denies_when_down
+1 passed, 9 deselected in 0.43s
