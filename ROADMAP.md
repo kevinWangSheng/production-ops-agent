@@ -106,3 +106,14 @@ M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文�
 PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`0babc02` 的 bot review 无 major issues，覆盖其代码；`0774960` 当前 bot 结果尚未返回，已由全新上下文独立复验与父提交 review 边界替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
 
 后续 `da505dc`/`0a514a0`/`d1b6d15` 修复 timing sidecar 读前 guard、较早 query deadline 传播及 tool lock 后截止重检，均通过本地 `make check` 723 passed/44 skipped；当前 PR tip 为 `d1b6d15`（后续文档收尾），CI checks/m0-postgres 成功，threads 已处置并 resolve，SPEC gate 仍 not cleared。
+
+## 2026-09-12 PR16 C1–C5 与 B4–B7 准备
+
+- [x] C1–C5 代码修正已按独立提交完成，最终本地 `make check` 730 passed/44 skipped；没有模型/trace/OTel 操作。代码独立复审待记录。
+- [x] D1–D3 文档状态已拆分并修正：退出矩阵、B3 `-rA` PG 输出、v4 候选预算出处均已更新。
+- [ ] B4 真实恢复合同已准备但待用户批准（每项 ≤2 HTTP、各 2 CNY，上限总 6 CNY）；未执行。
+- [ ] B5 只读 PG/RBAC/OS 隔离方案已准备；当前 K8s 缺测，未采购、未创建角色。
+- [ ] B6 上游同条件比较与 judge rubric 已准备；6 份独立审查仅作待人工校准样本，未执行盲测。
+- [ ] B7 LangGraph 离线脚本因可选依赖未安装返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟”，待用户决定，不加依赖。
+
+以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。

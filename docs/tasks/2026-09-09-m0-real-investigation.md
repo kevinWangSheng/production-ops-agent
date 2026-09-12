@@ -432,3 +432,27 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 `da505dc` 修复 timing sidecar 读前路径 guard，`0a514a0` 修复 scope 较早 `effective_query_deadline` 被覆盖的问题；两项均有 `make check` 723 passed/44 skipped 输出（`round-03-timing-guard-final-make-check.txt`、`round-03-query-deadline-final-make-check.txt`）。当前 task tip 为 `3e91523`（仅文档收尾），无新增模型/trace/OTel 操作，SPEC gate 仍 not cleared。
 
 `d1b6d15` 在 tool lock 获取后再次检查 scope deadline，并将其纳入工具 remaining；全新上下文独立复验见 `round-03-postlock-independent-review.md`，确认无新 P1/P2，但未把锁竞争场景冒称 runtime proof。最终本地 `make check` 仍 723 passed/44 skipped。
+
+## 2026-09-12 PR16 C1–C5 与 B4–B7 准备
+
+### C1–C5 代码修正
+
+- C1：全仓库检索确认 `initial_evidence.py`/report-only bridge 确实有“question 携带已验证 raw 记录、随后重放 projection”的流程，故保留 raw_hash 逃生口但仅接受稳定 raw artifact hash；新增 raw 漂移拒绝与 view <=14,000 bytes 断言。依据与测试见 `round-03-batch-fix-c1.txt`，提交 `c801c6f`。
+- C2：新增可控时钟测试，覆盖锁前未过期、锁后过期及剩余小于 4 秒均归类 query authorization deadline；提交 `0205e63`，输出 `round-03-batch-fix-c2.txt`。
+- C3：`query authorization deadline reached` 加入 `KNOWN_BOUNDARY_CODES` 并补断言；提交 `5de2a8c`，输出 `round-03-batch-fix-c3.txt`。
+- C4：deadline 合并函数显式拒绝 bool；提交 `b733a0c`，输出 `round-03-batch-fix-c4.txt`。
+- C5：tool-call 每个容器要求非空字符串 `id`，补 `{}` 与 `id=123` 负例；提交 `46ac8d8`，输出 `round-03-batch-fix-c5.txt`。
+- 批次最终 `make check`：`730 passed / 44 skipped`；首次 Ruff import/format 失败与修复后的 `round-03-batch-fix-final-check-green.txt` 均保留。代码批次独立复审待合并 `round-03-code-batch-independent-review.md`。
+
+### D1–D3 文档修正
+
+- `m0-exit-matrix.md` 已按工作包 2–5/8 拆分独立状态，修正持久配对、TRACE_VERIFIED 和 M004 raw 复核链接，并注明 raw 补交前独立复核为历史。
+- `m0-b3-deterministic-contracts.md` 已收窄标题/首段、列出测试函数和无测试表；PG opt-in 已用 `-rA` 重跑，StepStore 27、Budget 9、restart 1 通过，输出含测试名。
+- v4 校准段已标明同为候选待用户批准，并引用首流程计划作为 `20s/780s` 来源。
+
+### B4–B7 只落盘准备
+
+- B4 合同：[`round-05-recovery-contract.md`](../evidence/m0-real-investigation/round-05-recovery-contract.md)，三项各 1 次、各 ≤2 HTTP/2 CNY、trace 白名单、停机保全均写明；状态待用户批准，未执行。
+- B5 方案：[`round-05-isolation-plan.md`](../evidence/m0-real-investigation/round-05-isolation-plan.md)，含只读 PG SQL/预期拒绝、K8s 环境缺测和三种 OS 隔离方案；未采购、未创建角色。
+- B6 协议：[`round-05-comparison-and-judge-protocol.md`](../evidence/m0-real-investigation/round-05-comparison-and-judge-protocol.md)，含差异披露、6 份独立审查人工样本和待校准 rubric；未跑新比较/盲测。
+- B7：`scripts/m0_lab/langgraph_compare/compare.py` 在固定替身序列上运行，因环境无 `langgraph` 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟，待用户决定”，无依赖/模型/工具 HTTP。
