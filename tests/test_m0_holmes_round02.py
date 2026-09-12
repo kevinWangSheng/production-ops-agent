@@ -14,6 +14,7 @@ from scripts.m0_environment.round02 import (
     envelope_check,
     run_child,
 )
+from scripts.m0_environment.holmes_baseline import tool_remaining
 
 
 @pytest.fixture
@@ -71,6 +72,35 @@ def test_unknown_budget_survives_restart_and_stops_phase(tmp_path):
     with pytest.raises(ValueError, match="phase budget"):
         restored.reserve("r2", "report", 123)
     assert len(json.loads(path.read_text())["attempts"]) == 1
+
+
+def test_tool_deadline_is_rechecked_after_lock_wait(monkeypatch):
+    clock = iter([100.0, 105.0])
+    monkeypatch.setattr(
+        "scripts.m0_environment.holmes_baseline.time.time", lambda: next(clock)
+    )
+    deadline = 103.0
+    assert time.time() < deadline  # lock entry was authorized
+    with pytest.raises(RuntimeError, match="query authorization deadline"):
+        tool_remaining(
+            scope_deadline=deadline,
+            run_stop=200.0,
+            tool_elapsed=0.0,
+            profile=PROFILE,
+        )
+
+
+def test_tool_remaining_under_four_seconds_reports_query_deadline(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.m0_environment.holmes_baseline.time.time", lambda: 100.0
+    )
+    with pytest.raises(RuntimeError, match="query authorization deadline"):
+        tool_remaining(
+            scope_deadline=103.0,
+            run_stop=200.0,
+            tool_elapsed=0.0,
+            profile=PROFILE,
+        )
 
 
 @pytest.mark.usefixtures("predeadline_budget_clock")

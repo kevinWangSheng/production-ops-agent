@@ -71,6 +71,30 @@ PROXY = "http://127.0.0.1:18081/integrations/m0-otel-20260909/"
 ALLOCATION = PROFILE.allocation
 
 
+def tool_remaining(*, scope_deadline, run_stop, tool_elapsed, profile, now=None):
+    """Return a bounded tool timeout after lock acquisition.
+
+    The scope deadline is an authorization boundary, so it wins over the
+    process/tool ceilings and is re-evaluated at the point of dispatch.
+    """
+    now = time.time() if now is None else now
+    scope_remaining = scope_deadline - now
+    if scope_remaining <= 0:
+        raise RuntimeError("query authorization deadline reached")
+    tool_budget_remaining = profile.tool_total_seconds - tool_elapsed
+    remaining = min(
+        profile.tool_seconds,
+        tool_budget_remaining,
+        run_stop - now,
+        scope_remaining,
+    )
+    if remaining <= 4:
+        if scope_remaining <= 4:
+            raise RuntimeError("query authorization deadline reached")
+        raise TimeoutError("tool total deadline")
+    return remaining
+
+
 def save(path, value):
     temp = path.with_name(path.name + ".pending")
     with temp.open("w") as handle:
@@ -705,17 +729,12 @@ def main():
                 raise RuntimeError("query authorization deadline reached")
             nonlocal tool_elapsed
             with tool_io_lock:
-                now = time.time()
-                if now >= scope["effective_query_deadline"]:
-                    raise RuntimeError("query authorization deadline reached")
-                remaining = min(
-                    PROFILE.tool_seconds,
-                    PROFILE.tool_total_seconds - tool_elapsed,
-                    run_stop - now,
-                    scope["effective_query_deadline"] - now,
+                remaining = tool_remaining(
+                    scope_deadline=scope["effective_query_deadline"],
+                    run_stop=run_stop,
+                    tool_elapsed=tool_elapsed,
+                    profile=PROFILE,
                 )
-                if remaining <= 4:
-                    raise TimeoutError("tool total deadline")
                 started = time.monotonic()
                 try:
                     return bounded_send(client, request, 1_000_000, remaining, **kwargs)
