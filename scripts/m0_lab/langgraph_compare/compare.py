@@ -28,12 +28,13 @@ def run_existing(cancel_after: int = 2) -> State:
 
 
 def run_langgraph_minimal(cancel_after: int = 2) -> State:
-    """Run only when the optional LangGraph extra is already available."""
+    """Reserved seam; never claim a comparison without a real graph."""
     if importlib.util.find_spec("langgraph") is None:
         raise RuntimeError("LANGGRAPH_EXTRA_UNAVAILABLE")
-    # Keep this path intentionally tiny; importing the optional package is the
-    # only dependency check. No provider/tool calls or graph platform is built.
-    return run_existing(cancel_after)
+    # Do not substitute the existing loop for a LangGraph implementation.  A
+    # future extra install must first add a real graph candidate and its own
+    # versioned state/persistence assertions.
+    raise RuntimeError("LANGGRAPH_COMPARISON_NOT_IMPLEMENTED")
 
 
 def compare() -> dict:

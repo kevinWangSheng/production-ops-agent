@@ -8,7 +8,7 @@ M0 计划要求验证 LangGraph 对当前 PostgreSQL 业务恢复、取消和步
 
 ## 离线比较
 
-脚本 [`scripts/m0_lab/langgraph_compare/compare.py`](../../scripts/m0_lab/langgraph_compare/compare.py) 固定 `otel_services → otel_traces → otel_metrics`，在第 2 步取消，统计步骤重建、取消状态和持久点数量；执行结果见 [`round-05-langgraph-compare.json`](../evidence/m0-real-investigation/round-05-langgraph-compare.json)。当前环境未安装 `langgraph`，脚本返回 `LANGGRAPH_EXTRA_UNAVAILABLE`，不伪造 LangGraph 候选成绩；模型/工具 HTTP 均为 0。
+脚本 [`scripts/m0_lab/langgraph_compare/compare.py`](../../scripts/m0_lab/langgraph_compare/compare.py) 固定 `otel_services → otel_traces → otel_metrics`，在第 2 步取消，统计现有 loop 的步骤重建、取消状态和持久点数量；执行结果见 [`round-05-langgraph-compare.json`](../evidence/m0-real-investigation/round-05-langgraph-compare.json)。当前环境未安装 `langgraph`，脚本返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；即使未来安装 extra，在补入真实图实现前也会返回 `LANGGRAPH_COMPARISON_NOT_IMPLEMENTED`，不伪造候选成绩；模型/工具 HTTP 均为 0。
 
 ## 决定
 
