@@ -1,0 +1,25 @@
+属于此数据库系统的文件宿主为用户 "shenghuikevin".
+此用户也必须为服务器进程的宿主.
+
+数据库集簇将以区域环境设置 "C" 进行初始化.
+默认的文本搜索配置将被设为 "english".
+
+禁止为数据页生成校验和.
+
+正在创建目录 /Users/shenghuikevin/dev/AI/production-ops-agent-m0-07-wp23/tmp/m0-b/postgres ... 成功
+正在创建子目录 ... 成功
+正在选择动态共享内存实现 ... posix
+正在选择默认最大连接数 (max_connections) ... 100
+正在选择默认共享缓冲区 (shared_buffers) ... 128MB
+正在选择默认时区 ... America/Los_Angeles
+正在创建配置文件 ... 成功
+正在运行启动脚本 ... 成功
+正在执行启动脚本后续初始化 ... 成功
+正在同步数据到磁盘 ... 成功
+
+成功。你现在可以用下面的命令开启数据库服务器:
+
+    '/opt/homebrew/opt/postgresql@17/bin/pg_ctl' -D /Users/shenghuikevin/dev/AI/production-ops-agent-m0-07-wp23/tmp/m0-b/postgres -l logfile start
+
+等待服务器进程启动 .... 完成
+服务器进程已经启动
