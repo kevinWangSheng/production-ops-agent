@@ -595,6 +595,9 @@ def test_actual_log_raw_distinguishes_backend_and_visible_records():
     assert data["model_visible_hit_count"] == len(data["displayed_logs"]) < 20
     assert data["model_visible_hit_count"] + data["omitted_returned_hit_count"] == 20
     assert "returned_hit_count" not in data
+    # v4 adds Envoy labels before the 14,000-byte cap; pin the resulting
+    # visible-row trade-off so future projection edits cannot silently change it.
+    assert data["model_visible_hit_count"] == 14
     assert len(json.dumps(view, ensure_ascii=False).encode()) <= 14000
     assert json.dumps(raw, sort_keys=True) == original
 

@@ -195,6 +195,9 @@ def test_invalid_scope_does_not_read_an_ordinary_question(tmp_path, monkeypatch)
         ".aws/config",
         ".docker/config.json",
         ".ssh/id_rsa",
+        ".pypirc",
+        ".ssh/id_ed25519",
+        "credentials",
     ],
 )
 def test_standard_credential_paths_denied_before_read(tmp_path, name):

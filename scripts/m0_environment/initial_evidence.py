@@ -54,12 +54,7 @@ def validate_source_path(path):
         or part.casefold().startswith(".env.")
         or part.casefold() in private_names
         or part.casefold() in private_dirs
-        or (
-            index
-            and part.casefold() in {"credentials", "config.json"}
-            and parts[index - 1].casefold() in {".aws", ".docker"}
-        )
-        for index, part in enumerate(parts)
+        for part in parts
     )
     if path.is_symlink() or restricted:
         raise InitialEvidenceError("INITIAL_SOURCE_PATH_DENIED")

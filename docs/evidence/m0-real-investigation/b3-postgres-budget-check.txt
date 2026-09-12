@@ -1,0 +1,4 @@
+.....s....                                                               [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
+9 passed, 1 skipped in 2.02s

@@ -400,3 +400,21 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - 全新上下文独立审查确认两 Run 无 P1/P2，normal/fault 均可计入 v4 正向样本；质量计数更新为 normal 2/2、fault 2/2。
 - 报告仍为 partial、保留五条已接受 unknown 和日志/SLO/采样边界；没有把 partial 改写成 healthy/recovery。
 - 这完成了本轮可执行的 M0-03 质量包；SPEC gate 是否开放、PR 是否合并仍保留给用户最终判断。
+
+## 2026-09-11 PR16 收束与 B1–B3 离线补证
+
+### 目标与依据
+
+依据用户本轮任务 A1–A4、M0 八个工作包（`docs/plans/m0-validation-plan-2026-09-07.md`）和 SPEC gate（仍 `not cleared`），在不新增模型/trace、不修改 feature passes 的前提下完成 PR 处置、退出矩阵、预算校准记录和确定性 B3 合同。
+
+### 已完成
+
+- A2：默认 v4 log projection 固定 `normal02` model-visible 行数为 14，并在测试中注释 14,000-byte 上限与 Envoy 标签取舍。
+- A3：parser docstring 明确 pinned 字段严格但容忍 shell quoting/重复空白；scope binding 明确 best-effort 顶层检查；移除 `.aws/.docker` 下 `credentials/config.json` 的死规则，新增 `.pypirc`、`id_ed25519`、裸 `credentials` 读前拒绝用例。
+- B1：[`m0-exit-matrix.md`](../evidence/m0-real-investigation/m0-exit-matrix.md) 汇总八包状态、证据路径及 M1-01 约 28h 拆分。
+- B2：从 M002 token/timing 与 M003/M004 HTTP/工具计数回算可见分布；旧 128KiB/8192/4/20/180s/20s/780s 标为不得冻结，v4 写入候选 512KiB/2MiB、16384 output、4/20、360s/1800s、30s/240s，工具累计与清理上界仍待实测、最终待用户批准。
+- B3：新增 no-data/stale/缺 profile/HealthProfile 最小 schema 确定性回归；专属 55431 PG 实际运行 StepStore 27 passed、Budget 9 passed、DB stop/start 1 passed，服务已停止且数据目录保留。发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍保留失败样例和证据不足状态，见 [`m0-b3-deterministic-contracts.md`](../evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
+
+### 验证与待办
+
+待运行本 worktree 的定向测试与完整 `make check`，输出保存到 `docs/evidence/m0-real-investigation/`。PR review thread 回复、最新 HEAD CI/bot 覆盖和 PR 描述更新属于 A1/A4 收尾；B4–B8 不在本轮离线授权内。

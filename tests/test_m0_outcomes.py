@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -6,8 +7,10 @@ from pydantic import ValidationError
 
 from scripts.m0.outcomes import (
     AgentInput,
+    HealthProfile,
     IncidentOutcome,
     IncidentScenario,
+    Window,
     check_outcome,
     independent_health,
 )
@@ -60,6 +63,7 @@ def test_agent_projection_rejects_evaluator_fields():
         "future",
         "deadline",
         "no_profile",
+        "no_data",
         "error",
     ],
 )
@@ -87,11 +91,30 @@ def test_health_requires_independent_current_complete_observation(change):
         facts["deadline"] = "2026-09-08T12:04:00Z"
     elif change == "no_profile":
         facts["health_profile"] = None
+    elif change == "no_data":
+        facts["captured_evidence"][0]["status"] = "no_data"
     elif change == "error":
         facts["captured_evidence"][0]["status"] = "timeout"
     scenario, outcome = parse(data)
     assert independent_health(scenario) == "unknown"
     assert "UNPROVEN_HEALTHY_STATE" in check_outcome(scenario, outcome)
+
+
+def test_health_profile_is_minimal_and_rejects_duplicate_signals():
+    window = Window.model_validate(
+        {
+            "start": datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+            "end": datetime(2026, 9, 8, 12, 5, tzinfo=timezone.utc),
+        }
+    )
+    with pytest.raises(ValidationError, match="DUPLICATE_SIGNAL"):
+        HealthProfile(
+            revision="p1",
+            required_signals=["requests", "requests"],
+            min_samples=1,
+            freshness_seconds=60,
+            required_window=window,
+        )
 
 
 @pytest.mark.parametrize(

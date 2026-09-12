@@ -36,3 +36,12 @@ def test_stale_embedded_metadata_is_denied(field, value, error):
     data = {field: value}
     with pytest.raises(ValueError, match=error):
         validate_question_scope_binding(json.dumps(data), run_id="r1", scope=scope())
+
+
+def test_nested_metadata_is_not_an_authorization_signal():
+    """Scope binding is deliberately best-effort and top-level only."""
+    validate_question_scope_binding(
+        json.dumps({"business": {"run_id": "other", "window": {"start": 9}}}),
+        run_id="r1",
+        scope=scope(),
+    )

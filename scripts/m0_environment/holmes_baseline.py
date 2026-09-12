@@ -86,7 +86,12 @@ def save(path, value):
 
 
 def validate_question_scope_binding(content, *, run_id, scope):
-    """Reject stale embedded run/window metadata before any model or tool dispatch."""
+    """Best-effort top-level check for stale metadata before dispatch.
+
+    This intentionally does not recurse into arbitrary business JSON.  The
+    trusted scope/phase/run controls are validated outside the model payload;
+    nested user content remains untrusted and is not treated as authorization.
+    """
     if not isinstance(content, str):
         raise ValueError("QUESTION_SCOPE_UNKNOWN")
     try:
@@ -198,7 +203,12 @@ def persist_observation(out, record, view, scope):
 
 
 def _envoy_access_fields(body):
-    """Parse the exact pinned Envoy access-log token layout."""
+    """Parse the pinned Envoy token layout with shell-compatible quoting.
+
+    The pinned field count/order and value types are strict, while ``shlex``
+    deliberately tolerates quoted values and repeated whitespace emitted by
+    the real access-log formatter.
+    """
     import re
     import shlex
     from datetime import datetime

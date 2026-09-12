@@ -96,3 +96,9 @@ Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has 
 ## M0-04 独立质量包更新（2026-09-11）
 
 M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文独立复核，7/7 hash 各自匹配，均无 P1/P2；v4 有界开发包计数更新为 normal 2/2、fault 2/2。报告仍保留 partial 与五条已接受 unknown；SPEC gate 是否开放、PR #16 是否合并仍由用户最终判断。
+
+## M0 退出矩阵与离线补证（2026-09-11）
+
+- [ ] B1 八包退出矩阵与 M1-01 任务/工时估算已建立：[m0-exit-matrix](docs/evidence/m0-real-investigation/m0-exit-matrix.md)。矩阵仅作索引，未把 partial/证据不足汇总为通过。
+- [ ] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，待用户批准。
+- [ ] B3 已补 `no_data/stale/缺 profile/观察缺口` 的可控语义回归并索引真实 PG 子集；DB 短故障、发布竞争、HealthProfile 乱序、暂停/resume 和单独观察并发仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/m0-b3-deterministic-contracts.md)。
