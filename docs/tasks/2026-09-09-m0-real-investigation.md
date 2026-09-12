@@ -458,3 +458,11 @@ CI 34553834336 曾因固定实验deadline已过期导致4个Budget测试在reser
 - B7：`scripts/m0_lab/langgraph_compare/compare.py` 在固定替身序列上运行，因环境无 `langgraph` 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`；ADR-0004 草案结论“推迟，待用户决定”，无依赖/模型/工具 HTTP。
 
 第二个全新上下文文档复审见 [`round-05-docs-independent-review.md`](../evidence/m0-real-investigation/round-05-docs-independent-review.md) 与 [`round-05-docs-final-recheck.md`](../evidence/m0-real-investigation/round-05-docs-final-recheck.md)：确认 B4–B6 仍待批准/未执行，B7 两种依赖分支均 fail-closed，不伪造 compared；D1–D3 链接与状态无回退。当前代码/文档 tip 为 `75400ed`。
+
+## 2026-09-12 B4/B5/B7 实际执行
+
+- B4 已按用户批准合同执行：B4-1 真实模型响应提交后 exit17、真实 PG 重建续跑；B4-2 真实请求后 cancel、迟到结果拒绝；B4-3 不兼容版本返回 `INCOMPATIBLE_STATE`/blocked。三项各一次，详见 [`round-05-recovery-results.md`](../evidence/m0-real-investigation/round-05-recovery-results.md)。
+- B4 同步完成 3 个 Run 的 LangSmith 白名单 POST/GET，均 `TRACE_VERIFIED`；新 allocation 3 模型 HTTP，known cost 0.004293 CNY，1.0 CNY unknown reservation，合同 6 CNY 上界未超。
+- B5 创建并保留 `opspilot_probe_20260912` 只读角色；SELECT 成功，INSERT/UPDATE/DELETE/DDL 实际拒绝，见 [`round-05-b5-pg-readonly-output.json`](../evidence/m0-real-investigation/round-05-b5-pg-readonly-output.json)。K8s 仍环境缺测，OS 隔离不采购。
+- B7 离线脚本实际 0 model/tool HTTP；因无 LangGraph 返回 `LANGGRAPH_EXTRA_UNAVAILABLE`，ADR-0004 已改为带数据的“推荐推迟”，仍待用户决定是否安装隔离 extra。
+- `m0-otel`、专属 PG 和 Compose 已在证据保全后停止；不 `down`，卷/历史证据保留。SPEC gate 与 feature passes 不变。

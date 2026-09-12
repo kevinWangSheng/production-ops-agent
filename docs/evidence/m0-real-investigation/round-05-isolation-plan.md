@@ -1,6 +1,6 @@
 # M0-05/B5 只读权限与执行隔离方案（待批准）
 
-状态：**方案已准备，未采购、未在共享环境执行。** 本文只描述验证合同与候选设施，不把开发者权限转化为产品 Agent 权限。
+状态：**PG 只读拒绝子项已执行；K8s/OS 仍未执行，未采购。** 本文只描述验证合同与候选设施，不把开发者权限转化为产品 Agent 权限。
 
 ## PostgreSQL 只读角色拒绝证据
 
@@ -29,6 +29,12 @@ DELETE FROM m0_v3_subject WHERE false;
 ## Kubernetes RBAC
 
 当前 macOS/Colima 现场没有已批准的 Kubernetes 目标与凭据，标记为**环境缺测**，不以未执行的 `kubectl` 或模型拒绝作为通过。待具备隔离集群后，使用临时 ServiceAccount/Role 仅授予 `get/list` 目标命名空间资源，再用 `create/patch/delete` 负例验证 `forbidden`；凭据不写入仓库或模型。
+
+## 已取得的专属 PG 证据（2026-09-12）
+
+角色 `opspilot_probe_20260912` 已在专属 55431 实例创建并保留。`SELECT current_user/current_database` 和 `SELECT count(*) FROM m0_v3_subject` 成功；有效 UUID 的 INSERT、UPDATE、DELETE 均返回 `ERROR: permission denied for table m0_v3_subject`，DDL 返回 `ERROR: permission denied for schema public`。完整安全摘要见 [`round-05-b5-pg-readonly-output.json`](round-05-b5-pg-readonly-output.json)。
+
+第一次探针故意使用非 UUID 字符串，得到 `invalid input syntax for type uuid`，随后因同一事务失败而产生级联 abort；该失败原文未覆盖有效权限判定，已保留并用独立事务重跑，最终权限拒绝以上述结果为准。密码/凭据没有进入模型、trace 或仓库。
 
 ## Holmes 宿主 OS 隔离候选
 

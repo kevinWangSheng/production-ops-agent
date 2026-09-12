@@ -119,3 +119,10 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。
 
 文档最终独立复核已完成（`round-05-docs-final-recheck.md`），B4–B7 仅为待批准准备，未新增模型/trace/服务操作；SPEC gate 保持 not cleared。
+
+## 2026-09-12 B4/B5/B7 执行结果
+
+- [x] B4 三项真实恢复/控制验证各执行 1 次；B4-1 恢复、B4-2 cancel 迟到拒绝、B4-3 `INCOMPATIBLE_STATE` handoff 均有结果记录。3 模型 HTTP、known cost 0.004293 CNY、unknown reservation 1.0 CNY，未超 6 CNY 合同上界；三次 LangSmith 白名单回读 `TRACE_VERIFIED`。
+- [x] B5 专属 PG 只读角色实际 SELECT 成功、写/DDL 拒绝；K8s 标环境缺测，OS 隔离方案不采购。
+- [ ] B7 脚本输出 0 HTTP、无 LangGraph 依赖；ADR-0004 推荐推迟，是否安装隔离 extra 仍待用户决定。
+- [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。

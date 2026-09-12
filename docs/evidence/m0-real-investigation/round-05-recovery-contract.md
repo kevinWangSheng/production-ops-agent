@@ -1,6 +1,6 @@
 # M0-04/B4 真实恢复与迟到结果实验合同（待批准）
 
-状态：**待用户批准，未执行。** 本合同只准备一次有界真实模型 + 真实 PostgreSQL 组合验证；当前任务不发送 HTTP、不上传 trace、不启动 `m0-otel`。旧账本、旧 allocation 和旧证据不复用。
+状态：**已获用户批准，已执行一次；结果见 [`round-05-recovery-results.md`](round-05-recovery-results.md)。** 本合同只允许一次有界真实模型 + 真实 PostgreSQL 组合验证；旧账本、旧 allocation 和旧证据不复用。
 
 ## 统一前提与数据流
 

@@ -35,6 +35,14 @@
 
 投入估算会在 B4–B8 证据和用户 gate 决定后重新校准；不能把该估算当作实施已开始或产品完成。
 
+## 2026-09-12 B4/B5/B7 实际更新
+
+- **工作包 3：部分**：B4-1/B4-2/B4-3 已各执行 1 次真实模型+PG/PG-only 机制验证；三项结果与局限见 [`round-05-recovery-results.md`](round-05-recovery-results.md)。这不是完整恢复、产品调查或 M1 通过。
+- **工作包 4：部分**：B5 专属 PG 只读角色 `opspilot_probe_20260912` 的 SELECT 成功、INSERT/UPDATE/DELETE/DDL 实际拒绝；K8s RBAC 仍环境缺测，Holmes OS 隔离仍未执行。见 [`round-05-isolation-plan.md`](round-05-isolation-plan.md)。
+- **工作包 6：部分**：B4 三个 Run 的 LangSmith 白名单 DTO POST/同 Run GET 均 `TRACE_VERIFIED`；M0-03 历史调查 trace 仍为 0，不能推广为全链路 trace 通过。
+- **工作包 7：部分**：B4 新 ledger 记录 3 模型 HTTP、known cost 0.004293 CNY、1.0 CNY unknown reservation；账单仍未核对。
+- **工作包 8：证据不足**：B4/B5/B7 产生了可回读证据，但 B6 同条件比较、B8 账单及完整 M0 gate 条件仍缺，SPEC gate 保持 not cleared。
+
 ## 逐项状态拆分
 
 以下把计划中的复合要求拆成可独立标记的条目；“部分”仍不等于工作包通过。

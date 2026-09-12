@@ -12,7 +12,7 @@ M0 计划要求验证 LangGraph 对当前 PostgreSQL 业务恢复、取消和步
 
 ## 决定
 
-**推迟**（待用户决定）：现有 loop 已能表达固定序列、取消和 PG 持久点；在没有可复现的可选 extra、同条件基准和明确收益前，不增加依赖。若用户批准继续，使用隔离 extra（例如 `uv run --with langgraph`）重跑同一脚本，记录安装版本、步骤/持久点/取消差异，再决定采用或不采用。
+**推荐推迟**（待用户决定）：当前离线数据为现有 loop 2 个步骤、2 个持久点、在第 2 步取消；LangGraph 候选为 `null`，原因 `LANGGRAPH_EXTRA_UNAVAILABLE`，因此没有可量化的步骤/持久点收益。即使未来依赖可导入，脚本在真实图实现前也返回 `LANGGRAPH_COMPARISON_NOT_IMPLEMENTED`，不会制造伪比较。没有可复现的同条件基准和明确收益前不增加依赖；若用户批准继续，使用隔离 extra（例如 `uv run --with langgraph`）实现真实候选后再比较，最终采用与否仍待确认。
 
 ## 后果
 
