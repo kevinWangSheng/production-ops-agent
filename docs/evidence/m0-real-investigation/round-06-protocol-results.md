@@ -12,7 +12,8 @@
 
 ## 费用与原始输出
 
-- 账本：[`round-06-protocol-ledger.json`](round-06-protocol-ledger.json)，5 HTTP、known cost upper 0.014244 CNY、unknown reservation 2 CNY、trace 0。
+- 账本：[`round-06-protocol-ledger.json`](round-06-protocol-ledger.json)，5 HTTP、known cost upper 0.014244 CNY、unknown reservation 2 CNY、trace 0；同一 Run 的第二次请求 reservation 记 0，三项 Run reservation 合计 6 CNY。
+- ledger SHA-256：`8848dbb04845681a8b728b5703e00a438992129083914a5aedb6e7e263d29572`。
 - 每个 JSON 的 SHA-256：`stream-interrupt` `f42fa2cd966afe236b62203456f39b626d2e10b526e19fc42fec3632fb05ef8b`；`tool-error` `8da0f90f37a3615aa96a59db5830a015cef049ddea6bb62f326a4d1b9d769c7f`；`context-compression` `dc2ac0997b10d21f856870024082b66c57a6cfa8cd947a00bef205f502a76636`。
 - 失败/前置错误：首次直接脚本调用因缺 `PYTHONPATH` 未发 HTTP，原始错误摘要保留在 [`stream-interrupt-initial-failure.txt`](round-06-protocol-runs/stream-interrupt-initial-failure.txt)；修正为模块调用后才执行合同内请求。该脚本错误不计模型 HTTP。
 

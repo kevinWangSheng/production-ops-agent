@@ -4,9 +4,9 @@
   "trace_uploads": 0,
   "attempts": [
     {"run_id": "protocol-stream-interrupt", "mode": "stream-interrupt", "ordinal": 1, "http_status": 200, "usage": null, "status": "interrupted_unknown", "reservation_cny": 2.0},
-    {"run_id": "protocol-stream-interrupt", "mode": "stream-interrupt", "ordinal": 2, "http_status": 200, "usage": {"prompt_tokens": 58, "completion_tokens": 1024, "total_tokens": 1082, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 58}, "cost_upper_cny": 0.009402, "status": "length", "reservation_cny": 2.0},
+    {"run_id": "protocol-stream-interrupt", "mode": "stream-interrupt", "ordinal": 2, "http_status": 200, "usage": {"prompt_tokens": 58, "completion_tokens": 1024, "total_tokens": 1082, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 58}, "cost_upper_cny": 0.009402, "status": "length", "reservation_cny": 0.0},
     {"run_id": "protocol-tool-error", "mode": "tool-error", "ordinal": 1, "http_status": 200, "usage": {"prompt_tokens": 331, "completion_tokens": 72, "total_tokens": 403, "prompt_cache_hit_tokens": 128, "prompt_cache_miss_tokens": 203}, "cost_upper_cny": 0.001641, "status": "tool_calls", "reservation_cny": 2.0},
-    {"run_id": "protocol-tool-error", "mode": "tool-error", "ordinal": 2, "http_status": 200, "usage": {"prompt_tokens": 123, "completion_tokens": 184, "total_tokens": 307, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 123}, "cost_upper_cny": 0.002025, "status": "stop", "reservation_cny": 2.0},
+    {"run_id": "protocol-tool-error", "mode": "tool-error", "ordinal": 2, "http_status": 200, "usage": {"prompt_tokens": 123, "completion_tokens": 184, "total_tokens": 307, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 123}, "cost_upper_cny": 0.002025, "status": "stop", "reservation_cny": 0.0},
     {"run_id": "protocol-context-compression", "mode": "context-compression", "ordinal": 1, "http_status": 200, "usage": {"prompt_tokens": 104, "completion_tokens": 96, "total_tokens": 200, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 104}, "cost_upper_cny": 0.001176, "status": "stop", "reservation_cny": 2.0}
   ],
   "http_count": 5,
