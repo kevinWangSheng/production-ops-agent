@@ -10,7 +10,7 @@
 | B4-2 取消后迟到结果 | **通过（机制层）** | 真实模型 HTTP 200 已发出后提交 cancel；迟到 response `late_response_accepted=false`，PG 状态 `cancelled`/generation 1。见 `round-05-b4-2-cancel.txt`；Run `acba5e7a-db55-43a5-a83d-b5aac46e6413`。 |
 | B4-3 版本不兼容 handoff | **通过（机制层）** | 已提交未完成 step 在不兼容 tool 版本 claim 时返回 `INCOMPATIBLE_STATE`，PG 状态 `blocked`，audit 记录 accepted=false；无模型 HTTP。见 `round-05-b4-3-incompatible.txt`；Run `be1a0c92-9572-4bf0-a501-535d88ab94ec`。 |
 
-三项每个均执行一次；B4-3 第一次因 `LEASE_ACTIVE` 失败，原始输出 `round-05-b4-3-incompatible.txt` 已被后续有效重跑覆盖前保留在提交历史/会话记录中，未以失败样本补分。该结果证明有限 PG/协议机制，不证明完整产品调查质量、生产恢复或 M1 入口。
+三项每个均执行一次；B4-3 第一次因 `LEASE_ACTIVE` 失败，原始输出已单独保存在 [`round-05-b4-3-incompatible-first-failure.txt`](round-05-b4-3-incompatible-first-failure.txt)，后续有效重跑未以失败样本补分。该结果证明有限 PG/协议机制，不证明完整产品调查质量、生产恢复或 M1 入口。
 
 ## LangSmith 白名单出口（B6 子项）
 
