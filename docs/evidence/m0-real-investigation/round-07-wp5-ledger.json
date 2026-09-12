@@ -1,0 +1,250 @@
+{
+  "allocation_id": "m0-07-wp5-20260912",
+  "http_cap": 8,
+  "reservation_cap_cny": 8.0,
+  "reservation_per_http_cny": 1.0,
+  "trace_uploads": 0,
+  "runs": [
+    {
+      "run_id": "m004-normal-r07-candidate",
+      "arm": "candidate",
+      "scenario": "m004-normal",
+      "max_http": 2,
+      "started_at": 1789241245.384802,
+      "attempts": [],
+      "status": "runner_failed",
+      "exit_code": 2,
+      "ended_at": 1789241245.4359748,
+      "stdout_tail": "",
+      "stderr_tail": "usage: candidate_runner.py [-h] --packet PACKET --out OUT --run-id RUN_ID\n                           [--max-http MAX_HTTP] [--dry-run]\ncandidate_runner.py: error: the following arguments are required: --packet\n"
+    },
+    {
+      "run_id": "m004-normal-r07-candidate-retry2",
+      "arm": "candidate",
+      "scenario": "m004-normal",
+      "max_http": 2,
+      "started_at": 1789241313.4655318,
+      "attempts": [
+        {
+          "ordinal": 1,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 1416,
+            "completion_tokens": 387,
+            "total_tokens": 1803,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 28
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 1416
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "tool_calls",
+          "cost_upper_cny": 0.007731,
+          "reservation_cny": 1.0
+        },
+        {
+          "ordinal": 2,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 8273,
+            "completion_tokens": 2996,
+            "total_tokens": 11269,
+            "prompt_tokens_details": {
+              "cached_tokens": 384
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1178
+            },
+            "prompt_cache_hit_tokens": 384,
+            "prompt_cache_miss_tokens": 7889
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "stop",
+          "cost_upper_cny": 0.051783,
+          "reservation_cny": 1.0
+        }
+      ],
+      "status": "final_returned",
+      "exit_code": 0,
+      "ended_at": 1789241329.114384,
+      "stdout_tail": "{\"arm\": \"candidate\", \"run_id\": \"m004-normal-r07-candidate-retry2\", \"status\": \"final_returned\", \"http_count\": 2, \"finish_reason\": \"stop\"}\n",
+      "stderr_tail": ""
+    },
+    {
+      "run_id": "m004-normal-r07-upstream",
+      "arm": "upstream",
+      "scenario": "m004-normal",
+      "max_http": 2,
+      "started_at": 1789241343.873821,
+      "attempts": [
+        {
+          "ordinal": 1,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 2916,
+            "completion_tokens": 518,
+            "total_tokens": 3434,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 2916
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "tool_calls",
+          "cost_upper_cny": 0.01341,
+          "reservation_cny": 1.0
+        },
+        {
+          "ordinal": 2,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 10074,
+            "completion_tokens": 895,
+            "total_tokens": 10969,
+            "prompt_tokens_details": {
+              "cached_tokens": 1664
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 460
+            },
+            "prompt_cache_hit_tokens": 1664,
+            "prompt_cache_miss_tokens": 8410
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "stop",
+          "cost_upper_cny": 0.038277,
+          "reservation_cny": 1.0
+        }
+      ],
+      "status": "final_returned",
+      "exit_code": 0,
+      "ended_at": 1789241352.432121,
+      "stdout_tail": "{\"arm\": \"upstream\", \"run_id\": \"m004-normal-r07-upstream\", \"status\": \"final_returned\", \"http_count\": 2, \"finish_reason\": \"stop\"}\n",
+      "stderr_tail": ""
+    },
+    {
+      "run_id": "m004-fault-r07-candidate",
+      "arm": "candidate",
+      "scenario": "m004-fault",
+      "max_http": 2,
+      "started_at": 1789241365.3848052,
+      "attempts": [
+        {
+          "ordinal": 1,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 1416,
+            "completion_tokens": 388,
+            "total_tokens": 1804,
+            "prompt_tokens_details": {
+              "cached_tokens": 640
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 32
+            },
+            "prompt_cache_hit_tokens": 640,
+            "prompt_cache_miss_tokens": 776
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "tool_calls",
+          "cost_upper_cny": 0.00774,
+          "reservation_cny": 1.0
+        },
+        {
+          "ordinal": 2,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 8395,
+            "completion_tokens": 3467,
+            "total_tokens": 11862,
+            "prompt_tokens_details": {
+              "cached_tokens": 384
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1440
+            },
+            "prompt_cache_hit_tokens": 384,
+            "prompt_cache_miss_tokens": 8011
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "stop",
+          "cost_upper_cny": 0.056388,
+          "reservation_cny": 1.0
+        }
+      ],
+      "status": "final_returned",
+      "exit_code": 0,
+      "ended_at": 1789241382.549833,
+      "stdout_tail": "{\"arm\": \"candidate\", \"run_id\": \"m004-fault-r07-candidate\", \"status\": \"final_returned\", \"http_count\": 2, \"finish_reason\": \"stop\"}\n",
+      "stderr_tail": ""
+    },
+    {
+      "run_id": "m004-fault-r07-upstream",
+      "arm": "upstream",
+      "scenario": "m004-fault",
+      "max_http": 2,
+      "started_at": 1789241389.7985952,
+      "attempts": [
+        {
+          "ordinal": 1,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 2916,
+            "completion_tokens": 581,
+            "total_tokens": 3497,
+            "prompt_tokens_details": {
+              "cached_tokens": 1920
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 1920,
+            "prompt_cache_miss_tokens": 996
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "tool_calls",
+          "cost_upper_cny": 0.013977,
+          "reservation_cny": 1.0
+        },
+        {
+          "ordinal": 2,
+          "http_status": 200,
+          "usage": {
+            "prompt_tokens": 10372,
+            "completion_tokens": 907,
+            "total_tokens": 11279,
+            "prompt_tokens_details": {
+              "cached_tokens": 1664
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 524
+            },
+            "prompt_cache_hit_tokens": 1664,
+            "prompt_cache_miss_tokens": 8708
+          },
+          "response_model": "deepseek-flash",
+          "finish_reason": "stop",
+          "cost_upper_cny": 0.039279,
+          "reservation_cny": 1.0
+        }
+      ],
+      "status": "final_returned",
+      "exit_code": 0,
+      "ended_at": 1789241398.8503768,
+      "stdout_tail": "{\"arm\": \"upstream\", \"run_id\": \"m004-fault-r07-upstream\", \"status\": \"final_returned\", \"http_count\": 2, \"finish_reason\": \"stop\"}\n",
+      "stderr_tail": ""
+    }
+  ],
+  "http_count": 8,
+  "known_cost_upper_cny": 0.228585,
+  "unknown_reservation_cny": 0.0,
+  "cost_basis": "peak all-cache-miss upper bound (prompt*3 + completion*9 CNY per 1M tokens); not invoice"
+}

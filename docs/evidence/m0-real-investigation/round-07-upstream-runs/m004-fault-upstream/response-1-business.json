@@ -1,0 +1,114 @@
+{
+  "id": "a2eb1d97-a710-44de-82bb-60e1aaba12ad",
+  "object": "chat.completion",
+  "created": 1789241392,
+  "model": "deepseek-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'll start by planning the investigation and gathering initial data in parallel.",
+        "tool_calls": [
+          {
+            "index": 0,
+            "id": "call_00_ET_mYrm377DJ4yhfmObJrqp3742",
+            "type": "function",
+            "function": {
+              "name": "TodoWrite",
+              "arguments": "{\"todos\": [{\"id\": \"1\", \"content\": \"Enumerate services/instance identity for m0-otel-20260909\", \"status\": \"in_progress\"}, {\"id\": \"2\", \"content\": \"Check checkout trace summary for errors in the window\", \"status\": \"in_progress\"}, {\"id\": \"3\", \"content\": \"Check payment trace summary for errors in the window\", \"status\": \"in_progress\"}, {\"id\": \"4\", \"content\": \"Query available metrics (span calls, payment transactions, rpc client/server)\", \"status\": \"in_progress\"}, {\"id\": \"5\", \"content\": \"Fetch frontend-proxy logs for corroborating evidence\", \"status\": \"in_progress\"}, {\"id\": \"6\", \"content\": \"Correlate: identify most likely failing dependency; separate facts/hypotheses/counter-evidence/unknowns\", \"status\": \"pending\"}]}"
+            }
+          },
+          {
+            "index": 1,
+            "id": "call_01_ET_9WceGvJUEMfP1ioF0fgy9553",
+            "type": "function",
+            "function": {
+              "name": "otel_services",
+              "arguments": "{}"
+            }
+          },
+          {
+            "index": 2,
+            "id": "call_02_ET_em13w96lWQzmOEuORA570030",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"checkout\"}"
+            }
+          },
+          {
+            "index": 3,
+            "id": "call_03_ET_BLgrxjCEj9vY5CoK8ZIE7399",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"payment\"}"
+            }
+          },
+          {
+            "index": 4,
+            "id": "call_04_ET_WbnWrqocC3aTHj0frm079239",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 5,
+            "id": "call_05_ET_5kqNpJWZ6qpfFGfNj1Sk5285",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum(increase(app_payment_transactions_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 6,
+            "id": "call_06_ET_4rREiEnpadJLYu8F4Rx35291",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\\\"checkout\\\"}[5m]))\"}"
+            }
+          },
+          {
+            "index": 7,
+            "id": "call_07_ET_5k7bkGWYFXFMvz1SyGec4795",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"histogram_quantile(0.95, sum by(le,service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=\\\"checkout\\\"}[5m])))\"}"
+            }
+          },
+          {
+            "index": 8,
+            "id": "call_08_ET_tYqFbU9aW7vIH4vsltdY4501",
+            "type": "function",
+            "function": {
+              "name": "otel_logs",
+              "arguments": "{\"service\": \"frontend-proxy\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2916,
+    "completion_tokens": 581,
+    "total_tokens": 3497,
+    "prompt_tokens_details": {
+      "cached_tokens": 1920
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_cache_hit_tokens": 1920,
+    "prompt_cache_miss_tokens": 996
+  },
+  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+}

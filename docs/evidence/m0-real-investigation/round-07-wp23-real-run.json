@@ -1,0 +1,44 @@
+{
+  "run_id": "99f358db-07a0-4a1b-952b-71c4e5b9986e",
+  "new_run_id": "77f31d5e-4ede-4e2a-976b-374a7c5340a2",
+  "subject_id": "de20bd56-54b3-4c01-a9e6-4c828bad3299",
+  "pause_denied_code": "PAUSED",
+  "new_generation": 2,
+  "model_http": 1,
+  "http_status": 200,
+  "response_model": "deepseek-flash",
+  "response_accepted": true,
+  "state": {
+    "state": "running",
+    "generation": 2,
+    "epoch": 2,
+    "published": false
+  },
+  "audit": [
+    {
+      "event": "pause",
+      "accepted": true,
+      "generation": 1
+    },
+    {
+      "event": "PAUSED",
+      "accepted": false,
+      "generation": 1
+    },
+    {
+      "event": "resume",
+      "accepted": true,
+      "generation": 1
+    },
+    {
+      "event": "new_run",
+      "accepted": true,
+      "generation": 2
+    },
+    {
+      "event": "model_response",
+      "accepted": true,
+      "generation": 2
+    }
+  ]
+}

@@ -19,8 +19,8 @@ LEDGER = ROOT / "docs/evidence/m0-real-investigation/round-07-wp5-ledger.json"
 HOLMES_PYTHON = Path(
     "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/holmes-venv/bin/python"
 )
-TOTAL_HTTP = 14
-TOTAL_RESERVATION_CNY = 14.0
+TOTAL_HTTP = 8
+TOTAL_RESERVATION_CNY = 8.0
 RESERVATION_PER_HTTP = 1.0
 
 
@@ -72,6 +72,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("runner_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.runner_args and args.runner_args[0] == "--":
+        args.runner_args = args.runner_args[1:]
     ledger = load_ledger()
     if any(run["run_id"] == args.run_id for run in ledger["runs"]):
         raise SystemExit("run id already booked")

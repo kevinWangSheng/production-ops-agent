@@ -1,0 +1,49 @@
+{
+  "compressor_version": "m0-compressor-v1",
+  "input_messages": 14,
+  "output_messages": 7,
+  "before_estimated_tokens": 664,
+  "report": {
+    "version": "m0-compressor-v1",
+    "before_tokens": 664,
+    "after_tokens": 365,
+    "folded_groups": 4,
+    "tool_call_ids": [
+      "compress-call-0",
+      "compress-call-1",
+      "compress-call-2",
+      "compress-call-3"
+    ],
+    "evidence_ids": [
+      "compress-e0",
+      "compress-e1",
+      "compress-e2",
+      "compress-e3"
+    ],
+    "tool_content_sha256": "78e97ed7e7f2f4c656667502f2138c31be966aa876d3e8cd7a3ef6825057975a",
+    "over_threshold": true
+  },
+  "pairing_count": 2,
+  "original_messages_sha256": "d345b166d5901a8d924b1a3c9dcd252890e69704bf0e09ca15c58d3eb1dd43f9",
+  "compressed_messages_sha256": "b717013e29885130c674c6f1bbeae72e369f222d79bb0d247f737861a263d227",
+  "http_status": 200,
+  "response_sha256": "19876c25bebc20f270e5a2451af5da6cfae2644fbe068d0a459837fdae39e39a",
+  "response_bytes": 2732,
+  "response_model": "deepseek-flash",
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 321,
+    "completion_tokens": 447,
+    "total_tokens": 768,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 441
+    },
+    "prompt_cache_hit_tokens": 0,
+    "prompt_cache_miss_tokens": 321
+  },
+  "trace_uploads": 0,
+  "product_compressor": false
+}

@@ -11,10 +11,10 @@ Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline �
 | PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；代码/验证基线 `960f85b` 的 CI `checks`/`m0-postgres` 通过；后续提交仅为状态文档同步。 |
 | B1 退出矩阵 | **已完成** | [`m0-exit-matrix.md`](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 已建立并持续更新。 |
 | B2 预算校准 | **部分完成** | 候选值和历史分布已写入 v4 校准段；最终冻结仍待用户批准。 |
-| B3 控制合同 | **部分完成** | 专属 PG 4 项合同通过；pause/resume 完整状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
+| B3 控制合同 | **部分完成** | wp23 专属 PG 5 项合同通过，另有 1 次真实 DeepSeek pause→resume 新 Run；完整产品生命周期仍不等同 M0 通过。 |
 | B4 真实恢复 | **已完成（机制范围）** | 三项 Run、PG 重建/取消/不兼容 handoff 和 LangSmith 白名单回读均有证据；不等于产品恢复验收。 |
-| B5 权限/隔离 | **部分完成** | PG 只读角色实际拒绝写/DDL；K8s RBAC 环境缺测，OS 隔离未采购。 |
-| B6 上游/eval | **部分完成** | provider probe 和 M004 upstream 复验已执行；正式可比报告未形成。judge 标注包已准备，人工校准/盲测待用户处理。 |
+| B5 权限/隔离 | **部分完成** | PG 只读角色实际拒绝写/DDL；无宿主挂载容器拒绝开发目录/答案/凭据路径；K8s RBAC 环境缺测，Holmes 宿主 OS 隔离仍未证明。 |
+| B6 上游/eval | **部分完成** | wp5 同一 replay tool face 的 normal/fault 候选与 upstream 各 1 Run 已执行；候选有 JSON、upstream 未形成最终报告。首次 holdout 变体由独立 evaluator 各 10/10，仍非正式保留集；judge 人工确认待用户处理。 |
 | B7 LangGraph | **已完成（离线比较）** | 1.2.11 隔离比较无可见收益，ADR-0004 推荐推迟；是否采用仍待用户决定。 |
 | B8 账单 | **未完成** | 对账模板已准备，等待用户提供供应商账单导出/截图。 |
 | SPEC gate / feature passes | **未开放/未修改** | `SPEC.md` 仍 `not cleared`；11 个 feature passes 均保持原值。 |
@@ -144,6 +144,15 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [x] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
 - [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。
 
+## 2026-09-12 M0-07 收敛状态
+
+- [x] wp23：pause/resume、observer authorization、HealthProfile observation stream、DB outage 和 context compressor 已合入；专属 PG 5 项合同 `5 passed`，另有 1 次真实 DeepSeek pause→resume 新 Run，失败/启停证据保留。
+- [x] wp67：trace linkage、wall-time/清理上界和 `m003f-normal-observation.json` 已合入；trace 状态保持部分，wall-time 冻结候选待用户批准。
+- [x] wp5：同一 replay packet/tool face 的 normal/fault candidate/upstream 各 1 Run 已执行（8 HTTP allocation，known upper 0.228585 CNY）；candidate 两场有 JSON 报告，upstream 两场无最终报告，未作优劣结论。
+- [x] 首次小规模 holdout：无宿主挂载容器拒绝开发目录、答案和凭据路径；normal/fault 各 2 HTTP，独立匿名评分 10/10；仅为开发期小规模盲测，不是正式保留集。
+- [x] compressor 真实超阈值 Run：`m0-compressor-v1` 1 HTTP/200，paired transcript 保真；keep floor 仍 over-threshold，状态为部分。
+- [ ] M0 用户收尾仍待 judge 人工勾选、供应商账单对账、预算冻结值批准和 K8s 环境缺测处置；SPEC gate 保持 `not cleared`，M1 不启动。总账见 [`round-07-m0-final-results`](docs/evidence/m0-real-investigation/round-07-m0-final-results.md)。
+
 PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。
 
 ## 2026-09-12 B6 上游比较结果
@@ -165,7 +174,7 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 ## 2026-09-12 工作包 2 真实协议补证
 
 - [x] 隔离 probe 在 6 HTTP 上界内实际执行 5 HTTP：stream 中断 2、工具 4xx continuation 2、手工配对视图 1；0 trace，费用按 ledger 记账，详见 [`round-06-protocol-results`](docs/evidence/m0-real-investigation/round-06-protocol-results.md)。
-- [-] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计，context compressor 尚不存在；不修改主 transport 合同，不打开 SPEC gate。
+- [-] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计；compressor 已有实现/配对测试并完成 1 次真实超阈值 provider Run，但 keep floor 仍可能 over-threshold；不修改主 transport 合同，不打开 SPEC gate。
 
 ## 2026-09-12 B6 M004 上游复验
 
@@ -176,3 +185,10 @@ PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回
 
 - [x] 已生成 6 份独立审查样本的 judge 人工校准包、ledger 账单对账模板和 SPEC gate 两选项草案；均只作审核材料，不修改 SPEC gate 或 feature passes。
 - [ ] 待用户确认 judge 分数、供应商账单差额、是否保持 gate `not cleared`；B5 K8s/OS 设施与采购仍不执行。
+
+## 2026-09-12 M0 终态收敛（范围止于 M0）
+
+- [x] M0 计划中本轮可执行的实验合同均已运行并保留证据：wp23 PG/控制/观察 5 passed + 1 真实 DeepSeek；wp2 compressor 真实 provider 1 HTTP；wp5 replay candidate/upstream 8 HTTP；首次 holdout 4 HTTP；全部未上传 trace。
+- [x] 三个 worktree 已按 wp23 → wp67 → wp5 顺序合入本分支，提交保留；主工作区 main 未触碰。
+- [x] SPEC.md 已追加 2026-09-12 M0 状态段，明确实验收敛不等于 M1 授权；gate 字面仍 `not cleared`。
+- [ ] 用户收尾：judge 标注包勾选/人工校准、供应商账单对账、预算冻结候选批准、K8s 环境缺测处置；不进入 M1、不合并 PR。

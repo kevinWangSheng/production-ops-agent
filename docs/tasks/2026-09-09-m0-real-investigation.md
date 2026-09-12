@@ -521,17 +521,32 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 
 ## 当前有效状态汇总（2026-09-12）
 
-以下汇总覆盖本记录中较早的“待批准/未执行”历史段落：
+以下汇总覆盖本记录中较早的“待批准/未执行”历史段落，并包含 M0-07 三个 worktree 的合入结果：
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
 | PR 尾项与 review threads | 已完成 | `commit_tool` P2 已修复、回复并 resolve；merge-tree 无冲突；代码/验证基线 `960f85b` 的 CI 通过，后续提交仅为状态文档同步。 |
 | B1 退出矩阵 | 已完成 | 矩阵与 M1-01 工时拆分已提交。 |
 | B2 预算校准 | 部分完成 | 候选值已写入 v4 校准段，最终冻结待用户批准。 |
-| B3 控制合同 | 部分完成 | 专属 PG 4 passed；pause/resume 状态机、HealthProfile 持久乱序、独立 observer 授权仍缺。 |
+| B3 控制合同 | 部分完成 | wp23 专属 PG 5 passed（含 pause/resume、observer、观察流乱序、DB outage）；仍是有界实验。 |
 | B4 真实恢复 | 已完成（机制范围） | 三项真实 Run、PG 重建/取消/不兼容 handoff 和 trace 白名单回读已完成；不等于产品验收。 |
-| B5 权限/隔离 | 部分完成 | PG 写/DDL 拒绝已取得；K8s/OS 隔离仍缺。 |
-| B6 上游/eval | 部分完成 | provider 与 M004 复验已运行；正式可比报告未形成。judge 标注包已准备，人工校准/盲测待用户。 |
+| B5 权限/隔离 | 部分完成 | PG 写/DDL 拒绝与无宿主挂载容器拒绝证据已取得；K8s/OS 产品隔离仍缺。 |
+| B6 上游/eval | 部分完成 | wp5 同一 replay tool face 比较已运行；候选有报告、upstream 无最终报告；首次 holdout 独立匿名评分 10/10、10/10，judge 人工确认/正式盲测仍待用户。 |
 | B7 LangGraph | 已完成（离线比较） | 1.2.11 无可见收益，ADR 推荐推迟；采用与否待用户。 |
 | B8 账单 | 未完成 | 对账模板已准备，账单输入待用户提供。 |
 | SPEC gate / feature passes | 未开放/未修改 | SPEC 仍 `not cleared`，feature passes 未变更。 |
+
+本表为当前 M0-07 收敛后的权威状态；此前按时间排列的准备/待批准段落均为历史记录。wp23/wp67/wp5 的合入与新证据已分别链接于本记录前述日期段，不能再作为“尚未开始”的当前阻塞。
+
+新增 M0-07 实验层结果：wp23 5 项 PG 控制合同 + 1 次真实 DeepSeek pause/resume Run；wp67 trace linkage/wall-time/m003f observation；wp5 受限 replay 上游比较和无宿主挂载 holdout。完整结果均已提交，未进入 M1。
+
+## 2026-09-12 M0-07 终态收敛（范围止于 M0）
+
+- wp23：5 项专属 PG 合同（pause/resume、observer、HealthProfile 观察流乱序、DB outage）全部 passed；另以新 allocation 执行 1 次真实 DeepSeek pause→resume Run，pause 拒绝被审计，resume 后仅显式新 Run generation 2 接受响应。见 `round-07-wp23-results.md`、`round-07-wp23-real-ledger.json`。
+- wp2：`m0-compressor-v1` 真实超阈值 Run 1 HTTP/200，paired transcript 保真；`keep_groups=1` 时仍 over-threshold，故状态为部分，不把阈值保证写成通过。见 `round-07-wp2-results.md`。
+- wp5：同一冻结 replay packet/tool face 下 normal/fault candidate/upstream 各 1 Run，共 8 HTTP；candidate 两场最终 JSON，upstream 两场 DSML/tool-call 无最终报告，失败进分母、不做优劣结论。见 `round-07-upstream-comparison.md`。
+- 首次小规模 holdout：独立上下文生成 normal/fault 变体并评分 10/10、10/10；无宿主挂载容器对开发目录、答案和凭据路径返回 absent。完整 response 保存在 ignored `tmp/holdout/`，Git 只保留 hash/ledger/匿名汇总。见 `round-07-holdout-blind-results.md`。
+- wp67：trace linkage、wall-time/清理上界和 m003f observation 已合入；trace 仍 partial，wall-time 候选冻结待批准；账单、K8s RBAC、正式 judge/盲测和产品级 stream/PG 审计仍是用户收尾项。
+- 三个 worktree 已顺序合入主分支，合入提交保留；`make check`（合入后）`771 passed / 54 skipped`，Ruff 通过；SPEC gate 保持 `not cleared`，M1 未授权。
+
+M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。

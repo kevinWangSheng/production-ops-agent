@@ -1,0 +1,1 @@
+{"arm": "candidate", "run_id": "holdout-normal-r07", "status": "final_returned", "http_count": 2, "finish_reason": "stop"}
