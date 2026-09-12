@@ -13,7 +13,7 @@
 1. 仅由受信任启动器从现有私有配置读取 `DEEPSEEK_API_KEY`；不在 shell 输出、prompt、报告、trace 或提交中显示值。
 2. 固定 HolmesGPT checkout `5e983c17f30e93099c7d775167266d4cd1d586c4`，模型
    `deepseek/deepseek-v4-flash`，`--max-steps 1`，`--no-interactive`，不启用 trace。
-3. 使用公开固定问题 [`round-06-comparison-question.txt`](round-06-comparison-question.txt)，不挂载可写工具或外部目标。
+3. 使用公开固定问题 [`round-06-comparison-question.txt`](round-06-comparison-question.txt)，不执行任何工具或外部目标；本次实际 CLI 仍初始化并暴露了上游默认 toolset 定义，故不把它记为“严格无工具挂载”实验。
 4. 保存进程退出码、HTTP/usage（若供应商返回）和脱敏 stdout/stderr；任何凭据或私有字段出站立即停止。
 
 ## 停止与判据
@@ -22,4 +22,4 @@
 - 成功只能标记“上游认证/线路前提通过”；失败保留原始输出并保持 B6 同条件比较为证据不足。
 - 不启动 m0-otel，不上传 trace，不修改 feature passes 或 SPEC gate。
 
-状态：**待执行。**
+状态：**已执行；工具定义暴露但未执行，HTTP/usage 未捕获。**

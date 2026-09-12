@@ -471,7 +471,7 @@ B4/B5/B7 独立复核见 [`round-05-b4-b7-independent-review.md`](../evidence/m0
 
 ## 2026-09-12 B6 上游比较
 
-- 新 allocation `m0-06-b6-20260912` 已执行候选 2 HTTP（200），token 403/453，known cost 上界 0.004086 CNY。
+- 新 allocation `m0-06-b6-20260912` 已执行候选 2 HTTP（200），token 403/453，known cost 上界 0.004086 CNY；账本已纳入当前提交 `m0-06-b6-ledger.json` 并记录 hash。
 - Holmes 上游按固定 checkout/问题尝试 3 次均在 provider/认证前置失败，0 个确认成功模型请求；完整 stdout/stderr 保留。B6 结论为“候选链路真实通过、上游基线证据不足”，不计算质量差异。
 - 结果与合同：[`round-06-upstream-comparison-results.md`](../evidence/m0-real-investigation/round-06-upstream-comparison-results.md)、[`round-06-upstream-comparison-contract.md`](../evidence/m0-real-investigation/round-06-upstream-comparison-contract.md)。不读取或猜测凭据，不继续重试。
 

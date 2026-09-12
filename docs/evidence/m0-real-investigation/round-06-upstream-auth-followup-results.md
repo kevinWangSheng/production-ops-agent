@@ -6,7 +6,7 @@
 
 - 受信任启动器仅从主工作区私有 `.env` 读取 `DEEPSEEK_API_KEY`，只把值放入子进程环境；没有打印、持久化或注入 prompt/trace。
 - 固定 HolmesGPT checkout 成功加载 `deepseek/deepseek-v4-flash`，并返回了模型内容；输出中没有 `LLM call failed` 或空 Bearer 错误，说明认证/线路前提已越过此前失败点。
-- 由于一次性启动命令在子进程结束后才触发 zsh 保留变量错误，退出码和供应商 usage 未持久化；HTTP 状态码与 token usage 未捕获。输出中模型生成了两个未经执行的 shell tool-call 请求，未执行任何工具。该包装错误和观测边界记录在 [`status`](round-06-upstream-auth-followup-status.txt)，没有重试。
+- 由于一次性启动命令在子进程结束后才触发 zsh 保留变量错误，退出码和供应商 usage 未持久化；HTTP 状态码与 token usage 未捕获。CLI 初始化并暴露了上游默认 toolset 定义，模型随后生成两个 shell tool-call 请求，但 `--max-steps 1`/拒绝策略下未执行任何工具。该包装错误和观测边界记录在 [`status`](round-06-upstream-auth-followup-status.txt)，没有重试。
 - 该次输出不是可比较的最终报告：输入是公开固定问题，未附带真实 observation，且上游工具调用协议与候选 strict seam 不匹配。因此不计入正式同条件质量样本。
 
 原始工件：
@@ -22,6 +22,7 @@
 | 项目 | 状态 | 说明 |
 |---|---|---|
 | 上游认证/线路前提 | **部分通过** | 已观察到模型返回内容；wire HTTP/usage 未记录，不能升级为完整 HTTP 通过。 |
+| 工具边界 | **证据不足** | 默认 toolset 定义可见但未执行；严格“无工具挂载”未验证。 |
 | 同条件比较 | **证据不足** | 无最终报告、无工具执行、无可比的候选/上游结果。 |
 | 模型 HTTP | **最多 1 次** | 进程只允许单步；精确 wire 计数未捕获。 |
 | 费用 | **未知预留 2 CNY** | usage 未返回；保留预留，不当作实际账单。 |
