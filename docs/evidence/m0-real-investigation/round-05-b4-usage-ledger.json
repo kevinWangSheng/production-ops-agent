@@ -1,0 +1,43 @@
+{
+  "allocation_id": "m0-05-b4-20260912",
+  "attempts": [
+    {
+      "run_id": "b960bf7e-05e9-44b1-bf0f-3454ddf65681",
+      "status": 200,
+      "usage": {
+        "prompt_tokens": 331,
+        "completion_tokens": 78,
+        "total_tokens": 409,
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 203
+      },
+      "cost_upper_cny": 0.001695,
+      "reservation_cny": 1.0
+    },
+    {
+      "run_id": "b960bf7e-05e9-44b1-bf0f-3454ddf65681",
+      "status": 200,
+      "usage": {
+        "prompt_tokens": 272,
+        "completion_tokens": 198,
+        "total_tokens": 470,
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 144
+      },
+      "cost_upper_cny": 0.002598,
+      "reservation_cny": 1.0
+    },
+    {
+      "run_id": "acba5e7a-db55-43a5-a83d-b5aac46e6413",
+      "status": "cancelled_after_send",
+      "usage": null,
+      "cost_upper_cny": null,
+      "reservation_cny": 1.0
+    }
+  ],
+  "model_http_requests": 3,
+  "trace_verifications": 3,
+  "known_cost_cny": 0.004293,
+  "unknown_reserved_cny": 1.0,
+  "contract_upper_cny": 6.0
+}

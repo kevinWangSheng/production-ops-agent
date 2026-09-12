@@ -1,0 +1,1 @@
+{"cancel_generation": 1, "http_status": 200, "late_response_accepted": false, "model_http": 1, "run_id": "acba5e7a-db55-43a5-a83d-b5aac46e6413", "state": {"epoch": 1, "generation": 1, "published": false, "state": "cancelled"}, "subject_id": "9bced3cc-6a77-447c-b1b0-c287d03ddd4c"}

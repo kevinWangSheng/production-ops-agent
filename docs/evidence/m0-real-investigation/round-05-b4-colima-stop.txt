@@ -1,0 +1,19 @@
+time="2026-09-12T01:31:15-07:00" level=info msg="stopping colima [profile=m0-otel]"
+time="2026-09-12T01:31:15-07:00" level=info msg="stopping ..." context=docker
+bash: line 1: cd: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01: No such file or directory
+Stopping 'docker.service', but its triggering units are still active:
+docker.socket
+colima-m0-otel
+time="2026-09-12T01:31:15-07:00" level=info msg="stopping ..." context=vm
+time="2026-09-12T01:31:17-07:00" level=info msg="Sending SIGINT to hostagent process 8308"
+time="2026-09-12T01:31:17-07:00" level=info msg="Waiting for the host agent and the driver processes to shut down"
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Received SIGINT, shutting down the host agent"
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Shutting down the host agent"
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/docker.sock\" (guest) to \"/Users/shenghuikevin/.colima/m0-otel/docker.sock\" (host)"
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/containerd/containerd.sock\" (guest) to \"/Users/shenghuikevin/.colima/m0-otel/containerd.sock\" (host)"
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Unmounting disk \"colima-m0-otel\""
+time="2026-09-12T01:31:17-07:00" level=info msg="[hostagent] Shutting down VZ"
+time="2026-09-12T01:31:18-07:00" level=info msg="[hostagent] [VZ] - vm state change: stopped"
+time="2026-09-12T01:31:18-07:00" level=info msg="Waiting for the instance to shut down"
+time="2026-09-12T01:31:18-07:00" level=info msg="The instance colima-m0-otel has shut down"
+time="2026-09-12T01:31:19-07:00" level=info msg=done

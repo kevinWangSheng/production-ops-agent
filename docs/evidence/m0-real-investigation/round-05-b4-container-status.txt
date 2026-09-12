@@ -1,0 +1,26 @@
+opspilot-m0-load-generator	d257288d374e	Up About a minute
+opspilot-m0-prometheus	5888c188cf09	Up About a minute
+opspilot-m0-frontend-proxy	9cc478aa226b	Up About a minute
+opspilot-m0-frontend	3a0c7649f63d	Up About a minute
+opspilot-m0-checkout	5ab0d7b90032	Up About a minute
+opspilot-m0-recommendation	2ca9d61f520e	Up About a minute
+opspilot-m0-fraud-detection	8b0a841c19f5	Up About a minute
+opspilot-m0-image-provider	bfa0b940f79d	Up About a minute
+opspilot-m0-quote	38f9d9abe080	Up About a minute
+opspilot-m0-accounting	5dd4d4655a1c	Up About a minute
+opspilot-m0-flagd-ui	655da6a8735b	Up About a minute
+opspilot-m0-ad	7f6c3fda7fed	Up About a minute
+opspilot-m0-payment	33f327b35761	Up About a minute
+opspilot-m0-email	270c487983d8	Up About a minute
+opspilot-m0-shipping	e29cb4277ebd	Up About a minute
+opspilot-m0-cart	2ec7601655cb	Up About a minute
+opspilot-m0-currency	03fb9bf6d807	Up About a minute
+opspilot-m0-product-catalog	050a0fc2026b	Up About a minute
+opspilot-m0-otel-collector	85ac41c2db88	Up About a minute
+opspilot-m0-read-proxy	f3fa41d74a76	Up About a minute
+opspilot-m0-flagd	9595dffe7a9e	Up About a minute
+opspilot-m0-kafka	0f1270d986ff	Up About a minute (healthy)
+opspilot-m0-jaeger	9864182b4e01	Up About a minute
+opspilot-m0-valkey-cart	d2e18f3410b6	Up About a minute
+opspilot-m0-opensearch	1f8b88245a6a	Up About a minute (healthy)
+opspilot-m0-grafana	8b37a2f028f1	Up About a minute
