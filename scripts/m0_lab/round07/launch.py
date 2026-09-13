@@ -29,6 +29,7 @@ CONTAINER_PACKETS = {
     "normal": "/runner/packets/packet-m004-normal.json",
     "fault": "/runner/packets/packet-m004-fault.json",
 }
+PACKET_ROOT = ROOT / "docs/evidence/m0-real-investigation/round-07-upstream-runs"
 TOTAL_HTTP = 8
 TOTAL_RESERVATION_CNY = 8.0
 RESERVATION_PER_HTTP = 1.0
@@ -61,6 +62,27 @@ def resolve_holmes_python(explicit: Path | None = None) -> Path:
     path = value.expanduser().resolve()
     if not path.is_file() or not os.access(path, os.X_OK):
         raise ValueError(f"Holmes Python unavailable or not executable: {path}")
+    return path
+
+
+def resolve_holmes_root(explicit: Path | None = None) -> Path:
+    value = explicit or (
+        Path(os.environ["M0_HOLMES_ROOT"])
+        if os.environ.get("M0_HOLMES_ROOT")
+        else ROOT / "tmp/m0-environment/holmesgpt"
+    )
+    path = value.expanduser().resolve()
+    if not (path / "holmes").is_dir():
+        raise ValueError(f"Holmes checkout unavailable: {path}")
+    return path
+
+
+def resolve_packet(explicit: Path) -> Path:
+    path = explicit.expanduser().resolve()
+    if PACKET_ROOT.resolve() not in path.parents or not path.is_file():
+        raise ValueError(
+            f"replay packet unavailable or outside frozen packet root: {path}"
+        )
     return path
 
 
@@ -177,6 +199,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--holmes-python", type=Path)
+    parser.add_argument("--holmes-root", type=Path)
+    parser.add_argument("--packet", type=Path)
     parser.add_argument("runner_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
@@ -192,6 +216,16 @@ def main():
             if args.arm == "upstream"
             else None
         )
+        holmes_root = (
+            resolve_holmes_root(args.holmes_root) if args.arm == "upstream" else None
+        )
+        packet = (
+            resolve_packet(args.packet)
+            if args.arm in ("candidate", "upstream") and args.packet
+            else None
+        )
+        if args.arm in ("candidate", "upstream") and packet is None:
+            raise ValueError("--packet is required for candidate/upstream arms")
     except ValueError as exc:
         parser.error(str(exc))
     ledger = load_ledger()
@@ -200,11 +234,15 @@ def main():
     if ledger["http_count"] + args.max_http > TOTAL_HTTP:
         raise SystemExit("allocation HTTP cap would be exceeded; not launched")
     if args.arm == "candidate":
+        if args.runner_args:
+            raise ValueError("runner arguments are not allowlisted")
         command = [
             sys.executable,
             str(ROOT / "scripts/m0_lab/round07/candidate_runner.py"),
         ]
     elif args.arm == "upstream":
+        if args.runner_args:
+            raise ValueError("runner arguments are not allowlisted")
         command = [
             str(holmes_python),
             str(ROOT / "scripts/m0_lab/round07/upstream_runner.py"),
@@ -228,14 +266,17 @@ def main():
         raise SystemExit("trusted credential unavailable")
     if args.arm != "container":
         command += [
+            "--packet",
+            str(packet),
             "--out",
             str(args.out),
             "--run-id",
             args.run_id,
             "--max-http",
             str(args.max_http),
-            *args.runner_args,
         ]
+        if args.arm == "upstream":
+            command += ["--upstream-root", str(holmes_root)]
     run_entry = {
         "run_id": args.run_id,
         "arm": args.arm,

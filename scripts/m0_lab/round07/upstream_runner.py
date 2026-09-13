@@ -28,10 +28,6 @@ from scripts.m0_lab.round07.replay_tools import (  # noqa: E402
     tool_definitions,
 )
 
-UPSTREAM = Path(
-    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/"
-    "holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4"
-)
 MODEL = "deepseek-v4-flash"
 MAX_TOKENS = 8192
 REQUEST_SECONDS = 360
@@ -79,6 +75,20 @@ def code_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+def resolve_upstream_root(explicit: Path | None = None) -> Path:
+    value = explicit or (
+        Path(os.environ["M0_HOLMES_ROOT"]) if os.environ.get("M0_HOLMES_ROOT") else None
+    )
+    if value is None:
+        raise ValueError(
+            "Holmes checkout unavailable: set --upstream-root or M0_HOLMES_ROOT"
+        )
+    path = value.expanduser().resolve()
+    if not (path / "holmes").is_dir():
+        raise ValueError(f"Holmes checkout unavailable: {path}")
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--packet", type=Path, required=True)
@@ -86,7 +96,12 @@ def main():
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--max-http", type=int, default=2)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--upstream-root", type=Path)
     args = parser.parse_args()
+    try:
+        upstream = resolve_upstream_root(args.upstream_root)
+    except ValueError as exc:
+        parser.error(str(exc))
     key = "" if args.dry_run else sys.stdin.readline().strip()
     if not args.dry_run and not key:
         print(
@@ -107,7 +122,7 @@ def main():
     os.environ.update(retained)
     os.environ.update(ENV)
     logging.disable(logging.CRITICAL)
-    sys.path.insert(0, str(UPSTREAM))
+    sys.path.insert(0, str(upstream))
     import httpx
     import litellm
     from holmes.core.llm import DefaultLLM
@@ -251,8 +266,8 @@ def main():
     )
     config = {
         "arm": "upstream",
-        "upstream_commit": UPSTREAM.name.removeprefix("holmesgpt-"),
-        "upstream_code_sha256": code_digest(UPSTREAM),
+        "upstream_commit": upstream.name.removeprefix("holmesgpt-"),
+        "upstream_code_sha256": code_digest(upstream),
         "litellm_version": getattr(litellm, "version", None)
         or "see holmes-installed-versions.json",
         "model": "openai/" + MODEL,

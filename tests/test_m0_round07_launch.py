@@ -1,6 +1,7 @@
 import pytest
 
 from scripts.m0_lab.round07 import launch
+from scripts.m0_lab.round07.candidate_runner import validated_tool_calls
 from scripts.m0_lab.round07.launch import validate_max_http
 
 
@@ -36,6 +37,11 @@ def test_round07_launch_resolves_executable_holmes_override(tmp_path):
 def test_round07_launch_missing_holmes_is_explicit(tmp_path):
     with pytest.raises(ValueError, match="Holmes Python unavailable"):
         launch.resolve_holmes_python(tmp_path / "missing-python")
+
+
+def test_round07_launch_missing_holmes_checkout_is_explicit(tmp_path):
+    with pytest.raises(ValueError, match="Holmes checkout unavailable"):
+        launch.resolve_holmes_root(tmp_path / "missing-checkout")
 
 
 def test_round07_container_rejects_arbitrary_executable_without_reading_key(
@@ -87,3 +93,14 @@ def test_round07_container_accepts_only_pinned_docker_command(monkeypatch, tmp_p
         docker, scenario="normal", run_id="run-test", max_http=1, out=out
     )
     assert launch.validate_container_command(command) == command
+
+
+@pytest.mark.parametrize("value", [{}, "", None, [{"id": "ok"}, "bad"]])
+def test_round07_candidate_rejects_malformed_tool_calls(value):
+    with pytest.raises(ValueError, match="TOOL_PAIRING_INVALID"):
+        validated_tool_calls({"tool_calls": value})
+
+
+def test_round07_candidate_accepts_missing_or_list_tool_calls():
+    assert validated_tool_calls({}) == []
+    assert validated_tool_calls({"tool_calls": [{"id": "ok"}]}) == [{"id": "ok"}]

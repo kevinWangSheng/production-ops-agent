@@ -70,6 +70,13 @@ def scrub(value):
     return value
 
 
+def validated_tool_calls(message: dict) -> list[dict]:
+    calls = message.get("tool_calls", [])
+    if not isinstance(calls, list) or any(not isinstance(call, dict) for call in calls):
+        raise ValueError("TOOL_PAIRING_INVALID")
+    return calls
+
+
 def post(key: str, body: dict, timeout: int) -> tuple[int, bytes, float]:
     data = json.dumps(body, ensure_ascii=False).encode()
     request = urllib.request.Request(
@@ -197,7 +204,13 @@ def run(
         message = choice.get("message") or {}
         attempt["finish_reason"] = choice.get("finish_reason")
         content = message.get("content")
-        tool_calls = message.get("tool_calls") or []
+        try:
+            tool_calls = validated_tool_calls(message)
+        except ValueError as exc:
+            attempt["status"] = "protocol_error"
+            result["status"] = "failed"
+            result["failure"] = str(exc)
+            break
         attempt["tool_call_count"] = len(tool_calls)
         if final or not tool_calls:
             result["final_content"] = content

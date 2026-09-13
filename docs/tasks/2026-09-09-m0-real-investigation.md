@@ -576,4 +576,10 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 最终定向测试为 11 passed，完整 `make check` 为 784 passed / 54 skipped；输出见 `round-09-launch-security-targeted.txt` 与 `round-09-launch-final-make-check.txt`。
 - 本轮仍未执行模型 HTTP、trace、PG 或容器；推送后已再次触发 `@codex review`，需等待覆盖最终 HEAD 的 bot 结果。SPEC gate、feature passes 和合并授权不变。
 
+## 2026-09-13 launcher follow-up review
+
+- bot 继续发现 candidate/upstream `runner_args` 可覆盖 packet、upstream runner 硬编码 checkout，以及 candidate 对畸形 `tool_calls` 未受控失败；均已在后续提交修复。
+- candidate/upstream 现在要求冻结 packet、拒绝额外参数；Holmes checkout 通过 `--holmes-root`/`M0_HOLMES_ROOT` 并校验 `holmes/`；candidate 将非 list/非 dict tool calls 记录为 `TOOL_PAIRING_INVALID` 失败结果。
+- 独立复核见 `round-10-launch-independent-review.md`，无 P0/P1/P2。定向测试 17 passed，完整 `make check` 790 passed / 54 skipped，证据见 `round-10-launch-findings-targeted.txt` 与 `round-10-final-make-check.txt`。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
