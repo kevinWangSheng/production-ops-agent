@@ -1,6 +1,9 @@
+import json
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
-from scripts.m0_lab.round07 import launch
+from scripts.m0_lab.round07 import candidate_runner, launch
 from scripts.m0_lab.round07.candidate_runner import validated_tool_calls
 from scripts.m0_lab.round07.launch import validate_max_http
 
@@ -101,6 +104,65 @@ def test_round07_candidate_rejects_malformed_tool_calls(value):
         validated_tool_calls({"tool_calls": value})
 
 
+def test_round07_candidate_rejects_non_mapping_function():
+    with pytest.raises(ValueError, match="TOOL_PAIRING_INVALID"):
+        validated_tool_calls({"tool_calls": [{"function": "not-a-mapping"}]})
+
+
+def test_round07_candidate_records_function_shape_error(tmp_path, monkeypatch):
+    packet = launch.PACKET_ROOT / "packet-m004-normal.json"
+    raw = json.dumps(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "tool_calls": [{"id": "call-1", "function": "bad"}],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {},
+        }
+    ).encode()
+    monkeypatch.setattr(
+        candidate_runner, "post", lambda *args, **kwargs: (200, raw, 0.01)
+    )
+    result = candidate_runner.run(packet, tmp_path, "run-shape", 1, "synthetic", False)
+    assert result["status"] == "failed"
+    assert result["failure"] == "TOOL_PAIRING_INVALID"
+    assert json.loads((tmp_path / "result-business.json").read_text())["failure"] == (
+        "TOOL_PAIRING_INVALID"
+    )
+
+
 def test_round07_candidate_accepts_missing_or_list_tool_calls():
     assert validated_tool_calls({}) == []
     assert validated_tool_calls({"tool_calls": [{"id": "ok"}]}) == [{"id": "ok"}]
+
+
+def test_round07_ledger_reservation_serializes_concurrent_cap_checks(
+    monkeypatch, tmp_path
+):
+    ledger = tmp_path / "ledger.json"
+    monkeypatch.setattr(launch, "LEDGER", ledger)
+    monkeypatch.setattr(launch, "TOTAL_HTTP", 1)
+    entries = [
+        {"run_id": "run-a", "max_http": 1, "attempts": [], "status": "launched"},
+        {"run_id": "run-b", "max_http": 1, "attempts": [], "status": "launched"},
+    ]
+
+    def reserve(entry):
+        try:
+            launch.reserve_run(entry)
+            return "reserved"
+        except SystemExit as exc:
+            return str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(reserve, entries))
+    assert outcomes.count("reserved") == 1
+    assert outcomes.count("allocation HTTP cap would be exceeded; not launched") == 1
+    saved = json.loads(ledger.read_text())
+    assert saved["reserved_http"] == 1
+    assert len(saved["runs"]) == 1

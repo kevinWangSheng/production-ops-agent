@@ -7,6 +7,7 @@ The key is never printed, logged, written or placed in argv/environment.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -173,10 +174,85 @@ def load_ledger() -> dict:
         "trace_uploads": 0,
         "runs": [],
         "http_count": 0,
+        "reserved_http": 0,
         "known_cost_upper_cny": 0.0,
         "unknown_reservation_cny": 0.0,
         "cost_basis": "peak all-cache-miss upper bound (prompt*3 + completion*9 CNY per 1M tokens); not invoice",
     }
+
+
+def write_ledger(ledger: dict) -> None:
+    LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2) + "\n")
+
+
+def reserve_run(run_entry: dict) -> dict:
+    """Atomically check the ID/cap and reserve a run before launching it."""
+    lock_path = LEDGER.with_name(LEDGER.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            ledger = load_ledger()
+            ledger.setdefault("reserved_http", 0)
+            if any(run["run_id"] == run_entry["run_id"] for run in ledger["runs"]):
+                raise SystemExit("run id already booked")
+            if (
+                ledger["http_count"] + ledger["reserved_http"] + run_entry["max_http"]
+                > TOTAL_HTTP
+            ):
+                raise SystemExit("allocation HTTP cap would be exceeded; not launched")
+            ledger["runs"].append(run_entry)
+            ledger["reserved_http"] += run_entry["max_http"]
+            write_ledger(ledger)
+            return ledger
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def update_run(run_id: str, result: dict, proc: subprocess.CompletedProcess) -> dict:
+    """Merge a completed run while serializing with other launcher writers."""
+    lock_path = LEDGER.with_name(LEDGER.name + ".lock")
+    with lock_path.open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            ledger = load_ledger()
+            ledger.setdefault("reserved_http", 0)
+            run_entry = next(run for run in ledger["runs"] if run["run_id"] == run_id)
+            ledger["reserved_http"] = max(
+                0, ledger["reserved_http"] - run_entry["max_http"]
+            )
+            for attempt in result.get("attempts", []):
+                if "http_status" not in attempt:
+                    continue
+                entry = {
+                    "ordinal": attempt["ordinal"],
+                    "http_status": attempt["http_status"],
+                    "usage": attempt.get("usage"),
+                    "response_model": attempt.get("response_model"),
+                    "finish_reason": attempt.get("finish_reason"),
+                    "cost_upper_cny": cost_upper(attempt.get("usage")),
+                    "reservation_cny": RESERVATION_PER_HTTP,
+                }
+                run_entry["attempts"].append(entry)
+                ledger["http_count"] += 1
+                if entry["cost_upper_cny"] is None:
+                    ledger["unknown_reservation_cny"] += RESERVATION_PER_HTTP
+                else:
+                    ledger["known_cost_upper_cny"] = round(
+                        ledger["known_cost_upper_cny"] + entry["cost_upper_cny"],
+                        6,
+                    )
+            run_entry.update(
+                status=result.get("status", "runner_failed"),
+                exit_code=proc.returncode,
+                ended_at=time.time(),
+                stdout_tail=proc.stdout[-400:],
+                stderr_tail=proc.stderr[-400:],
+            )
+            write_ledger(ledger)
+            return ledger
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def cost_upper(usage) -> float | None:
@@ -228,11 +304,6 @@ def main():
             raise ValueError("--packet is required for candidate/upstream arms")
     except ValueError as exc:
         parser.error(str(exc))
-    ledger = load_ledger()
-    if any(run["run_id"] == args.run_id for run in ledger["runs"]):
-        raise SystemExit("run id already booked")
-    if ledger["http_count"] + args.max_http > TOTAL_HTTP:
-        raise SystemExit("allocation HTTP cap would be exceeded; not launched")
     if args.arm == "candidate":
         if args.runner_args:
             raise ValueError("runner arguments are not allowlisted")
@@ -286,42 +357,15 @@ def main():
         "attempts": [],
         "status": "launched",
     }
-    ledger["runs"].append(run_entry)
-    LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2) + "\n")
+    ledger = reserve_run(run_entry)
     proc = subprocess.run(
         command, input=key + "\n", capture_output=True, text=True, timeout=1200
     )
     del key
     result_path = args.out / "result-business.json"
     result = json.loads(result_path.read_text()) if result_path.exists() else {}
-    for attempt in result.get("attempts", []):
-        if "http_status" not in attempt:
-            continue
-        entry = {
-            "ordinal": attempt["ordinal"],
-            "http_status": attempt["http_status"],
-            "usage": attempt.get("usage"),
-            "response_model": attempt.get("response_model"),
-            "finish_reason": attempt.get("finish_reason"),
-            "cost_upper_cny": cost_upper(attempt.get("usage")),
-            "reservation_cny": RESERVATION_PER_HTTP,
-        }
-        run_entry["attempts"].append(entry)
-        ledger["http_count"] += 1
-        if entry["cost_upper_cny"] is None:
-            ledger["unknown_reservation_cny"] += RESERVATION_PER_HTTP
-        else:
-            ledger["known_cost_upper_cny"] = round(
-                ledger["known_cost_upper_cny"] + entry["cost_upper_cny"], 6
-            )
-    run_entry.update(
-        status=result.get("status", "runner_failed"),
-        exit_code=proc.returncode,
-        ended_at=time.time(),
-        stdout_tail=proc.stdout[-400:],
-        stderr_tail=proc.stderr[-400:],
-    )
-    LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2) + "\n")
+    ledger = update_run(args.run_id, result, proc)
+    run_entry = next(run for run in ledger["runs"] if run["run_id"] == args.run_id)
     print(
         json.dumps(
             {

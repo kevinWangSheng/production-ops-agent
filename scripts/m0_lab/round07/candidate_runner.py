@@ -74,6 +74,10 @@ def validated_tool_calls(message: dict) -> list[dict]:
     calls = message.get("tool_calls", [])
     if not isinstance(calls, list) or any(not isinstance(call, dict) for call in calls):
         raise ValueError("TOOL_PAIRING_INVALID")
+    if any(
+        "function" in call and not isinstance(call["function"], dict) for call in calls
+    ):
+        raise ValueError("TOOL_PAIRING_INVALID")
     return calls
 
 
