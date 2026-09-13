@@ -566,9 +566,9 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 ## 2026-09-13 round-07 launcher bot findings
 
 - bot 在 `9a0286a` 发现两个未 resolve 问题：launcher 硬编码 `.env`/Holmes venv 路径；`--arm container` 将凭据注入调用方可控的任意命令。
-- `90b5b43` 已修复：默认路径从当前仓库根解析，并支持 `M0_ENV_FILE`/`M0_HOLMES_PYTHON` 及 `--env-file`/`--holmes-python` 覆盖；缺失路径在启动前给出明确错误。container arm 改为固定 digest 镜像、`docker run --rm -i --network none`、固定 packet/runner 参数和仓库 `tmp/` 输出挂载，拒绝额外命令或参数。
+- `90b5b43`/`bb1eec0` 已修复：默认路径从当前仓库根解析，并支持 `M0_ENV_FILE`/`M0_HOLMES_PYTHON` 及 `--env-file`/`--holmes-python` 覆盖；缺失路径在启动前给出明确错误。container arm 改为固定 digest 镜像、`docker run --rm -i --network none`、固定 packet/runner 参数和仓库 `tmp/` 输出挂载，拒绝额外命令或参数，且 max-http 参数采用严格正整数格式。
 - 新增 `/bin/cat` 反例与路径解析测试；定向 `tests/test_m0_round07_launch.py -rA -v` 为 11 passed，完整 `make check` 为 784 passed / 54 skipped，输出见 `round-09-launch-security-targeted.txt` 与 `round-09-launch-final-make-check.txt`。
-- 两条原 thread 尚待在 GitHub 上回复并 resolve；本提交未执行模型、trace、PG 或容器。修复后需重新触发覆盖 `90b5b43` 的 bot review 并等待 CI。
+- 两条原 thread 已在 GitHub 上回复并 resolve；本提交未执行模型、trace、PG 或容器。修复后已重新触发覆盖最终 tip 的 bot review 并等待结果。
 
 ## 2026-09-13 launcher findings 收敛
 
