@@ -41,9 +41,27 @@ CONTAINER_PACKETS = {
     "fault": "/runner/packets/packet-m004-fault.json",
 }
 PACKET_ROOT = ROOT / "docs/evidence/m0-real-investigation/round-07-upstream-runs"
+PACKET_MANIFEST = {
+    "packet-m004-normal.json": {
+        "scenario": "normal",
+        "sha256": "ac80c078b6e13f53792943d404e7424eb5dfc8808b4bd796d297306a4e99c7ff",
+    },
+    "packet-m004-fault.json": {
+        "scenario": "fault",
+        "sha256": "61ca39b0bf29c111dd73ee65efd83616de96f2d95169d4dca25a618d91c3fd28",
+    },
+}
 TOTAL_HTTP = 8
 TOTAL_RESERVATION_CNY = 8.0
 RESERVATION_PER_HTTP = 1.0
+
+
+def canonical_hash(value) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
 
 
 def validate_max_http(value: int) -> int:
@@ -93,13 +111,25 @@ def resolve_holmes_root(explicit: Path | None = None) -> Path:
     return path
 
 
-def resolve_packet(explicit: Path) -> Path:
+def resolve_packet(explicit: Path) -> tuple[Path, str]:
     path = explicit.expanduser().resolve()
     if PACKET_ROOT.resolve() not in path.parents or not path.is_file():
         raise ValueError(
             f"replay packet unavailable or outside frozen packet root: {path}"
         )
-    return path
+    manifest = PACKET_MANIFEST.get(path.name)
+    if manifest is None:
+        raise ValueError(f"replay packet is not in the frozen hash manifest: {path}")
+    try:
+        packet = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"replay packet is not valid JSON: {path}") from exc
+    if canonical_hash(packet) != manifest["sha256"]:
+        raise ValueError(f"replay packet hash mismatch: {path}")
+    packet_scenario = packet.get("scenario", manifest["scenario"])
+    if packet_scenario != manifest["scenario"]:
+        raise ValueError(f"replay packet scenario mismatch: {path}")
+    return path, manifest["scenario"]
 
 
 def resolve_docker() -> Path:
@@ -329,13 +359,16 @@ def main():
         holmes_root = (
             resolve_holmes_root(args.holmes_root) if args.arm == "upstream" else None
         )
-        packet = (
+        packet_info = (
             resolve_packet(args.packet)
             if args.arm in ("candidate", "upstream") and args.packet
             else None
         )
-        if args.arm in ("candidate", "upstream") and packet is None:
+        if args.arm in ("candidate", "upstream") and packet_info is None:
             raise ValueError("--packet is required for candidate/upstream arms")
+        packet, packet_scenario = packet_info or (None, None)
+        if args.arm in ("candidate", "upstream") and args.scenario != packet_scenario:
+            raise ValueError("--scenario does not match replay packet")
     except ValueError as exc:
         parser.error(str(exc))
     if args.arm == "candidate":

@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 HERE = Path(__file__).resolve()
 ROOT = HERE.parents[3]
@@ -32,6 +33,7 @@ from scripts.m0_lab.round07.replay_tools import (  # noqa: E402
 )
 
 ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
+ENDPOINT_HOST = "api.deepseek.com"
 MODEL = "deepseek-v4-flash"
 MAX_TOKENS = 8192
 REQUEST_SECONDS = 360
@@ -58,6 +60,14 @@ DISCIPLINE = (
 )
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+
+
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -82,6 +92,9 @@ def validated_tool_calls(message: dict) -> list[dict]:
 
 
 def post(key: str, body: dict, timeout: int) -> tuple[int, bytes, float]:
+    endpoint = urlparse(ENDPOINT)
+    if endpoint.scheme != "https" or endpoint.hostname != ENDPOINT_HOST:
+        raise ValueError("HTTP endpoint denied")
     data = json.dumps(body, ensure_ascii=False).encode()
     request = urllib.request.Request(
         ENDPOINT,
@@ -91,7 +104,7 @@ def post(key: str, body: dict, timeout: int) -> tuple[int, bytes, float]:
     )
     started = time.monotonic()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with OPENER.open(request, timeout=timeout) as response:
             return response.status, response.read(), time.monotonic() - started
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read(), time.monotonic() - started

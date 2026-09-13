@@ -90,6 +90,7 @@ def project(observation: dict, packet_id: str) -> dict:
     return {
         "packet_version": PACKET_VERSION,
         "packet_id": packet_id,
+        "scenario": packet_id.removesuffix("-r07").removeprefix("m004-"),
         "question": QUESTION.format(start=observation["start"], end=observation["end"]),
         "scope": {
             "integration_id": "m0-otel-20260909",

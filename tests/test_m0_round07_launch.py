@@ -1,6 +1,7 @@
 import hashlib
 import json
 import subprocess
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -30,6 +31,37 @@ def test_round07_launch_resolves_env_file_from_explicit_override(tmp_path):
 def test_round07_launch_missing_env_file_is_explicit(tmp_path):
     with pytest.raises(ValueError, match="credential file unavailable"):
         launch.resolve_env_file(tmp_path / "missing.env")
+
+
+def test_round07_launch_rejects_scenario_packet_mismatch(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("DEEPSEEK_API_KEY=synthetic\n")
+    monkeypatch.setattr(
+        launch.sys,
+        "argv",
+        [
+            "launch.py",
+            "--arm",
+            "candidate",
+            "--run-id",
+            "mismatch-run",
+            "--scenario",
+            "fault",
+            "--max-http",
+            "1",
+            "--out",
+            str(tmp_path / "out"),
+            "--env-file",
+            str(env_file),
+            "--packet",
+            str(launch.PACKET_ROOT / "packet-m004-normal.json"),
+        ],
+    )
+    monkeypatch.setattr(
+        launch, "read_key", lambda *_: pytest.fail("must not read credentials")
+    )
+    with pytest.raises(SystemExit):
+        launch.main()
 
 
 def test_round07_launch_resolves_executable_holmes_override(tmp_path, monkeypatch):
@@ -258,6 +290,65 @@ def test_round07_candidate_records_function_shape_error(tmp_path, monkeypatch):
 def test_round07_candidate_accepts_missing_or_list_tool_calls():
     assert validated_tool_calls({}) == []
     assert validated_tool_calls({"tool_calls": [{"id": "ok"}]}) == [{"id": "ok"}]
+
+
+def test_round07_candidate_post_ignores_proxy_environment(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    seen = []
+
+    class Opener:
+        def open(self, request, timeout):
+            seen.append(request)
+            return Response()
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://attacker.invalid:8080")
+    monkeypatch.setattr(candidate_runner, "OPENER", Opener())
+    status, _, _ = candidate_runner.post("synthetic-secret", {}, 1)
+    assert status == 200
+    assert len(seen) == 1
+    assert seen[0].host == "api.deepseek.com"
+    assert seen[0].get_header("Authorization") == "Bearer synthetic-secret"
+
+
+def test_round07_candidate_post_does_not_follow_redirect(monkeypatch):
+    seen = []
+
+    class Opener:
+        def open(self, request, timeout):
+            seen.append(request)
+            raise urllib.error.HTTPError(
+                request.full_url,
+                302,
+                "redirect",
+                {"Location": "https://attacker.invalid/collect"},
+                None,
+            )
+
+    monkeypatch.setattr(candidate_runner, "OPENER", Opener())
+    status, _, _ = candidate_runner.post("synthetic-secret", {}, 1)
+    assert status == 302
+    assert len(seen) == 1
+    assert seen[0].host == "api.deepseek.com"
+
+
+def test_round07_candidate_post_rejects_non_https_or_other_host(monkeypatch):
+    monkeypatch.setattr(candidate_runner, "ENDPOINT", "http://attacker.invalid/collect")
+    monkeypatch.setattr(
+        candidate_runner, "OPENER", lambda *_: pytest.fail("must not send request")
+    )
+    with pytest.raises(ValueError, match="HTTP endpoint denied"):
+        candidate_runner.post("synthetic-secret", {}, 1)
 
 
 def test_round07_ledger_reservation_serializes_concurrent_cap_checks(

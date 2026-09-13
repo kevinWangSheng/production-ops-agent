@@ -605,4 +605,10 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 独立复核补充发现：损坏结果 JSON 虽已释放预留，但 launcher 仍可能返回 0；现已在后续修复中让 `failed`/`runner_failed` 状态返回非零，并新增回归。
 - 定向测试 23 passed，完整 `make check` 796 passed / 54 skipped；独立复核见 `round-16-launch-independent-review.md`，证据见 `round-16-launch-findings-targeted.txt` 与 `round-16-final-make-check.txt`。
 
+## 2026-09-13 round17 scenario/proxy 收敛
+
+- bot 发现 packet 与 CLI scenario 可错配，以及 candidate HTTP 默认继承代理并跟随重定向；均已修复。冻结 packet manifest 校验 canonical SHA256 与 scenario，未来 packet 生成器同时写入 scenario 字段；candidate 使用空代理 opener、禁止重定向并固定 HTTPS/host/POST endpoint。
+- 推送前全新上下文对 `scripts/m0_lab/round07/` 全目录完成对抗式审查，未发现 P0/P1/P2，记录于 `round-17-launch-adversarial-review.md`。
+- 定向测试 27 passed，完整 `make check` 800 passed / 54 skipped；输出见 `round-17-launch-final-make-check.txt`。本轮未执行模型、trace、PG 或容器。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
