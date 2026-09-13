@@ -12,7 +12,7 @@
 
 主工作项复用production-ops-agent-m0-01 / chore/m0-real-investigation，干净旧分支快进已合并main738b5c7。独立环境production-ops-agent-m0-environment / chore/m0-real-environment从同基线建立；环境Agent唯一负责OTel实例，HolmesAgent仅负责基线配置/运行，避免重复搭建。
 
-[本轮绝对截止、授权、预算和完成条件](../evidence/m0-real-investigation/contract.md)。新增20 CNY/20模型/5trace，截止2026-09-10T17:14:30Z；旧Pro+首次Flash4 CNY未核账保留。原数据库在原worktree，系统PG不动。
+[本轮绝对截止、授权、预算和完成条件](../evidence/m0-real-investigation/contract.md)。其中新增 20 CNY/20 模型/5 trace 是已结束的历史合同；用户现已取消该类 M0 总量授权上限。旧 Pro+首次 Flash 4 CNY 未核账和本轮实际账本均保留，不重置、不改写。原数据库在原worktree，系统PG不动。
 
 现场GitHub：PR14 mergedAt=2026-09-09T17:05:55Z、merge738b5c7d637ded49919d6368fbc3980b1b9c5856；main CI34380825700成功，本地主仓库main/origin/main一致且干净。原专属PG停机后经所属脚本重新启动；历史归属和22条等旧实验状态按实际全表行hash保留。未清理任一旧worktree。
 
