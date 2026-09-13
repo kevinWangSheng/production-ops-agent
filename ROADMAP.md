@@ -1,5 +1,7 @@
 # Roadmap
 
+当前工程交付状态（2026-09-13）：PR #16 已 squash 合并到 main（`cce4c41`），main CI 通过。用户选择 gate 决策 B：**有界开放 M1-01**，预算候选值冻结，judge 标注包单人确认。M0 未完成项（K8s RBAC/OS 隔离、正式保留集、账单对账、产品级 streaming/PG 审计/压缩器接入）转为 M1 入口验收条件，不视为 M0 通过。下一工作：按 [M1-01 拆分](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 以 `feature/` 分支逐子任务实施。
+
 当前工程交付状态（2026-09-11）：M0-03 normal/fault v4 正向样本已达 2/2，M004 raw evidence 独立复核通过；PR #16 仍 OPEN，SPEC/M1 gate 等待用户决定。
 Current phase: M0 质量包已完成本轮可执行复验；专属 m0-otel 已停止，历史证据保全。CI/本地/独立复验完成，Security 按用户决定忽略；不自动合并 PR。
 Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline 对照；专属 m0-otel 已停止，历史容器/卷/VM/证据保留。Code/CI 交付门已通过，Security 按用户决定忽略；SPEC gate 仍 not cleared，等待最终入口决策。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
@@ -10,14 +12,14 @@ Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline �
 |---|---|---|
 | PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；代码/验证基线 `960f85b` 的 CI `checks`/`m0-postgres` 通过；后续提交仅为状态文档同步。 |
 | B1 退出矩阵 | **已完成** | [`m0-exit-matrix.md`](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 已建立并持续更新。 |
-| B2 预算校准 | **部分完成** | 候选值和历史分布已写入 v4 校准段；最终冻结仍待用户批准。 |
+| B2 预算校准 | **已冻结（2026-09-13）** | v4 校准段与 wall-time 候选值经用户批准冻结为 M1-01 上限；账单对账未完成不影响冻结。 |
 | B3 控制合同 | **部分完成** | wp23 专属 PG 5 项合同通过，另有 1 次真实 DeepSeek pause→resume 新 Run；完整产品生命周期仍不等同 M0 通过。 |
 | B4 真实恢复 | **已完成（机制范围）** | 三项 Run、PG 重建/取消/不兼容 handoff 和 LangSmith 白名单回读均有证据；不等于产品恢复验收。 |
 | B5 权限/隔离 | **部分完成** | PG 只读角色实际拒绝写/DDL；无宿主挂载容器拒绝开发目录/答案/凭据路径；K8s RBAC 环境缺测，Holmes 宿主 OS 隔离仍未证明。 |
-| B6 上游/eval | **部分完成** | wp5 同一 replay tool face 的 normal/fault 候选与 upstream 各 1 Run 已执行；候选有 JSON、upstream 未形成最终报告。首次 holdout 变体由独立 evaluator 各 10/10，仍非正式保留集；judge 人工确认待用户处理。 |
+| B6 上游/eval | **部分完成** | wp5 候选/upstream 各 1 Run，upstream 未形成最终报告；首次 holdout 10/10 非正式保留集。judge 标注包已于 2026-09-13 单人确认预填分；正式保留集与 rubric 冻结转为 M1 入口条件。 |
 | B7 LangGraph | **已完成（离线比较）** | 1.2.11 隔离比较无可见收益，ADR-0004 推荐推迟；是否采用仍待用户决定。 |
 | B8 账单 | **未完成** | 对账模板已准备，等待用户提供供应商账单导出/截图。 |
-| SPEC gate / feature passes | **未开放/未修改** | `SPEC.md` 仍 `not cleared`；11 个 feature passes 均保持原值。 |
+| SPEC gate / feature passes | **有界开放 M1-01 / passes 未修改** | 2026-09-13 用户选 B，见 [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；11 个 feature passes 均保持原值。 |
 
 下方按日期排列的旧段落是历史过程记录；读取当前进度时以上表和文档末尾最新日期段为准。
 
@@ -65,7 +67,7 @@ Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline �
 
 - [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3为历史包；严格v4已补齐PR发现并经联合独立终审，案例/重复/非退化不削弱。下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
 
-- [-] 2026-09-09 新一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
+- [-] 2026-09-09 历史一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；用户已取消该历史合同对后续 M0 的总量授权上限，历史账本不重置；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
 
 - [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。该离线批次不自动授权真实调用或打开M0退出/产品实施门槛；后续真实调用授权与结果见当前M0任务。
 
@@ -151,7 +153,7 @@ PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 P
 - [x] wp5：同一 replay packet/tool face 的 normal/fault candidate/upstream 各 1 Run 已执行（8 HTTP allocation，known upper 0.228585 CNY）；candidate 两场有 JSON 报告，upstream 两场无最终报告，未作优劣结论。
 - [x] 首次小规模 holdout：无宿主挂载容器拒绝开发目录、答案和凭据路径；normal/fault 各 2 HTTP，独立匿名评分 10/10；仅为开发期小规模盲测，不是正式保留集。
 - [x] compressor 真实超阈值 Run：`m0-compressor-v1` 1 HTTP/200，paired transcript 保真；keep floor 仍 over-threshold，状态为部分。
-- [ ] M0 用户收尾仍待 judge 人工勾选、供应商账单对账、预算冻结值批准和 K8s 环境缺测处置；SPEC gate 保持 `not cleared`，M1 不启动。总账见 [`round-07-m0-final-results`](docs/evidence/m0-real-investigation/round-07-m0-final-results.md)。
+- [x] 2026-09-13 M0 用户收尾：judge 单人勾选、预算冻结值批准已完成；供应商账单对账与 K8s 环境缺测转为 M1 入口条件；SPEC gate 有界开放 M1-01。总账见 [`round-07-m0-final-results`](docs/evidence/m0-real-investigation/round-07-m0-final-results.md)。
 
 ## 2026-09-12 review findings follow-up
 

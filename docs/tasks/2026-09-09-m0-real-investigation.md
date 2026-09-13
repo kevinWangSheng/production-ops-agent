@@ -12,7 +12,7 @@
 
 主工作项复用production-ops-agent-m0-01 / chore/m0-real-investigation，干净旧分支快进已合并main738b5c7。独立环境production-ops-agent-m0-environment / chore/m0-real-environment从同基线建立；环境Agent唯一负责OTel实例，HolmesAgent仅负责基线配置/运行，避免重复搭建。
 
-[本轮绝对截止、授权、预算和完成条件](../evidence/m0-real-investigation/contract.md)。新增20 CNY/20模型/5trace，截止2026-09-10T17:14:30Z；旧Pro+首次Flash4 CNY未核账保留。原数据库在原worktree，系统PG不动。
+[本轮绝对截止、授权、预算和完成条件](../evidence/m0-real-investigation/contract.md)。其中新增 20 CNY/20 模型/5 trace 是已结束的历史合同；用户现已取消该类 M0 总量授权上限。旧 Pro+首次 Flash 4 CNY 未核账和本轮实际账本均保留，不重置、不改写。原数据库在原worktree，系统PG不动。
 
 现场GitHub：PR14 mergedAt=2026-09-09T17:05:55Z、merge738b5c7d637ded49919d6368fbc3980b1b9c5856；main CI34380825700成功，本地主仓库main/origin/main一致且干净。原专属PG停机后经所属脚本重新启动；历史归属和22条等旧实验状态按实际全表行hash保留。未清理任一旧worktree。
 
@@ -612,3 +612,10 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 定向测试 27 passed，完整 `make check` 800 passed / 54 skipped；输出见 `round-17-launch-final-make-check.txt`。本轮未执行模型、trace、PG 或容器。
 
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
+
+## 2026-09-13 M0 收尾与 gate 决定（当前交接）
+
+- PR #16 已由用户授权 squash 合并到 main（`cce4c41`），main CI `checks`/`m0-postgres` 通过；对应 worktree 与本地分支已清理，远程分支保留。
+- 用户选择 gate 决策 B：有界开放 M1-01。SPEC gate 段、ROADMAP 当前状态表、决策记录、v4 预算冻结段、wall-time 冻结值、judge 标注包（单人确认）已同步更新；feature passes 未修改。
+- 未完成并转为 M1 入口条件：K8s RBAC/Holmes 宿主 OS 隔离、正式保留集盲测与 rubric 冻结、供应商账单对账、产品级 streaming/PG 审计/压缩器接入、pause/resume/observer 授权。
+- 下一步：按退出矩阵 M1-01 拆分以 `feature/` 分支逐子任务实施；每个新增真实实验另立合同与 ledger。本任务记录到此转为历史，M1-01 另建任务记录。
