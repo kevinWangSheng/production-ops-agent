@@ -135,7 +135,7 @@ def validate_container_command(command: list[str]) -> list[str]:
         command[16],
     ] or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", command[14]):
         raise ValueError("container command is not allowlisted")
-    if type(int(command[16])) is not int or int(command[16]) < 1:
+    if not re.fullmatch(r"[1-9][0-9]*", command[16]):
         raise ValueError("container max-http is not allowlisted")
     return command
 
