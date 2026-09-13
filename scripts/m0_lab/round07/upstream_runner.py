@@ -29,6 +29,9 @@ from scripts.m0_lab.round07.replay_tools import (  # noqa: E402
 )
 
 MODEL = "deepseek-v4-flash"
+UPSTREAM_CODE_SHA256 = (
+    "b4f72fc577f2910d9b68bb775c97dd51c58279478090939f5ee4f7cfa7bcee01"
+)
 MAX_TOKENS = 8192
 REQUEST_SECONDS = 360
 RUN_SECONDS = 900
@@ -86,6 +89,8 @@ def resolve_upstream_root(explicit: Path | None = None) -> Path:
     path = value.expanduser().resolve()
     if not (path / "holmes").is_dir():
         raise ValueError(f"Holmes checkout unavailable: {path}")
+    if code_digest(path) != UPSTREAM_CODE_SHA256:
+        raise ValueError(f"Holmes checkout hash mismatch: {path}")
     return path
 
 

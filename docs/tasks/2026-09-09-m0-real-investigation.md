@@ -588,4 +588,11 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - 已在后续提交加入 ledger sidecar `fcntl` 锁与 `reserved_http` 原子预留；candidate 对 `function` 形状 fail-closed 并写入 `result-business.json` 的 `TOOL_PAIRING_INVALID`。
 - 定向测试 20 passed（含并发 allocation 与受控结果回归），完整 `make check` 793 passed / 54 skipped；独立复核见 `round-12-launch-independent-review.md`，证据见 `round-12-launch-findings-targeted.txt` 与 `round-12-final-make-check.txt`。
 
+## 2026-09-13 timeout/runtime trust bot findings 收敛
+
+- bot 对 `a46e2cc` 发现 runner 超时不释放预留、Holmes 解释器/checkout 未 hash pin、Docker 从 PATH 解析三个问题。
+- 已在后续提交统一为“先固定可信运行时，再读取凭据”：超时/异常转为受控失败并释放 `reserved_http`；Holmes 与 Docker 固定路径及 SHA256 清单校验；stdout/stderr 落 ledger 前脱敏。未执行模型、trace、PG 或容器。
+- candidate/upstream 的 packet、checkout 和参数边界继续 fail-closed；独立复核见 `round-13-launch-independent-review.md`。
+- 定向测试 21 passed，完整 `make check` 794 passed / 54 skipped；证据见 `round-13-launch-findings-targeted.txt` 与 `round-13-final-make-check.txt`。三条 bot thread 待回复并 resolve，随后重新触发最终 HEAD review。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。

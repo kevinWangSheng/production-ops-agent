@@ -1,4 +1,6 @@
+import hashlib
 import json
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -30,27 +32,30 @@ def test_round07_launch_missing_env_file_is_explicit(tmp_path):
         launch.resolve_env_file(tmp_path / "missing.env")
 
 
-def test_round07_launch_resolves_executable_holmes_override(tmp_path):
+def test_round07_launch_resolves_executable_holmes_override(tmp_path, monkeypatch):
     holmes = tmp_path / "python"
     holmes.write_text("#!/bin/sh\n")
     holmes.chmod(0o700)
+    monkeypatch.setattr(launch, "DEFAULT_HOLMES_PYTHON", holmes)
+    monkeypatch.setattr(
+        launch, "HOLMES_PYTHON_SHA256", hashlib.sha256(holmes.read_bytes()).hexdigest()
+    )
     assert launch.resolve_holmes_python(holmes) == holmes.resolve()
 
 
 def test_round07_launch_missing_holmes_is_explicit(tmp_path):
-    with pytest.raises(ValueError, match="Holmes Python unavailable"):
+    with pytest.raises(ValueError, match="Holmes Python path is not pinned"):
         launch.resolve_holmes_python(tmp_path / "missing-python")
 
 
 def test_round07_launch_missing_holmes_checkout_is_explicit(tmp_path):
-    with pytest.raises(ValueError, match="Holmes checkout unavailable"):
+    with pytest.raises(ValueError, match="Holmes checkout path is not pinned"):
         launch.resolve_holmes_root(tmp_path / "missing-checkout")
 
 
 def test_round07_container_rejects_arbitrary_executable_without_reading_key(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setattr(launch.shutil, "which", lambda name: "/usr/bin/docker")
     env_file = tmp_path / ".env"
     env_file.write_text("DEEPSEEK_API_KEY=synthetic\n")
     ledger = tmp_path / "ledger.json"
@@ -88,14 +93,70 @@ def test_round07_container_rejects_arbitrary_executable_without_reading_key(
 
 
 def test_round07_container_accepts_only_pinned_docker_command(monkeypatch, tmp_path):
-    docker = "/usr/bin/docker"
-    monkeypatch.setattr(launch.shutil, "which", lambda name: docker)
+    docker_path = tmp_path / "docker"
+    docker_path.write_bytes(b"trusted synthetic docker")
+    docker_path.chmod(0o700)
+    monkeypatch.setattr(launch, "DOCKER_PATH", docker_path)
+    monkeypatch.setattr(
+        launch, "DOCKER_SHA256", hashlib.sha256(docker_path.read_bytes()).hexdigest()
+    )
+    docker = str(docker_path)
     monkeypatch.setattr(launch, "ROOT", tmp_path)
     out = tmp_path / "tmp" / "round07"
     command = launch.build_container_command(
         docker, scenario="normal", run_id="run-test", max_http=1, out=out
     )
     assert launch.validate_container_command(command) == command
+
+
+def test_round07_launch_timeout_releases_reservation_and_redacts_output(
+    monkeypatch, tmp_path
+):
+    env_file = tmp_path / ".env"
+    env_file.write_text("DEEPSEEK_API_KEY=synthetic-secret\n")
+    ledger = tmp_path / "ledger.json"
+    monkeypatch.setattr(launch, "LEDGER", ledger)
+    out = tmp_path / "out"
+    packet = launch.PACKET_ROOT / "packet-m004-normal.json"
+    monkeypatch.setattr(
+        launch.sys,
+        "argv",
+        [
+            "launch.py",
+            "--arm",
+            "candidate",
+            "--run-id",
+            "timeout-run",
+            "--scenario",
+            "normal",
+            "--max-http",
+            "1",
+            "--out",
+            str(out),
+            "--env-file",
+            str(env_file),
+            "--packet",
+            str(packet),
+        ],
+    )
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            args[0],
+            kwargs["timeout"],
+            output="synthetic-secret",
+            stderr="synthetic-secret",
+        )
+
+    monkeypatch.setattr(launch.subprocess, "run", timeout)
+    assert launch.main() == 1
+    saved = json.loads(ledger.read_text())
+    assert saved["reserved_http"] == 0
+    run = saved["runs"][0]
+    assert run["status"] == "failed"
+    assert run["failure"] == "RUNNER_TIMEOUT"
+    assert "synthetic-secret" not in run["stdout_tail"]
+    assert "synthetic-secret" not in run["stderr_tail"]
 
 
 @pytest.mark.parametrize("value", [{}, "", None, [{"id": "ok"}, "bad"]])

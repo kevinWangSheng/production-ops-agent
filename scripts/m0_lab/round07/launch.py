@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +20,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_ENV_FILE = ROOT / ".env"
 LEDGER = ROOT / "docs/evidence/m0-real-investigation/round-07-wp5-ledger.json"
-DEFAULT_HOLMES_PYTHON = ROOT / "tmp/m0-environment/holmes-venv/bin/python"
+HOLMES_ENV_ROOT = ROOT.parent / "production-ops-agent-m0-environment/tmp/m0-environment"
+DEFAULT_HOLMES_PYTHON = HOLMES_ENV_ROOT / "holmes-venv/bin/python"
+DEFAULT_HOLMES_ROOT = (
+    HOLMES_ENV_ROOT / "holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4"
+)
+HOLMES_PYTHON_SHA256 = (
+    "eb9d74b9c7cfdfb2c9b91614edb2c3607360ba46c5aa7fc4557b3a4a23e97cff"
+)
+HOLMES_CODE_SHA256 = "b4f72fc577f2910d9b68bb775c97dd51c58279478090939f5ee4f7cfa7bcee01"
+DOCKER_PATH = Path("/opt/homebrew/bin/docker")
+DOCKER_SHA256 = "20f2dc84f2c0adef9cbf92cb3bfa6a631e3ad8be2645e1f4ecbc27d2f2d1d546"
 # The container arm is intentionally pinned to the audited, mount-free image
 # produced by the round-07 holdout build.  It must never accept an arbitrary
 # executable or image from runner_args.
@@ -55,26 +65,31 @@ def resolve_env_file(explicit: Path | None = None) -> Path:
 
 
 def resolve_holmes_python(explicit: Path | None = None) -> Path:
-    value = explicit or (
-        Path(os.environ["M0_HOLMES_PYTHON"])
-        if os.environ.get("M0_HOLMES_PYTHON")
-        else DEFAULT_HOLMES_PYTHON
-    )
+    value = explicit or DEFAULT_HOLMES_PYTHON
     path = value.expanduser().resolve()
+    if path != DEFAULT_HOLMES_PYTHON.resolve():
+        raise ValueError(f"Holmes Python path is not pinned: {path}")
     if not path.is_file() or not os.access(path, os.X_OK):
         raise ValueError(f"Holmes Python unavailable or not executable: {path}")
+    if hashlib.sha256(path.read_bytes()).hexdigest() != HOLMES_PYTHON_SHA256:
+        raise ValueError(f"Holmes Python hash mismatch: {path}")
     return path
 
 
 def resolve_holmes_root(explicit: Path | None = None) -> Path:
-    value = explicit or (
-        Path(os.environ["M0_HOLMES_ROOT"])
-        if os.environ.get("M0_HOLMES_ROOT")
-        else ROOT / "tmp/m0-environment/holmesgpt"
-    )
+    value = explicit or DEFAULT_HOLMES_ROOT
     path = value.expanduser().resolve()
+    if path != DEFAULT_HOLMES_ROOT.resolve():
+        raise ValueError(f"Holmes checkout path is not pinned: {path}")
     if not (path / "holmes").is_dir():
         raise ValueError(f"Holmes checkout unavailable: {path}")
+    digest = hashlib.sha256()
+    for source in sorted((path / "holmes").rglob("*.py")):
+        digest.update(
+            str(source.relative_to(path)).encode() + b"\0" + source.read_bytes() + b"\0"
+        )
+    if digest.hexdigest() != HOLMES_CODE_SHA256:
+        raise ValueError(f"Holmes checkout hash mismatch: {path}")
     return path
 
 
@@ -84,6 +99,15 @@ def resolve_packet(explicit: Path) -> Path:
         raise ValueError(
             f"replay packet unavailable or outside frozen packet root: {path}"
         )
+    return path
+
+
+def resolve_docker() -> Path:
+    path = DOCKER_PATH.resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError(f"trusted Docker executable unavailable: {DOCKER_PATH}")
+    if hashlib.sha256(path.read_bytes()).hexdigest() != DOCKER_SHA256:
+        raise ValueError(f"trusted Docker hash mismatch: {path}")
     return path
 
 
@@ -131,10 +155,8 @@ def build_container_command(
 
 def validate_container_command(command: list[str]) -> list[str]:
     """Accept only the pinned Docker wrapper and its fixed runner arguments."""
-    docker = shutil.which("docker")
-    if not docker or Path(docker).name != "docker":
-        raise ValueError("container executable unavailable: docker")
-    if len(command) != 17 or command[:7] != [docker, *CONTAINER_PREFIX, "--mount"]:
+    docker = resolve_docker()
+    if len(command) != 17 or command[:7] != [str(docker), *CONTAINER_PREFIX, "--mount"]:
         raise ValueError("container command is not allowlisted")
     mount = command[7]
     if not mount.startswith("type=bind,src=") or not mount.endswith(
@@ -185,6 +207,15 @@ def write_ledger(ledger: dict) -> None:
     LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2) + "\n")
 
 
+def redact_output(value, key: str) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    text = str(value)
+    return text.replace(key, "[REDACTED]") if key else text
+
+
 def reserve_run(run_entry: dict) -> dict:
     """Atomically check the ID/cap and reserve a run before launching it."""
     lock_path = LEDGER.with_name(LEDGER.name + ".lock")
@@ -209,7 +240,9 @@ def reserve_run(run_entry: dict) -> dict:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
-def update_run(run_id: str, result: dict, proc: subprocess.CompletedProcess) -> dict:
+def update_run(
+    run_id: str, result: dict, proc: subprocess.CompletedProcess, key: str
+) -> dict:
     """Merge a completed run while serializing with other launcher writers."""
     lock_path = LEDGER.with_name(LEDGER.name + ".lock")
     with lock_path.open("a+") as lock:
@@ -244,10 +277,11 @@ def update_run(run_id: str, result: dict, proc: subprocess.CompletedProcess) -> 
                     )
             run_entry.update(
                 status=result.get("status", "runner_failed"),
+                failure=result.get("failure"),
                 exit_code=proc.returncode,
                 ended_at=time.time(),
-                stdout_tail=proc.stdout[-400:],
-                stderr_tail=proc.stderr[-400:],
+                stdout_tail=redact_output(proc.stdout, key)[-400:],
+                stderr_tail=redact_output(proc.stderr, key)[-400:],
             )
             write_ledger(ledger)
             return ledger
@@ -321,11 +355,9 @@ def main():
     else:
         if args.runner_args:
             raise ValueError("container command is not allowlisted")
-        docker = shutil.which("docker")
-        if not docker:
-            raise ValueError("container executable unavailable: docker")
+        docker = resolve_docker()
         command = build_container_command(
-            docker,
+            str(docker),
             scenario=args.scenario,
             run_id=args.run_id,
             max_http=args.max_http,
@@ -358,13 +390,28 @@ def main():
         "status": "launched",
     }
     ledger = reserve_run(run_entry)
-    proc = subprocess.run(
-        command, input=key + "\n", capture_output=True, text=True, timeout=1200
-    )
-    del key
+    try:
+        proc = subprocess.run(
+            command, input=key + "\n", capture_output=True, text=True, timeout=1200
+        )
+        runner_failure = None
+    except subprocess.TimeoutExpired as exc:
+        proc = subprocess.CompletedProcess(
+            command,
+            124,
+            stdout=exc.stdout,
+            stderr=exc.stderr,
+        )
+        runner_failure = "RUNNER_TIMEOUT"
+    except Exception as exc:
+        proc = subprocess.CompletedProcess(command, 1, stdout="", stderr=str(exc))
+        runner_failure = f"RUNNER_FAILED:{type(exc).__name__}"
     result_path = args.out / "result-business.json"
     result = json.loads(result_path.read_text()) if result_path.exists() else {}
-    ledger = update_run(args.run_id, result, proc)
+    if runner_failure:
+        result = {"status": "failed", "failure": runner_failure, "attempts": []}
+    ledger = update_run(args.run_id, result, proc, key)
+    del key
     run_entry = next(run for run in ledger["runs"] if run["run_id"] == args.run_id)
     print(
         json.dumps(
