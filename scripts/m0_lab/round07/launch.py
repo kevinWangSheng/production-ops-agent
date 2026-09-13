@@ -277,7 +277,7 @@ def update_run(
                     )
             run_entry.update(
                 status=result.get("status", "runner_failed"),
-                failure=result.get("failure"),
+                failure=redact_output(result.get("failure"), key),
                 exit_code=proc.returncode,
                 ended_at=time.time(),
                 stdout_tail=redact_output(proc.stdout, key)[-400:],
@@ -407,7 +407,18 @@ def main():
         proc = subprocess.CompletedProcess(command, 1, stdout="", stderr=str(exc))
         runner_failure = f"RUNNER_FAILED:{type(exc).__name__}"
     result_path = args.out / "result-business.json"
-    result = json.loads(result_path.read_text()) if result_path.exists() else {}
+    if runner_failure:
+        result = {}
+    elif result_path.exists():
+        try:
+            result = json.loads(result_path.read_text())
+            if not isinstance(result, dict):
+                raise ValueError("result is not an object")
+        except (OSError, ValueError):
+            result = {}
+            runner_failure = "RUNNER_RESULT_INVALID"
+    else:
+        result = {}
     if runner_failure:
         result = {"status": "failed", "failure": runner_failure, "attempts": []}
     ledger = update_run(args.run_id, result, proc, key)
@@ -423,7 +434,12 @@ def main():
             }
         )
     )
-    return 0 if proc.returncode == 0 else 1
+    return (
+        0
+        if proc.returncode == 0
+        and run_entry["status"] not in {"failed", "runner_failed"}
+        else 1
+    )
 
 
 if __name__ == "__main__":

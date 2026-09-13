@@ -159,6 +159,64 @@ def test_round07_launch_timeout_releases_reservation_and_redacts_output(
     assert "synthetic-secret" not in run["stderr_tail"]
 
 
+def test_round07_ledger_redacts_failure_text(monkeypatch, tmp_path):
+    ledger = tmp_path / "ledger.json"
+    monkeypatch.setattr(launch, "LEDGER", ledger)
+    launch.reserve_run(
+        {"run_id": "failure-run", "max_http": 1, "attempts": [], "status": "launched"}
+    )
+    proc = subprocess.CompletedProcess(["runner"], 1, stdout="", stderr="")
+    launch.update_run(
+        "failure-run",
+        {"status": "failed", "failure": "leaked-secret"},
+        proc,
+        "leaked-secret",
+    )
+    saved = json.loads(ledger.read_text())
+    assert saved["runs"][0]["failure"] == "[REDACTED]"
+
+
+def test_round07_launch_invalid_result_releases_reservation(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("DEEPSEEK_API_KEY=synthetic-secret\n")
+    ledger = tmp_path / "ledger.json"
+    monkeypatch.setattr(launch, "LEDGER", ledger)
+    out = tmp_path / "out"
+    packet = launch.PACKET_ROOT / "packet-m004-normal.json"
+    monkeypatch.setattr(
+        launch.sys,
+        "argv",
+        [
+            "launch.py",
+            "--arm",
+            "candidate",
+            "--run-id",
+            "invalid-result-run",
+            "--scenario",
+            "normal",
+            "--max-http",
+            "1",
+            "--out",
+            str(out),
+            "--env-file",
+            str(env_file),
+            "--packet",
+            str(packet),
+        ],
+    )
+
+    def completed(*args, **kwargs):
+        out.mkdir()
+        (out / "result-business.json").write_text("not-json")
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(launch.subprocess, "run", completed)
+    assert launch.main() == 1
+    saved = json.loads(ledger.read_text())
+    assert saved["reserved_http"] == 0
+    assert saved["runs"][0]["failure"] == "RUNNER_RESULT_INVALID"
+
+
 @pytest.mark.parametrize("value", [{}, "", None, [{"id": "ok"}, "bad"]])
 def test_round07_candidate_rejects_malformed_tool_calls(value):
     with pytest.raises(ValueError, match="TOOL_PAIRING_INVALID"):

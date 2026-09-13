@@ -595,4 +595,14 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - candidate/upstream 的 packet、checkout 和参数边界继续 fail-closed；独立复核见 `round-13-launch-independent-review.md`。
 - 定向测试 21 passed，完整 `make check` 794 passed / 54 skipped；证据见 `round-13-launch-findings-targeted.txt` 与 `round-13-final-make-check.txt`。三条 bot thread 待回复并 resolve，随后重新触发最终 HEAD review。
 
+## 2026-09-13 launcher failure-record follow-up
+
+- 独立复核又发现 `failure` 字段和损坏 `result-business.json` 可能绕过脱敏/释放预留；已补齐统一脱敏与受控 `RUNNER_RESULT_INVALID` 路径。
+- 定向测试 23 passed，完整 `make check` 796 passed / 54 skipped；独立复核见 `round-15-launch-independent-review.md`，证据见 `round-15-launch-findings-targeted.txt` 与 `round-15-final-make-check.txt`。
+
+## 2026-09-13 launcher result-status follow-up
+
+- 独立复核补充发现：损坏结果 JSON 虽已释放预留，但 launcher 仍可能返回 0；现已在后续修复中让 `failed`/`runner_failed` 状态返回非零，并新增回归。
+- 定向测试 23 passed，完整 `make check` 796 passed / 54 skipped；独立复核见 `round-16-launch-independent-review.md`，证据见 `round-16-launch-findings-targeted.txt` 与 `round-16-final-make-check.txt`。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
