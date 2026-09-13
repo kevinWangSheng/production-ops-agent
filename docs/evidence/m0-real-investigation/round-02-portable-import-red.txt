@@ -1,0 +1,48 @@
+Original command output preserved in tmp/m002-import-red.txt; public display trims line-end whitespace only.
+Original SHA256: eee1108d6bd3a06a45680c382a725038481f4b2c998c45ea2e25d705cf7c4c75
+
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________ test_probe_import_without_external_experiment_worktree ____________
+
+    def test_probe_import_without_external_experiment_worktree():
+        """A fresh checkout can collect offline checks with no preserved external lab."""
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        code = r'''
+    import importlib.machinery
+    import sys
+    class UnavailableLab:
+        def find_spec(self, name, path=None, target=None):
+            spec = importlib.machinery.PathFinder.find_spec(name, path)
+            if spec and spec.origin and "production-ops-agent-m0-environment/" in spec.origin:
+                raise ModuleNotFoundError("preserved lab unavailable in fresh checkout")
+            return None
+    sys.meta_path.insert(0, UnavailableLab())
+    from scripts import m0_pg_live_probe
+    assert callable(m0_pg_live_probe.wire_history)
+    '''
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "<string>", line 11, in <module>
+E           File "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_pg_live_probe.py", line 31, in <module>
+E             import round02  # noqa: E402
+E             ^^^^^^^^^^^^^^
+E           File "<string>", line 8, in find_spec
+E         ModuleNotFoundError: preserved lab unavailable in fresh checkout
+E
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python', '-c', '\nimport impo...^^^^^^^^\n  File "<string>", line 8, in find_spec\nModuleNotFoundError: preserved lab unavailable in fresh checkout\n').returncode
+
+tests/test_m0_pg_live_probe.py:261: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_m0_pg_live_probe.py::test_probe_import_without_external_experiment_worktree
+1 failed, 8 deselected in 1.22s

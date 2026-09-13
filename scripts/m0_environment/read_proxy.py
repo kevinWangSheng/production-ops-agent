@@ -34,7 +34,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 MAX_BYTES = 1024 * 1024
-DEADLINE = 1789060470  # 2026-09-10T17:14:30Z, original round deadline
+DEADLINE = 1789162200  # 2026-09-12T05:30:00Z, M0-03 contract deadline
 
 
 class Handler(BaseHTTPRequestHandler):

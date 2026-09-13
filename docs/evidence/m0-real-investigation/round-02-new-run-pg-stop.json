@@ -1,0 +1,9 @@
+{
+  "stopped_at": "2026-09-10T11:03:40.030764+00:00",
+  "dedicated_pg_port": 55431,
+  "identity_verified_before_stop": true,
+  "port_closed": true,
+  "data_preserved": true,
+  "other_postgres_untouched": true,
+  "reason": "new_run boundary independent PG regressions complete; no model or trace calls"
+}

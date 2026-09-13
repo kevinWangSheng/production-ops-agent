@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 2 items
+
+tests/test_m0_outcomes_v4.py::test_control_generations_must_be_strictly_increasing[controls0] PASSED [ 50%]
+tests/test_m0_outcomes_v4.py::test_control_generations_must_be_strictly_increasing[controls1] PASSED [100%]
+
+============================== 2 passed in 0.12s ===============================

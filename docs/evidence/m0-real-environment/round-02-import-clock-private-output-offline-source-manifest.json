@@ -1,0 +1,281 @@
+{
+  "status": "offline_candidate_independently_reviewed_not_a_real_Run",
+  "candidate_id": "pr16-import-clock-private-output-offline",
+  "provenance": {
+    "reference_manifest": "docs/evidence/m0-real-environment/round-02-report-independent-offline-source-manifest.json",
+    "reference_manifest_sha256": "2d96941fada83e9e78e6e3ec159ca8ecedd5a7132642bac35f087420ad5fa23b",
+    "inherited_git_reference": {
+      "reference_manifest": "docs/evidence/m0-real-environment/round-02-input-provenance-offline-source-manifest.json",
+      "reference_manifest_sha256": "de9973baa3e9094dc0673a443ed664e908968d2e359ed2e08631ccb71cef4c48",
+      "inherited_git_reference": {
+        "reference_manifest": "docs/evidence/m0-real-environment/round-02-report-failure-offline-source-manifest.json",
+        "reference_manifest_sha256": "ba411f97b578b0d9f1cc980240dfc8adf9bb84108e2d2327167e4d6557aa6de7",
+        "inherited_git_reference": {
+          "base_commit": "e5357a843274879d4b556e88bd3520d7ae1d076f",
+          "branch": "chore/m0-02-convergence",
+          "worktree": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01",
+          "meaning": "Working-file Git blobs identify the independently reviewed candidate; base HEAD is not claimed to include current edits."
+        },
+        "current_git_not_queried": true,
+        "meaning": "Prior Git reference is historical, not asserted as current HEAD. This candidate is identified by current source SHA256 and the fresh reviewer-confirmed hashes; no Git operation was run."
+      },
+      "root_reported_commit": "90e251c",
+      "current_git_not_queried": true,
+      "meaning": "Root reported commit90e251c after review. No Git operation was run here; inherited Git references remain historical. Current source identity is the recorded SHA256."
+    },
+    "current_git_not_queried": true,
+    "meaning": "Inherited Git references remain historical; no Git operation was run. This candidate is identified by current source hashes and the stable joint independent review."
+  },
+  "validation_boundary": {
+    "independent_review": "docs/evidence/m0-real-investigation/round-02-import-clock-output-mode-review.md",
+    "author_records": [
+      "docs/evidence/m0-real-investigation/round-02-initial-raw-clock-fix.md",
+      "docs/evidence/m0-real-investigation/round-02-pr16-cli-output-permissions-fixes.md"
+    ],
+    "review_stability_confirmation": "Fresh reviewer confirmed final joint record and both changed code hashes stable.",
+    "real_model_requests": 0,
+    "real_backend_queries": 0,
+    "trace_uploads": 0,
+    "prior_quality_failures_unchanged": true,
+    "product_gate_opened": false,
+    "scope": "Snapshot closeout only; no tests, Git, network, model, PG, environment or code/index changes."
+  },
+  "sources": [
+    {
+      "source": "scripts/m0_environment/holmes_baseline.py",
+      "sha256": "f7db2c7401693c61ed962d350d8a01a09205aa263da80d1703e093216f528543",
+      "bytes": 52395,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/f7db2c7401693c61ed962d350d8a01a09205aa263da80d1703e093216f528543.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/report_contract.py",
+      "sha256": "0714c3ed612f362475a86af74c2dfe8034c8d05de709d03e22c0af409be47fda",
+      "bytes": 13498,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0714c3ed612f362475a86af74c2dfe8034c8d05de709d03e22c0af409be47fda.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/initial_evidence.py",
+      "sha256": "f3309cd462842a8f43114419186661f3056404283d5db3652780e30ab84fb309",
+      "bytes": 21529,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/f3309cd462842a8f43114419186661f3056404283d5db3652780e30ab84fb309.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": false
+    },
+    {
+      "source": "scripts/m0_environment/round02.py",
+      "sha256": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+      "bytes": 17386,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/transport_worker.py",
+      "sha256": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+      "bytes": 2125,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/run_bounded.py",
+      "sha256": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24",
+      "bytes": 1983,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/trace_view.py",
+      "sha256": "0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b",
+      "bytes": 8949,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0_environment/legacy_projections.py",
+      "sha256": "0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc",
+      "bytes": 11010,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/outcomes_v4.py",
+      "sha256": "955cdc0b840343fb9e742d63b2fb3a36c6f7bb2446ba9dcb74fb67375f81071f",
+      "bytes": 27380,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/955cdc0b840343fb9e742d63b2fb3a36c6f7bb2446ba9dcb74fb67375f81071f.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/holmes_bridge.py",
+      "sha256": "4b25735cfd701810b571c57a176a949c4c28d8c289ee4c26c58e77be246828ca",
+      "bytes": 44920,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/4b25735cfd701810b571c57a176a949c4c28d8c289ee4c26c58e77be246828ca.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": false
+    },
+    {
+      "source": "scripts/m0/outcomes_v3.py",
+      "sha256": "3e0a82dd1abc53e932efb2bc4ff994a2b92142415d24ba9c2c576a8fb16dac57",
+      "bytes": 15994,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/3e0a82dd1abc53e932efb2bc4ff994a2b92142415d24ba9c2c576a8fb16dac57.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/outcomes.py",
+      "sha256": "79d0fb80c82d5e72ff95a93567112712e9413a535edeb9d0358e2559a899f992",
+      "bytes": 13328,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/79d0fb80c82d5e72ff95a93567112712e9413a535edeb9d0358e2559a899f992.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "scripts/m0/__init__.py",
+      "sha256": "eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4",
+      "bytes": 69,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/eea9f9d9bfefd4f2c7d2b9acfc0d5555e157fbdf605422aa4d3b8b44d11fc4b4.py.txt",
+      "kind": "python",
+      "reused_unchanged_snapshot": true
+    }
+  ],
+  "schemas": [
+    {
+      "source": "docs/evidence/m0-real-environment/ModelReport.v1.schema.json",
+      "sha256": "c5c493f432a466d1b2ec2d1e0482118eb248d305a56155a598d488833b2c0036",
+      "bytes": 2003,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c5c493f432a466d1b2ec2d1e0482118eb248d305a56155a598d488833b2c0036.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/ModelReport.v2.schema.json",
+      "sha256": "11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b",
+      "bytes": 2506,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/ModelReport.v2.schema.json",
+      "sha256": "11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b",
+      "bytes": 2506,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/11508bf884c65c045aa0963bf5305ba2a943bda3e1aef821b7e2bef06e398d4b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json",
+      "sha256": "0468e2f7805aef189acfeea6196098ed6d5f97dcbed58ac40e6d51e3c19f81a0",
+      "bytes": 34792,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0468e2f7805aef189acfeea6196098ed6d5f97dcbed58ac40e6d51e3c19f81a0.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/IncidentOutcome.v4.schema.json",
+      "sha256": "84ed7977a33b503abd13ea2591ab85dbdba8584038ce0ddc438bb5a00864ad8b",
+      "bytes": 10469,
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/84ed7977a33b503abd13ea2591ab85dbdba8584038ce0ddc438bb5a00864ad8b.schema.json",
+      "kind": "schema",
+      "reused_unchanged_snapshot": true
+    }
+  ],
+  "dependency_and_review_references": [
+    {
+      "source": "pyproject.toml",
+      "sha256": "d8065c41bde26e1ed3171827764bf9c9fc260ba4b06c401b980a92305526f976",
+      "bytes": 532
+    },
+    {
+      "source": "uv.lock",
+      "sha256": "8e55da883968baef7fc4cca9b46d2ce16b35bfda5a8efe0206c2f3679c0760ce",
+      "bytes": 86331
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/holmes-installed-versions.json",
+      "sha256": "2b471332d581bd978fd9e42980a4dc00af05a47d3b15d80406d797888a5dba3b",
+      "bytes": 117
+    },
+    {
+      "source": "docs/evidence/m0-real-environment/holmes-source-hashes.json",
+      "sha256": "4008d2e2d5fbfc22b4bfb5db214498826aaa3147aa90ffa6d2a0e9d7f9a0070e",
+      "bytes": 1112
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-evidence-design-review.md",
+      "sha256": "74114fd39267ef55cb12c447f33bbb1953ec34788bd19f6fd948dcd8ca70fe05",
+      "bytes": 6205
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-evidence-final-review.md",
+      "sha256": "da2e603f3df0795156ef78607fd9618bf9888486a279be7e1b68800489f6fa52",
+      "bytes": 5644
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-final-pointer-review.md",
+      "sha256": "247a76779289f62ff62f9cdbc0e3705013955e6f08252dc3d63603973a5abb04",
+      "bytes": 8136
+    },
+    {
+      "source": "scripts/m0/step_store.py",
+      "sha256": "9e865752d0d4acfc0dcd7c41e81175e944cbc99b0f87d199cbd5cd52c1aed599",
+      "bytes": 34179
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-scope-cli-review.md",
+      "sha256": "f9f066c6fe5b5953a66ade606221dc4fed654ad0ca5040c5fa741b5b91dcee57",
+      "bytes": 4588
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-report-failure-handoff-review.md",
+      "sha256": "3e3b36a2d233cf44436247be61bb6551ee78a600976eda3cfa860fed4745f28e",
+      "bytes": 5312
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-input-provenance-review.md",
+      "sha256": "4cbc6e5e14f2bb5668e0d6c8291744090b538d791a42c0db6c5c599c09cdc108",
+      "bytes": 2956
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-pr16-input-provenance-fixes.md",
+      "sha256": "fd77ab870c8faadad35565fb8cd04e77bf33a43afddf4966e30474dc5b8f62c9",
+      "bytes": 4139
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-report-independent-binding-review.md",
+      "sha256": "931fa2126cd8a4c3a64a1a561f90af1fffe1d8ffde1a6bfa5e0ad2fa1136439b",
+      "bytes": 3744
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-import-clock-output-mode-review.md",
+      "sha256": "5acbd0193e4d2b82c70de6ed4db3acf08a131bb84aa83184aa5fd71b353c45ea",
+      "bytes": 3387
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-initial-raw-clock-fix.md",
+      "sha256": "d7c7dbc9bfa956e0591d126602d712f7470cd4757597916200e140571d6832e2",
+      "bytes": 1675
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-02-pr16-cli-output-permissions-fixes.md",
+      "sha256": "d2cefe1efead491fbe8dd14b9cb96fb5f819667deacdf5b35e20e63c297a4cd0",
+      "bytes": 2315
+    }
+  ],
+  "external_upstream": {
+    "repository": "HolmesGPT",
+    "commit": "5e983c17f30e93099c7d775167266d4cd1d586c4",
+    "version_evidence": "docs/evidence/m0-real-environment/holmes-installed-versions.json",
+    "source_hash_evidence": "docs/evidence/m0-real-environment/holmes-source-hashes.json",
+    "boundary": "Existing read-only checkout/interpreter borrowed explicitly by offline fake-transport probes. Production ROOT/UPSTREAM remain execution-worktree-relative; no new live deployment or dependency installation."
+  },
+  "preservation": "All old manifests and snapshots remain unchanged. Only absent readonly content-addressed source snapshots and this new manifest were created; no original business/private data copied."
+}

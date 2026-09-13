@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-10T02:41:00.316748+00:00",
+  "profile": "m0-otel",
+  "compose_project": "opspilot-m0",
+  "reused_containers": 26,
+  "new_downloads_or_installs": 0,
+  "source_images_configuration": "existing freeze_images --check-only completed successfully before compose start",
+  "database": "existing dedicated PostgreSQL separately started by root; old data retained",
+  "process_owner": "root",
+  "evidence": {
+    "tmp/m0-environment/m002-colima-start.stdout": {
+      "sha256": "e3614d857a18399ec7ed6a3d5cceb16c8d38cc09ad66d0b1ed9975aa76a02581",
+      "bytes": 4534
+    },
+    "tmp/m0-environment/m002-colima-start.stderr": {
+      "sha256": "34669643bb2e0512b811cb8559f8fbc1b9d72e3df702a4e0c2d1895462392c42",
+      "bytes": 437
+    },
+    "tmp/m0-environment/m002-compose-start.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "tmp/m0-environment/m002-compose-start.stderr": {
+      "sha256": "82a50cea41ea79533530bbe9a379a1d0e767ccb1a719b9a37933d37a0f17f9f4",
+      "bytes": 2530
+    },
+    "tmp/m0-environment/m002-runtime-check.txt": {
+      "sha256": "203a5dd4cbf304a12b5d46857517f73fdaf1f496828e6199bcbe9431a12bcc90",
+      "bytes": 125
+    }
+  },
+  "no_os_isolation_claim": true
+}

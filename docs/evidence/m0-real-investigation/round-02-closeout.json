@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-10T04:43:01.065261+00:00",
+  "dedicated_pg_data_preserved": true,
+  "dedicated_pg_pid_absent": true,
+  "closed_ports": {
+    "55431": true,
+    "18080": true,
+    "18081": true,
+    "19090": true,
+    "16686": true,
+    "19200": true
+  },
+  "system_pg4391_still_postgres": true,
+  "colima": "PROFILE    STATUS     ARCH       CPUS    MEMORY    DISK     RUNTIME    ADDRESS\ndefault    Stopped    aarch64    4       6GiB      30GiB               \nm0-otel    Stopped    aarch64    4       6GiB      24GiB               \n",
+  "worktrees_preserved": true,
+  "fault_flags_original_bytes": true,
+  "no_container_volume_vm_deletion": true,
+  "business_retention_manifest": "../m0-real-environment/m002-business-retention.json",
+  "boundary": "Captured query raw and views retained; unqueried volatile Jaeger history is not claimed complete"
+}

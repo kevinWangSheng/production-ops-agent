@@ -1,0 +1,13 @@
+# 初始证据当前 scope 发送前门槛
+
+依据PR16评论3977531749，基线ced7fd4。只修改本组import接口/时间检查及相同interface scope的runtime执行面；0真实模型、后端、trace、PG或环境操作，旧raw/view不变。
+
+原反例先红：正确hash bundle在当前window缩窄后仍verified。修复在verify_initial_entry的原hash/query/manifest核对之后、投影重放和copy/组装之前执行authorized_query_window：logs/traces必须有真实raw.query.start/end，区间同时属于原scope和当前scope，query.service亦需两者授权；不以宽原scope替代实际query，不裁窄或重写query。原scope更宽但实际query完全在当前scope内的正例保留。
+
+当前interfaces若显式提供则按其收紧；未提供只代表现有四个固定只读接口otel_services/metrics/logs/traces，不代表任意工具。相同字段也用于runtime Toolset广告、invoke与HTTP guard，不能只约束initial。桥接应使用当前明确interfaces。
+
+metrics按固定read_proxy既有支持面核原query：integration权限、显式边界、至少300秒支持窗，禁止@/offset及逃出声明区间或不支持语法的range；这不是通用PromQL分析器，也不是freshness或counter增量语义认证。services端点根本无时间过滤参数，没有批准的特殊时间规则时INITIAL_QUERY_TIME_UNKNOWN拒绝；不能把original scope.window伪装为实际查询窗。
+
+verify_initial_entry新增query_window={start,end}返回已核定原query边界，供bridge消费，不再自行回退到original scope窗口。缺接口/时间依据保真unknown，初始来源未资格化就不读凭据、不发模型/工具请求。
+
+结果：69定向tests PASS、Ruff PASS；真实Holmes假pipe仍保留合法report-only→strict[]正例。实际wrapper两个负例（window越界、interface不准）逐项断言credential/dotenv读取0、模型/工具transport0、model_http_requests/tool_queries0，且未产生initial-evidence拷贝目录。输出round-02-initial-scope-gate-probe.txt。新范围未进行任何真实调用，原质量FAIL不变。

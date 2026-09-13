@@ -1,0 +1,46 @@
+BASELINE_MARKER body executed= True
+FBASELINE_MARKER default executed= True
+FBASELINE_MARKER decorator executed= True
+FBASELINE_MARKER annotation executed= True
+FBASELINE_MARKER dependency executed= True
+FBASELINE_MARKER unknown_dependency executed= False
+F
+=================================== FAILURES ===================================
+______ test_self_supplied_hash_cannot_authorize_projector_execution[body] ______
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+____ test_self_supplied_hash_cannot_authorize_projector_execution[default] _____
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+___ test_self_supplied_hash_cannot_authorize_projector_execution[decorator] ____
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+___ test_self_supplied_hash_cannot_authorize_projector_execution[annotation] ___
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+___ test_self_supplied_hash_cannot_authorize_projector_execution[dependency] ___
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+_ test_self_supplied_hash_cannot_authorize_projector_execution[unknown_dependency] _
+tests/test_m0_projector_trust.py:87: in test_self_supplied_hash_cannot_authorize_projector_execution
+    with pytest.raises(ValueError, match="PROJECTION_SOURCE_UNTRUSTED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ============================
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[body]
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[default]
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[decorator]
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[annotation]
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[dependency]
+FAILED tests/test_m0_projector_trust.py::test_self_supplied_hash_cannot_authorize_projector_execution[unknown_dependency]
+6 failed, 9 deselected in 0.11s

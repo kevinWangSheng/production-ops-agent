@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_lab/round07_wp23_pause_real_probe.py", line 85, in <module>
+    main()
+  File "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_lab/round07_wp23_pause_real_probe.py", line 59, in main
+    child = probe.start_transport(json.dumps(body, separators=(",", ":")).encode(), new_run.run_id, request_id, deadline, fence=new_fence)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_pg_live_probe.py", line 125, in start_transport
+    round02.envelope_check(raw)
+  File "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/scripts/m0_environment/round02.py", line 82, in envelope_check
+    raise ValueError("model output allowance denied")
+ValueError: model output allowance denied

@@ -1,0 +1,577 @@
+{
+  "schema": "m0-baseline-comparison-v1",
+  "normal_window": {
+    "start": 1789128210.0,
+    "end": 1789128510.0
+  },
+  "fault_window": {
+    "start": 1789127615.0,
+    "end": 1789127915.0
+  },
+  "observations": {
+    "calls": {
+      "normal": [
+        {
+          "metric": {
+            "service_name": "checkout",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "154.71957077796495"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "quote",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "33.688938798427856"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "flagd",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "47.414062012602166"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "cart",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "265.7682949653753"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "707.4677147669848"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "email",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "44.91858506457047"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "shipping",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "33.688938798427856"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "accounting",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "11.229646266142618"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "recommendation",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "26.202507954332773"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "334.39391103624683"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "product-catalog",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "163.45374009607588"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "22.459292532285236"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "157.21504772599664"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "currency",
+            "status_code": "STATUS_CODE_OK"
+          },
+          "value": [
+            1789128510,
+            "32.44120032441201"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "recommendation",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "checkout",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "ad",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "36.18441574645955"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "fraud-detection",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789128510,
+            "22.459292532285236"
+          ]
+        }
+      ],
+      "fault": [
+        {
+          "metric": {
+            "service_name": "quote",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "18.75"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "485.835125"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "flagd",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "23.18520416666667"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "checkout",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "52.55899583333333"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "shipping",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "12.5"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "cart",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "164.60832499999998"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789127915,
+            "6.25"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789127915,
+            "18.75"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "recommendation",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "11.25"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789127915,
+            "6.25"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "237.22631666666666"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "product-catalog",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "97.5"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "payment",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "6.25"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "frontend-proxy",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789127915,
+            "12.5"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "load-generator",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "130.73695"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "currency",
+            "status_code": "STATUS_CODE_OK"
+          },
+          "value": [
+            1789127915,
+            "20.060445833333333"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "checkout",
+            "status_code": "STATUS_CODE_ERROR"
+          },
+          "value": [
+            1789127915,
+            "12.5"
+          ]
+        },
+        {
+          "metric": {
+            "service_name": "ad",
+            "status_code": "STATUS_CODE_UNSET"
+          },
+          "value": [
+            1789127915,
+            "13.749033333333333"
+          ]
+        }
+      ]
+    },
+    "checkout_rpc": {
+      "normal": [
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetCart",
+            "rpc_service": "oteldemo.CartService"
+          },
+          "value": [
+            1789128510,
+            "11.229692971875858"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "EmptyCart",
+            "rpc_service": "oteldemo.CartService"
+          },
+          "value": [
+            1789128510,
+            "11.229692971875858"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetQuote",
+            "rpc_service": "oteldemo.ShippingService"
+          },
+          "value": [
+            1789128510,
+            "11.229692971875858"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetProduct",
+            "rpc_service": "oteldemo.ProductCatalogService"
+          },
+          "value": [
+            1789128510,
+            "21.211642280209954"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "Convert",
+            "rpc_service": "oteldemo.CurrencyService"
+          },
+          "value": [
+            1789128510,
+            "32.441335252085814"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "ShipOrder",
+            "rpc_service": "oteldemo.ShippingService"
+          },
+          "value": [
+            1789128510,
+            "11.229692971875858"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "Charge",
+            "rpc_service": "oteldemo.PaymentService"
+          },
+          "value": [
+            1789128510,
+            "11.229692971875858"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "2",
+            "rpc_method": "Charge",
+            "rpc_service": "oteldemo.PaymentService"
+          },
+          "value": [
+            1789128510,
+            "0"
+          ]
+        }
+      ],
+      "fault": [
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetCart",
+            "rpc_service": "oteldemo.CartService"
+          },
+          "value": [
+            1789127915,
+            "6.250104168402807"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetQuote",
+            "rpc_service": "oteldemo.ShippingService"
+          },
+          "value": [
+            1789127915,
+            "6.250104168402807"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "GetProduct",
+            "rpc_service": "oteldemo.ProductCatalogService"
+          },
+          "value": [
+            1789127915,
+            "13.723062051034187"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "0",
+            "rpc_method": "Convert",
+            "rpc_service": "oteldemo.CurrencyService"
+          },
+          "value": [
+            1789127915,
+            "20.02433790563176"
+          ]
+        },
+        {
+          "metric": {
+            "rpc_grpc_status_code": "2",
+            "rpc_method": "Charge",
+            "rpc_service": "oteldemo.PaymentService"
+          },
+          "value": [
+            1789127915,
+            "6.250104168402807"
+          ]
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Preserved bounded observations only; no population-rate certification.",
+    "Missing series remain unknown, not zero.",
+    "No product SLO supplied; relative telemetry comparison only."
+  ],
+  "sha256_inputs": {
+    "m003e-normal-observation.json": "eb482d45ebec19211fcde1e395041ae8c58b712a255e6d14c452f8a0a6e43448",
+    "m003e-fault-observation.json": "7095b1374b76800f70f0f984960c35ab6845ff0445a2a57a0b734cfd8ae59521"
+  }
+}

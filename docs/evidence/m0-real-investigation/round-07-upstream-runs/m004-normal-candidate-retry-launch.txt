@@ -1,0 +1,4 @@
+usage: launch.py [-h] --arm {candidate,upstream,container} --run-id RUN_ID
+                 --scenario SCENARIO --max-http MAX_HTTP --out OUT
+                 ...
+launch.py: error: unrecognized arguments: --packet

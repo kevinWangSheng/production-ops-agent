@@ -1,0 +1,8 @@
+{
+  "scripts/m0/outcomes_v3.py": "f871019b0b304c28b09be57825d0a584c4276dd5d3823cc849051a2f446e3598",
+  "scripts/m0/holmes_bridge.py": "63eb4fd8ea8be7b1876bfa88fc5fd64419341471eb538985b8cd87f9c69965d5",
+  "scripts/m0_pg_live_probe.py": "6d86a7dc64462709b33936b0d3eac0cb9ea5dba05795f1853a2937f57cc1fac6",
+  "tests/test_m0_holmes_bridge.py": "50765512017c1dfbffa4883b3b684aadc54178cfea9ae77fb6985a61c120636f",
+  "tests/test_m0_pg_live_probe.py": "587265a8b5556940b8961fadfe6ae00be77bfe17be9a424c7f3c2f154c1a7243",
+  "tests/test_m0_outcomes_v3.py": "ad1e48633c7318add3813acbac05088cbd0149ae89c245b22c899cb1296ecb8d"
+}

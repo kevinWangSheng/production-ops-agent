@@ -1,0 +1,28 @@
+.F....FFF                                                                [100%]
+=================================== FAILURES ===================================
+___ test_latest_new_run_allows_runtime_progress_and_terminal_results[paused] ___
+tests/test_m0_outcomes_v4.py:554: in test_latest_new_run_allows_runtime_progress_and_terminal_results
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_STATE_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+_______ test_human_state_without_control_audit_is_not_certified[paused] ________
+tests/test_m0_outcomes_v4.py:811: in test_human_state_without_control_audit_is_not_certified
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_STATE_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+______ test_human_state_without_control_audit_is_not_certified[cancelled] ______
+tests/test_m0_outcomes_v4.py:811: in test_human_state_without_control_audit_is_not_certified
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_STATE_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+____ test_human_state_without_control_audit_is_not_certified[waiting_human] ____
+tests/test_m0_outcomes_v4.py:811: in test_human_state_without_control_audit_is_not_certified
+    assert "CONTROL_STATE_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_STATE_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+=========================== short test summary info ============================
+FAILED tests/test_m0_outcomes_v4.py::test_latest_new_run_allows_runtime_progress_and_terminal_results[paused]
+FAILED tests/test_m0_outcomes_v4.py::test_human_state_without_control_audit_is_not_certified[paused]
+FAILED tests/test_m0_outcomes_v4.py::test_human_state_without_control_audit_is_not_certified[cancelled]
+FAILED tests/test_m0_outcomes_v4.py::test_human_state_without_control_audit_is_not_certified[waiting_human]
+4 failed, 5 passed, 70 deselected in 0.14s

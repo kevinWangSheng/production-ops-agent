@@ -1,0 +1,18 @@
+{
+  "run_id": "m002-normal-02",
+  "prior_run": "m002-normal-01",
+  "new_run": true,
+  "window_unchanged": true,
+  "source_input_sha256": "f0f1f08f7affc84aeda71245dddbb2c6d5262035f4faf01c7808a902e1ef3e30",
+  "runtime_hashes": {
+    "holmes_baseline.py": "7fd7326644b26fe00d0a8bad25aab4b865dfbd453bb5a7b4fa491eda5539a676",
+    "report_contract.py": "c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845",
+    "round02.py": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+    "transport_worker.py": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+    "run_bounded.py": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24"
+  },
+  "change": "explicit final-report phase plus JSON schema; prior DSML failure preserved; no thinking/token/bytes/timeout increase",
+  "model_requests_max": 4,
+  "actual_evidence_queries_required": true,
+  "independent_preflight": "round-02-final-phase-review.md 41checks and actualHolmes fakepipe3cases"
+}

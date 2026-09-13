@@ -1,0 +1,19 @@
+{
+  "run_id": "eb6996d4-ed44-447e-b33f-0a60f3efc323",
+  "safe_wire": [
+    {
+      "http_status": 400,
+      "code": "RESPONSE_MODEL_MISMATCH",
+      "bytes": 146,
+      "raw_sha256": "1b2578892681254f495b08fd8c19869049ba70c57d498a9f3775d68e695a9f20",
+      "response_model": null,
+      "finish_reasons": [],
+      "error": {
+        "type": "invalid_request_error",
+        "code": "invalid_request_error",
+        "param": null,
+        "message": "Thinking mode does not support this tool_choice"
+      }
+    }
+  ]
+}

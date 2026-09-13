@@ -1,0 +1,64 @@
+[
+  {
+    "ordinal": 1,
+    "tool": "otel_services",
+    "params": {},
+    "evidence_id": "m004-fault-r07-services"
+  },
+  {
+    "ordinal": 2,
+    "tool": "otel_metrics",
+    "params": {
+      "query": "sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))"
+    },
+    "evidence_id": "m004-fault-r07-e1"
+  },
+  {
+    "ordinal": 3,
+    "tool": "otel_metrics",
+    "params": {
+      "query": "sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\"checkout\"}[5m]))"
+    },
+    "evidence_id": "m004-fault-r07-e3"
+  },
+  {
+    "ordinal": 4,
+    "tool": "otel_metrics",
+    "params": {
+      "query": "histogram_quantile(0.95, sum by(le,service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=\"checkout\"}[5m])))"
+    },
+    "evidence_id": "m004-fault-r07-e4"
+  },
+  {
+    "ordinal": 5,
+    "tool": "otel_metrics",
+    "params": {
+      "query": "sum(increase(app_payment_transactions_total[5m]))"
+    },
+    "evidence_id": "m004-fault-r07-e2"
+  },
+  {
+    "ordinal": 6,
+    "tool": "otel_traces",
+    "params": {
+      "service": "checkout"
+    },
+    "evidence_id": "m004-fault-r07-e5"
+  },
+  {
+    "ordinal": 7,
+    "tool": "otel_traces",
+    "params": {
+      "service": "payment"
+    },
+    "evidence_id": "m004-fault-r07-e6"
+  },
+  {
+    "ordinal": 8,
+    "tool": "otel_logs",
+    "params": {
+      "service": "frontend-proxy"
+    },
+    "evidence_id": "m004-fault-r07-e7"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "status": "TRACE_VERIFIED",
+  "run_id": "be1a0c92-9572-4bf0-a501-535d88ab94ec",
+  "project_name_hash": "1080a60800d9e5bddc69f51489c636a776bacaadb5368f46db4aa0947c67e3ba",
+  "payload_hash": "3ac49565ae8048095aede2ff351c840164884a48c8b3cc4e0344d9b686298296",
+  "returned_fields": [
+    "id",
+    "inputs",
+    "name",
+    "outputs",
+    "run_type",
+    "session_id"
+  ],
+  "private_fields_persisted": false,
+  "model_http": 0
+}

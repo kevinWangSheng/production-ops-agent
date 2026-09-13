@@ -1,0 +1,2 @@
+{"status": "incomplete", "run_id": "reportonly", "final_business_content": null, "model_http_requests": 0, "tool_queries": 0, "initial_evidence_status": "unknown", "initial_evidence_errors": ["PROJECTION_SOURCE_UNTRUSTED"]}
+{"status": "untrusted_projector_denied", "projector_executed": false, "model_or_tool_transports": 0, "credential_reads": 0, "real_http": 0}

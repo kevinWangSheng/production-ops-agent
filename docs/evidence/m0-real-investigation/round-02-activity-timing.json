@@ -1,0 +1,96 @@
+{
+  "round_start": "2026-09-10T01:49:00Z",
+  "new_download_install_count": 0,
+  "known_model_http_wall_seconds": 265.6188108921051,
+  "sum_run_http_spans_seconds": 389.72781801223755,
+  "fixed_observation_window_seconds": 900,
+  "activities": [
+    {
+      "activity": "existing_VM_start",
+      "start": "2026-09-10T02:34:41.805103+00:00",
+      "end": "2026-09-10T02:34:57.365833+00:00",
+      "seconds": 15.56072998046875,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "existing_26_containers_start",
+      "start": "2026-09-10T02:36:13.480446+00:00",
+      "end": "2026-09-10T02:36:31.366986+00:00",
+      "seconds": 17.886539936065674,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "existing_containers_stop",
+      "start": "2026-09-10T04:07:24.695432+00:00",
+      "end": "2026-09-10T04:08:02.516636+00:00",
+      "seconds": 37.82120370864868,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "VM_stop",
+      "start": "2026-09-10T04:11:11.631546+00:00",
+      "end": "2026-09-10T04:11:16.228473+00:00",
+      "seconds": 4.596926689147949,
+      "basis": "command output file birth/last-write timestamps; excludes unsignalled work after last output"
+    },
+    {
+      "activity": "normal_control_1",
+      "start": "2026-09-10T02:38:28+00:00",
+      "end": "2026-09-10T02:43:28+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "fault_observation",
+      "start": "2026-09-10T03:29:12+00:00",
+      "end": "2026-09-10T03:34:12+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "post_restoration_normal_control",
+      "start": "2026-09-10T03:42:56+00:00",
+      "end": "2026-09-10T03:47:56+00:00",
+      "seconds": 300.0,
+      "basis": "frozen workload observation window; overlaps local engineering/review"
+    },
+    {
+      "activity": "PR16_reviews_and_followup_fixes",
+      "start": "2026-09-10T05:09:16Z",
+      "end": "2026-09-10T11:33:52.655660+00:00",
+      "basis": "GitHub first manual request timestamp; interval includes remote waiting, local fixes, PG regressions, strict-contract design/implementation and independent review; not exclusive remote latency",
+      "status": "local_fixes_complete_remote_code_review_usage_limit_security_unknown",
+      "seconds": 23076.65566
+    }
+  ],
+  "other_work": "Source/contract inspection, coding/debugging, tests and independent reviews ran in parallel during 01:49Z onward; exact exclusive CPU/operator time was not instrumented. Final closeout/CI/review continue after paid phase. No invented percentage distribution.",
+  "parallelism": "root orchestrator and sole environment operator; report implementation and mechanism implementation initially parallel; independent reviews in fresh contexts; paid model operations sequential under one ledger lock.",
+  "paid_call_window": {
+    "first_model_send": "2026-09-10T02:19:02.199029+00:00",
+    "last_model_response": "2026-09-10T03:54:45.994142+00:00",
+    "elapsed_seconds": 5743.795113,
+    "basis": "retained per-request ledger-derived timestamps; includes interleaved local work and observation, not continuous model compute"
+  },
+  "model_http_by_phase": {
+    "report": {
+      "actual_model_http": 2,
+      "model_http_wall_seconds": 145.6560549736023
+    },
+    "normal": {
+      "actual_model_http": 11,
+      "model_http_wall_seconds": 87.48870396614075
+    },
+    "pg": {
+      "actual_model_http": 3,
+      "model_http_wall_seconds": 3.237290143966675
+    },
+    "fault": {
+      "actual_model_http": 4,
+      "model_http_wall_seconds": 29.236761808395386
+    }
+  },
+  "real_holmes_tool_wall_seconds": 10.378155379381496,
+  "round_handoff_prepared_at": "2026-09-10T11:33:52.655660+00:00",
+  "round_elapsed_seconds_at_handoff_preparation": 35092.65566,
+  "closeout_note": "Final documentation-only commit/CI may finish after this timestamp; no further model or environment operations."
+}

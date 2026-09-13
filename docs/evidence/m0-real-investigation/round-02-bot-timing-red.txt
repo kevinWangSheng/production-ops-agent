@@ -1,0 +1,8 @@
+{"status": "investigation_returned", "run_id": "echo", "final_business_content": "{\"schema_version\": \"m0-report-v2\", \"assessment_status\": \"incomplete\", \"conclusion\": \"inconclusive\", \"summary\": \"No qualified current facts.\", \"claims\": [], \"gaps\": [\"No time policy supplied.\"], \"next_steps\": []}", "finish_reason": "stop", "quality_assessment": "pending_independent_evidence_check", "report_request_id": "echo-http-1", "final_report": {"schema_version": "m0-report-v2", "assessment_status": "incomplete", "conclusion": "inconclusive", "summary": "No qualified current facts.", "claims": [], "gaps": ["No time policy supplied."], "next_steps": []}, "report_schema_version": "m0-report-v2", "assurance_mode": "strict-candidate; temporal/output adequacy requires public-v4", "boundary_errors": [], "tool_wall_seconds": 0.0, "model_http_requests": 1, "tool_queries": 0}
+Traceback (most recent call last):
+  File "/private/tmp/m0-bot-timing-fix.aUaHmz/tests/fixtures/m0_environment/timing_override_probe.py", line 104, in <module>
+    run_case(state, mutation, accepted)
+  File "/private/tmp/m0-bot-timing-fix.aUaHmz/tests/fixtures/m0_environment/timing_override_probe.py", line 82, in run_case
+    assert rejected is not accepted, (raw_state, mutation, "override gate verdict")
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('missing', 'invent', 'override gate verdict')

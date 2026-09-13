@@ -1,0 +1,275 @@
+Loaded models: ['deepseek/deepseek-v4-flash']                                   
+Loaded prompt from file 
+docs/evidence/m0-real-investigation/round-06-comparison-question.txt
+Using selected model: deepseek/deepseek-v4-flash                                
+Model: deepseek/deepseek-v4-flash, 1M context, 120K max response (default,      
+change with --model, for all options see https://holmesgpt.dev/ai-providers)    
+Refreshing available datasources (toolsets)                                     
+Running without kube-config! e=Invalid kube-config file. No configuration found.
+Toolset 'kubernetes/kube-lineage-extras' is enabled but was excluded because its
+tags ['cluster'] don't match the current mode's tags ['core', 'cli']            
+❌ Toolset slab: Environment variable SLAB_API_KEY was not set                  
+✅ Toolset kubernetes/kube-prometheus-stack                                     
+❌ Toolset openshift/core: `oc version --client` failed with exit code 127:     
+/bin/sh: oc: command not found                                                  
+❌ Toolset inspektor-gadget/node: Environment variable ENABLE_INSPEKTOR_GADGET  
+was not set                                                                     
+❌ Toolset openshift/security: `oc version --client` failed with exit code 127: 
+/bin/sh: oc: command not found                                                  
+❌ Toolset openshift/logs: `oc version --client` failed with exit code 127:     
+/bin/sh: oc: command not found                                                  
+❌ Toolset inspektor-gadget/tcpdump: Environment variable                       
+ENABLE_INSPEKTOR_GADGET was not set                                             
+❌ Toolset kubernetes/core: `kubectl version --client` failed with exit code    
+127: /bin/sh: kubectl: command not found                                        
+❌ Toolset kubernetes/live-metrics: `kubectl top nodes` failed with exit code   
+127: /bin/sh: kubectl: command not found                                        
+❌ Toolset argocd/core: Environment variable ARGOCD_AUTH_TOKEN was not set      
+❌ Toolset helm/core: `helm version` failed with exit code 127: /bin/sh: helm:  
+command not found                                                               
+❌ Toolset kubevela/core: `vela version` failed with exit code 127: /bin/sh:    
+vela: command not found                                                         
+❌ Toolset openshift/live-metrics: `oc adm top nodes` failed with exit code 127:
+/bin/sh: oc: command not found                                                  
+❌ Toolset aks/node-health: `az account show` failed with exit code 127:        
+/bin/sh: az: command not found                                                  
+✅ Toolset core_investigation                                                   
+❌ Toolset crossplane/core: `kubectl api-resources --api-group=pkg.crossplane.io
+--no-headers 2>/dev/null | grep -q providers` failed with exit code 1           
+✅ Toolset internet                                                             
+✅ Toolset connectivity_check                                                   
+❌ Toolset kubernetes/krew-extras: `kubectl version --client && kubectl lineage 
+--version` failed with exit code 127: /bin/sh: kubectl: command not found       
+❌ Toolset robusta: Integration with Robusta cloud is disabled                  
+❌ Toolset aks/core: `az account show` failed with exit code 127: /bin/sh: az:  
+command not found                                                               
+❌ Toolset cilium/core: `cilium status` failed with exit code 127: /bin/sh:     
+cilium: command not found                                                       
+❌ Toolset notion: Notion toolset is misconfigured. Authorization header is     
+required.                                                                       
+❌ Toolset opensearch/query_assist: Environment variable OPENSEARCH_URL was not 
+set                                                                             
+✅ Toolset kubectl-run                                                          
+✅ Toolset skills                                                               
+❌ Toolset kubernetes/logs: kubectl command not found (ensure kubectl is        
+installed and in PATH)                                                          
+✅ Toolset bash                                                                 
+❌ Toolset hubble/observability: `hubble version` failed with exit code 127:    
+/bin/sh: hubble: command not found                                              
+❌ Toolset docker/core: `docker version` failed with exit code 1: failed to     
+connect to the docker API at unix:///var/run/docker.sock; check if the path is  
+correct and if the daemon is running: dial unix /var/run/docker.sock: connect:  
+no such file or directory                                                       
+Toolset statuses are cached to /Users/shenghuikevin/.holmes/toolsets_status.json
+✅ Toolset kubernetes/kube-prometheus-stack                                     
+✅ Toolset core_investigation                                                   
+✅ Toolset internet                                                             
+✅ Toolset connectivity_check                                                   
+✅ Toolset kubectl-run                                                          
+✅ Toolset bash                                                                 
+✅ Toolset skills                                                               
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+LLM call failed on model=deepseek/deepseek-v4-flash (streaming iteration 1):    
+InternalServerError: litellm.InternalServerError: InternalServerError:          
+DeepseekException - Illegal header value b'Bearer '                             
+Traceback (most recent call last):                                              
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py", line
+101, in map_httpcore_exceptions                                                 
+    yield                                                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py", line
+250, in handle_request                                                          
+    resp = self._pool.handle_request(req)                                       
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection_pool.py",
+ line 256, in handle_request                                                    
+    raise exc from None                                                         
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection_pool.py",
+ line 236, in handle_request                                                    
+    response = connection.handle_request(                                       
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/connection.py", line
+103, in handle_request                                                          
+    return self._connection.handle_request(request)                             
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                             
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py", line    
+136, in handle_request                                                          
+    raise exc                                                                   
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py", line 86,
+in handle_request                                                               
+    self._send_request_headers(**kwargs)                                        
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_sync/http11.py", line    
+144, in _send_request_headers                                                   
+    with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):          
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^           
+  File                                                                          
+"/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/
+lib/python3.12/contextlib.py", line 158, in __exit__                            
+    self.gen.throw(value)                                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpcore/_exceptions.py", line 14, 
+in map_exceptions                                                               
+    raise to_exc(exc) from exc                                                  
+httpcore.LocalProtocolError: Illegal header value b'Bearer '                    
+                                                                                
+The above exception was the direct cause of the following exception:            
+                                                                                
+Traceback (most recent call last):                                              
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/llm_http_
+handler.py", line 265, in _make_common_sync_call                                
+    response = sync_httpx_client.post(                                          
+               ^^^^^^^^^^^^^^^^^^^^^^^                                          
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/http_hand
+ler.py", line 1202, in post                                                     
+    raise e                                                                     
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/http_hand
+ler.py", line 1190, in post                                                     
+    response = self.client.send(req, stream=stream)                             
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                             
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in    
+send                                                                            
+    response = self._send_handling_auth(                                        
+               ^^^^^^^^^^^^^^^^^^^^^^^^^                                        
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in    
+_send_handling_auth                                                             
+    response = self._send_handling_redirects(                                   
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                   
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in    
+_send_handling_redirects                                                        
+    response = self._send_single_request(request)                               
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                               
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in   
+_send_single_request                                                            
+    response = transport.handle_request(request)                                
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py", line
+249, in handle_request                                                          
+    with map_httpcore_exceptions():                                             
+         ^^^^^^^^^^^^^^^^^^^^^^^^^                                              
+  File                                                                          
+"/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/
+lib/python3.12/contextlib.py", line 158, in __exit__                            
+    self.gen.throw(value)                                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/httpx/_transports/default.py", line
+118, in map_httpcore_exceptions                                                 
+    raise mapped_exc(message) from exc                                          
+httpx.LocalProtocolError: Illegal header value b'Bearer '                       
+                                                                                
+During handling of the above exception, another exception occurred:             
+                                                                                
+Traceback (most recent call last):                                              
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/main.py", line 1971, in    
+completion                                                                      
+    raise e                                                                     
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/main.py", line 1944, in    
+completion                                                                      
+    response = base_llm_http_handler.completion(                                
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/llm_http_
+handler.py", line 589, in completion                                            
+    response = self._make_common_sync_call(                                     
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                     
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/llm_http_
+handler.py", line 292, in _make_common_sync_call                                
+    raise self._handle_error(e=e, provider_config=provider_config)              
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^              
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/llm_http_
+handler.py", line 5259, in _handle_error                                        
+    raise provider_config.get_error_class(                                      
+litellm.llms.openai.common_utils.OpenAIError: Illegal header value b'Bearer '   
+                                                                                
+During handling of the above exception, another exception occurred:             
+                                                                                
+Traceback (most recent call last):                                              
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/tool_calling_
+llm.py", line 1216, in call_stream                                              
+    full_response = self.llm.completion(                                        
+                    ^^^^^^^^^^^^^^^^^^^^                                        
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmesgpt-5e983c17f30e93099c7d775167266d4cd1d586c4/holmes/core/llm.py", line
+763, in completion                                                              
+    result = litellm_to_use.completion(                                         
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^                                         
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/utils.py", line 1775, in   
+wrapper                                                                         
+    raise e                                                                     
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/utils.py", line 1596, in   
+wrapper                                                                         
+    result = original_function(*args, **kwargs)                                 
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                 
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/main.py", line 4614, in    
+completion                                                                      
+    raise exception_type(                                                       
+          ^^^^^^^^^^^^^^^                                                       
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/litellm_core_utils/exceptio
+n_mapping_utils.py", line 2473, in exception_type                               
+    raise e                                                                     
+  File                                                                          
+"/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environm
+ent/holmes-venv/lib/python3.12/site-packages/litellm/litellm_core_utils/exceptio
+n_mapping_utils.py", line 598, in exception_type                                
+    raise InternalServerError(                                                  
+litellm.exceptions.InternalServerError: litellm.InternalServerError:            
+InternalServerError: DeepseekException - Illegal header value b'Bearer '        
+exit=1

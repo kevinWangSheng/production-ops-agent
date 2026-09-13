@@ -1,0 +1,13 @@
+{
+  "status": "failed",
+  "run_id": "m002-saved-report-01",
+  "final_business_content": null,
+  "error_type": "InternalServerError",
+  "boundary_error_codes": [],
+  "boundary_errors": [
+    "RuntimeError"
+  ],
+  "tool_wall_seconds": 0.0,
+  "model_http_requests": 1,
+  "tool_queries": 0
+}

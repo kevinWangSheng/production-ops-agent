@@ -1,0 +1,16 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+________ test_relabelled_dispatch_cannot_predate_new_generation[cancel] ________
+tests/test_m0_outcomes_v4.py:635: in test_relabelled_dispatch_cannot_predate_new_generation
+    assert "CONTROL_DISPATCH_TIME_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_DISPATCH_TIME_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+_______ test_relabelled_dispatch_cannot_predate_new_generation[correct] ________
+tests/test_m0_outcomes_v4.py:635: in test_relabelled_dispatch_cannot_predate_new_generation
+    assert "CONTROL_DISPATCH_TIME_MISMATCH" in checked(scenario, outcome)
+E   AssertionError: assert 'CONTROL_DISPATCH_TIME_MISMATCH' in []
+E    +  where [] = checked({'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...': 'checkout', ...}}, 'request': 'investigate', 'initial_views': [], 'original_user_content': 'investigate', ...}, ...}, {'schema_version': 'm0-public-v4', 'scenario_id': 'case', 'versions': {'code': 'test', 'report_instruction_sha256': 'f...get': {'kind': 'compose', 'integration_id': 'lab', 'deployment_instance': 'round02', 'service': 'checkout', ...}}, ...})
+=========================== short test summary info ============================
+FAILED tests/test_m0_outcomes_v4.py::test_relabelled_dispatch_cannot_predate_new_generation[cancel]
+FAILED tests/test_m0_outcomes_v4.py::test_relabelled_dispatch_cannot_predate_new_generation[correct]
+2 failed, 55 deselected in 0.16s

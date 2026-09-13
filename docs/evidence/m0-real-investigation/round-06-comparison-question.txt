@@ -1,0 +1,1 @@
+Investigate the supplied fixed read-only observation and return a concise evidence-grounded assessment. Distinguish observed facts, uncertainty, and next steps. Do not claim healthy or recovery without evidence.

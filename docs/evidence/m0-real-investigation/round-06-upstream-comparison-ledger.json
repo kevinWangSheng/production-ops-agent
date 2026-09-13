@@ -1,0 +1,13 @@
+{
+  "allocation_id": "m0-08-upstream-m004-20260912",
+  "reservation_upper_cny": 6.0,
+  "trace_uploads": 0,
+  "attempts": [
+    {"run_id": "m004-normal-upstream", "scenario": "m004-normal-01", "ordinal": 1, "http_status": 200, "usage": null, "status": "tool_call_no_final", "reservation_cny": 2.0},
+    {"run_id": "m004-fault-upstream", "scenario": "m004-fault-01", "ordinal": 1, "http_status": 200, "usage": null, "status": "tool_call_no_final", "reservation_cny": 2.0}
+  ],
+  "http_count": 2,
+  "known_cost_upper_cny": 0.0,
+  "unknown_reservation_cny": 4.0,
+  "cost_basis": "usage not captured; reservations retained, not invoice"
+}

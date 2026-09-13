@@ -1,0 +1,31 @@
+...........................                                              [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/integration/test_m0_step_store_postgres.py::test_actual_process_cut_partial_tools_rebuild
+PASSED tests/integration/test_m0_step_store_postgres.py::test_actual_process_cut_before_response_retains_reservation
+PASSED tests/integration/test_m0_step_store_postgres.py::test_cancel_between_preflight_and_launch_cross_process
+PASSED tests/integration/test_m0_step_store_postgres.py::test_fencing_intake_versions_and_publication
+PASSED tests/integration/test_m0_step_store_postgres.py::test_request_count_unknown_and_absolute_deadline
+PASSED tests/integration/test_m0_step_store_postgres.py::test_control_commit_serializes_with_actual_initiation
+PASSED tests/integration/test_m0_step_store_postgres.py::test_tool_returned_before_commit_is_bounded_repeat
+PASSED tests/integration/test_m0_step_store_postgres.py::test_lease_expiry_during_preparation_never_initiates[model]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_lease_expiry_during_preparation_never_initiates[tool]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_cancelled_state_wins_over_incompatible_claim
+PASSED tests/integration/test_m0_step_store_postgres.py::test_tool_commit_requires_matching_latest_attempt
+PASSED tests/integration/test_m0_step_store_postgres.py::test_model_response_requires_current_physical_request
+PASSED tests/integration/test_m0_step_store_postgres.py::test_parent_sigkill_then_cancel_orphan_transport_sends_zero_http
+PASSED tests/integration/test_m0_step_store_postgres.py::test_transport_grant_one_use_and_snapshot_binding
+PASSED tests/integration/test_m0_step_store_postgres.py::test_current_control_snapshot_crosses_v3_seam_after_new_run[None]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_current_control_snapshot_crosses_v3_seam_after_new_run[cancel]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_current_control_snapshot_crosses_v3_seam_after_new_run[correct]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_new_run_has_own_limits_without_resetting_experiment_budget
+PASSED tests/integration/test_m0_step_store_postgres.py::test_prepared_unclaimed_request_cannot_commit_or_publish
+PASSED tests/integration/test_m0_step_store_postgres.py::test_failed_prepare_grant_insert_leaves_no_direct_dispatch_lookalike
+PASSED tests/integration/test_m0_step_store_postgres.py::test_claimed_prepare_and_direct_dispatch_both_can_commit_and_publish[False]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_claimed_prepare_and_direct_dispatch_both_can_commit_and_publish[True]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_claimed_grant_never_replaces_latest_attempt_or_fence
+PASSED tests/integration/test_m0_step_store_postgres.py::test_process_exit_after_prepare_preserves_unclaimed_barrier
+PASSED tests/integration/test_m0_step_store_postgres.py::test_control_clears_active_final_and_preserves_report_history[cancel]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_control_clears_active_final_and_preserves_report_history[correct]
+PASSED tests/integration/test_m0_step_store_postgres.py::test_new_run_empty_versions_rejects_without_any_durable_transition
+27 passed in 8.66s

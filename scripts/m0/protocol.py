@@ -106,23 +106,35 @@ def continuation(assistant, results, *, provider, run_id, expected_run_id=RUN_ID
     ]
 
 
+TRACE_MAX_ATTEMPT = 8
+
+
 def trace_dto(raw):
     # Only canonical IDs, fixed enums and bounded integers; no raw prose/metadata passthrough.
+    # Cross-Run linkage: optional canonical subject_id (UUID) and bounded attempt ordinal.
     try:
         run_id = str(UUID(raw["run_id"]))
         count = raw["request_count"]
         status = raw["status"]
+        attempt = raw.get("attempt", 1)
+        subject_id = raw.get("subject_id")
         if (
             type(count) is not int
             or not 0 <= count <= 2
             or status not in ("completed", "failed")
+            or type(attempt) is not int
+            or not 1 <= attempt <= TRACE_MAX_ATTEMPT
         ):
             raise ValueError
+        if subject_id is not None:
+            if type(subject_id) is not str:
+                raise ValueError
+            subject_id = str(UUID(subject_id))
     except (KeyError, TypeError, ValueError, AttributeError):
         raise ProtocolError("TRACE_DTO_INVALID") from None
-    return {
+    dto = {
         "run_id": run_id,
-        "attempt": 1,
+        "attempt": attempt,
         "subject": "m0-target-a",
         "fixture": "m0-protocol-v1",
         "adapter": "m0-offline-v1",
@@ -130,6 +142,9 @@ def trace_dto(raw):
         "request_count": count,
         "status": status,
     }
+    if subject_id is not None:
+        dto["subject_id"] = subject_id
+    return dto
 
 
 class CaptureSession(requests.Session):
