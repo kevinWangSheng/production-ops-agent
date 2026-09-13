@@ -1,4 +1,4 @@
-# M0 / SPEC gate 决策草案（待用户决定）
+# M0 / SPEC gate 决策记录（2026-09-13 用户已选 B）
 
 本草案不修改 `SPEC.md`，也不修改 `feature_list.json`。当前事实：M0 八个工作包仍有 partial/证据不足；本轮 B3、B4、B5 PG、B6 provider probes 和 B7 产生了可回读证据，但不等于产品验收完成。
 
@@ -25,6 +25,6 @@
 ## 用户选择
 
 - [ ] 选择 A：保持 `not cleared`。
-- [ ] 选择 B：有界开放 M1-01，并接受上列补齐清单、日期和责任人。
+- [x] 选择 B：有界开放 M1-01，并接受上列补齐清单、日期和责任人。（用户于 2026-09-13 决定；责任人：用户；补齐清单进入 M1 入口验收，见 SPEC gate 段。）
 
 在用户明确选择前，Agent 不修改 SPEC gate、不修改 feature passes、不合并 PR、不采购。
