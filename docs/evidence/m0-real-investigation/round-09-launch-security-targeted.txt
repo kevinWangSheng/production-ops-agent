@@ -1,0 +1,34 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 11 items
+
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[0] PASSED [  9%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[-1] PASSED [ 18%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[True] PASSED [ 27%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[1.0] PASSED [ 36%]
+tests/test_m0_round07_launch.py::test_round07_launch_accepts_positive_max_http PASSED [ 45%]
+tests/test_m0_round07_launch.py::test_round07_launch_resolves_env_file_from_explicit_override PASSED [ 54%]
+tests/test_m0_round07_launch.py::test_round07_launch_missing_env_file_is_explicit PASSED [ 63%]
+tests/test_m0_round07_launch.py::test_round07_launch_resolves_executable_holmes_override PASSED [ 72%]
+tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_is_explicit PASSED [ 81%]
+tests/test_m0_round07_launch.py::test_round07_container_rejects_arbitrary_executable_without_reading_key PASSED [ 90%]
+tests/test_m0_round07_launch.py::test_round07_container_accepts_only_pinned_docker_command PASSED [100%]
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[0]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[-1]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[True]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[1.0]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_accepts_positive_max_http
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_resolves_env_file_from_explicit_override
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_env_file_is_explicit
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_resolves_executable_holmes_override
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_is_explicit
+PASSED tests/test_m0_round07_launch.py::test_round07_container_rejects_arbitrary_executable_without_reading_key
+PASSED tests/test_m0_round07_launch.py::test_round07_container_accepts_only_pinned_docker_command
+============================== 11 passed in 0.01s ==============================

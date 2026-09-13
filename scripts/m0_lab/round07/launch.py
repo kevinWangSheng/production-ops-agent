@@ -8,17 +8,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-ENV_FILE = Path("/Users/shenghuikevin/dev/AI/production-ops-agent/.env")
+DEFAULT_ENV_FILE = ROOT / ".env"
 LEDGER = ROOT / "docs/evidence/m0-real-investigation/round-07-wp5-ledger.json"
-HOLMES_PYTHON = Path(
-    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/holmes-venv/bin/python"
-)
+DEFAULT_HOLMES_PYTHON = ROOT / "tmp/m0-environment/holmes-venv/bin/python"
+# The container arm is intentionally pinned to the audited, mount-free image
+# produced by the round-07 holdout build.  It must never accept an arbitrary
+# executable or image from runner_args.
+CONTAINER_IMAGE = "opspilot-m0-r07-runner@sha256:83bd4247d4eca8cc276b0af3626ce96f7bfc93e65151128739420ebc75abd25c"
+CONTAINER_PREFIX = ("run", "--rm", "-i", "--network", "none")
+CONTAINER_PACKETS = {
+    "normal": "/runner/packets/packet-m004-normal.json",
+    "fault": "/runner/packets/packet-m004-fault.json",
+}
 TOTAL_HTTP = 8
 TOTAL_RESERVATION_CNY = 8.0
 RESERVATION_PER_HTTP = 1.0
@@ -30,8 +40,32 @@ def validate_max_http(value: int) -> int:
     return value
 
 
-def read_key() -> str:
-    for line in ENV_FILE.read_text().splitlines():
+def resolve_env_file(explicit: Path | None = None) -> Path:
+    value = explicit or (
+        Path(os.environ["M0_ENV_FILE"])
+        if os.environ.get("M0_ENV_FILE")
+        else DEFAULT_ENV_FILE
+    )
+    path = value.expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"credential file unavailable: {path}")
+    return path
+
+
+def resolve_holmes_python(explicit: Path | None = None) -> Path:
+    value = explicit or (
+        Path(os.environ["M0_HOLMES_PYTHON"])
+        if os.environ.get("M0_HOLMES_PYTHON")
+        else DEFAULT_HOLMES_PYTHON
+    )
+    path = value.expanduser().resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError(f"Holmes Python unavailable or not executable: {path}")
+    return path
+
+
+def read_key(env_file: Path) -> str:
+    for line in env_file.read_text().splitlines():
         line = line.strip()
         if line.startswith("DEEPSEEK_API_KEY="):
             value = line.split("=", 1)[1].strip()
@@ -39,6 +73,71 @@ def read_key() -> str:
                 value = value[1:-1]
             return value
     return ""
+
+
+def build_container_command(
+    docker: str, *, scenario: str, run_id: str, max_http: int, out: Path
+) -> list[str]:
+    if not docker or Path(docker).name != "docker":
+        raise ValueError("container executable unavailable: docker")
+    if scenario not in CONTAINER_PACKETS:
+        raise ValueError("container scenario is not allowlisted")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", run_id):
+        raise ValueError("container run id is not allowlisted")
+    output = out.expanduser().resolve()
+    tmp_root = (ROOT / "tmp").resolve()
+    if output == tmp_root or tmp_root not in output.parents:
+        raise ValueError("container output must be under repository tmp/")
+    output.mkdir(parents=True, exist_ok=True)
+    return [
+        docker,
+        *CONTAINER_PREFIX,
+        "--mount",
+        f"type=bind,src={output},dst=/runner/output",
+        CONTAINER_IMAGE,
+        "--packet",
+        CONTAINER_PACKETS[scenario],
+        "--out",
+        "/runner/output",
+        "--run-id",
+        run_id,
+        "--max-http",
+        str(max_http),
+    ]
+
+
+def validate_container_command(command: list[str]) -> list[str]:
+    """Accept only the pinned Docker wrapper and its fixed runner arguments."""
+    docker = shutil.which("docker")
+    if not docker or Path(docker).name != "docker":
+        raise ValueError("container executable unavailable: docker")
+    if len(command) != 17 or command[:7] != [docker, *CONTAINER_PREFIX, "--mount"]:
+        raise ValueError("container command is not allowlisted")
+    mount = command[7]
+    if not mount.startswith("type=bind,src=") or not mount.endswith(
+        ",dst=/runner/output"
+    ):
+        raise ValueError("container mount is not allowlisted")
+    source = Path(mount[len("type=bind,src=") : -len(",dst=/runner/output")])
+    tmp_root = (ROOT / "tmp").resolve()
+    if source.resolve() == tmp_root or tmp_root not in source.resolve().parents:
+        raise ValueError("container mount is not allowlisted")
+    if command[8] != CONTAINER_IMAGE:
+        raise ValueError("container image is not allowlisted")
+    if command[9] != "--packet" or command[10] not in CONTAINER_PACKETS.values():
+        raise ValueError("container packet is not allowlisted")
+    if command[11:] != [
+        "--out",
+        "/runner/output",
+        "--run-id",
+        command[14],
+        "--max-http",
+        command[16],
+    ] or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", command[14]):
+        raise ValueError("container command is not allowlisted")
+    if type(int(command[16])) is not int or int(command[16]) < 1:
+        raise ValueError("container max-http is not allowlisted")
+    return command
 
 
 def load_ledger() -> dict:
@@ -76,6 +175,8 @@ def main():
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--max-http", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--env-file", type=Path)
+    parser.add_argument("--holmes-python", type=Path)
     parser.add_argument("runner_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
@@ -84,14 +185,20 @@ def main():
         parser.error(str(exc))
     if args.runner_args and args.runner_args[0] == "--":
         args.runner_args = args.runner_args[1:]
+    try:
+        env_file = resolve_env_file(args.env_file)
+        holmes_python = (
+            resolve_holmes_python(args.holmes_python)
+            if args.arm == "upstream"
+            else None
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     ledger = load_ledger()
     if any(run["run_id"] == args.run_id for run in ledger["runs"]):
         raise SystemExit("run id already booked")
     if ledger["http_count"] + args.max_http > TOTAL_HTTP:
         raise SystemExit("allocation HTTP cap would be exceeded; not launched")
-    key = read_key()
-    if not key:
-        raise SystemExit("trusted credential unavailable")
     if args.arm == "candidate":
         command = [
             sys.executable,
@@ -99,12 +206,26 @@ def main():
         ]
     elif args.arm == "upstream":
         command = [
-            str(HOLMES_PYTHON),
+            str(holmes_python),
             str(ROOT / "scripts/m0_lab/round07/upstream_runner.py"),
         ]
     else:
-        command = list(args.runner_args)
-        args.runner_args = []
+        if args.runner_args:
+            raise ValueError("container command is not allowlisted")
+        docker = shutil.which("docker")
+        if not docker:
+            raise ValueError("container executable unavailable: docker")
+        command = build_container_command(
+            docker,
+            scenario=args.scenario,
+            run_id=args.run_id,
+            max_http=args.max_http,
+            out=args.out,
+        )
+        validate_container_command(command)
+    key = read_key(env_file)
+    if not key:
+        raise SystemExit("trusted credential unavailable")
     if args.arm != "container":
         command += [
             "--out",
