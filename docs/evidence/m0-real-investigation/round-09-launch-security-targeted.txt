@@ -31,4 +31,4 @@ PASSED tests/test_m0_round07_launch.py::test_round07_launch_resolves_executable_
 PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_is_explicit
 PASSED tests/test_m0_round07_launch.py::test_round07_container_rejects_arbitrary_executable_without_reading_key
 PASSED tests/test_m0_round07_launch.py::test_round07_container_accepts_only_pinned_docker_command
-============================== 11 passed in 0.01s ==============================
+============================== 11 passed in 0.02s ==============================

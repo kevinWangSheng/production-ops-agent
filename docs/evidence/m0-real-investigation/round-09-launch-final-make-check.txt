@@ -7,7 +7,7 @@ OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '
 基础开发环境：前提可用
 环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
 uv lock --check --offline --no-python-downloads
-Resolved 38 packages in 33ms
+Resolved 38 packages in 26ms
 .venv/bin/ruff check .
 All checks passed!
 .venv/bin/ruff format --check .

@@ -563,4 +563,17 @@ PR 新增 `publish` 未知 step P2 已在 `93f8555` 修复：`row is None` 先�
 - `b305e8f` 为 scanner 增加仅匹配 `api_key = \"<48 hex>\"` 的显式自测规则，保持默认规则和已审查 manifest 例外不变；本地 Gitleaks 8.30.1 自测通过。
 - `make check` 复验：778 passed / 54 skipped，输出 `round-08-scanner-fix-make-check.txt`。已推送；最新 CI run `34722643681` 的 `checks` 与 `m0-postgres` 均成功，覆盖 `7761958` 的 bot review 于 22:28 UTC 返回 “Didn't find any major issues”。SPEC gate 和 feature passes 不变。
 
+## 2026-09-13 round-07 launcher bot findings
+
+- bot 在 `9a0286a` 发现两个未 resolve 问题：launcher 硬编码 `.env`/Holmes venv 路径；`--arm container` 将凭据注入调用方可控的任意命令。
+- `90b5b43` 已修复：默认路径从当前仓库根解析，并支持 `M0_ENV_FILE`/`M0_HOLMES_PYTHON` 及 `--env-file`/`--holmes-python` 覆盖；缺失路径在启动前给出明确错误。container arm 改为固定 digest 镜像、`docker run --rm -i --network none`、固定 packet/runner 参数和仓库 `tmp/` 输出挂载，拒绝额外命令或参数。
+- 新增 `/bin/cat` 反例与路径解析测试；定向 `tests/test_m0_round07_launch.py -rA -v` 为 11 passed，完整 `make check` 为 784 passed / 54 skipped，输出见 `round-09-launch-security-targeted.txt` 与 `round-09-launch-final-make-check.txt`。
+- 两条原 thread 尚待在 GitHub 上回复并 resolve；本提交未执行模型、trace、PG 或容器。修复后需重新触发覆盖 `90b5b43` 的 bot review 并等待 CI。
+
+## 2026-09-13 launcher findings 收敛
+
+- 两条 bot thread 已回复并 resolve。独立复核确认路径解析、凭据读取顺序和 container 固定命令边界，详见 `round-09-launch-independent-review.md`。
+- 最终定向测试为 11 passed，完整 `make check` 为 784 passed / 54 skipped；输出见 `round-09-launch-security-targeted.txt` 与 `round-09-launch-final-make-check.txt`。
+- 本轮仍未执行模型 HTTP、trace、PG 或容器；推送后已再次触发 `@codex review`，需等待覆盖最终 HEAD 的 bot 结果。SPEC gate、feature passes 和合并授权不变。
+
 M0-07 汇总结果与费用索引见 [`round-07-m0-final-results.md`](../evidence/m0-real-investigation/round-07-m0-final-results.md) 与 [`round-07-m0-ledger-summary.json`](../evidence/m0-real-investigation/round-07-m0-ledger-summary.json)：本任务新增 14 HTTP、known cost upper 0.369123 CNY、trace 0，仍在 30 HTTP/30 CNY 上界内。
