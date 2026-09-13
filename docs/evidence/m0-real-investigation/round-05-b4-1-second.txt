@@ -1,0 +1,2 @@
+{'status': 'completed', 'run_id': 'b960bf7e-05e9-44b1-bf0f-3454ddf65681', 'boundary': 'synthetic fixture plus real model/PG protocol; not active investigation'}
+exit=0

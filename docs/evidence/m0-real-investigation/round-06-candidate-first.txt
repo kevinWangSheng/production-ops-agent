@@ -1,0 +1,1 @@
+{'status': 'first_committed', 'run_id': 'f2790efa-96b9-4ce2-a333-b41b77d3eb9d', 'boundary': 'synthetic fixture plus real model/PG protocol; not active investigation'}

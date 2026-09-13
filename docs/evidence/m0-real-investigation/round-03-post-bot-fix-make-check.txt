@@ -1,0 +1,315 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+Resolved 38 packages in 25ms
+.venv/bin/ruff check .
+All checks passed!
+.venv/bin/ruff format --check .
+320 files already formatted
+.venv/bin/python -m pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 762 items
+
+tests/integration/test_m0_adapter_budget.py sss                          [  0%]
+tests/integration/test_m0_budget_postgres.py ssssssssss                  [  1%]
+tests/integration/test_m0_live_postgres.py ssss                          [  2%]
+tests/integration/test_m0_step_store_postgres.py sssssssssssssssssssssss [  5%]
+ssss                                                                     [  5%]
+tests/test_doctor.py .....                                               [  6%]
+tests/test_m0.py ..................................                      [ 10%]
+tests/test_m0_adapters.py .............................                  [ 14%]
+tests/test_m0_budget.py ........                                         [ 15%]
+tests/test_m0_contracts.py .......                                       [ 16%]
+tests/test_m0_envoy_log_projection.py ......                             [ 17%]
+tests/test_m0_freeze_images.py ..........................                [ 20%]
+tests/test_m0_holmes_bridge.py ..............                            [ 22%]
+tests/test_m0_holmes_bridge_v4.py ....F...............FF.............F.. [ 27%]
+..................................F............................          [ 35%]
+tests/test_m0_holmes_round02.py ........................................ [ 41%]
+........                                                                 [ 42%]
+tests/test_m0_initial_evidence.py .................                      [ 44%]
+tests/test_m0_live.py .................................................. [ 51%]
+.........................                                                [ 54%]
+tests/test_m0_outcomes.py .............................................. [ 60%]
+....................................                                     [ 65%]
+tests/test_m0_outcomes_v3.py ..............................              [ 69%]
+tests/test_m0_outcomes_v4.py ........................................... [ 74%]
+....................................................                     [ 81%]
+tests/test_m0_pg_live_probe.py ..........                                [ 82%]
+tests/test_m0_projector_trust.py ...............                         [ 84%]
+tests/test_m0_question_paths.py ...........................              [ 88%]
+tests/test_m0_question_scope_binding.py .....                            [ 88%]
+tests/test_m0_runtime_identity_credentials.py ........                   [ 90%]
+tests/test_m0_runtime_strict.py .........                                [ 91%]
+tests/test_m0_step_store_versions.py .....................               [ 93%]
+tests/test_m0_timing_echo.py ..............                              [ 95%]
+tests/test_m0_trace.py ........                                          [ 96%]
+tests/test_m0_trace_archive.py ....                                      [ 97%]
+tests/test_m0_trace_view.py .                                            [ 97%]
+tests/test_secret_scan.py ........                                       [ 98%]
+tests/test_setup_docs_mcp.py ...........                                 [100%]
+
+=================================== FAILURES ===================================
+_______ test_report_only_initial_raw_and_actual_input_reach_strict_seam ________
+
+initial_captured = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-373/test_report_only_initial_raw_a0/case-01'), '84fa3ae30551958ced57889e3c178a1ce8809350c31b54d5423dd26bd8dc448e')
+
+    def test_report_only_initial_raw_and_actual_input_reach_strict_seam(initial_captured):
+        run, code = initial_captured
+        scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+>       assert v4.check_outcome(scenario, outcome) == []
+E       AssertionError: assert ['INITIAL_INP...BLY_MISMATCH'] == []
+E         
+E         Left contains one more item: 'INITIAL_INPUT_REASSEMBLY_MISMATCH'
+E         Use -v to get more diff
+
+tests/test_m0_holmes_bridge_v4.py:347: AssertionError
+_________ test_cli_reportless_audit_survives_subprocess[valid_report] __________
+
+initial_captured = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-373/test_cli_reportless_audit_surv2/case-01'), '84fa3ae30551958ced57889e3c178a1ce8809350c31b54d5423dd26bd8dc448e')
+mode = 'valid_report'
+
+    @pytest.mark.parametrize("mode", ["import_blocked", "invalid_report", "valid_report"])
+    def test_cli_reportless_audit_survives_subprocess(initial_captured, mode):
+        import subprocess
+    
+        run, code = initial_captured
+        if mode != "valid_report":
+            (run / "initial-evidence.json").unlink()
+            result = {"run_id": run.name, "status": "incomplete"}
+            if mode == "invalid_report":
+                result.update(
+                    finish_reason="stop",
+                    final_business_content='{"claims": "invalid-sentinel"}',
+                )
+            save(run / "result-business.json", result)
+            if mode == "invalid_report":
+                sync_report_attempt(run, result)
+            else:
+                for name in (
+                    "delivered-business.json",
+                    "report-capture-business.json",
+                    "response-2-business.json",
+                ):
+                    (run / name).unlink()
+        output = run / "cli-audit.json"
+        process = subprocess.run(
+            [
+                *bridge_cli(),
+                "--run-dir",
+                str(run),
+                "--projection-source-sha256",
+                code,
+                "--projection-source-file",
+                str(bridge.SOURCE),
+                "--output",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+>       assert process.returncode == (0 if mode == "valid_report" else 1)
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python', '-c', "from scripts....asons": [], "report_content_sha256": "39009104dea3987c26e99f4b07c683757e293692a7fdff41fae6a1794dc4fb51"}\n', stderr='').returncode
+
+tests/test_m0_holmes_bridge_v4.py:549: AssertionError
+_______ test_bridge_preserves_current_interface_restriction[interfaces0] _______
+
+initial_captured = (PosixPath('/private/var/folders/nh/02mxl3td7rxcyj70_y5t1xqr0000gn/T/pytest-of-shenghuikevin/pytest-373/test_bridge_preserves_current_0/case-01'), '84fa3ae30551958ced57889e3c178a1ce8809350c31b54d5423dd26bd8dc448e')
+interfaces = ['otel_traces']
+
+    @pytest.mark.parametrize("interfaces", [["otel_traces"], ["otel_logs"]])
+    def test_bridge_preserves_current_interface_restriction(initial_captured, interfaces):
+        run, code = initial_captured
+        config = json.loads((run / "configuration.json").read_bytes())
+        config["trusted_access_scope"]["interfaces"] = interfaces
+        save(run / "configuration.json", config)
+        deliveries = json.loads((run / "delivered-business.json").read_bytes())
+        deliveries[0]["trusted_access_scope"] = config["trusted_access_scope"]
+        save(run / "delivered-business.json", deliveries)
+        scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+        assert scenario.trusted.scope.interfaces == interfaces
+        if interfaces == ["otel_traces"]:
+>           assert v4.check_outcome(scenario, outcome) == []
+E           AssertionError: assert ['INITIAL_INP...BLY_MISMATCH'] == []
+E             
+E             Left contains one more item: 'INITIAL_INPUT_REASSEMBLY_MISMATCH'
+E             Use -v to get more diff
+
+tests/test_m0_holmes_bridge_v4.py:585: AssertionError
+__________ test_cli_strict_input_provenance_is_required[valid-import] __________
+
+request = <FixtureRequest for <Function test_cli_strict_input_provenance_is_required[valid-import]>>
+mode = 'import', failure = 'valid'
+
+    @pytest.mark.parametrize("mode", ["normal", "import"])
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            "valid",
+            "missing",
+            "empty_object",
+            "empty_file",
+            "non_mapping",
+            "malformed",
+            "missing_original",
+            "missing_hash",
+            "wrong_hash",
+        ],
+    )
+    def test_cli_strict_input_provenance_is_required(request, mode, failure):
+        import subprocess
+    
+        run, code = request.getfixturevalue(
+            "strict_captured" if mode == "normal" else "initial_captured"
+        )
+        actual = json.loads((run / "input-business.json").read_bytes())[0]["content"]
+        if mode == "normal":
+            (run / "question-original.txt").write_bytes(actual.encode())
+            save(
+                run / "input-provenance.json",
+                {
+                    "original_user_content_sha256": v4.content_hash(actual),
+                    "actual_user_content_sha256": v4.content_hash(actual),
+                },
+            )
+        provenance = run / "input-provenance.json"
+        if failure == "missing":
+            provenance.unlink()
+        elif failure == "empty_object":
+            save(provenance, {})
+        elif failure == "empty_file":
+            provenance.write_bytes(b"")
+        elif failure == "non_mapping":
+            save(provenance, [])
+        elif failure == "malformed":
+            provenance.write_bytes(b"{")
+        elif failure == "missing_original":
+            (run / "question-original.txt").unlink()
+        elif failure in {"missing_hash", "wrong_hash"}:
+            doc = json.loads(provenance.read_bytes())
+            if failure == "missing_hash":
+                doc.pop("original_user_content_sha256")
+            else:
+                doc["actual_user_content_sha256"] = "a" * 64
+            save(provenance, doc)
+        scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+        assert outcome.report is not None and outcome.report.summary
+        assert scenario.agent_input.actual_user_content == actual
+        assert len(scenario.trusted.artifacts) == len(scenario.trusted.deliveries) == 1
+        assert len(scenario.trusted.observed_actions) == (1 if mode == "normal" else 0)
+        errors = v4.check_outcome(scenario, outcome)
+        if failure == "valid":
+>           assert errors == []
+E           AssertionError: assert ['INITIAL_INP...BLY_MISMATCH'] == []
+E             
+E             Left contains one more item: 'INITIAL_INPUT_REASSEMBLY_MISMATCH'
+E             Use -v to get more diff
+
+tests/test_m0_holmes_bridge_v4.py:770: AssertionError
+_________ test_unregistered_user_rejected_in_every_run_shape[initial] __________
+
+request = <FixtureRequest for <Function test_unregistered_user_rejected_in_every_run_shape[initial]>>
+mode = 'initial'
+
+    @pytest.mark.parametrize("mode", ["ordinary", "initial", "reportless", "multistep"])
+    def test_unregistered_user_rejected_in_every_run_shape(request, mode):
+        run, code = request.getfixturevalue(
+            "initial_captured" if mode == "initial" else "strict_captured"
+        )
+        scenario, outcome = bridge.load_packet(run, projection_source_sha256=code)
+        s, o = scenario.model_dump(mode="json"), outcome.model_dump(mode="json")
+        if mode == "reportless":
+            s["trusted"].update(
+                execution="blocked", report_capture=None, evaluation_at=None
+            )
+            o.update(
+                execution="blocked",
+                report=None,
+                report_content=None,
+                report_content_sha256=None,
+                report_step_id=None,
+                report_request_id=None,
+                evidence_ids=[],
+                handoff=True,
+                handoff_reasons=["Review"],
+            )
+        if mode == "multistep":
+            from copy import deepcopy
+    
+            earlier = deepcopy(s["trusted"]["deliveries"][0])
+            earlier.update(step_id="case-01:report-step:1", request_id="case-01-http-1")
+            s["trusted"]["deliveries"].insert(0, earlier)
+    
+        def checked_packet():
+            return v4.check_outcome(
+                v4.IncidentScenario.model_validate_json(json.dumps(s)),
+                v4.IncidentOutcome.model_validate_json(json.dumps(o)),
+            )
+    
+>       assert checked_packet() == []
+E       AssertionError: assert ['INITIAL_INP...BLY_MISMATCH'] == []
+E         
+E         Left contains one more item: 'INITIAL_INPUT_REASSEMBLY_MISMATCH'
+E         Use -v to get more diff
+
+tests/test_m0_holmes_bridge_v4.py:1010: AssertionError
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:100: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:151: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:185: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:58: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:70: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:91: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:111: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:122: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:38: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:67: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:84: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:105: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:91: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:124: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:167: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:184: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:217: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:250: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:291: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:312: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:350: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:358: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:376: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:424: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:451: explicit PG opt-in required
+SKIPPED [3] tests/integration/test_m0_step_store_postgres.py:469: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:576: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:641: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:659: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:716: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:744: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:788: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:815: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:858: explicit PG opt-in required
+FAILED tests/test_m0_holmes_bridge_v4.py::test_report_only_initial_raw_and_actual_input_reach_strict_seam
+FAILED tests/test_m0_holmes_bridge_v4.py::test_cli_reportless_audit_survives_subprocess[valid_report]
+FAILED tests/test_m0_holmes_bridge_v4.py::test_bridge_preserves_current_interface_restriction[interfaces0]
+FAILED tests/test_m0_holmes_bridge_v4.py::test_cli_strict_input_provenance_is_required[valid-import]
+FAILED tests/test_m0_holmes_bridge_v4.py::test_unregistered_user_rejected_in_every_run_shape[initial]
+================== 5 failed, 713 passed, 44 skipped in 20.97s ==================
+make: *** [check] Error 1

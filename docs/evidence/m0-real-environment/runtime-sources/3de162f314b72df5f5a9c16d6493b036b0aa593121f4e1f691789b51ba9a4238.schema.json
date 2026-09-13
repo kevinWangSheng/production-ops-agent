@@ -1,0 +1,1494 @@
+{
+  "$defs": {
+    "AccessScope": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "compose": "#/$defs/ComposeTarget",
+                "integration": "#/$defs/IntegrationTarget",
+                "kubernetes": "#/$defs/KubernetesTarget"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/KubernetesTarget"
+              },
+              {
+                "$ref": "#/$defs/ComposeTarget"
+              },
+              {
+                "$ref": "#/$defs/IntegrationTarget"
+              }
+            ]
+          },
+          "title": "Targets",
+          "type": "array"
+        },
+        "interfaces": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Interfaces",
+          "type": "array"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "services": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Services",
+          "type": "array"
+        }
+      },
+      "required": [
+        "revision",
+        "targets",
+        "interfaces",
+        "window"
+      ],
+      "title": "AccessScope",
+      "type": "object"
+    },
+    "Action": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "query",
+            "mutate",
+            "release_gate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "discriminator": {
+            "mapping": {
+              "compose": "#/$defs/ComposeTarget",
+              "integration": "#/$defs/IntegrationTarget",
+              "kubernetes": "#/$defs/KubernetesTarget"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/KubernetesTarget"
+            },
+            {
+              "$ref": "#/$defs/ComposeTarget"
+            },
+            {
+              "$ref": "#/$defs/IntegrationTarget"
+            }
+          ],
+          "title": "Target"
+        },
+        "interface": {
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "attempted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attempted"
+        },
+        "authorized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Authorized"
+        },
+        "executed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Executed"
+        },
+        "evidence_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Id"
+        },
+        "audit_basis": {
+          "minLength": 1,
+          "title": "Audit Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "interface",
+        "attempted",
+        "authorized",
+        "executed",
+        "audit_basis"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "AgentInput": {
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "request": {
+          "minLength": 1,
+          "title": "Request",
+          "type": "string"
+        },
+        "initial_views": {
+          "items": {
+            "$ref": "#/$defs/EvidenceView"
+          },
+          "title": "Initial Views",
+          "type": "array"
+        },
+        "evidence_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "original_user_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original User Content"
+        },
+        "original_user_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original User Content Sha256"
+        },
+        "actual_user_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual User Content"
+        },
+        "actual_user_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual User Content Sha256"
+        },
+        "unverified_initial_views": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UnverifiedInitialView"
+          },
+          "title": "Unverified Initial Views",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subject",
+        "request",
+        "initial_views"
+      ],
+      "title": "AgentInput",
+      "type": "object"
+    },
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "interface": {
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "compose": "#/$defs/ComposeTarget",
+                "integration": "#/$defs/IntegrationTarget",
+                "kubernetes": "#/$defs/KubernetesTarget"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/KubernetesTarget"
+              },
+              {
+                "$ref": "#/$defs/ComposeTarget"
+              },
+              {
+                "$ref": "#/$defs/IntegrationTarget"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Targets",
+          "type": "array"
+        },
+        "query": {
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/Window"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_data",
+            "stale",
+            "invalid_input",
+            "denied",
+            "connectivity",
+            "timeout",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "raw": {
+          "minLength": 1,
+          "title": "Raw",
+          "type": "string"
+        },
+        "raw_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Raw Hash",
+          "type": "string"
+        },
+        "projection_revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Revision"
+        }
+      },
+      "required": [
+        "id",
+        "interface",
+        "targets",
+        "query",
+        "window",
+        "captured_at",
+        "status",
+        "raw",
+        "raw_hash"
+      ],
+      "title": "Artifact",
+      "type": "object"
+    },
+    "ComposeTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "compose",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "deployment_instance": {
+          "minLength": 1,
+          "title": "Deployment Instance",
+          "type": "string"
+        },
+        "service": {
+          "minLength": 1,
+          "title": "Service",
+          "type": "string"
+        },
+        "container_id": {
+          "minLength": 1,
+          "title": "Container Id",
+          "type": "string"
+        },
+        "image_digest": {
+          "minLength": 1,
+          "title": "Image Digest",
+          "type": "string"
+        },
+        "telemetry_instance": {
+          "minLength": 1,
+          "title": "Telemetry Instance",
+          "type": "string"
+        },
+        "mapping_revision": {
+          "minLength": 1,
+          "title": "Mapping Revision",
+          "type": "string"
+        },
+        "config_revision": {
+          "minLength": 1,
+          "title": "Config Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "deployment_instance",
+        "service",
+        "container_id",
+        "image_digest",
+        "telemetry_instance",
+        "mapping_revision",
+        "config_revision"
+      ],
+      "title": "ComposeTarget",
+      "type": "object"
+    },
+    "ControlEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "minimum": 1,
+          "title": "Generation",
+          "type": "integer"
+        },
+        "action": {
+          "enum": [
+            "cancel",
+            "correct",
+            "new_run"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation",
+        "action",
+        "at"
+      ],
+      "title": "ControlEvent",
+      "type": "object"
+    },
+    "Delivery": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "step_id": {
+          "minLength": 1,
+          "title": "Step Id",
+          "type": "string"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "control_generation": {
+          "minimum": 0,
+          "title": "Control Generation",
+          "type": "integer"
+        },
+        "business_projection": {
+          "enum": [
+            "envelope-v1",
+            "holmes-user-tool-v1"
+          ],
+          "title": "Business Projection",
+          "type": "string"
+        },
+        "business_projection_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Business Projection Hash",
+          "type": "string"
+        },
+        "business_projection_content": {
+          "minLength": 1,
+          "title": "Business Projection Content",
+          "type": "string"
+        },
+        "full_wire_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Full Wire Hash",
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "$ref": "#/$defs/EvidenceView"
+          },
+          "title": "Views",
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "prepared",
+            "dispatched",
+            "response_committed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/EvidenceContext"
+        },
+        "dispatch_started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dispatch Started At"
+        },
+        "response_received_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Received At"
+        }
+      },
+      "required": [
+        "run_id",
+        "step_id",
+        "request_id",
+        "control_generation",
+        "business_projection",
+        "business_projection_hash",
+        "business_projection_content",
+        "full_wire_hash",
+        "views",
+        "state",
+        "context"
+      ],
+      "title": "Delivery",
+      "type": "object"
+    },
+    "EvidenceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "opspilot-evidence-context-v4",
+          "default": "opspilot-evidence-context-v4",
+          "title": "Type",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "target_catalog": {
+          "additionalProperties": {
+            "discriminator": {
+              "mapping": {
+                "compose": "#/$defs/ComposeTarget",
+                "integration": "#/$defs/IntegrationTarget",
+                "kubernetes": "#/$defs/KubernetesTarget"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/KubernetesTarget"
+              },
+              {
+                "$ref": "#/$defs/ComposeTarget"
+              },
+              {
+                "$ref": "#/$defs/IntegrationTarget"
+              }
+            ]
+          },
+          "title": "Target Catalog",
+          "type": "object"
+        },
+        "view_bindings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ViewBinding"
+          },
+          "title": "View Bindings",
+          "type": "object"
+        },
+        "time_policies": {
+          "items": {
+            "$ref": "#/$defs/TimePolicy"
+          },
+          "title": "Time Policies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "target_catalog",
+        "view_bindings",
+        "time_policies"
+      ],
+      "title": "EvidenceContext",
+      "type": "object"
+    },
+    "EvidenceView": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "raw_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Raw Hash",
+          "type": "string"
+        },
+        "projection": {
+          "enum": [
+            "json-fields-v1",
+            "holmes-tool-v2"
+          ],
+          "title": "Projection",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "view_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "View Hash",
+          "type": "string"
+        },
+        "total_fields": {
+          "minimum": 0,
+          "title": "Total Fields",
+          "type": "integer"
+        },
+        "retained_fields": {
+          "minimum": 0,
+          "title": "Retained Fields",
+          "type": "integer"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "context_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Hash"
+        },
+        "projection_source_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Source Sha256"
+        },
+        "projection_revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Revision"
+        },
+        "projection_dependencies_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Dependencies Sha256"
+        }
+      },
+      "required": [
+        "id",
+        "artifact_id",
+        "raw_hash",
+        "projection",
+        "fields",
+        "content",
+        "view_hash",
+        "total_fields",
+        "retained_fields",
+        "truncated"
+      ],
+      "title": "EvidenceView",
+      "type": "object"
+    },
+    "IntegrationTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "integration",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "deployment_instance": {
+          "minLength": 1,
+          "title": "Deployment Instance",
+          "type": "string"
+        },
+        "mapping_revision": {
+          "minLength": 1,
+          "title": "Mapping Revision",
+          "type": "string"
+        },
+        "service_identity": {
+          "const": "unknown",
+          "title": "Service Identity",
+          "type": "string"
+        },
+        "observed_services": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Observed Services",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "deployment_instance",
+        "mapping_revision",
+        "service_identity",
+        "observed_services"
+      ],
+      "title": "IntegrationTarget",
+      "type": "object"
+    },
+    "KubernetesTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "kubernetes",
+          "title": "Kind",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "cluster_uid": {
+          "minLength": 1,
+          "title": "Cluster Uid",
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "resource_uid": {
+          "minLength": 1,
+          "title": "Resource Uid",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "integration_id",
+        "cluster_uid",
+        "namespace",
+        "resource_uid",
+        "revision"
+      ],
+      "title": "KubernetesTarget",
+      "type": "object"
+    },
+    "ProjectionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "registry": {
+          "additionalProperties": true,
+          "title": "Registry",
+          "type": "object"
+        },
+        "registry_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Registry Hash",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "source_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Path"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProjectionDependency"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "registry",
+        "registry_hash",
+        "source_sha256"
+      ],
+      "title": "ProjectionContext",
+      "type": "object"
+    },
+    "ProjectionDependency": {
+      "additionalProperties": false,
+      "properties": {
+        "module": {
+          "enum": [
+            "legacy_projections",
+            "trace_view"
+          ],
+          "title": "Module",
+          "type": "string"
+        },
+        "source_path": {
+          "minLength": 1,
+          "title": "Source Path",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "module",
+        "source_path",
+        "source_sha256"
+      ],
+      "title": "ProjectionDependency",
+      "type": "object"
+    },
+    "ReportCapture": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "step_id": {
+          "minLength": 1,
+          "title": "Step Id",
+          "type": "string"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "control_generation": {
+          "minimum": 0,
+          "title": "Control Generation",
+          "type": "integer"
+        },
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "response_received_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Received At"
+        }
+      },
+      "required": [
+        "run_id",
+        "step_id",
+        "request_id",
+        "control_generation",
+        "content",
+        "content_sha256"
+      ],
+      "title": "ReportCapture",
+      "type": "object"
+    },
+    "Subject": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "incident",
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "discriminator": {
+            "mapping": {
+              "compose": "#/$defs/ComposeTarget",
+              "integration": "#/$defs/IntegrationTarget",
+              "kubernetes": "#/$defs/KubernetesTarget"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/KubernetesTarget"
+            },
+            {
+              "$ref": "#/$defs/ComposeTarget"
+            },
+            {
+              "$ref": "#/$defs/IntegrationTarget"
+            }
+          ],
+          "title": "Target"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "target"
+      ],
+      "title": "Subject",
+      "type": "object"
+    },
+    "TimePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "integration_id": {
+          "minLength": 1,
+          "title": "Integration Id",
+          "type": "string"
+        },
+        "interfaces": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Interfaces",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "historical_window",
+            "current"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "reference_rule": {
+          "enum": [
+            "dispatch_started_at",
+            "response_received_at"
+          ],
+          "title": "Reference Rule",
+          "type": "string"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Window"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_source_age_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Source Age Seconds"
+        },
+        "target_refs": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Target Refs",
+          "type": "array"
+        },
+        "all_authorized_targets": {
+          "default": false,
+          "title": "All Authorized Targets",
+          "type": "boolean"
+        },
+        "scope_revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope Revision"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "integration_id",
+        "interfaces",
+        "mode",
+        "reference_rule"
+      ],
+      "title": "TimePolicy",
+      "type": "object"
+    },
+    "Timing": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Started At"
+        },
+        "collection_completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Completed At"
+        },
+        "source_start_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Start At"
+        },
+        "source_end_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source End At"
+        },
+        "source_time_basis": {
+          "default": "unknown",
+          "enum": [
+            "event_time",
+            "source_sample_time",
+            "source_coverage",
+            "unknown"
+          ],
+          "title": "Source Time Basis",
+          "type": "string"
+        }
+      },
+      "title": "Timing",
+      "type": "object"
+    },
+    "TimingRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "view_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "View Hash",
+          "type": "string"
+        },
+        "timing": {
+          "$ref": "#/$defs/Timing"
+        }
+      },
+      "required": [
+        "view_hash",
+        "timing"
+      ],
+      "title": "TimingRecord",
+      "type": "object"
+    },
+    "TrustedFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/AccessScope"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/Delivery"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "controls": {
+          "items": {
+            "$ref": "#/$defs/ControlEvent"
+          },
+          "title": "Controls",
+          "type": "array"
+        },
+        "final_generation": {
+          "minimum": 0,
+          "title": "Final Generation",
+          "type": "integer"
+        },
+        "current_run": {
+          "minLength": 1,
+          "title": "Current Run",
+          "type": "string"
+        },
+        "execution": {
+          "enum": [
+            "queued",
+            "running",
+            "waiting_human",
+            "paused",
+            "blocked",
+            "completed",
+            "failed",
+            "cancelled",
+            "budget_exhausted"
+          ],
+          "title": "Execution",
+          "type": "string"
+        },
+        "observed_actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "title": "Observed Actions",
+          "type": "array"
+        },
+        "projection_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectionContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "time_policies": {
+          "items": {
+            "$ref": "#/$defs/TimePolicy"
+          },
+          "title": "Time Policies",
+          "type": "array"
+        },
+        "evaluation_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evaluation At"
+        },
+        "report_capture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportCapture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "timing_records": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TimingRecord"
+          },
+          "default": {},
+          "title": "Timing Records",
+          "type": "object"
+        }
+      },
+      "required": [
+        "scope",
+        "artifacts",
+        "deliveries",
+        "controls",
+        "final_generation",
+        "current_run",
+        "execution",
+        "observed_actions",
+        "time_policies"
+      ],
+      "title": "TrustedFacts",
+      "type": "object"
+    },
+    "UnverifiedInitialView": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "minLength": 1,
+          "title": "Location",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location",
+        "content",
+        "content_sha256",
+        "reason"
+      ],
+      "title": "UnverifiedInitialView",
+      "type": "object"
+    },
+    "ViewBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "view_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "View Hash",
+          "type": "string"
+        },
+        "target_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Target Refs",
+          "type": "array"
+        },
+        "time_scope_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Time Scope Refs",
+          "type": "array"
+        },
+        "timing": {
+          "$ref": "#/$defs/Timing"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_data",
+            "stale",
+            "invalid_input",
+            "denied",
+            "connectivity",
+            "timeout",
+            "failed",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "view_hash",
+        "target_refs",
+        "time_scope_refs",
+        "timing",
+        "status"
+      ],
+      "title": "ViewBinding",
+      "type": "object"
+    },
+    "Window": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Window",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "m0-public-v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scenario_id": {
+      "minLength": 1,
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Versions",
+      "type": "object"
+    },
+    "agent_input": {
+      "$ref": "#/$defs/AgentInput"
+    },
+    "trusted": {
+      "$ref": "#/$defs/TrustedFacts"
+    }
+  },
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "versions",
+    "agent_input",
+    "trusted"
+  ],
+  "title": "IncidentScenario",
+  "type": "object"
+}

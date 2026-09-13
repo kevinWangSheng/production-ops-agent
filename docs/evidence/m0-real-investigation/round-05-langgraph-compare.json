@@ -1,0 +1,11 @@
+{
+  "status": "compared",
+  "reason": null,
+  "langgraph_version": "1.2.11",
+  "existing_loop": {"steps": ["otel_services", "otel_traces"], "persistence_points": 2, "cancelled": true},
+  "langgraph": {"steps": ["otel_services", "otel_traces"], "persistence_points": 2, "cancelled": true},
+  "decision": "推迟",
+  "model_http": 0,
+  "tool_http": 0,
+  "note": "uv run --with langgraph 隔离安装 langgraph 1.2.11，仅运行固定替身序列；两条路径步骤/持久点/取消结果相同，未产生模型或工具 HTTP。"
+}

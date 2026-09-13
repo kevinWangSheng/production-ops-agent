@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 3 items
+
+tests/test_m0_holmes_round02.py::test_tool_deadline_is_rechecked_after_lock_wait PASSED [ 33%]
+tests/test_m0_holmes_round02.py::test_tool_remaining_under_four_seconds_reports_query_deadline PASSED [ 66%]
+tests/test_m0_holmes_round02.py::test_tool_remaining_near_run_deadline_reports_run_deadline PASSED [100%]
+
+============================== 3 passed in 0.11s ===============================

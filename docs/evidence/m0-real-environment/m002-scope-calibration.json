@@ -1,0 +1,27 @@
+{
+  "basis": "actual m002-normal-01 observations include flagd in mixed trace process/service and metrics; live registry maps existing container",
+  "services": [
+    "accounting",
+    "ad",
+    "cart",
+    "checkout",
+    "currency",
+    "email",
+    "fraud-detection",
+    "frontend",
+    "frontend-proxy",
+    "image-provider",
+    "kafka",
+    "load-generator",
+    "payment",
+    "product-catalog",
+    "quote",
+    "recommendation",
+    "shipping",
+    "flagd"
+  ],
+  "scope_revision": "m0-02-v1-actual-sources",
+  "new_integrations": 0,
+  "injection_configuration_exposed": false,
+  "no_model_call_before_update": true
+}

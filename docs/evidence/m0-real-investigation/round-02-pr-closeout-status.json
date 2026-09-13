@@ -1,0 +1,115 @@
+{
+  "checked_at": "2026-09-11T02:25:28.885466+00:00",
+  "code_review": {
+    "status": "awaiting_bot_review_after_question_and_human_state_fixes",
+    "base": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
+    "findings": [
+      3982439739,
+      3982439749
+    ],
+    "patch_sha256": "a78b8c179285db66b2f1b82236478c2bd4d58beb1cf8e74a8d90699821956d04",
+    "implementer_tests": "677 passed; 44 PG default skipped",
+    "evidence": "round-02-bot-question-human-fix.md"
+  },
+  "security_review": {
+    "current_head_status": "awaiting_new_commit_review",
+    "request": 5617955725,
+    "last_completed_head": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
+    "last_completed_result": "no_security_issues_found",
+    "old_result_covers_current_substantive_changes": false,
+    "evidence_comment": 5623855528
+  },
+  "pr_ready": false,
+  "merged": false,
+  "product_M1_gate": "not_cleared_report_quality_FAIL",
+  "model_http_requests": 20,
+  "trace_uploads": 0,
+  "dedicated_services_stopped": true,
+  "data_worktrees_preserved": true,
+  "next": "Use GitHub bot Code/Security review after this completed local round; M0-03 quality revalidation still needs a new separate real-model experiment authorization.",
+  "resume_attempts": [
+    {
+      "checked_at": "2026-09-10T11:44:22.906974+00:00",
+      "head": "f642020e1ad1f9fdffde7601d9d63724d7f27920",
+      "code_request": 5618109992,
+      "security_request": 5618110448,
+      "code_result": "usage_limit_repeated",
+      "code_result_evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5618111383",
+      "security_status": "no_acknowledgement_or_result",
+      "new_model_http": 0,
+      "new_trace_uploads": 0
+    }
+  ],
+  "prior_remote_code_review": {
+    "status": "unavailable_usage_limit",
+    "evidence": "https://github.com/kevinWangSheng/production-ops-agent/pull/16#issuecomment-5617957215",
+    "message": "You have reached your Codex usage limits for code reviews."
+  },
+  "remaining_review_blocker": "Latest fixed code requires bot Code/Security review",
+  "local_code_review_completed_round": {
+    "status": "completed_local_user_authorized_substitute",
+    "skill": "eng:code-review",
+    "reviewed_base": "e9d22e9183601ae322f006f4a42d9dd2bbcbae84",
+    "reviewed_head": "af24646eb02da3de2839005a7a3ea361fd7ac914",
+    "patch_sha256": "1b0553501438c50722c6c8d88daaeaa08414d19428f63660ebd9067fe58aa319",
+    "standards_hard_violations": 0,
+    "standards_nonblocking_suggestions": 2,
+    "spec_original_P2": 1,
+    "spec_P2_resolved": 1,
+    "blocking_findings_remaining": 0,
+    "evidence": "round-02-local-code-review.md"
+  },
+  "historical_implementation_commit": "a100c90",
+  "implementation_ref": {
+    "base_commit": "a783fc2ee56a87bc45f11c56de0f620a731cfd4a",
+    "patch_sha256": "a78b8c179285db66b2f1b82236478c2bd4d58beb1cf8e74a8d90699821956d04",
+    "changed_file_hashes": {
+      "scripts/m0_environment/holmes_baseline.py": "c3b7a353dbde8f2f7095e7d8b918a04959336711f56a5f13c7fd800bf8b42eb6",
+      "scripts/m0_environment/initial_evidence.py": "5e28e5b7f705593ea8cf7ab77a18167e5e4ed9ba65c418679d90e88f7d109732",
+      "tests/test_m0_question_paths.py": "bb93c64e7e07c469955979eac423f09389372056893ba5c284d5b8c8792a9dc5",
+      "scripts/m0/outcomes_v4.py": "445db5cf77cee4960130026e6feca4c89877347ca3420d019c97629a353a6487",
+      "tests/test_m0_outcomes_v4.py": "ff143d067d95668304e364f8b0634c5da09792a75ed3efc060a1579336876bdd"
+    }
+  },
+  "historical_ci_snapshot": {
+    "head": "56b17f718f2d410b958678deaa0661479b0dafe3",
+    "run": 34471557918,
+    "checks": "success",
+    "m0_postgres": "success"
+  },
+  "current_ci_status": "passed_local_make_check_after_budget_clock_fix",
+  "prior_bot_fix_rounds": [
+    {
+      "status": "awaiting_bot_review_after_fix",
+      "user_workflow": "resume GitHub bot after completed local review round",
+      "reviewed_base": "cec52d2850bc457a7619b3f03ffd62f2b64fc40d",
+      "finding": 3979271073,
+      "fix_patch_sha256": "46b422684ac12e08f37081f2de47c816e926dcc9731190b4067da1a9d1f85e3b",
+      "implementer_tests": "615 passed; 44 PG default skipped; 11 actual Holmes fake-pipe cases",
+      "evidence": "round-02-bot-timing-sidecar-fix.md"
+    },
+    {
+      "status": "awaiting_bot_review_after_control_chronology_fix",
+      "base": "61850c163b9f7e42551b24978ec61afb905285dc",
+      "finding": 3979613299,
+      "patch_sha256": "4a088c7dbdfa2d6dd439250841bc510521f627490079af54c20c7f9a5c2ba008",
+      "implementer_tests": "636 passed; 44 PG default skipped",
+      "evidence": "round-02-bot-control-time-fix.md"
+    },
+    {
+      "status": "awaiting_bot_review_after_projector_authenticity_fix",
+      "base": "d61f80a4f6b5797bd0c02d3ff2a7c8ee58844ee6",
+      "finding": 3981914677,
+      "patch_sha256": "df936571883011a91a8a4d11c7a21f0098bbab048df336516f60a368fa7c52ea",
+      "implementer_tests": "651 passed; 44 PG default skipped",
+      "evidence": "round-02-bot-projector-trust-fix.md"
+    }
+  ],
+  "active_fake_probe_limit": "Candidate and d61 baseline both failed after the pre-existing 2026-09-10T17:14:30Z query authorization deadline; not renewed, not claimed as pass.",
+  "budget_test_clock_fix": {
+    "base": "aefa0d7eb7350bff836caf3504bf01e19611db78",
+    "patch_sha256": "126e3c41caca49a1f9f301028096fde3e177b42bc206767f1a8e4b9a2d74276b",
+    "full_check": "round-02-bot-budget-full-check.txt",
+    "production_deadline_unchanged": true
+  }
+}

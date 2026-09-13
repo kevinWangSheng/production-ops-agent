@@ -113,3 +113,58 @@ def test_backend_cannot_open_network():
         .code
         == "TRACE_UPLOAD_FAILED"
     )
+
+
+def test_cross_run_linkage_fields_roundtrip_without_upload():
+    """subject_id/attempt link Runs of one subject; verified against a local fake backend only."""
+    run = RunContext(
+        uuid4(), uuid4(), "deepseek", datetime(2026, 9, 12, tzinfo=timezone.utc)
+    )
+    subject_id = uuid4()
+    backend = Backend()
+    raw = {
+        "run_id": str(run.run_id),
+        "request_count": 1,
+        "status": "completed",
+        "subject_id": str(subject_id),
+        "attempt": 2,
+        "api_key": "SYNTHETIC_SECRET",
+    }
+    assert TraceAdapter(backend).export(run, raw).code == "TRACE_VERIFIED_SYNTHETIC"
+    assert backend.payload["subject_id"] == str(subject_id)
+    assert backend.payload["attempt"] == 2
+    assert backend.payload["run_id"] == str(run.run_id)
+    assert backend.payload["experiment_id"] == str(run.experiment_id)
+    assert "api_key" not in backend.payload
+    # Without the optional field the DTO is unchanged for existing callers.
+    del raw["subject_id"], raw["attempt"]
+    assert TraceAdapter(Backend()).export(run, raw).code == "TRACE_VERIFIED_SYNTHETIC"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("subject_id", "SYNTHETIC_SECRET"),
+        ("subject_id", 7),
+        ("subject_id", ""),
+        ("attempt", 0),
+        ("attempt", 9),
+        ("attempt", True),
+        ("attempt", "1"),
+    ],
+)
+def test_cross_run_linkage_fields_fail_closed_and_do_not_upload(field, value):
+    run = RunContext(
+        uuid4(), uuid4(), "deepseek", datetime(2026, 9, 12, tzinfo=timezone.utc)
+    )
+    backend = Backend()
+    raw = {
+        "run_id": str(run.run_id),
+        "request_count": 1,
+        "status": "completed",
+        "subject_id": str(uuid4()),
+        "attempt": 1,
+    }
+    raw[field] = value
+    assert TraceAdapter(backend).export(run, raw).code == "TRACE_INPUT_INVALID"
+    assert backend.uploads == 0

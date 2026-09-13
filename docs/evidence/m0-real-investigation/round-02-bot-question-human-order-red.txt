@@ -1,0 +1,147 @@
+ssssssssssssssssssssssssssssssssssssssssssss............................ [ 10%]
+........................................................................ [ 20%]
+........................................................................ [ 30%]
+........................................................................ [ 40%]
+.......................FFF.............................................. [ 50%]
+........................................................................ [ 60%]
+........................................................................ [ 70%]
+........................................................................ [ 80%]
+........................................................................ [ 90%]
+........................................................................ [100%]
+=================================== FAILURES ===================================
+____________ test_every_active_step_count_requires_trusted_scope[3] ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ed7ab40>, steps = 3
+
+    @pytest.mark.parametrize("steps", [3, 4])
+    def test_every_active_step_count_requires_trusted_scope(monkeypatch, steps):
+        from scripts.m0_environment.holmes_baseline import main
+    
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "holmes_baseline.py",
+                "--phase",
+                "normal",
+                "--max-steps",
+                str(steps),
+                "--run-id",
+                "scope-denial",
+                "--question-file",
+                "not-read.json",
+                "--preflight-only",
+            ],
+        )
+>       with pytest.raises(ValueError, match="trusted scope required"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'trusted scope required'
+E         Actual message: 'INITIAL_SOURCE_MISSING'
+
+tests/test_m0_holmes_round02.py:607: AssertionError
+____________ test_every_active_step_count_requires_trusted_scope[4] ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ed44e00>, steps = 4
+
+    @pytest.mark.parametrize("steps", [3, 4])
+    def test_every_active_step_count_requires_trusted_scope(monkeypatch, steps):
+        from scripts.m0_environment.holmes_baseline import main
+    
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "holmes_baseline.py",
+                "--phase",
+                "normal",
+                "--max-steps",
+                str(steps),
+                "--run-id",
+                "scope-denial",
+                "--question-file",
+                "not-read.json",
+                "--preflight-only",
+            ],
+        )
+>       with pytest.raises(ValueError, match="trusted scope required"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'trusted scope required'
+E         Actual message: 'INITIAL_SOURCE_MISSING'
+
+tests/test_m0_holmes_round02.py:607: AssertionError
+___________________ test_three_steps_cannot_use_report_phase ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ed45850>
+
+    def test_three_steps_cannot_use_report_phase(monkeypatch):
+        from scripts.m0_environment.holmes_baseline import main
+    
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "holmes_baseline.py",
+                "--phase",
+                "report",
+                "--max-steps",
+                "3",
+                "--run-id",
+                "scope-denial",
+                "--question-file",
+                "not-read.json",
+                "--preflight-only",
+            ],
+        )
+>       with pytest.raises(ValueError, match="report phase cannot query"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'report phase cannot query'
+E         Actual message: 'INITIAL_SOURCE_MISSING'
+
+tests/test_m0_holmes_round02.py:630: AssertionError
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:100: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:151: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:185: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:58: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:70: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:91: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:111: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:122: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:38: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:67: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:84: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:105: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:91: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:124: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:167: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:184: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:217: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:250: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:291: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:312: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:350: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:358: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:376: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:424: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:451: explicit PG opt-in required
+SKIPPED [3] tests/integration/test_m0_step_store_postgres.py:469: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:576: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:641: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:659: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:716: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:744: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:788: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:815: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:858: explicit PG opt-in required
+FAILED tests/test_m0_holmes_round02.py::test_every_active_step_count_requires_trusted_scope[3]
+FAILED tests/test_m0_holmes_round02.py::test_every_active_step_count_requires_trusted_scope[4]
+FAILED tests/test_m0_holmes_round02.py::test_three_steps_cannot_use_report_phase
+3 failed, 673 passed, 44 skipped in 19.93s

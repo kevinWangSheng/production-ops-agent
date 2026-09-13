@@ -1,0 +1,3 @@
+waiting for server to shut down.... done
+server stopped
+stop_exit=0

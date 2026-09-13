@@ -1,0 +1,18 @@
+{
+  "run_id": "m002-normal-03",
+  "contract_consistent": false,
+  "violations": [
+    "LEGACY_REPORT_REQUIRES_EXPLICIT_REPLAY"
+  ],
+  "original_report_sha256": "5b63ffc5394ab4773ec187e0aae3334a12fa5b2b3dc33b4f9c051e9efaf01461",
+  "strict_scope": "unknown",
+  "strict_freshness": "unknown",
+  "current_acceptance_pass": false,
+  "publication": "metadata_only_full_business_report_retained_locally",
+  "full_replay_local_path": "tmp/m002-v4-replays/round-02-normal03-v4-compatibility.json",
+  "full_replay_sha256": "4e6af3eafdd1bde9e17ff592c685842868d735dbfd8ec56642d288c6724d5874",
+  "original_report_content_bytes": 9441,
+  "report_summary_characters": 1218,
+  "report_claim_count": 16,
+  "report_next_steps_count": 4
+}

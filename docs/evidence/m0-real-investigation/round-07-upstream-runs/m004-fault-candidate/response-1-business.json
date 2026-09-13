@@ -1,0 +1,105 @@
+{
+  "id": "e2fa6fe4-17c3-4b0c-a2ba-f635e88aac75",
+  "object": "chat.completion",
+  "created": 1789241365,
+  "model": "deepseek-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'll begin by gathering the authorized evidence in parallel.",
+        "tool_calls": [
+          {
+            "index": 0,
+            "id": "call_00_BKONXldU8ZgUIutiE16B8103",
+            "type": "function",
+            "function": {
+              "name": "otel_services",
+              "arguments": "{}"
+            }
+          },
+          {
+            "index": 1,
+            "id": "call_01_poNX1wMBdEwD6xFmyl6O4134",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 2,
+            "id": "call_02_KJO5nUQBz8KuP4OUWPpr9001",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\\\"checkout\\\"}[5m]))\"}"
+            }
+          },
+          {
+            "index": 3,
+            "id": "call_03_QeIGaLR7V4PmB0y0wrJm4440",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"histogram_quantile(0.95, sum by(le,service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=\\\"checkout\\\"}[5m])))\"}"
+            }
+          },
+          {
+            "index": 4,
+            "id": "call_04_kew0McE1BjDBh3JgWsX65754",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum(increase(app_payment_transactions_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 5,
+            "id": "call_05_GM2x4BcJopAkfqNmDsry4656",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"checkout\"}"
+            }
+          },
+          {
+            "index": 6,
+            "id": "call_06_UiAdNtxNp1eTEyWghD3s4827",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"payment\"}"
+            }
+          },
+          {
+            "index": 7,
+            "id": "call_07_5JlKkoMa7x4BCpqhi5Bl6351",
+            "type": "function",
+            "function": {
+              "name": "otel_logs",
+              "arguments": "{\"service\": \"frontend-proxy\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1416,
+    "completion_tokens": 388,
+    "total_tokens": 1804,
+    "prompt_tokens_details": {
+      "cached_tokens": 640
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 32
+    },
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 776
+  },
+  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+}

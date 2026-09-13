@@ -1,0 +1,68 @@
+[
+  {
+    "ordinal": 1,
+    "request_bytes": 12158,
+    "message_count": 2,
+    "tool_schema_count": 5,
+    "tool_choice": "auto",
+    "request_model": "deepseek-v4-flash",
+    "max_tokens": 8192,
+    "thinking": {
+      "type": "enabled"
+    },
+    "reasoning_effort": "high",
+    "http_status": 200,
+    "response_bytes": 3087,
+    "response_sha256": "25265b9625c6a412b3fcadf97246515bcb1833b374708cd4be364f70d596e5b8",
+    "elapsed_seconds": 2.173,
+    "usage": {
+      "prompt_tokens": 2916,
+      "completion_tokens": 581,
+      "total_tokens": 3497,
+      "prompt_tokens_details": {
+        "cached_tokens": 1920
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 1920,
+      "prompt_cache_miss_tokens": 996
+    },
+    "response_model": "deepseek-flash",
+    "finish_reason": "tool_calls",
+    "tool_call_count": 9
+  },
+  {
+    "ordinal": 2,
+    "request_bytes": 33407,
+    "message_count": 12,
+    "tool_schema_count": 0,
+    "tool_choice": null,
+    "request_model": "deepseek-v4-flash",
+    "max_tokens": 8192,
+    "thinking": {
+      "type": "enabled"
+    },
+    "reasoning_effort": "high",
+    "http_status": 200,
+    "response_bytes": 4391,
+    "response_sha256": "194bdba4cde295a390019f798b6dc487b56ac3de389b5ced18aadaa6f659e742",
+    "elapsed_seconds": 4.064,
+    "usage": {
+      "prompt_tokens": 10372,
+      "completion_tokens": 907,
+      "total_tokens": 11279,
+      "prompt_tokens_details": {
+        "cached_tokens": 1664
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 524
+      },
+      "prompt_cache_hit_tokens": 1664,
+      "prompt_cache_miss_tokens": 8708
+    },
+    "response_model": "deepseek-flash",
+    "finish_reason": "stop",
+    "tool_call_count": 0
+  }
+]

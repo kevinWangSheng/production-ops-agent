@@ -1,0 +1,5 @@
+{
+  "scripts/m0/outcomes_v3.py": "aa42ba5594648e7408a85e4ef80182ec7705d76fd011c0111f69ad43cddc68ee",
+  "scripts/m0/holmes_bridge.py": "e1c9bca7351dddfa79ecff268c1cbe2257f994021b65b420e1fe2dcc62b03389",
+  "tests/test_m0_holmes_bridge.py": "b977d3553d6871ea0f402d80b97594b9e5d7cd4f4e6ef5323244a7e043bba647"
+}

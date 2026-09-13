@@ -1,0 +1,23 @@
+# M0-02 指标时间与日志可见数量修复
+
+2026-09-10。normal02最终JSON/引用链已产出，但质量未通过；原工件不变。本次只改投影语义、通用解释规则及3请求Run支持，0真实HTTP、0环境变更、0账本变更。round02.py保持33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12以保护父正在执行的PG。
+
+真实反例：normal02 e2/e8/e9/e12查询直接counter/_count而非increase/rate，报告将终点累计值视为本5分钟增量；e7后台返回20、实际显示19、遗漏1，但报告称20条全是指定状态。没有向模型提供工程同窗ERROR增量或故障答案。
+
+官方依据：[Prometheus查询基础](https://prometheus.io/docs/prometheus/latest/querying/basics/)区分单点评估与时间范围；[类型说明](https://prometheus.io/docs/concepts/metric_types/)解释counter与histogram累计；[increase](https://prometheus.io/docs/prometheus/latest/querying/functions/#increase)是所选range的外推增量，可能非整数。授权start/end并不自动改变PromQL表达式。
+
+新增metric view版本m0-02-metrics-v1：保留原query与完整结果，新增metric_semantics，明确query_mode=instant_evaluation、evaluation_time=end、authorization_window与authorization_window_is_value_range=false；counter/gauge/range语义说明不自动认定实际表达式已是delta，不替模型改写query。通用prompt要求本窗事件主张先主动查询匹配range增量；不由历史非零counter制造本窗故障。未新增未经实测的指标类型目录。
+
+log view版本m0-02-logs-v3：backend_returned_hit_count、model_visible_hit_count、omitted_returned_hit_count及backend_total_hits分开；状态主张仅适用于displayed_logs。旧真实raw回放仍20/19/1、13889bytes，未抬14000bytes边界。manifest写对应view投影版本，保留原raw及canonical/精确bytes hashes。
+
+max_steps允许1/3/4，最高仍4；所有active scope检查统一为max_steps!=1，3步骤不能绕过scope或使用report phase。初始prompt按真实steps显示预算；任意提前终止仍同ModelReport JSON，最后请求按当前steps闭合。
+
+验证：旧真实counter/log raw摘为tests/fixtures/m0_environment/normal02_*_raw.json，仅复制不更改原工件。两项回归先失败，修复后46 tests PASS、Ruff PASS；真实Holmes+httpx.Request/假pipe probe覆盖既有4步3种结束和新增3步，0真实HTTP。3步完整2次采证伪响应+第3次final JSON，全部private配对保留；无scope/错误phase均本地拒绝。输出round-02-semantics-wire-probe.txt。此证据不证明后续模型语义质量已通过，待父真实故障及最后正常3步观察、独立评审。
+
+当前wrapper SHA256 61a2d049a889fe395889779166402ca2e37c58539d3edb17653501586523c4d2；report_contract c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845；其他运行模块未改。候选冻结待独立复验。
+
+## 同组历史重放兼容补齐
+
+上述61a2/46tests为本组初始候选。为保留normal02原执行语义，依据本组补丁逆向恢复旧完整wrapper，严格SHA256等于7fd7326644b26fe00d0a8bad25aab4b865dfbd453bb5a7b4fa491eda5539a676；文件保存于immutable/同hash.py.txt，权限444。未改原hash登记或view。新增legacy_projections.py::log_projection_v2(record,registry=None)，当前log_projection默认logs-v3，显式version='m0-02-v2'可重放旧版；旧函数的身份绑定助手也独立冻结。
+
+实际normal02 e7原raw+同Run deployment-registry重算，和旧model-view整个对象完全相等，canonical SHA256为03fc57a3a12bc05be81445fab92f1def2bfeb987749dda6d99e131a355594209。48项定向tests PASS、Ruff PASS、真实Holmes假pipe3/4步全通过。当前冻结wrapper SHA256 22a96b87cf6575c8246abeb7edbed5101e1c6951fcc62b5e8243b6e589c6efd8；新增legacy模块507d4205fb5e65cdd831003ae45096703050534873018cbb0016c4f4678e4caf；其他runtime不变。父后续实际Run须包含legacy与schema的源码/工件快照，不能只保留hash。

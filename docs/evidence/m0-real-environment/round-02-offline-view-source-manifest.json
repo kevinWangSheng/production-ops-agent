@@ -1,0 +1,42 @@
+{
+  "status": "offline_only_candidate",
+  "real_http": 0,
+  "prior_quality_failures_unchanged": true,
+  "sources": [
+    {
+      "source": "scripts/m0_environment/holmes_baseline.py",
+      "sha256": "e15d10cc9fc5ea523f8fd73af5e71e08596bc87481d6f78f1f0c8828ec783b63",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/e15d10cc9fc5ea523f8fd73af5e71e08596bc87481d6f78f1f0c8828ec783b63.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/trace_view.py",
+      "sha256": "0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0fdac927db8e633bdcae63d2dbacc988e3b3c5d66977ddddea22dbafb8b88f4b.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/legacy_projections.py",
+      "sha256": "0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/0ed7d37aeca6057f2fd59ca2da692cab73b1247bd0e209555200ef74f32e27fc.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/report_contract.py",
+      "sha256": "c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/round02.py",
+      "sha256": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/transport_worker.py",
+      "sha256": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582.py.txt"
+    },
+    {
+      "source": "scripts/m0_environment/run_bounded.py",
+      "sha256": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24",
+      "snapshot": "docs/evidence/m0-real-environment/runtime-sources/c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24.py.txt"
+    }
+  ]
+}

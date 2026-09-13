@@ -1,0 +1,142 @@
+{
+  "at": "2026-09-10T04:11:11.626420+00:00",
+  "containers": [
+    {
+      "id": "f171ff2fa8fe",
+      "names": "opspilot-m0-load-generator",
+      "state": "exited"
+    },
+    {
+      "id": "30e3e6015699",
+      "names": "opspilot-m0-prometheus",
+      "state": "exited"
+    },
+    {
+      "id": "fd1c681f9851",
+      "names": "opspilot-m0-frontend-proxy",
+      "state": "exited"
+    },
+    {
+      "id": "766b7b285ed4",
+      "names": "opspilot-m0-frontend",
+      "state": "exited"
+    },
+    {
+      "id": "a57660d1e0e3",
+      "names": "opspilot-m0-checkout",
+      "state": "exited"
+    },
+    {
+      "id": "f9bb761941d4",
+      "names": "opspilot-m0-recommendation",
+      "state": "exited"
+    },
+    {
+      "id": "2f9c3e3ccb1e",
+      "names": "opspilot-m0-fraud-detection",
+      "state": "exited"
+    },
+    {
+      "id": "ad10968ef140",
+      "names": "opspilot-m0-image-provider",
+      "state": "exited"
+    },
+    {
+      "id": "3e81b9d46fd1",
+      "names": "opspilot-m0-quote",
+      "state": "exited"
+    },
+    {
+      "id": "bddad7a6e5c5",
+      "names": "opspilot-m0-accounting",
+      "state": "exited"
+    },
+    {
+      "id": "480391d5d47f",
+      "names": "opspilot-m0-flagd-ui",
+      "state": "exited"
+    },
+    {
+      "id": "3f1ccd7b6ecf",
+      "names": "opspilot-m0-ad",
+      "state": "exited"
+    },
+    {
+      "id": "8d8e65e2ed9f",
+      "names": "opspilot-m0-payment",
+      "state": "exited"
+    },
+    {
+      "id": "99d1898663b5",
+      "names": "opspilot-m0-email",
+      "state": "exited"
+    },
+    {
+      "id": "653eb0b14fff",
+      "names": "opspilot-m0-shipping",
+      "state": "exited"
+    },
+    {
+      "id": "8834645aa782",
+      "names": "opspilot-m0-cart",
+      "state": "exited"
+    },
+    {
+      "id": "612a2075658e",
+      "names": "opspilot-m0-currency",
+      "state": "exited"
+    },
+    {
+      "id": "34f8b6421794",
+      "names": "opspilot-m0-product-catalog",
+      "state": "exited"
+    },
+    {
+      "id": "35821a0bbc0e",
+      "names": "opspilot-m0-otel-collector",
+      "state": "exited"
+    },
+    {
+      "id": "d94cd84bd11f",
+      "names": "opspilot-m0-read-proxy",
+      "state": "exited"
+    },
+    {
+      "id": "990187bcd9c2",
+      "names": "opspilot-m0-flagd",
+      "state": "exited"
+    },
+    {
+      "id": "5046477b3ed3",
+      "names": "opspilot-m0-kafka",
+      "state": "exited"
+    },
+    {
+      "id": "b053e9faf384",
+      "names": "opspilot-m0-jaeger",
+      "state": "exited"
+    },
+    {
+      "id": "e1e1ce623ac4",
+      "names": "opspilot-m0-valkey-cart",
+      "state": "exited"
+    },
+    {
+      "id": "9f16520797b7",
+      "names": "opspilot-m0-opensearch",
+      "state": "exited"
+    },
+    {
+      "id": "5b47747f81a9",
+      "names": "opspilot-m0-grafana",
+      "state": "exited"
+    }
+  ],
+  "volumes": [
+    "opspilot-m0_opensearch-data",
+    "opspilot-m0_prometheus-data"
+  ],
+  "all26_stopped": true,
+  "fault_restored_exact": true,
+  "deleted_containers_volumes": false
+}

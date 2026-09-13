@@ -1,0 +1,641 @@
+{
+  "label": "m003-recovery",
+  "start": 1789112160.0,
+  "end": 1789112460.0,
+  "boundary": "Developer observations; 5m metric calculations and max20 trace/log samples, not complete product health",
+  "observations": [
+    {
+      "name": "calls",
+      "url": "http://127.0.0.1:19090/api/v1/query?query=sum+by%28service_name%2Cstatus_code%29+%28increase%28traces_span_metrics_calls_total%5B5m%5D%29%29&time=1789112460.0",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/calls.json",
+      "raw_bytes": 2513,
+      "raw_sha256": "a3d215de747bc58b65003673162c181ee73a75bba4148dd9f572ef505bb712e7",
+      "result": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "service_name": "checkout",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "89.79646135426366"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "quote",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "18.707596115471596"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "flagd",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "34.92084608221365"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "cart",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "205.78355727018757"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "frontend",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "606.1261141412797"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "fraud-detection",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "12.471730743647731"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "email",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "24.943461487295462"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "shipping",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "18.707596115471596"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "accounting",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "6.2358653718238655"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "load-generator",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "ad",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "22.449115338565917"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "frontend",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "recommendation",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "22.449115338565917"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "payment",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "frontend-proxy",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "279.36676865770914"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "product-catalog",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "132.20034588266594"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "payment",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "12.471730743647731"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "frontend-proxy",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "load-generator",
+                "status_code": "STATUS_CODE_UNSET"
+              },
+              "value": [
+                1789112460,
+                "143.4249035519489"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "currency",
+                "status_code": "STATUS_CODE_OK"
+              },
+              "value": [
+                1789112460,
+                "19.95476918983637"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "recommendation",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "service_name": "checkout",
+                "status_code": "STATUS_CODE_ERROR"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "transactions",
+      "url": "http://127.0.0.1:19090/api/v1/query?query=sum%28increase%28app_payment_transactions_total%5B5m%5D%29%29&time=1789112460.0",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/transactions.json",
+      "raw_bytes": 117,
+      "raw_sha256": "aa3e723ebadc181d3b77ab36a9ab4daabd3ba722d55a13ac315c17aee5aac111",
+      "result": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1789112460,
+                "3.760733760942691"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "checkout-rpc",
+      "url": "http://127.0.0.1:19090/api/v1/query?query=sum+by%28rpc_service%2Crpc_method%2Crpc_grpc_status_code%29+%28increase%28rpc_client_duration_milliseconds_count%7Bservice_name%3D%22checkout%22%7D%5B5m%5D%29%29&time=1789112460.0",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/checkout-rpc.json",
+      "raw_bytes": 1209,
+      "raw_sha256": "a13375606bc55c0bf01710c091bf60d6592e9a75d97d2446357a49d4321c431d",
+      "result": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "GetCart",
+                "rpc_service": "oteldemo.CartService"
+              },
+              "value": [
+                1789112460,
+                "6.235709831635834"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "EmptyCart",
+                "rpc_service": "oteldemo.CartService"
+              },
+              "value": [
+                1789112460,
+                "6.235709831635834"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "GetQuote",
+                "rpc_service": "oteldemo.ShippingService"
+              },
+              "value": [
+                1789112460,
+                "6.235709831635834"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "GetProduct",
+                "rpc_service": "oteldemo.ProductCatalogService"
+              },
+              "value": [
+                1789112460,
+                "13.718561629598835"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "Convert",
+                "rpc_service": "oteldemo.CurrencyService"
+              },
+              "value": [
+                1789112460,
+                "19.95427146123467"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "ShipOrder",
+                "rpc_service": "oteldemo.ShippingService"
+              },
+              "value": [
+                1789112460,
+                "6.235709831635834"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "0",
+                "rpc_method": "Charge",
+                "rpc_service": "oteldemo.PaymentService"
+              },
+              "value": [
+                1789112460,
+                "6.235709831635834"
+              ]
+            },
+            {
+              "metric": {
+                "rpc_grpc_status_code": "2",
+                "rpc_method": "Charge",
+                "rpc_service": "oteldemo.PaymentService"
+              },
+              "value": [
+                1789112460,
+                "0"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "latency",
+      "url": "http://127.0.0.1:19090/api/v1/query?query=histogram_quantile%280.95%2C+sum+by%28le%2Cservice_name%29+%28rate%28rpc_server_duration_milliseconds_bucket%7Bservice_name%3D%22checkout%22%7D%5B5m%5D%29%29%29&time=1789112460.0",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/latency.json",
+      "raw_bytes": 143,
+      "raw_sha256": "b21474ee08ae0b9be54831e4bd05b42a0487588600c3a67ac7eef0aa3005f10d",
+      "result": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "service_name": "checkout"
+              },
+              "value": [
+                1789112460,
+                "231.24999999999994"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "traces-checkout",
+      "url": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=checkout&start=1789112160000000&end=1789112460000000&limit=20",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/traces-checkout.json",
+      "raw_bytes": 332479,
+      "raw_sha256": "aa7f4f67d858397969c8e0a556d29218d0e003d7ad4ad7416ea5b8c5cbc8a4e1",
+      "trace_ids": [
+        "d87ef55ff63457237962ac1833adc136",
+        "25c00d02d574eebd3b42cd0756562868",
+        "f54a489b9c17eacc79762f3cea23621a",
+        "0257ecad3b2678bc10861519683ad83c",
+        "695b016b22189cf37aad94096d5ab7c4"
+      ],
+      "observed_spans": {
+        "flagd": {
+          "spans": 15,
+          "error_spans": 0
+        },
+        "checkout": {
+          "spans": 72,
+          "error_spans": 0
+        },
+        "quote": {
+          "spans": 15,
+          "error_spans": 0
+        },
+        "cart": {
+          "spans": 35,
+          "error_spans": 0
+        },
+        "currency": {
+          "spans": 16,
+          "error_spans": 0
+        },
+        "frontend": {
+          "spans": 31,
+          "error_spans": 0
+        },
+        "payment": {
+          "spans": 10,
+          "error_spans": 0
+        },
+        "product-catalog": {
+          "spans": 22,
+          "error_spans": 0
+        },
+        "load-generator": {
+          "spans": 5,
+          "error_spans": 0
+        },
+        "frontend-proxy": {
+          "spans": 10,
+          "error_spans": 0
+        },
+        "email": {
+          "spans": 20,
+          "error_spans": 0
+        },
+        "shipping": {
+          "spans": 15,
+          "error_spans": 0
+        }
+      }
+    },
+    {
+      "name": "traces-payment",
+      "url": "http://127.0.0.1:16686/jaeger/ui/api/traces?service=payment&start=1789112160000000&end=1789112460000000&limit=20",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/traces-payment.json",
+      "raw_bytes": 332472,
+      "raw_sha256": "94ffc89693b9c504a459f1974f6a7de7fd11ef80c6dc5b74be1eafb4e84d500d",
+      "trace_ids": [
+        "f54a489b9c17eacc79762f3cea23621a",
+        "0257ecad3b2678bc10861519683ad83c",
+        "695b016b22189cf37aad94096d5ab7c4",
+        "d87ef55ff63457237962ac1833adc136",
+        "25c00d02d574eebd3b42cd0756562868"
+      ],
+      "observed_spans": {
+        "cart": {
+          "spans": 35,
+          "error_spans": 0
+        },
+        "frontend": {
+          "spans": 31,
+          "error_spans": 0
+        },
+        "checkout": {
+          "spans": 72,
+          "error_spans": 0
+        },
+        "currency": {
+          "spans": 16,
+          "error_spans": 0
+        },
+        "quote": {
+          "spans": 15,
+          "error_spans": 0
+        },
+        "product-catalog": {
+          "spans": 22,
+          "error_spans": 0
+        },
+        "frontend-proxy": {
+          "spans": 10,
+          "error_spans": 0
+        },
+        "payment": {
+          "spans": 10,
+          "error_spans": 0
+        },
+        "email": {
+          "spans": 20,
+          "error_spans": 0
+        },
+        "shipping": {
+          "spans": 15,
+          "error_spans": 0
+        },
+        "flagd": {
+          "spans": 15,
+          "error_spans": 0
+        },
+        "load-generator": {
+          "spans": 5,
+          "error_spans": 0
+        }
+      }
+    },
+    {
+      "name": "logs-frontend-proxy",
+      "url": "http://127.0.0.1:18081/integrations/m0-otel-20260909/logs?service=frontend-proxy&start=1789112160.0&end=1789112460.0",
+      "status": 200,
+      "raw_path": "tmp/m0-environment/raw-evidence/m003-recovery/logs-frontend-proxy.json",
+      "raw_bytes": 25748,
+      "raw_sha256": "2b57c04108fe6e9c106c4f7345fa1fa4c0056a63f7d2ab830b525593cfa1b756",
+      "total_hits": {
+        "value": 139,
+        "relation": "eq"
+      },
+      "returned_hits": 20,
+      "samples": [
+        {
+          "timestamp": "2026-09-11T07:40:57.6103Z",
+          "trace_id": "97b713196fc9b0bd1aa66e11dd7a05ea",
+          "body": "[2026-09-11T07:40:57.610Z] \"GET /api/products/HQTGWGPNH4 HTTP/1.1\" 200 - via_upstream - \"-\" 0 741 6 3 \"-\" \"python-requests/2.32.3\" \"5b9c6625-7cb1-9245-bd08-5b732105f68e\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:51614 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:56.753576Z",
+          "trace_id": "5df3f67538a967d13f529b630e0beb37",
+          "body": "[2026-09-11T07:40:56.753Z] \"GET /api/recommendations?productIds=9SIQT8TOJO HTTP/1.1\" 200 - via_upstream - \"-\" 0 1109 27 26 \"-\" \"python-requests/2.32.3\" \"1545c354-b236-9dcd-a98a-1d25ee121c47\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:51612 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:50.111622Z",
+          "trace_id": "cb78f16aa6727f394d36fa9815c10084",
+          "body": "[2026-09-11T07:40:50.111Z] \"GET /api/products/9SIQT8TOJO HTTP/1.1\" 200 - via_upstream - \"-\" 0 782 4 4 \"-\" \"python-requests/2.32.3\" \"036d9cab-c483-9d93-9ed6-ac128f43996d\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:51596 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:49.979384Z",
+          "trace_id": "8ed47b4e1f2f347cdc3d6fa724d4f9fc",
+          "body": "[2026-09-11T07:40:49.979Z] \"GET /api/cart HTTP/1.1\" 200 - via_upstream - \"-\" 0 24 23 21 \"-\" \"python-requests/2.32.3\" \"55dd5d88-b03d-96a6-a741-cabd36c7a02f\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:51590 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:43.153798Z",
+          "trace_id": "73d4c85a0b590e6934901517d83d5fc8",
+          "body": "[2026-09-11T07:40:43.153Z] \"GET /api/products/HQTGWGPNH4 HTTP/1.1\" 200 - via_upstream - \"-\" 0 741 6 4 \"-\" \"python-requests/2.32.3\" \"ce4896a3-6157-9568-a543-bec86c929663\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:55972 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:43.029457Z",
+          "trace_id": "d87ef55ff63457237962ac1833adc136",
+          "body": "[2026-09-11T07:40:43.029Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 395 959 87 86 \"-\" \"python-requests/2.32.3\" \"da30f95b-2b49-9240-b7dc-d36c87ab5100\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:43.011273Z",
+          "trace_id": "a187c1b1f71340e91df50754e94975a6",
+          "body": "[2026-09-11T07:40:43.011Z] \"POST /api/cart HTTP/1.1\" 200 - via_upstream - \"-\" 102 139 16 16 \"-\" \"python-requests/2.32.3\" \"198aba74-2a61-92ae-af20-f8a092be41c7\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:43.000034Z",
+          "trace_id": "cd92484de81d16f31b1356d71a502a42",
+          "body": "[2026-09-11T07:40:43.000Z] \"GET /api/products/HQTGWGPNH4 HTTP/1.1\" 200 - via_upstream - \"-\" 0 741 7 7 \"-\" \"python-requests/2.32.3\" \"8b373c6b-e104-9285-9459-c8b021d33106\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:42.988419Z",
+          "trace_id": "b8daad20ef93f15989dfa6c68d57c456",
+          "body": "[2026-09-11T07:40:42.988Z] \"POST /api/cart HTTP/1.1\" 200 - via_upstream - \"-\" 102 139 10 10 \"-\" \"python-requests/2.32.3\" \"db3152e3-9844-96e0-8315-ae58f414f6fa\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:42.984926Z",
+          "trace_id": "6d2195c1600171372d06eaea7833b769",
+          "body": "[2026-09-11T07:40:42.984Z] \"GET /api/products/HQTGWGPNH4 HTTP/1.1\" 200 - via_upstream - \"-\" 0 741 2 2 \"-\" \"python-requests/2.32.3\" \"ee6c5b24-9764-9bfd-8eff-d813d6fcf400\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:42.972115Z",
+          "trace_id": "78820f01e7f661d7153d4cb97c716796",
+          "body": "[2026-09-11T07:40:42.972Z] \"POST /api/cart HTTP/1.1\" 200 - via_upstream - \"-\" 102 99 11 11 \"-\" \"python-requests/2.32.3\" \"ea22a777-e61c-9a3b-ba2d-bed3ada373a9\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:42.933332Z",
+          "trace_id": "24ca3d70c108be7366e18f0637e93529",
+          "body": "[2026-09-11T07:40:42.933Z] \"GET /api/products/OLJCESPC7Z HTTP/1.1\" 200 - via_upstream - \"-\" 0 508 36 34 \"-\" \"python-requests/2.32.3\" \"e6a512e2-6eee-959d-b081-884113b9fe0e\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:50582 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:39.345874Z",
+          "trace_id": "954b4bc1f2efbc7db5d41f52f799676a",
+          "body": "[2026-09-11T07:40:39.345Z] \"GET /api/products/6E92ZMYYFZ HTTP/1.1\" 200 - via_upstream - \"-\" 0 476 19 17 \"-\" \"python-requests/2.32.3\" \"06388065-a333-93e0-8576-db4479cd62b6\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:55972 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:35.90212Z",
+          "trace_id": "0b0419007f262de9977846bcd5507a58",
+          "body": "[2026-09-11T07:40:35.902Z] \"GET /api/recommendations?productIds=2ZYFJ3GM2N HTTP/1.1\" 200 - via_upstream - \"-\" 0 1066 82 80 \"-\" \"python-requests/2.32.3\" \"0fdb9f04-fa19-933e-bdca-8907af28776c\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:55972 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:29.180924Z",
+          "trace_id": "1e7eec22d6628284f6087f0797d10f39",
+          "body": "[2026-09-11T07:40:29.180Z] \"GET /api/recommendations?productIds=0PUK6V6EV0 HTTP/1.1\" 200 - via_upstream - \"-\" 0 1516 48 46 \"-\" \"python-requests/2.32.3\" \"67a7259a-f296-9989-b730-b67f623bfd0e\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:47618 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:25.320293Z",
+          "trace_id": "e8ec0dcdb9bd05abfc9d67c9a5a213aa",
+          "body": "[2026-09-11T07:40:25.320Z] \"GET /api/data?contextKeys=accessories HTTP/1.1\" 200 - via_upstream - \"-\" 0 303 29 29 \"-\" \"python-requests/2.32.3\" \"ae037c0a-ff63-9208-ac79-e6f32345ed18\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:49530 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:25.313892Z",
+          "trace_id": "e8ec0dcdb9bd05abfc9d67c9a5a213aa",
+          "body": "[2026-09-11T07:40:25.313Z] \"GET /api/data/?contextKeys=accessories HTTP/1.1\" 308 - via_upstream - \"-\" 0 33 5 4 \"-\" \"python-requests/2.32.3\" \"beb0d4da-6d58-92e5-b245-f54e4910a5e3\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:49530 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:22.393125Z",
+          "trace_id": "800a40798799f7c97b164cc98ea6b103",
+          "body": "[2026-09-11T07:40:22.393Z] \"POST /api/cart HTTP/1.1\" 200 - via_upstream - \"-\" 102 99 15 15 \"-\" \"python-requests/2.32.3\" \"1c425bb0-b687-9451-aa6b-2a961288d2f7\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:49530 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:22.381331Z",
+          "trace_id": "e9dc100e6dfa0d5b45c185e0e233bd1b",
+          "body": "[2026-09-11T07:40:22.381Z] \"GET /api/products/66VCHSJNUP HTTP/1.1\" 200 - via_upstream - \"-\" 0 498 9 9 \"-\" \"python-requests/2.32.3\" \"525220cd-2d24-9393-bafb-0821c989116c\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:49530 172.18.0.27:8080 172.18.0.26:41276 - -\n"
+        },
+        {
+          "timestamp": "2026-09-11T07:40:21.715903Z",
+          "trace_id": "0257ecad3b2678bc10861519683ad83c",
+          "body": "[2026-09-11T07:40:21.715Z] \"POST /api/checkout HTTP/1.1\" 200 - via_upstream - \"-\" 386 1330 145 145 \"-\" \"python-requests/2.32.3\" \"e6eab9f4-6bfb-919d-9f62-975e3bc83567\" \"frontend-proxy:8080\" \"172.18.0.25:8080\" frontend 172.18.0.27:47616 172.18.0.27:8080 172.18.0.26:41286 - -\n"
+        }
+      ]
+    }
+  ]
+}

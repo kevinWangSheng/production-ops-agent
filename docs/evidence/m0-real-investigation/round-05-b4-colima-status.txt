@@ -1,0 +1,3 @@
+PROFILE    STATUS     ARCH       CPUS    MEMORY    DISK     RUNTIME    ADDRESS
+default    Stopped    aarch64    4       6GiB      24GiB               
+m0-otel    Running    aarch64    4       6GiB      24GiB    docker     

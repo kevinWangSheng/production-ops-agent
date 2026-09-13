@@ -1,0 +1,21 @@
+# M0-02 指标/日志语义及3步候选独立核验
+
+日期2026-09-10。**当前冻结实现离线复验通过，可在父冻结新的故障window/scope后运行已授权fault4；随后normal3保持独立Run。** 不代表语义质量或故障报告已通过。
+
+独立读round-02-metric-log-semantics.md及实际wrapper，执行46定向tests PASS/1.50s。实际固定Holmes Python运行final_wire_probe：4步有效JSON/DSML拒绝/结构工具拒绝三case和3步有效JSON均PASS；3步只有2采证+第3次最终报告，同Run合成private配对保留，0真实HTTP。测试包含3步缺scope/错误phase拒绝；权限检查统一!=1，非只4步受限。
+
+metric_projection仅增明确语义标签，原query/result保持；evaluation_time=end而authorization_window不自动变成PromQL range，counter/gauge未知类型不猜测，经典bucket/count累计说明未替换实际查询。log投影在删减行时同步model_visible_hit_count，后台返回量/实际交付量/遗漏量分开，14000bytes边界不变。此改动不把独立工程真相塞给模型，也不保证模型今后不会误读。
+
+m002-semantic-runtime-snapshot.json所列6份源码、冻结py.txt和列出的SHA256全部相同：wrapper61a2d049a889fe395889779166402ca2e37c58539d3edb17653501586523c4d2；report_contract c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845；round02 33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12；其余按父snapshot保全。
+
+scope条件：现有registry包含/opspilot-m0-otel-collector、hostname35821a0bbc0e、Compose service=otel-collector。实际telemetry service=otelcol-contrib属于同专属integration，父可在真实来源依据下加入遥测scope（与flagd相同），无需新连接器。不要将telemetry名称直接伪作Compose名称；精确container/hostname匹配则记录依据，缺映射则unknown。旧proxy直接服务查询仍有旧17名单限制，须保留denied行为，不能推断新scope已经扩大后端接口能力。只许遥测，不包含flag配置/注入器。
+
+检查时fault输入/scope尚未创建，因此未核新fault绝对window或独立故障事实；这些由父执行前冻结。正常02旧投影重放问题不影响新源码候选，但必须另解决，不能声称7fd732旧hash已恢复。
+
+预算仍全轮20模型HTTP/20CNY，新余量最多fault4+normal3；每请求继续预留守门，不因语义修复增加容量/超时。trace保持0。审查者未读取.env/private、未发模型/工具查询、未操作环境。
+
+## legacy保全补丁最终复验
+
+作者随后增加显式v2历史log重放分支，wrapper变22a96b87cf6575c8246abeb7edbed5101e1c6951fcc62b5e8243b6e589c6efd8，legacy_projections.py为507d4205fb5e65cdd831003ae45096703050534873018cbb0016c4f4678e4caf。独立与已审61a2完整diff核对仅增加legacy import及显式version分支；默认logs-v3保持原体。48tests PASS/1.49s，完整固定Holmes假pipe3/4步case全PASS。当前active结论覆盖此最终两hash，其他runtime沿前述不变。
+
+旧不可变snapshot文件内容独立SHA256精确匹配7fd7326644b26fe00d0a8bad25aab4b865dfbd453bb5a7b4fa491eda5539a676；现在可以按旧source回放，不声称此前缺档时已核。

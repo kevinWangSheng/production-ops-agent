@@ -1,0 +1,7 @@
+{
+  "scripts/m0/outcomes_v3.py": "6f37be4fedd404164ea4b88daedb1b956b0462e034d68a3f7e8bf16687df4a92",
+  "scripts/m0/holmes_bridge.py": "d6dc19f7baf90d1dc6a24a6e1b1364d515631f75c0dc5452b1a6dd4d9860ccf6",
+  "tests/test_m0_outcomes_v3.py": "ad1e48633c7318add3813acbac05088cbd0149ae89c245b22c899cb1296ecb8d",
+  "tests/test_m0_holmes_bridge.py": "c413ef0e5d4096c7ff204ef020e8cf602f3df4a1cc253fae7f20d974035e84c7",
+  "tests/fixtures/m0/holmes-error-tool-message.json": "0b3170684e880ed87d05fdfb48774f37c332c11b972927d9ae612b9918c7f8d9"
+}

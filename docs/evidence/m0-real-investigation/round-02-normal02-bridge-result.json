@@ -1,0 +1,14 @@
+{
+  "run_id": "m002-normal-02",
+  "contract_consistent": false,
+  "violations": [
+    "FAILED_EVIDENCE_AS_FACT"
+  ],
+  "report_request_id": "m002-normal-02:http:11",
+  "initial_views": 0,
+  "captured_artifacts": 15,
+  "delivered_views": 15,
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "boundary": "Contract consistency only; report quality/causality require independent review. No private protocol read."
+}

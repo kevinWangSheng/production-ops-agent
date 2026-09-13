@@ -1,0 +1,2 @@
+{"audit": [], "incompatible_code": "LEASE_ACTIVE", "model_http": 0, "prepared_step": "c2cec7f4-cac8-599c-bdb7-ef5305ccb7aa", "run_id": "99276305-832f-4bb4-9d14-dfae30a9a023", "state": {"epoch": 1, "generation": 0, "published": false, "state": "running"}, "subject_id": "f444fbfe-a24b-425c-842d-1c527f7a21ae"}
+exit=1

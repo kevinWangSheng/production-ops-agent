@@ -1,0 +1,46 @@
+{
+  "arm": "upstream",
+  "upstream_commit": "5e983c17f30e93099c7d775167266d4cd1d586c4",
+  "upstream_code_sha256": "b4f72fc577f2910d9b68bb775c97dd51c58279478090939f5ee4f7cfa7bcee01",
+  "litellm_version": "see holmes-installed-versions.json",
+  "model": "openai/deepseek-v4-flash",
+  "api_base": "https://api.deepseek.com/v1",
+  "llm_args": {
+    "num_retries": 0,
+    "max_retries": 0,
+    "max_tokens": 8192,
+    "extra_body": {
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "reasoning_effort": "high"
+  },
+  "max_steps": 2,
+  "toolsets_loaded": [
+    "m0_otel_readonly_replay",
+    "core_investigation"
+  ],
+  "toolsets_not_loaded": "all upstream default toolsets (bash, kubectl, curl/internet, prometheus, docker, ...), skills, MCP",
+  "system_prompt_source": "holmes.core.prompt.build_system_prompt default template, no additions",
+  "prompt_sha256": "023dae707cb4996c2af1402a887461be1cc55956e8e3e45f76c5ab492fb6a1d4",
+  "tool_schema_sha256": "614999b8a0e60115368846106b27bb497e432244f291bef0424f3f1fc1eb9b87",
+  "env_overrides": {
+    "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+    "LITELLM_TELEMETRY": "False",
+    "DO_NOT_TRACK": "1",
+    "OTEL_SDK_DISABLED": "true",
+    "HOLMES_LANGFUSE_ATTRIBUTES": "false",
+    "LOG_LLM_USAGE_RESPONSE": "false",
+    "HOLMES_DISABLE_VISION": "true",
+    "LLM_REQUEST_TIMEOUT": "360",
+    "OVERRIDE_MAX_OUTPUT_TOKEN": "8192",
+    "OVERRIDE_MAX_CONTENT_SIZE": "131072",
+    "REASONING_EFFORT": "high",
+    "ENABLE_CONVERSATION_HISTORY_COMPACTION": "false"
+  },
+  "compaction": "disabled",
+  "trace": "disabled",
+  "runner_sha256": "fc3d1df573c330db550bdb570c3491272d01d86fce4904f0cf29ddaa688bd9d2",
+  "config_sha256": "ca4eccd5f77048d16c2f621a5efbf5c8245d198cd57214fcaa49562cdb10e004"
+}

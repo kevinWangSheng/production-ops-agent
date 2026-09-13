@@ -1,0 +1,31 @@
+{
+  "id": "ac58804d-2923-4558-a669-7e9597c5bf99",
+  "object": "chat.completion",
+  "created": 1789241394,
+  "model": "deepseek-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Initial data shows checkout and payment both erroring. Let me drill into the failing RPC and the implicated dependency.\n\n<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">payment</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">checkout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_server_duration_milliseconds_count{service_name=\"payment\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(service_name,span_name,status_code) (increase(traces_span_metrics_calls_total{service_name=~\"payment|checkout\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=~\"frontend|checkout\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">flagd</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(service_name,http_status_code) (increase(http_server_duration_milliseconds_count{service_name=\"frontend\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>"
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10372,
+    "completion_tokens": 907,
+    "total_tokens": 11279,
+    "prompt_tokens_details": {
+      "cached_tokens": 1664
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 524
+    },
+    "prompt_cache_hit_tokens": 1664,
+    "prompt_cache_miss_tokens": 8708
+  },
+  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+}

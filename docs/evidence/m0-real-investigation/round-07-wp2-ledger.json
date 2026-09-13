@@ -1,0 +1,13 @@
+{
+  "allocation_id": "m0-11-wp2-20260912",
+  "http_cap": 2,
+  "reservation_cap_cny": 2.0,
+  "trace_uploads": 0,
+  "attempts": [
+    {"run_id": "compressor-real-r07", "ordinal": 1, "http_status": 200, "prompt_tokens": 321, "completion_tokens": 447, "total_tokens": 768, "cost_upper_cny": 0.004986, "reservation_cny": 1.0, "status": "stop"}
+  ],
+  "http_count": 1,
+  "known_cost_upper_cny": 0.004986,
+  "unknown_reservation_cny": 0.0,
+  "cost_basis": "peak all-cache-miss upper bound; not invoice"
+}

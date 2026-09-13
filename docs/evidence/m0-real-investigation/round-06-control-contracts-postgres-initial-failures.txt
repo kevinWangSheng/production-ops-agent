@@ -1,0 +1,15 @@
+command: M0_CONTROL_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_control_contracts_postgres.py -rA -v
+result: 2 passed, 2 failed (initial implementation; not an acceptance result)
+
+failure 1:
+  test_release_failure_then_takeover_generation_race_keeps_first_control
+  KeyError: 'payload' from control_snapshot()["controls"][0]
+  disposition: control_snapshot intentionally redacts payload; assertion changed to require payload absent.
+
+failure 2:
+  test_health_profile_revision_and_capture_order_are_unknown_with_fixed_clock
+  psycopg.ProgrammingError: cannot adapt type 'dict' using placeholder '%s'
+  follow-on: KeyError: 0 from dict_row cursor and timezone rendered as America/Los_Angeles.
+  disposition: use Jsonb wrappers, named columns, and compare captured_at after astimezone(UTC).
+
+No model HTTP, trace upload, or non-dedicated database was used. The successful rerun is recorded separately in round-06-control-contracts-postgres.txt.

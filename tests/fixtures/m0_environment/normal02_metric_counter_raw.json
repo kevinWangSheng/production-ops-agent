@@ -1,0 +1,83 @@
+{
+  "evidence_id": "m002-normal-02-e2",
+  "tool": "otel_metrics",
+  "query": {
+    "query": "sum by (service_name, rpc_grpc_status_code) (traces_span_metrics_calls_total{service_name=\"checkout\"})",
+    "start": 1789007908.0,
+    "end": 1789008208.0
+  },
+  "observed_at": "2026-09-10T03:05:58.123576+00:00",
+  "trusted_access_scope": {
+    "integration_id": "m0-otel-20260909",
+    "services": [
+      "accounting",
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "fraud-detection",
+      "frontend",
+      "frontend-proxy",
+      "image-provider",
+      "kafka",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping",
+      "flagd"
+    ],
+    "metrics_scope": "integration",
+    "window": {
+      "start": 1789007908.0,
+      "end": 1789008208.0
+    },
+    "policy_revision": "m0-02-v1-actual-sources",
+    "deployment_registry_file": "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/docs/evidence/m0-real-environment/m002-deployment-registry.json",
+    "scope_note": "flagd is an existing authorized Compose service observed in mixed traces and metrics. Legacy proxy discovery/direct log-trace service selector does not list it; unsupported direct queries may be denied. No flag configuration is exposed.",
+    "deployment_registry_sha256": "25e16c014d8fca7ae1167592a64870f396a086fd6d7c187d5f700460fc847737",
+    "effective_query_deadline": 1789060470.0
+  },
+  "http_status": 200,
+  "data": {
+    "integration_id": "m0-otel-20260909",
+    "source": "metrics",
+    "query": {
+      "query": [
+        "sum by (service_name, rpc_grpc_status_code) (traces_span_metrics_calls_total{service_name=\"checkout\"})"
+      ],
+      "start": [
+        "1789007908.0"
+      ],
+      "end": [
+        "1789008208.0"
+      ]
+    },
+    "collected_at": 1789009559.0917742,
+    "data": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "service_name": "checkout"
+            },
+            "value": [
+              1789008208,
+              "136"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "actual_sources": {
+    "level": "service",
+    "services": [
+      "checkout"
+    ]
+  }
+}

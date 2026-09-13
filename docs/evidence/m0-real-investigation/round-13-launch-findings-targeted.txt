@@ -1,0 +1,57 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 21 items
+
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[0] PASSED [  4%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[-1] PASSED [  9%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[True] PASSED [ 14%]
+tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[1.0] PASSED [ 19%]
+tests/test_m0_round07_launch.py::test_round07_launch_accepts_positive_max_http PASSED [ 23%]
+tests/test_m0_round07_launch.py::test_round07_launch_resolves_env_file_from_explicit_override PASSED [ 28%]
+tests/test_m0_round07_launch.py::test_round07_launch_missing_env_file_is_explicit PASSED [ 33%]
+tests/test_m0_round07_launch.py::test_round07_launch_resolves_executable_holmes_override PASSED [ 38%]
+tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_is_explicit PASSED [ 42%]
+tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_checkout_is_explicit PASSED [ 47%]
+tests/test_m0_round07_launch.py::test_round07_container_rejects_arbitrary_executable_without_reading_key PASSED [ 52%]
+tests/test_m0_round07_launch.py::test_round07_container_accepts_only_pinned_docker_command PASSED [ 57%]
+tests/test_m0_round07_launch.py::test_round07_launch_timeout_releases_reservation_and_redacts_output PASSED [ 61%]
+tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[value0] PASSED [ 66%]
+tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[] PASSED [ 71%]
+tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[None] PASSED [ 76%]
+tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[value3] PASSED [ 80%]
+tests/test_m0_round07_launch.py::test_round07_candidate_rejects_non_mapping_function PASSED [ 85%]
+tests/test_m0_round07_launch.py::test_round07_candidate_records_function_shape_error PASSED [ 90%]
+tests/test_m0_round07_launch.py::test_round07_candidate_accepts_missing_or_list_tool_calls PASSED [ 95%]
+tests/test_m0_round07_launch.py::test_round07_ledger_reservation_serializes_concurrent_cap_checks PASSED [100%]
+
+==================================== PASSES ====================================
+_____ test_round07_launch_timeout_releases_reservation_and_redacts_output ______
+----------------------------- Captured stdout call -----------------------------
+{"run_id": "timeout-run", "status": "failed", "exit_code": 124, "http_count": 0}
+=========================== short test summary info ============================
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[0]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[-1]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[True]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_rejects_non_positive_max_http[1.0]
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_accepts_positive_max_http
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_resolves_env_file_from_explicit_override
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_env_file_is_explicit
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_resolves_executable_holmes_override
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_is_explicit
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_missing_holmes_checkout_is_explicit
+PASSED tests/test_m0_round07_launch.py::test_round07_container_rejects_arbitrary_executable_without_reading_key
+PASSED tests/test_m0_round07_launch.py::test_round07_container_accepts_only_pinned_docker_command
+PASSED tests/test_m0_round07_launch.py::test_round07_launch_timeout_releases_reservation_and_redacts_output
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[value0]
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[]
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[None]
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_rejects_malformed_tool_calls[value3]
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_rejects_non_mapping_function
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_records_function_shape_error
+PASSED tests/test_m0_round07_launch.py::test_round07_candidate_accepts_missing_or_list_tool_calls
+PASSED tests/test_m0_round07_launch.py::test_round07_ledger_reservation_serializes_concurrent_cap_checks
+============================== 21 passed in 0.28s ==============================

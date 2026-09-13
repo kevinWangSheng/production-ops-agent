@@ -1,0 +1,169 @@
+{
+  "status": "investigation_returned",
+  "run_id": "m002-fault-01",
+  "final_business_content": "{\"schema_version\": \"m0-report-v1\", \"assessment_status\": \"completed\", \"conclusion\": \"supported\", \"summary\": \"Within the authorized window (1789010952–1789011252) the failing dependency on the POST /api/checkout path is the checkout → payment gRPC call oteldemo.PaymentService/Charge, which fails with rpc.grpc.status_code 2 (UNKNOWN), propagating up as CheckoutService/PlaceOrder code 13 and frontend/proxy HTTP 500. Checkout's client-side histogram counts show ~11.3 window increase for Charge at status 2 and 0 at status 0 (m002-fault-01-e11, m002-fault-01-e15); payment service spans show equal STATUS_CODE_ERROR and STATUS_CODE_UNSET increases (~12.55) while app_payment_transactions_total shows 0 window increase (m002-fault-01-e13, m002-fault-01-e16). No payment logs exist in the accessible log backend. The trigger/mechanism of the Charge failure (e.g. payment-side error or config) is not observable in the permitted telemetry and is left as an open gap; no hidden configuration trigger is inferred.\", \"claims\": [{\"kind\": \"fact\", \"text\": \"Observed frontend-proxy access log shows \\\"POST /api/checkout HTTP/1.1\\\" 500 at 2026-09-10T03:33:49.943Z with trace_id 124bb098579844844530eaab40293ff1; 19 of 20 displayed rows are visible and the surrounding visible rows are 200s.\", \"evidence_ids\": [\"m002-fault-01-e6\"]}, {\"kind\": \"fact\", \"text\": \"Sampled spans for trace 490fdb46cfa2ce55c61bbe602016604e show an observed parent-child chain: load-generator POST (error, http.status_code 500) → frontend-proxy ingress/router egress → frontend POST /api/checkout (500) → frontend grpc.oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 13) → checkout oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 13); the checkout span is the deepest errored span in the returned sample.\", \"evidence_ids\": [\"m002-fault-01-e8\"]}, {\"kind\": \"fact\", \"text\": \"In the window increase of checkout's client histogram counts, oteldemo.PaymentService/Charge shows ~11.30 at rpc_grpc_status_code 2 and 0 at status 0, while other checkout client calls (GetProduct, GetCart, GetQuote, Convert) are entirely status 0 — the Charge call is the only failing client call attributed to checkout.\", \"evidence_ids\": [\"m002-fault-01-e11\", \"m002-fault-01-e15\"]}, {\"kind\": \"fact\", \"text\": \"Checkout's server-side PlaceOrder counts show ~11.30 at rpc_grpc_status_code 13 and 0 at status 0, consistent with all counted PlaceOrder server calls in the window failing.\", \"evidence_ids\": [\"m002-fault-01-e12\", \"m002-fault-01-e18\"]}, {\"kind\": \"fact\", \"text\": \"Payment service span metrics show equal STATUS_CODE_ERROR and STATUS_CODE_UNSET window increases (~12.55) with no further breakdown, and no payment-side rpc_method/labels were returned by traces; the returned sampled trace spans include no payment span.\", \"evidence_ids\": [\"m002-fault-01-e16\", \"m002-fault-01-e9\"]}, {\"kind\": \"fact\", \"text\": \"app_payment_transactions_total is nonzero cumulatively (USD 77, CAD 6, service_version 2.0.2) but its window increase over 5m is 0 for both currencies, i.e. no completed payment transactions were counted in the window despite Charge attempts occurring.\", \"evidence_ids\": [\"m002-fault-01-e5\", \"m002-fault-01-e13\"]}, {\"kind\": \"fact\", \"text\": \"Error increases are confined to the checkout path: frontend-proxy STATUS_CODE_ERROR ~25.1, frontend ERROR ~37.7, checkout ERROR ~25.1, payment ERROR ~12.6, load-generator ERROR ~12.6; product-catalog, cart, currency, quote, shipping and ad show no error-tagged increase in the window.\", \"evidence_ids\": [\"m002-fault-01-e14\", \"m002-fault-01-e19\"]}, {\"kind\": \"fact\", \"text\": \"cart service logs in the window are all Information-level GetCartAsync/AddItemAsync entries with no error-level records, and the checkout-path trace 124bb098579844844530eaab40293ff1 includes cart activity returning HTTP 200 — cart is not the failing dependency.\", \"evidence_ids\": [\"m002-fault-01-e7\", \"m002-fault-01-e6\"]}, {\"kind\": \"fact\", \"text\": \"The log backend returned zero records for service payment in the window (backend_total_hits 0), so payment's own error messages are not observable.\", \"evidence_ids\": [\"m002-fault-01-e10\"]}, {\"kind\": \"hypothesis\", \"text\": \"The checkout → payment Charge call is the failing dependency causing the POST /api/checkout HTTP 500s, with gRPC status 2 (UNKNOWN) returned by payment and surfaced by checkout as status 13.\", \"evidence_ids\": [\"m002-fault-01-e8\", \"m002-fault-01-e11\", \"m002-fault-01-e15\", \"m002-fault-01-e18\"]}, {\"kind\": \"hypothesis\", \"text\": \"Payment is reached but its Charge handler fails before recording a transaction, since payment error spans increase while app_payment_transactions_total shows no window increase; the internal cause inside payment (business rejection, downstream dependency, or application error) is not visible in the permitted telemetry.\", \"evidence_ids\": [\"m002-fault-01-e13\", \"m002-fault-01-e16\"]}, {\"kind\": \"counter_evidence\", \"text\": \"Payment's own client histogram metric for its service_name returned no series (empty result), so there is no observed outgoing call edge from payment to any further dependency; the failing call's origin cannot be extended beyond checkout → payment.\", \"evidence_ids\": [\"m002-fault-01-e17\"]}, {\"kind\": \"counter_evidence\", \"text\": \"Complete call chain cannot be asserted: the trace query returned only 20 spans of 349 total (omitted_span_count 335), selected error-first then longest-duration, so intermediate or deeper spans (including any payment span) were not shown and remain unknown.\", \"evidence_ids\": [\"m002-fault-01-e8\", \"m002-fault-01-e9\"]}, {\"kind\": \"counter_evidence\", \"text\": \"The frontend-proxy log view is not an exhaustive error inventory: backend_total_hits was 180 while 19 rows were model-visible; status claims apply only to the displayed rows.\", \"evidence_ids\": [\"m002-fault-01-e6\"]}, {\"kind\": \"rejected_hypothesis\", \"text\": \"Cart as the failing dependency is rejected: cart logs in the window contain only Information-level GetCartAsync/AddItemAsync entries with no errors, cart has no error-tagged span increase, and the error trace's cart calls returned 200.\", \"evidence_ids\": [\"m002-fault-01-e7\", \"m002-fault-01-e19\", \"m002-fault-01-e6\"]}, {\"kind\": \"recommendation\", \"text\": \"Advisory: inspect the payment service instance (compose service payment, container_id 8d8e65e2ed9f99ddf60b05d230eff40c68dc66a7afbd434ac6b959d122286571, image sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87, config_hash a95bfc14611fdb08ca0326d1cb424656f71473949db0dcba9d52341402583bb6) and its Charge handler error output, since payment's own logs are not in the accessible log backend.\", \"evidence_ids\": [\"m002-fault-01-e9\", \"m002-fault-01-e10\"]}, {\"kind\": \"recommendation\", \"text\": \"Advisory: where an error status drives a CEL/flagd-style routing or retry, capture the payment-side error response body/status message for charge failures; the mechanism behind gRPC status 2 from Charge is not observable in the permitted telemetry and is not diagnosed here (no hidden configuration trigger inferred).\", \"evidence_ids\": [\"m002-fault-01-e11\", \"m002-fault-01-e15\"]}], \"gaps\": [\"Payment's own application logs and error messages for Charge are absent (backend_total_hits 0), so the internal failure mechanism inside payment is unknown.\", \"Only 20 of 349 spans were returned (335 omitted) by an error-biased, duration-biased sampler; the complete call chain and any payment span are not observed.\", \"The reported error spans for payment are all STATUS_CODE_ERROR with no rpc_method breakdown in traces, so which payment handler/operation produced them is not visible.\", \"The frontend-proxy backend held 180 hits versus 19 displayed rows, so other 5xx requests in the window may exist unobserved.\", \"No matched baseline window was supplied, so no before/after comparison or recovery/health certification is possible.\", \"The specific trigger (code defect, dependency fault, or configuration) behind the Charge failure is not established by the permitted telemetry.\"], \"next_steps\": [\"Enable payment (and checkout) application log collection in the observability backend so Charge failure messages can be read directly.\", \"Pull a complete trace by trace_id 490fdb46cfa2ce55c61bbe602016604e and 124bb098579844844530eaab40293ff1, including the checkout-internal and any payment spans, to confirm the failing span's attributes and messages.\", \"Query payment-side error/exception metrics or logs (e.g. payment container stdout) for the window 1789010952–1789011252 on cluster m0-otel-20260909.\", \"Have a human verify whether payment Charge failures coincide with a currency/transaction-type pattern, given the CAD and USD counters, using data outside the authorized scope.\"]}",
+  "finish_reason": "stop",
+  "quality_assessment": "pending_independent_evidence_check",
+  "report_request_id": "m002-fault-01-http-17",
+  "final_report": {
+    "schema_version": "m0-report-v1",
+    "assessment_status": "completed",
+    "conclusion": "supported",
+    "summary": "Within the authorized window (1789010952–1789011252) the failing dependency on the POST /api/checkout path is the checkout → payment gRPC call oteldemo.PaymentService/Charge, which fails with rpc.grpc.status_code 2 (UNKNOWN), propagating up as CheckoutService/PlaceOrder code 13 and frontend/proxy HTTP 500. Checkout's client-side histogram counts show ~11.3 window increase for Charge at status 2 and 0 at status 0 (m002-fault-01-e11, m002-fault-01-e15); payment service spans show equal STATUS_CODE_ERROR and STATUS_CODE_UNSET increases (~12.55) while app_payment_transactions_total shows 0 window increase (m002-fault-01-e13, m002-fault-01-e16). No payment logs exist in the accessible log backend. The trigger/mechanism of the Charge failure (e.g. payment-side error or config) is not observable in the permitted telemetry and is left as an open gap; no hidden configuration trigger is inferred.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "Observed frontend-proxy access log shows \"POST /api/checkout HTTP/1.1\" 500 at 2026-09-10T03:33:49.943Z with trace_id 124bb098579844844530eaab40293ff1; 19 of 20 displayed rows are visible and the surrounding visible rows are 200s.",
+        "evidence_ids": [
+          "m002-fault-01-e6"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Sampled spans for trace 490fdb46cfa2ce55c61bbe602016604e show an observed parent-child chain: load-generator POST (error, http.status_code 500) → frontend-proxy ingress/router egress → frontend POST /api/checkout (500) → frontend grpc.oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 13) → checkout oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code 13); the checkout span is the deepest errored span in the returned sample.",
+        "evidence_ids": [
+          "m002-fault-01-e8"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "In the window increase of checkout's client histogram counts, oteldemo.PaymentService/Charge shows ~11.30 at rpc_grpc_status_code 2 and 0 at status 0, while other checkout client calls (GetProduct, GetCart, GetQuote, Convert) are entirely status 0 — the Charge call is the only failing client call attributed to checkout.",
+        "evidence_ids": [
+          "m002-fault-01-e11",
+          "m002-fault-01-e15"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's server-side PlaceOrder counts show ~11.30 at rpc_grpc_status_code 13 and 0 at status 0, consistent with all counted PlaceOrder server calls in the window failing.",
+        "evidence_ids": [
+          "m002-fault-01-e12",
+          "m002-fault-01-e18"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Payment service span metrics show equal STATUS_CODE_ERROR and STATUS_CODE_UNSET window increases (~12.55) with no further breakdown, and no payment-side rpc_method/labels were returned by traces; the returned sampled trace spans include no payment span.",
+        "evidence_ids": [
+          "m002-fault-01-e16",
+          "m002-fault-01-e9"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "app_payment_transactions_total is nonzero cumulatively (USD 77, CAD 6, service_version 2.0.2) but its window increase over 5m is 0 for both currencies, i.e. no completed payment transactions were counted in the window despite Charge attempts occurring.",
+        "evidence_ids": [
+          "m002-fault-01-e5",
+          "m002-fault-01-e13"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "Error increases are confined to the checkout path: frontend-proxy STATUS_CODE_ERROR ~25.1, frontend ERROR ~37.7, checkout ERROR ~25.1, payment ERROR ~12.6, load-generator ERROR ~12.6; product-catalog, cart, currency, quote, shipping and ad show no error-tagged increase in the window.",
+        "evidence_ids": [
+          "m002-fault-01-e14",
+          "m002-fault-01-e19"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "cart service logs in the window are all Information-level GetCartAsync/AddItemAsync entries with no error-level records, and the checkout-path trace 124bb098579844844530eaab40293ff1 includes cart activity returning HTTP 200 — cart is not the failing dependency.",
+        "evidence_ids": [
+          "m002-fault-01-e7",
+          "m002-fault-01-e6"
+        ]
+      },
+      {
+        "kind": "fact",
+        "text": "The log backend returned zero records for service payment in the window (backend_total_hits 0), so payment's own error messages are not observable.",
+        "evidence_ids": [
+          "m002-fault-01-e10"
+        ]
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The checkout → payment Charge call is the failing dependency causing the POST /api/checkout HTTP 500s, with gRPC status 2 (UNKNOWN) returned by payment and surfaced by checkout as status 13.",
+        "evidence_ids": [
+          "m002-fault-01-e8",
+          "m002-fault-01-e11",
+          "m002-fault-01-e15",
+          "m002-fault-01-e18"
+        ]
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Payment is reached but its Charge handler fails before recording a transaction, since payment error spans increase while app_payment_transactions_total shows no window increase; the internal cause inside payment (business rejection, downstream dependency, or application error) is not visible in the permitted telemetry.",
+        "evidence_ids": [
+          "m002-fault-01-e13",
+          "m002-fault-01-e16"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Payment's own client histogram metric for its service_name returned no series (empty result), so there is no observed outgoing call edge from payment to any further dependency; the failing call's origin cannot be extended beyond checkout → payment.",
+        "evidence_ids": [
+          "m002-fault-01-e17"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Complete call chain cannot be asserted: the trace query returned only 20 spans of 349 total (omitted_span_count 335), selected error-first then longest-duration, so intermediate or deeper spans (including any payment span) were not shown and remain unknown.",
+        "evidence_ids": [
+          "m002-fault-01-e8",
+          "m002-fault-01-e9"
+        ]
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The frontend-proxy log view is not an exhaustive error inventory: backend_total_hits was 180 while 19 rows were model-visible; status claims apply only to the displayed rows.",
+        "evidence_ids": [
+          "m002-fault-01-e6"
+        ]
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Cart as the failing dependency is rejected: cart logs in the window contain only Information-level GetCartAsync/AddItemAsync entries with no errors, cart has no error-tagged span increase, and the error trace's cart calls returned 200.",
+        "evidence_ids": [
+          "m002-fault-01-e7",
+          "m002-fault-01-e19",
+          "m002-fault-01-e6"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Advisory: inspect the payment service instance (compose service payment, container_id 8d8e65e2ed9f99ddf60b05d230eff40c68dc66a7afbd434ac6b959d122286571, image sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87, config_hash a95bfc14611fdb08ca0326d1cb424656f71473949db0dcba9d52341402583bb6) and its Charge handler error output, since payment's own logs are not in the accessible log backend.",
+        "evidence_ids": [
+          "m002-fault-01-e9",
+          "m002-fault-01-e10"
+        ]
+      },
+      {
+        "kind": "recommendation",
+        "text": "Advisory: where an error status drives a CEL/flagd-style routing or retry, capture the payment-side error response body/status message for charge failures; the mechanism behind gRPC status 2 from Charge is not observable in the permitted telemetry and is not diagnosed here (no hidden configuration trigger inferred).",
+        "evidence_ids": [
+          "m002-fault-01-e11",
+          "m002-fault-01-e15"
+        ]
+      }
+    ],
+    "gaps": [
+      "Payment's own application logs and error messages for Charge are absent (backend_total_hits 0), so the internal failure mechanism inside payment is unknown.",
+      "Only 20 of 349 spans were returned (335 omitted) by an error-biased, duration-biased sampler; the complete call chain and any payment span are not observed.",
+      "The reported error spans for payment are all STATUS_CODE_ERROR with no rpc_method breakdown in traces, so which payment handler/operation produced them is not visible.",
+      "The frontend-proxy backend held 180 hits versus 19 displayed rows, so other 5xx requests in the window may exist unobserved.",
+      "No matched baseline window was supplied, so no before/after comparison or recovery/health certification is possible.",
+      "The specific trigger (code defect, dependency fault, or configuration) behind the Charge failure is not established by the permitted telemetry."
+    ],
+    "next_steps": [
+      "Enable payment (and checkout) application log collection in the observability backend so Charge failure messages can be read directly.",
+      "Pull a complete trace by trace_id 490fdb46cfa2ce55c61bbe602016604e and 124bb098579844844530eaab40293ff1, including the checkout-internal and any payment spans, to confirm the failing span's attributes and messages.",
+      "Query payment-side error/exception metrics or logs (e.g. payment container stdout) for the window 1789010952–1789011252 on cluster m0-otel-20260909.",
+      "Have a human verify whether payment Charge failures coincide with a currency/transaction-type pattern, given the CAD and USD counters, using data outside the authorized scope."
+    ]
+  },
+  "report_schema_version": "m0-report-v1",
+  "boundary_errors": [],
+  "tool_wall_seconds": 3.167984919215087,
+  "model_http_requests": 4,
+  "tool_queries": 19
+}

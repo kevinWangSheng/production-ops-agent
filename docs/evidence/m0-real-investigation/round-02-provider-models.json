@@ -1,0 +1,18 @@
+{
+  "at": "2026-09-10T02:28:19.494432+00:00",
+  "operation": "GET /models metadata only; not generation",
+  "http_status": 200,
+  "response_sha256": "0c5d2ba6ebb791e893b0e7efed32c64415a633ed774e8d89dad8e33c4d69ae77",
+  "models": [
+    {
+      "id": "deepseek-flash",
+      "object": "model",
+      "owned_by": "deepseek"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "object": "model",
+      "owned_by": "deepseek"
+    }
+  ]
+}

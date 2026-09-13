@@ -1,0 +1,29 @@
+{
+  "role": "opspilot_probe_20260912",
+  "select": {
+    "current_user": "opspilot_probe_20260912",
+    "current_database": "m0_budget",
+    "subject_count": 449
+  },
+  "writes": [
+    {
+      "sql": "INSERT INTO m0_v3_subject(id) VALUES ('8ebd87c9-9bc2-463b-8e3e-173217a6da48')",
+      "status": "DENIED",
+      "error": "permission denied for table m0_v3_subject"
+    },
+    {
+      "sql": "UPDATE m0_v3_subject SET state = 'cancelled' WHERE false",
+      "status": "DENIED",
+      "error": "permission denied for table m0_v3_subject"
+    },
+    {
+      "sql": "DELETE FROM m0_v3_subject WHERE false",
+      "status": "DENIED",
+      "error": "permission denied for table m0_v3_subject"
+    }
+  ],
+  "ddl": {
+    "status": "DENIED",
+    "error": "permission denied for schema public"
+  }
+}

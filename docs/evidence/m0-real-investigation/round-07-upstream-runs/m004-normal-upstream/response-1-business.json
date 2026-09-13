@@ -1,0 +1,114 @@
+{
+  "id": "481a34f4-f95d-4a86-952e-f1b68a8c1d39",
+  "object": "chat.completion",
+  "created": 1789241346,
+  "model": "deepseek-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'll start by planning and gathering evidence in parallel.",
+        "tool_calls": [
+          {
+            "index": 0,
+            "id": "call_00_ET_NUNy1G39g2jwrOj45Ddh1139",
+            "type": "function",
+            "function": {
+              "name": "TodoWrite",
+              "arguments": "{\"todos\": [{\"id\": \"1\", \"content\": \"Locate services and instance identity\", \"status\": \"in_progress\"}, {\"id\": \"2\", \"content\": \"Query checkout/payment traces for error evidence\", \"status\": \"in_progress\"}, {\"id\": \"3\", \"content\": \"Query metrics for gRPC status codes and latency\", \"status\": \"in_progress\"}, {\"id\": \"4\", \"content\": \"Fetch frontend-proxy logs\", \"status\": \"in_progress\"}, {\"id\": \"5\", \"content\": \"Correlate failing dependency and identify root cause\", \"status\": \"pending\"}]}"
+            }
+          },
+          {
+            "index": 1,
+            "id": "call_01_ET_KQeZvcejeygvQFFbWBPB4934",
+            "type": "function",
+            "function": {
+              "name": "otel_services",
+              "arguments": "{}"
+            }
+          },
+          {
+            "index": 2,
+            "id": "call_02_ET_KuRxW8w04gbACaWJcUDf1531",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"checkout\"}"
+            }
+          },
+          {
+            "index": 3,
+            "id": "call_03_ET_dQ0M5KN5NrRIJ3lmDONY7748",
+            "type": "function",
+            "function": {
+              "name": "otel_traces",
+              "arguments": "{\"service\": \"payment\"}"
+            }
+          },
+          {
+            "index": 4,
+            "id": "call_04_ET_UF2dyHm6oBafTVUToYSk4102",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\\\"checkout\\\"}[5m]))\"}"
+            }
+          },
+          {
+            "index": 5,
+            "id": "call_05_ET_mYP83rE6hOEUscJAG4rv4216",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"histogram_quantile(0.95, sum by(le,service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=\\\"checkout\\\"}[5m])))\"}"
+            }
+          },
+          {
+            "index": 6,
+            "id": "call_06_ET_L6UP4ucfYBG59IKE60990917",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 7,
+            "id": "call_07_ET_y5jr9lM3tlQXghyrE1Rj2225",
+            "type": "function",
+            "function": {
+              "name": "otel_metrics",
+              "arguments": "{\"query\": \"sum(increase(app_payment_transactions_total[5m]))\"}"
+            }
+          },
+          {
+            "index": 8,
+            "id": "call_08_ET_Tnl6y0aNmYnsp9lCmN330657",
+            "type": "function",
+            "function": {
+              "name": "otel_logs",
+              "arguments": "{\"service\": \"frontend-proxy\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2916,
+    "completion_tokens": 518,
+    "total_tokens": 3434,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_cache_hit_tokens": 0,
+    "prompt_cache_miss_tokens": 2916
+  },
+  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+}

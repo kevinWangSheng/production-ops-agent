@@ -1,0 +1,6 @@
+container_uid=0
+/Users/shenghuikevin/dev/AI/production-ops-agent-m0-01=absent
+/tmp/holdout/answers.json=absent
+/Users/shenghuikevin/dev/AI/production-ops-agent/.env=absent
+/root/.aws/credentials=absent
+probe_exit=0

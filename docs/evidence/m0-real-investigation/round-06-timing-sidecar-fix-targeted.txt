@@ -1,0 +1,26 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 16 items
+
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[operation_started_at-missing] PASSED [  6%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[operation_started_at-null] PASSED [ 12%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[operation_started_at-known] PASSED [ 18%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[collection_completed_at-missing] PASSED [ 25%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[collection_completed_at-null] PASSED [ 31%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_cannot_invent_or_change_capture_clocks[collection_completed_at-known] PASSED [ 37%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[erase] PASSED [ 43%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[source_start] PASSED [ 50%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[source_end] PASSED [ 56%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[basis] PASSED [ 62%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[id] PASSED [ 68%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[hash] PASSED [ 75%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_preserves_verified_record_and_identity[non_mapping] PASSED [ 81%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_accepts_equivalent_normalized_timestamp_without_mutation PASSED [ 87%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_rejects_unknown_record_fields[credential] PASSED [ 93%]
+tests/test_m0_timing_echo.py::test_timing_sidecar_rejects_unknown_record_fields[untrusted_payload] PASSED [100%]
+
+============================== 16 passed in 0.12s ==============================

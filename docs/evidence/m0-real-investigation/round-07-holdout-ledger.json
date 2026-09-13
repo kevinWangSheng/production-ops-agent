@@ -1,0 +1,36 @@
+{
+  "allocation_id": "m0-09-holdout-20260912",
+  "reservation_cap_cny": 6.0,
+  "trace_uploads": 0,
+  "container_image": "sha256:83bd4247d4eca8cc276b0af3626ce96f7bfc93e65151128739420ebc75abd25c",
+  "runs": [
+    {
+      "run_id": "holdout-normal-r07",
+      "scenario": "independent-normal-variant",
+      "packet_sha256": "7b4f5d19c6b73d90a3e2e97ae98bf53192aca5e1c74022269282533cf9982de5",
+      "http_count": 2,
+      "attempts": [
+        {"ordinal": 1, "http_status": 200, "prompt_tokens": 1416, "completion_tokens": 403, "total_tokens": 1819, "cost_upper_cny": 0.007875, "reservation_cny": 1.0},
+        {"ordinal": 2, "http_status": 200, "prompt_tokens": 8666, "completion_tokens": 3181, "total_tokens": 11847, "cost_upper_cny": 0.054627, "reservation_cny": 0.0}
+      ],
+      "known_cost_upper_cny": 0.062502,
+      "status": "final_returned"
+    },
+    {
+      "run_id": "holdout-fault-r07",
+      "scenario": "independent-fault-variant",
+      "packet_sha256": "ac737766a1d3ddb1cc3b0cb9dcec0d43612290c903c979b9910b67555659a9e1",
+      "http_count": 2,
+      "attempts": [
+        {"ordinal": 1, "http_status": 200, "prompt_tokens": 1416, "completion_tokens": 424, "total_tokens": 1840, "cost_upper_cny": 0.008064, "reservation_cny": 1.0},
+        {"ordinal": 2, "http_status": 200, "prompt_tokens": 8812, "completion_tokens": 4089, "total_tokens": 12901, "cost_upper_cny": 0.063237, "reservation_cny": 0.0}
+      ],
+      "known_cost_upper_cny": 0.071301,
+      "status": "final_returned"
+    }
+  ],
+  "http_count": 4,
+  "known_cost_upper_cny": 0.133803,
+  "unknown_reservation_cny": 0.0,
+  "cost_basis": "peak all-cache-miss upper bound; not invoice"
+}

@@ -97,6 +97,11 @@ regexes = [
   '^b39dadc086f7d83346d9b5ff6ece87b956365ec9fde8c33912772bd0ec128ac1$',
   '^b3497adb93bd314032e83d974893e9d62adea82c24ad534dd223883cd794b67f$'
 ]
+[[rules]]
+id = "m0-selftest-api-key"
+description = "Deterministic synthetic API-key canary used to verify the scanner"
+regex = '''api_key\\s*=\\s*\"(?i:[a-f0-9]{48})\"'''
+keywords = ["api_key"]
 """
     )
     args = [

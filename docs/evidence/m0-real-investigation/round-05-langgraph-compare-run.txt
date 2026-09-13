@@ -1,0 +1,32 @@
+{
+  "decision": "推迟",
+  "existing_loop": {
+    "cancelled": true,
+    "persistence_points": 2,
+    "steps": [
+      "otel_services",
+      "otel_traces"
+    ]
+  },
+  "langgraph": {
+    "cancelled": true,
+    "persistence_points": 2,
+    "steps": [
+      "otel_services",
+      "otel_traces"
+    ]
+  },
+  "langgraph_version": "1.2.11",
+  "reason": null,
+  "scenario": {
+    "cancel_after": 2,
+    "model_http": 0,
+    "tool_http": 0,
+    "tool_sequence": [
+      "otel_services",
+      "otel_traces",
+      "otel_metrics"
+    ]
+  },
+  "status": "compared"
+}

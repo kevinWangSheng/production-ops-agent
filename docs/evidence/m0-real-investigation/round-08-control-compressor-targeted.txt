@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 23 items
+
+tests/test_m0_step_store_controls.py::test_pause_and_resume_scope_validation[region-None] PASSED [  4%]
+tests/test_m0_step_store_controls.py::test_pause_and_resume_scope_validation[target-None] PASSED [  8%]
+tests/test_m0_step_store_controls.py::test_pause_and_resume_scope_validation[target-] PASSED [ 13%]
+tests/test_m0_step_store_controls.py::test_pause_and_resume_scope_validation[global-svc] PASSED [ 17%]
+tests/test_m0_step_store_controls.py::test_pause_reason_is_bounded_text PASSED [ 21%]
+tests/test_m0_step_store_controls.py::test_subject_control_still_rejects_scope_actions PASSED [ 26%]
+tests/test_m0_step_store_controls.py::test_accept_target_key_validation PASSED [ 30%]
+tests/test_m0_step_store_controls.py::test_observer_authorization_validation PASSED [ 34%]
+tests/test_m0_step_store_controls.py::test_observation_and_interruption_validation PASSED [ 39%]
+tests/test_m0_compressor.py::test_no_fold_under_threshold_returns_identical_copy PASSED [ 43%]
+tests/test_m0_compressor.py::test_fold_keeps_pairing_and_evidence_ids_and_drops_private_reasoning PASSED [ 47%]
+tests/test_m0_compressor.py::test_compression_is_deterministic PASSED    [ 52%]
+tests/test_m0_compressor.py::test_keep_groups_floor_never_splits_a_group PASSED [ 56%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages0] PASSED [ 60%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages1] PASSED [ 65%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages2] PASSED [ 69%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages3] PASSED [ 73%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages4] PASSED [ 78%]
+tests/test_m0_compressor.py::test_orphans_and_bad_ids_fail_closed[messages5] PASSED [ 82%]
+tests/test_m0_compressor.py::test_invalid_compressor_input[0-1] PASSED   [ 86%]
+tests/test_m0_compressor.py::test_invalid_compressor_input[5-1] PASSED   [ 91%]
+tests/test_m0_compressor.py::test_invalid_compressor_input[5--1] PASSED  [ 95%]
+tests/test_m0_compressor.py::test_invalid_compressor_input[5-1.0] PASSED [100%]
+
+============================== 23 passed in 0.75s ==============================

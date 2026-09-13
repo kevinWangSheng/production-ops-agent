@@ -1,0 +1,16 @@
+{
+  "allocation_scope": "M0-07 current task; historical B4/B6 allocations excluded",
+  "http_cap": 30,
+  "reservation_cap_cny": 30.0,
+  "trace_uploads": 0,
+  "allocations": [
+    {"id": "m0-10-wp23-20260912", "http": 1, "known_cost_upper_cny": 0.001749, "unknown_reservation_cny": 0.0},
+    {"id": "m0-11-wp2-20260912", "http": 1, "known_cost_upper_cny": 0.004986, "unknown_reservation_cny": 0.0},
+    {"id": "m0-07-wp5-20260912", "http": 8, "known_cost_upper_cny": 0.228585, "unknown_reservation_cny": 0.0},
+    {"id": "m0-09-holdout-20260912", "http": 4, "known_cost_upper_cny": 0.133803, "unknown_reservation_cny": 0.0}
+  ],
+  "http_count": 14,
+  "known_cost_upper_cny": 0.369123,
+  "unknown_reservation_cny": 0.0,
+  "cost_basis": "peak all-cache-miss upper bound; not invoice; failed preflight attempts with 0 HTTP are retained separately"
+}

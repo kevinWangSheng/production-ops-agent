@@ -1,0 +1,1385 @@
+{
+  "at": "2026-09-10T04:07:24.690467+00:00",
+  "business_files": [
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-impl01/configuration.json",
+      "bytes": 4351,
+      "sha256": "9331ec507e91f0309b9aa2cb99b23bdc65014a145c0e1db90e6e68d1ced55154"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-impl01/deployment-registry.json",
+      "bytes": 45002,
+      "sha256": "a18aff3c47853642a420f357c353ef90874094598c29110cb974d28a7494d2c8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-impl01/input-business.json",
+      "bytes": 158430,
+      "sha256": "577307c5f96d5d4adda0f461293bd3be356e62b221ac840142254b35d90face6"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-independent01/configuration.json",
+      "bytes": 4385,
+      "sha256": "b43aa72f1497b9053710b206ef4b4d48fd847f82ff1826631a5a9b88b2f0142c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-independent01/deployment-registry.json",
+      "bytes": 40823,
+      "sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-active-preflight-independent01/input-business.json",
+      "bytes": 13171,
+      "sha256": "ed1080db68237966971008afa29fe26520c397efc6b1b6ebbb2bcbf63dd7064c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/configuration.json",
+      "bytes": 4977,
+      "sha256": "67f07d36ebd34ecb0b46de6e119178e58231c88f9362b72ed74ea8b56272f7e0"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/delivered-business.json",
+      "bytes": 327657,
+      "sha256": "2c5edc3bd91339667eff0e95cd394a573e88c57c3ce380a9f317700bbd40c64f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/deployment-registry.json",
+      "bytes": 40823,
+      "sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/input-business.json",
+      "bytes": 15939,
+      "sha256": "488a23a8ff872582988b0cf4fc1e06a68febf5c968dae5f0ba69446b43ccda01"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e1-manifest.json",
+      "bytes": 2244,
+      "sha256": "9ddf4b7695053023477e2e16db6638511107b9b2503555e23ce08a462b86d83e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e1-raw.json",
+      "bytes": 2276,
+      "sha256": "f588faa03eaeb596125c24a26d4a0d61d39a7607ff5b5d819a746721b643e191"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e1-tool-model-view.json",
+      "bytes": 2276,
+      "sha256": "f588faa03eaeb596125c24a26d4a0d61d39a7607ff5b5d819a746721b643e191"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e10-manifest.json",
+      "bytes": 2026,
+      "sha256": "320048b9e201b0ba523796c719412fc00b30eea66a71d7350572f6b9b690036f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e10-raw.json",
+      "bytes": 2252,
+      "sha256": "6c7ceef5e1d734febf4f97c2129a2647f16c882e5054f20d7afdb83b4a6954be"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e10-tool-model-view.json",
+      "bytes": 2669,
+      "sha256": "a6d52c558e98d513bbb1f4dfa9115965c3c1c97f40c079167d34239386652f3f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e11-manifest.json",
+      "bytes": 2197,
+      "sha256": "0df3529365f5375b4abce9745212d20fe24793e3d715eec8b8b19361d64ea1d8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e11-raw.json",
+      "bytes": 7403,
+      "sha256": "46c11a3ace1528691a35eea6909a675431f2d838e4e24b81ea412e4ebdae14d2"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e11-tool-model-view.json",
+      "bytes": 8624,
+      "sha256": "46e1c75477d2f08958565b7aa703ca4406eb57a2a7ddc2c61c7492cdafe86996"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e12-manifest.json",
+      "bytes": 2197,
+      "sha256": "52dff58082e933d83aadb937c134040ade607b5b581b7889cbc3b938ca3eea91"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e12-raw.json",
+      "bytes": 5193,
+      "sha256": "8da8a919fde7cddbd37d37e885ecd580ed4b635793a96bdaac26e9a1d1558121"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e12-tool-model-view.json",
+      "bytes": 6414,
+      "sha256": "b1c1b6187772d0c1067b3d6770fea8f6705b6ed4529261e0e8a4553f6866848b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e13-manifest.json",
+      "bytes": 2055,
+      "sha256": "436d5a6b8151fcf37cd1ce2360e147ba2802b29e736bd15927f8ebf144ee9862"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e13-raw.json",
+      "bytes": 3005,
+      "sha256": "43e42f00738840bb47327c6ffd10ca26bb3417780627ca5d5cd359a0f1572910"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e13-tool-model-view.json",
+      "bytes": 4226,
+      "sha256": "60bcadba083b704de7b80ea16ba50242fda698e6ff7ba8dc29e1d77743886712"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e14-manifest.json",
+      "bytes": 2252,
+      "sha256": "192adc5fcb74f10109ab73ea0c5a176656dbee9e7b451672f15bf45979c6f855"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e14-raw.json",
+      "bytes": 4984,
+      "sha256": "a83feec67c54918054fc441c7cf7f162dd243a7c99ef1340b9673cd901a51ada"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e14-tool-model-view.json",
+      "bytes": 6205,
+      "sha256": "fbb2d0412e35ee6d7b9e9bcbec1aaeafad30450a6b96e455c76f32f35115f1c4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e15-manifest.json",
+      "bytes": 2149,
+      "sha256": "6117f848231bb62f630674d1fe8108d60e0a381ee171b882706ca167f35757b1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e15-raw.json",
+      "bytes": 4545,
+      "sha256": "3beca95adee16843a28ea4bfd937d80555e64cbbf46174ce6c372f880151fb8b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e15-tool-model-view.json",
+      "bytes": 5766,
+      "sha256": "b96d64d8a0a635825160c1f5c97e337d2888c9be79a8128a8943614abc9751f5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e16-manifest.json",
+      "bytes": 2153,
+      "sha256": "139455dabb2ed6fbf2e37c368c4364f6f7ffb9e431364bb38b916dd6fd338a84"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e16-raw.json",
+      "bytes": 2824,
+      "sha256": "911fd9f62a2fd92cf6e8ec3a8d93185d92250a3c5ff1660d226bb66e47b90a9e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e16-tool-model-view.json",
+      "bytes": 4045,
+      "sha256": "b93b83376aab94f5df7c830e7fb8661908b42324ef905160d8220ed0332d7143"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e17-manifest.json",
+      "bytes": 2156,
+      "sha256": "21523e9434e9fea74b95d8a93c411802838cc062f9e94aef9d99ba7c97b85484"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e17-raw.json",
+      "bytes": 2309,
+      "sha256": "0df75cafd84a2d6c869548b9e99308a244bd6e1b26081abc64e13551e19203cb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e17-tool-model-view.json",
+      "bytes": 3530,
+      "sha256": "d5bd0f94679d6a659060313b9203210e7bb0430964e32d623ab70d9ba84c3025"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e18-manifest.json",
+      "bytes": 2149,
+      "sha256": "b8cae84b5b9184c154bafb25de4c0341535199cab6b940a7b4118233f8530040"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e18-raw.json",
+      "bytes": 2871,
+      "sha256": "459c6b292bed969513ec6eb91ed78b57c94a40efd707afe3b98c85a5856c71ee"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e18-tool-model-view.json",
+      "bytes": 4092,
+      "sha256": "468d52f23c5261121cf9cf5214c5ef1bd9dca68fff621b5735a84eada9ecd02b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e19-manifest.json",
+      "bytes": 2378,
+      "sha256": "3aa63313e5e76a769bbcdf829f5074e11452c14e893647d73be2904098782b82"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e19-raw.json",
+      "bytes": 8478,
+      "sha256": "84a2ac21d573df7eed76990a5c0a3c1319ba4559466ff351ee6cf0c58657ba85"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e19-tool-model-view.json",
+      "bytes": 9699,
+      "sha256": "a8f91b80fa0230130cf535555d0e234faba11c475a0ab1095d7b7fe1ab9f9ee9"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e2-manifest.json",
+      "bytes": 2424,
+      "sha256": "145c2a3c6f92eb3eb241d7952e90e1b99a8aa21bbdc270fe558d42e325608f47"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e2-raw.json",
+      "bytes": 8571,
+      "sha256": "6b7f669a30c8d7806577cbf1135c2a41f29cd776423dcffbb8fced69668f3712"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e2-tool-model-view.json",
+      "bytes": 9792,
+      "sha256": "48e4f90a31ccb20164e85e72d472f876ecb0232dff343b5969e8d60eb599c782"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e3-manifest.json",
+      "bytes": 2193,
+      "sha256": "1cabfbf707484ec4d9ea12752687b930543f3c0c861cbcd6e3ed986fb1a805d8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e3-raw.json",
+      "bytes": 7396,
+      "sha256": "aded3ae907c0c68e02e241db2b5e9e4ba2325ed1564d256cfb4bf5bbe3f8b166"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e3-tool-model-view.json",
+      "bytes": 8617,
+      "sha256": "bab66db1b0b4ec03695384d15bcb35869c70b91b9e7c32d68e7eddd7f9e38570"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e4-manifest.json",
+      "bytes": 2193,
+      "sha256": "a14bad50649cf56b1c7c7997caead3fe3c9ef108850a7f4acadf3580281eb774"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e4-raw.json",
+      "bytes": 5184,
+      "sha256": "99db8ceade3dd3dd8f98f377906566cbe8cb19f64be4956edb10a033dae4d1eb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e4-tool-model-view.json",
+      "bytes": 6405,
+      "sha256": "ad21961fc11e981203e4e66019617d5edab290f75d26e3d5a5e8ead2285ba21a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e5-manifest.json",
+      "bytes": 2040,
+      "sha256": "e7829c82f5747169dc76d5b01670213e674ee5b3cbce1886a64dcc660ec2cafc"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e5-raw.json",
+      "bytes": 3098,
+      "sha256": "e81fff6919cc09456c9faf69a18a1f292f247ba14e5bedcb09fbb508efebbde1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e5-tool-model-view.json",
+      "bytes": 4319,
+      "sha256": "9cc358074ff0e6e08e3952b62d4d6c331a1b12bb0dff8be137d4acdc16e8110f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e6-manifest.json",
+      "bytes": 2030,
+      "sha256": "6a747d8e2d84a9539725c3bb7b9950bc22e48112d88f73f79562202f7a12b494"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e6-raw.json",
+      "bytes": 39930,
+      "sha256": "d5a2f1b001aaca112783b3220be22ac73057a8db474f94408dcf69d41ab11a1b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e6-tool-model-view.json",
+      "bytes": 16399,
+      "sha256": "679a9125ace1d8f7af6f712947b565b8333b00a4edce84d6285d803d0f9288d7"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e7-manifest.json",
+      "bytes": 2010,
+      "sha256": "5ff4ae832a68da8021b22cc60eeef390eb28eb65a61eba7428c5e50e3291d69f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e7-raw.json",
+      "bytes": 34775,
+      "sha256": "7deea63039e0611e1768f9b40187c77ce3894f9c751a920ce8e91f13d4fc2987"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e7-tool-model-view.json",
+      "bytes": 13544,
+      "sha256": "656388625e0ef4d41ff69fff4676b265ea8abf969c00e4d9a2b9e01d55df745c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e8-manifest.json",
+      "bytes": 2186,
+      "sha256": "7195cecc6860a307076be64fbb17d73fad31c0330f1d5e37bee7e8ad6244b947"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e8-raw.json",
+      "bytes": 1185926,
+      "sha256": "29829333ea40c69007295f7f0e03fe466e5dcb272688fc702856b45aac1cd97c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e8-tool-model-view.json",
+      "bytes": 18347,
+      "sha256": "b15fe5793ffc0d67b98b49e828945f3e332b55d4a16ea8b01cac5828e0168ad2"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e9-manifest.json",
+      "bytes": 2185,
+      "sha256": "1cba784d356aef20e409d7a70f42fd7cc77d063f9a5c61175d4160110c056c29"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e9-raw.json",
+      "bytes": 1185922,
+      "sha256": "a2a385fd8e93913a427b5e6e528d4cd6782b287ec4b0c7e8b6b37e95a7053704"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/m002-fault-01-e9-tool-model-view.json",
+      "bytes": 18346,
+      "sha256": "bf7e98c715ac017758973e40cda8c7c1f11f7431147f28dbd88c60cff6c8cb8a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/observations.json",
+      "bytes": 2669944,
+      "sha256": "2b5349f3e27abba58904d29717165b4e6a76e5f75f7a7d878e5e542fc7486fe0"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/request-envelope-checks.json",
+      "bytes": 1879,
+      "sha256": "d830a26e53a838cb49ba2ba987a951faeff3b576cce749b8515b46ce40b42ef3"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/response-14-business.json",
+      "bytes": 1106,
+      "sha256": "83f3fa9a3aa89f73ac0248c94fe7f16a999146de265e3a50a9d6a052b0d4a156"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/response-15-business.json",
+      "bytes": 1142,
+      "sha256": "3d37507bae8c7a016982906567e677798b41d2d74dfb4b25b32397755ff5f302"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/response-16-business.json",
+      "bytes": 1134,
+      "sha256": "6005fbdfb98a429734248016a0d633b42b0f09f9b50677400991a3d85a775ed3"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/response-17-business.json",
+      "bytes": 10026,
+      "sha256": "34f677b4aae87ee5a5fd1d806ba64e75a06fa1c71134ce2e0c111163d7d79bfc"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-fault-01/result-business.json",
+      "bytes": 19369,
+      "sha256": "d94a1922ed361fde084a7f6473b793d1fadc717542de21101f56611002dc905d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-independent-preflight-01/configuration.json",
+      "bytes": 1049,
+      "sha256": "03c735527bdd70f2f22410dbabe5fdd0db27f62fe7cb5f45a7e808e311a66534"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-independent-preflight-01/input-business.json",
+      "bytes": 157453,
+      "sha256": "5d5d90c76c63acdcd3ce2b49adef933b3a6aa4d9cf1cd6851b75db5cba340f59"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-independent-preflight-02/configuration.json",
+      "bytes": 1049,
+      "sha256": "03c735527bdd70f2f22410dbabe5fdd0db27f62fe7cb5f45a7e808e311a66534"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-independent-preflight-02/input-business.json",
+      "bytes": 157453,
+      "sha256": "5d5d90c76c63acdcd3ce2b49adef933b3a6aa4d9cf1cd6851b75db5cba340f59"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/configuration.json",
+      "bytes": 4673,
+      "sha256": "33b71d2538dc4e5547a60f6132861751d46296d90422ae79bcdf66fd94ae490a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/delivered-business.json",
+      "bytes": 299253,
+      "sha256": "b4c6078450aab5db79cb86329f8cac8a404ec5ba0d47aef6a45e380858b40efc"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/deployment-registry.json",
+      "bytes": 40823,
+      "sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/input-business.json",
+      "bytes": 13500,
+      "sha256": "6b10eca6d5ce9b1b6a232bccc8454bb9cca102c7f30cff673c833e99da6eebf8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e1-manifest.json",
+      "bytes": 2110,
+      "sha256": "549bd24576465547ed9b25b40d6ccb33f118df9ae6c6a672a4fb52c70f112140"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e1-raw.json",
+      "bytes": 2142,
+      "sha256": "7b5da593a1d59b393c1cb1866546046e3db17cfb6a58c0c7ad69475c1a40fc48"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e1-tool-model-view.json",
+      "bytes": 2142,
+      "sha256": "7b5da593a1d59b393c1cb1866546046e3db17cfb6a58c0c7ad69475c1a40fc48"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e10-manifest.json",
+      "bytes": 1980,
+      "sha256": "157aa53d69ab7f7f6a8d022fe63e9258d761509e419f9d908859101d8acbb723"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e10-raw.json",
+      "bytes": 3450,
+      "sha256": "89b27271f9d3935c3471b9ef2031ee112044eaf0b5cff3151bf102b87262f9b5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e10-tool-model-view.json",
+      "bytes": 3450,
+      "sha256": "89b27271f9d3935c3471b9ef2031ee112044eaf0b5cff3151bf102b87262f9b5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e11-manifest.json",
+      "bytes": 2079,
+      "sha256": "1179d5545e508139d786198d86533b34131cfdcfae14cd9bb4973f56c0ccbad0"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e11-raw.json",
+      "bytes": 1189895,
+      "sha256": "b83bdab37a18ac407a3ff9448326d42652cee7aac72e64132a904908386b7632"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e11-tool-model-view.json",
+      "bytes": 18171,
+      "sha256": "136b256d901ccb4cf4eb7705d1d56ee3ad032516b5c1c6b57c5773159a448257"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e12-manifest.json",
+      "bytes": 2125,
+      "sha256": "e4255da198ff8577f30ff30e5d3208cc96d3decba776d10cb3f9b1c33c2596d6"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e12-raw.json",
+      "bytes": 847179,
+      "sha256": "90c54f27a4977e9810f79bfc51b899002b7a0f5fe505721bf26e8aa9711a5730"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e12-tool-model-view.json",
+      "bytes": 17835,
+      "sha256": "64594113682b56155cc12c2c66af337f199160d12ee7ec24d006bdfa3f61033d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e13-manifest.json",
+      "bytes": 2085,
+      "sha256": "461f4906d27305072f44f777102b9ea19dd34ba19a787f404fbae3fdad6b4e5f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e13-raw.json",
+      "bytes": 3223,
+      "sha256": "c4c0c5d6b51dc2554231937f630c9fe8d0fcaf8bb4a48d60c312822e6ac2667e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e13-tool-model-view.json",
+      "bytes": 3223,
+      "sha256": "c4c0c5d6b51dc2554231937f630c9fe8d0fcaf8bb4a48d60c312822e6ac2667e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e14-manifest.json",
+      "bytes": 2021,
+      "sha256": "fc0087d3dddefa42ef982420683dfdbe61d5eb63a832aed364e70943e703fab5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e14-raw.json",
+      "bytes": 2473,
+      "sha256": "2e3ad307c92d44c54b1bc573e2bffb8e84143966e067bf04be548a8f971f0246"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e14-tool-model-view.json",
+      "bytes": 2473,
+      "sha256": "2e3ad307c92d44c54b1bc573e2bffb8e84143966e067bf04be548a8f971f0246"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e15-manifest.json",
+      "bytes": 1972,
+      "sha256": "33d8483391f59023a4a5d8f568eafe758cebbd2291bbba7bbcca27ebd34f39a5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e15-raw.json",
+      "bytes": 2090,
+      "sha256": "c1b918c1be9c98a307ab4c418079cbc5400cc7fad46c8590840cfbf6df561bca"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e15-tool-model-view.json",
+      "bytes": 2090,
+      "sha256": "c1b918c1be9c98a307ab4c418079cbc5400cc7fad46c8590840cfbf6df561bca"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e16-manifest.json",
+      "bytes": 1980,
+      "sha256": "0a20c58b85f12406da88feb587c789fe4c74b1af50f1912e8a795697f34d8729"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e16-raw.json",
+      "bytes": 2679,
+      "sha256": "567e7dde7e3fe1fa6b3c91104c0de0e2d2b7fc41f2e5f40bea66afdfd37147d1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e16-tool-model-view.json",
+      "bytes": 2679,
+      "sha256": "567e7dde7e3fe1fa6b3c91104c0de0e2d2b7fc41f2e5f40bea66afdfd37147d1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e2-manifest.json",
+      "bytes": 2221,
+      "sha256": "5f6dd0f2bbc6bd00b34790cf820690082a69fdcced58194a51ce1ea87a8fe51d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e2-raw.json",
+      "bytes": 7086,
+      "sha256": "fb71085d23bacd59fc74479be9ea9173a1952ae354a524241799908b0e05b54c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e2-tool-model-view.json",
+      "bytes": 7086,
+      "sha256": "fb71085d23bacd59fc74479be9ea9173a1952ae354a524241799908b0e05b54c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e3-manifest.json",
+      "bytes": 1871,
+      "sha256": "58745e62ba73daa6680a214db245084b05f71d09610b2f2277c52fb631e585cf"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e3-raw.json",
+      "bytes": 34111,
+      "sha256": "ac2380faaa0baf015e4a0cf1829cc68bc09baceb9d08162b6a069c4bc8a92159"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e3-tool-model-view.json",
+      "bytes": 12993,
+      "sha256": "85d0e6c618957b9658e4263f8c75a3d7a01fd1b5f3a56dd28def7127179e2f2f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e4-manifest.json",
+      "bytes": 1891,
+      "sha256": "652149ac6e69392b13875ffaefa8a619f19728c6f0004564736d70d7824c8931"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e4-raw.json",
+      "bytes": 40121,
+      "sha256": "8ca6cf1723d863afcd8248fad70d80a361e62355e38c693e0467d9ce986def82"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e4-tool-model-view.json",
+      "bytes": 16064,
+      "sha256": "4e09de62c36182228edc274681b82c5cb82abc82238c8e4b88feae4ba485439d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e5-manifest.json",
+      "bytes": 2082,
+      "sha256": "03597116c55989c20bce5b80024b5e4fcf849aa6dfb906876acafcba2f147f53"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e5-raw.json",
+      "bytes": 1356923,
+      "sha256": "1b499b1b0227d0f4be9847636986dab2f7febd57271544a980a60e2055efb5db"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e5-tool-model-view.json",
+      "bytes": 17913,
+      "sha256": "23659f08b0e71e162534d66713a56718a143f10e8d2271d714961139d89a5a48"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e6-manifest.json",
+      "bytes": 2081,
+      "sha256": "0f92ac8361e16c07a07a5bd22133f39e47efd957ddc0707d0481c2452bcfc324"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e6-raw.json",
+      "bytes": 1356903,
+      "sha256": "164b178f861d961c38b4ebb67de63697edb7a6bda341833dbaf11c3186155c57"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e6-tool-model-view.json",
+      "bytes": 17917,
+      "sha256": "95be669fef72e342dfa908e2a877cab683db87742b0593f9ca1f756ab7bd8c45"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e7-manifest.json",
+      "bytes": 1986,
+      "sha256": "ceaabd59903ef83ec0a18e3116cf14e12f9e0e8f78840667ca8036f32a6260ee"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e7-raw.json",
+      "bytes": 4215,
+      "sha256": "68d7c39036765add35aa5f3de65df6abea331e9f3266062ee486e78e90856e61"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e7-tool-model-view.json",
+      "bytes": 4215,
+      "sha256": "68d7c39036765add35aa5f3de65df6abea331e9f3266062ee486e78e90856e61"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e8-manifest.json",
+      "bytes": 1986,
+      "sha256": "8e1660e7552f3713a95cb45ff664607216174fe17a9ae314e406d2eef958239d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e8-raw.json",
+      "bytes": 5013,
+      "sha256": "65a7738867e44d59c6937ec2c6700473d1d450e8c8724386df4eee483be41b88"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e8-tool-model-view.json",
+      "bytes": 5013,
+      "sha256": "65a7738867e44d59c6937ec2c6700473d1d450e8c8724386df4eee483be41b88"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e9-manifest.json",
+      "bytes": 1898,
+      "sha256": "a342bf98fad71b6ed367b275f80e61877a6aa1265db1ffebc68f592e76e573ef"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e9-raw.json",
+      "bytes": 2963,
+      "sha256": "1d04607bef366ccdfe8ba2c601ba0b05919324dc4d848a8362f61aa3ebb5f660"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/m002-normal-01-e9-tool-model-view.json",
+      "bytes": 2963,
+      "sha256": "1d04607bef366ccdfe8ba2c601ba0b05919324dc4d848a8362f61aa3ebb5f660"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/observations.json",
+      "bytes": 5162463,
+      "sha256": "846ca3a5f09ddcada88c16f5b7bb7e957d2b0a24bb16fe89cd58ee48afe328c5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/request-envelope-checks.json",
+      "bytes": 1410,
+      "sha256": "bb864ced7b6f1fc656dc9d52467198ac87686143eb1430737370f27a2fb57116"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/response-3-business.json",
+      "bytes": 1036,
+      "sha256": "6b8e762a42463fe8162413c74ba19104b57678b67af22dbdbb182a8c9e0f5ab1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/response-4-business.json",
+      "bytes": 1040,
+      "sha256": "340020ff969af7da02fcb6a24f87a3a0004df2d345e3f94678322d7730d1e5e2"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/response-5-business.json",
+      "bytes": 1041,
+      "sha256": "2588299fa7df3a0fe5a38dad44b8fd61ad3af9f7096d14ce0ff988b920814b89"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/response-6-business.json",
+      "bytes": 2056,
+      "sha256": "c594a06a153f5249720105eec787003d8d2920838b601d09bcdd2af6fcac91ca"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-01/result-business.json",
+      "bytes": 1331,
+      "sha256": "fe00815ba2f055bf7fe194694afe4f5435014b6936c589959822150d6b49d88d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/configuration.json",
+      "bytes": 4843,
+      "sha256": "40a0d3ae6acd4a374ae2c35138f62ecbd7785e906fc0ac6c8d6cac6669b3aaaa"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/delivered-business.json",
+      "bytes": 165035,
+      "sha256": "81c02c2261579690f729af89784463f4b12bca8a1d4ea1c3869990e56b14036c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/deployment-registry.json",
+      "bytes": 40823,
+      "sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/input-business.json",
+      "bytes": 15076,
+      "sha256": "e3e28968f2d90ad14c445aafc2b04ebb760a507f772be84590da0d035b0c7220"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e1-manifest.json",
+      "bytes": 2110,
+      "sha256": "448d62af70a9b7a025f642c5d561824a65f94e6623d61aecb6f3c7bcccdecd22"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e1-raw.json",
+      "bytes": 2142,
+      "sha256": "e1107556338d8217ed72d70767b77983795ec771631366de5aec76423f7de2ef"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e1-tool-model-view.json",
+      "bytes": 2142,
+      "sha256": "e1107556338d8217ed72d70767b77983795ec771631366de5aec76423f7de2ef"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e10-manifest.json",
+      "bytes": 1941,
+      "sha256": "6a2a29b2eb550d98a55f9398fd67cbe5598cf3bddee820b24f8de77f543b4a96"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e10-raw.json",
+      "bytes": 5387,
+      "sha256": "4737b008f86f7f65745e718cfb60797bc373d1adf8c1b64d938af37d5fdfceeb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e10-tool-model-view.json",
+      "bytes": 408,
+      "sha256": "9e1eb5c5ca961608cc1d3c3ce0aae8d81f3cd66f883e861d0971ce1279bf8640"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e11-manifest.json",
+      "bytes": 1941,
+      "sha256": "090a9b443624c17914b4d98578dd6596699e23944ee6b21b0703eb289d03370f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e11-raw.json",
+      "bytes": 4484,
+      "sha256": "d15ce1b4a7e6d30b7d382e32b95dc173987896e3a4a77e88e5aea6b67ec2fe4b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e11-tool-model-view.json",
+      "bytes": 408,
+      "sha256": "afe48130f146675ce6efb5f39eccaf65d506e5facc0692594bbc3e4a953e4e9c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e12-manifest.json",
+      "bytes": 2222,
+      "sha256": "9ef3be9543b3941c8121903557eb83d8f59fd588b485cf291c6d2a663c685b4b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e12-raw.json",
+      "bytes": 7086,
+      "sha256": "dfaa12e5135b3b4b91d3000332637f5eb0717b47ddd671e10dda590e5c70c8a1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e12-tool-model-view.json",
+      "bytes": 7086,
+      "sha256": "dfaa12e5135b3b4b91d3000332637f5eb0717b47ddd671e10dda590e5c70c8a1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e13-manifest.json",
+      "bytes": 1925,
+      "sha256": "d37d16d173a66da23b6086b26902389eac1585f17f2f1263b42a9209a3437bb5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e13-raw.json",
+      "bytes": 2844,
+      "sha256": "a5fa156c3caf70cd5452b655c9dcb9960a4cf42ddc4795a308fa5127968bf59d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e13-tool-model-view.json",
+      "bytes": 392,
+      "sha256": "32020c539b363d48f09b8beadd103808a147b59ba8dc0f2ab30c1773927f094c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e14-manifest.json",
+      "bytes": 2082,
+      "sha256": "13813a3a3f30d4aeb701276b947e3729284a4284cd2e6742e632bfaa2a5baf42"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e14-raw.json",
+      "bytes": 1356896,
+      "sha256": "ab6d0774164e4b938caa7628634c2375e4a74e3249ed5e5d9d496e5e297bb084"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e14-tool-model-view.json",
+      "bytes": 17917,
+      "sha256": "9d547f0f34b660cf927e2393b12c66a8de5267b2267d83f7e5f5e5b80e176a5e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e15-manifest.json",
+      "bytes": 1965,
+      "sha256": "6b70d41fd0df56c4e1d12fc28d79b9b10c3e30a325fe6ea1b37ff50b5d22317d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e15-raw.json",
+      "bytes": 2330,
+      "sha256": "e2aa9482cd0863e50931f2f34ec3731835df6520ec1efce1087b35c6207998a1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e15-tool-model-view.json",
+      "bytes": 2330,
+      "sha256": "e2aa9482cd0863e50931f2f34ec3731835df6520ec1efce1087b35c6207998a1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e2-manifest.json",
+      "bytes": 1973,
+      "sha256": "a4a2e049d7c51cff2513c7e836316fddf95b90520b8a1506e6d947b01d0bd35d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e2-raw.json",
+      "bytes": 2298,
+      "sha256": "0250c8d5599fc2f9f9b23c8de2aed92043f6a3fbb48cefc6bcead76e7566cb77"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e2-tool-model-view.json",
+      "bytes": 2298,
+      "sha256": "0250c8d5599fc2f9f9b23c8de2aed92043f6a3fbb48cefc6bcead76e7566cb77"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e3-manifest.json",
+      "bytes": 1981,
+      "sha256": "c736691e1deef664138c4af1245b11670845013be33c95659d599ebe57fdd453"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e3-raw.json",
+      "bytes": 2356,
+      "sha256": "0229130de4841f79ad23ce2447bdedbbe94ec93a8abda9e9cdce64c0f7375b6b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e3-tool-model-view.json",
+      "bytes": 2356,
+      "sha256": "0229130de4841f79ad23ce2447bdedbbe94ec93a8abda9e9cdce64c0f7375b6b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e4-manifest.json",
+      "bytes": 1981,
+      "sha256": "5d34e8893a9869e10588c857ec128c0da97183f01fada89bfc992d3141029412"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e4-raw.json",
+      "bytes": 2356,
+      "sha256": "ef59ae3430349f71eff6474081c370f9de3bd8891f5a01a6cc8b698f3f100dee"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e4-tool-model-view.json",
+      "bytes": 2356,
+      "sha256": "ef59ae3430349f71eff6474081c370f9de3bd8891f5a01a6cc8b698f3f100dee"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e5-manifest.json",
+      "bytes": 2082,
+      "sha256": "bf42cfce653214dc53a12e9d18a4c238c42899fd942f9d4ef56cb12f6a66c50f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e5-raw.json",
+      "bytes": 1356907,
+      "sha256": "bcf954397a67b263545fc0783e5121fec58dff51eea127cf33da2d91d23f3ece"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e5-tool-model-view.json",
+      "bytes": 17915,
+      "sha256": "7ca1b37413c6c1d8b841492920d4fe6c4cdf68a14928532ad19995742b48b7ea"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e6-manifest.json",
+      "bytes": 1871,
+      "sha256": "bd52a2a9af0dca51415863097d52047edc8a867f39358c670f9098ee0616051b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e6-raw.json",
+      "bytes": 34111,
+      "sha256": "fcbdf044382ec39956fc42eb694c7a43c7b4cf1999d022b86e4819bab7e9c0f7"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e6-tool-model-view.json",
+      "bytes": 12993,
+      "sha256": "dd524c3baea15d16f9ea99952aa0532ddf0782a048d22d325866d869012601b1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e7-manifest.json",
+      "bytes": 1891,
+      "sha256": "e739d275d94f29e529d4d7d19d06e28d508229cc9eaa1cda67504818dbdbfe91"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e7-raw.json",
+      "bytes": 40121,
+      "sha256": "885d6e0195ef3eb4a22ea425dbbb031ad60876ebce19bb870f5933636d7f3514"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e7-tool-model-view.json",
+      "bytes": 16064,
+      "sha256": "cbeb655a7af4e67f0ec323ea9d916238c6bebfb2b37a63039530d2c4f027ab4e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e8-manifest.json",
+      "bytes": 1922,
+      "sha256": "021553e9e09121ed03c97b372c1fd8cbdd98e0dac96576f0fce942b1bdcbf7c4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e8-raw.json",
+      "bytes": 2195,
+      "sha256": "394ddd12a6b7509ed4f6270450f7e732d696bb6502aadf0ba6be90c44b291221"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e8-tool-model-view.json",
+      "bytes": 2195,
+      "sha256": "394ddd12a6b7509ed4f6270450f7e732d696bb6502aadf0ba6be90c44b291221"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e9-manifest.json",
+      "bytes": 2005,
+      "sha256": "b66fc20adeab88140f0795044b16d69f9a2b406fe5bf04b9e674acc7341e421d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e9-raw.json",
+      "bytes": 4459,
+      "sha256": "3840c143a2468f71ee8a4e3de33c8046447eefb57d7947221228ec0d1febce3b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/m002-normal-02-e9-tool-model-view.json",
+      "bytes": 4459,
+      "sha256": "3840c143a2468f71ee8a4e3de33c8046447eefb57d7947221228ec0d1febce3b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/observations.json",
+      "bytes": 3000826,
+      "sha256": "c666fb2de61b18fc4bb7053d477eb092bef4d9394a95073d8907c6421ebe9205"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/request-envelope-checks.json",
+      "bytes": 1876,
+      "sha256": "d6a41fb9a9e0ff343119193e2db2aab793e1bec2894e697b0cc4d8278c710f36"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/response-10-business.json",
+      "bytes": 1041,
+      "sha256": "e6ab6153569e7027256ee2ae412906e15ad6cda73d3b323e1c8b48b89d128101"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/response-11-business.json",
+      "bytes": 12684,
+      "sha256": "1272cd1e17a88e898c352654f69111ec51f69a91220bd431f76b52797948607f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/response-8-business.json",
+      "bytes": 1036,
+      "sha256": "6c5be9203a9b536b74bd0a86e286d604400fe7eb3ca54071114c0f6d2ed2bd93"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/response-9-business.json",
+      "bytes": 1036,
+      "sha256": "e7d810bb4b828516300a2ef31c701cab5c5522a178da1fe48f3ded9d8a97a59a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-02/result-business.json",
+      "bytes": 25031,
+      "sha256": "f718dc6b1ca19e0c7597dae67ac373961278ad091355673eb13f376deba3f908"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/configuration.json",
+      "bytes": 4978,
+      "sha256": "cd0481f51d1ac4f37d557af21f720176e7312b0d0a63a75ecf54a2bf8a171c70"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/delivered-business.json",
+      "bytes": 153029,
+      "sha256": "4bcc8da43e5bb2e9e3e68936a9142dc86ab0c006de4fdbe29e9214d76cca7873"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/deployment-registry.json",
+      "bytes": 40823,
+      "sha256": "02af35a8a70112dcab06e3b1bdc01ec3eeb381531c9237472bcd6e51d732f18e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/input-business.json",
+      "bytes": 16167,
+      "sha256": "ee9e736275e7003285a32b132ef1f86a095af5066b35d2464267e847953f1c4f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e1-manifest.json",
+      "bytes": 2245,
+      "sha256": "4451a2819d75f5e47a5f5164adeb5199eb91186e5d4b2d09fce10e4694024098"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e1-raw.json",
+      "bytes": 2277,
+      "sha256": "99b1da7d320326ec5d82ffc95012e9b141b4ff3a02d90d28a5684ba9ef0b8bcb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e1-tool-model-view.json",
+      "bytes": 2277,
+      "sha256": "99b1da7d320326ec5d82ffc95012e9b141b4ff3a02d90d28a5684ba9ef0b8bcb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e10-manifest.json",
+      "bytes": 2105,
+      "sha256": "5fb7c04f58f9eaeb61e5721f28c36533e49dac2d1166585e5d4815b84e07f7d1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e10-raw.json",
+      "bytes": 2424,
+      "sha256": "2a6728a6c9a39ca6c52accc88590f0a3585ba45129f0c8b037e849dbaeece9a1"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e10-tool-model-view.json",
+      "bytes": 3645,
+      "sha256": "65668529920e5e2d2a7e8514671709f53e45fb2a35d7155874e7820b00298b86"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e11-manifest.json",
+      "bytes": 2218,
+      "sha256": "6b4fcadbd7b157975ca3d4b9322d8c284e6e72116abd47dc92544d83c296135b"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e11-raw.json",
+      "bytes": 734340,
+      "sha256": "48eb966394f0449ea01a843f5da10f4584b3e3643899c48c03d9ead0a2974df9"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e11-tool-model-view.json",
+      "bytes": 18307,
+      "sha256": "39f6f2faccf5fb510fdd12da933ece3d63eef8034377fa31a8776ae211af4198"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e12-manifest.json",
+      "bytes": 2217,
+      "sha256": "faacf3c4cbcd41283e83d76faa10366d2163d3e3fe5cffdcb53c72c171f3c1aa"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e12-raw.json",
+      "bytes": 734349,
+      "sha256": "7d0ce1f3d1ef30074862087128d6c2048d5df14a606b7770d566437c09471fff"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e12-tool-model-view.json",
+      "bytes": 18303,
+      "sha256": "53ebb154600418745919a4f2ae946705cf20a90b9bd21cba94c444db82fc3598"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e2-manifest.json",
+      "bytes": 2378,
+      "sha256": "e7c05f5ee4e2cd2a1929d47ec5abbe35bdaccfe996e484f8425ed89c8cfe4b3e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e2-raw.json",
+      "bytes": 8224,
+      "sha256": "eb2d31ea03e2c19a07069cf5e68b2a0c5347ebef445a05b7fd1a3a4e01ebca4c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e2-tool-model-view.json",
+      "bytes": 9445,
+      "sha256": "946a684c7351d09227c8bdf5654306b8e9bd70348e4e73f90f0d9fd88fb45609"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e3-manifest.json",
+      "bytes": 2387,
+      "sha256": "3fb1f3c35e4f9ab52a4e938051bec18df5ecd7b8d16fd3c53bc34d669e0c4ea8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e3-raw.json",
+      "bytes": 5537,
+      "sha256": "b020b1ece4ad4ac2b924349f6304ac3735602967d314dca0f370cc677e052475"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e3-tool-model-view.json",
+      "bytes": 6758,
+      "sha256": "1e10b38f3078e6ff6a59205b132c9d514e53e3e874ea5c8775dd06535b8d67d8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e4-manifest.json",
+      "bytes": 2132,
+      "sha256": "cae68813cb87d088955911957ed0a78a034ce977a9864c6b01fbb5990a1d9d2e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e4-raw.json",
+      "bytes": 3981,
+      "sha256": "3bfcac97c00d51b802aef50eeabcfea723a09a339461d3297ef208031ce276b8"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e4-tool-model-view.json",
+      "bytes": 5202,
+      "sha256": "43a720e71afba126302366de46951843d418ee9db6572f3712439d2b3bce2878"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e5-manifest.json",
+      "bytes": 2011,
+      "sha256": "5270bcde0a555136fa23dc333b56cfd28ee6f7ea9afaa2b6d430ad9df37591f6"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e5-raw.json",
+      "bytes": 34364,
+      "sha256": "6c19b024ef0c3315c968595523b18d96fbcb4115abb1875988b2798592f00349"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e5-tool-model-view.json",
+      "bytes": 13460,
+      "sha256": "db7f7226178428a85e867312b47296bd45d4ed449dc2cece5d9ee519463b2e7a"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e6-manifest.json",
+      "bytes": 2031,
+      "sha256": "8725c311939dfe2d2fbaaf7e978909c2ce9a41a2b03d7795ca88cc4ab8c02332"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e6-raw.json",
+      "bytes": 40189,
+      "sha256": "718ac1afd00b665acb19fbc44180032050b8de868dab48fd60111f28da893bde"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e6-tool-model-view.json",
+      "bytes": 15813,
+      "sha256": "d44955d2fe4982eb1e542767282d0245c1624840cc2caf494b58d37c1e3b028d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e7-manifest.json",
+      "bytes": 2140,
+      "sha256": "915d09e3c9f6a5a2771c50e12f033df0ed559d28398754f296867c589af68157"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e7-raw.json",
+      "bytes": 2675,
+      "sha256": "9af0b5c947bf2362e16c557a4378dd9cf89dccbb617ee6ed858ed3bad8b45263"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e7-tool-model-view.json",
+      "bytes": 3896,
+      "sha256": "fea2bec5bc7d9503508beb25d0f64a6b6e9cb657480ee4b40e7682d5ce9653ed"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e8-manifest.json",
+      "bytes": 2211,
+      "sha256": "24f817434a9534c1e03ae3da63d0a286877e31604959287684ce319bcb7eb3ba"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e8-raw.json",
+      "bytes": 7387,
+      "sha256": "750f4142978f12eb7fd9d4350c118d35dc31b919e2bca061a1ebee90935ac00d"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e8-tool-model-view.json",
+      "bytes": 8608,
+      "sha256": "abc34d50425ddc13ea288cbf3485220bd89b66f7e52107e2f68075ee08c60c9e"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e9-manifest.json",
+      "bytes": 2186,
+      "sha256": "d122def9b9c2c2e5ad4239f19a5ced24862bd4f116c1c91ed5a15290d175ddfb"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e9-raw.json",
+      "bytes": 3526,
+      "sha256": "5abd70903a71b5720dd1dbc75696bd20aacd3a2e6e5b4acbc330a9653c9ef111"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/m002-normal-03-e9-tool-model-view.json",
+      "bytes": 4747,
+      "sha256": "d2d982521e81915c312b5b5a48640e940d5d0229a2bb27c752e67d185d8b3103"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/observations.json",
+      "bytes": 1676818,
+      "sha256": "333bd5fa613b001214be9981b0a1e617b6b7a11b6c4697c075b3f6078c637d7c"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/request-envelope-checks.json",
+      "bytes": 1415,
+      "sha256": "be0784a81d0903bffe9f873debf2bf3d0c36d665621243eeda4cb0e579f376ce"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/response-18-business.json",
+      "bytes": 1037,
+      "sha256": "70e50ee82d5efb003eb4799deb90d5652ae44004106c63dad9dcbabe4270f38f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/response-19-business.json",
+      "bytes": 1041,
+      "sha256": "8fa7c365a7693dc6ffd9f4c903858b8b746e8994f10d5820c610029e83909db0"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/response-20-business.json",
+      "bytes": 10774,
+      "sha256": "d7caf7e243dfbf106b0d1fae1f65dafade3981b4300bc2274f83989fc6d09eba"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-normal-03/result-business.json",
+      "bytes": 20780,
+      "sha256": "f84431d8d762b2113152e3bc45b0806f8c1ce7a5ea38f88a9006039aebc210ee"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-report-preflight-impl01/configuration.json",
+      "bytes": 1049,
+      "sha256": "03c735527bdd70f2f22410dbabe5fdd0db27f62fe7cb5f45a7e808e311a66534"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-report-preflight-impl01/input-business.json",
+      "bytes": 157453,
+      "sha256": "5d5d90c76c63acdcd3ce2b49adef933b3a6aa4d9cf1cd6851b75db5cba340f59"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/boundary-errors.json",
+      "bytes": 21,
+      "sha256": "756e01220bcd0425d1f1f2a43fb11b58af0cba13b0e73f4429112dfd20951de4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/configuration.json",
+      "bytes": 1049,
+      "sha256": "03c735527bdd70f2f22410dbabe5fdd0db27f62fe7cb5f45a7e808e311a66534"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/delivered-business.json",
+      "bytes": 151690,
+      "sha256": "8cdbf65e3ae5be7b52531781cc055aa16eeeea0d64da9e16505b44f7b745a612"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/input-business.json",
+      "bytes": 157453,
+      "sha256": "5d5d90c76c63acdcd3ce2b49adef933b3a6aa4d9cf1cd6851b75db5cba340f59"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/request-envelope-checks.json",
+      "bytes": 355,
+      "sha256": "6e2adc40098227783b381ca5882d50017964c5898135d16496cb444185d6613f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-01/result-business.json",
+      "bytes": 288,
+      "sha256": "5aa4fb8c4c64d952fcedaaaf0ba6935db5cd8384cba83ae4f3456e7c7443ee74"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/boundary-errors.json",
+      "bytes": 41,
+      "sha256": "a4ccd95ed0669fd249b2a0a61708497954c956149ff0d7503d5c6a49f93878b5"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/configuration.json",
+      "bytes": 1049,
+      "sha256": "03c735527bdd70f2f22410dbabe5fdd0db27f62fe7cb5f45a7e808e311a66534"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/delivered-business.json",
+      "bytes": 151684,
+      "sha256": "a258e67b7d0e1c98c8763cd097829c636cdf79454c3634c861f830b763a490f4"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/input-business.json",
+      "bytes": 157453,
+      "sha256": "02091a53263843b6f28941a33cfb6e184dbf40f0df85e24fc79eeb12c809d633"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/request-envelope-checks.json",
+      "bytes": 355,
+      "sha256": "6e2adc40098227783b381ca5882d50017964c5898135d16496cb444185d6613f"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/response-2-business.json",
+      "bytes": 12411,
+      "sha256": "753eb21a6352f4b582e16cbc94b5666de2067a587c47b6cbf9d81ab014eeadd3"
+    },
+    {
+      "path": "tmp/m0-environment/holmes-runs/m002-saved-report-02/result-business.json",
+      "bytes": 308,
+      "sha256": "cbcaf470bc42fce2591ff053ed3b51329776d636ea8633276f193773ef9487bb"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/calls.json",
+      "bytes": 2307,
+      "sha256": "45e757de61ce0b35cdee45b121a1a7c2538c62a599a9ed7207d871504bf733d4"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/checkout-rpc.json",
+      "bytes": 1082,
+      "sha256": "95461add765ab6dad2221ec9160f14b2ee16f2ce78b473f6244db25d3552ea22"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/latency.json",
+      "bytes": 142,
+      "sha256": "67e8de1a2021b5186ccbf20063550f1b4b0c80bf79df192bfac5c8ce9dd1c641"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/logs-frontend-proxy.json",
+      "bytes": 25841,
+      "sha256": "e5e6bcde632b5e5174aa4644c564ffc2426b3db655f2c90802f57b285d5e8108"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/traces-checkout.json",
+      "bytes": 580426,
+      "sha256": "712b3821db0d8f2539cda160d302a453dd77e7c57ec328f632138f594d682407"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/traces-payment.json",
+      "bytes": 580428,
+      "sha256": "cd47526ef5a2831c0038b31c65c8d9504934270d446a2f030a77ae4816bdca85"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-01/transactions.json",
+      "bytes": 117,
+      "sha256": "4798f4c4710856ae45449dff375f970cab8d009d43a86883247e4c59376ddd25"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/calls.json",
+      "bytes": 2743,
+      "sha256": "35f7b9d793bfd1df0e37dae4263f93542e574dde923783b3a9766733f17472fa"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/checkout-rpc.json",
+      "bytes": 1180,
+      "sha256": "7b357c62eb291fda42201981dd2329c4115492531faefc09257a5a9779f1c84a"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/latency.json",
+      "bytes": 142,
+      "sha256": "117f3ddb5d6bbba191e684a70dcd22104002b98dfca190e6ff22dd98691a29c4"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/logs-frontend-proxy.json",
+      "bytes": 25515,
+      "sha256": "56558e4d2d82e7867dd7f955489103448bf304ccbad44308157c5a2d52f053cc"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/traces-checkout.json",
+      "bytes": 519743,
+      "sha256": "ee80ea0a03003b1a36fbf806de6cb2ed45ec31968a34de3fd835be7ebf07492b"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/traces-payment.json",
+      "bytes": 519744,
+      "sha256": "38fe60aef8d2035187dbc00666cb94a48ac5b5a56304cd357dbdf8bc4dda4b20"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-fault-01/transactions.json",
+      "bytes": 101,
+      "sha256": "a773077497baaa5a5ec42909b48cdb22be03669a162e25342e9b177a6b1081fc"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/calls.json",
+      "bytes": 2489,
+      "sha256": "68f54abc3635e4bedb238dc5d3700e80b88a535de372228daf0c27163e4632fe"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/checkout-rpc.json",
+      "bytes": 1103,
+      "sha256": "9cc95af0dc0ff648e340d379ef42e5cda1f4cadc17231364f9bad94ca7166b91"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/latency.json",
+      "bytes": 142,
+      "sha256": "4a36775aba041b07f0ffade925ab8c165932105f873c459590787aac1605c136"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/logs-frontend-proxy.json",
+      "bytes": 25773,
+      "sha256": "eb0418992e1d9362fa8a6b252f6ba796ef6b1b9cc33aacaebb93d730a8e17c2b"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/traces-checkout.json",
+      "bytes": 313646,
+      "sha256": "695aacbc0ddd6c10ea7fc5dc9cfe46b9cc6876d1230386313c857f15ff7b454c"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/traces-payment.json",
+      "bytes": 313637,
+      "sha256": "5ee75ded5f45145e01409a62806077f2e93b9e69ec1c8252e0cf8e460578cdfc"
+    },
+    {
+      "path": "tmp/m0-environment/raw-evidence/m002-normal-03/transactions.json",
+      "bytes": 117,
+      "sha256": "21da0cb96b12da52afff84dad617e9a4b01042af2b398ca444595dffd2d340de"
+    }
+  ],
+  "restricted_protocol_files_preserved_count": 16,
+  "restricted_protocol_not_exported_or_reviewed": true,
+  "retention_scope": "Complete captured responses of the bounded queries; not all unqueried volatile Jaeger history",
+  "model_http_ledger": "tmp/m0-environment/m0-02-request-ledger.json",
+  "old_jaeger_archive_preserved": true
+}

@@ -1,0 +1,61 @@
+{
+  "mode": "tool-error",
+  "model": "deepseek-v4-flash",
+  "http_attempts": 2,
+  "records": [
+    {
+      "http_status": 200,
+      "response_sha256": "451ad75bd8fac226d6ec939a5a9aefe1150f1c5a3c8df714d0d5133d08e9fe51",
+      "response_bytes": 830,
+      "elapsed_ms": 698,
+      "interrupted": false,
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 331,
+        "completion_tokens": 72,
+        "total_tokens": 403,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 29
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 203
+      },
+      "finish_reason": "tool_calls",
+      "role": "assistant",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tool_call_ids": [
+        "call_00_OKaBaFPSFq9rzhMUjqIU9080"
+      ]
+    },
+    {
+      "http_status": 200,
+      "response_sha256": "5464a1547e4534766790ff0409f14ae78bd88c10765705fd8520fe11c19264e8",
+      "response_bytes": 1358,
+      "elapsed_ms": 1583,
+      "interrupted": false,
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 123,
+        "completion_tokens": 184,
+        "total_tokens": 307,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 113
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 123
+      },
+      "finish_reason": "stop",
+      "role": "assistant",
+      "content_sha256": "14772c3f9b0471a840cba8f11f79fb6a830f1c51c25aaf9776ecca8f83defb2d",
+      "tool_call_ids": []
+    }
+  ],
+  "verdict": "provider_tool_error_continuation_attempted",
+  "trace_uploads": 0
+}

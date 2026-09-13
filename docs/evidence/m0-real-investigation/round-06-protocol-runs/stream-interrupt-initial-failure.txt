@@ -1,0 +1,4 @@
+command: .venv/bin/python scripts/m0_lab/protocol_real_probe.py stream-interrupt ...
+exit: 1
+error: ModuleNotFoundError: No module named 'scripts'
+disposition: reran as PYTHONPATH=. .venv/bin/python -m scripts.m0_lab.protocol_real_probe; the failed command made 0 model HTTP requests and remains outside the allocation count.

@@ -1,0 +1,22 @@
+{
+  "run_id": "m002-fault-01",
+  "question_sha256": "b147edc1a405cd2c1ad98493fa3d1a2d65cb8081885fe6762109c77c9f356dbb",
+  "scope_sha256": "e5e8b2fe68a57fec4ad6fd60f0ac5f6cab969902d75accae2e3a01d52a974d95",
+  "window": {
+    "start": 1789010952.0,
+    "end": 1789011252.0
+  },
+  "runtime_hashes": {
+    "holmes_baseline.py": "22a96b87cf6575c8246abeb7edbed5101e1c6951fcc62b5e8243b6e589c6efd8",
+    "legacy_projections.py": "507d4205fb5e65cdd831003ae45096703050534873018cbb0016c4f4678e4caf",
+    "round02.py": "33ef91543e1266bf7428c9585d86d4a5f067f8d8f4563f304fa4fb46b6386e12",
+    "report_contract.py": "c6ed3a8796d9b0291a14359e5d2446b37619829fbd462cbd3ee42ff7c6d77845",
+    "transport_worker.py": "559b32fd55eeb5fa03513e7739e2c331dcde3b67d4264497274324f4649b7582",
+    "run_bounded.py": "c46493aa1c44a4e5a0f627a62525d1ce82215dbc73dc76405fa4bd40e0550d24"
+  },
+  "precondition": "independent7rawhashes+distinct observed error traces/log linkage checked; available views can support limited failing-dependency/call localization; injector not provided",
+  "max_model_http": 4,
+  "max_tools": 20,
+  "actual_initial_evidence": 0,
+  "blind_os_isolation_proven": false
+}

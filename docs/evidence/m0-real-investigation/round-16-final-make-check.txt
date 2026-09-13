@@ -1,0 +1,120 @@
+python3 scripts/doctor.py
+OK | 项目根目录 | /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+OK | 项目声明 | pyproject.toml
+OK | 锁文件存在 | 仅检查存在
+OK | uv | uv 0.10.8 (c021be36a 2026-03-03)
+OK | 项目 Python 3.12 与开发工具 | Python [3, 12, 13]; tools={'pytest': '9.1.1', 'ruff': '0.16.6'}
+基础开发环境：前提可用
+环境诊断不证明依赖完全匹配锁文件；同步由 make setup 完成。
+uv lock --check --offline --no-python-downloads
+Resolved 38 packages in 22ms
+.venv/bin/ruff check .
+All checks passed!
+.venv/bin/ruff format --check .
+383 files already formatted
+.venv/bin/python -m pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 850 items
+
+tests/integration/test_m0_adapter_budget.py sss                          [  0%]
+tests/integration/test_m0_budget_postgres.py ssssssssss                  [  1%]
+tests/integration/test_m0_control_contracts_postgres.py ssss             [  2%]
+tests/integration/test_m0_live_postgres.py ssss                          [  2%]
+tests/integration/test_m0_pause_observer_postgres.py sssss               [  3%]
+tests/integration/test_m0_step_store_postgres.py sssssssssssssssssssssss [  5%]
+sssss                                                                    [  6%]
+tests/test_doctor.py .....                                               [  6%]
+tests/test_m0.py ..................................                      [ 10%]
+tests/test_m0_adapters.py .............................                  [ 14%]
+tests/test_m0_budget.py ........                                         [ 15%]
+tests/test_m0_compressor.py ..............                               [ 16%]
+tests/test_m0_contracts.py .......                                       [ 17%]
+tests/test_m0_envoy_log_projection.py ......                             [ 18%]
+tests/test_m0_freeze_images.py ..........................                [ 21%]
+tests/test_m0_holmes_bridge.py ..............                            [ 23%]
+tests/test_m0_holmes_bridge_v4.py ...................................... [ 27%]
+................................................................         [ 35%]
+tests/test_m0_holmes_round02.py ........................................ [ 39%]
+..............                                                           [ 41%]
+tests/test_m0_initial_evidence.py .................                      [ 43%]
+tests/test_m0_live.py .................................................. [ 49%]
+.........................                                                [ 52%]
+tests/test_m0_outcomes.py .............................................. [ 57%]
+....................................                                     [ 62%]
+tests/test_m0_outcomes_v3.py ..............................              [ 65%]
+tests/test_m0_outcomes_v4.py ........................................... [ 70%]
+......................................................                   [ 76%]
+tests/test_m0_pg_live_probe.py ..........                                [ 78%]
+tests/test_m0_projector_trust.py ...............                         [ 79%]
+tests/test_m0_question_paths.py ............................             [ 83%]
+tests/test_m0_question_scope_binding.py .....                            [ 83%]
+tests/test_m0_round07_launch.py .......................                  [ 86%]
+tests/test_m0_runtime_identity_credentials.py ........                   [ 87%]
+tests/test_m0_runtime_strict.py .........                                [ 88%]
+tests/test_m0_step_store_controls.py .........                           [ 89%]
+tests/test_m0_step_store_protocol.py ........                            [ 90%]
+tests/test_m0_step_store_versions.py .....................               [ 92%]
+tests/test_m0_timing_echo.py ................                            [ 94%]
+tests/test_m0_tool_wall_time.py ....                                     [ 95%]
+tests/test_m0_trace.py ................                                  [ 97%]
+tests/test_m0_trace_archive.py ....                                      [ 97%]
+tests/test_m0_trace_view.py .                                            [ 97%]
+tests/test_secret_scan.py ........                                       [ 98%]
+tests/test_setup_docs_mcp.py ...........                                 [100%]
+
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:100: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:151: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_adapter_budget.py:185: explicit synthetic PostgreSQL opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:58: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:70: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:91: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:111: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:122: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:162: dedicated cluster restart requires explicit opt-in
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:187: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:206: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:225: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_budget_postgres.py:239: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_control_contracts_postgres.py:49: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_control_contracts_postgres.py:64: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_control_contracts_postgres.py:125: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_control_contracts_postgres.py:137: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:38: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:67: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:84: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_live_postgres.py:105: explicit local PostgreSQL opt-in required
+SKIPPED [1] tests/integration/test_m0_pause_observer_postgres.py:85: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_pause_observer_postgres.py:143: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_pause_observer_postgres.py:160: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_pause_observer_postgres.py:262: explicit control-contract PG opt-in required
+SKIPPED [1] tests/integration/test_m0_pause_observer_postgres.py:348: stops/restarts the PG lab server
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:91: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:124: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:167: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:184: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:217: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:250: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:291: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:312: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:350: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:358: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:376: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:424: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:451: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:469: explicit PG opt-in required
+SKIPPED [3] tests/integration/test_m0_step_store_postgres.py:476: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:583: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:648: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:666: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:723: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:751: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:795: explicit PG opt-in required
+SKIPPED [2] tests/integration/test_m0_step_store_postgres.py:822: explicit PG opt-in required
+SKIPPED [1] tests/integration/test_m0_step_store_postgres.py:865: explicit PG opt-in required
+======================= 796 passed, 54 skipped in 25.77s =======================

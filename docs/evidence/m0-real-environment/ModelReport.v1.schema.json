@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "fact",
+            "hypothesis",
+            "recommendation",
+            "counter_evidence",
+            "rejected_hypothesis"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "evidence_ids"
+      ],
+      "title": "Claim",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "m0-report-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "assessment_status": {
+      "enum": [
+        "completed",
+        "incomplete"
+      ],
+      "title": "Assessment Status",
+      "type": "string"
+    },
+    "conclusion": {
+      "enum": [
+        "supported",
+        "partial",
+        "inconclusive"
+      ],
+      "title": "Conclusion",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/Claim"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "gaps": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Gaps",
+      "type": "array"
+    },
+    "next_steps": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Next Steps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "assessment_status",
+    "conclusion",
+    "summary",
+    "claims",
+    "gaps",
+    "next_steps"
+  ],
+  "title": "ModelReport",
+  "type": "object"
+}

@@ -1,0 +1,12 @@
+{
+  "run_id": "m002-fault-01",
+  "contract_consistent": true,
+  "violations": [],
+  "report_request_id": "m002-fault-01:http:17",
+  "initial_views": 0,
+  "captured_artifacts": 19,
+  "delivered_views": 19,
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "boundary": "Contract consistency only; report quality/causality require independent review. No private protocol read."
+}

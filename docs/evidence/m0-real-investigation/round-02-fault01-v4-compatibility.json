@@ -1,0 +1,18 @@
+{
+  "run_id": "m002-fault-01",
+  "contract_consistent": false,
+  "violations": [
+    "LEGACY_REPORT_REQUIRES_EXPLICIT_REPLAY"
+  ],
+  "original_report_sha256": "73de833693906686613b298ae7cd3de6d1c39e4ff6d5be0e085ef70e8acf6395",
+  "strict_scope": "unknown",
+  "strict_freshness": "unknown",
+  "current_acceptance_pass": false,
+  "publication": "metadata_only_full_business_report_retained_locally",
+  "full_replay_local_path": "tmp/m002-v4-replays/round-02-fault01-v4-compatibility.json",
+  "full_replay_sha256": "24ab7c75d7e4434478b357132662d2a65a4192a0f02e7b2bd07ec1f7473a8cb1",
+  "original_report_content_bytes": 8712,
+  "report_summary_characters": 899,
+  "report_claim_count": 17,
+  "report_next_steps_count": 4
+}

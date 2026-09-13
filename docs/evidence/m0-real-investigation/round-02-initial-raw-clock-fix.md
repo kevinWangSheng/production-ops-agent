@@ -1,0 +1,13 @@
+# 初始manifest时钟不得补造原raw缺失字段
+
+PR16 finding3978118746。仅initial_evidence.py、对应tests与本记录；无Git、环境、模型、后端、PG或trace操作，旧raw/source/report不改。
+
+红证据：原raw删除operation_started_at而保留正确file/view/manifest hashes，entry仍带非空时间；verify_initial_entry未抛异常（DID NOT RAISE）。旧代码只在raw非空时进入比较，且supplied为None也跳过。
+
+修复：operation_started_at与collection_completed_at逐字段按UTC datetime/None完整相等检查。raw缺字段或null都只能匹配supplied None；非空entry不能补造区间，entry None也不能擦掉已记录raw时刻。未提供整个timing时仅从原raw已有字段/真实可见事件提取；observed_at不会回填为这两个时钟。
+
+同组源时间核对：event_time原有可见事件范围一致性不变；unknown basis现在必须同时无source_start_at/source_end_at，不能保留未经证明的源时间数值。其它未支持source proof仍拒绝。整个timing:null为无效记录，importer保真unknown，不生成qualified view。
+
+结果：17项initial-evidence定向tests通过，Ruff通过。覆盖两个时钟×raw缺失/null但entry非空、raw与entry都缺失/null、正常已记录相等、已记录raw但entry None、整个timing None、缺整个timing不从observed_at补造、unknown source basis附值拒绝。正常exact bundle与原有scope/manifest回归仍通过。
+
+冻结initial_evidence.py SHA256 f3309cd462842a8f43114419186661f3056404283d5db3652780e30ab84fb309。此为离线修复，等待独立审查，不改变本轮真实报告qualityFAIL或请求预算。

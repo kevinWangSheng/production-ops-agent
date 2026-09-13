@@ -1,0 +1,6 @@
+command: PYTHONPATH=. .venv/bin/python -m scripts.m0_lab.round07_wp23_pause_real_probe
+exit: 1
+error: ValueError: model output allowance denied
+cause: initial isolated probe used max_tokens=1024, while the existing envelope contract requires the profile output allowance 32768
+model_http: 0
+disposition: preserved as a failed preflight; corrected probe used a new Run and exactly 1 real HTTP.

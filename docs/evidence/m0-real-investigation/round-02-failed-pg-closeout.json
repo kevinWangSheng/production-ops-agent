@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-10T04:15:58.672616+00:00",
+  "run_id": "eb6996d4-ed44-447e-b33f-0a60f3efc323",
+  "reason": "Engineering closeout of this round400-failed probe; original failed input/response/unknown reservation retained",
+  "before": {
+    "subject": "96c5da2b-cb7e-4eac-92a1-2784a30e3f24",
+    "state": {
+      "state": "running",
+      "generation": 0,
+      "epoch": 1,
+      "published": false
+    },
+    "audit": []
+  },
+  "after": {
+    "subject": "96c5da2b-cb7e-4eac-92a1-2784a30e3f24",
+    "state": {
+      "state": "cancelled",
+      "generation": 1,
+      "epoch": 1,
+      "published": false
+    },
+    "audit": [
+      {
+        "event": "cancel",
+        "accepted": true,
+        "generation": 1
+      }
+    ]
+  },
+  "model_calls": 0,
+  "old_result_record_not_overwritten": true
+}

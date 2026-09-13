@@ -1,0 +1,31 @@
+{
+  "id": "6b6fa3d9-8174-40df-87eb-5c2797d3884b",
+  "object": "chat.completion",
+  "created": 1789241348,
+  "model": "deepseek-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Initial data is ambiguous — trace summaries show zero error spans, but I only see 20 of 148 proxy logs. Digging deeper.\n\n<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">checkout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"service\" string=\"true\">payment</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_logs\">\n<｜｜DSML｜｜ parameter name=\"filter\" string=\"true\">status_code:500 OR status_code:503 OR status_code:504</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(type) (increase(app_payment_transactions_total[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(service_name,span_name,status_code) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment|frontend\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(rpc_grpc_status_code,rpc_service,rpc_method,service_name) (increase(rpc_client_duration_milliseconds_count{rpc_grpc_status_code!=\"0\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(http_response_status_code,service_name) (increase(http_server_duration_milliseconds_count[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"otel_metrics\">\n<｜｜DSML｜｜ parameter name=\"query\" string=\"true\">sum by(service_name,span_name,status_code) (increase(calls_total{status_code=\"STATUS_CODE_ERROR\"}[5m]))</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>"
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10074,
+    "completion_tokens": 895,
+    "total_tokens": 10969,
+    "prompt_tokens_details": {
+      "cached_tokens": 1664
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 460
+    },
+    "prompt_cache_hit_tokens": 1664,
+    "prompt_cache_miss_tokens": 8410
+  },
+  "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+}

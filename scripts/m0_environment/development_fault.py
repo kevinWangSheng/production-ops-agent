@@ -16,11 +16,21 @@ FLAGS = (
     LAB
     / "opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd/demo.flagd.json"
 )
-HISTORY = LAB / "engineer-only"
 parser = argparse.ArgumentParser()
 parser.add_argument("action", choices=["inject", "restore"])
+parser.add_argument(
+    "--experiment-id",
+    help="New independent development experiment; old history remains unchanged.",
+)
 args = parser.parse_args()
-HISTORY.mkdir(exist_ok=True)
+if args.experiment_id is not None and (
+    not args.experiment_id or not args.experiment_id.replace("-", "").isalnum()
+):
+    raise SystemExit("invalid experiment identity")
+HISTORY = LAB / "engineer-only"
+if args.experiment_id:
+    HISTORY = HISTORY / args.experiment_id
+HISTORY.mkdir(parents=True, exist_ok=True)
 original = HISTORY / "flags-original.json"
 changed = HISTORY / "flags-injected.json"
 raw = FLAGS.read_bytes()

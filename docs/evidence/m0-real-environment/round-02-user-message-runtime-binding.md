@@ -1,0 +1,11 @@
+# User消息结构的runtime可信元数据
+
+本组仅新增两个来源字段，不改真实wire内容、private历史、工具调用或execution语义。固定Holmes 5e983c17的call_stream以msgs复制开始（core/tool_calling_llm.py:1144），之后只追加assistant完整消息（1309）及tool消息（1429/1463）；本配置关闭compaction。utils/tags.py的parse_messages_tags只可能格式化原user内容，不追加消息。若格式化导致actual内容变化，既有输入绑定应拒绝，不增加宽松白名单。
+
+report_contract.prepare_wire只在解析/深复制后的当次payload附本次context，final_payload随后附固定final instruction；并不把这些附加user回写Holmes loop消息。因此每物理请求user序列只有actual输入、本次context，以及final_phase=true时的固定instruction。过去各step自己的context由其持久delivery审计，不作为下一请求额外user白名单。assistant/tool完整历史保留。
+
+新增configuration.report_instruction_sha256由同一report_instruction(final=True,version=args.report_version) UTF8内容生成；每delivery.final_phase直接取原len(calls)==max_steps-1实际判断，与prepare_wire共用，不从待审body推断。早期模型自行结束的报告仍可final_phase=false，不能因此要求它含最后步instruction。checker/bridge与执行状态由合同作者处理。
+
+测试：现成固定Holmes解释器运行strict_runtime_probe（所有transport及dotenv读取为合成），原完整private配对/实际wire hashes/初始与动态scope测试保持；新增instruction hash及每步False…True断言通过。输出round-02-user-message-phase-probe.txt。没有真实模型、网络、PG或环境操作，没有改旧schema/快照/报告。
+
+固定wrapper SHA256 24ece20b3d5ed671b86cb652475eb1c56064bb9efc15d48af11227f48271adee，等待联合独立终验；缺历史元数据不得补造为通过。

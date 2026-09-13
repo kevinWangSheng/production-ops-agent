@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shenghuikevin/dev/AI/production-ops-agent-m0-01
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 8 items
+
+tests/test_m0_step_store_protocol.py::test_malformed_tool_call_containers_fail_closed[None] PASSED [ 12%]
+tests/test_m0_step_store_protocol.py::test_malformed_tool_call_containers_fail_closed[assistant1] PASSED [ 25%]
+tests/test_m0_step_store_protocol.py::test_malformed_tool_call_containers_fail_closed[assistant2] PASSED [ 37%]
+tests/test_m0_step_store_protocol.py::test_malformed_tool_call_containers_fail_closed[assistant3] PASSED [ 50%]
+tests/test_m0_step_store_protocol.py::test_malformed_tool_call_containers_fail_closed[assistant4] PASSED [ 62%]
+tests/test_m0_step_store_protocol.py::test_valid_tool_call_container_is_returned_unchanged PASSED [ 75%]
+tests/test_m0_step_store_protocol.py::test_commit_tool_rejects_non_mapping_result_before_database_access[invalid_result0] PASSED [ 87%]
+tests/test_m0_step_store_protocol.py::test_commit_tool_rejects_non_mapping_result_before_database_access[not-a-tool-result] PASSED [100%]
+
+============================== 8 passed in 0.72s ===============================

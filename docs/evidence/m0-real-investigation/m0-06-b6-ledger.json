@@ -1,0 +1,62 @@
+{
+  "allocation_id": "m0-06-b6-20260912",
+  "previous_allocation_reserved_cny": 24,
+  "profile": {
+    "allocation": "m0-06-b6-20260912",
+    "model": "deepseek-v4-flash",
+    "reported_models": ["deepseek-v4-flash", "deepseek-flash"],
+    "provider_models_response_sha256": "0c5d2ba6ebb791e893b0e7efed32c64415a633ed774e8d89dad8e33c4d69ae77",
+    "model_metadata_sha256": "37a7903d6cc9ade127bd5d688953237d0c419de581a17351089bf62ee0eb900b",
+    "model_metadata_at": "2026-09-10T02:28:19.494432+00:00",
+    "deadline": 1789214152.749839,
+    "context_tokens": 131072,
+    "output_tokens": 32768,
+    "input_tokens": 98304,
+    "request_bytes": 524288,
+    "response_bytes": 2097152,
+    "request_seconds": 360,
+    "run_seconds": 1800,
+    "tool_seconds": 30,
+    "tool_total_seconds": 240,
+    "tool_queries": 20,
+    "reservation_cny": 2.0
+  },
+  "phase_limits": {
+    "report": {"cny": 4, "http": 2},
+    "normal": {"cny": 6, "http": 7},
+    "fault": {"cny": 6, "http": 7},
+    "pg": {"cny": 3.5, "http": 4},
+    "contingency": {"cny": 0, "http": 0}
+  },
+  "attempts": [
+    {
+      "run_id": "f2790efa-96b9-4ce2-a333-b41b77d3eb9d",
+      "phase": "pg",
+      "ordinal": 1,
+      "started_at": 1789213274.920683,
+      "request_bytes": 537,
+      "status": 200,
+      "reservation_cny": 2.0,
+      "cost_upper_cny": 0.001641,
+      "usage": {"prompt_tokens": 331, "completion_tokens": 72, "total_tokens": 403, "prompt_cache_hit_tokens": 128, "prompt_cache_miss_tokens": 203},
+      "pg_request_id": "88a55949-74d8-4545-8f6a-1469f26f38cd",
+      "ended_at": 1789213276.42146,
+      "cost_basis": "peak all-cache-miss upper bound; not invoice; old allocation unchanged"
+    },
+    {
+      "run_id": "f2790efa-96b9-4ce2-a333-b41b77d3eb9d",
+      "phase": "pg",
+      "ordinal": 2,
+      "started_at": 1789213334.97804,
+      "request_bytes": 1210,
+      "status": 200,
+      "reservation_cny": 2.0,
+      "cost_upper_cny": 0.002445,
+      "usage": {"prompt_tokens": 272, "completion_tokens": 181, "total_tokens": 453, "prompt_cache_hit_tokens": 128, "prompt_cache_miss_tokens": 144},
+      "pg_request_id": "b8ad157a-984f-4793-b7b2-031d17668960",
+      "ended_at": 1789213337.2660391,
+      "cost_basis": "peak all-cache-miss upper bound; not invoice; old allocation unchanged"
+    }
+  ],
+  "trace_uploads": 0
+}

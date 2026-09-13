@@ -1,0 +1,144 @@
+{
+  "arm": "candidate",
+  "run_id": "m004-fault-r07-candidate",
+  "packet_id": "m004-fault-r07",
+  "packet_sha256": "61ca39b0bf29c111dd73ee65efd83616de96f2d95169d4dca25a618d91c3fd28",
+  "runner_sha256": "4d7b890d37113f8a0771b2d735712b5956f675f13ceab70c54780a8d5370f3c4",
+  "model": "deepseek-v4-flash",
+  "max_http": 2,
+  "prompt_sha256": "9648c6deda1aa97d8801b9e3f2518ee3f7a022e28ad24c8d2d0af3a143cd4abc",
+  "tool_schema_sha256": "44345f4bdff098e145b7ff722322bdd81c114ef498386012d6cac180ef4ea94e",
+  "attempts": [
+    {
+      "ordinal": 1,
+      "final": false,
+      "request_bytes": 5655,
+      "message_count": 2,
+      "http_status": 200,
+      "response_bytes": 2286,
+      "response_sha256": "8225640079fcd12ff92fb23b6690a282277d39acd2c33f01b69a816e27b1d893",
+      "elapsed_seconds": 1.296,
+      "usage": {
+        "prompt_tokens": 1416,
+        "completion_tokens": 388,
+        "total_tokens": 1804,
+        "prompt_tokens_details": {
+          "cached_tokens": 640
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        },
+        "prompt_cache_hit_tokens": 640,
+        "prompt_cache_miss_tokens": 776
+      },
+      "response_model": "deepseek-flash",
+      "finish_reason": "tool_calls",
+      "tool_call_count": 8
+    },
+    {
+      "ordinal": 2,
+      "final": true,
+      "request_bytes": 25540,
+      "message_count": 12,
+      "http_status": 200,
+      "response_bytes": 14877,
+      "response_sha256": "bed6d54996de2325e46c1323b57796244bf7534c28edc6dbbfb7632951b1ad25",
+      "elapsed_seconds": 15.792,
+      "usage": {
+        "prompt_tokens": 8395,
+        "completion_tokens": 3467,
+        "total_tokens": 11862,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1440
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 8011
+      },
+      "response_model": "deepseek-flash",
+      "finish_reason": "stop",
+      "tool_call_count": 0
+    }
+  ],
+  "tool_calls": [
+    {
+      "ordinal": 1,
+      "tool": "otel_services",
+      "params": {},
+      "evidence_id": "m004-fault-r07-services"
+    },
+    {
+      "ordinal": 2,
+      "tool": "otel_metrics",
+      "params": {
+        "query": "sum by(service_name,status_code) (increase(traces_span_metrics_calls_total[5m]))"
+      },
+      "evidence_id": "m004-fault-r07-e1"
+    },
+    {
+      "ordinal": 3,
+      "tool": "otel_metrics",
+      "params": {
+        "query": "sum by(rpc_service,rpc_method,rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\"checkout\"}[5m]))"
+      },
+      "evidence_id": "m004-fault-r07-e3"
+    },
+    {
+      "ordinal": 4,
+      "tool": "otel_metrics",
+      "params": {
+        "query": "histogram_quantile(0.95, sum by(le,service_name) (rate(rpc_server_duration_milliseconds_bucket{service_name=\"checkout\"}[5m])))"
+      },
+      "evidence_id": "m004-fault-r07-e4"
+    },
+    {
+      "ordinal": 5,
+      "tool": "otel_metrics",
+      "params": {
+        "query": "sum(increase(app_payment_transactions_total[5m]))"
+      },
+      "evidence_id": "m004-fault-r07-e2"
+    },
+    {
+      "ordinal": 6,
+      "tool": "otel_traces",
+      "params": {
+        "service": "checkout"
+      },
+      "evidence_id": "m004-fault-r07-e5"
+    },
+    {
+      "ordinal": 7,
+      "tool": "otel_traces",
+      "params": {
+        "service": "payment"
+      },
+      "evidence_id": "m004-fault-r07-e6"
+    },
+    {
+      "ordinal": 8,
+      "tool": "otel_logs",
+      "params": {
+        "service": "frontend-proxy"
+      },
+      "evidence_id": "m004-fault-r07-e7"
+    }
+  ],
+  "status": "final_returned",
+  "final_content": "{\"schema_version\": \"m0-report-v1\", \"assessment_status\": \"completed\", \"conclusion\": \"partial\", \"summary\": \"The fixed window does contain evidence of checkout request failures. Three independent signal types agree: (1) span-status metrics record non-zero STATUS_CODE_ERROR volume for checkout, payment, frontend, frontend-proxy and load-generator; (2) checkout's outbound RPC client metrics show the only non-OK gRPC status among checkout's dependencies on oteldemo.PaymentService/Charge with status code 2, while Charge with status code 0 is zero and every other checkout dependency RPC (Convert, GetCart, EmptyCart, GetProduct, GetQuote, ShipOrder) records only status code 0; (3) a frontend-proxy access log line shows POST /api/checkout returning HTTP 500 with trace_id c5b88bf37781c7a44fa58df56c19fc9e, and that same trace_id appears in both the checkout-service and payment-service trace lists. The most likely failing dependency is therefore oteldemo.PaymentService (Charge), but this remains a hypothesis rather than a proven call-chain conclusion: no parent references, per-span error messages, or status descriptions were supplied, and checkout itself carries error spans in the sampled view, so error attribution is not exclusive to payment. No latency trend is asserted because no baseline window was provided. No health or recovery claim is made.\", \"claims\": [{\"kind\": \"fact\", \"text\": \"In the fixed window, traces_span_metrics_calls_total (5m range ending at evaluation_time 1789147939.0) shows non-zero error-status volume for checkout (STATUS_CODE_ERROR ~17.09 alongside STATUS_CODE_UNSET ~77.36), payment (ERROR ~8.55), frontend (ERROR ~25.64), frontend-proxy (ERROR ~17.45) and load-generator (ERROR ~9.98).\", \"evidence_ids\": [\"m004-fault-r07-e1\"]}, {\"kind\": \"fact\", \"text\": \"checkout's outbound RPC client metrics (rpc_client_duration_milliseconds_count, service_name=checkout) record oteldemo.PaymentService/Charge with rpc_grpc_status_code 2 at ~7.45 over 5m, while Charge with rpc_grpc_status_code 0 records 0; all other checkout dependency RPCs in the same series — Convert (currency), GetCart and EmptyCart (cart), GetProduct (product-catalog), GetQuote and ShipOrder (shipping) — record only rpc_grpc_status_code 0 with values ~28.70, ~9.98, 0, ~18.72, ~9.98 and 0 respectively.\", \"evidence_ids\": [\"m004-fault-r07-e3\"]}, {\"kind\": \"fact\", \"text\": \"A frontend-proxy access log entry at 2026-09-11T17:32:11.652303Z records \\\"POST /api/checkout HTTP/1.1\\\" returning status 500 with trace_id c5b88bf37781c7a44fa58df56c19fc9e.\", \"evidence_ids\": [\"m004-fault-r07-e7\"]}, {\"kind\": \"fact\", \"text\": \"Trace summaries for the sample returned by the checkout-service and payment-service queries (limit 20 returned, 9 trace_ids) report span counts by service: checkout 90 spans / 18 error spans, payment 19 / 9, frontend 36 / 27, frontend-proxy 18 / 18, load-generator 9 / 9, while quote, shipping, currency, cart, product-catalog and flagd report 0 error spans; trace_id c5b88bf37781c7a44fa58df56c19fc9e appears in both the checkout and payment trace id lists. These are trace-span counts, not unique request counts, and individual span attributes, durations, parents and error details are explicitly absent from this view.\", \"evidence_ids\": [\"m004-fault-r07-e5\", \"m004-fault-r07-e6\"]}, {\"kind\": \"fact\", \"text\": \"The histogram quantile query for rpc_server_duration_milliseconds_bucket with service_name=checkout returns a p95 of approximately 205 ms at evaluation_time 1789147939.0; this is a single-window value and no comparable baseline was supplied.\", \"evidence_ids\": [\"m004-fault-r07-e4\"]}, {\"kind\": \"hypothesis\", \"text\": \"The most likely failing dependency for the observed checkout request failures is oteldemo.PaymentService (Charge, gRPC status code 2), with the failure propagating from payment through checkout to the frontend as an HTTP 500 on /api/checkout. This is grounded in the fact that Charge is the only checkout dependency RPC recording a non-zero error status code, and that payment carries error spans and appears alongside the 500-logged trace. It remains a hypothesis: the supplied trace view contains no parent references, so the call edge is inferred from co-occurrence in traces and from checkout's own client instrumentation, not confirmed parent-child structure.\", \"evidence_ids\": [\"m004-fault-r07-e3\", \"m004-fault-r07-e7\", \"m004-fault-r07-e5\", \"m004-fault-r07-e6\", \"m004-fault-r07-e1\"]}, {\"kind\": \"counter_evidence\", \"text\": \"sum(increase(app_payment_transactions_total[5m])) returns 0 in this window; this metric does not count failed Charge calls and its zero value neither corroborates nor refutes the payment-failure hypothesis — it cannot be read as evidence that no payment activity occurred or that payment was healthy.\", \"evidence_ids\": [\"m004-fault-r07-e2\"]}, {\"kind\": \"counter_evidence\", \"text\": \"Error spans are also attributed to checkout itself (18 error spans) in the sampled trace summary, and to frontend (27) and frontend-proxy (18); the sampled view therefore cannot exclude an error origin inside checkout or at the frontend layer rather than solely at the payment dependency.\", \"evidence_ids\": [\"m004-fault-r07-e5\"]}, {\"kind\": \"rejected_hypothesis\", \"text\": \"Rejected: that this window shows a latency-driven checkout failure. The only latency observation is a single-window checkout server p95 of roughly 205 ms, and no comparable baseline window was supplied, so no latency degradation or trend can be established from the available evidence.\", \"evidence_ids\": [\"m004-fault-r07-e4\"]}, {\"kind\": \"recommendation\", \"text\": \"If further read-only analysis is authorized, compare the same indicator series (traces_span_metrics_calls_total by service_name/status_code, and checkout's rpc_client_duration_milliseconds_count by rpc_service/rpc_method/rpc_grpc_status_code) against a pre-incident baseline window to establish whether the checkout and payment ERROR volumes are elevated relative to normal; this is provisional because no baseline was provided in this run.\", \"evidence_ids\": [\"m004-fault-r07-e1\", \"m004-fault-r07-e3\"]}], \"gaps\": [\"No pre-incident or comparison baseline window was provided for any series, so elevation of error counts and any latency change cannot be quantified.\", \"No parent/child span references or individual span attributes were supplied, so the checkout-to-payment call edge is inferred from co-occurrence and client instrumentation rather than confirmed structure; the trace view is sampled (9 trace_ids returned, limit 20) and the trace is not known to be complete.\", \"No error messages, gRPC status descriptions, or exception details were supplied for the status-code-2 Charge calls or for the checkout error spans, so the specific failure mode (e.g. card declined, provider error, timeout, validation) is unknown.\", \"No logs were collected for the payment or checkout services themselves; only a 20-of-151-line sample of frontend-proxy logs was available, and only one of those lines was a checkout 500, so the checkout failure rate at the proxy cannot be computed from the log sample.\", \"No metric series was retrieved for HTTP status codes at the frontend, for payment-side transaction outcome labels, or for the remaining services not covered by the queried label sets; missing series remain unknown rather than zero.\", \"Histogram bucket data was queried only via a quantile expression, so bucket distributions are not available to characterize the latency shape; histogram buckets are cumulative and were not used to count calls.\"], \"next_steps\": [\"Request a read-only baseline window of traces_span_metrics_calls_total and checkout rpc_client_duration_milliseconds_count to compare error and status-code volumes against pre-incident behavior.\", \"Request read-only checkout and payment service logs for the same window to obtain error messages/status descriptions that would confirm or refute the payment Charge failure mode.\", \"Request read-only trace span detail (with parent references) for the trace_ids already observed, in particular c5b88bf37781c7a44fa58df56c19fc9e and the other trace_ids returned by the checkout and payment queries, to confirm the checkout-to-payment parent-child edge instead of inferring it.\", \"Determine whether the elevated ERROR counts correspond to a known injected fault scenario for this demo instance before drawing any operational conclusion; no remediation is authorized by this report.\"]}",
+  "finish_reason": "stop",
+  "visible_evidence_ids": [
+    "m004-fault-r07-e1",
+    "m004-fault-r07-e2",
+    "m004-fault-r07-e3",
+    "m004-fault-r07-e4",
+    "m004-fault-r07-e5",
+    "m004-fault-r07-e6",
+    "m004-fault-r07-e7",
+    "m004-fault-r07-services"
+  ],
+  "http_count": 2,
+  "messages_sha256": "be49c5f0a90fe4a7b56586e9ebb4ab21dc65666c2cd4717be53838c0c6e73949"
+}

@@ -1,6 +1,25 @@
 # Roadmap
 
-Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛仍未打开。Flash固定工具→严格JSON→PG→LangSmith单次通过；固定OTel/Holmes真实正常、故障及工程还原证据已取得，但两次主动故障调查无最终报告，最后业务证据接续也输出耗尽。[最终报告](docs/evidence/m0-real-investigation/results.md)与[当前任务](docs/tasks/2026-09-09-m0-real-investigation.md)保留全部失败。下一项M0-02为有界故障报告收束/动态证据验收冻结，满足条件后实施M1-01完整纵向流程。
+当前工程交付状态（2026-09-11）：M0-03 normal/fault v4 正向样本已达 2/2，M004 raw evidence 独立复核通过；PR #16 仍 OPEN，SPEC/M1 gate 等待用户决定。
+Current phase: M0 质量包已完成本轮可执行复验；专属 m0-otel 已停止，历史证据保全。CI/本地/独立复验完成，Security 按用户决定忽略；不自动合并 PR。
+Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline 对照；专属 m0-otel 已停止，历史容器/卷/VM/证据保留。Code/CI 交付门已通过，Security 按用户决定忽略；SPEC gate 仍 not cleared，等待最终入口决策。[M0-02 历史结果](docs/evidence/m0-real-investigation/round-02-results.md) 保留。
+
+## 当前有效状态（2026-09-12，覆盖下方历史 checklist）
+
+| 项目 | 当前状态 | 证据/下一步 |
+|---|---|---|
+| PR #16 尾项 | **已完成** | `commit_tool` 非 mapping fail-closed；merge-tree 无冲突；代码/验证基线 `960f85b` 的 CI `checks`/`m0-postgres` 通过；后续提交仅为状态文档同步。 |
+| B1 退出矩阵 | **已完成** | [`m0-exit-matrix.md`](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 已建立并持续更新。 |
+| B2 预算校准 | **部分完成** | 候选值和历史分布已写入 v4 校准段；最终冻结仍待用户批准。 |
+| B3 控制合同 | **部分完成** | wp23 专属 PG 5 项合同通过，另有 1 次真实 DeepSeek pause→resume 新 Run；完整产品生命周期仍不等同 M0 通过。 |
+| B4 真实恢复 | **已完成（机制范围）** | 三项 Run、PG 重建/取消/不兼容 handoff 和 LangSmith 白名单回读均有证据；不等于产品恢复验收。 |
+| B5 权限/隔离 | **部分完成** | PG 只读角色实际拒绝写/DDL；无宿主挂载容器拒绝开发目录/答案/凭据路径；K8s RBAC 环境缺测，Holmes 宿主 OS 隔离仍未证明。 |
+| B6 上游/eval | **部分完成** | wp5 同一 replay tool face 的 normal/fault 候选与 upstream 各 1 Run 已执行；候选有 JSON、upstream 未形成最终报告。首次 holdout 变体由独立 evaluator 各 10/10，仍非正式保留集；judge 人工确认待用户处理。 |
+| B7 LangGraph | **已完成（离线比较）** | 1.2.11 隔离比较无可见收益，ADR-0004 推荐推迟；是否采用仍待用户决定。 |
+| B8 账单 | **未完成** | 对账模板已准备，等待用户提供供应商账单导出/截图。 |
+| SPEC gate / feature passes | **未开放/未修改** | `SPEC.md` 仍 `not cleared`；11 个 feature passes 均保持原值。 |
+
+下方按日期排列的旧段落是历史过程记录；读取当前进度时以上表和文档末尾最新日期段为准。
 
 ## Completed decisions and documentation
 
@@ -42,6 +61,10 @@ Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛
 
 ## Next: M0 validation and acceptance calibration
 
+- [-] 2026-09-11 M0-03：新增 m003e-normal-02 与 m003e-fault-05，均 strict completed/supported；补齐相邻 normal/fault baseline 对照。报告仍保留日志/采样/SLO unknown，未打开 SPEC gate；m0-otel 已停止，原始证据保全。[汇总](docs/evidence/m0-real-investigation/round-03-quality-summary.md)。 2026-09-11 独立审查：正常 1/2、故障 1/2，v4 包未通过；五条 unknown 经用户接受为已披露限制并记后续归属。[独立审查汇总](docs/evidence/m0-real-investigation/round-03-independent-review-summary.md)。
+
+- [-] 2026-09-10 M0-02：20模型HTTP/0trace，相关真实PG同Run跨进程续传及最小持久/取消机制已独立验证，正常/故障JSON与核心结论有据；两份报告仍有P2事实错误，最新修复仅离线。首片v3为历史包；严格v4已补齐PR发现并经联合独立终审，案例/重复/非退化不削弱。下一有界工作M0-03，不写产品passes；详见[本轮结果](docs/evidence/m0-real-investigation/round-02-results.md)。
+
 - [-] 2026-09-09 新一轮20模型请求已用完、1trace上传；正常1份报告有质量限制，主动故障0/2完成，另接续length空正文。环境已还原、停止并保留26容器/卷、2792trace归档及原PG；[运行结果与具体下一任务](docs/evidence/m0-real-investigation/results.md)。
 
 - [-] 2026-09-09 M0 离线批次修复与汇合已进入 main：[批次索引](docs/tasks/2026-09-08-m0-batch.md)。#4–#10 全部已合并，#8/#9 内容及索引漏扫修复经 #10 汇入 main（e5ecfc0）；独立复验与主线 CI 均成功，全部历史工件保留。该离线批次不自动授权真实调用或打开M0退出/产品实施门槛；后续真实调用授权与结果见当前M0任务。
@@ -53,10 +76,10 @@ Current phase: 本轮M0真实调查实验已结束并保全，产品实施门槛
 - [x] C3 complete technical design accepted for persistence — 2026-09-07. Three whole-candidate adversarial rounds closed observer/control races, independent release-observation identity and provider-private-field export contradictions. See [technical plan](docs/design/technical-proposal-2026-09-07.md), [review record](docs/reviews/technical-design-c3-review-2026-09-07.md) and [ADR-0003](docs/adr/0003-business-state-recovery-authority.md).
 - [x] Technical direction: Python/FastAPI, PostgreSQL business recovery authority, DeepSeek-compatible adapter, LangSmith, Compose/Helm. LangGraph loop benefit and exact versions remain to be validated; graph checkpoints have no cross-attempt authority.
 - [x] Source-first research for HolmesGPT/OpenSRE/Stratus and runtime/platform comparisons completed as static evidence; not feature completion.
-- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; successful active fault report and complete reuse/candidate comparison remain pending.
-- [-] M0模型/协议与控制快照已有子集真实证据；调查步骤重建、完整取消/lease/observer/升级与目标范围仍待对应有界验证。
+- [-] F14 upstream capability mapping: source/issue candidates inspected; pinned real runtime attempts and concrete protocol/context gaps recorded; a bounded active fault report now localizes payment/Charge, while full report quality and matched candidate comparison remain pending.
+- [-] M0模型/协议与控制快照已有子集真实证据；首流程步骤重建、取消/owner/epoch/lease与版本阻塞已有本轮有界证据；完整observer/发布/升级及产品集成仍待对应后续验证。
 - [-] M0 pinned OTel Demo实际部署、正常/故障/还原、来源/权限探针和资源费用已记录；按服务日志/身份缺口、实际Holmes进程隔离、HealthProfile等仍待对应任务。
-- [ ] F1 detailed IncidentScenario/IncidentOutcome packet, development calibration, frozen sample/repeat/scoring/non-regression thresholds before candidate evaluation. Retain existing acceptance inventory; no passes changed.
+- [-] F1 历史v3包保留，当前[严格v4首片包](docs/testing/first-investigation-v4-2026-09-10.md)已完成实现/schema及独立复验冻结；开发案例规模/重复/评分/非退化不变；模型候选尚未通过，完整保留集/产品验收在后续阶段。原验收steps/passes不变。
 - [-] 已形成[M0-02 / M1-01具体任务与入口缺项](docs/plans/first-vertical-investigation-2026-09-09.md)；故障报告收束、动态验收/目标及步骤恢复前提未满足，SPEC保留not cleared，不更新passes。
 
 The earlier outer-readiness audit and V0/V1/V1.1/V2 proposal review are historical. Both product entry points remain in one complete release; symptom categories remain testing only.
@@ -75,3 +98,104 @@ F7/F8/F9 requirements apply from the first runnable system. No internal mileston
 F4 action broker, F5 rollout executor and F10 autonomous promotion are retired, not completed. IDs remain reserved. The original steps and migration mapping are in `docs/archive/pre-readonly-scope-2026-09-06/`.
 
 Legend: `[ ]` Todo | `[-]` In Progress | `[x]` Completed. No active feature has passed its acceptance checks.
+## Current handoff (2026-09-10)
+
+- PR #16：最新代码与文档 HEAD 以远端为准；CI 与本地验证已完成，历史段落保留为历史。
+- Security Review 对当前 HEAD 无运行或完成结果，不能记为通过；PR 仍 OPEN/BLOCKED。
+- M0-03 正向样本 2/2 已完成；已披露 unknown 与后续任务边界保留，SPEC gate 由用户决定。
+- 历史 20 CNY/20 HTTP/5 trace 合同和账本保留，不改写、不复用；无新预算合同前不追加模型/trace。
+- 接手入口：`docs/tasks/2026-09-09-m0-real-investigation.md` 的“当前交接更新：M0 仍未完成”。
+
+## M0-03 用户接受的已披露限制（2026-09-11）
+
+用户接受当前五条 evidence unknown 为环境/工具契约的固有限制，不视为 M0-03 报告错误：bounded trace/log sampling、当前集成日志源缺失、日志过滤/allow-list 与展示上限、HTTP 500 无法总由 access-log view 直接映射、缺少 HealthProfile/SLO。日志源、过滤能力和 HealthProfile/SLO 归入后续任务；原始 evidence 和 unknown 保留，SPEC gate 是否开放另行决策。
+
+## M0-04 独立质量包更新（2026-09-11）
+
+M004 normal/fault 两个新 Run 的 raw evidence 已提交并经全新上下文独立复核，7/7 hash 各自匹配，均无 P1/P2；v4 有界开发包计数更新为 normal 2/2、fault 2/2。报告仍保留 partial 与五条已接受 unknown；SPEC gate 是否开放、PR #16 是否合并仍由用户最终判断。
+
+## M0 退出矩阵与离线补证（2026-09-11）
+
+- [x] B1 八包退出矩阵与 M1-01 任务/工时估算已建立：[m0-exit-matrix](docs/evidence/m0-real-investigation/m0-exit-matrix.md)。矩阵仅作索引，未把 partial/证据不足汇总为通过。
+- [-] B2 已从 M002–M004 的可保留 usage/timing/count 记录提出候选预算；旧 `128KiB/8192/4/20/180s/20s/780s` 明确不冻结，候选与缺失 sidecar 写入 [first-investigation-v4 校准段](docs/testing/first-investigation-v4-2026-09-10.md)，最终冻结待用户批准。
+- [-] B3 已补 unknown 语义、真实 PG 子集和 4 项控制合同；pause/resume 完整状态机、HealthProfile 持久乱序和独立 observer 授权仍为证据不足，见 [B3 记录](docs/evidence/m0-real-investigation/round-06-control-contracts.md)。
+
+PR16 收尾 tip `0774960`：本地 `make check` 723 passed/44 skipped，专属 PG 合同 27+9+1 passed 后已停止；review threads 已处置并 resolve。`0babc02` 的 bot review 无 major issues，覆盖其代码；`0774960` 当前 bot 结果尚未返回，已由全新上下文独立复验与父提交 review 边界替代并在 PR 描述披露；不自动合并，SPEC gate 仍 not cleared。
+
+后续 `da505dc`/`0a514a0`/`d1b6d15` 修复 timing sidecar 读前 guard、较早 query deadline 传播及 tool lock 后截止重检，均通过本地 `make check` 723 passed/44 skipped；当前 PR tip 为 `d1b6d15`（后续文档收尾），CI checks/m0-postgres 成功，threads 已处置并 resolve，SPEC gate 仍 not cleared。
+
+## 2026-09-12 PR16 C1–C5 与 B4–B7 准备
+
+- [x] C1–C5 代码修正已按独立提交完成，最终本地 `make check` 730 passed/44 skipped；没有模型/trace/OTel 操作。代码独立复审待记录。
+- [x] D1–D3 文档状态已拆分并修正：退出矩阵、B3 `-rA` PG 输出、v4 候选预算出处均已更新。
+- [x] B4 真实恢复合同已执行：每项 1 次、总 3 HTTP，三次 LangSmith 白名单回读 `TRACE_VERIFIED`；结果见 `round-05-recovery-results.md`。
+- [-] B5 只读 PG 子项已执行并保留角色；K8s RBAC 环境缺测，OS 隔离未采购。
+- [-] B6 上游比较已执行 provider/单步复验，judge 标注包已准备；正式可比报告、人工校准和盲测仍未完成。
+- [x] B7 已用隔离 `uv run --with langgraph` 执行最小 StateGraph（版本 1.2.11）；与现有 loop 均 2 步/2 持久点/第二步取消，0 模型/工具 HTTP。ADR-0004 推荐推迟，采用与否待用户决定。
+
+以上准备不打开 SPEC gate、不修改 feature passes；B4 付费执行、B5 设施、B7 采用与否均由用户决定。
+
+文档最终独立复核已完成（`round-05-docs-final-recheck.md`），B4–B7 仅为待批准准备，未新增模型/trace/服务操作；SPEC gate 保持 not cleared。
+
+## 2026-09-12 B4/B5/B7 执行结果
+
+- [x] B4 三项真实恢复/控制验证各执行 1 次；B4-1 恢复、B4-2 cancel 迟到拒绝、B4-3 `INCOMPATIBLE_STATE` handoff 均有结果记录。3 模型 HTTP、known cost 0.004293 CNY、unknown reservation 1.0 CNY，未超 6 CNY 合同上界；三次 LangSmith 白名单回读 `TRACE_VERIFIED`。
+- [x] B5 专属 PG 只读角色实际 SELECT 成功、写/DDL 拒绝；K8s 标环境缺测，OS 隔离方案不采购。
+- [x] B7 已用隔离 `uv run --with langgraph` 安装 1.2.11 并完成固定序列比较（两路径 2 步/2 持久点/第二步取消，0 HTTP）；ADR-0004 推荐推迟，是否纳入主依赖仍待用户决定。
+- [ ] B8 账单仍未核对；SPEC gate 继续 not cleared，PR 不自动合并。
+
+## 2026-09-12 M0-07 收敛状态
+
+- [x] wp23：pause/resume、observer authorization、HealthProfile observation stream、DB outage 和 context compressor 已合入；专属 PG 5 项合同 `5 passed`，另有 1 次真实 DeepSeek pause→resume 新 Run，失败/启停证据保留。
+- [x] wp67：trace linkage、wall-time/清理上界和 `m003f-normal-observation.json` 已合入；trace 状态保持部分，wall-time 冻结候选待用户批准。
+- [x] wp5：同一 replay packet/tool face 的 normal/fault candidate/upstream 各 1 Run 已执行（8 HTTP allocation，known upper 0.228585 CNY）；candidate 两场有 JSON 报告，upstream 两场无最终报告，未作优劣结论。
+- [x] 首次小规模 holdout：无宿主挂载容器拒绝开发目录、答案和凭据路径；normal/fault 各 2 HTTP，独立匿名评分 10/10；仅为开发期小规模盲测，不是正式保留集。
+- [x] compressor 真实超阈值 Run：`m0-compressor-v1` 1 HTTP/200，paired transcript 保真；keep floor 仍 over-threshold，状态为部分。
+- [ ] M0 用户收尾仍待 judge 人工勾选、供应商账单对账、预算冻结值批准和 K8s 环境缺测处置；SPEC gate 保持 `not cleared`，M1 不启动。总账见 [`round-07-m0-final-results`](docs/evidence/m0-real-investigation/round-07-m0-final-results.md)。
+
+## 2026-09-12 review findings follow-up
+
+- [x] `observe()` 已移除调用方 `now` 覆盖路径，生产只使用 DB `clock_timestamp()`；测试通过独立 `_clock_timestamp` 接缝。
+- [x] compressor 已拒绝非 list `tool_calls`（包括 `{}`、`""`），新增 fail-closed 回归。
+- [ ] `768e235` 的 bot review 曾失败；修复后已重新触发当前 HEAD review，等待外部结果；不以旧 review 替代。
+
+PR review 新增的 unknown publish step P2 已由 `93f8555` 修复并有 PG 回归；最终 `make check` 732 passed/45 skipped，SPEC gate 与 feature passes 保持不变。
+
+## 2026-09-12 B6 上游比较结果
+
+- [ ] 候选真实 fixture/PG 链路 2 HTTP 成功；上游认证线路后续复验已返回模型内容，但未形成可比较最终报告，B6 同条件质量比较保持证据不足。结果见 `round-06-upstream-comparison-results.md` 与 `round-06-upstream-auth-followup-results.md`。
+- [ ] 本 session 费用授权已明确，不再等待费用确认；后续 B6 只需另立受控 Run，保留每 Run 上限、usage/unknown 账本和数据出口边界。judge 校准、盲测和 B8 账单仍未完成，SPEC gate 仍 not cleared。
+
+## 2026-09-12 B6 认证线路后续复验
+
+- [x] 受信任启动器从私有 `.env` 向固定 Holmes checkout 注入 DeepSeek 凭据，单步无工具请求已返回模型内容；未打印、导出或上传凭据。
+- [ ] 该次启动未持久化 wire HTTP 状态/usage，且模型输出未执行的 shell tool-call，不能计入正式同条件质量样本；B6 正式比较、judge 校准和盲测仍保持证据不足。详见 [`round-06-upstream-auth-followup-results`](docs/evidence/m0-real-investigation/round-06-upstream-auth-followup-results.md)。
+
+## 2026-09-12 PR 尾项与 B3 控制合同
+
+- [x] `commit_tool` 对非 mapping result 统一返回 `TOOL_PAIRING_INVALID`，list/str 回归通过；review thread 已回复并 resolve，见 `e505f2b`。
+- [x] `git merge-tree --write-tree main HEAD` 无冲突，结果树与 main 用户未提交改动均未被触碰；证据见 [`round-07-merge-tree`](docs/evidence/m0-real-investigation/round-07-merge-tree.txt)。
+- [x] 工作包 3 新增专属 PG opt-in 控制合同：generation 竞争、HealthProfile 旧版本/固定时钟存储、pause/resume fail-closed、investigation identity 隔离；4 passed，失败样例保留于 [`round-06-control-contracts`](docs/evidence/m0-real-investigation/round-06-control-contracts.md)。pause/resume 完整状态机与独立 observer 授权 API 仍缺，未汇总为 M0 通过。
+
+## 2026-09-12 工作包 2 真实协议补证
+
+- [x] 隔离 probe 在 6 HTTP 上界内实际执行 5 HTTP：stream 中断 2、工具 4xx continuation 2、手工配对视图 1；0 trace，费用按 ledger 记账，详见 [`round-06-protocol-results`](docs/evidence/m0-real-investigation/round-06-protocol-results.md)。
+- [-] 结果只形成 provider/隔离实验部分证据：stream/工具错误尚未接入产品 StepStore/PG 审计；compressor 已有实现/配对测试并完成 1 次真实超阈值 provider Run，但 keep floor 仍可能 over-threshold；不修改主 transport 合同，不打开 SPEC gate。
+
+## 2026-09-12 B6 M004 上游复验
+
+- [x] M004 normal/fault 各完成 1 次固定 Holmes 上游复验（2 HTTP，0 trace，4 CNY unknown reservation）；均到达模型但只产生未执行 tool-call，没有最终报告。详见 [`round-06-upstream-comparison`](docs/evidence/m0-real-investigation/round-06-upstream-comparison.md)。
+- [-] 同条件质量比较、judge 人工校准与保留集盲测仍证据不足；失败进入分母，不宣称候选优于上游。SPEC gate 继续 `not cleared`。
+
+## 2026-09-12 用户审核材料
+
+- [x] 已生成 6 份独立审查样本的 judge 人工校准包、ledger 账单对账模板和 SPEC gate 两选项草案；均只作审核材料，不修改 SPEC gate 或 feature passes。
+- [ ] 待用户确认 judge 分数、供应商账单差额、是否保持 gate `not cleared`；B5 K8s/OS 设施与采购仍不执行。
+
+## 2026-09-12 M0 终态收敛（范围止于 M0）
+
+- [x] M0 计划中本轮可执行的实验合同均已运行并保留证据：wp23 PG/控制/观察 5 passed + 1 真实 DeepSeek；wp2 compressor 真实 provider 1 HTTP；wp5 replay candidate/upstream 8 HTTP；首次 holdout 4 HTTP；全部未上传 trace。
+- [x] 三个 worktree 已按 wp23 → wp67 → wp5 顺序合入本分支，提交保留；主工作区 main 未触碰。
+- [x] 已确认三个 worktree 的全部提交均在当前分支祖先中；wp23/wp67/wp5 worktree 与本地分支已安全清理，主工作区 main 保留。
+- [x] SPEC.md 已追加 2026-09-12 M0 状态段，明确实验收敛不等于 M1 授权；gate 字面仍 `not cleared`。
+- [ ] 用户收尾：judge 标注包勾选/人工校准、供应商账单对账、预算冻结候选批准、K8s 环境缺测处置；不进入 M1、不合并 PR。

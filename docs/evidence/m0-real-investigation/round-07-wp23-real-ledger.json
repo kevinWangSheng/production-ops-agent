@@ -1,0 +1,72 @@
+{
+  "allocation_id": "m0-10-wp23-20260912",
+  "previous_allocation_reserved_cny": 24,
+  "profile": {
+    "allocation": "m0-10-wp23-20260912",
+    "model": "deepseek-v4-flash",
+    "reported_models": [
+      "deepseek-v4-flash",
+      "deepseek-flash"
+    ],
+    "provider_models_response_sha256": "0c5d2ba6ebb791e893b0e7efed32c64415a633ed774e8d89dad8e33c4d69ae77",
+    "model_metadata_sha256": "37a7903d6cc9ade127bd5d688953237d0c419de581a17351089bf62ee0eb900b",
+    "model_metadata_at": "2026-09-10T02:28:19.494432+00:00",
+    "deadline": 1789242870.3941388,
+    "context_tokens": 131072,
+    "output_tokens": 32768,
+    "input_tokens": 98304,
+    "request_bytes": 524288,
+    "response_bytes": 2097152,
+    "request_seconds": 360,
+    "run_seconds": 1800,
+    "tool_seconds": 30,
+    "tool_total_seconds": 240,
+    "tool_queries": 20,
+    "reservation_cny": 1.0
+  },
+  "phase_limits": {
+    "report": {
+      "cny": 4,
+      "http": 2
+    },
+    "normal": {
+      "cny": 6,
+      "http": 7
+    },
+    "fault": {
+      "cny": 6,
+      "http": 7
+    },
+    "pg": {
+      "cny": 3.5,
+      "http": 4
+    },
+    "contingency": {
+      "cny": 0,
+      "http": 0
+    }
+  },
+  "attempts": [
+    {
+      "run_id": "77f31d5e-4ede-4e2a-976b-374a7c5340a2",
+      "phase": "pg",
+      "ordinal": 1,
+      "started_at": 1789242570.43796,
+      "request_bytes": 537,
+      "status": 200,
+      "reservation_cny": 1.0,
+      "cost_upper_cny": 0.001749,
+      "usage": {
+        "prompt_tokens": 331,
+        "completion_tokens": 84,
+        "total_tokens": 415,
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 203
+      },
+      "pg_request_id": "59694cbf-d901-4c88-a6e0-92fb9daa9274",
+      "ended_at": 1789242572.009985,
+      "cost_basis": "peak all-cache-miss upper bound; not invoice; old allocation unchanged"
+    }
+  ],
+  "trace_uploads": 0
+}

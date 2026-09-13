@@ -1,0 +1,49 @@
+
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/integration/test_m0_adapter_budget.py _________
+ImportError while importing test module '/tmp/m0-bot-question-human-code/tests/integration/test_m0_adapter_budget.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/m0-bot-question-human-code/tests/integration/test_m0_adapter_budget.py:13: in <module>
+    from scripts.m0.adapters import History, SyntheticAdapter
+E   ModuleNotFoundError: No module named 'scripts'
+________ ERROR collecting tests/integration/test_m0_budget_postgres.py _________
+ImportError while importing test module '/tmp/m0-bot-question-human-code/tests/integration/test_m0_budget_postgres.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/m0-bot-question-human-code/tests/integration/test_m0_budget_postgres.py:13: in <module>
+    from scripts.m0.budget import PostgresBudget
+E   ModuleNotFoundError: No module named 'scripts'
+_________ ERROR collecting tests/integration/test_m0_live_postgres.py __________
+ImportError while importing test module '/tmp/m0-bot-question-human-code/tests/integration/test_m0_live_postgres.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/m0-bot-question-human-code/tests/integration/test_m0_live_postgres.py:11: in <module>
+    from scripts.m0.config import ConfigError
+E   ModuleNotFoundError: No module named 'scripts'
+______ ERROR collecting tests/integration/test_m0_step_store_postgres.py _______
+ImportError while importing test module '/tmp/m0-bot-question-human-code/tests/integration/test_m0_step_store_postgres.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Users/shenghuikevin/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/m0-bot-question-human-code/tests/integration/test_m0_step_store_postgres.py:12: in <module>
+    from scripts.m0.budget import PostgresBudget
+E   ModuleNotFoundError: No module named 'scripts'
+=========================== short test summary info ============================
+ERROR ../../tmp/m0-bot-question-human-code/tests/integration/test_m0_adapter_budget.py
+ERROR ../../tmp/m0-bot-question-human-code/tests/integration/test_m0_budget_postgres.py
+ERROR ../../tmp/m0-bot-question-human-code/tests/integration/test_m0_live_postgres.py
+ERROR ../../tmp/m0-bot-question-human-code/tests/integration/test_m0_step_store_postgres.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!!
+4 errors in 1.20s
