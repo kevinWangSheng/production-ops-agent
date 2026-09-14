@@ -14,7 +14,8 @@
 
 - [Approved C3 technical plan](design/technical-proposal-2026-09-07.md): current stack direction, recovery/control contracts, release observations, model adaptation, UI, eval, resource candidates and M0–M3. User-reviewed and authorized for persistence; [whole-design review](reviews/technical-design-c3-review-2026-09-07.md) records C1–C3 findings. Compatibility and runtime acceptance remain unproven.
 - [ADR-0003](adr/0003-business-state-recovery-authority.md): why committed business records own cross-process recovery and graph checkpoints do not.
-- `../SPEC.md`: what the product includes/excludes, full lifecycle requirements, status and design questions. Product scope and C3 design are approved; M0 evidence and acceptance calibration remain.
+- `../SPEC.md`: current scope, technology selection, verification and delivery method, status and the implementation gate. Product scope and C3 design are approved; M0 evidence and acceptance calibration remain.
+- `../PRODUCT-CONSTRAINTS.md`: what product code must satisfy at runtime — exclusions, workflow, evidence, human control, recovery and data flow.
 - [ADR-0002](adr/0002-context-driven-investigation.md): accepted shared investigation mechanism, context/knowledge approach and bounded execution; the later C3 plan records concrete technology direction without claiming runtime validation.
 - `adr/0001-readonly-investigation-boundary.md`: why the consequential scope/authority decision was made. ADRs preserve trade-offs; they do not replace the specification.
 - `../PRD.md`: user-facing capabilities with stable feature IDs; exact checks live only in `../feature_list.json`.
@@ -45,7 +46,7 @@ Use explicit Markdown links from the repository entry point. If current sources 
 
 ## Maintenance
 
-Update SPEC when scope or constraints change; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update roadmap when work moves, and append the local progress log. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
+Update SPEC when scope, technology selection, verification method or the implementation gate changes; update PRODUCT-CONSTRAINTS when a product runtime constraint changes; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update roadmap when work moves, and append the local progress log. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
 
 Do not create another plan or ADR for every conversation. Detailed component designs and execution plans should be created only when the capability map and runtime evidence justify them. No documentation framework or wiki service is needed at this stage.
 

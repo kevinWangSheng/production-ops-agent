@@ -10,10 +10,11 @@ HolmesGPT is the primary reference and preferred reuse candidate; OpenSRE is a p
 
 ## Read first
 
-1. [SPEC.md](SPEC.md) — current boundary, full lifecycle and remaining design work.
-2. [Scope ADR](docs/adr/0001-readonly-investigation-boundary.md) — why production writes and release gates are excluded.
-3. [PRD.md](PRD.md) and [acceptance inventory](feature_list.json) — user capabilities and checks.
-4. [ROADMAP.md](ROADMAP.md) — current work and next design step.
-5. [Documentation guide](docs/README.md) — sources of truth, research and history.
+1. [SPEC.md](SPEC.md) — current scope, technology selection and the implementation gate.
+2. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md) — what product code must satisfy at runtime: exclusions, workflow, evidence, human control, recovery and data flow.
+3. [Scope ADR](docs/adr/0001-readonly-investigation-boundary.md) — why production writes and release gates are excluded.
+4. [PRD.md](PRD.md) and [acceptance inventory](feature_list.json) — user capabilities and checks.
+5. [ROADMAP.md](ROADMAP.md) — current work and next design step.
+6. [Documentation guide](docs/README.md) — sources of truth, research and history.
 
 Next: follow the [approved technical plan](docs/design/technical-proposal-2026-09-07.md) into M0 validation and freeze the corresponding acceptance packet. Architecture approval is not runtime proof; feature entry conditions remain in SPEC.
