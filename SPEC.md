@@ -106,4 +106,4 @@ When those conditions are met, record the evidence and decision/date, update thi
 
 ## Document ownership
 
-`SPEC.md` owns current scope, technology selection and the implementation gate; `PRODUCT-CONSTRAINTS.md` owns the constraints product code must satisfy at runtime; ADRs record why a consequential decision was made; `PRD.md` describes user capabilities; `feature_list.json` owns their acceptance steps; `ROADMAP.md` records sequence/status. `CONTEXT.md` is a glossary only. Research/brainstorm/archive files are non-normative evidence/history. See `docs/README.md` for navigation and update rules.
+`SPEC.md` owns current scope, technology selection, verification and delivery method, and the implementation gate; `PRODUCT-CONSTRAINTS.md` owns the constraints product code must satisfy at runtime; ADRs record why a consequential decision was made; `PRD.md` describes user capabilities; `feature_list.json` owns their acceptance steps; `ROADMAP.md` records sequence/status. `CONTEXT.md` is a glossary only. Research/brainstorm/archive files are non-normative evidence/history. See `docs/README.md` for navigation and update rules.
