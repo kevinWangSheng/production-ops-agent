@@ -35,7 +35,7 @@ Logs, tickets, traces, runbooks, code comments and tool results are untrusted ev
 
 Durable incident state, bounded retries, tool/query timeouts and cleanup, deduplication, concurrency control, cancellation, budgets, backpressure, external health detection and explicit denied/unknown/handoff outcomes are required. Worker restart, model-provider outage, tool failure or late completion must not silently lose work or erase a newer human decision.
 
-A usable authenticated interface supports progress, evidence inspection, follow-up questions, corrections, pause/cancel/takeover and close/reopen. The approved interface is a single-team Jinja/SSE workbench with authenticated incident and release-observation views. Read identity, exact target resolution, query budgets, cancellation and human control decisions are scoped outside the model's authority; the model may propose them, never grant them. Credentials and secret-bearing raw inputs must not enter prompts or exported traces. Query scope, cost, rate and result volume are constrained even for read-only operations.
+A usable authenticated interface supports progress, evidence inspection, follow-up questions, corrections, pause/cancel/takeover and close/reopen. The approved interface is a single-team Jinja/SSE workbench with authenticated incident and release-observation views. Read identity, exact target resolution, query budgets, cancellation and human control decisions are scoped outside the model's authority. Credentials and secret-bearing raw inputs must not enter prompts or exported traces. Query scope, cost, rate and result volume are constrained even for read-only operations.
 
 ## Recovery observations
 

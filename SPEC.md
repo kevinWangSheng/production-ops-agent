@@ -78,7 +78,7 @@ Use CNY 1,000 as an adjustable initial project-budget planning reference, not a 
 
 ## Verification and delivery
 
-The proposed highest acceptance seam remains `IncidentScenario -> IncidentOutcome`, with a read-only outcome contract still to be detailed. Observe inputs, evidence, states, permissions, human interaction and final service observations; never test hidden chain-of-thought.
+The proposed highest acceptance seam remains `IncidentScenario -> IncidentOutcome`, with a read-only outcome contract still to be detailed. Observe inputs, evidence, states, permissions, human interaction and final service observations; never test hidden chain-of-thought. An LLM judge must not replace deterministic safety or final-state assertions in any acceptance design.
 
 Use unit/contract/integration/end-to-end tests, real-software fault injection, security checks, offline/live evaluation and sustained operation. Separate development and held-out cases; isolate injected ground truth from the Agent; compare versions under matched data, permissions and budgets; record model, prompt, code, tool, knowledge, policy and evaluator versions. Publish failures and repeat non-deterministic cases.
 

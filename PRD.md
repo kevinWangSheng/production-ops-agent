@@ -6,7 +6,7 @@ Status: product boundary confirmed on 2026-09-06; C3 technical design reviewed a
 
 Build an effective, continuously running read-only operations investigator for on-call engineers. The job-search portfolio demonstrates the whole Agent lifecycle through real-software simulation, observable outcomes, reliability and actual improvements over upstream.
 
-`SPEC.md` owns current scope and constraints. `feature_list.json` is the single source of executable acceptance steps; this document describes user capabilities without duplicating those steps. Before implementation, the reviewed acceptance baseline must be frozen. All active features remain unpassed.
+`SPEC.md` owns current scope and the implementation gate; `PRODUCT-CONSTRAINTS.md` owns the constraints product code must satisfy at runtime. `feature_list.json` is the single source of executable acceptance steps; this document describes user capabilities without duplicating those steps. Before implementation, the reviewed acceptance baseline must be frozen. All active features remain unpassed.
 
 ## Active capabilities
 
