@@ -46,7 +46,7 @@ Use explicit Markdown links from the repository entry point. If current sources 
 
 ## Maintenance
 
-Update SPEC when scope or constraints change; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update roadmap when work moves, and append the local progress log. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
+Update SPEC when scope, technology selection, verification method or the implementation gate changes; update PRODUCT-CONSTRAINTS when a product runtime constraint changes; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update roadmap when work moves, and append the local progress log. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
 
 Do not create another plan or ADR for every conversation. Detailed component designs and execution plans should be created only when the capability map and runtime evidence justify them. No documentation framework or wiki service is needed at this stage.
 

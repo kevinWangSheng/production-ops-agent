@@ -19,6 +19,7 @@ Current phase: M0-03 已完成新 normal/fault 有界复验与相邻 baseline �
 | B6 上游/eval | **部分完成** | wp5 候选/upstream 各 1 Run，upstream 未形成最终报告；首次 holdout 10/10 非正式保留集。judge 标注包已于 2026-09-13 单人确认预填分；正式保留集与 rubric 冻结转为 M1 入口条件。 |
 | B7 LangGraph | **已完成（离线比较）** | 1.2.11 隔离比较无可见收益，ADR-0004 推荐推迟；是否采用仍待用户决定。 |
 | B8 账单 | **未完成** | 对账模板已准备，等待用户提供供应商账单导出/截图。 |
+| 指令与规范文件主语归属 | **进行中（2026-09-14）** | 产品运行时约束抽出为 `PRODUCT-CONSTRAINTS.md`，AGENTS.md 收窄为开发 Agent 指令；五个提交、三轮独立审查完成，分支未推送。见[当前任务](docs/tasks/2026-09-14-product-constraints-extraction.md)。 |
 | SPEC gate / feature passes | **有界开放 M1-01 / passes 未修改** | 2026-09-13 用户选 B，见 [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；11 个 feature passes 均保持原值。 |
 
 下方按日期排列的旧段落是历史过程记录；读取当前进度时以上表和文档末尾最新日期段为准。
