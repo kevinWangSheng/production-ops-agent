@@ -1,0 +1,249 @@
+"""Tool and target registration contract (technical plan section 8).
+
+The registration contract is what lets the executor refuse before it queries:
+name, version, parameter schema, data source, absolute window bound, request
+deadline, result-size ceiling, error classification and incomplete marker are
+all declared up front by the operator, never inferred from a response.
+"""
+
+import dataclasses
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from opspilot.tools import (
+    FORBIDDEN_VERBS,
+    MAX_REQUEST_TIMEOUT_SECONDS,
+    MAX_RESULT_BYTES,
+    RESERVED_PARAMETERS,
+    ParameterSpec,
+    QueryScope,
+    TargetRegistry,
+    ToolContractError,
+    ToolRegistry,
+    Window,
+)
+from tests.m1_tool_support import WINDOW_END, WINDOW_START, registration, target
+
+
+def test_every_forbidden_verb_is_refused_at_registration():
+    for verb in sorted(FORBIDDEN_VERBS):
+        with pytest.raises(ToolContractError, match="WRITE_CAPABILITY_FORBIDDEN"):
+            registration(verb=verb)
+
+
+def test_read_only_flag_cannot_be_turned_off():
+    with pytest.raises(ToolContractError, match="WRITE_CAPABILITY_FORBIDDEN"):
+        registration(read_only=False)
+
+
+@pytest.mark.parametrize("verb", ["", "GET", "mutate", "anything"])
+def test_verb_must_come_from_the_read_only_allowlist(verb):
+    with pytest.raises(ToolContractError, match="VERB_NOT_ALLOWED"):
+        registration(verb=verb)
+
+
+@pytest.mark.parametrize("name", sorted(RESERVED_PARAMETERS))
+def test_gateway_owned_parameters_cannot_be_declared(name):
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={name: ParameterSpec("string")})
+
+
+@pytest.mark.parametrize(
+    ("overrides", "code"),
+    [
+        ({"request_timeout_seconds": MAX_REQUEST_TIMEOUT_SECONDS + 0.5}, "REQUEST_TIM"),
+        ({"request_timeout_seconds": 0}, "REQUEST_TIM"),
+        ({"max_result_bytes": MAX_RESULT_BYTES + 1}, "RESULT_LIMIT_OUT_OF_RANGE"),
+        ({"max_result_bytes": 0}, "RESULT_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_bytes": 8192}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_window_seconds": 0}, "WINDOW_LIMIT_OUT_OF_RANGE"),
+    ],
+)
+def test_frozen_m1_01_ceilings_are_enforced_by_construction(overrides, code):
+    with pytest.raises(ToolContractError, match=code):
+        registration(**overrides)
+
+
+def test_error_classes_may_only_map_onto_fixed_reasons():
+    with pytest.raises(ToolContractError, match="INVALID_ERROR_CLASSES"):
+        registration(error_classes={"503": "HEALTHY"})
+    assert registration().classify("503") == "SOURCE_UNAVAILABLE"
+    assert registration().classify("418") == "SOURCE_ERROR"
+
+
+def test_result_path_and_incomplete_marker_must_be_usable():
+    with pytest.raises(ToolContractError, match="INVALID_RESULT_PATH"):
+        registration(result_path=["data"])
+    with pytest.raises(ToolContractError, match="INVALID_INCOMPLETE_MARKER"):
+        registration(incomplete_marker="")
+
+
+def test_registration_and_its_parameter_map_are_immutable():
+    declared = registration()
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        declared.verb = "exec"
+    with pytest.raises(TypeError):
+        declared.parameters["injected"] = ParameterSpec("string")
+
+
+def test_parameter_kinds_stay_disjoint():
+    assert ParameterSpec("integer").accepts(5)
+    assert not ParameterSpec("integer").accepts(True)
+    assert not ParameterSpec("integer").accepts(1.5)
+    assert ParameterSpec("number").accepts(1.5)
+    assert not ParameterSpec("string").accepts(b"bytes")
+    with pytest.raises(ToolContractError, match="INVALID_PARAMETER_SPEC"):
+        ParameterSpec("anything")
+
+
+def test_duplicate_registrations_are_refused():
+    with pytest.raises(ToolContractError, match="DUPLICATE_TOOL"):
+        ToolRegistry([registration(), registration()])
+    with pytest.raises(ToolContractError, match="DUPLICATE_TARGET"):
+        TargetRegistry([target(), target()])
+
+
+def test_registry_revision_is_content_addressed():
+    first = TargetRegistry([target()])
+    same = TargetRegistry([target()])
+    other = TargetRegistry([target(endpoint="https://metrics.internal:9091")])
+    assert first.revision == same.revision
+    assert first.revision != other.revision
+
+
+@pytest.mark.parametrize(
+    "credential_ref",
+    [
+        "https://reader:inline-material@metrics.internal",  # userinfo
+        "Bearer inline-material",  # a header value
+        "x" * 65,  # an opaque blob
+        "",  # nothing at all
+    ],
+)
+def test_targets_may_only_hold_an_opaque_credential_handle(credential_ref):
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        target(credential_ref=credential_ref)
+
+
+def test_endpoint_may_not_carry_userinfo():
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        target(endpoint="https://reader:inline-material@metrics.internal:9090")
+
+
+def test_targets_resolve_only_by_registered_identity():
+    registry = TargetRegistry(
+        [
+            target(target_id="checkout-prod", display_name="checkout"),
+            target(target_id="checkout-staging", display_name="checkout"),
+        ]
+    )
+    assert registry.resolve("checkout-prod").target_id == "checkout-prod"
+    assert registry.resolve("checkout-staging").target_id == "checkout-staging"
+    # A display name, an endpoint or anything else resolves to nothing.
+    assert registry.resolve("checkout") is None
+    assert registry.resolve("https://metrics.internal:9090") is None
+    assert registry.resolve(None) is None
+    assert not [name for name in dir(registry) if "name" in name.lower()]
+
+
+def test_registries_expose_no_mutation_surface():
+    targets = TargetRegistry([target()])
+    tools = ToolRegistry([registration()])
+    public = {name for name in dir(targets) if not name.startswith("_")}
+    assert public == {"resolve", "revision", "target_ids"}
+    assert {name for name in dir(tools) if not name.startswith("_")} == {
+        "lookup",
+        "revision",
+        "tool_names",
+    }
+    with pytest.raises(AttributeError):
+        targets.entries = {}
+    resolved = targets.resolve("checkout-prod")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        resolved.endpoint = "https://attacker.example"
+    with pytest.raises(TypeError):
+        resolved.selector["namespace"] = "other"
+
+
+def _scope(**overrides):
+    fields = {
+        "scope_id": "scope-1",
+        "subject_kind": "incident",
+        "subject_id": "incident-42",
+        "run_id": "run-9",
+        "control_generation": 7,
+        "registry_revision": "abc",
+        "target_ids": frozenset({"checkout-prod"}),
+        "tool_names": frozenset({"metrics.range_query"}),
+        "window": Window(WINDOW_START, WINDOW_END),
+        "deadline": WINDOW_END + timedelta(hours=1),
+    }
+    fields.update(overrides)
+    return QueryScope(**fields)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "code"),
+    [
+        ({"max_operations": 21}, "OPERATION_BUDGET_OUT_OF_RANGE"),
+        ({"max_operations": 0}, "OPERATION_BUDGET_OUT_OF_RANGE"),
+        ({"max_tool_seconds": 241}, "TIME_BUDGET_OUT_OF_RANGE"),
+        ({"subject_kind": "release"}, "INVALID_SUBJECT_KIND"),
+        ({"control_generation": -1}, "INVALID_CONTROL_GENERATION"),
+        ({"deadline": datetime(2026, 9, 14, 2)}, "INVALID_DEADLINE"),
+        ({"registry_revision": ""}, "INVALID_SCOPE"),
+        ({"target_ids": {"checkout-prod"}}, "INVALID_SCOPE_NAMES"),
+    ],
+)
+def test_scope_refuses_authorizations_outside_the_frozen_contract(overrides, code):
+    with pytest.raises(ToolContractError, match=code):
+        _scope(**overrides)
+
+
+def test_scope_normalizes_its_deadline_to_utc():
+    offset = timezone(timedelta(hours=8))
+    scope = _scope(deadline=datetime(2026, 9, 14, 10, tzinfo=offset))
+    assert scope.deadline == datetime(2026, 9, 14, 2, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        {"last": "5m"},
+        {"start": "2026-09-14T00:00:00", "end": "2026-09-14T01:00:00"},
+        {"start": "2026-09-14", "end": "2026-09-15"},
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T00:00:00Z"},
+        {"start": "2026-09-14T00:00:00Z", "end": "2026-09-14T00:00:00Z"},
+        {"start": "not-a-time", "end": "2026-09-14T00:00:00Z"},
+        {"start": 1, "end": 2},
+    ],
+)
+def test_only_an_absolute_aware_window_parses(value):
+    assert Window.parse(value) is None
+
+
+def test_absolute_window_parses_and_normalizes():
+    window = Window.parse(
+        {"start": "2026-09-14T08:00:00+08:00", "end": "2026-09-14T01:30:00Z"}
+    )
+    assert window == Window(
+        WINDOW_START, datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc)
+    )
+    assert window.seconds == 5400
+    assert Window(WINDOW_START, WINDOW_END).contains(
+        Window(WINDOW_START, datetime(2026, 9, 14, 0, 30, tzinfo=timezone.utc))
+    )
+    assert not Window(WINDOW_START, WINDOW_END).contains(
+        Window(WINDOW_START, datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc))
+    )
+
+
+def test_registered_target_identity_is_validated():
+    with pytest.raises(ToolContractError, match="INVALID_TARGET_IDENTITY"):
+        target(target_id="UPPER")
+    with pytest.raises(ToolContractError, match="INVALID_ENDPOINT"):
+        target(endpoint="ftp://metrics.internal")
+    with pytest.raises(ToolContractError, match="INVALID_SELECTOR"):
+        target(selector={"namespace": 1})
