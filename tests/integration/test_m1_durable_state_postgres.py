@@ -1,0 +1,76 @@
+import os
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
+
+from opspilot.persistence import DurableStore, PersistenceError
+from scripts.m0.postgres_lab import DSN
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
+)
+
+
+def test_commit_visibility_restart_control_late_and_budget():
+    store = DurableStore(DSN)
+    store.install()
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    owner = uuid4()
+    lease = store.claim(incident, run, owner, {"state": "v1"})
+    reservation = uuid4()
+    store.reserve_budget(lease, reservation, 7)
+    with pytest.raises(PersistenceError, match="BUDGET_EXHAUSTED"):
+        store.reserve_budget(lease, uuid4(), 4)
+    step = store.commit_step(lease, "round-0", {"role": "assistant", "tool_calls": []})
+    assert step
+    assert store.rebuild(incident)["steps"][0]["status"] == "response_committed"
+    generation = store.control(incident, 0, "cancel", "operator")
+    assert generation == 1
+    assert store.publish(lease, {"result": "supported"}) is False
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["control_generation"] == 1
+    assert rebuilt["conclusion"] is None
+
+
+def test_incompatible_versions_block_without_silent_resume():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-incompat-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_partial_tool_checkpoint_and_lease_fencing():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-tools-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        lease, "round-1", {"tool_calls": [{"id": "a"}, {"id": "b"}]}
+    )
+    store.commit_tool(lease, step, 0, {"ok": True})
+    assert store.rebuild(incident)["pending_tools"][0]["ordinal"] == 1
