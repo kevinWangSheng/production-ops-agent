@@ -1,5 +1,7 @@
 # Roadmap
 
+当前工程交付状态（2026-09-14）：M1-01 类型层（C3 第 4 节持久对象与状态机）已在本地分支 `feature/m1-01-domain-types` 实现，`make check` 通过，见[任务记录](docs/tasks/2026-09-14-m1-01-domain-types.md)。该工作未推送、未建 PR、未经独立审查，且不含持久化；11 个 feature `passes` 与 SPEC 门槛陈述均未改动，不代表 M1-01 或任何功能验收通过。
+
 当前工程交付状态（2026-09-13）：PR #16 已 squash 合并到 main（`cce4c41`），main CI 通过。用户选择 gate 决策 B：**有界开放 M1-01**，预算候选值冻结，judge 标注包单人确认。M0 未完成项（K8s RBAC/OS 隔离、正式保留集、账单对账、产品级 streaming/PG 审计/压缩器接入）转为 M1 入口验收条件，不视为 M0 通过。下一工作：按 [M1-01 拆分](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 以 `feature/` 分支逐子任务实施。
 
 当前工程交付状态（2026-09-11）：M0-03 normal/fault v4 正向样本已达 2/2，M004 raw evidence 独立复核通过；PR #16 仍 OPEN，SPEC/M1 gate 等待用户决定。
