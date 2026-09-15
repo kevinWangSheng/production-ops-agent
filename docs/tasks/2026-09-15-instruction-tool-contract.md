@@ -37,10 +37,12 @@
 ### 已完成
 
 1. **三条落差已取证**，见提案第 0 节：
-   `prompt_revision`/`tool_schema_revision` 已是 `opspilot_runs.versions` 的承重字段且触发
-   `blocked(INCOMPATIBLE_STATE)`，但无生成规则；`ToolRegistration` 无 `description` 字段
-   （`opspilot/tools/` 全包搜索无面向模型的描述文本）；同一段调查纪律在
-   `holmes_baseline.py` 与 `candidate_runner.py` 存在两份且已漂移。
+   `ModelProfile` 已声明 `prompt_revision`/`tool_schema_revision`，`versions` 栅栏已实现并触发
+   `blocked(INCOMPATIBLE_STATE)`，**但二者尚未接线**（三分支全仓搜索仅命中定义与测试夹具），
+   且无 revision 生成规则；`ToolRegistration` 无 `description` 字段
+   （`opspilot/tools/` 全包搜索无面向模型的描述文本，且 fingerprint 的工具层与参数层两处投影都会静默丢弃新字段）；
+   调查纪律因 L1 混入 L3 内容而按工具面分叉成两份，
+   `candidate_runner.py` 的 15 句是 `holmes_baseline.py` 24 句的真子集，0 句独有。
 
 2. **来源索引已建立**，见提案第 3 节：11 条 L1 约束逐条回溯，
    区分规范派生 / 失败派生 / 设计派生。其中
