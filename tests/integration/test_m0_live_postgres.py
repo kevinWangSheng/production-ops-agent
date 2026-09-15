@@ -24,6 +24,9 @@ def packet():
         "run_id": str(uuid4()),
         "approval_ref": str(uuid4()),
         "deadline": (utcnow() + timedelta(minutes=5)).isoformat(),
+        # validate() 保证该字段存在且格式合法；claim() 直接写入可读列。
+        # 本测试绕过 validate() 直接调 claim()，故须自带该字段。
+        "models_metadata_sha256": "0" * 64,
     }
 
 

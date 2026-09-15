@@ -33,6 +33,12 @@
 | 安全与验收 | 外部 `IncidentScenario -> IncidentOutcome`、秘密扫描、集成回归 | 3 h |
 | **合计（范围）** | — | **28 h** |
 
+「只读工具执行器」与「Flash 调查 loop」两行涉及模型可见文字，实施前另读
+[C3](../../design/technical-proposal-2026-09-07.md) 第 5 节「指令分层与版本」
+与第 8 节的模型可见面段（分层、revision、描述必填项），以及
+[DeepSeek V4.1 Flash 设计参考](../../design/deepseek-flash-prompt-tool-reference.md)
+（按官方模型特性的撰写规则）。不改变本表的估算或范围。
+
 投入估算会在 B4–B8 证据和用户 gate 决定后重新校准；不能把该估算当作实施已开始或产品完成。
 
 ## 2026-09-12 B4/B5/B7 实际更新

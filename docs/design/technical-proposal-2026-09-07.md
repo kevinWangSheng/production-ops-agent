@@ -117,7 +117,25 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 
 ### 模型接入
 
-2026-09-09 用户决定默认使用 Flash；当前配置为 DeepSeek 官方 Chat Completions 兼容接口、`deepseek-v4-flash`、thinking 开启和 high effort，直接请求 Flash，不依赖 Pro 别名转路由。此前 Pro 实验作为历史证据保留，不替代 Flash 验证。2026-09-09 新 Flash 固定工具/严格 JSON/PG/白名单 trace 链路已单次通过，真实调查基线另见[本轮证据](../tasks/2026-09-09-m0-real-investigation.md)；不代表全部协议/恢复矩阵或产品验收。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。完整协议/恢复兼容矩阵仍需实验，单次链路通过不代表该矩阵通过。
+2026-09-09 用户决定默认使用 Flash；**2026-09-15 用户决定把出站请求名改为 `deepseek-flash`**。当前配置为 DeepSeek 官方 Chat Completions 兼容接口、`deepseek-flash`、thinking 开启和 high effort，直接请求 Flash，不依赖别名转路由。依据：官方 2026-09-10 Change Log 声明 V4 Flash 已退役、`deepseek-v4-flash` 仅为临时路由，官方 models 端点只列 `deepseek-flash` 与 `deepseek-v4-pro`。官方定价页另写明旧名「still accepted, but the corresponding models have been retired, their requests are served by the DeepSeek-V4.1-Flash model」，即旧名今天仍可用但带未标注期限的失效风险。
+
+「只换请求名不换后端」依据的是上述供应商文档，**不是逐 Run 身份记录**，不得当作冻结校准集的已核验属性。仓库实际能证实的是：响应名分界落在 `flash-results.json`（`ended` 2026-09-09T17:18:01Z，回报旧名）与 `m002-saved-report-02`（2026-09-10T02:26:34Z，回报 `deepseek-flash`）之间约九小时的区间内；首个校准 Run `m002-saved-report-01` 起始于 2026-09-10T02:19:02Z，即**位于**该区间之内而非其后，且其响应因身份校验失败未保留。M002 的 8 条 per-run 记录中，3 条有回报名、1 条为未保留响应、4 个调查 Run 完全没有模型身份字段。M002–M004 范围内没有任何记录回报 `deepseek-v4-flash`。
+
+故不需要重新校准——今天的 `deepseek-flash` 与校准期服务旧名的是同一后端——但依据是供应商的退役公告，不是逐 Run 身份覆盖。响应名校验为精确匹配 fail-closed：请求 `deepseek-flash` 时，回报已退役的 `deepseek-v4-flash` 将被拒绝。
+
+**注意新名是浮动别名。** Change Log 对 `deepseek-flash` 的定义是「the latest V4.1 Flash model」，因此供应商下次换代时回报字符串不变。精确匹配因此**更严但分辨力更低**：它无法再检测已退役固定名本会以字符串变化暴露的后端更替，`MODEL_PROFILE["version_scope"]` 因此记为 `floating_alias` 而非 `reported_alias`，如实反映这一更弱的保证。代次漂移的检测须另立信号，不能依赖名称校验。**这是前置条件而非建议**：
+任何 Run 与冻结校准作比较之前，须先用 `/models` 元数据核对确立后端身份——
+该机制仓库已有，即钉住的 `provider_models_response_sha256`。
+profile 的 `version_scope` 相应如实记为 `floating_alias` 而非 `reported_alias`，不高估保证强度。
+该前置条件**已在合同层强制**：批准合同必须声明 `models_metadata_sha256`
+（所批准的官方 `/models` 快照摘要，64 位小写十六进制），缺失或格式非法一律在 claim 前拒绝；
+`claim()` 将其写入可读列 `m0_live_once.models_metadata_sha256`，供事后与校准期快照核对后端身份
+（合同哈希只能证明它未被篡改，无法回读取值）。
+仍为开放项的是**摘要新鲜度**：不发起额外请求就无法证明所声明的摘要是当前值，
+这一步仍由批准方承担。
+这对 B2 冻结校准尤其重要——它的目的正是发现这类漂移。
+
+此前 Pro 实验作为历史证据保留，不替代 Flash 验证。2026-09-09 新 Flash 固定工具/严格 JSON/PG/白名单 trace 链路已单次通过，真实调查基线另见[本轮证据](../tasks/2026-09-09-m0-real-investigation.md)；不代表全部协议/恢复矩阵或产品验收。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。完整协议/恢复兼容矩阵仍需实验，单次链路通过不代表该矩阵通过。
 
 使用 OpenAI 兼容客户端不意味着使用 OpenAI 模型服务，也不意味着采用 OpenAI Agents SDK。
 
@@ -138,6 +156,55 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 大结果保存为持久证据，通过 ID 和片段读取；截断和不完整必须显式标记。上下文压缩保持完整消息组和工具调用配对。
 
 DeepSeek 的 `reasoning_content` 仅作为受限协议状态保存，并在同 provider、同 Run 必要续传，不作为证据、复盘内容或评分对象。压缩或恢复后续传不兼容时，阻塞并交接，不猜测删除协议字段。
+
+### 指令分层与版本
+
+> 2026-09-15 用户决定并入本节。撰写规则按当前模型的官方特性另见
+> [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)（日期绑定，随供应商变更重核）。
+
+模型可见的文字分层，各有单一来源，不得互相内联：
+
+| 层 | 内容 | revision |
+|---|---|---|
+| L1a 纪律模板 | 只读边界、证据可信度、结论分类、反误读约束；运行时值以占位符表示 | `discipline_revision`，**须标识变体** |
+| L1b 纪律实例值 | 填入占位符的本 Run 预算轮次与授权服务列表 | 每 Run `prompt_face_sha256` |
+| L2 报告契约 | 输出 schema、字段语义、JSON 示例、引用规则 | 独立版本号 |
+| L3a 工具模板 | 工具名、描述模板、参数描述、上限与错误语义 | `tool_schema_revision` |
+| L3b 实例快照 | 模板填入本 Run 窗口、目标与可用枚举后的实际 tools 数组 | 每 Run `tool_face_sha256` |
+
+`ModelProfile.prompt_revision` = L1a 与 L2 的复合版本；`tool_schema_revision` = L3a 的版本。
+**L1b 与 L3b 不进 `versions` 比对**，只记录。
+
+L1a 不是单一文本而是一组变体（例如 final-report Run 与多轮调查 Run 的开头不同），
+`discipline_revision` 必须标识变体身份，否则两条路径共用一个版本号而内容不同。
+
+revision 生成规则：
+
+1. **内容哈希，不是人工编号**，对规范化 JSON 取 sha256；人工编号会漏 bump。
+2. **哈希覆盖模板字节，不覆盖实例字节。** 运行时值（预算数字、时间窗、授权枚举）
+   属实例层，不进 revision——否则两个仅预算或授权范围不同的 Run 会仅因此互相不兼容。
+3. 人类可读前缀 + 哈希短码，便于在 PR 与证据中辨认，比对仍用完整值。
+4. **凡进入 `versions` 的量必须能从代码确定性重算**，不得由运行时拼接或环境变量注入。
+
+任何改变模板字节的改动都 bump，包括改一个词或调整顺序。
+bump 后被重新领取的在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，按第 7 节处理；
+**不得为避免 blocked 而不 bump**。
+
+四类变化走四套机制，不得互相顶替：
+
+| 变化 | 机制 | 在途 Run |
+|---|---|---|
+| 合同变更：工具名、描述模板、参数、上限、错误语义 | `tool_schema_revision` → `versions` 比对 | 被重新领取时 `blocked(INCOMPATIBLE_STATE)` |
+| 实例变化：**同一授权范围内**的窗口推进、枚举增减、本 Run 预算轮次 | 每 Run face hash，记录不比对 | 继续 |
+| 目标重新绑定 / 事故合并 / 拆分 | 第 4 节：事务内撤销受影响的旧调查与观察授权 | 旧授权撤销，须重新授权 |
+| 授权收紧 / suspension | 第 4 节：scope generation / 控制版本 | 在途结果失效，须显式重新授权 |
+
+判断口径：**授权范围本身有没有变？** 范围不变、范围内取值变 → 实例层；范围本身变了 → 授权机制。
+
+**授权变化不得经由 `versions` 触发 `INCOMPATIBLE_STATE`。** 理由不是让 Run 继续——
+授权收紧必须让在途结果失效——而是两者语义与恢复路径不同：
+`INCOMPATIBLE_STATE` 指状态版本不兼容，恢复路径是显式迁移或新建 Run；
+授权收回的恢复路径是解除后重新授权。用前者表达后者会把正常权限操作记成版本事故。
 
 ### 调查循环
 
@@ -201,6 +268,36 @@ Outbox 用于外部导出，不替代数据库内部任务调度。标准机制�
 ## 8. 工具网关
 
 工具注册合同包含名称、版本、参数 schema、数据源、精确目标、绝对查询时间窗、请求 deadline、结果大小上限、错误分类及不完整结果标记。
+
+以上是**执行侧**登记项。工具还有一个**模型可见面**，即送进模型的 `description` 与参数描述，
+它决定模型如何解读返回，同样属注册合同（2026-09-15 用户决定并入本节）。
+
+模型可见面以结构体登记而非自由文本，以便注册期确定性校验：
+
+| 字段 | 内容 | 校验 |
+|---|---|---|
+| `returns` | 返回什么、数据源、投影形态 | 注册期非空 |
+| `window_format` | 绝对时间窗的位置与格式 | 注册期校验占位符 |
+| `values_format` | 可用取值枚举的位置与格式 | 注册期校验占位符 |
+| `limits` | 结果上限与截断语义 | 注册期非空 |
+| `cannot_prove` | **这个返回不能证明什么** | 注册期非空 |
+
+`cannot_prove` 是最容易省略也最要紧的一项：在不支持采样调参的模型上，
+它是纠正模型误读的唯一手段。写法是问「模型拿到这个返回最可能得出什么它不该得出的结论」并直接否掉。
+有限枚举必须内联并写明其它取值返回错误；枚举随授权范围变化，属实例层。
+
+描述的禁止项分两类，互不重叠：
+
+- **保密**：不得出现凭据、认证信息或具体 endpoint / base_url / 凭据句柄。
+- **权限**：不得出现让模型自行选择 target 或 endpoint 的语义。
+
+保留参数名集合（gateway 自行解析的参数）作用于**参数键**，
+不可平移到描述文本——授权范围内的服务名枚举与实例标识是必须写入描述的内容。
+描述也不得承诺执行器不保证的行为，不得引用测试故障类别、注入参数或答案。
+
+模型可见面纳入工具注册表的内容哈希；新增字段必须同步纳入该哈希的投影，
+否则描述改变而 `tool_schema_revision` 不变。撰写规则按当前模型特性另见
+[DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)。
 
 授权以 Controller 保存的真实身份和控制状态为准，不信任模型提供的权限字段。
 
@@ -388,6 +485,7 @@ PostgreSQL 保存业务和审计真相。LangSmith 接收通过白名单 DTO 导
 - [HolmesGPT / OpenSRE / Stratus 源码比较](../research/investigation-source-comparison-2026-09-07.md)：调查机制、上下文、工具与状态管理参考。
 - [Pi / LangGraph / OpenAI Agents SDK 底座比较](../research/runtime-selection-2026-09-07.md)：选型依据及替代条件。
 - [DeepSeek 适配源码调查](../research/deepseek-adapter-design-evidence-2026-09-07.md)：模型续传合同。
+- [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)：官方模型特性（无状态、上下文缓存前缀匹配、thinking 与 `reasoning_content` 回传、采样参数无效、推理占用 `max_tokens`、JSON 与工具调用要求、错误码）及由其推出的 prompt 排列与描述撰写规则。**日期绑定**，供应商变更时重核。
 - [状态协议设计输入](../research/state-protocol-design-input-2026-09-07.md)：持久任务和条件提交机制。
 - [平台选型](../research/eval-platform-selection-2026-09-07.md)：LangSmith 与其他平台的适用条件。
 - [最终全文对抗性审查](../reviews/technical-design-c3-review-2026-09-07.md)：C1—C3 修订和审查范围。

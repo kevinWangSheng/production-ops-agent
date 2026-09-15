@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,9 +31,13 @@ from .runtime import check_runtime
 
 ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.com"}
 MODEL_PROFILE = {
-    "request_model": "deepseek-v4-flash",
-    "accepted_response_model": "deepseek-v4-flash",
-    "version_scope": "reported_alias",
+    "request_model": "deepseek-flash",
+    "accepted_response_model": "deepseek-flash",
+    # deepseek-flash 是浮动别名（官方定义为 the latest V4.1 Flash model），换代时
+    # 回报字符串不变。故响应名校验只能证明「是当前 Flash」，不能证明代次未变；
+    # 该标签如实记录这一更弱的保证，不写成 reported_alias 以免高估。
+    # 代次漂移须由独立信号检测，见 SPEC「Model priority」与 C3 第 5 节。
+    "version_scope": "floating_alias",
     "thinking": "enabled",
     "reasoning_effort": "high",
 }
@@ -99,6 +104,7 @@ def validate(contract, config, now=None):
             "project_name",
             "billing_checked",
             "database_dsn",
+            "models_metadata_sha256",
         }
         if (
             set(contract) != required
@@ -111,6 +117,12 @@ def validate(contract, config, now=None):
         # The current endpoint cannot attest immutable backend weights.
         # A fixed-weight approval is unsupported, never silently downgraded to an alias.
         if contract["model_profile"] != MODEL_PROFILE:
+            denied()
+        # deepseek-flash 是浮动别名：换代时回报名不变，名称校验无法发现后端更替。
+        # 因此批准合同必须声明它所批准的官方 /models 快照摘要。本层只能强制
+        # 「必须声明且格式合法」，并由 claim() 写入可读列供事后核对后端身份；
+        # 无法在不发起额外请求的前提下证明该摘要是当前值，那一步仍在批准方。
+        if not re.fullmatch(r"[0-9a-f]{64}", contract["models_metadata_sha256"] or ""):
             denied()
         for key in ("experiment_id", "run_id", "workspace_id", "project_id"):
             if str(UUID(contract[key])) != contract[key]:
@@ -198,13 +210,18 @@ class LiveLedger(PostgresBudget):
             conn.execute(
                 "SELECT business_code,trace_code FROM m0_live_diagnostics LIMIT 0"
             )
+            # 同样拒绝缺少 models_metadata_sha256 列的旧 lab schema：
+            # 该列使所批准的 /models 快照摘要可读，供事后与冻结校准核对后端身份。
+            # contract_hash 只能证明摘要未被篡改，无法回读其取值。
+            conn.execute("SELECT models_metadata_sha256 FROM m0_live_once LIMIT 0")
             row = conn.execute(
-                "INSERT INTO m0_live_once (experiment_id,run_id,approval_hash,contract_hash,deadline) SELECT %s,%s,%s,%s,%s WHERE clock_timestamp()<%s ON CONFLICT DO NOTHING RETURNING experiment_id",
+                "INSERT INTO m0_live_once (experiment_id,run_id,approval_hash,contract_hash,models_metadata_sha256,deadline) SELECT %s,%s,%s,%s,%s,%s WHERE clock_timestamp()<%s ON CONFLICT DO NOTHING RETURNING experiment_id",
                 (
                     contract["experiment_id"],
                     contract["run_id"],
                     digest(contract["approval_ref"].encode()),
                     digest(json.dumps(contract, sort_keys=True).encode()),
+                    contract["models_metadata_sha256"],
                     contract["deadline"],
                     contract["deadline"],
                 ),
@@ -490,25 +507,26 @@ def token_usage(response):
     if type(usage) is not dict:
         usage = {}
     reported = response.get("model")
+    # 账本识别集，逐响应记录回报名；与 accepted_response_model 的准入校验分开
+    # （准入校验在下游，仍是大小写敏感的精确匹配，本函数不影响它）。
+    # deepseek-flash 是当前官方 Flash id；其余为历史回报名，保留以便回读旧记录。
+    # 以小写规范形式登记，比对不区分大小写：供应商若以其它大小写回报同一 id
+    # （历史记录里出现过 DeepSeek-V4-Flash-0731 这类形式），身份仍可被识别，
+    # 不会退化成 unreported_or_unrecognized 而丢失诊断线索。
+    # 未登记的取值一律压平，不让 provider 控制的文本穿透进账本。
     known = {
+        "deepseek-flash",
         "deepseek-v4-flash",
         "deepseek-v4-flash-0731",
-        "DeepSeek-V4-Flash-0731",
         "deepseek-v4-pro",
         "deepseek-v4-pro-0813",
-        "DeepSeek-V4-Pro-0813",
-        "deepseek-v4.1-flash",
-        "DeepSeek-V4.1-Flash",
     }
-    result = (
-        {
-            "reported_model": reported
-            if reported in known
-            else "unreported_or_unrecognized"
-        }
-        if isinstance(reported, str)
-        else {"reported_model": "unreported_or_unrecognized"}
-    )
+    canonical = reported.lower() if isinstance(reported, str) else None
+    result = {
+        "reported_model": canonical
+        if canonical in known
+        else "unreported_or_unrecognized"
+    }
     for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
         value = usage.get(key)
         if type(value) is int and 0 <= value <= 1000000:
