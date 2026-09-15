@@ -1,8 +1,26 @@
 """Authenticated intake contracts for the first M1 vertical slice.
 
-This module deliberately stops at the trust boundary. A future HTTP adapter
-may turn verified proxy credentials or the separate event token into these
-objects; raw headers, password material and bearer tokens never enter them.
+This module deliberately stops at the trust boundary: a future HTTP adapter
+verifies proxy credentials or the separate event token and turns the result
+into these objects. Two boundaries are worth stating exactly, because both
+have already been described here more strongly than they are enforced.
+
+What this layer enforces. ``extra="forbid"`` makes a password, an
+``authorization`` field or any other unexpected attribute unrepresentable,
+and ``strict=True`` refuses a raw header handed over as bytes. Neither the
+objects nor ``sanitized_errors`` rendering of a rejection carries the value
+that was refused.
+
+What the adapter still owns. This layer cannot tell that a well-formed
+``actor_id`` happens to be a raw Basic header, because nothing in the string
+distinguishes it from a legitimate identifier. Keeping credentials out of
+these fields is the adapter's obligation, not a property of these types.
+
+Channel separation is likewise enforced at runtime, not in the type system.
+``Principal`` is one type whose ``channel`` distinguishes the two, so an entry
+point restricted to one channel must call ``verify_channel``; nothing stops a
+caller from forgetting. Making the channels distinct types is a live design
+question, recorded in the task record rather than decided here.
 """
 
 from __future__ import annotations
