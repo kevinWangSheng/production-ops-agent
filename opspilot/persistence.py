@@ -368,6 +368,12 @@ class DurableStore:
                 (lease.incident_id,),
             ).fetchone()
             if (
+                row
+                and row["current_run_id"] == lease.run_id
+                and row["conclusion"] == conclusion
+            ):
+                return True
+            if (
                 not row
                 or row["current_run_id"] != lease.run_id
                 or row["owner"] != lease.owner
