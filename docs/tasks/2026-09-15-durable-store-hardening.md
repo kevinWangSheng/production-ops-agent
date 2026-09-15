@@ -379,6 +379,19 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 状态被直接改库改成互相矛盾时可见；`publish()` 与 `control('cancel')` 都在同一事务里
 同时写两边，公开接口构造不出这种状态。
 
+#### 机器人 code review 处置
+
+Codex Code Review 与 Security Review 已在 `063f48c` 上完成。**一条 P1 inline comment**
+（`opspilot/persistence.py:150`，"Build indexes without blocking active writers"）——
+与独立审查 F5 同一条：`install()` 的 `CREATE INDEX` 非 `CONCURRENTLY`，在有并发写入的
+非空库上会被 `lock_timeout` 打断并回滚整个 install。
+
+**处置：拒绝在本 PR 修改，事实采纳并已记录。** 依据：①`CONCURRENTLY` 不能在事务块内执行，
+而 `install()` 整体包在 `self.transaction()` 里，改它要重构 DDL 执行结构或引入迁移路径，
+正是 C1 的对象，本任务对 C 类只记录不实施；②`install()` 产品代码零调用方，这两条 DDL
+今天只对开发 lab 执行；③该限定已写入 PR 描述与本记录「记录、不实施」第 9 条。
+已在 thread 内回复上述理由并 resolve。
+
 #### CI 状态与一个仓库级阻塞（不在本任务范围）
 
 PR #26 的 `m0-postgres` job 通过；`checks` job 在 "Secret scan and synthetic detection
