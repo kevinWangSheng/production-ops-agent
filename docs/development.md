@@ -112,6 +112,8 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-flash，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
 批准合同v2还需runtime={python,implementation}，明确完整Python版本（包括patch）及CPython实现。入口在claim前核对实际运行环境与锁定依赖闭包（含当前平台marker和binary extra）；旧/缺失依赖或Python错配固定拒绝。此核对不自动安装环境，也不承诺检测伪造distribution元数据或被篡改的二进制。
+撰写 prompt 与 tool description：分层、revision 生成与 bump 条件见 [C3 第 5 节「指令分层与版本」](design/technical-proposal-2026-09-07.md)，模型可见的工具描述必填项与禁止项见同文件第 8 节；按当前模型官方特性的撰写规则（排列顺序、措辞、`cannot_prove` 写法、实现前检查清单）见 [DeepSeek V4.1 Flash 设计参考](design/deepseek-flash-prompt-tool-reference.md)。改动送模文字前先读这两处；参考文档为日期绑定，供应商变更时重核。
+
 错误审计：显式本地setup还会创建m0_live_diagnostics，与m0_live_once通过experiment_id关联；业务/outbox与business_code同事务，trace状态与trace_code同事务。原实验行不改写，无诊断行代表历史未记录；连接不可用时不能声称错误码已落盘，需保留CLI固定分类。本次不向生产数据库安装或迁移。
 
 最终内容诊断：`LIVE_FINAL_JSON_INVALID` 表示最终文本不是可解析 JSON；`LIVE_FINAL_SCHEMA_MISMATCH` 表示非对象或字段集合不符；`LIVE_FINAL_TARGET_MISMATCH` / `LIVE_FINAL_EVIDENCE_MISMATCH` 区分对应值错配。仅保存固定代码，不导出正文；原历史 LIVE_PROTOCOL_FAILED 不追溯重分类。
