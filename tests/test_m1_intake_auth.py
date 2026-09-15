@@ -292,3 +292,79 @@ def _build_with(field: str, value):
     if field in PRINCIPAL:
         return Principal(**{**PRINCIPAL, field: value})
     return IntakeRequest(**{**REQUEST, field: value})
+
+
+# --- the envelope revalidates whatever it is handed ---------------------------
+
+
+def _tampered_principal():
+    """A principal whose control-character check was skipped after the fact."""
+
+    clean = Principal(**PRINCIPAL)
+    return clean.model_copy(
+        update={"actor_id": "oncall\x00-1", "channel": "event_token"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "build"),
+    [
+        (
+            "model_construct skips every validator",
+            lambda: Principal.model_construct(
+                actor_id="admin\x1b[31m", channel="ui_basic", auth_revision="auth-v1"
+            ),
+        ),
+        ("model_copy(update=) skips them too", _tampered_principal),
+    ],
+)
+def test_an_unvalidated_principal_cannot_reach_the_envelope(name, build):
+    """The envelope is the boundary, so it must not trust what it is handed.
+
+    Both of these are the ordinary ways to derive a frozen pydantic model, and
+    both skip field validation, so without revalidation an identity that never
+    passed the audit-legibility rule would reach durable creation.
+    """
+
+    with pytest.raises(ValidationError):
+        envelope(principal=build())
+
+
+def test_a_widened_subclass_cannot_carry_a_credential_into_the_envelope():
+    """An `extra="allow"` subclass would otherwise ride straight into repr."""
+
+    class WidenedPrincipal(Principal):
+        model_config = Principal.model_config | {"extra": "allow"}
+
+    leaky = WidenedPrincipal(**PRINCIPAL, password="PLACEHOLDER-NOT-A-PASSWORD")
+    with pytest.raises(ValidationError):
+        envelope(principal=leaky)
+
+
+def test_a_subclass_without_extras_is_narrowed_to_the_declared_type():
+    """Otherwise one logical identity compares unequal to itself."""
+
+    class ElevatedPrincipal(Principal):
+        pass
+
+    stored = envelope(principal=ElevatedPrincipal(**PRINCIPAL)).principal
+    assert type(stored) is Principal
+    assert stored == Principal(**PRINCIPAL)
+
+
+def test_a_blank_question_is_not_a_question():
+    for blank in (" ", "  \n\t "):
+        with pytest.raises(ValidationError):
+            IntakeRequest(**{**REQUEST, "question": blank})
+
+
+def test_every_request_field_is_accounted_for_in_the_delivery_comparison():
+    """A field added later must not be silently left out of idempotency.
+
+    `classify_intake_delivery` names the request fields one by one, so a new
+    field would default to "not part of the request's identity" without anyone
+    noticing. This pins that choice as deliberate.
+    """
+
+    compared = {"target_id", "question", "idempotency_key"}
+    assert set(IntakeRequest.model_fields) == compared

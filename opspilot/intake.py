@@ -44,9 +44,21 @@ IntakeDelivery = Literal["same_request", "key_conflict", "different_request"]
 #: ``Text`` carries no upper bound, and an unbounded identifier is not one.
 Identifier = Annotated[str, Field(min_length=1, max_length=256)]
 
+#: ``revalidate_instances="always"`` must sit on the model being revalidated,
+#: not on the container. Without it an already-built instance is stored as
+#: handed over, so a ``Principal`` produced by ``model_construct``, derived via
+#: ``model_copy(update=...)`` or widened by an ``extra="allow"`` subclass would
+#: reach durable creation unchecked - and a credential riding on a subclass
+#: attribute would reach the envelope's repr. Set on this module's own types
+#: rather than the shared ``DTO``, so neither the cost nor the behaviour change
+#: leaves this entry point.
+_REVALIDATED = DTO.model_config | {"revalidate_instances": "always"}
+
 
 class Principal(DTO):
     """Identity already verified by the trusted authentication adapter."""
+
+    model_config = _REVALIDATED
 
     actor_id: Identifier
     channel: AuthChannel
@@ -59,7 +71,16 @@ class Principal(DTO):
 
 
 class IntakeRequest(DTO):
-    """An authenticated request to start or resume one incident intake."""
+    """An authenticated request to start or resume one incident intake.
+
+    ``target_id`` is the operator's unresolved request, not an identity. The
+    resolved identity is ``opspilot.domain.intake.Target``, which is immutable
+    and registry-resolved; this string must be resolved into one before it
+    names anything. The two are deliberately different types and this module
+    does not perform that resolution.
+    """
+
+    model_config = _REVALIDATED
 
     target_id: Identifier
     question: str = Field(min_length=1, max_length=16_384)
@@ -73,6 +94,8 @@ class IntakeRequest(DTO):
     @field_validator("question")
     @classmethod
     def reject_ambiguous_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("QUESTION_IS_BLANK")
         return _reject_ambiguous_text(value)
 
 
