@@ -93,23 +93,31 @@ L1 里写了只对某一个工具面成立的知识，换工具面就必须再�
 |---|---|---|---|---|
 | L1 调查纪律 | 只读边界、证据可信度、预算与轮次、反误读约束 | 待建（M1-01 调查 loop） | `discipline_revision` | 两份拷贝已漂移 |
 | L2 报告契约 | 输出 schema、字段语义、JSON 示例、引用规则 | `scripts/m0_environment/report_contract.py` | `m0-report-v1` / `m0-report-v2` | **已做对，作为模板** |
-| L3 工具可见面 | 工具名、描述、参数描述、可用查询枚举 | 待建（见第 2 节） | `ToolRegistry.revision` 扩展 | 产品侧缺失 |
+| L3a 工具模板 | 工具名、描述模板、参数描述、上限与错误语义 | 待建（见第 2 节） | `ToolRegistry.revision` 扩展 | 产品侧缺失 |
+| L3b 实例快照 | 模板填入本 Run 的窗口、目标与可用查询枚举后的实际 tools 数组 | 同上，运行时实例化 | 每 Run `tool_face_sha256` | 产品侧缺失 |
 
-`ModelProfile.prompt_revision` = L1 与 L2 的复合版本；`ModelProfile.tool_schema_revision` = L3 的版本。
+`ModelProfile.prompt_revision` = L1 与 L2 的复合版本；
+`ModelProfile.tool_schema_revision` = **L3a** 的版本。
+**L3b 不进 `versions` 比对**，理由见 1.1 规则 2 与 1.2 末。
 
 ### 1.1 revision 生成规则
 
 1. **内容哈希，不是人工编号。** 沿用 `registry.py` 的 `canonical_hash()`：
    对规范化 JSON 取 sha256。人工编号会漏 bump；内容哈希不会。
-2. **哈希覆盖面 = 实际送模的字节。** L1/L2 覆盖最终拼装后的字符串；L3 覆盖 `openai` tools 数组的规范化形式
-   （含 `description` 与每个参数的 `description`）。
+2. **哈希覆盖面 = 模板字节，不是实例字节。** L1/L2 覆盖最终拼装后的字符串；
+   L3a 覆盖 `openai` tools 数组模板的规范化形式（含 `description` 与每个参数的 `description`）。
+   D2/D3 要求内联的运行时内容（绝对窗口、可用查询枚举）**属于 L3b，不进 L3a 哈希**。
+   L3b 另以每 Run 的 `tool_face_sha256` 覆盖实际送模字节，与 target/scope revision 并列记录，
+   满足「送模内容可回溯」而不参与续跑比对。
 3. **人类可读前缀 + 哈希短码**，例如 `m1-01-discipline-v1.<8 位短码>`，便于在 PR 与证据里辨认，
    比对仍用完整值。
 4. **凡进入 `versions` 的量，必须能从代码确定性重算**，不得由运行时拼接或环境变量注入。
+   规则 2 的分层正是为了让规则 4 可满足：合同版本进 `versions`，运行时实例不进。
 
 ### 1.2 什么必须 bump
 
-任何改变送模字节的改动都 bump——包括改一个词、调整顺序、增删一个可用查询枚举项。
+任何改变**模板**字节的改动都 bump——包括改一个词、调整顺序、增删一个参数。
+（改变**实例**字节的事件，例如窗口推进或授权服务列表变化，不 bump，见本节末。）
 理由不是洁癖：`round-02-entry-review.md` 已经记录过反向教训——
 
 > 新的更详细 trace view 会减少可见 spans，必须把此取舍纳入下一次冻结版本，
@@ -128,6 +136,29 @@ commit_tool / control / publish / rebuild`；八处 `UPDATE opspilot_runs` 无�
 
 即**今天 blocked Run 的唯一出路是 cancel**。实现 L1/L2/L3 版本化之前，
 需要先补上 C3 第 7 节承诺的迁移或新建路径，否则一次 bump 等于强制取消在途调查。
+
+### 1.3 授权范围变化不得触发 `INCOMPATIBLE_STATE`
+
+这是 L3a/L3b 必须分开的直接理由，不是洁癖。若把 D2/D3 的运行时内容算进
+`tool_schema_revision`，会形成这条链路：
+
+```
+授权范围收紧 → 描述内的服务枚举改变 → versions 改变
+→ persistence.py 的 versions 比对失配 → state='blocked'
+→ blocked 除 cancel 外无转移 → 在途调查被强制取消
+```
+
+C3 第 5 节明确要求「取消和**权限收紧即时生效**，不受旧快照覆盖」，
+即权限收紧是正常操作而非异常路径。而 PRODUCT-CONSTRAINTS
+「Runtime and human control requirements」要求
+*Worker restart, model-provider outage, tool failure or late completion
+**must not silently lose work** or erase a newer human decision*。
+
+因此：**授权范围变化要的是新的实例快照，不是新的合同版本。**
+`tool_face_sha256` 随之改变并被记录，`versions` 不变，Run 继续。
+只有工具模板本身（名称、描述文字、参数、上限、错误语义）变化才是合同变更。
+
+同理，窗口推进、target 集合在授权内的增减都属实例层。
 
 ## 2. 工具的模型可见面
 
@@ -160,10 +191,14 @@ self._revision = canonical_hash(fingerprint)          # registry.py，_FrozenInd
 | # | 必填项 | 来源 | `replay_tools.py` 中的实例 |
 |---|---|---|---|
 | D1 | 返回什么、数据源、投影形态 | C3 §8 数据源 | 「Return a frozen trace summary (trace ids and per-service span/error counts)」 |
-| D2 | 固定时间窗，绝对值 | C3 §8 绝对查询时间窗 | 「for the fixed window {start}..{end}」 |
-| D3 | 可用取值枚举（有限集合时必须内联） | C3 §8 参数 schema | 「Only these exact PromQL strings are available: [...]. Any other query returns an error.」 |
+| D2 | 固定时间窗，绝对值（**实例层 L3b**） | C3 §8 绝对查询时间窗 | 「for the fixed window {start}..{end}」 |
+| D3 | 可用取值枚举，有限集合时必须内联（**实例层 L3b**） | C3 §8 参数 schema | 「Only these exact PromQL strings are available: [...]. Any other query returns an error.」 |
 | D4 | 结果上限与截断语义 | C3 §8 结果大小上限 + 不完整结果标记 | 「Return up to 20 frozen log rows」 |
 | D5 | 反误读句：说明这个返回**不能**证明什么 | 第 3 节来源索引 | 「Listing does not prove health.」 |
+
+D1/D4/D5 是模板层（L3a，进 `tool_schema_revision`）；
+D2/D3 的具体数值在实例化时填入（L3b，进每 Run 的 `tool_face_sha256`），
+模板只固定它们的位置与格式。分层理由见 1.3。
 
 D5 是最容易被省略也最有价值的一项。`otel_services` 的「Listing does not prove health」是现存唯一一条，
 其余三个工具没有对应句，而第 3 节的多数误读恰好发生在这三个工具的返回上。
@@ -353,6 +388,9 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
 2. `ToolRegistry` fingerprint 的**工具层投影**未覆盖 `description`，
    或**参数层投影**未覆盖 `ParameterSpec.description` → 测试转红（两处分别断言）。
 3. 工具描述缺 D1–D5 任一项 → 注册期 `ToolContractError`。
+   D2/D3 的运行时部分在实例化期校验，不在注册期。
+7. 仅授权范围变化（服务枚举增减、窗口推进）时，`versions` 不变、Run 不进 blocked，
+   而 `tool_face_sha256` 改变并被记录 → 测试断言两者的变与不变。
 4. 描述中出现 `RESERVED_PARAMETERS` 名称或凭据形态字符串 → 注册期拒绝。
 5. `versions` 不一致的续跑 → `blocked(INCOMPATIBLE_STATE)`（已有，需补 prompt/tool 维度用例）。
 6. 第 3 节表格覆盖 L1 全集的每一句，且每句的来源字段非空 → 静态检查。
