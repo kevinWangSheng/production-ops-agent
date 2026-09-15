@@ -502,26 +502,26 @@ def token_usage(response):
     if type(usage) is not dict:
         usage = {}
     reported = response.get("model")
-    # 账本识别集，逐响应记录回报名；与 accepted_response_model 的准入校验分开。
+    # 账本识别集，逐响应记录回报名；与 accepted_response_model 的准入校验分开
+    # （准入校验在下游，仍是大小写敏感的精确匹配，本函数不影响它）。
     # deepseek-flash 是当前官方 Flash id；其余为历史回报名，保留以便回读旧记录。
+    # 以小写规范形式登记，比对不区分大小写：供应商若以其它大小写回报同一 id
+    # （历史记录里出现过 DeepSeek-V4-Flash-0731 这类形式），身份仍可被识别，
+    # 不会退化成 unreported_or_unrecognized 而丢失诊断线索。
+    # 未登记的取值一律压平，不让 provider 控制的文本穿透进账本。
     known = {
         "deepseek-flash",
         "deepseek-v4-flash",
         "deepseek-v4-flash-0731",
-        "DeepSeek-V4-Flash-0731",
         "deepseek-v4-pro",
         "deepseek-v4-pro-0813",
-        "DeepSeek-V4-Pro-0813",
     }
-    result = (
-        {
-            "reported_model": reported
-            if reported in known
-            else "unreported_or_unrecognized"
-        }
-        if isinstance(reported, str)
-        else {"reported_model": "unreported_or_unrecognized"}
-    )
+    canonical = reported.lower() if isinstance(reported, str) else None
+    result = {
+        "reported_model": canonical
+        if canonical in known
+        else "unreported_or_unrecognized"
+    }
     for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
         value = usage.get(key)
         if type(value) is int and 0 <= value <= 1000000:

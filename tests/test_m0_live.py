@@ -16,6 +16,7 @@ from scripts.m0.live import (
     code_digest,
     digest,
     execute,
+    token_usage,
     utcnow,
     validate,
 )
@@ -612,3 +613,22 @@ def test_final_request_uses_json_mode_and_fenced_response_still_fails():
     assert bodies[1].get("response_format") == {"type": "json_object"}
     assert result["business_code"] == "LIVE_FINAL_JSON_INVALID"
     assert "trace-post" not in ledger.attempts
+
+
+@pytest.mark.parametrize(
+    "reported,expected",
+    [
+        ("deepseek-flash", "deepseek-flash"),
+        ("DeepSeek-Flash", "deepseek-flash"),
+        ("DEEPSEEK-FLASH", "deepseek-flash"),
+        ("DeepSeek-V4-Flash-0731", "deepseek-v4-flash-0731"),
+        ("deepseek-v4-pro", "deepseek-v4-pro"),
+        ("gpt-4o", "unreported_or_unrecognized"),
+        ("", "unreported_or_unrecognized"),
+        (None, "unreported_or_unrecognized"),
+        (123, "unreported_or_unrecognized"),
+    ],
+)
+def test_token_usage_records_canonical_identity(reported, expected):
+    """已登记 id 以小写规范形式入账且不区分大小写；未登记取值一律压平，不穿透。"""
+    assert token_usage({"model": reported})["reported_model"] == expected
