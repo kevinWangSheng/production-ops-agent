@@ -74,8 +74,12 @@
 | 硬编码模型名范围 | `grep -rl deepseek-v4-flash`（排除 docs/.venv） | 28 个文件；本次一个未改 |
 | 内部链接与锚点 | 见下方链接检查 | 通过 |
 
-**未执行**：`make check`。本次为纯文档新增，未触及 Python 代码；
-该 worktree 无 `.venv`，运行需 `make setup` 下载依赖，与改动不相称。
+**关于 `make check`**：初次提交时判断「纯文档新增不必跑」，**该判断是错的**——
+本仓库的 `ruff format --check .` 会格式化 Markdown 内的 Python 代码块，
+PR #24 的首次 CI 因此失败（`docs/design/...md:193` 的行内注释缩进）。
+修复后已用主工作区的 `.venv/bin/ruff format --check docs/`（268 files already formatted）
+与 `ruff check docs/`（All checks passed）本地复验。
+**教训**：本仓库的文档改动同样受 `make check` 覆盖，不能以「只改文档」跳过。
 
 ## 下一步与交接
 

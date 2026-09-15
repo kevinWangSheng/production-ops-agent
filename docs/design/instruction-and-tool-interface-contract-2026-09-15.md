@@ -190,7 +190,7 @@ C3 第 5 节明确要求「取消和**权限收紧即时生效**，不受旧快�
 不是 `dataclasses.asdict(registration)`：
 
 ```python
-self._revision = canonical_hash(fingerprint)          # registry.py，_FrozenIndex.__init__
+self._revision = canonical_hash(fingerprint)  # registry.py，_FrozenIndex.__init__
 ```
 
 而 `ToolRegistry.__init__` 传入的是一段显式列表推导，逐字段列举：
