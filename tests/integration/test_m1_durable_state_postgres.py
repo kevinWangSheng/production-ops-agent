@@ -1,8 +1,14 @@
 import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
+from psycopg import errors
+from psycopg.rows import dict_row
 
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
@@ -341,3 +347,231 @@ def test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step():
     assert fenced["control_generation"] == 0
     assert fenced["status"] == "response_committed"
     assert fenced["tool_results"] == []
+
+
+def test_rebuild_reads_a_consistent_snapshot():
+    """rebuild() 横跨三条查询，必须看到同一个状态。
+
+    默认的 READ COMMITTED 逐语句取快照，并发的人工操作会让 incident 与 run
+    的 control_generation 读出不一致的组合，重建出从未存在过的断点。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-snapshot-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10**6,
+        versions={"state": "v1"},
+    )
+
+    stop = threading.Event()
+    generation = [0]
+
+    def advance():
+        while not stop.is_set():
+            try:
+                generation[0] = store.control(
+                    incident, generation[0], "resume", "operator"
+                )
+            except PersistenceError:
+                pass
+
+    worker = threading.Thread(target=advance, daemon=True)
+    worker.start()
+    try:
+        for _ in range(120):
+            rebuilt = store.rebuild(incident)
+            assert (
+                rebuilt["control_generation"] == rebuilt["run"]["control_generation"]
+            ), "rebuild() 返回了 incident 与 run 代际不一致的撕裂快照"
+    finally:
+        stop.set()
+        worker.join(timeout=5)
+
+
+def test_concurrent_accept_of_the_same_identity_stays_idempotent():
+    """同一身份并发重投是幂等成功，不是冲突，也不是存储故障。
+
+    单轮 8 线程只有约一半的概率让两个 INSERT 真正重叠，对回归而言是
+    flaky-green。重复多轮把漏检概率压到可忽略；对正确实现每轮都稳定通过。
+    """
+    store = DurableStore(DSN)
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    for _ in range(12):
+        incident, run = uuid4(), uuid4()
+        intake_key = f"m1-idempotent-{incident}"
+
+        def submit(_: int, incident: UUID = incident, run: UUID = run) -> str:
+            try:
+                store.accept(
+                    incident,
+                    run,
+                    intake_key,
+                    deadline=deadline,
+                    budget_limit=10,
+                    versions={"state": "v1"},
+                )
+                return "accepted"
+            except PersistenceError as exc:
+                return str(exc)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            outcomes = list(pool.map(submit, range(8)))
+
+        assert set(outcomes) == {"accepted"}, outcomes
+        assert store.rebuild(incident)["run"]["state"] == "queued"
+
+
+def test_storage_failures_map_to_distinguishable_codes():
+    """存储失败按调用方该做什么区分，不压成单一的存储不可用。
+
+    重试无用的唯一键冲突与可重试的瞬时故障必须是不同的码，否则调用方
+    只能一律重试或一律告警。断言走 transaction() 的真实映射路径。
+    """
+    assert DurableStore._error_code(errors.DeadlockDetected()) == "RETRY"
+    assert DurableStore._error_code(errors.SerializationFailure()) == "RETRY"
+    assert DurableStore._error_code(errors.LockNotAvailable()) == "TIMEOUT"
+    assert DurableStore._error_code(errors.QueryCanceled()) == "TIMEOUT"
+    assert DurableStore._error_code(errors.OperationalError()) == "STORAGE_UNAVAILABLE"
+
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    intake_key = f"m1-errcode-{incident}"
+    store.accept(
+        incident,
+        run,
+        intake_key,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        with store.transaction() as conn:
+            conn.execute(
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,control_generation) VALUES(%s,%s,'queued','open',0)",
+                (uuid4(), intake_key),
+            )
+
+
+def test_write_paths_lock_the_incident_before_the_run():
+    """写路径统一按 incidents -> runs 加锁，否则与 control()/publish() 交叉即死锁。
+
+    `control()` 只拿到 incident_id，结构上必须先读 incident，因此以它为规范
+    顺序。本测试确定性地探测顺序：占住 incident 行后调用写方法，若该方法先锁
+    run，则第三方对 run 的 NOWAIT 探测会失败。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-lockorder-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10**6,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=300)
+    seeded = store.commit_step(lease, "seed", {"tool_calls": [{"id": "a"}]})
+
+    for name, call in (
+        ("reserve_budget", lambda: store.reserve_budget(lease, uuid4(), 1)),
+        ("commit_step", lambda: store.commit_step(lease, f"k-{uuid4()}", {})),
+        ("commit_tool", lambda: store.commit_tool(lease, seeded, 0, {"ok": True})),
+    ):
+        blocked = threading.Event()
+        with psycopg.connect(DSN, row_factory=dict_row) as holder:
+            holder.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (incident,),
+            )
+
+            def attempt() -> None:
+                blocked.set()
+                try:
+                    call()
+                except PersistenceError:
+                    pass
+
+            worker = threading.Thread(target=attempt, daemon=True)
+            worker.start()
+            assert blocked.wait(timeout=5)
+            time.sleep(0.3)
+
+            with psycopg.connect(DSN, row_factory=dict_row) as probe:
+                try:
+                    probe.execute(
+                        "SELECT 1 FROM opspilot_runs WHERE run_id=%s FOR UPDATE NOWAIT",
+                        (run,),
+                    )
+                except errors.LockNotAvailable:
+                    raise AssertionError(
+                        f"{name} 在锁 incident 之前先锁了 run，与 control()/publish() "
+                        "的顺序相反，交叉会死锁"
+                    ) from None
+        worker.join(timeout=5)
+
+
+def test_require_row_reports_inconsistent_state_not_a_transient_failure():
+    """业务记录缺行是不一致，重试必然再失败，不能与瞬时故障共用一个码。
+
+    两个剩余调用点都是保证单行的查询，该分支经公开接口不可达，因此直接断言
+    helper 的契约，避免这个对外可见的错误码无人守护。
+    """
+    store = DurableStore(DSN)
+    with store.transaction() as conn:
+        empty = conn.execute(
+            "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s", (uuid4(),)
+        )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store._require_row(empty)
+
+
+def test_reusing_an_incident_id_under_a_new_key_is_an_identity_conflict():
+    """复用 incident_id 换一个 intake_key 是调用方的身份冲突，不是存储问题。
+
+    不限定目标的 `ON CONFLICT` 会把主键冲突一并吞掉，随后按新 key 查不到行。
+    这既不是存储故障也不是记录不一致，报成那两者会把运维引去查数据库。
+    """
+    store = DurableStore(DSN)
+    incident = uuid4()
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=5)
+    store.accept(
+        incident,
+        uuid4(),
+        f"m1-reuse-a-{incident}",
+        deadline=deadline,
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="^IDENTITY_CONFLICT$"):
+        store.accept(
+            incident,
+            uuid4(),
+            f"m1-reuse-b-{incident}",
+            deadline=deadline,
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+
+
+def test_snapshot_transactions_refuse_writes():
+    """一致快照事务是只读的：取行锁或写入会被直接拒绝，而不是偶发 RETRY。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-readonly-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="^READ_ONLY_PATH$"):
+        with store.transaction(snapshot=True) as conn:
+            conn.execute(
+                "UPDATE opspilot_incidents SET state='queued' WHERE incident_id=%s",
+                (incident,),
+            )
