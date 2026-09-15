@@ -7,7 +7,6 @@ objects; raw headers, password material and bearer tokens never enter them.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal
 from unicodedata import category
 
@@ -56,11 +55,6 @@ class IntakeEnvelope(DTO):
     @classmethod
     def reject_control_text(cls, value: str) -> str:
         return _reject_control_text(value)
-
-    @field_validator("received_at")
-    @classmethod
-    def normalize_received_at(cls, value: datetime) -> datetime:
-        return value
 
 
 def verify_channel(principal: Principal, *, expected: AuthChannel) -> Principal:
