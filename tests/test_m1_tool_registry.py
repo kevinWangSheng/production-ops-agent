@@ -147,6 +147,13 @@ def test_targets_resolve_only_by_registered_identity():
     assert not [name for name in dir(registry) if "name" in name.lower()]
 
 
+def test_target_credential_binding_is_part_of_registry_revision():
+    first = TargetRegistry([target(credential_ref="prom-ro-checkout")])
+    second = TargetRegistry([target(credential_ref="prom-ro-other")])
+
+    assert first.revision != second.revision
+
+
 def test_registries_expose_no_mutation_surface():
     targets = TargetRegistry([target()])
     tools = ToolRegistry([registration()])

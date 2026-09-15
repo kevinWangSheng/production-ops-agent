@@ -163,3 +163,15 @@
     但通过扫描不等于证明无泄漏。
 - 本任务未做独立审查；按 AGENTS.md，安全边界变更在完成前应由未参与实现的
   Agent 以全新上下文复核，该项尚未执行。
+
+## 当前交付更新（2026-09-15）
+
+- PR #20 首次 CI 暴露旧分支基线未接入最新 `TID251` 数据库时钟规则；已将分支
+  合并到最新 `origin/main`，并移除产品代码的宿主 `SystemClock` 默认实现，要求
+  调用方显式注入时钟（真实接入由持久化层提供，纯逻辑替身由测试提供）。
+- 同步修复 main 引入的 strict mypy 检查：注册表索引类型收窄、结果 reason 分支
+  判定与可空时间戳守卫；新增凭据句柄进入 target registry revision 的回归测试。
+- 独立审查发现并已修复：在途控制失效时证据 sink 未提交不得把未提交记录放入结果；
+  新增 `test_an_uncommitted_in_flight_history_never_reaches_the_outcome`。
+- 本地定向检查（mypy、ruff、format、M1 三个测试文件）通过；完整 `make check`
+  待最新基线兼容修复后重跑。PR #20 的 CI/Review 仍以最新提交为准。

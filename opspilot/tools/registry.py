@@ -27,7 +27,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, TypeVar
 
 __all__ = [
     "FORBIDDEN_VERBS",
@@ -288,12 +288,15 @@ class RegisteredTarget:
         object.__setattr__(self, "selector", MappingProxyType(dict(self.selector)))
 
 
+_Entry = TypeVar("_Entry")
+
+
 class _FrozenIndex:
     """Shared read-only index behaviour for the two registries."""
 
     __slots__ = ("_entries", "_revision")
 
-    def __init__(self, entries: Mapping[str, object], fingerprint: object) -> None:
+    def __init__(self, entries: Mapping[str, _Entry], fingerprint: object) -> None:
         self._entries = MappingProxyType(dict(entries))
         self._revision = canonical_hash(fingerprint)
 
@@ -338,7 +341,8 @@ class ToolRegistry(_FrozenIndex):
 
         if not isinstance(name, str):
             return None
-        return self._entries.get(name)
+        value = self._entries.get(name)
+        return value if isinstance(value, ToolRegistration) else None
 
 
 class TargetRegistry(_FrozenIndex):
@@ -361,6 +365,7 @@ class TargetRegistry(_FrozenIndex):
                     target_id,
                     entries[target_id].source,
                     entries[target_id].endpoint,
+                    entries[target_id].credential_ref,
                     sorted(entries[target_id].selector.items()),
                 ]
                 for target_id in sorted(entries)
@@ -376,4 +381,5 @@ class TargetRegistry(_FrozenIndex):
 
         if not isinstance(target_id, str):
             return None
-        return self._entries.get(target_id)
+        value = self._entries.get(target_id)
+        return value if isinstance(value, RegisteredTarget) else None

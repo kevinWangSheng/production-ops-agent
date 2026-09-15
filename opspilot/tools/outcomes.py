@@ -268,14 +268,17 @@ class ToolOutcome:
     evidence: EvidenceRecord | None = None
 
     def __post_init__(self) -> None:
-        allowed = {
-            "ok": {None},
-            "no_data": {"NO_DATA"},
-            "error": ERROR_REASONS,
-            "timeout": _TIMEOUT_REASONS,
-            "denied": DENIED_REASONS,
-        }[self.status]
-        if self.reason not in allowed:
+        if self.status == "ok":
+            valid = self.reason is None
+        elif self.status == "no_data":
+            valid = self.reason == "NO_DATA"
+        elif self.status == "error":
+            valid = self.reason in ERROR_REASONS
+        elif self.status == "timeout":
+            valid = self.reason in _TIMEOUT_REASONS
+        else:
+            valid = self.reason in DENIED_REASONS
+        if not valid:
             raise ValueError("INVALID_OUTCOME_REASON")
 
     @property

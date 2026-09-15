@@ -28,7 +28,6 @@ source is returned as a :class:`~opspilot.tools.outcomes.ToolOutcome`.
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -65,7 +64,6 @@ __all__ = [
     "QueryScope",
     "ReadOnlyToolExecutor",
     "ReadOnlyTransport",
-    "SystemClock",
     "ToolRequest",
     "TransportError",
     "TransportRequest",
@@ -241,14 +239,6 @@ class Clock(Protocol):
     def monotonic(self) -> float: ...
 
 
-class SystemClock:
-    def now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
-    def monotonic(self) -> float:
-        return time.monotonic()
-
-
 class ReadOnlyTransport(Protocol):
     """The only outbound seam. One method, and it only reads."""
 
@@ -287,7 +277,7 @@ class ReadOnlyToolExecutor:
         transport: ReadOnlyTransport,
         evidence: EvidenceSink,
         control: ControlAuthority,
-        clock: Clock | None = None,
+        clock: Clock,
     ) -> None:
         if not isinstance(scope, QueryScope):
             raise ToolContractError("INVALID_SCOPE")
@@ -301,7 +291,9 @@ class ReadOnlyToolExecutor:
         self._transport = transport
         self._evidence = evidence
         self._control = control
-        self._clock = clock or SystemClock()
+        if not isinstance(clock, Clock):
+            raise ToolContractError("INVALID_CLOCK")
+        self._clock = clock
         self._operations_used = 0
         self._tool_seconds_used = 0.0
 
@@ -403,6 +395,7 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
         if self._operations_used >= scope.max_operations:
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
+        assert operation.started_at is not None
         remaining_deadline = (scope.deadline - operation.started_at).total_seconds()
         if remaining_deadline <= 0:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
@@ -484,8 +477,8 @@ class ReadOnlyToolExecutor:
             # is classified onto a fixed reason and the operation record keeps
             # the audit trail; the error body itself is not registered as
             # evidence and its vendor text never reaches model context.
-            reason = plan.registration.classify(str(response.source_status))
-            return self._refuse(operation, "error", reason, "confirmed")
+            source_reason = plan.registration.classify(str(response.source_status))
+            return self._refuse(operation, "error", source_reason, "confirmed")
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
@@ -496,7 +489,7 @@ class ReadOnlyToolExecutor:
         ):
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
         status: ToolStatus = "ok" if rows else "no_data"
-        reason = None if rows else "NO_DATA"
+        reason: str | None = None if rows else "NO_DATA"
         # Re-check control state: a suspension that took effect while the
         # request was in flight invalidates the result, which then survives as
         # history only (technical plan sections 4 and 8).
@@ -565,6 +558,7 @@ class ReadOnlyToolExecutor:
     ) -> EvidenceRecord:
         registration = plan.registration
         observed_at = operation.finished_at or operation.started_at
+        assert observed_at is not None
         incomplete = _incomplete(registration, payload)
         if adopted:
             kept, omitted_rows, omitted_bytes = _fit_rows(
