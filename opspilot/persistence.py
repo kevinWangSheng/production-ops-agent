@@ -32,6 +32,10 @@ class DurableStore:
     def __init__(self, dsn: str):
         self.dsn = dsn
 
+    @staticmethod
+    def _db_now(conn):
+        return conn.execute("SELECT clock_timestamp() AS now").fetchone()["now"]
+
     @contextmanager
     def transaction(self):
         try:
@@ -137,7 +141,7 @@ class DurableStore:
             active_lease = (
                 row["state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > datetime.now().astimezone()
+                and row["lease_until"] > self._db_now(conn)
             )
             if active_lease:
                 raise PersistenceError("LEASE_ACTIVE")
@@ -154,7 +158,7 @@ class DurableStore:
             elif (
                 row["state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > datetime.now().astimezone()
+                and row["lease_until"] > self._db_now(conn)
             ):
                 raise PersistenceError("LEASE_ACTIVE")
             else:
@@ -186,9 +190,9 @@ class DurableStore:
                 or row["control_generation"] != lease.control_generation
                 or (
                     row["lease_until"] is not None
-                    and row["lease_until"] <= datetime.now().astimezone()
+                    and row["lease_until"] <= self._db_now(conn)
                 )
-                or row["deadline"] <= datetime.now().astimezone()
+                or row["deadline"] <= self._db_now(conn)
             ):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
@@ -231,9 +235,9 @@ class DurableStore:
                 or row["control_generation"] != lease.control_generation
                 or (
                     row["lease_until"] is not None
-                    and row["lease_until"] <= datetime.now().astimezone()
+                    and row["lease_until"] <= self._db_now(conn)
                 )
-                or row["deadline"] <= datetime.now().astimezone()
+                or row["deadline"] <= self._db_now(conn)
             ):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
@@ -276,9 +280,9 @@ class DurableStore:
                 or row["control_generation"] != lease.control_generation
                 or (
                     row["lease_until"] is not None
-                    and row["lease_until"] <= datetime.now().astimezone()
+                    and row["lease_until"] <= self._db_now(conn)
                 )
-                or row["deadline"] <= datetime.now().astimezone()
+                or row["deadline"] <= self._db_now(conn)
             ):
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
@@ -370,8 +374,8 @@ class DurableStore:
                 or row["run_state"] != "running"
                 or row["state"] in {"completed", "cancelled"}
                 or row["lease_until"] is None
-                or row["lease_until"] <= datetime.now().astimezone()
-                or row["deadline"] <= datetime.now().astimezone()
+                or row["lease_until"] <= self._db_now(conn)
+                or row["deadline"] <= self._db_now(conn)
             ):
                 conn.execute(
                     "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
