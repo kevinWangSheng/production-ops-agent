@@ -45,7 +45,7 @@ if row["versions"] != versions:
 
 ### 0.2 工具注册合同不含模型可见面
 
-`opspilot/tools/registry.py`（PR #20，`feature/m1-01-tool-executor`）完整实现了 C3 第 8 节的注册合同：
+`opspilot/tools/registry.py`（PR #20，`feature/m1-01-tool-executor`）实现了 C3 第 8 节注册合同中属于工具本身的部分（「精确目标」由同文件的 `TargetRegistry` 单独承担，不在 `ToolRegistration` 内）：
 `name / version / source / verb / parameters / result_path / request_timeout_seconds / max_result_bytes /
 max_view_bytes / max_window_seconds / error_classes / incomplete_marker / read_only`，
 并以 `ToolRegistry.revision`（整表内容哈希）、`TargetRegistry.revision`、`PROJECTION_REVISION` 三个版本量
@@ -86,6 +86,9 @@ L1 里写了只对某一个工具面成立的知识，换工具面就必须再�
 这是「跑未经我们加工的上游」的有意设计，不是指令不一致。
 
 ## 1. 三层指令的归属与版本
+
+**本节及第 2 节使用规范口吻（「必须」「不得」）描述的是提案内容，
+在本文件获批准前均不生效。**
 
 模型看到的文字分三层，各自独立版本化、各有单一来源，不得互相内联：
 
@@ -220,12 +223,17 @@ D5 是最容易被省略也最有价值的一项。`otel_services` 的「Listing
 - 描述不得承诺执行器不保证的行为（例如「returns all spans」而投影实际采样）。
 - 描述不得引用测试故障类别、注入参数或答案（ADR-0002；`docs/testing/initial-investigation-coverage.md`）。
 
-### 2.4 与 DeepSeek strict mode 的兼容性（决策点）
+### 2.4 与 DeepSeek strict mode 的关系（已有批准决定，非待决项）
 
-DeepSeek 的 strict 工具调用要求「所有 object 属性都 `required`、`additionalProperties: false`」。
-`replay_tools.openai_tool_schemas()` 目前用 `required: list(tool["parameters"])`，即全部必填，天然兼容；
-而产品侧 `ParameterSpec.required` 默认为 `False`，允许可选参数——**与 strict mode 不兼容**。
-是否采用 strict mode 属于待决项，见第 5 节。
+C3 第 5 节「调查循环」末句已定：**「默认关闭 strict beta」**。
+因此当前不存在不兼容：产品侧 `ParameterSpec.required` 默认为 `False`（允许可选参数）
+与 strict 关闭是一致的，本合同不需要为此做任何调整。
+
+仅作记录，供将来确有理由改变该已批准决定时参考：DeepSeek 的 strict 工具调用要求
+「所有 object 属性都 `required`、`additionalProperties: false`」，不支持 `minLength`/`maxLength`，
+且须走 `/beta` base_url。`replay_tools.openai_tool_schemas()` 用
+`required: list(tool["parameters"])`（全部必填）天然兼容；`ParameterSpec.required=False` 则不兼容。
+**改变默认属于修改已批准合同，须另行走审查，不在本提案范围。**
 
 ## 3. 约束句来源索引
 
@@ -310,9 +318,14 @@ L1 每一条约束都必须能指回触发它的那次记录。没有来源的�
 - **`reasoning_content` 回传是硬约束**：`scripts/m0/protocol.py` 已在 transcript 中保留 `reasoning_content`，
   与 PRODUCT-CONSTRAINTS「private protocol fields only return to the same provider and Run」一致（送回同 provider 同 Run，
   不入报告/知识/LangSmith/judge）。
-  **未决张力**：`scripts/m0/compressor.py` 对被折叠组丢弃 `reasoning_content`，
-  而官方措辞是「all previous turns」。反向证据是 `round-07-compressor-real-run.json` 中真实 provider 接受了折叠后的 transcript。
-  产品接入压缩器前须以实际请求确认，不能只凭这一次通过推广。
+  **这不是待决项，C3 已有批准规则**：C3 第 5 节「上下文」规定
+  「DeepSeek 的 `reasoning_content` 仅作为受限协议状态保存，并在同 provider、同 Run 必要续传……
+  **压缩或恢复后续传不兼容时，阻塞并交接，不猜测删除协议字段**」。
+  需要核对的是实现与该规则的关系：`scripts/m0/compressor.py` 对被折叠组**丢弃**
+  `reasoning_content`，而官方措辞是「all previous turns」。
+  `round-07-compressor-real-run.json` 中真实 provider 接受了折叠后的 transcript，
+  但一次通过不等于合规——按 C3 的规则，产品接入压缩器时不兼容必须阻塞交接，
+  不能以「上次没报错」替代。此项属实现核对，不需用户决定。
 - **采样参数不得进入调优手段**：thinking 下 temperature 无效，任何依赖它的提示词调优都是空操作。
   当前脚本未设置 temperature/top_p，符合要求。
 
@@ -374,8 +387,7 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
 | # | 决策点 | 选项 | 影响面 |
 |---|---|---|---|
 | U1 | 4.3 的两点新增信息如何处置：既有 provider-identity 决定是否按 Change Log 更新；临时别名的期限风险 | 更新决定依据、保留现状并设复查点 / 主动改出站名为 `deepseek-flash`（属新的版本变更，须另行走验证）/ 其他 | `round-02-provider-identity-decision.md`、v4 验收包、SPEC 门槛表述。**不含重新校准**：见 4.3 末，无证据支持校准集横跨代际 |
-| U2 | 是否采用 DeepSeek strict tool mode | 采用（须走 `/beta` base_url，全参数必填）/ 不采用 | `ParameterSpec.required` 语义、`opspilot/tools/registry.py` |
-| U3 | 本文件是并入 C3 第 5/8 节，还是保持独立设计文档 | 并入 / 独立 | 已批准合同的修改范围 |
+| U2 | 本文件是并入 C3 第 5/8 节，还是保持独立设计文档 | 并入 / 独立 | 已批准合同的修改范围。判断依据之一：`docs/README.md` 的维护规则倾向「并入」——*Do not create another plan or ADR for every conversation. Detailed component designs… should be created only when the capability map and runtime evidence justify them.* |
 
 ## 6. 本任务明确不做
 
