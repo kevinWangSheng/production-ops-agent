@@ -33,6 +33,7 @@ from tests.m1_tool_support import (
     WINDOW_START,
     FakeTransport,
     FixedControl,
+    RecordingSink,
     UnavailableControl,
     body,
     build,
@@ -212,6 +213,19 @@ def test_a_suspension_during_flight_keeps_the_result_as_history_only():
     assert sink.records[0].adopted is False
     assert sink.records[0].raw == body([{"value": 1}])
     assert sink.records[0].view["content"] is None
+
+
+def test_an_uncommitted_in_flight_history_never_reaches_the_outcome():
+    control = FixedControl(later=ControlSnapshot(7, suspended=True))
+    sink = RecordingSink(fail=True)
+    executor, transport, _, _ = build(control=control, sink=sink)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert outcome.evidence is None
+    assert len(sink.records) == 1
 
 
 # --- refusal path 3: timeout ------------------------------------------------
