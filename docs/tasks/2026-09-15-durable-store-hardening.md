@@ -43,22 +43,31 @@ row['control_generation'] 实际取到 -> 77      （即 i 的值）
 => run 自身的 control_generation 在 dict 中不可达
 ```
 
-变异测试：把两处 SQL 的列顺序改为 `SELECT i.control_generation,r.*`
-（栅栏语义翻转为比较 run 自身代际）后运行全量检查：
+变异测试：把 `control_generation` 的取值翻转为 run 自身代际（即把 `i.control_generation`
+移到 `r.*` 之前），三条路径**分别**变异并各跑一次全量检查。`commit_tool` 的 SQL 多一个
+`s.control_generation AS step_generation` 列，与另外两条不同，因此单独变异：
 
-```
-变异后（全量，含 mypy strict 与 test_architecture）: 1059 passed, 54 skipped, 2 xfailed
-                                  mypy: Success: no issues found in 13 source files
-还原后: 1059 passed, 54 skipped, 2 xfailed
-```
+| 变异位置 | 变异后全量结果 |
+|---|---|
+| `reserve_budget` + `commit_step`（同一条 SQL，2 处） | `1059 passed, 54 skipped, 2 xfailed` |
+| `commit_tool`（`:359`，单独变异 1 处） | `1059 passed, 54 skipped, 2 xfailed` |
+| 基线（未变异） | `1059 passed, 54 skipped, 2 xfailed` |
 
-**整个测试套件无一转红，mypy strict 与 ruff 同样无感。** 该构造与 PR #19 修复的 `claim()` 同名列缺陷同源
+mypy strict 三次均为 `Success: no issues found in 13 source files`。
+**三条路径逐条验证，整个测试套件无一转红，mypy strict 与 ruff 同样无感。**
+
+该构造与 PR #19 修复的 `claim()` 同名列缺陷同源
 （见 2026-09-14-m1-01-durable-state.md「独立审查」一节），当时只修了一处。
-它对 `ruff`、`mypy` 与现有测试全部不可见。
 
 修复方向：`persistence.py` 内所有 `r.*` / `i.*` 展开为显式列名。
-`publish()` 的 `:449` 用 `SELECT i.*,r.owner,...`，当前靠列出现顺序恰好正确，
-但 `opspilot_incidents` 一旦新增 `owner`/`deadline`/`epoch`/`lease_until` 同名列即静默翻转，一并处理。
+
+关于 `publish()` 的 `:449`（PR #23 机器人审查指出本记录初稿在此处高估了风险，已核实并更正）：
+该行用 `SELECT i.*,r.owner,r.epoch,r.lease_until,r.deadline,...`，所有 `r.x` 都排在 `i.*`
+之后，因此**向 `opspilot_incidents` 增加同名列不会翻转它的取值**。实测在事务内给
+`opspilot_incidents` 加上 `owner`/`deadline` 列并写入伪造值后，`row['owner']` 取到的
+仍是 run 的真实 owner。初稿「一旦新增同名列即静默翻转」的说法不成立，已删除。
+`publish()` 仍纳入展开列名的范围，理由是其正确性依赖 select 列表的书写顺序而非任何
+显式约束——调换顺序或改用 `r.*` 即会静默改变语义——属可维护性问题，不是当前缺陷。
 
 ### A2　两张表的 `incident_id` 无索引
 
