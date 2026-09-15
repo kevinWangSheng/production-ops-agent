@@ -28,10 +28,10 @@
 | 只读工具执行器 | scope、目标解析、查询超时、证据 raw/view/hash 登记 | 4 h |
 | Flash 调查 loop | v4 输入/输出绑定、工具消息配对、handoff | 4 h |
 
-上表两行涉及模型可见文字，实施前另读
-[调查指令与工具接口合同](../../design/instruction-and-tool-interface-contract-2026-09-15.md)
-与 [DeepSeek V4.1 Flash 设计参考](../../design/deepseek-flash-prompt-tool-reference.md)：
-前者定分层与版本，后者定按官方模型特性的撰写规则。两份均为提案，不改变本表的估算或范围。
+上表两行涉及模型可见文字，实施前另读 [C3](../../design/technical-proposal-2026-09-07.md)
+第 5 节「指令分层与版本」与第 8 节的模型可见面段（分层、revision、描述必填项），
+以及 [DeepSeek V4.1 Flash 设计参考](../../design/deepseek-flash-prompt-tool-reference.md)
+（按官方模型特性的撰写规则）。不改变本表的估算或范围。
 | 进度与证据 UI | SSE 游标、报告事实/假设/反证/unknown 展示 | 3 h |
 | 追问/纠正/取消 | 人控版本、迟到结果拒绝、历史保留 | 3 h |
 | 重启/不兼容处理 | worker 重启、blocked(INCOMPATIBLE_STATE)、恢复测试 | 3 h |
