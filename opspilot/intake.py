@@ -24,6 +24,11 @@ class Principal(DTO):
     channel: AuthChannel
     auth_revision: Text
 
+    @field_validator("actor_id", "auth_revision")
+    @classmethod
+    def reject_control_text(cls, value: str) -> str:
+        return _reject_control_text(value)
+
 
 class IntakeRequest(DTO):
     """An authenticated request to start or resume one incident intake."""
@@ -32,12 +37,10 @@ class IntakeRequest(DTO):
     question: str = Field(min_length=1, max_length=16_384)
     idempotency_key: str = Field(min_length=1, max_length=256)
 
-    @field_validator("question", "idempotency_key")
+    @field_validator("target_id", "question", "idempotency_key")
     @classmethod
     def reject_control_text(cls, value: str) -> str:
-        if any(ord(char) < 32 and char not in "\t\n" for char in value):
-            raise ValueError("CONTROL_CHARACTER_FORBIDDEN")
-        return value
+        return _reject_control_text(value)
 
 
 class IntakeEnvelope(DTO):
@@ -47,6 +50,11 @@ class IntakeEnvelope(DTO):
     principal: Principal
     request: IntakeRequest
     received_at: AwareDatetime
+
+    @field_validator("request_id")
+    @classmethod
+    def reject_control_text(cls, value: str) -> str:
+        return _reject_control_text(value)
 
     @field_validator("received_at")
     @classmethod
@@ -60,6 +68,12 @@ def verify_channel(principal: Principal, *, expected: AuthChannel) -> Principal:
     if not isinstance(principal, Principal) or principal.channel != expected:
         raise DomainError("INVALID_INPUT", "authentication channel mismatch")
     return principal
+
+
+def _reject_control_text(value: str) -> str:
+    if any(ord(char) < 32 for char in value):
+        raise ValueError("CONTROL_CHARACTER_FORBIDDEN")
+    return value
 
 
 def same_idempotent_intake(left: IntakeEnvelope, right: IntakeEnvelope) -> bool:

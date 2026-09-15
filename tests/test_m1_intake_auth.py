@@ -106,3 +106,23 @@ def test_control_characters_are_rejected_from_idempotency_and_question():
         IntakeRequest(
             target_id="checkout-prod", question="why?\x00", idempotency_key="idem-1"
         )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"actor_id": "oncall\x00-1", "channel": "ui_basic", "auth_revision": "auth-v1"},
+        {"actor_id": "oncall-1", "channel": "ui_basic", "auth_revision": "auth\n-v1"},
+    ],
+)
+def test_control_characters_are_rejected_from_identity_fields(payload):
+    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+        Principal(**payload)
+
+    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+        envelope(request_id="req\x00-1")
+
+    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+        IntakeRequest(
+            target_id="checkout\x00-prod", question="why?", idempotency_key="idem-1"
+        )
