@@ -147,7 +147,7 @@ def run(subject: SubjectRef | None = None, **overrides) -> Run:
             "subject": subject or SubjectRef(kind="incident", id="inc-1"),
             "model_profile": ModelProfile(
                 provider="deepseek",
-                model="deepseek-v4-flash",
+                model="deepseek-flash",
                 endpoint_mode="chat_completions",
                 prompt_revision="p1",
                 adapter_revision="a1",
