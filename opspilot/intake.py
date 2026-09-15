@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
+from unicodedata import category
 
 from pydantic import AwareDatetime, Field, field_validator
 
@@ -71,7 +72,7 @@ def verify_channel(principal: Principal, *, expected: AuthChannel) -> Principal:
 
 
 def _reject_control_text(value: str) -> str:
-    if any(ord(char) < 32 for char in value):
+    if any(category(char) == "Cc" for char in value):
         raise ValueError("CONTROL_CHARACTER_FORBIDDEN")
     return value
 
