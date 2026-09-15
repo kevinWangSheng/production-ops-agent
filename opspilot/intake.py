@@ -34,6 +34,11 @@ from .domain.base import DTO, DomainError
 
 AuthChannel = Literal["ui_basic", "event_token"]
 
+#: How a delivery relates to one already accepted under the same key.
+#: ``key_conflict`` is the case a boolean would hide: same key, different
+#: actor, channel, target or question.
+IntakeDelivery = Literal["same_request", "key_conflict", "different_request"]
+
 #: An identity, target or key that is rendered verbatim into an audit line.
 #: Bounded because every one of these is written to a log an operator reads;
 #: ``Text`` carries no upper bound, and an unbounded identifier is not one.
@@ -141,18 +146,27 @@ def _reject_ambiguous_text(value: str) -> str:
     return value
 
 
-def same_idempotent_intake(left: IntakeEnvelope, right: IntakeEnvelope) -> bool:
-    """Return whether two deliveries are the same authenticated request.
+def classify_intake_delivery(
+    left: IntakeEnvelope, right: IntakeEnvelope
+) -> IntakeDelivery:
+    """Say how a second delivery relates to the first.
 
-    The key alone is insufficient: a reused key by another actor, target or
-    question is an identity conflict and must never silently join an incident.
+    A boolean cannot carry this answer. "Not the same request" covers two
+    materially different situations: a new request, which the caller should
+    accept, and a reused idempotency key over a different actor, channel,
+    target or question, which is a client error the caller must surface rather
+    than quietly open a second incident for. Returning three states makes the
+    conflict a branch the caller has to write.
     """
 
     if not isinstance(left, IntakeEnvelope) or not isinstance(right, IntakeEnvelope):
         raise DomainError("INVALID_INPUT", "intake envelopes are required")
-    return (
+    if left.request.idempotency_key != right.request.idempotency_key:
+        return "different_request"
+    if (
         left.principal == right.principal
-        and left.request.idempotency_key == right.request.idempotency_key
         and left.request.target_id == right.request.target_id
         and left.request.question == right.request.question
-    )
+    ):
+        return "same_request"
+    return "key_conflict"

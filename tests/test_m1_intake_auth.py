@@ -8,7 +8,7 @@ from opspilot.intake import (
     IntakeEnvelope,
     IntakeRequest,
     Principal,
-    same_idempotent_intake,
+    classify_intake_delivery,
     verify_channel,
 )
 
@@ -68,7 +68,16 @@ def test_a_redelivery_of_the_same_request_is_recognised_as_the_same_request():
         request_id="req-2",
         received_at=datetime(2026, 9, 15, 12, 5, tzinfo=timezone.utc),
     )
-    assert same_idempotent_intake(first, retry)
+    assert classify_intake_delivery(first, retry) == "same_request"
+
+
+def test_a_fresh_key_is_a_new_request_not_a_conflict():
+    request = dict(REQUEST)
+    request["idempotency_key"] = "idem-2"
+    assert (
+        classify_intake_delivery(envelope(), envelope(request=request))
+        == "different_request"
+    )
 
 
 @pytest.mark.parametrize(
@@ -79,34 +88,40 @@ def test_a_redelivery_of_the_same_request_is_recognised_as_the_same_request():
         ("channel", "event_token"),
     ],
 )
-def test_a_different_authenticated_identity_never_merges(field, value):
-    """Contract: operator, auth revision and channel all bind the key."""
+def test_a_reused_key_under_a_different_identity_is_a_conflict(field, value):
+    """Contract: operator, auth revision and channel all bind the key.
+
+    The caller must be able to tell this apart from a new request, or it would
+    open a second incident for what is a client error.
+    """
 
     principal = dict(PRINCIPAL)
     principal[field] = value
-    assert not same_idempotent_intake(envelope(), envelope(principal=principal))
+    assert (
+        classify_intake_delivery(envelope(), envelope(principal=principal))
+        == "key_conflict"
+    )
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [
-        ("target_id", "payments-prod"),
-        ("question", "a different question"),
-        ("idempotency_key", "idem-2"),
-    ],
+    [("target_id", "payments-prod"), ("question", "a different question")],
 )
-def test_a_different_target_question_or_key_never_merges(field, value):
+def test_a_reused_key_over_different_content_is_a_conflict(field, value):
     """Contract: a reused key over different content is an identity conflict."""
 
     request = dict(REQUEST)
     request[field] = value
-    assert not same_idempotent_intake(envelope(), envelope(request=request))
+    assert (
+        classify_intake_delivery(envelope(), envelope(request=request))
+        == "key_conflict"
+    )
 
 
 @pytest.mark.parametrize("impostor", [None, "req-1", {"request_id": "req-1"}])
-def test_same_idempotent_intake_requires_two_envelopes(impostor):
+def test_classify_intake_delivery_requires_two_envelopes(impostor):
     with pytest.raises(DomainError, match="INVALID_INPUT"):
-        same_idempotent_intake(envelope(), impostor)
+        classify_intake_delivery(envelope(), impostor)
 
 
 # --- immutability and shape --------------------------------------------------
