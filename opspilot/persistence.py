@@ -10,10 +10,27 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import psycopg
+from psycopg import IsolationLevel, errors
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 Connection = psycopg.Connection[dict[str, Any]]
+
+# 存储层失败按调用方该做什么区分，而不是压成单一的「存储不可用」：
+#   RETRY              串行化冲突或死锁，同一请求重放即可
+#   TIMEOUT            语句或锁等待超时，重试前应退避
+#   IDENTITY_CONFLICT  同一 intake_key 已绑定别的身份，重试无用
+#   READ_ONLY_PATH     写落在只读事务或只读服务端上：可能是在一致快照事务里
+#                      写入的实现错误，也可能是连到了备库/只读副本；都不该重试
+#   STORAGE_UNAVAILABLE 连接级故障，重试取决于存储是否恢复
+_ERROR_CODES: tuple[tuple[type[psycopg.Error], str], ...] = (
+    (errors.UniqueViolation, "IDENTITY_CONFLICT"),
+    (errors.ReadOnlySqlTransaction, "READ_ONLY_PATH"),
+    (errors.DeadlockDetected, "RETRY"),
+    (errors.SerializationFailure, "RETRY"),
+    (errors.LockNotAvailable, "TIMEOUT"),
+    (errors.QueryCanceled, "TIMEOUT"),
+)
 
 
 class PersistenceError(RuntimeError):
@@ -37,10 +54,14 @@ class DurableStore:
 
     @staticmethod
     def _require_row(cursor: psycopg.Cursor[dict[str, Any]]) -> dict[str, Any]:
-        """按不变量必定返回一行的查询；取不到行说明存储状态不一致。"""
+        """按不变量必定返回一行的查询；取不到行说明存储状态不一致。
+
+        与 `STORAGE_UNAVAILABLE` 区分：那是瞬时故障、重试可能成功；
+        这里是业务记录自身不一致，重试必然再次失败，需要人工介入。
+        """
         row = cursor.fetchone()
         if row is None:
-            raise PersistenceError("STORAGE_UNAVAILABLE")
+            raise PersistenceError("INCONSISTENT_STATE")
         return row
 
     @staticmethod
@@ -50,14 +71,35 @@ class DurableStore:
         return cast(datetime, row["now"])
 
     @contextmanager
-    def transaction(self) -> Iterator[Connection]:
+    def transaction(self, *, snapshot: bool = False) -> Iterator[Connection]:
+        """一个事务。`snapshot=True` 用 REPEATABLE READ 取一致快照。
+
+        只读路径需要横跨多条语句看到同一个状态。默认的 READ COMMITTED
+        逐语句取快照，会读出互相矛盾的行；REPEATABLE READ 在第一条语句
+        固定快照，且不像 `FOR SHARE` 那样阻塞写入方。
+
+        一并置为 read only：REPEATABLE READ 下取行锁或写入会在并发提交后
+        概率性抛 `SerializationFailure`，而调用方没有重试循环。只读事务里
+        这类语句直接被拒绝，把隐患变成确定性的失败而不是偶发的 RETRY。
+        """
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                if snapshot:
+                    conn.isolation_level = IsolationLevel.REPEATABLE_READ
+                    conn.read_only = True
                 conn.execute("SET LOCAL statement_timeout='5000ms'")
                 conn.execute("SET LOCAL lock_timeout='4000ms'")
                 yield conn
         except psycopg.Error as exc:
-            raise PersistenceError("STORAGE_UNAVAILABLE") from exc
+            raise PersistenceError(self._error_code(exc)) from exc
+
+    @staticmethod
+    def _error_code(exc: psycopg.Error) -> str:
+        """把存储失败映射成调用方能据以决策的码，而不是一律「不可用」。"""
+        for error_type, code in _ERROR_CODES:
+            if isinstance(exc, error_type):
+                return code
+        return "STORAGE_UNAVAILABLE"
 
     def install(self) -> None:
         with self.transaction() as conn:
@@ -115,15 +157,19 @@ class DurableStore:
                     raise PersistenceError("IDENTITY_CONFLICT")
                 return
             inserted = conn.execute(
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s) ON CONFLICT (intake_key) DO NOTHING RETURNING incident_id",
+                # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
+                # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s) ON CONFLICT DO NOTHING RETURNING incident_id",
                 (incident_id, intake_key, run_id),
             ).fetchone()
-            existing = self._require_row(
-                conn.execute(
-                    "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
-                    (intake_key,),
-                )
-            )
+            existing = conn.execute(
+                "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
+                (intake_key,),
+            ).fetchone()
+            if existing is None:
+                # 插入被主键冲突吞掉：这个 incident_id 已经绑定到别的 intake_key。
+                # 存储本身一致，是调用方给了冲突的身份。
+                raise PersistenceError("IDENTITY_CONFLICT")
             if (
                 existing["incident_id"] != incident_id
                 or existing["current_run_id"] != run_id
@@ -196,6 +242,13 @@ class DurableStore:
         if amount <= 0:
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
+            # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
+            # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
+            # 结构上必须先读 incident，因此以它为规范顺序）。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
             row = conn.execute(
                 "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
@@ -241,6 +294,13 @@ class DurableStore:
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
         with self.transaction() as conn:
+            # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
+            # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
+            # 结构上必须先读 incident，因此以它为规范顺序）。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
             row = conn.execute(
                 "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
@@ -288,6 +348,13 @@ class DurableStore:
     ) -> None:
         """Commit one tool result idempotently; late or expired leases are rejected."""
         with self.transaction() as conn:
+            # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
+            # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
+            # 结构上必须先读 incident，因此以它为规范顺序）。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
             row = conn.execute(
                 "SELECT r.*,i.control_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
@@ -438,7 +505,8 @@ class DurableStore:
             return True
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]:
-        with self.transaction() as conn:
+        """重建断点。三条查询在同一个一致快照内，不会读出互相矛盾的行。"""
+        with self.transaction(snapshot=True) as conn:
             row = conn.execute(
                 "SELECT * FROM opspilot_incidents WHERE incident_id=%s", (incident_id,)
             ).fetchone()
