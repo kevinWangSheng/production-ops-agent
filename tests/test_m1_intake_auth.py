@@ -101,6 +101,31 @@ def test_credentials_and_raw_auth_material_are_not_representable():
         )
 
 
+def test_a_rejected_secret_does_not_survive_in_the_validation_error():
+    """Rejecting a credential field must not export it through the error.
+
+    An adapter that hands a raw payload to these contracts will log the
+    rejection; the message must not become the leak the field prevented.
+    """
+
+    with pytest.raises(ValidationError) as rejected_extra:
+        Principal(
+            actor_id="oncall-1",
+            channel="ui_basic",
+            auth_revision="auth-v1",
+            password="s3cr3t-password",
+        )
+    assert "s3cr3t-password" not in str(rejected_extra.value)
+
+    with pytest.raises(ValidationError) as rejected_header:
+        Principal(
+            actor_id=b"Basic b25jYWxsLTE6czNjcjN0",
+            channel="ui_basic",
+            auth_revision="auth-v1",
+        )
+    assert "b25jYWxsLTE6czNjcjN0" not in str(rejected_header.value)
+
+
 def test_control_characters_are_rejected_from_idempotency_and_question():
     with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
         IntakeRequest(

@@ -36,7 +36,13 @@ Positive = Annotated[int, Field(gt=0)]
 
 
 class DTO(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    #: ``hide_input_in_errors`` keeps the rejected value out of the raised
+    #: ``ValidationError``. Forbidding a credential field is not enough on its
+    #: own: the default message quotes the input, so a caller that logs the
+    #: rejection would export the very secret the field rejected.
+    model_config = ConfigDict(
+        extra="forbid", strict=True, frozen=True, hide_input_in_errors=True
+    )
 
 
 class StateMachine:
