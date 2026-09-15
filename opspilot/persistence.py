@@ -388,14 +388,30 @@ class DurableStore:
         self, incident_id: UUID, expected_generation: int, action: str, actor: str
     ) -> int:
         with self.transaction() as conn:
+            # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」
+            # 与「事故存在但 run 行缺失」，两者都会落到 CONTROL_CONFLICT，
+            # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
+            # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT i.control_generation,i.state,i.conclusion,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
-            if not row or row["control_generation"] != expected_generation:
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if row["control_generation"] != expected_generation:
                 raise PersistenceError("CONTROL_CONFLICT")
             if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
                 raise PersistenceError("INVALID_INPUT")
+            run = (
+                conn.execute(
+                    "SELECT state AS run_state FROM opspilot_runs WHERE run_id=%s FOR UPDATE",
+                    (row["current_run_id"],),
+                ).fetchone()
+                if row["current_run_id"] is not None
+                else None
+            )
+            if not run:
+                raise PersistenceError("INCONSISTENT_STATE")
             if (
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None
@@ -406,7 +422,7 @@ class DurableStore:
             # 追问与纠正不得静默解除人工暂停。
             if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if row["run_state"] == "blocked" and action != "cancel":
+            if run["run_state"] == "blocked" and action != "cancel":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (

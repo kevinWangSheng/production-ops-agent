@@ -743,3 +743,42 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
     assert set(actual) == expected, f"缺少 incident_id 索引：{expected - set(actual)}"
     for definition in actual.values():
         assert "(incident_id)" in definition, definition
+
+
+def test_control_distinguishes_unknown_identity_from_a_retryable_conflict():
+    """CONTROL_CONFLICT 只用于「代际过期，重读后重试」，不兜底身份与不一致。
+
+    原实现用一条 JOIN 取 incident 与 run，取不到行时无法区分事故不存在与
+    run 行缺失，两者都报 CONTROL_CONFLICT；调用方按该码的约定重读重试，
+    这两种情况重试多少次都不会成功。
+    """
+    store = DurableStore(DSN)
+    with pytest.raises(PersistenceError, match="^UNKNOWN_IDENTITY$"):
+        store.control(uuid4(), 0, "cancel", "operator")
+
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-control-codes-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    for missing in (None, uuid4()):
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+                (missing, incident),
+            )
+        with pytest.raises(PersistenceError, match="^INCONSISTENT_STATE$"):
+            store.control(incident, 0, "cancel", "operator")
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (run, incident),
+        )
+    with pytest.raises(PersistenceError, match="^CONTROL_CONFLICT$"):
+        store.control(incident, 9, "cancel", "operator")
+    assert store.control(incident, 0, "cancel", "operator") == 1
