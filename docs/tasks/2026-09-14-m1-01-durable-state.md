@@ -130,3 +130,33 @@
 第 4、5、6 条及 `rebuild()` 的 `pending_tools` 不按代际过滤仍然开着，
 未纳入 PR #22 范围。新增待办：`opspilot_runs` 无 `incident_id` 索引，
 `control()` 走 Seq Scan，前置锁使 worker 写路径排在其后，表长大后会先显现。
+
+## PR #22 合并与收尾（2026-09-15）
+
+- PR #22 已由用户合并：merge commit `686965f`（普通 merge，非 squash），
+  `00962dd`、`c2396d7` 均已确认在 `origin/main` 上。
+- main CI `686965f`：success。本地 main 复验：`make check` 为
+  `1038 passed, 75 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1` 定向测试 `21 passed`。
+- 清理：本地分支 `chore/durable-store-concurrency` 已用 `git branch -d` 安全删除，
+  远端分支由平台在合并时删除。本任务未使用独立 worktree，主工作区保留；
+  其余 4 个 worktree 属于其他任务，未改动。
+- 机器人 code review 在 PR #22 上**已完成**，覆盖合并前最终提交 `c2396d7`（触发方式为
+  手动 `@codex review`，完成于 2026-09-15T16:38:13Z），返回 0 条 finding：
+  `pulls/22/reviews` 为空，`pulls/22/comments` 为 0 条。
+  `@codex security review` 另因额度不足未执行，按 AGENTS.md「机器人安全审查不是
+  交付门槛」处理。合并前另有两轮全新上下文独立审查，两者不互相替代。
+
+## 未完成项的去向（2026-09-15）
+
+上文「未完成项（本 PR 范围外）」中在 PR #22 未处理的各条，
+连同 PR #22 合并后新一轮技术栈复核发现的问题，已统一转入
+[DurableStore 技术栈与 SQL 加固](2026-09-15-durable-store-hardening.md)，
+本记录不再单独跟踪：
+
+- 第 4、5、6 条与 `rebuild()` 的 `pending_tools` 不按代际过滤 → 新记录 A3。
+- `opspilot_runs` 缺 `incident_id` 索引 → 新记录 A2（复核发现
+  `opspilot_controls` 同样缺索引，一并纳入）。
+
+新记录另有三条本次复核新发现的问题（三条写路径的代际栅栏建在重复列名上且
+无测试承重、产品运行时依赖未声明、schema 演进无机制），以及需用户决定的
+依赖选型与架构决定项，均不改变本任务的完成条件与 M1-01 验收状态。
