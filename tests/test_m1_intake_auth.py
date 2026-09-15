@@ -126,34 +126,82 @@ def test_a_rejected_secret_does_not_survive_in_the_validation_error():
     assert "b25jYWxsLTE6czNjcjN0" not in str(rejected_header.value)
 
 
-def test_control_characters_are_rejected_from_idempotency_and_question():
-    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
-        IntakeRequest(
-            target_id="checkout-prod", question="why?\x00", idempotency_key="idem-1"
-        )
+CONTROL_TEXT = {
+    "nul": "\x00",
+    "newline": "\n",
+    "delete": "\x7f",
+    "c1_csi": "\x9b",
+    "soft_hyphen": "\u00ad",
+    "zero_width_space": "\u200b",
+    "left_to_right_mark": "\u200e",
+    "right_to_left_override": "\u202e",
+    "left_to_right_isolate": "\u2066",
+    "line_separator": "\u2028",
+    "paragraph_separator": "\u2029",
+    "byte_order_mark": "\ufeff",
+    "tag_character": "\U000e0001",
+}
+
+
+@pytest.mark.parametrize("char", CONTROL_TEXT.values(), ids=list(CONTROL_TEXT))
+@pytest.mark.parametrize(
+    "field",
+    [
+        "request_id",
+        "actor_id",
+        "auth_revision",
+        "target_id",
+        "question",
+        "idempotency_key",
+    ],
+)
+def test_every_guarded_field_rejects_ambiguous_text(field, char):
+    """Each guarded field rejects each class of invisible or line-breaking text.
+
+    A bidirectional override or a zero-width character would let a stored
+    identity render in an audit line as a different identity; a line or
+    paragraph separator would split one audit record into two.
+    """
+
+    tainted = f"value{char}suffix"
+    if field == "request_id":
+        with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+            envelope(request_id=tainted)
+    elif field in {"actor_id", "auth_revision"}:
+        payload = {
+            "actor_id": "oncall-1",
+            "channel": "ui_basic",
+            "auth_revision": "auth-v1",
+        }
+        payload[field] = tainted
+        with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+            Principal(**payload)
+    else:
+        payload = {
+            "target_id": "checkout-prod",
+            "question": "why?",
+            "idempotency_key": "idem-1",
+        }
+        payload[field] = tainted
+        with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+            IntakeRequest(**payload)
 
 
 @pytest.mark.parametrize(
-    "payload",
+    "text",
     [
-        {"actor_id": "oncall\x00-1", "channel": "ui_basic", "auth_revision": "auth-v1"},
-        {"actor_id": "oncall-1", "channel": "ui_basic", "auth_revision": "auth\n-v1"},
-        {"actor_id": "oncall-1", "channel": "ui_basic", "auth_revision": "auth\x7f-v1"},
+        "why is checkout slow?",
+        "\u4e2d\u6587\u63d0\u95ee",
+        "caf\u00e9 latency",
+        "a b\tc".replace("\t", " "),
     ],
 )
-def test_control_characters_are_rejected_from_identity_fields(payload):
-    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
-        Principal(**payload)
+def test_ordinary_text_is_not_rejected(text):
+    """The guard must reject ambiguity, not non-ASCII prose."""
 
-    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
-        envelope(request_id="req\x00-1")
-
-    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
+    assert (
         IntakeRequest(
-            target_id="checkout\x00-prod", question="why?", idempotency_key="idem-1"
-        )
-
-    with pytest.raises(ValidationError, match="CONTROL_CHARACTER_FORBIDDEN"):
-        IntakeRequest(
-            target_id="checkout-prod", question="why?", idempotency_key="idem\x80-1"
-        )
+            target_id="checkout-prod", question=text, idempotency_key="idem-1"
+        ).question
+        == text
+    )

@@ -65,8 +65,23 @@ def verify_channel(principal: Principal, *, expected: AuthChannel) -> Principal:
     return principal
 
 
+#: Categories that make a stored value and its rendered audit line disagree:
+#: ``Cc`` control codes, ``Cf`` invisible formatting and bidirectional
+#: overrides, and the ``Zl``/``Zp`` separators that split a log record in two.
+_FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
+
+
 def _reject_control_text(value: str) -> str:
-    if any(category(char) == "Cc" for char in value):
+    """Reject text that cannot be read back unambiguously from an audit log.
+
+    Rejecting all of ``Cf`` also rejects the joiners some scripts use in
+    ordinary prose. That cost is accepted here: every field guarded by this
+    function is rendered into an operator-facing audit line, and failing
+    loudly on an unusual question is preferable to an identity that renders
+    as a different identity than the one that was stored.
+    """
+
+    if any(category(char) in _FORBIDDEN_CATEGORIES for char in value):
         raise ValueError("CONTROL_CHARACTER_FORBIDDEN")
     return value
 
