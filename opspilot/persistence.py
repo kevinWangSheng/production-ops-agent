@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+Connection = psycopg.Connection[dict[str, Any]]
 
 
 class PersistenceError(RuntimeError):
@@ -33,11 +36,21 @@ class DurableStore:
         self.dsn = dsn
 
     @staticmethod
-    def _db_now(conn):
-        return conn.execute("SELECT clock_timestamp() AS now").fetchone()["now"]
+    def _require_row(cursor: psycopg.Cursor[dict[str, Any]]) -> dict[str, Any]:
+        """按不变量必定返回一行的查询；取不到行说明存储状态不一致。"""
+        row = cursor.fetchone()
+        if row is None:
+            raise PersistenceError("STORAGE_UNAVAILABLE")
+        return row
+
+    @staticmethod
+    def _db_now(conn: Connection) -> datetime:
+        """唯一的当前时间来源：数据库时钟，避免应用与存储时钟不一致。"""
+        row = DurableStore._require_row(conn.execute("SELECT clock_timestamp() AS now"))
+        return cast(datetime, row["now"])
 
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator[Connection]:
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
                 conn.execute("SET LOCAL statement_timeout='5000ms'")
@@ -105,10 +118,12 @@ class DurableStore:
                 "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s) ON CONFLICT (intake_key) DO NOTHING RETURNING incident_id",
                 (incident_id, intake_key, run_id),
             ).fetchone()
-            existing = conn.execute(
-                "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
-                (intake_key,),
-            ).fetchone()
+            existing = self._require_row(
+                conn.execute(
+                    "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
+                    (intake_key,),
+                )
+            )
             if (
                 existing["incident_id"] != incident_id
                 or existing["current_run_id"] != run_id
@@ -247,12 +262,14 @@ class DurableStore:
                 (lease.run_id, logical_key),
             ).fetchone()
             if existing:
-                return existing["step_id"]
+                return cast(UUID, existing["step_id"])
             step_id = uuid4()
-            sequence = conn.execute(
-                "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
-                (lease.run_id,),
-            ).fetchone()["next_sequence"]
+            sequence = self._require_row(
+                conn.execute(
+                    "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                    (lease.run_id,),
+                )
+            )["next_sequence"]
             conn.execute(
                 "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
                 (

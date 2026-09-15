@@ -124,17 +124,20 @@ class Conclusion(DTO):
     control_generation: Count
 
 
+ConclusionReason = Literal[
+    "accepted",
+    "subject_mismatch",
+    "not_current_run",
+    "control_generation_stale",
+]
+
+
 class ConclusionAcceptance(DTO):
     """Whether a submitted conclusion becomes current or is kept as history."""
 
     accepted: bool
     disposition: Literal["current", "history_only"]
-    reason: Literal[
-        "accepted",
-        "subject_mismatch",
-        "not_current_run",
-        "control_generation_stale",
-    ]
+    reason: ConclusionReason
 
 
 def advance_run(run: Run, trigger: str, *, reason: BlockedReason | None = None) -> Run:
@@ -219,7 +222,7 @@ def evaluate_conclusion(
     return ConclusionAcceptance(accepted=True, disposition="current", reason="accepted")
 
 
-def _history_only(reason: str) -> ConclusionAcceptance:
+def _history_only(reason: ConclusionReason) -> ConclusionAcceptance:
     return ConclusionAcceptance(
         accepted=False, disposition="history_only", reason=reason
     )

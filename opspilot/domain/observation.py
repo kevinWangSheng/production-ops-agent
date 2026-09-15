@@ -93,24 +93,27 @@ class HealthSample(DTO):
     required_signals_present: bool = False
 
 
+SampleReason = Literal[
+    "adopted",
+    "session_not_authorized",
+    "session_mismatch",
+    "control_generation_stale",
+    "observation_generation_stale",
+    "health_profile_revision_mismatch",
+    "sequence_not_advancing",
+    "window_regressed",
+    "subject_state_not_adoptable",
+    "deadline_expired",
+    "suspended",
+]
+
+
 class SampleAcceptance(DTO):
     """Whether a sample is adopted or kept as history only."""
 
     accepted: bool
     disposition: Literal["adopted", "history_only"]
-    reason: Literal[
-        "adopted",
-        "session_not_authorized",
-        "session_mismatch",
-        "control_generation_stale",
-        "observation_generation_stale",
-        "health_profile_revision_mismatch",
-        "sequence_not_advancing",
-        "window_regressed",
-        "subject_state_not_adoptable",
-        "deadline_expired",
-        "suspended",
-    ]
+    reason: SampleReason
 
 
 def advance_session(session: ObservationSession, trigger: str) -> ObservationSession:
@@ -216,5 +219,5 @@ def extends_healthy_window(session: ObservationSession, sample: HealthSample) ->
     return confirms_health(session, sample)
 
 
-def _history_only(reason: str) -> SampleAcceptance:
+def _history_only(reason: SampleReason) -> SampleAcceptance:
     return SampleAcceptance(accepted=False, disposition="history_only", reason=reason)
