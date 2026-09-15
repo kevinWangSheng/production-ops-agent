@@ -392,6 +392,26 @@ Codex Code Review 与 Security Review 已在 `063f48c` 上完成。**一条 P1 i
 今天只对开发 lab 执行；③该限定已写入 PR 描述与本记录「记录、不实施」第 9 条。
 已在 thread 内回复上述理由并 resolve。
 
+`76447ef` 上返回**第二条 P1**（`persistence.py:415`，"Verify that the locked run belongs to
+the incident"）。**采纳并修复：`75abf95`。**
+
+它描述的机制有一处不成立，已在 thread 内用实测更正：`UPDATE ... WHERE incident_id=%s`
+并非「affects zero rows」——本 incident 真正的 run 的 `incident_id` 仍指向它，cancel 场景下
+那一行会被正确更新（探针实测 victim 自己的 run 为 `cancelled`/1）。
+
+但结论成立，真实机制是另一条：状态**判定**读 `current_run_id` 指向的 run，而状态**推进**按
+`incident_id` 作用于本 incident 真正的 run；两者指向不同的行时，一个外来的 running run 会把
+blocked run 的保护顶开。实测（HEAD 与 main 完全一致，**属既存问题**——main 的 JOIN 同样只按
+`r.run_id=i.current_run_id` 关联）：victim 自己的 run 为 `blocked` 时 `pause` 仍返回
+generation 1，事后 incident 为 `paused`/1 而它自己的 run 仍是 `blocked`/0。
+
+修法：run 查找补 `AND incident_id=%s`，落到 `INCONSISTENT_STATE` 且不推进任何状态。
+严格收紧、无可达行为变化（`current_run_id` 只在 `accept()` 里写成同一事务创建的那个 run，
+此后无人改写）。**修它而不修上一条的依据**：它落在 A3 第 3 条的范围内，改的正是本 PR 重写过的
+那段查找，一行收紧即可；上一条要重构 `install()` 的 DDL 执行结构，属 C 类。
+新增 `test_control_refuses_a_current_run_pointer_into_another_incident`，
+变异（去掉 `AND incident_id=%s`）转红。
+
 #### CI 状态与一个仓库级阻塞（不在本任务范围）
 
 PR #26 的 `m0-postgres` job 通过；`checks` job 在 "Secret scan and synthetic detection
