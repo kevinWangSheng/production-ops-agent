@@ -17,10 +17,21 @@
 `deepseek-v4.1-flash` 只出现在本仓库 `scripts/m0/live.py` 的响应名允许表与第三方聚合站，
 不是官方可调用 id。
 
-**此改动只换请求名，不换后端。** 官方 2026-09-10 声明 V4 Flash 已退役、
-`deepseek-v4-flash` 仅临时路由到 V4.1 Flash；仓库证据一致——
-2026-09-10T02:19Z 之后的全部已记录响应都回报 `deepseek-flash`。
+**此改动只换请求名，不换后端——但这依据供应商文档，不是逐 Run 身份记录。**
+官方定价页原文：旧名「still accepted, but the corresponding models have been retired,
+their requests are served by the DeepSeek-V4.1-Flash model」；
+2026-09-10 Change Log 另称旧名为 temporarily routed。
 因此这是把「带失效时钟的临时别名」换成「规范名」，不是模型代际迁移。
+
+**仓库证据的实际边界（独立审查更正）**：响应名分界只能定位到区间——
+`flash-results.json`（`ended` 2026-09-09T17:18:01Z，回报旧名）到
+`m002-saved-report-02`（2026-09-10T02:26:34Z，回报新名）之间约 9 小时。
+首个校准 Run `m002-saved-report-01` 起始于 2026-09-10T02:19:02Z，**位于该区间之内而非其后**，
+且其响应因身份校验失败未保留。M002 的 8 条 per-run 记录中仅 3 条有回报名，
+4 个调查 Run 完全没有模型身份字段。另 B2 冻结的 wall-time/token 值实际取材自 M002，
+M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不足）。
+初稿写成「取材自其后的 M002–M004」「02:19Z 之后的全部已记录响应本就回报 deepseek-flash」，
+是把推断写成已核查事实，已在 SPEC/C3/ROADMAP/冻结包四处更正。
 
 范围界限：不改验收步骤、不改 `feature_list.json` 的 `passes`、不重新校准冻结值、
 不改带 allocation id 的历史实验脚本。
@@ -71,6 +82,18 @@
 
 **未执行**：真实模型调用。本任务不验证新请求名在真实端点上的行为，
 该验证需要单独的实验授权与预算合同。**因此「切换已完成」不等于「新 profile 已验证」。**
+
+## 独立审查与处置
+
+审查者以全新上下文启动，未参与改动。
+
+| # | 发现 | 判定 | 处置 |
+|---|---|---|---|
+| R1 | `deepseek-flash` 是正确目标名；`deepseek-v4.1-flash` 非官方 id | **成立** | 无需修改。审查独立复核 Change Log 与定价页，两页均无 `deepseek-v4.1-flash` |
+| R1b | SPEC 只写旧名「已退役」，漏掉定价页「still accepted」 | **采纳** | SPEC/C3 补全：旧名今天仍可用，但带未标注期限的失效风险 |
+| R2 | 「只换请求名不换后端」把推断写成已核查事实 | **采纳** | 实测确认：分界是区间而非 02:19Z 时点；M002 起始于 02:19:02Z 位于区间内而非其后，首条 Run 响应未保留；8 条 per-run 仅 3 条有身份、4 个调查 Run 无身份字段；B2 的 wall-time 实际只取材 M002。四处表述已更正并标注结论依据退役公告而非身份覆盖。**实质结论（不重新校准）不变** |
+
+决策点 3–6 的审查结果待回，处置后再补入本表。
 
 ## 下一步与交接
 
