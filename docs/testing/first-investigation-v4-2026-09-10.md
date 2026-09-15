@@ -50,7 +50,11 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。
 
-> **2026-09-15 更新（仅限模型请求名一项，其余冻结项不变）**：用户决定把出站请求名改为 `deepseek-flash`。
+> **2026-09-15 更新（仅限模型请求名一项，其余冻结项不变）**：
+> **2026-09-15 用户批准以本项取代上段枚举的冻结项「模型请求/响应名称映射」，且仅此一项。**
+> 其余枚举冻结项（code、adapter、prompt、工具/schema、投影、registry、权限、预算、环境、evaluator）
+> 与「完成固定次数前不改候选」的约束继续有效，本包 Run 集仍未完成。
+> 用户决定内容：把出站请求名改为 `deepseek-flash`。
 > 上段「接口仍为显式 `deepseek-v4-flash`」保留为 2026-09-10 冻结时的原文，不改写。
 > 依据：官方 2026-09-10 Change Log 声明 V4 Flash 已退役、`deepseek-v4-flash` 仅临时路由到 V4.1 Flash。
 > 该更新只换请求名不换后端，依据是供应商文档（定价页写明旧名请求

@@ -494,7 +494,6 @@ def token_usage(response):
     # deepseek-flash 是当前官方 Flash id；其余为历史回报名，保留以便回读旧记录。
     known = {
         "deepseek-flash",
-        "DeepSeek-Flash",
         "deepseek-v4-flash",
         "deepseek-v4-flash-0731",
         "DeepSeek-V4-Flash-0731",

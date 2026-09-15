@@ -39,7 +39,7 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 
 ## 前提与完成条件
 
-- 前提：只读核对官方文档与仓库证据，本任务**不发起任何真实模型调用**，无费用。
+- 前提：核对官方文档与仓库证据；真实模型调用一次（用户 2026-09-15 明确授权），实际用量 37+64 tokens、低于 0.001 CNY。
 - 完成条件：前瞻性配置全部切换；`make check` 通过；权威来源（SPEC、C3）记录决定与依据；
   冻结包的原文保留并加注；ROADMAP 反映实际状态；独立审查完成且发现已处置。
 
@@ -92,8 +92,22 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 `unreported_or_unrecognized`。已补入 `deepseek-flash`/`DeepSeek-Flash` 并移除虚构 id，
 保留历史回报名以便回读旧记录。这个漏正是"V4.1 Flash 到底叫什么"没查清官方文档的直接后果。
 
-**未执行**：真实模型调用。本任务不验证新请求名在真实端点上的行为，
-该验证需要单独的实验授权与预算合同。**因此「切换已完成」不等于「新 profile 已验证」。**
+**已执行：一次有界真实调用（2026-09-15，用户授权）。**
+请求 `deepseek-flash` → HTTP 200、回报名 `deepseek-flash`、0.94 s、37 input / 64 output tokens。
+证据见 [`probe-2026-09-15.md`](../evidence/m0-model-profile-v41/probe-2026-09-15.md)。
+
+判定：`accepted_response_model = "deepseek-flash"` 的精确匹配 fail-closed **取值正确**，
+不会误拒真实响应——这是本次切换唯一先前未被证据定死的点，现已定死。
+
+附带观察：`finish_reason=length`，64 个 completion tokens 全部是 `reasoning_tokens`，正文为空。
+thinking enabled/high 下 `max_tokens` 必须覆盖推理预算加正文，否则得到空正文；
+这复现了历史记录里的「length 空正文」，属参数配置问题而非模型故障。
+
+用量记账：37 input / 64 output，按峰值上界保守估计低于 0.001 CNY；供应商账单未对账，
+ROADMAP B8 状态不变。
+
+**仍未验证**：单次成功不证明协议/恢复矩阵、多轮工具调用、流式续接或并发行为；
+M0 退出条件与产品验收均不因本次探针改变。
 
 ## 独立审查与处置
 
@@ -129,9 +143,12 @@ ROADMAP 记 B6 为**部分完成**，「正式可比报告、人工校准和盲�
 
 ## 下一步与交接
 
-1. **真实调用验证仍未做**：需一次有界真实请求确认 `deepseek-flash` 在官方端点可用且回报同名。
-   在此之前，SPEC 中该 profile 的「availability 与协议兼容性需 M0 验证」条款仍然成立。
-2. 独立审查：本任务涉及权威来源（SPEC/C3）变更与 fail-closed 校验收紧，需独立审查后再提 PR。
-3. [合同提案 PR #24](https://github.com/kevinWangSheng/production-ops-agent/pull/24) 的 §5 U1
+1. ~~真实调用验证~~ **已完成**（见上）。SPEC 中「协议兼容性需 M0 验证」的其余部分
+   （多轮工具、流式、恢复矩阵）仍然成立。
+2. **既有 v2 批准合同文件须重发**：`live.py:113` 对 `contract["model_profile"]` 做整字典相等比较，
+   任何仍写旧 `request_model`/`accepted_response_model` 的合同文件会直接得到
+   `LIVE_MODEL_PROFILE_MISMATCH`。这是下次真实运行第一个会撞上的东西。
+3. 独立审查：已完成三批，发现见上表。
+4. [合同提案 PR #24](https://github.com/kevinWangSheng/production-ops-agent/pull/24) 的 §5 U1
    已由本决定裁定；该 PR 合并前后需同步把 U1 标记为已决，避免留下未决项的陈旧表述。
-4. 本任务未启动任何进程或服务；worktree 在 PR 合并且确认整合后清理。
+5. 本任务未启动任何进程或服务；worktree 在 PR 合并且确认整合后清理。
