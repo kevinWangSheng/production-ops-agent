@@ -30,8 +30,8 @@ from .runtime import check_runtime
 
 ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.com"}
 MODEL_PROFILE = {
-    "request_model": "deepseek-v4-flash",
-    "accepted_response_model": "deepseek-v4-flash",
+    "request_model": "deepseek-flash",
+    "accepted_response_model": "deepseek-flash",
     "version_scope": "reported_alias",
     "thinking": "enabled",
     "reasoning_effort": "high",

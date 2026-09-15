@@ -148,7 +148,7 @@ def scenario(contract, ledger, variant="normal"):
                         or (variant == "wrong-second-model" and second)
                         else None
                         if variant == "missing-model"
-                        else "deepseek-v4-flash"
+                        else "deepseek-flash"
                     ),
                     "choices": [
                         {

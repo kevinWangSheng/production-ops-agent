@@ -1,5 +1,7 @@
 # Roadmap
 
+当前工程交付状态（2026-09-15，模型 profile）：用户决定把出站请求名从 `deepseek-v4-flash` 改为 `deepseek-flash`。依据是官方 2026-09-10 Change Log——V4 Flash 已退役，旧名仅临时路由到 V4.1 Flash，因此旧名带有未标注期限的失效风险。**此改动只换请求名不换后端**：2026-09-10T02:19Z 之后的全部已记录响应本就回报 `deepseek-flash`，B2 冻结的校准值取材自其后的 M002–M004，故不重新校准、不改验收步骤、不改 11 个 feature `passes`。前瞻性配置（`scripts/m0/config.py`、`.env.example`、`scripts/m0/live.py` 的 MODEL_PROFILE、`scripts/m0/adapters.py` 的出站调用）已切换；带 allocation id 的历史实验脚本保留原值作为历史记录。`make check` 通过（1038 passed）。见[任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。
+
 当前工程交付状态（2026-09-15）：M1-01 持久化与恢复已合并到 main。PR #19（`582ab56`）交付 PG 业务状态、租约/断点、原子预算、控制代际与人工暂停红线；PR #22（`686965f`）修复 `rebuild()` 撕裂快照、ABBA 死锁、并发幂等 `accept()` 与错误码压平四项既存缺陷。两者 main CI 均 success，本地 main 复验 `make check` 为 `1038 passed, 75 skipped, 2 xfailed`，`M1_DURABLE_POSTGRES=1` 定向测试 `21 passed`；任务分支已清理。见[任务记录](docs/tasks/2026-09-14-m1-01-durable-state.md)。
 
 合并后对 `opspilot/persistence.py` 做了一轮技术栈复核（SQL 写法、依赖选型、schema 演进机制），发现三条写路径的代际栅栏建在重复列名上且全量测试与 mypy strict 均无一能检出、两张表的 `incident_id` 缺索引、产品运行时依赖未声明（`dependencies = []` 而代码实际 import `psycopg`/`pydantic`）、schema 演进无机制。确定性缺陷、待选型决策项与待架构决策项已分类收拢于[DurableStore 技术栈与 SQL 加固](docs/tasks/2026-09-15-durable-store-hardening.md)，状态为待开始。SQL 注入面经扫描为零。本轮不改变 11 个 feature `passes`、SPEC 门槛陈述或 M1-01 验收状态。

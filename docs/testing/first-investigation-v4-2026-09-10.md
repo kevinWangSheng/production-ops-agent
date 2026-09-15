@@ -50,6 +50,14 @@ strict桥接版本显式包含配置中记录的实际Holmes upstream commit与�
 
 候选执行前固定 code、adapter、模型请求/响应名称映射、prompt、工具/schema、投影、registry、权限、预算、环境和 evaluator 的版本/hash；完成固定次数前不改候选。接口仍为显式 `deepseek-v4-flash`、thinking enabled/high，不降级或换 Pro。响应名称映射仅使用本轮已有官方 metadata 证据，不声称不变权重。
 
+> **2026-09-15 更新（仅限模型请求名一项，其余冻结项不变）**：用户决定把出站请求名改为 `deepseek-flash`。
+> 上段「接口仍为显式 `deepseek-v4-flash`」保留为 2026-09-10 冻结时的原文，不改写。
+> 依据：官方 2026-09-10 Change Log 声明 V4 Flash 已退役、`deepseek-v4-flash` 仅临时路由到 V4.1 Flash。
+> 该更新只换请求名不换后端：本包取材的 M002–M004 全部在 2026-09-10T02:19Z 之后，
+> 其已记录响应本就回报 `deepseek-flash`，故本包的资源上限与校准段**不因此重新校准**。
+> 响应名称映射相应收紧为精确匹配 `deepseek-flash`；其余冻结项、验收步骤和 `passes` 均不变。
+> 决定与证据见 [SPEC](../../SPEC.md) 的 Model priority 段与 [C3 第 5 节](../design/technical-proposal-2026-09-07.md)。
+
 首片资源上限（**2026-09-13 用户批准冻结**，原为候选）：单活跃 Run/worker；每 Run 至多4物理模型请求、20工具；总 context131072 tokens含32768输出，HTTP请求512KiB/响应2MiB，模型360秒/Run1800秒总 wall；工具单个30秒/累计240秒，均含已验证的有限清理。授权绝对 deadline、剩余费用/次数及来源自身更早期限仍优先；上限不是可同时耗尽所有维度的保证。累计预算来自所属新授权，不重置旧 unknown。
 
 ### 预算/时序校准（2026-09-13 用户批准冻结）
