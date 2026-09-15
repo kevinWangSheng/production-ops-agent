@@ -24,7 +24,7 @@
 
 ## 当前交付更新（2026-09-15）
 
-- 当前本地/远端 HEAD：`d5d7c4c`（代码基线 `0b7d095`，`feature/m1-01-durable-state`），已推送；工作区仅保留既有未跟踪 `.playwright-mcp/`。
+- 当前本地/远端 HEAD：`b81e6f9`（代码基线 `0b7d095`，含 CI 配置提交 `d5d7c4c`，`feature/m1-01-durable-state`），已推送；工作区仅保留既有未跟踪 `.playwright-mcp/`。
 - 本轮真实验证：`make check` 为 `1038 passed, 64 skipped, 2 xfailed`；mypy `Success: no issues found in 13 source files`；`M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest -q tests/integration/test_m1_durable_state_postgres.py` 为 `10 passed`。
 - 独立全新上下文审查已完成：自写 PG 探针实际验证 pause 后 `claim=CONTROL_DENIED`、`publish=False`、`follow_up/correct=ILLEGAL_TRANSITION`，resume 后 generation=2 且可重新 claim；探针 PASS。变异副本分别移除 claim paused、cancel paused、pause 写 queued、follow-up/correct paused guard，均被回归测试捕获（对应 1/3/1/1 failures）。
 - 独立审查未发现本轮 5 个提交的 paused 行为缺陷，也未发现 mypy strict、Ruff TID251 或检查接入的偷工。审查指出的两项架构 xfail 与 `persistence.py` 的 `Any`/`cast` 是已知范围外债务；已明确拒绝在本修复 PR 扩大范围，保留原始 xfail 和未完成项。
