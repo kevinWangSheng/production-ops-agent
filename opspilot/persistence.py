@@ -97,10 +97,21 @@ class DurableStore:
                 if row["incident_id"] != incident_id or row["current_run_id"] != run_id:
                     raise PersistenceError("IDENTITY_CONFLICT")
                 return
-            conn.execute(
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s)",
+            inserted = conn.execute(
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s) ON CONFLICT (intake_key) DO NOTHING RETURNING incident_id",
                 (incident_id, intake_key, run_id),
-            )
+            ).fetchone()
+            existing = conn.execute(
+                "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
+                (intake_key,),
+            ).fetchone()
+            if (
+                existing["incident_id"] != incident_id
+                or existing["current_run_id"] != run_id
+            ):
+                raise PersistenceError("IDENTITY_CONFLICT")
+            if inserted is None:
+                return
             conn.execute(
                 "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
                 (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
@@ -329,6 +340,11 @@ class DurableStore:
             elif action == "resume":
                 conn.execute(
                     "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running')",
+                    (nxt, incident_id),
+                )
+            elif action in {"follow_up", "correct"}:
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
                     (nxt, incident_id),
                 )
             conn.execute(
