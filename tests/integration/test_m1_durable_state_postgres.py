@@ -318,9 +318,10 @@ def test_old_generation_step_and_tool_writes_are_fenced():
 def test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step():
     """追问之后的新租约不得把工具结果写回追问之前那一轮的步骤。
 
-    rebuild() 的 pending_tools 不按代际过滤，仍会原样列出旧代际步骤，
-    调用方照着做就会把过期证据刷新成「当前已提交的证据」，
-    因此 commit_tool 必须在写入处按 step 的 control_generation 拦截。
+    rebuild() 的 pending_tools 已按代际过滤（见
+    test_rebuild_drops_pending_tools_from_a_superseded_generation），
+    但读路径的过滤不是写路径的授权：调用方可能拿着人工决定之前重建的断点，
+    因此 commit_tool 必须在写入处按 step 的 control_generation 独立拦截。
     """
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -340,7 +341,7 @@ def test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step():
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert fresh.control_generation == 1
 
-    assert {"step_id": step, "ordinal": 0} in store.rebuild(incident)["pending_tools"]
+    assert store.rebuild(incident)["pending_tools"] == []
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(fresh, step, 0, {"ok": True})
 
@@ -671,6 +672,44 @@ def test_a_cleared_lease_cannot_be_used_even_when_owner_and_epoch_still_match():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(lease, step, 0, {"ok": True})
     assert store.publish(lease, {"result": "no-lease"}, step_id=step) is False
+
+
+def test_rebuild_drops_pending_tools_from_a_superseded_generation():
+    """人工决定之后，旧代际的待办工具调用不再出现在断点里。
+
+    commit_tool 会按 step 的 control_generation 拒绝它们，所以照旧列出的待办
+    永远做不完；调用方每次重建都会拿到同一批做不成的工作。步骤本身仍留在
+    steps 里——那是业务记录，不因代际推进而消失。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-pending-generation-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    old_step = store.commit_step(
+        stale, "round-0", {"tool_calls": [{"id": "a"}, {"id": "b"}]}
+    )
+    store.commit_tool(stale, old_step, 0, {"ok": True})
+    assert store.rebuild(incident)["pending_tools"] == [
+        {"step_id": old_step, "ordinal": 1}
+    ]
+
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    assert [step["step_id"] for step in rebuilt["steps"]] == [old_step]
+
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    new_step = store.commit_step(fresh, "round-1", {"tool_calls": [{"id": "c"}]})
+    assert store.rebuild(incident)["pending_tools"] == [
+        {"step_id": new_step, "ordinal": 0}
+    ]
 
 
 def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():

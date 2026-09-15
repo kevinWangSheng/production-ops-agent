@@ -524,9 +524,14 @@ class DurableStore:
                 "control_generation": row["control_generation"],
                 "run": run,
                 "steps": steps,
+                # 只列出当前代际的待办工具调用。旧代际的步骤仍留在 steps 里作为
+                # 记录，但人工决定之后它们已经不该再被执行；照旧列出会让调用方
+                # 把过期证据重新提交成「当前已提交的证据」，而 commit_tool 在
+                # 写入处拒绝它们——断点会因此永远重建出做不完的待办。
                 "pending_tools": [
                     {"step_id": step["step_id"], "ordinal": ordinal}
                     for step in steps
+                    if step["control_generation"] == row["control_generation"]
                     for ordinal in range(
                         len((step["response"] or {}).get("tool_calls", []))
                     )
