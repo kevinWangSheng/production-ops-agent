@@ -225,9 +225,11 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 #### 变异验证（完成条件要求的「测试能转红」）
 
 修复后逐条把代码变异回旧写法，记录真实输出。基线（未变异）：
-`make check` = `1051 passed, 81 skipped, 2 xfailed`；
-`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py` = `27 passed`
-（实施前基线分别为 `1050 passed, 75 skipped, 2 xfailed` 与 `21 passed`）。
+`make check` = `1051 passed, 83 skipped, 2 xfailed`；
+`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py` = `29 passed`；
+`M1_DURABLE_POSTGRES=1 pytest -q` 全量 = `1080 passed, 54 skipped, 2 xfailed`
+（实施前基线分别为 `1050 passed, 75 skipped, 2 xfailed` 与 `21 passed`；
+审查修复前为 `81 skipped` / `27 passed`）。
 
 | 变异 | 转红的测试 | 全量（无 PG opt-in） |
 |---|---|---|
@@ -241,8 +243,12 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 | 租约守卫改回「NULL 视为通过」 | `test_a_cleared_lease_cannot_be_used_even_when_owner_and_epoch_still_match` | `1051 passed` |
 | `control()` 改回单条 JOIN | `test_control_distinguishes_unknown_identity_from_a_retryable_conflict` | `1051 passed` |
 | 放行名单改回只点名 `blocked` | `test_non_cancel_control_is_refused_from_every_unlisted_run_state` | `1051 passed` |
+| `rebuild()` 过滤改读 run 副本（审查发现） | `test_rebuild_filters_pending_tools_by_the_incident_generation_not_the_run_copy` | `1051 passed` |
+| 删 `_lease_revoked` 的 `owner` 子句（审查发现） | `test_lease_identity_and_deadline_each_fence_all_four_write_paths` | `1051 passed` |
+| 删 `epoch` 子句（审查发现） | 同上 | `1051 passed` |
+| 删 `deadline` 子句（审查发现） | 同上 | `1051 passed` |
 
-十次变异中，mypy strict 九次报 `Success: no issues found in 13 source files`、ruff 十次 `All checks passed!`——
+十四次变异中，mypy strict 十三次报 `Success: no issues found in 13 source files`、ruff 十四次 `All checks passed!`——
 **与复核阶段的结论一致：这一类缺陷靠 lint 与类型检查检不出来，只能靠测试。**
 其中五条（A1 四条 + 租约守卫）必须安排存储状态才能暴露，因为公开接口下两份代际
 不会分叉、`lease_until` 与 `owner` 总是被一起清空；沿用
@@ -256,6 +262,71 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 |---|---|---|
 | `UPDATE opspilot_runs ... WHERE incident_id=%s AND state IN (...)` | Seq Scan，cost 239.75，137 buffers，过滤掉 6875 行 | Index Scan，cost 8.31，3 buffers |
 | `SELECT * FROM opspilot_controls WHERE incident_id=%s` | Seq Scan，cost 652.05，378 buffers，过滤掉 30645 行 | Bitmap Index Scan，cost 33.06，2 buffers |
+
+#### 独立审查（2026-09-15，两个全新上下文 agent，未参与实现）
+
+两轮审查各自独立跑了变异实验。**均无阻断级发现。** 逐条处置：
+
+**采纳并修复（提交 `d440306`）**
+
+1. `rebuild()` 新增的代际过滤「读哪一份代际」零覆盖。审查方把它改成读 run 行副本
+   （`(run or row)["control_generation"]`，mypy 干净的等价写法），实测 `1078 passed`
+   无一转红——**这是本 PR 要修的 A1 缺陷类在读路径上的复刻**。已把权威绑成具名变量
+   并补专门用例，变异实测转红。
+2. `_lease_revoked` 的 owner / epoch / deadline 三条子句零覆盖。审查方核实这是既存
+   问题（在 `b483a12` 上删掉四份守卫的 owner/epoch 共 8 处，PG 测试同样 `21 passed`
+   无一转红），但 A3 第 2 条正是「租约守卫收敛」，合成一份后补测试的成本已最低。
+   已补用例，三条子句逐条变异转红。
+3. `test_non_cancel_control_is_refused_from_every_unlisted_run_state` 名字承诺
+   "every unlisted run state"，实际只遍历两个状态。已改为遍历
+   `RUN_EXECUTION.states` 减去四个放行状态。
+4. A2 测试对共用 lab 做 `DROP INDEX`，中途失败会把索引留在删除状态。已加
+   `finally: store.install()`。
+
+**采纳，但只能在记录层面更正（历史改写与 force-push 未获授权）**
+
+5. 提交 `059c733` 正文写「三条写路径与 publish 用 …，结果集里 `control_generation`
+   出现两次」——**对 publish 不成立**。main 的 publish SQL 里 run 侧那份已经起了别名
+   `run_generation`，审查方实测 `dup_cols=[]`。本记录 A1 节写的才是对的
+   （publish 当前不是缺陷，纳入展开的理由是可维护性）。该提交信息把 PR #23
+   机器人审查已撤回的结论重新写了回去，**以本记录与 PR 描述为准**。
+6. 提交 `99e9401` 正文写「`failed` 与 `budget_exhausted` 在 RUN_EXECUTION 里与
+   [`blocked`] 同为终态」——`blocked` **不是**终态，
+   `opspilot/domain/runs.py:70` 给它留了 `human_cancel` 与 `handoff_failed` 两条出边。
+   `failed`/`budget_exhausted`/`completed`/`cancelled` 才是终态。测试 docstring 已更正。
+7. `control()` 的可观察行为变化实际覆盖 **4 个 run 状态 16 个组合**
+   （`failed`、`budget_exhausted`、`cancelled`、`completed`），提交信息只点名了两个。
+   补充实测：见下节差分探针——**公开接口可达的状态组合零差异**。
+
+**记录、不实施（超出 A 类范围）**
+
+8. A2 的两条索引在产品代码里**没有调用方**：`opspilot/` 内零处调用 `install()`，
+   14 处全在 `tests/integration/` 与 `scripts/` 下。这与 C1 同源，C1 仍开着。
+9. `install()` 的 `CREATE INDEX` 不是 `CONCURRENTLY`，且跑在
+   `statement_timeout=5s` / `lock_timeout=4s` 的事务里；表大到一定程度会超时。
+   `CONCURRENTLY` 不能在事务块内执行，改它要动 `install()` 的结构——属 C1。
+10. `_CONTROL_OPEN_RUN_STATES` 是 run 状态词汇的第四份副本，
+    与 `opspilot/domain/runs.py:78` 的 `ACTIVE_RUN_EXECUTIONS` 差一个 `paused` 却没引用它。
+    引用它会让 persistence 依赖 domain，直接翻掉 `test_persistence_builds_on_domain`
+    的 `xfail(strict=True)`——那正是 C2 要决的事，本 PR 不代为决定。C2 的欠债因此加大一点。
+11. `cancel` 在终态 run 上仍会造成 incident/run 状态分叉（既存，非本 PR 引入）。
+12. `rebuild()` 保留三处裸 `SELECT *` 并原样返回给调用方（单表查询，无重复列风险）。
+
+#### 差分探针：公开接口可达状态下的行为对照
+
+审查发现 7 促成的复核。同一脚本分别在 HEAD 与 `b483a12` 的 `persistence.py` 下运行：
+
+- `control()` × 9 个公开接口可达场景 × 5 个 action（45 组，incident 与 run 状态
+  始终一致）：**零差异**。
+- `claim` / `reserve_budget` / `commit_step` / `commit_tool` / `publish` / `rebuild`
+  × 4 个场景（live_lease、after_pause、after_follow_up、after_cancel）：
+  **唯一差异是 `rebuild()["pending_tools"]`**——代际推进后的三个场景从
+  `[(step, 1)]` 变为 `[]`，`live_lease` 场景完全相同。写路径结果、`claim` 结果、
+  `publish` 结果、`rebuild` 的其余字段全部一致。
+
+即：`control()` 对 `cancelled`/`completed` run 状态的行为变化，只在 incident 与 run
+状态被直接改库改成互相矛盾时可见；`publish()` 与 `control('cancel')` 都在同一事务里
+同时写两边，公开接口构造不出这种状态。
 
 #### 本轮新观察到、未处理的项
 
