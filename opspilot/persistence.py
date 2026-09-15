@@ -32,6 +32,9 @@ _ERROR_CODES: tuple[tuple[type[psycopg.Error], str], ...] = (
     (errors.QueryCanceled, "TIMEOUT"),
 )
 
+# 非 cancel 的人工动作只对这些 run 状态开放；其余一律拒绝（fail closed）。
+_CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_human"})
+
 
 class PersistenceError(RuntimeError):
     pass
@@ -422,7 +425,10 @@ class DurableStore:
             # 追问与纠正不得静默解除人工暂停。
             if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if run["run_state"] == "blocked" and action != "cancel":
+            # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个
+            # 状态，`failed`/`budget_exhausted` 这类终态一旦开始被写入就会静默
+            # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
+            if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (

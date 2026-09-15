@@ -782,3 +782,36 @@ def test_control_distinguishes_unknown_identity_from_a_retryable_conflict():
     with pytest.raises(PersistenceError, match="^CONTROL_CONFLICT$"):
         store.control(incident, 9, "cancel", "operator")
     assert store.control(incident, 0, "cancel", "operator") == 1
+
+
+def test_non_cancel_control_is_refused_from_every_unlisted_run_state():
+    """非 cancel 的人工动作按放行名单判定，新终态不会静默变成「允许」。
+
+    原实现只点名 blocked。`failed` 与 `budget_exhausted` 在 RUN_EXECUTION 里
+    与 blocked 同为终态，本模块目前不写入它们，因此没有测试会发现这个不对称；
+    一旦写入路径出现，pause/resume/follow_up/correct 会直接放行。cancel 始终
+    放行——它是人工控制的兜底出口。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-terminal-run-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+
+    for run_state in ("failed", "budget_exhausted"):
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET state=%s WHERE run_id=%s", (run_state, run)
+            )
+        for action in ("pause", "resume", "follow_up", "correct"):
+            with pytest.raises(PersistenceError, match="^ILLEGAL_TRANSITION$"):
+                store.control(incident, 0, action, "operator")
+        assert store.rebuild(incident)["control_generation"] == 0
+
+    assert store.control(incident, 0, "cancel", "operator") == 1
