@@ -306,3 +306,38 @@ def test_old_generation_step_and_tool_writes_are_fenced():
         store.commit_tool(lease, step, 0, {"ok": True})
     with pytest.raises(PersistenceError, match="FINAL_STEP_REQUIRED"):
         store.publish(fresh, {"result": "old"}, step_id=step)
+
+
+def test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step():
+    """追问之后的新租约不得把工具结果写回追问之前那一轮的步骤。
+
+    rebuild() 的 pending_tools 不按代际过滤，仍会原样列出旧代际步骤，
+    调用方照着做就会把过期证据刷新成「当前已提交的证据」，
+    因此 commit_tool 必须在写入处按 step 的 control_generation 拦截。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-stale-step-tools-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert stale.control_generation == 0
+    step = store.commit_step(stale, "round-0", {"tool_calls": [{"id": "a"}]})
+
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert fresh.control_generation == 1
+
+    assert {"step_id": step, "ordinal": 0} in store.rebuild(incident)["pending_tools"]
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, step, 0, {"ok": True})
+
+    fenced = next(s for s in store.rebuild(incident)["steps"] if s["step_id"] == step)
+    assert fenced["control_generation"] == 0
+    assert fenced["status"] == "response_committed"
+    assert fenced["tool_results"] == []
