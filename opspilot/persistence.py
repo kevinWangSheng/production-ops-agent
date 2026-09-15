@@ -145,6 +145,8 @@ class DurableStore:
             )
             if active_lease:
                 raise PersistenceError("LEASE_ACTIVE")
+            if row["deadline"] <= self._db_now(conn):
+                raise PersistenceError("DEADLINE_EXCEEDED")
             if row["versions"] != versions:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
