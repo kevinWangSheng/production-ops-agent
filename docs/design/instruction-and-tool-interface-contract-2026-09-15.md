@@ -71,17 +71,24 @@ max_view_bytes / max_window_seconds / error_classes / incomplete_marker / read_o
 `Dependencies may be queried only in the supplied authorized service list: …`）后为 **24 句**。
 第 3 节的来源索引即按这 24 句编号。
 
-baseline 独有的 8 句全部是投影字段语义，例如：
+baseline 独有的 9 句分两类。**其中 8 句是投影字段语义**，例如：
 
 > For trace omissions, report `actual_visible_span_count`, not `display_max_spans`.
 > Error details may exist in raw but be omitted from this view: inspect `error_detail_coverage`.
 > For logs, `backend_returned_hit_count` and `backend_total_hits` are not model-visible records.
 
 这些字段只存在于 baseline 的工具投影（`holmes_baseline.py`、`trace_view.py`、`legacy_projections.py`），
-replay 工具面没有它们。**所以第二份 L1 不是复制粘贴的疏忽，是必然结果**：
+replay 工具面没有它们。
+
+**第 9 句是另一类**，即第 24 句
+`Dependencies may be queried only in the supplied authorized service list: …`——
+它按 scope 运行时拼接授权服务列表，属 L1b 实例值（见 1.1 规则 2），
+**不随那 8 句迁往 L3**。两类的去向不同，故在此分开点名。
+
+**所以第二份 L1 不是复制粘贴的疏忽，是必然结果**：
 L1 里写了只对某一个工具面成立的知识，换工具面就必须再分叉一次。
 
-这恰好证明第 1 节分层的必要性：这 8 句属于 L3（工具描述的 D5 反误读句，见 2.2），不属于 L1。
+这恰好证明第 1 节分层的必要性：那 8 句属于 L3（工具描述的 D5 反误读句，见 2.2），不属于 L1。
 留在 L1 的代价是它们绑定 `prompt_revision`，而 `prompt_revision` 绑定所有在途 Run——
 改一个工具投影字段名会让无关的调查 Run 全部 blocked。
 
