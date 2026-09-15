@@ -42,3 +42,12 @@
 ## 交付规范更新
 
 项目交付规则已补充：PR 必须实际处于可合并状态；每条 code review 必须明确采纳并修复或拒绝并说明依据；采纳后重新验证并取得覆盖当前 HEAD 的复审，拒绝后回复并 resolve；状态仅在这些条件满足后流转为“PR 已就绪，待用户审核合并”。
+
+## P1 thread 处置与最终复验（2026-09-15）
+
+- 机器人审查曾提出 5 条 P1：`waiting_human`/`blocked` 控制闭合、queued follow-up/correct generation 重绑定、claim incident generation 同名列覆盖、publish final step generation fence、commit_tool step generation fence。
+- 5 条均已采纳并修复，新增 PG 回归测试；每条均已在 PR 回复“采纳并修复”并 resolve。
+- 独立复审随后发现第 6 条 P1：`blocked` Run 上除 cancel 外的控制会先改 incident 状态造成不一致。已在 `d1bc5dc` 修复为 `ILLEGAL_TRANSITION` fail-closed，并新增回归断言；该 finding 已由独立复验确认关闭。
+- 当前代码复验：M1 PG `13 passed`；blocked 的 pause/resume/follow_up/correct 均拒绝、cancel 正确完成；waiting_human 流程和 step-generation 变异均通过。
+- 最新 CI（修复提交前一轮代码变更）checks 与 m0-postgres 均 SUCCESS；m0-postgres 已启用 M1 PG。`d1bc5dc` 推送后等待对应新一轮 CI。
+- 最新机器人普通 code review 已覆盖此前文档同步 HEAD 且无新 finding；`d1bc5dc` 为后续代码修复，已重新手动触发审查。security review 仍因额度不足，不作为门槛。
