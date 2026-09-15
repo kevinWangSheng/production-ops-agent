@@ -405,10 +405,15 @@ class DurableStore:
                 raise PersistenceError("CONTROL_CONFLICT")
             if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
                 raise PersistenceError("INVALID_INPUT")
+            # 连 incident_id 一起查：状态判定读的是这一行，而下面的状态推进按
+            # incident_id 作用于本 incident 真正的 run。两者指向不同的行时，一个
+            # 外来的 running run 会把 blocked run 的保护顶开——实测 incident 停在
+            # paused 而它自己的 run 仍是 blocked。只按 run_id 查会让守卫读到不属于
+            # 这个 incident 的状态，因此先判为不一致，不推进任何状态。
             run = (
                 conn.execute(
-                    "SELECT state AS run_state FROM opspilot_runs WHERE run_id=%s FOR UPDATE",
-                    (row["current_run_id"],),
+                    "SELECT state AS run_state FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
+                    (row["current_run_id"], incident_id),
                 ).fetchone()
                 if row["current_run_id"] is not None
                 else None

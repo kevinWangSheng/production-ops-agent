@@ -954,3 +954,71 @@ def test_lease_identity_and_deadline_each_fence_all_four_write_paths():
             (run,),
         )
     assert_all_paths_denied(lease, step)
+
+
+def test_control_refuses_a_current_run_pointer_into_another_incident():
+    """`current_run_id` 指向别的 incident 的 run 时，状态判定不得读那一行。
+
+    状态判定读 `current_run_id` 指向的 run，而状态推进按 `incident_id` 作用于本
+    incident 真正的 run。两者指向不同的行时，一个外来的 running run 会把 blocked
+    run 的保护顶开：实测（修复前，且 main 行为相同）victim 自己的 run 是 blocked，
+    `pause` 仍返回 generation 1，事后 incident 为 paused/1 而它自己的 run 仍是
+    blocked/0——incident 与它的 run 就此不一致。
+
+    该状态公开接口构造不出（`current_run_id` 只在 accept() 里写成同一事务创建的
+    那个 run，此后无人改写），因此直接安排存储状态。
+    """
+    store = DurableStore(DSN)
+
+    def accepted(tag: str) -> tuple[UUID, UUID]:
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-cross-incident-{tag}-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        return incident, run
+
+    victim, victim_run = accepted("victim")
+    other, other_run = accepted("other")
+    store.claim(other, other_run, uuid4(), {"state": "v1"}, lease_seconds=300)
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s", (victim_run,)
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (other_run, victim),
+        )
+
+    # blocked 的 run 本就不接受非 cancel 动作；外来的 running run 不得代它放行。
+    for action in ("pause", "resume", "follow_up", "correct", "cancel"):
+        with pytest.raises(PersistenceError, match="^INCONSISTENT_STATE$"):
+            store.control(victim, 0, action, "operator")
+
+    # 拒绝必须发生在推进任何状态之前：代际、incident 状态、审计行都不得变动。
+    with store.transaction(snapshot=True) as conn:
+        incident_row = conn.execute(
+            "SELECT state,control_generation FROM opspilot_incidents WHERE incident_id=%s",
+            (victim,),
+        ).fetchone()
+        audits = conn.execute(
+            "SELECT count(*) AS n FROM opspilot_controls WHERE incident_id=%s",
+            (victim,),
+        ).fetchone()["n"]
+        own = conn.execute(
+            "SELECT state,control_generation FROM opspilot_runs WHERE run_id=%s",
+            (victim_run,),
+        ).fetchone()
+        foreign = conn.execute(
+            "SELECT state,control_generation FROM opspilot_runs WHERE run_id=%s",
+            (other_run,),
+        ).fetchone()
+    assert incident_row == {"state": "queued", "control_generation": 0}
+    assert audits == 0
+    assert own == {"state": "blocked", "control_generation": 0}
+    assert foreign == {"state": "running", "control_generation": 0}
