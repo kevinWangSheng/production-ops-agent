@@ -140,28 +140,41 @@ commit_tool / control / publish / rebuild`；八处 `UPDATE opspilot_runs` 无�
 即**今天 blocked Run 的唯一出路是 cancel**。实现 L1/L2/L3 版本化之前，
 需要先补上 C3 第 7 节承诺的迁移或新建路径，否则一次 bump 等于强制取消在途调查。
 
-### 1.3 授权范围变化不得触发 `INCOMPATIBLE_STATE`
+### 1.3 三种变化，三套机制，不得互相顶替
 
-这是 L3a/L3b 必须分开的直接理由，不是洁癖。若把 D2/D3 的运行时内容算进
-`tool_schema_revision`，会形成这条链路：
+L3a/L3b 必须分开的直接理由，是下面三类变化的处置各不相同。混淆任意两类都会产生错误的
+operator 可见状态与错误的恢复路径。
 
-```
-授权范围收紧 → 描述内的服务枚举改变 → versions 改变
-→ persistence.py 的 versions 比对失配 → state='blocked'
-→ blocked 除 cancel 外无转移 → 在途调查被强制取消
-```
+| 变化 | 机制 | 在途 Run |
+|---|---|---|
+| **合同变更**：工具名、描述模板、参数、上限、错误语义 | `tool_schema_revision` → `versions` 比对 | 被重新领取时 `blocked(INCOMPATIBLE_STATE)` |
+| **实例变化**：同一授权内的窗口推进、目标集合在授权范围内变动 | 每 Run `tool_face_sha256`，记录不比对 | 继续 |
+| **授权收紧 / suspension** | C3 第 4 节的 **scope generation / 控制版本** | **在途结果失效，需显式重新授权** |
 
-C3 第 5 节明确要求「取消和**权限收紧即时生效**，不受旧快照覆盖」，
-即权限收紧是正常操作而非异常路径。而 PRODUCT-CONSTRAINTS
-「Runtime and human control requirements」要求
-*Worker restart, model-provider outage, tool failure or late completion
-**must not silently lose work** or erase a newer human decision*。
+**第三行不是本合同新增的机制，是既有合同。** C3 第 4 节「全局与目标级暂停」规定：
 
-因此：**授权范围变化要的是新的实例快照，不是新的合同版本。**
-`tool_face_sha256` 随之改变并被记录，`versions` 不变，Run 继续。
-只有工具模板本身（名称、描述文字、参数、上限、错误语义）变化才是合同变更。
+> 暂停事务增加对应 scope generation。任务领取、模型预算预留、网关发起请求及结果采纳均校验
+> 当前全局/目标控制版本；**暂停使相关在途结果失效**，仅保留历史……
+> 解除暂停只移除该层阻挡，不自动恢复旧任务、旧观察授权或采样窗口。**受影响主体需显式恢复/重新授权**。
 
-同理，窗口推进、target 集合在授权内的增减都属实例层。
+因此本节的规定只有一条，且是**否定式**的：
+
+**授权收紧不得经由 `versions` 比对触发 `INCOMPATIBLE_STATE`。**
+
+理由不是「让 Run 继续跑」——恰恰相反，授权收紧**必须**让在途结果失效。
+理由是走错机制会产生错误语义：`INCOMPATIBLE_STATE` 的含义是「状态版本不兼容」，
+其恢复路径是显式迁移或基于业务事实新建 Run；而授权收紧的含义是「权限被收回」，
+其恢复路径是解除暂停后**显式重新授权**。两者的 operator 可见状态、审计记录与恢复动作都不同。
+用前者表达后者，会把一次正常的权限操作记成版本事故，并走上错误的恢复路径。
+
+**具体到本合同**：描述里内联的服务枚举（D3）随授权范围变化而变化。
+该变化计入 `tool_face_sha256`（可回溯实际送模字节），
+**不**计入 `tool_schema_revision`（不是合同变更）；
+而是否终止在途调查，由 C3 第 4 节的 scope generation 独立决定，与这两个哈希都无关。
+
+这样才同时满足 C3「取消和权限收紧即时生效」与 PRODUCT-CONSTRAINTS
+*must not silently lose work*：work 不会被**版本机制**悄悄作废，
+而权限机制该作废的照常作废，且 operator 看到的是「已暂停、需重新授权」而不是「状态不兼容」。
 
 ## 2. 工具的模型可见面
 
@@ -443,5 +456,9 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
    检查的是覆盖与标注的完整性，不是要求每句都有失败背书。
    **载体**：索引以结构化数据为准，与 L1 单一来源模块同处存放（每句一条记录：
    句子、来源、性质），第 3 节的表格由它生成。静态检查读结构化数据，不解析 Markdown。
-7. 仅授权范围变化（服务枚举增减、窗口推进）时，`versions` 不变、Run 不进 blocked，
-   而 `tool_face_sha256` 改变并被记录 → 测试断言两者的变与不变。
+7. 三类变化各走各的机制（对应 1.3 的表），分别断言：
+   - 实例变化（同一授权内窗口推进）→ `versions` 不变、Run 不进 blocked、
+     `tool_face_sha256` 改变并被记录；
+   - 合同变更（模板字节改变）→ `versions` 改变、被重新领取的 Run 进 `blocked`；
+   - 授权收紧 / suspension → 走 scope generation，在途结果失效且需显式重新授权，
+     **且 Run 不得进入 `blocked(INCOMPATIBLE_STATE)`**（断言这条状态不被误用）。
