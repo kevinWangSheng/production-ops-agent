@@ -8,7 +8,7 @@ enter a domain object by accident.
 from collections.abc import Mapping
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 ErrorCode = Literal[
     "INVALID_INPUT",
@@ -43,6 +43,23 @@ class DTO(BaseModel):
     model_config = ConfigDict(
         extra="forbid", strict=True, frozen=True, hide_input_in_errors=True
     )
+
+
+def sanitized_errors(exc: ValidationError) -> list[dict[str, object]]:
+    """Render a validation failure without the value that was rejected.
+
+    ``hide_input_in_errors`` only reaches ``str(exc)``. ``exc.errors()`` and
+    ``exc.json()`` still carry the rejected input, and those are the paths a
+    structured logger takes, so a refused credential would be exported by the
+    very failure that refused it. This is the only sanctioned way to render a
+    ``ValidationError`` in product code; ``tests/test_architecture.py`` keeps
+    the raw accessors out of ``opspilot/``.
+    """
+
+    return [
+        {"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+        for error in exc.errors()
+    ]
 
 
 class StateMachine:
