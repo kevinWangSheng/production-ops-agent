@@ -149,6 +149,16 @@ ROADMAP 记 B6 为**部分完成**，「正式可比报告、人工校准和盲�
 在此之前，摘要的新鲜度由批准方承担：准备批准合同时须实际调用 `/models` 并取其摘要，
 不得沿用旧值。这一点须在下一次真实实验的合同准备中明确执行。
 
+**CI 曾因此红过一次（`2c0965b`，m0-postgres）**：
+`tests/integration/test_m0_live_postgres.py` 的 `packet()` 直接构造合同、绕过 `validate()`，
+缺 `models_metadata_sha256` 导致 `claim()` KeyError（3 个用例）。已补该字段。
+本地 `make check` 跳过 PG 用例（`M0_B_POSTGRES` 未设），因此首轮未发现——
+此类改动须另跑 PG 套件或以临时库验证。
+
+已用临时库端到端验证（不触碰既有 lab 的 63 行历史数据）：
+新建表含 `models_metadata_sha256` 列；`claim()` 写入后可回读；
+删列后 `claim()` 被拒绝（`BudgetError: STORAGE_UNAVAILABLE`），守卫生效。
+
 **lab schema 需重建。** `m0_live_once` 新增 `models_metadata_sha256 NOT NULL` 列，
 `claim()` 按既有模式加了守卫（`SELECT models_metadata_sha256 ... LIMIT 0`），
 缺该列的旧 lab 库会在消费授权和发起 HTTP 之前被拒绝。
