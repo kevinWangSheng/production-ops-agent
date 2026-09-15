@@ -125,6 +125,7 @@ class QueryScope:
     run_id: str
     control_generation: int
     registry_revision: str
+    tool_registry_revision: str
     target_ids: frozenset[str]
     tool_names: frozenset[str]
     window: Window
@@ -140,6 +141,7 @@ class QueryScope:
                 self.subject_id,
                 self.run_id,
                 self.registry_revision,
+                self.tool_registry_revision,
             )
         ):
             raise ToolContractError("INVALID_SCOPE")
@@ -323,6 +325,7 @@ class ReadOnlyToolExecutor:
             requested_tool=request.tool_name,
             requested_target=request.target_ref,
             registry_revision=self._targets.revision,
+            tool_registry_revision=self._tools.revision,
             started_at=self._clock.now(),
         )
         resolved = self._authorize(operation, request)
@@ -344,6 +347,8 @@ class ReadOnlyToolExecutor:
         if self._targets.revision != scope.registry_revision:
             # The authorization was written against a different target set.
             return self._refuse(operation, "denied", "TARGET_REGISTRY_CHANGED")
+        if self._tools.revision != scope.tool_registry_revision:
+            return self._refuse(operation, "denied", "TOOL_REGISTRY_CHANGED")
         registration = self._tools.lookup(request.tool_name)
         if registration is None:
             return self._refuse(operation, "denied", "TOOL_NOT_REGISTERED")
@@ -583,6 +588,7 @@ class ReadOnlyToolExecutor:
             "source": registration.source,
             "target_id": plan.target.target_id,
             "registry_revision": operation.registry_revision,
+            "tool_registry_revision": operation.tool_registry_revision,
             "projection_revision": PROJECTION_REVISION,
             "query": dict(plan.params),
             "window": plan.window.as_json(),

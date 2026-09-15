@@ -181,6 +181,7 @@ def _scope(**overrides):
         "run_id": "run-9",
         "control_generation": 7,
         "registry_revision": "abc",
+        "tool_registry_revision": "def",
         "target_ids": frozenset({"checkout-prod"}),
         "tool_names": frozenset({"metrics.range_query"}),
         "window": Window(WINDOW_START, WINDOW_END),
@@ -200,6 +201,8 @@ def _scope(**overrides):
         ({"control_generation": -1}, "INVALID_CONTROL_GENERATION"),
         ({"deadline": datetime(2026, 9, 14, 2)}, "INVALID_DEADLINE"),
         ({"registry_revision": ""}, "INVALID_SCOPE"),
+        ({"tool_registry_revision": ""}, "INVALID_SCOPE"),
+        ({"tool_registry_revision": None}, "INVALID_SCOPE"),
         ({"target_ids": {"checkout-prod"}}, "INVALID_SCOPE_NAMES"),
     ],
 )

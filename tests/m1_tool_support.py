@@ -144,7 +144,7 @@ def target(**overrides):
     return RegisteredTarget(**fields)
 
 
-def scope(targets, tools=None, **overrides):
+def scope(targets, tools=None, *, tool_registry, **overrides):
     fields = {
         "scope_id": "scope-1",
         "subject_kind": "incident",
@@ -152,6 +152,7 @@ def scope(targets, tools=None, **overrides):
         "run_id": "run-9",
         "control_generation": 7,
         "registry_revision": targets.revision,
+        "tool_registry_revision": tool_registry.revision,
         "target_ids": frozenset({"checkout-prod"}),
         "tool_names": frozenset({"metrics.range_query"}),
         "window": Window(WINDOW_START, WINDOW_END),
@@ -207,7 +208,9 @@ def build(
     sink = sink if sink is not None else RecordingSink()
     control = control if control is not None else FixedControl()
     executor = ReadOnlyToolExecutor(
-        scope=scope(target_registry, **(scope_overrides or {})),
+        scope=scope(
+            target_registry, tool_registry=tool_registry, **(scope_overrides or {})
+        ),
         tools=tool_registry,
         targets=target_registry,
         transport=transport,

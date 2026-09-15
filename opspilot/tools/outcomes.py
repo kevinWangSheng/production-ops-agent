@@ -44,7 +44,7 @@ __all__ = [
 
 # Version of the raw -> view projection. Stored with every evidence record so a
 # later reader can tell which projection produced the view it is reading.
-PROJECTION_REVISION = "m1-01-tool-view-v1"
+PROJECTION_REVISION = "m1-01-tool-view-v2"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -64,6 +64,7 @@ DENIED_REASONS = frozenset(
         "TIME_BUDGET_EXHAUSTED",
         "TOOL_NOT_IN_SCOPE",
         "TOOL_NOT_REGISTERED",
+        "TOOL_REGISTRY_CHANGED",
         "WINDOW_OUT_OF_SCOPE",
         "WINDOW_TOO_LARGE",
     }
@@ -165,6 +166,7 @@ class ToolOperation:
     requested_tool: object
     requested_target: object
     registry_revision: str
+    tool_registry_revision: str
     tool: str | None = None
     tool_version: str | None = None
     source: str | None = None
@@ -199,6 +201,7 @@ class ToolOperation:
             if isinstance(self.requested_target, str)
             else repr(self.requested_target),
             "registry_revision": self.registry_revision,
+            "tool_registry_revision": self.tool_registry_revision,
             "tool": self.tool,
             "tool_version": self.tool_version,
             "source": self.source,

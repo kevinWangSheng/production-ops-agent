@@ -323,7 +323,24 @@ class ToolRegistry(_FrozenIndex):
         super().__init__(
             entries,
             [
-                [name, entries[name].version, entries[name].source, entries[name].verb]
+                {
+                    "name": name,
+                    "version": entries[name].version,
+                    "source": entries[name].source,
+                    "verb": entries[name].verb,
+                    "parameters": {
+                        key: {"kind": spec.kind, "required": spec.required}
+                        for key, spec in entries[name].parameters.items()
+                    },
+                    "result_path": entries[name].result_path,
+                    "request_timeout_seconds": entries[name].request_timeout_seconds,
+                    "max_result_bytes": entries[name].max_result_bytes,
+                    "max_view_bytes": entries[name].max_view_bytes,
+                    "max_window_seconds": entries[name].max_window_seconds,
+                    "error_classes": dict(entries[name].error_classes),
+                    "incomplete_marker": entries[name].incomplete_marker,
+                    "read_only": entries[name].read_only,
+                }
                 for name in sorted(entries)
             ],
         )
