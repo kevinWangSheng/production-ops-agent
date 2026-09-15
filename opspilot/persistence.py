@@ -153,7 +153,7 @@ class DurableStore:
                     (run_id,),
                 )
                 incompatible = True
-            elif row["incident_state"] in {"completed", "cancelled"}:
+            elif row["incident_state"] in {"completed", "cancelled", "paused"}:
                 raise PersistenceError("CONTROL_DENIED")
             elif row["state"] not in ("queued", "running"):
                 raise PersistenceError("CONTROL_DENIED")
@@ -340,7 +340,7 @@ class DurableStore:
                 )
             elif action == "pause":
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
+                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
                     (nxt, incident_id),
                 )
             elif action == "resume":
@@ -380,7 +380,7 @@ class DurableStore:
                 or row["epoch"] != lease.epoch
                 or row["control_generation"] != lease.control_generation
                 or row["run_state"] != "running"
-                or row["state"] in {"completed", "cancelled"}
+                or row["state"] in {"completed", "cancelled", "paused"}
                 or row["lease_until"] is None
                 or row["lease_until"] <= self._db_now(conn)
                 or row["deadline"] <= self._db_now(conn)

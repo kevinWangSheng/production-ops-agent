@@ -139,3 +139,33 @@ def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_step(lease, "old", {"result": "stale"})
     assert store.control(incident, 1, "correct", "operator") == 2
+
+
+def test_paused_incident_cannot_be_claimed_or_published():
+    """人工暂停期间不得领取新租约，也不得发布结论。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-paused-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "round-0", {"result": "supported"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["run"]["state"] == "paused"
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.publish(lease, {"result": "supported"}, step_id=step) is False
+    assert store.rebuild(incident)["conclusion"] is None
+
+    assert store.control(incident, 1, "resume", "operator") == 2
+    resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert resumed.control_generation == 2
