@@ -141,6 +141,10 @@ class DurableStore:
               budget_spent bigint NOT NULL DEFAULT 0, budget_unknown bigint NOT NULL DEFAULT 0,
               deadline timestamptz NOT NULL, versions jsonb NOT NULL, input_watermark integer NOT NULL DEFAULT 0
             );
+            -- PostgreSQL 不为外键列自动建索引。control() 按 incident_id 推进 run
+            -- 状态，前置的 incident 行锁把 worker 写路径排在这条 UPDATE 之后，
+            -- 全表扫描会随表增长直接变成写路径的排队时间。
+            CREATE INDEX IF NOT EXISTS opspilot_runs_incident_id_idx ON opspilot_runs(incident_id);
             CREATE TABLE IF NOT EXISTS opspilot_steps (
               step_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL, status text NOT NULL, response jsonb,
@@ -153,6 +157,8 @@ class DurableStore:
               action text NOT NULL, expected_generation integer NOT NULL,
               resulting_generation integer NOT NULL, actor text NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
             );
+            -- 同上：审计行按 incident 读取，且外键列无索引时父行的键变更要扫全表。
+            CREATE INDEX IF NOT EXISTS opspilot_controls_incident_id_idx ON opspilot_controls(incident_id);
             CREATE TABLE IF NOT EXISTS opspilot_budget_reservations (
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)

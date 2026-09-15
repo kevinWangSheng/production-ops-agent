@@ -671,3 +671,36 @@ def test_a_cleared_lease_cannot_be_used_even_when_owner_and_epoch_still_match():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(lease, step, 0, {"ok": True})
     assert store.publish(lease, {"result": "no-lease"}, step_id=step) is False
+
+
+def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
+    """两张表的 `incident_id` 必须有索引，且 install() 对已建好的库也补得上。
+
+    PostgreSQL 不为外键列建索引。control() 的 `UPDATE opspilot_runs ...
+    WHERE incident_id=%s` 因此走 Seq Scan，而三条写路径都排在它持有的
+    incident 行锁之后，全表扫描的时间直接变成写路径的排队时间。
+    """
+    store = DurableStore(DSN)
+    store.install()
+    expected = {
+        ("opspilot_runs", "opspilot_runs_incident_id_idx"),
+        ("opspilot_controls", "opspilot_controls_incident_id_idx"),
+    }
+
+    # 先删掉再 install()：断言的是「已有数据库上也会补建」，不是「建表时顺手建了」。
+    with store.transaction() as conn:
+        for _, index in expected:
+            conn.execute(f"DROP INDEX IF EXISTS {index}")
+    store.install()
+
+    with store.transaction(snapshot=True) as conn:
+        actual = {
+            (row["tablename"], row["indexname"]): row["indexdef"]
+            for row in conn.execute(
+                "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE indexname = ANY(%s)",
+                ([index for _, index in expected],),
+            ).fetchall()
+        }
+    assert set(actual) == expected, f"缺少 incident_id 索引：{expected - set(actual)}"
+    for definition in actual.values():
+        assert "(incident_id)" in definition, definition
