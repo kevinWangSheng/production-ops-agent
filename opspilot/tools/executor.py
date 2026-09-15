@@ -519,9 +519,15 @@ class ReadOnlyToolExecutor:
             adopted=not invalid,
         )
         if invalid:
-            self._register(record)  # history only; adoption already refused
+            registered = self._register(
+                record
+            )  # history only; adoption already refused
             return self._refuse(
-                operation, "denied", invalid, "confirmed", evidence=record
+                operation,
+                "denied",
+                invalid,
+                "confirmed",
+                evidence=record if registered else None,
             )
         if not self._register(record):
             # Evidence must be committed before it may be consumed.
