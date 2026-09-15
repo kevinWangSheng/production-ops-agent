@@ -61,10 +61,11 @@ class DurableStore:
             );
             CREATE TABLE IF NOT EXISTS opspilot_steps (
               step_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
-              logical_key text NOT NULL, status text NOT NULL, response jsonb,
+              sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL, status text NOT NULL, response jsonb,
               tool_results jsonb NOT NULL DEFAULT '[]'::jsonb, control_generation integer NOT NULL,
               UNIQUE(run_id, logical_key)
             );
+            ALTER TABLE opspilot_steps ADD COLUMN IF NOT EXISTS sequence integer NOT NULL DEFAULT 0;
             CREATE TABLE IF NOT EXISTS opspilot_controls (
               audit_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
               action text NOT NULL, expected_generation integer NOT NULL,
@@ -231,11 +232,16 @@ class DurableStore:
             if existing:
                 return existing["step_id"]
             step_id = uuid4()
+            sequence = conn.execute(
+                "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                (lease.run_id,),
+            ).fetchone()["next_sequence"]
             conn.execute(
-                "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'response_committed',%s,%s)",
+                "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
                 (
                     step_id,
                     lease.run_id,
+                    sequence,
                     logical_key,
                     Jsonb(response),
                     lease.control_generation,
@@ -331,7 +337,9 @@ class DurableStore:
             )
             return nxt
 
-    def publish(self, lease: Lease, conclusion: dict[str, Any]) -> bool:
+    def publish(
+        self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
+    ) -> bool:
         with self.transaction() as conn:
             row = conn.execute(
                 "SELECT i.*,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,r.control_generation AS run_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
@@ -360,6 +368,17 @@ class DurableStore:
                     ),
                 )
                 return False
+            final_step = conn.execute(
+                "SELECT response,status FROM opspilot_steps WHERE step_id=%s AND run_id=%s FOR UPDATE",
+                (step_id, lease.run_id),
+            ).fetchone()
+            if (
+                not final_step
+                or final_step["status"]
+                not in {"response_committed", "tool_result_committed"}
+                or final_step["response"] != conclusion
+            ):
+                raise PersistenceError("FINAL_STEP_REQUIRED")
             conn.execute(
                 "UPDATE opspilot_incidents SET conclusion=%s WHERE incident_id=%s",
                 (Jsonb(conclusion), lease.incident_id),
@@ -381,7 +400,7 @@ class DurableStore:
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
             steps = conn.execute(
-                "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY step_id",
+                "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
                 (row["current_run_id"],),
             ).fetchall()
             return {

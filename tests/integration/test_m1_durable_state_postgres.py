@@ -35,7 +35,7 @@ def test_commit_visibility_restart_control_late_and_budget():
     assert store.rebuild(incident)["steps"][0]["status"] == "response_committed"
     generation = store.control(incident, 0, "cancel", "operator")
     assert generation == 1
-    assert store.publish(lease, {"result": "supported"}) is False
+    assert store.publish(lease, {"result": "supported"}, step_id=step) is False
     rebuilt = store.rebuild(incident)
     assert rebuilt["control_generation"] == 1
     assert rebuilt["conclusion"] is None
@@ -92,12 +92,13 @@ def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
     assert store.control(incident, 1, "resume", "operator") == 2
     resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert resumed.control_generation == 2
-    assert store.publish(resumed, {"result": "supported"}) is True
+    final_step = store.commit_step(resumed, "final", {"result": "supported"})
+    assert store.publish(resumed, {"result": "supported"}, step_id=final_step) is True
     with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
         store.control(incident, 2, "resume", "operator")
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.publish(lease, {"result": "late"}) is False
+    assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
 
 
 def test_expired_lease_cannot_publish_or_reserve():
@@ -119,4 +120,4 @@ def test_expired_lease_cannot_publish_or_reserve():
         )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.reserve_budget(lease, uuid4(), 1)
-    assert store.publish(lease, {"result": "expired"}) is False
+    assert store.publish(lease, {"result": "expired"}, step_id=uuid4()) is False
