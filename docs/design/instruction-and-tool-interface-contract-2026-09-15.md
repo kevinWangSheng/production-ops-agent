@@ -205,9 +205,18 @@ D5 是最容易被省略也最有价值的一项。`otel_services` 的「Listing
 
 ### 2.3 硬性禁止
 
-- 描述里不得出现凭据、endpoint、target 标识或任何 `RESERVED_PARAMETERS` 中的名字
-  （PRODUCT-CONSTRAINTS：*Credentials and secret-bearing raw inputs must not enter prompts or exported traces*；
-  `registry.py` 已在注册侧拒绝这些参数名，描述侧需要同样的检查）。
+- **(a) 保密**：描述不得泄露凭据、认证信息，或具体的 `endpoint` / `base_url` / `credential_ref`
+  （PRODUCT-CONSTRAINTS：*Credentials and secret-bearing raw inputs must not enter prompts or exported traces*）。
+- **(b) 权限**：描述不得出现让模型自行选择 target 或 endpoint 的语义。
+  这与 `RESERVED_PARAMETERS` 的原意一致——`registry.py` 的注释写明该常量管的是
+  *Parameter names the gateway resolves itself… so a model-proposed call can never choose
+  an endpoint, a target or an authentication header*，实际用法也只作用于参数键集合
+  （`RESERVED_PARAMETERS & set(self.parameters)`）。
+
+  **明确不属于禁止项**：授权范围内的服务名枚举与实例标识，是 D1/D3 要求必须写进描述的内容
+  （D1 范例内嵌 `integration_id`，D3 范例内嵌 `Available services: [...]`）。
+  参数键规则不可平移到自由文本：那会禁止自己的范例，也会拦掉
+  「Do not supply a target; the runner binds it.」这类正确描述。
 - 描述不得承诺执行器不保证的行为（例如「returns all spans」而投影实际采样）。
 - 描述不得引用测试故障类别、注入参数或答案（ADR-0002；`docs/testing/initial-investigation-coverage.md`）。
 
@@ -389,10 +398,12 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
    或**参数层投影**未覆盖 `ParameterSpec.description` → 测试转红（两处分别断言）。
 3. 工具描述缺 D1–D5 任一项 → 注册期 `ToolContractError`。
    D2/D3 的运行时部分在实例化期校验，不在注册期。
-7. 仅授权范围变化（服务枚举增减、窗口推进）时，`versions` 不变、Run 不进 blocked，
-   而 `tool_face_sha256` 改变并被记录 → 测试断言两者的变与不变。
-4. 描述中出现 `RESERVED_PARAMETERS` 名称或凭据形态字符串 → 注册期拒绝。
+4. 两项独立检查，**都不做描述全文关键词匹配**：
+   - 凭据形态正则（`sk-` 前缀、`Bearer`、URL 内含凭据等）命中描述 → 拒绝；
+   - 参数名集合检查 `RESERVED_PARAMETERS & set(parameters)` → 拒绝（作用于参数键，不作用于描述文本）。
 5. `versions` 不一致的续跑 → `blocked(INCOMPATIBLE_STATE)`（已有，需补 prompt/tool 维度用例）。
 6. 第 3 节表格覆盖 L1 全集的每一句，且每句的来源字段非空 → 静态检查。
    来源字段允许取值「无记录来源」，但必须同时给出性质标注；
    检查的是覆盖与标注的完整性，不是要求每句都有失败背书。
+7. 仅授权范围变化（服务枚举增减、窗口推进）时，`versions` 不变、Run 不进 blocked，
+   而 `tool_face_sha256` 改变并被记录 → 测试断言两者的变与不变。
