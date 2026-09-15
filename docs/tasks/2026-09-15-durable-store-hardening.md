@@ -75,13 +75,7 @@ EXPLAIN SELECT * FROM opspilot_controls WHERE incident_id=%s
 `opspilot_steps` 与 `opspilot_budget_reservations` 由各自的 `UNIQUE(run_id, ...)`
 前缀覆盖，不受影响。缺索引的是 `opspilot_runs` 与 `opspilot_controls` 两张表。
 
-### A3　`claim()` 的 `assert` 在 `python -O` 下被剥离
-
-`persistence.py:238` 的 `assert lease is not None` 是返回值的唯一保护。
-实测 `python -O` 下该断言被剥离，函数返回 `None` 而签名声明 `Lease`。
-mypy strict 因 assert 的类型收窄而通过，检查不到。
-
-### A4　承接自 M1-01 的既有未完成项
+### A3　承接自 M1-01 的既有未完成项
 
 以下已在 [M1-01 记录](2026-09-14-m1-01-durable-state.md)「未完成项」复现并记录，
 移入本任务一并处理：
@@ -154,9 +148,18 @@ UPDATE opspilot_runs SET state='banana'  ->  成功
 SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 
 `tests/test_architecture.py:36` 的 `xfail(strict=True)` 原文已声明这是
-「尚未做出的架构决定……决定做出并实施后删除此标记」。该决定牵动
-`opspilot/domain`，而 `feature/m1-01-domain-types` 分支尚未推送、未建 PR，
-现在定会与那条线冲突。**建议等 domain 线落地后再开 ADR，避免写一条随即要改的 ADR。**
+「尚未做出的架构决定……决定做出并实施后删除此标记」，该标记此刻在 main 上仍然有效
+（`make check` 报 `2 xfailed`）。
+
+更正（PR #23 机器人审查指出，已核实并采纳）：`opspilot/domain` **已经在 main 上**——
+`6efe24d feat: add opspilot domain types and lifecycle state machines [#F2]` 是
+`582ab56`（PR #19）与 `686965f` 的祖先。本记录初稿据 ROADMAP 2026-09-14 段落写作
+「`feature/m1-01-domain-types` 尚未推送、未建 PR」，该陈述在本提交处已过期。
+远端同名分支仍存在但落后 28 个提交，属待清理的陈旧分支，不构成依赖。
+
+因此**不存在需要等待的前置工作**：领域层与持久化层现在同时在 main 上，两者并存的
+状态词汇（SQL 字面量、`Literal`、状态机）就是本条要决的对象，ADR 现在即可开。
+唯一的前提是用户就依赖方向给出决定，本任务不代为决定。
 
 ### C3　lint 未覆盖行宽
 
@@ -170,6 +173,11 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
   扫描 `execute(f"`、`.format(`、`" + `、`SQL(` 全部无匹配，36 条 SQL 均为静态字面量。
 - **`SET LOCAL` 确实生效**：事务内 `statement_timeout=5s`、`lock_timeout=4s`，
   `transaction_status=INTRANS`。该设置在 autocommit 下会静默失效，此处未踩。
+- **`claim()` 的 `assert lease is not None` 不是可达缺陷**（PR #23 机器人审查指出，已核实并采纳）。
+  `persistence.py:193-239` 的 `if/elif` 链是穷尽的：唯一不抛出的分支置 `incompatible=True`，
+  随后 `:236-237` 抛 `INCOMPATIBLE_STATE`；`else` 分支必定赋值 `lease`。因此不存在
+  「未赋值且不抛出」的可达路径。`python -O` 下跑全量为 `1059 passed, 54 skipped, 2 xfailed`，
+  与不带 `-O` 完全一致。该 `assert` 是防御性不变量兼 mypy 收窄点，保留，不列为待修项。
 
 ## 执行进展与证据
 
@@ -179,7 +187,7 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 
 ## 下一步与交接
 
-1. 取得 A 类实施授权后开 `chore/durable-store-hardening` 分支，按 A1 → A2 → A3 → A4 顺序修复，每条配回归测试并做变异验证。
+1. 取得 A 类实施授权后开 `chore/durable-store-hardening` 分支，按 A1 → A2 → A3 顺序修复，每条配回归测试并做变异验证。
 2. B 类需用户就「运行时依赖边界怎么划 + 是否引入 psycopg_pool」给出决定后另立任务。
-3. C1 需用户就迁移机制给出决定；C2 建议推迟至 `feature/m1-01-domain-types` 落地之后；C3 随 A1 一并定。
+3. C1 需用户就迁移机制给出决定；C2 的前置工作已在 main，取得依赖方向决定后即可开 ADR；C3 随 A1 一并定。
 4. 本记录不改变任何 SPEC 门槛、`feature_list.json` 的 `passes`，也不代表 M1-01 验收状态变化。

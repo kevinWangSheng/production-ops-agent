@@ -153,7 +153,7 @@
 [DurableStore 技术栈与 SQL 加固](2026-09-15-durable-store-hardening.md)，
 本记录不再单独跟踪：
 
-- 第 4、5、6 条与 `rebuild()` 的 `pending_tools` 不按代际过滤 → 新记录 A4。
+- 第 4、5、6 条与 `rebuild()` 的 `pending_tools` 不按代际过滤 → 新记录 A3。
 - `opspilot_runs` 缺 `incident_id` 索引 → 新记录 A2（复核发现
   `opspilot_controls` 同样缺索引，一并纳入）。
 
