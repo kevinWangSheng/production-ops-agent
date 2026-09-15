@@ -74,6 +74,6 @@ jobs:
       - name: Verify ledger and adapter integration on synthetic PostgreSQL
         env:
           M0_B_POSTGRES: "1"
+          M1_DURABLE_POSTGRES: "1"
         # Native local cluster restart is independently tested on macOS, not this service.
         run: .venv/bin/python -m pytest tests/integration -q
-
