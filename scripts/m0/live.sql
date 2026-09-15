@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS m0_live_once (
  run_id uuid NOT NULL UNIQUE,
  approval_hash text NOT NULL UNIQUE,
  contract_hash text NOT NULL,
+ models_metadata_sha256 text NOT NULL,
  deadline timestamptz NOT NULL,
  reserved_cny numeric NOT NULL DEFAULT 2.00 CHECK(reserved_cny=2.00),
  cost_state text NOT NULL DEFAULT 'unreconciled' CHECK(cost_state='unreconciled'),

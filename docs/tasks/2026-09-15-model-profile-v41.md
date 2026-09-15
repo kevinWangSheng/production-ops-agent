@@ -123,6 +123,9 @@ M0 退出条件与产品验收均不因本次探针改变。
 | R3b | `docs/development.md` 的操作指引仍写 `reported_alias=deepseek-v4-flash` | **采纳** | 已更新为 `deepseek-flash` 并注明旧名对应模型已退役 |
 | R3c | 「原先的双名允许集」前提对 `live.py` 不成立，该文件从来是单值 | **采纳** | 双名允许集在 `round02/03.py` 与 provider-identity 决定文档，是另一套机制。已更正表述，并如实说明本次顺带修复了 `live.py` 对真实端点的必然失败 |
 | R4 | `deepseek-flash` 是浮动别名，精确匹配更严但**分辨力更低**，无法再检测代次更替 | **采纳** | SPEC/C3 补 caveat。`version_scope` 语义调整初列为开放项，后由机器人 P1 推动落实，见下行 |
+| 机器人 P1（三轮） | 合同层只校验格式；`execute()` 不取 `/models`、不比对，**也没把该值写进 Run 记录**——陈旧或伪造的摘要仍能放行 | **采纳** | 最后半句是我的错：上一轮写了「该摘要随 Run 记录」，实际只有 `contract_hash` 覆盖它（可证明未被篡改，**无法回读取值**）。已加可读列 `m0_live_once.models_metadata_sha256`，`claim()` 写入，并按既有模式加旧 schema 守卫（缺列即拒绝，须重建 lab 库）。代码注释、SPEC、C3、development.md 的表述一并更正。**取/models 并比对仍未做**，理由不变：须多一次调用与授权 |
+| 机器人 P2（三轮） | SPEC 段落仍写 `version_scope` 为 `reported_alias`，紧接着又说记为 `floating_alias`，自相矛盾 | **采纳** | 上一轮改了 C3 漏了 SPEC，已更正并去掉重复句 |
+| 机器人 P2（二轮·账本大小写） | 已登记 id 的其它大小写会退化成 `unreported_or_unrecognized` | **部分采纳** | 采纳实质：改为小写规范登记 + 不区分大小写比对。**拒绝两个建议修法**：不加 `DeepSeek-Flash` 字面量（未经观测的臆造变体，与冻结包「仅使用已有官方 metadata 证据」冲突，且正是上一轮被删的那条）；不采纳 preserve raw value（未登记值压平是既有的有意边界，不让 provider 文本穿透账本）|
 | 机器人 P1（二轮） | 改 `version_scope` 只是换标签；`validate()` 仍接受该 profile，`execute()` 不做任何 `/models` 核对，代次更替后仍能通过名称校验并与冻结校准比较 | **采纳** | 反驳成立：文档化的前置条件没有任何东西强制。已在**合同层加强制闸**——`models_metadata_sha256` 列为必填字段，须为 64 位小写十六进制，缺失或格式非法在 claim 前 `denied()`；该摘要随 Run 记录。零新增外呼：`/models` 调用发生在批准准备阶段（round02/round03 已有同一机制）。补 3 个拒绝用例（空值、非法格式、大写十六进制）。**仍开放**：运行时无法在不发起额外请求的前提下证明该摘要是当前值，新鲜度仍由批准方承担，已如实记录 |
 | 机器人 P2（二轮） | C3 仍写 `version_scope` 为 `reported_alias` | **采纳** | 已改为 `floating_alias`，并说明该取值如实反映更弱的保证 |
 | 机器人 P1 | 浮动别名 + `version_scope` 仍写 `reported_alias`，未来每一代都能通过名称校验并被记成同一模型，可能与冻结校准静默跑在不同后端上 | **采纳** | 三处落实：(1) `version_scope` 改为 **`floating_alias`**，如实记录更弱的保证，不再高估；(2) SPEC/C3 把漂移检测从 caveat 升级为**前置条件**——任何 Run 与冻结校准比较前须先用 `/models` 元数据核对确立后端身份，该机制仓库已有（`provider_models_response_sha256`）；(3) 在 live profile 内携带已批准的 models 元数据 hash 列为开放项，因其使每次批准多一次调用，须另有决定与授权，不自行实施 |
@@ -140,10 +143,17 @@ ROADMAP 记 B6 为**部分完成**，「正式可比报告、人工校准和盲�
 **本任务只记录该开放项，不静默编辑 runner**——选哪条属实验设计决定，须单独立项。
 
 **models 元数据摘要的新鲜度。** 合同层已强制声明 `models_metadata_sha256`
-（缺失或格式非法即拒绝，摘要随 Run 记录），但**运行时无法证明该摘要是当前值**——
+（缺失或格式非法即拒绝），并由 `claim()` 写入可读列 `m0_live_once.models_metadata_sha256`
+供事后核对；但**运行时无法证明该摘要是当前值**——
 证明它需要在 claim 时多发一次 `/models` 请求，涉及费用与授权，须单独决定。
 在此之前，摘要的新鲜度由批准方承担：准备批准合同时须实际调用 `/models` 并取其摘要，
 不得沿用旧值。这一点须在下一次真实实验的合同准备中明确执行。
+
+**lab schema 需重建。** `m0_live_once` 新增 `models_metadata_sha256 NOT NULL` 列，
+`claim()` 按既有模式加了守卫（`SELECT models_metadata_sha256 ... LIMIT 0`），
+缺该列的旧 lab 库会在消费授权和发起 HTTP 之前被拒绝。
+下次真实实验前须重建隔离 lab 库，不做原地迁移（与 `live.sql` 头部
+「Explicit isolated experimental setup only; no product or existing synthetic table migration」一致）。
 
 ## 下一步与交接
 

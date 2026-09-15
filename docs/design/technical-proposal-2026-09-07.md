@@ -128,8 +128,9 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 该机制仓库已有，即钉住的 `provider_models_response_sha256`。
 profile 的 `version_scope` 相应如实记为 `floating_alias` 而非 `reported_alias`，不高估保证强度。
 该前置条件**已在合同层强制**：批准合同必须声明 `models_metadata_sha256`
-（所批准的官方 `/models` 快照摘要，64 位小写十六进制），缺失或格式非法一律在 claim 前拒绝，
-该摘要随 Run 记录，供与冻结校准比较时核对后端身份。
+（所批准的官方 `/models` 快照摘要，64 位小写十六进制），缺失或格式非法一律在 claim 前拒绝；
+`claim()` 将其写入可读列 `m0_live_once.models_metadata_sha256`，供事后与校准期快照核对后端身份
+（合同哈希只能证明它未被篡改，无法回读取值）。
 仍为开放项的是**摘要新鲜度**：不发起额外请求就无法证明所声明的摘要是当前值，
 这一步仍由批准方承担。
 这对 B2 冻结校准尤其重要——它的目的正是发现这类漂移。

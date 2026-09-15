@@ -119,8 +119,8 @@ def validate(contract, config, now=None):
         if contract["model_profile"] != MODEL_PROFILE:
             denied()
         # deepseek-flash 是浮动别名：换代时回报名不变，名称校验无法发现后端更替。
-        # 因此批准合同必须声明它所批准的官方 /models 快照摘要，该摘要随 Run 记录，
-        # 供与冻结校准比较时核对后端身份。本层只能强制「必须声明且格式合法」；
+        # 因此批准合同必须声明它所批准的官方 /models 快照摘要。本层只能强制
+        # 「必须声明且格式合法」，并由 claim() 写入可读列供事后核对后端身份；
         # 无法在不发起额外请求的前提下证明该摘要是当前值，那一步仍在批准方。
         if not re.fullmatch(r"[0-9a-f]{64}", contract["models_metadata_sha256"] or ""):
             denied()
@@ -210,13 +210,18 @@ class LiveLedger(PostgresBudget):
             conn.execute(
                 "SELECT business_code,trace_code FROM m0_live_diagnostics LIMIT 0"
             )
+            # 同样拒绝缺少 models_metadata_sha256 列的旧 lab schema：
+            # 该列使所批准的 /models 快照摘要可读，供事后与冻结校准核对后端身份。
+            # contract_hash 只能证明摘要未被篡改，无法回读其取值。
+            conn.execute("SELECT models_metadata_sha256 FROM m0_live_once LIMIT 0")
             row = conn.execute(
-                "INSERT INTO m0_live_once (experiment_id,run_id,approval_hash,contract_hash,deadline) SELECT %s,%s,%s,%s,%s WHERE clock_timestamp()<%s ON CONFLICT DO NOTHING RETURNING experiment_id",
+                "INSERT INTO m0_live_once (experiment_id,run_id,approval_hash,contract_hash,models_metadata_sha256,deadline) SELECT %s,%s,%s,%s,%s,%s WHERE clock_timestamp()<%s ON CONFLICT DO NOTHING RETURNING experiment_id",
                 (
                     contract["experiment_id"],
                     contract["run_id"],
                     digest(contract["approval_ref"].encode()),
                     digest(json.dumps(contract, sort_keys=True).encode()),
+                    contract["models_metadata_sha256"],
                     contract["deadline"],
                     contract["deadline"],
                 ),
