@@ -140,8 +140,11 @@
 - 清理：本地分支 `chore/durable-store-concurrency` 已用 `git branch -d` 安全删除，
   远端分支由平台在合并时删除。本任务未使用独立 worktree，主工作区保留；
   其余 4 个 worktree 属于其他任务，未改动。
-- 机器人 code review 在 PR #22 上未返回任何结果，仅提示需为该仓库创建 Codex 环境；
-  按 AGENTS.md「机器人安全审查不是交付门槛」处理，替代为两轮全新上下文独立审查。
+- 机器人 code review 在 PR #22 上**已完成**，覆盖合并前最终提交 `c2396d7`（触发方式为
+  手动 `@codex review`，完成于 2026-09-15T16:38:13Z），返回 0 条 finding：
+  `pulls/22/reviews` 为空，`pulls/22/comments` 为 0 条。
+  `@codex security review` 另因额度不足未执行，按 AGENTS.md「机器人安全审查不是
+  交付门槛」处理。合并前另有两轮全新上下文独立审查，两者不互相替代。
 
 ## 未完成项的去向（2026-09-15）
 
