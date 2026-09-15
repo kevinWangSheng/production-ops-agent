@@ -7,6 +7,7 @@ lint 与类型检查都看不见它们（linter 只看单文件内的局部语�
 
 import ast
 import pathlib
+import re
 from typing import get_args
 
 import pytest
@@ -100,3 +101,29 @@ def test_control_action_vocabulary_has_one_source() -> None:
     """`ControlAction` 与运行时校验用的 `_ACTIONS` 不得分叉。"""
     declared = frozenset(get_args(ControlAction))
     assert declared == _ACTIONS, f"两处定义不一致：{sorted(declared ^ _ACTIONS)}"
+
+
+def test_persistence_sql_never_selects_a_qualified_star() -> None:
+    """联表 SELECT 里的 `r.*` 会让同名列在结果集里出现两次。
+
+    `psycopg.rows.dict_row` 静默保留最后一个，另一个在 dict 里不可达，而取到
+    哪一个只取决于 select 列表的书写顺序。`claim()` 曾因此拿错
+    `control_generation`（PR #19 修了那一处），三条写路径上同样的写法直到
+    2026-09-15 复核才被发现——这是 SQL 字符串内部的事实，测试套件、mypy
+    strict 与 ruff 都看不见它，只能在这里守。
+    """
+    tree = ast.parse(PERSISTENCE.read_text())
+    offenders = sorted(
+        {
+            node.value.strip()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and re.search(r"\bselect\b", node.value, re.IGNORECASE)
+            and re.search(r"\b\w+\.\*", node.value)
+        }
+    )
+    assert not offenders, (
+        "持久化层的 SQL 使用了带表别名的 `*`，同名列会在结果集里重复并被静默"
+        f"取到最后一个；改为显式列名：{offenders}"
+    )
