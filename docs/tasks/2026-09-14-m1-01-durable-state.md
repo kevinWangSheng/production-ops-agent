@@ -51,3 +51,45 @@
 - 当前代码复验：M1 PG `13 passed`；blocked 的 pause/resume/follow_up/correct 均拒绝、cancel 正确完成；waiting_human 流程和 step-generation 变异均通过。
 - 最新 CI（修复提交前一轮代码变更）checks 与 m0-postgres 均 SUCCESS；m0-postgres 已启用 M1 PG。`d1bc5dc` 推送后等待对应新一轮 CI。
 - 最新机器人普通 code review 已覆盖此前文档同步 HEAD 且无新 finding；`d1bc5dc` 为后续代码修复，已重新手动触发审查。security review 仍因额度不足，不作为门槛。
+
+## 独立审查（2026-09-15，全新上下文 agent）与合并前收尾
+
+审查对象为 `1993f6f`、`d1bc5dc` 两个代码提交，结论为可合并、无阻塞项。逐条核对：
+
+- 变异矩阵 9 项中 4 项单独回退不被任何测试捕获，全部来自 `1993f6f`：claim 列别名、
+  commit_tool step 代际栅栏、resume 状态集、follow_up/correct 状态集。
+- 其中 commit_tool 的 step 代际栅栏（`opspilot/persistence.py:300`）经复现确认承重：
+  删除后新租约可把工具结果写入追问前的旧代际步骤，使过期证据被标记为
+  `tool_result_committed`；该路径经 `rebuild()['pending_tools']` 公开可达。
+  原有测试用旧租约，被守卫中更靠前的 owner/epoch 检查短路，属假覆盖。
+  已在 `bde7017` 补回归测试，变异验证：删除该行后仅新测试失败，还原后 14 passed。
+- claim 列别名修复的可达性经复现确认：`1993f6f` 之前，对 queued Run 追问会使
+  incident 与 run 代际分叉（1 对 0），claim 因同名列取到 run 的 0，发出的租约
+  代际陈旧且后续写入必被拒。属真实可达缺陷，非仅合同正确性。
+- 测试未被弱化：`git diff 1993f6f~1 d1bc5dc -- tests/` 无删除行，65 insertions / 0 deletions。
+
+## 未完成项（本 PR 范围外，另开修复任务）
+
+以下为既存生产代码缺陷，均非本 PR 引入，已复现并记录，不在本次修复范围：
+
+1. `rebuild()` 撕裂快照：三条 SELECT 无 `FOR UPDATE`，隔离级别 read committed，
+   逐语句取快照。实测并发下 800 次读取中 44 次 incident 与 run 的
+   `control_generation` 不一致（5.5%）。与 C3 第 7 节「PostgreSQL 业务记录是唯一
+   跨进程恢复依据」冲突。
+2. ABBA 死锁：`claim`/`control`/`publish` 按 incidents→runs 加锁，
+   `reserve_budget`/`commit_step`/`commit_tool` 按 runs→incidents 加锁。
+   实测强制交错可触发 `DeadlockDetected`。非 `d1bc5dc` 引入，改动前后一致。
+3. 幂等接口在并发下报存储故障：同一身份并发 `accept()` 实测返回
+   `STORAGE_UNAVAILABLE`，实际操作已成功、存储正常。
+4. `CONTROL_CONFLICT` 语义收窄：`d1bc5dc` 的 JOIN 使「incident 存在但 run 行缺失」
+   也落入该码，调用方按「重读重试」处理会无限循环。当前不可达。
+5. `control()` 只守 `blocked`，未守 `failed`/`budget_exhausted`；两者在
+   `RUN_EXECUTION` 中同为终态。当前不可达，但与 `waiting_human` 的前瞻处理不对称。
+6. 租约守卫复制 4 份且语义已分叉：`publish` 一份将 `lease_until IS NULL` 视为拒绝，
+   另外三份视为通过。
+7. 错误码压平：`_require_row` 与 `transaction()` 同用 `STORAGE_UNAVAILABLE`，
+   前者表示数据不一致（重试必然再失败），后者表示瞬时故障（可重试）。
+   第 2、3 条的表象由此造成。
+
+第 1、2、3、7 条同根（读路径无锁 + 错误码压平），建议合并修复。
+第 4、5、6 条可单独排期。
