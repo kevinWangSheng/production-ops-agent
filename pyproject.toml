@@ -5,7 +5,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "mypy"]
 m0 = [
     "httpx2==2.12.0",
     "langsmith==0.12.2",
@@ -22,7 +22,22 @@ default-groups = ["dev", "m0"]
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I"]
+select = ["E4", "E7", "E9", "F", "I", "TID251"]
+
+# 产品代码只允许从数据库时钟读当前时间：租约与 deadline 的判定必须与写入端
+# 同源，应用进程时钟与数据库时钟之间的偏移会直接变成判定误差。
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.datetime.now".msg = "产品代码用数据库时钟：DurableStore._db_now(conn)"
+"datetime.datetime.utcnow".msg = "产品代码用数据库时钟：DurableStore._db_now(conn)"
+
+[tool.ruff.lint.per-file-ignores]
+# 测试与 M0 实验脚本构造输入时间，不做租约判定，不受此限。
+"tests/**" = ["TID251"]
+"scripts/**" = ["TID251"]
+
+[tool.mypy]
+files = ["opspilot"]
+strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
