@@ -44,16 +44,26 @@
    调查纪律因 L1 混入 L3 内容而按工具面分叉成两份，
    `candidate_runner.py` 的 15 句是 `holmes_baseline.py` 24 句的真子集，0 句独有。
 
-2. **来源索引已建立**，见提案第 3 节：11 条 L1 约束逐条回溯，
-   区分规范派生 / 失败派生 / 设计派生。其中
-   `The authorized query window is fixed by the trusted runner` 查无失败来源
-   （`docs/evidence` 中无 `tool arguments denied` 记录，round-07 `tool-calls.json` 的 params 均为 `{}`），
-   标注为设计派生。
+2. **来源索引已建立**，见提案第 3 节：**L1 全集 24 句**逐条回溯，
+   区分规范派生 / 失败派生 / 效率派生 / 设计派生。
+
+   初稿只回溯了候选臂的 11 条，且把
+   `The authorized query window is fixed by the trusted runner` 误判为设计派生——
+   当时的检索只找显式拒绝（`tool arguments denied`、round-07 `tool-calls.json` 的 params 均为 `{}`），
+   而真实失败是**静默截断**：`investigation-outcome-review.md` 记录模型把 start/end
+   抄早 0.533447 秒、参数被接受、无任何错误码。该行现为**失败派生**，
+   回溯方法学写入提案 §3.1。现存仅有的两条无失败背书约束是第 6 行（效率派生）
+   与第 24 行（设计派生）。
 
 3. **DeepSeek 官方事实已核对**（2026-09-15，均为 api-docs.deepseek.com 一手页面），见提案第 4.1 节。
 
-4. **发现并上报模型代际冲突**，见提案第 4.3 节。官方 2026-09-10 声明 V4 Flash 已退役、
-   `deepseek-v4-flash` 临时路由到 V4.1 Flash。仓库实测一致：
+4. **发现并上报请求别名的弃用时钟**，见提案第 4.3 节。官方 2026-09-10 声明 V4 Flash 已退役、
+   `deepseek-v4-flash` 临时路由到 V4.1 Flash。
+
+   初稿把它写成「新发现的未处理冲突」，经独立审查更正：
+   `round-02-provider-identity-decision.md` 及其独立审查已于同日处理请求名/响应名分歧，
+   `round03.py` 的双名允许集是该已批准决定的实现而非漏检。
+   真正新增的只有「已退役」与「临时路由」两点定性。仓库实测：
 
    ```
    round-07-upstream-runs/*/response-{1,2}-business.json  共 8 份
@@ -61,8 +71,10 @@
    请求名 deepseek-v4-flash，响应 "model": "deepseek-flash"
    ```
 
-   `scripts/m0_environment/round03.py` 的 `reported_models` 同时接受两个名称，故未被拦下。
-   该冲突牵连 SPEC 门槛引用的冻结 v4 验收包与 ROADMAP B2 冻结的校准值，
+   风险落点是 SPEC 与 C3 固定的出站名 `deepseek-v4-flash` 有了失效时钟：
+   临时别名一旦下线，冻结包规定的出站名会直接失败。
+   **不影响既有 M0 证据与 ROADMAP B2 冻结的校准值**——报告身份分界在
+   2026-09-10T02:19Z，而 B2 取材的 M002–M004 全部在其之后，集内身份一致（提案 §4.3 末）。
    **处置属用户决定，本任务不选择版本**。
 
 ### 验证
