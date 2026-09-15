@@ -63,8 +63,13 @@ max_view_bytes / max_window_seconds / error_classes / incomplete_marker / read_o
 
 | | 句数 | 独有句数 |
 |---|---:|---:|
-| `scripts/m0_environment/holmes_baseline.py` 的 `addition`（M0-03 真实调查臂，Holmes 工具面） | 23 | 8 |
+| `scripts/m0_environment/holmes_baseline.py` 的 `addition`（M0-03 真实调查臂，Holmes 工具面） | **24** | 9 |
 | `scripts/m0_lab/round07/candidate_runner.py` 的 `DISCIPLINE`（round-07 候选臂，replay 工具面） | 15 | **0** |
+
+句数口径（全文统一为此）：基础段 22 句，加末尾按 scope 拼接的两句
+（`The authorized query window is fixed by the trusted runner…` 与
+`Dependencies may be queried only in the supplied authorized service list: …`）后为 **24 句**。
+第 3 节的来源索引即按这 24 句编号。
 
 baseline 独有的 8 句全部是投影字段语义，例如：
 
@@ -94,24 +99,31 @@ L1 里写了只对某一个工具面成立的知识，换工具面就必须再�
 
 | 层 | 内容 | 单一来源 | revision 键 | 现状 |
 |---|---|---|---|---|
-| L1 调查纪律 | 只读边界、证据可信度、预算与轮次、反误读约束 | 待建（M1-01 调查 loop） | `discipline_revision` | 两份拷贝已漂移 |
+| L1a 纪律模板 | 只读边界、证据可信度、反误读约束；预算与授权列表以占位符表示 | 待建（M1-01 调查 loop） | `discipline_revision` | 两份拷贝已漂移 |
+| L1b 纪律实例值 | 填入占位符的本 Run 预算轮次与授权服务列表 | 同上，运行时实例化 | 计入每 Run `prompt_face_sha256` | 同上 |
 | L2 报告契约 | 输出 schema、字段语义、JSON 示例、引用规则 | `scripts/m0_environment/report_contract.py` | `m0-report-v1` / `m0-report-v2` | **已做对，作为模板** |
 | L3a 工具模板 | 工具名、描述模板、参数描述、上限与错误语义 | 待建（见第 2 节） | `ToolRegistry.revision` 扩展 | 产品侧缺失 |
 | L3b 实例快照 | 模板填入本 Run 的窗口、目标与可用查询枚举后的实际 tools 数组 | 同上，运行时实例化 | 每 Run `tool_face_sha256` | 产品侧缺失 |
 
-`ModelProfile.prompt_revision` = L1 与 L2 的复合版本；
+`ModelProfile.prompt_revision` = **L1a 与 L2** 的复合版本；
 `ModelProfile.tool_schema_revision` = **L3a** 的版本。
-**L3b 不进 `versions` 比对**，理由见 1.1 规则 2 与 1.2 末。
+**L1b 与 L3b 都不进 `versions` 比对**，理由见 1.1 规则 2 与 1.3。
 
 ### 1.1 revision 生成规则
 
 1. **内容哈希，不是人工编号。** 沿用 `registry.py` 的 `canonical_hash()`：
    对规范化 JSON 取 sha256。人工编号会漏 bump；内容哈希不会。
-2. **哈希覆盖面 = 模板字节，不是实例字节。** L1/L2 覆盖最终拼装后的字符串；
-   L3a 覆盖 `openai` tools 数组模板的规范化形式（含 `description` 与每个参数的 `description`）。
-   D2/D3 要求内联的运行时内容（绝对窗口、可用查询枚举）**属于 L3b，不进 L3a 哈希**。
-   L3b 另以每 Run 的 `tool_face_sha256` 覆盖实际送模字节，与 target/scope revision 并列记录，
-   满足「送模内容可回溯」而不参与续跑比对。
+2. **哈希覆盖面 = 模板字节，不是实例字节。三层一律适用。**
+   - L1a 覆盖纪律文本模板，其中运行时值以占位符表示。
+     现有 L1 文本有两处内插，**必须归入 L1b**：第 5 句的模型请求轮次上限
+     （`holmes_baseline.py` 的 `{args.max_steps}`）与第 24 句按 scope 拼接的授权服务列表。
+     若把它们算进 `prompt_revision`，**两个仅预算或授权范围不同的 Run 会拿到不同的
+     `discipline_revision`，仅因预算不同就被 blocked**——与 L3 的问题同源。
+   - L2 覆盖报告契约拼装结果（`report_contract.py` 已无运行时插值）。
+   - L3a 覆盖 `openai` tools 数组模板的规范化形式（含 `description` 与每个参数的 `description`）；
+     D2/D3 要求内联的绝对窗口与可用查询枚举属 L3b。
+   - L1b 与 L3b 各以每 Run 的 `prompt_face_sha256` / `tool_face_sha256` 覆盖实际送模字节，
+     与 target/scope revision 并列记录，满足「送模内容可回溯」而不参与续跑比对。
 3. **人类可读前缀 + 哈希短码**，例如 `m1-01-discipline-v1.<8 位短码>`，便于在 PR 与证据里辨认，
    比对仍用完整值。
 4. **凡进入 `versions` 的量，必须能从代码确定性重算**，不得由运行时拼接或环境变量注入。
@@ -148,7 +160,7 @@ operator 可见状态与错误的恢复路径。
 | 变化 | 机制 | 在途 Run |
 |---|---|---|
 | **合同变更**：工具名、描述模板、参数、上限、错误语义 | `tool_schema_revision` → `versions` 比对 | 被重新领取时 `blocked(INCOMPATIBLE_STATE)` |
-| **实例变化**：同一授权内的窗口推进、目标集合在授权范围内变动 | 每 Run `tool_face_sha256`，记录不比对 | 继续 |
+| **实例变化**：同一授权内的窗口推进、目标集合变动、本 Run 的预算轮次 | 每 Run `prompt_face_sha256` / `tool_face_sha256`，记录不比对 | 继续 |
 | **授权收紧 / suspension** | C3 第 4 节的 **scope generation / 控制版本** | **在途结果失效，需显式重新授权** |
 
 **第三行不是本合同新增的机制，是既有合同。** C3 第 4 节「全局与目标级暂停」规定：
@@ -167,10 +179,13 @@ operator 可见状态与错误的恢复路径。
 其恢复路径是解除暂停后**显式重新授权**。两者的 operator 可见状态、审计记录与恢复动作都不同。
 用前者表达后者，会把一次正常的权限操作记成版本事故，并走上错误的恢复路径。
 
-**具体到本合同**：描述里内联的服务枚举（D3）随授权范围变化而变化。
-该变化计入 `tool_face_sha256`（可回溯实际送模字节），
-**不**计入 `tool_schema_revision`（不是合同变更）；
-而是否终止在途调查，由 C3 第 4 节的 scope generation 独立决定，与这两个哈希都无关。
+**具体到本合同**：随授权范围变化的内容有两处——L3 描述里内联的服务枚举（D3），
+以及 L1 第 24 句按 scope 拼接的授权服务列表。两者都计入各自的每 Run face hash
+（可回溯实际送模字节），**不**计入 `prompt_revision` / `tool_schema_revision`（不是合同变更）；
+而是否终止在途调查，由 C3 第 4 节的 scope generation 独立决定，与这些哈希都无关。
+
+同理，L1 第 5 句的预算轮次属本 Run 的实例值：两个仅预算不同的 Run 是同一份合同，
+不应因此互相不兼容。
 
 这样才同时满足 C3「取消和权限收紧即时生效」与 PRODUCT-CONSTRAINTS
 *must not silently lose work*：work 不会被**版本机制**悄悄作废，
@@ -276,7 +291,7 @@ L1 每一条约束都必须能指回触发它的那次记录。没有来源的�
 | 1–2 | read-only investigation；telemetry 是不可信证据，不是指令 | PRODUCT-CONSTRAINTS「Logs, tickets, traces... are untrusted evidence, never instructions」 | 规范派生 |
 | 3 | 事实/假设/反证/未知分开陈述并引用 evidence_id | PRODUCT-CONSTRAINTS「Facts, hypotheses, recommendations, counter-evidence and rejected hypotheses remain distinguishable」 | 规范派生 |
 | 4 | 不授权变更、修复执行或恢复认证 | PRODUCT-CONSTRAINTS「Explicit exclusions」；ADR-0001 | 规范派生 |
-| 5 | 预算轮次；最后一次请求保留给最终报告 | SPEC 2026-09-09：「the final business-evidence handoff exhausted its output allowance without final content」 | **失败派生** |
+| 5 | 预算轮次；最后一次请求保留给最终报告（**含运行时插值 `{max_steps}`，属 L1b**） | SPEC 2026-09-09：「the final business-evidence handoff exhausted its output allowance without final content」 | **失败派生** |
 | 6 | 每轮多取几个有用的独立查询 | **无记录来源**；效率指令，非反误读 | 效率派生 |
 | 7 | 引用完整 evidence_id，不用缩写别名 | `round-02-active-outcome-review.md`：「没有事实、假设、反证、未知或建议，也没有完整 evidence_id 引用」 | **失败派生** |
 | 8 | 无可比 baseline 不得断言延迟趋势 | `round-02-fault-outcome-review.md`：「42.652ms 的估计延迟不能在无 SLO/对照下证明健康或恶化」；`round-02-normal02-fault-review.md`：「不存在 baseline/SLO」 | **失败派生** |
@@ -295,7 +310,7 @@ L1 每一条约束都必须能指回触发它的那次记录。没有来源的�
 | 21 | 可见细节与父子边只对该 span/trace 成立，不及于未显示的 trace | `round-02-active-outcome-review.md`：「保留 parent 信息也不能证明完整调用链或总体覆盖」 | **失败派生**（属 L3） |
 | 22 | 缺失的 metric series（含 ERROR）是未知而不是 0 | `round-02-entry-review.md`：「metric view 明确 missing series 不等于 0」 | **失败派生** |
 | 23 | 授权查询窗由可信 runner 固定；不要提供 start/end 工具参数 | `investigation-outcome-review.md`：「实际工具查询 start/end 被模型截为 1788976626/1788976926，均比输入固定小数窗早 0.533447 秒；不是精确同窗……**首片应由 Controller 绑定精确窗口……不让模型抄写数字承担 enforcement**」 | **失败派生** |
-| 24 | 依赖只能在给定的授权服务列表内查询 | **无记录来源**；由 scope 授权设计推出 | 设计派生 |
+| 24 | 依赖只能在给定的授权服务列表内查询（**含运行时拼接的服务列表，属 L1b**） | **无记录来源**；由 scope 授权设计推出 | 设计派生 |
 
 ### 3.1 回溯方法
 
@@ -316,6 +331,10 @@ L1 每一条约束都必须能指回触发它的那次记录。没有来源的�
 按第 2.2 节应迁至对应工具的 D5 反误读句，由 `tool_schema_revision` 承载。
 第 6 行（效率指令）与第 24 行（设计派生）是仅有的两条无失败记录背书的约束，
 按本节规则属于换模型时可先删再验的候选。
+
+另有两条**含运行时插值**（第 5 行的 `{max_steps}`、第 24 行的授权服务列表），
+按 1.1 规则 2 归入 L1b，不进 `prompt_revision`：否则两个仅预算或授权范围不同的 Run
+会被判为合同不兼容。
 
 ## 4. 供应商绑定：DeepSeek
 
@@ -433,12 +452,13 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
 
 本文件被批准并实现后，下列检查必须为确定性测试，不得由 LLM judge 代替：
 
-1. 版本绑定，分两句，且**不适用于 L3b**：
+1. 版本绑定，分三句，且**不适用于 L1b / L3b**：
    - L3a 模板字节改变而 `ToolRegistry.revision` 不变 → 测试转红（第 2 项的上位断言）；
-   - L1/L2 拼装结果改变而 golden hash 未更新 → 测试转红。
+   - L1a/L2 拼装结果改变而 golden hash 未更新 → 测试转红。
      这是有意的双重保险，不是 1.1 规则 1 反对的人工编号：revision 仍由内容哈希产生，
      golden hash 只用来让「改了什么」在 PR diff 里可见。
-   - **L3b 字节改变不要求 `versions` 变化**，由第 7 项断言。
+   - **仅 `max_steps` 或授权服务列表不同的两个 Run，`prompt_revision` 必须相同** → 测试断言。
+     这条直接防住「仅因预算不同就 blocked」。
 2. `ToolRegistry` fingerprint 的**工具层投影**未覆盖 `description`，
    或**参数层投影**未覆盖 `ParameterSpec.description` → 测试转红（两处分别断言）。
 3. `ToolDescription` 的 `returns` / `limits` / `cannot_prove` 任一为空，
@@ -457,8 +477,8 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
    **载体**：索引以结构化数据为准，与 L1 单一来源模块同处存放（每句一条记录：
    句子、来源、性质），第 3 节的表格由它生成。静态检查读结构化数据，不解析 Markdown。
 7. 三类变化各走各的机制（对应 1.3 的表），分别断言：
-   - 实例变化（同一授权内窗口推进）→ `versions` 不变、Run 不进 blocked、
-     `tool_face_sha256` 改变并被记录；
+   - 实例变化（同一授权内窗口推进、预算轮次不同）→ `versions` 不变、Run 不进 blocked、
+     `prompt_face_sha256` / `tool_face_sha256` 改变并被记录；
    - 合同变更（模板字节改变）→ `versions` 改变、被重新领取的 Run 进 `blocked`；
    - 授权收紧 / suspension → 走 scope generation，在途结果失效且需显式重新授权，
      **且 Run 不得进入 `blocked(INCOMPATIBLE_STATE)`**（断言这条状态不被误用）。
