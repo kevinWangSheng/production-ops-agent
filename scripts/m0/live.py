@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -103,6 +104,7 @@ def validate(contract, config, now=None):
             "project_name",
             "billing_checked",
             "database_dsn",
+            "models_metadata_sha256",
         }
         if (
             set(contract) != required
@@ -115,6 +117,12 @@ def validate(contract, config, now=None):
         # The current endpoint cannot attest immutable backend weights.
         # A fixed-weight approval is unsupported, never silently downgraded to an alias.
         if contract["model_profile"] != MODEL_PROFILE:
+            denied()
+        # deepseek-flash 是浮动别名：换代时回报名不变，名称校验无法发现后端更替。
+        # 因此批准合同必须声明它所批准的官方 /models 快照摘要，该摘要随 Run 记录，
+        # 供与冻结校准比较时核对后端身份。本层只能强制「必须声明且格式合法」；
+        # 无法在不发起额外请求的前提下证明该摘要是当前值，那一步仍在批准方。
+        if not re.fullmatch(r"[0-9a-f]{64}", contract["models_metadata_sha256"] or ""):
             denied()
         for key in ("experiment_id", "run_id", "workspace_id", "project_id"):
             if str(UUID(contract[key])) != contract[key]:

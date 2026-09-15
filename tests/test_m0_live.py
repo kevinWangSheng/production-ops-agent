@@ -58,6 +58,7 @@ def packet():
         "project_name": "existing-m0",
         "billing_checked": True,
         "database_dsn": config.values["OPSPILOT_DATABASE_URL"],
+        "models_metadata_sha256": "0" * 64,
     }
     return contract, config
 
@@ -284,6 +285,9 @@ def test_complete_boundary(variant, business, trace, models):
         ("endpoint", "https://evil.invalid"),
         ("deadline", "2026-01-01T00:00:00Z"),
         ("database_dsn", "host=production"),
+        ("models_metadata_sha256", ""),
+        ("models_metadata_sha256", "not-a-hash"),
+        ("models_metadata_sha256", "A" * 64),
         ("run_id", "not-uuid"),
     ],
 )
