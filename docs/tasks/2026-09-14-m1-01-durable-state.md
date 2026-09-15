@@ -93,3 +93,40 @@
 
 第 1、2、3、7 条同根（读路径无锁 + 错误码压平），建议合并修复。
 第 4、5、6 条可单独排期。
+
+## 未完成项处置（PR #22，2026-09-15）
+
+上节七条未完成项中的第 1、2、3、7 条同根（读路径无锁 + 错误码压平），
+已在 `chore/durable-store-concurrency` 分支修复，PR #22。实测：
+
+| 缺陷 | 修前 | 修后 |
+|---|---|---|
+| 1 `rebuild()` 撕裂快照 | 800 次读取 44 次不一致（5.5%） | 0 次 |
+| 2 ABBA 死锁 | 并发 320 次：死锁 188、成功 72 | 死锁 0、成功 320 |
+| 3 幂等 `accept()` 并发报存储故障 | `STORAGE_UNAVAILABLE` | 全部成功 |
+| 7 错误码压平 | 任意 `psycopg.Error` → 单一码 | 按调用方处置方式分开 |
+
+修复过程中另发现并处理两项：
+
+- `ON CONFLICT` 去掉冲突目标后，「复用 incident_id 换新 intake_key」会落到
+  `_require_row` 的 `INCONSISTENT_STATE`（伪装成数据损坏）。改为显式判空报
+  `IDENTITY_CONFLICT`。五种身份冲突场景现在一致收敛到同一个码。
+- 一致快照事务一并置为 read only。REPEATABLE READ 下取行锁或写入会概率性抛
+  `SerializationFailure` 而全仓库无重试循环；只读事务使其成为确定性失败。
+  `ReadOnlySqlTransaction` 显式映射为 `READ_ONLY_PATH`——实测连到只读服务端
+  （备库/只读副本/failover 未完成）时所有写路径返回该码而 `rebuild()` 照常
+  工作，与「存储抖动可以重试」是不同的处置。
+
+独立审查两轮（全新上下文 agent），发现均已处置：
+
+- 首轮指出三处 incident 前置锁零测试覆盖、幂等测试是 flaky-green（对该回归
+  检出率仅 12/20）、`INCONSISTENT_STATE` 零覆盖且在 `accept()` 路径上语义错。
+- 次轮复现变异矩阵 9 项全红并另加第 10 项，核出提交信息两处不准确
+  （测试条数写成八条实为七条；「不依赖 sleep 抖动」不成立），均已更正。
+- 审查方独立测得：新测试 210 次单跑 + 20 次整文件零失败；加锁顺序测试的
+  0.3s 等待余量约 40 倍且失败方向为漏报而非误报；CI job timeout 15 分钟，
+  整体慢 20 倍也只需约 95 秒。
+
+第 4、5、6 条及 `rebuild()` 的 `pending_tools` 不按代际过滤仍然开着，
+未纳入 PR #22 范围。新增待办：`opspilot_runs` 无 `incident_id` 索引，
+`control()` 走 Seq Scan，前置锁使 worker 写路径排在其后，表长大后会先显现。
