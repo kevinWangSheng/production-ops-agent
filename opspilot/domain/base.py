@@ -54,12 +54,21 @@ def sanitized_errors(exc: ValidationError) -> list[dict[str, object]]:
     very failure that refused it. This is the only sanctioned way to render a
     ``ValidationError`` in product code; ``tests/test_architecture.py`` keeps
     the raw accessors out of ``opspilot/``.
+
+    ``loc`` needs the same care as ``input``. For every error type but one it
+    is a path of declared field names, which are safe to report. For
+    ``extra_forbidden`` the final segment *is* the caller's unexpected key, so
+    a credential sent as a field name rather than a field value would ride out
+    through the location instead of the input.
     """
 
-    return [
-        {"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
-        for error in exc.errors()
-    ]
+    rendered: list[dict[str, object]] = []
+    for error in exc.errors():
+        location = tuple(error["loc"])
+        if error["type"] == "extra_forbidden" and location:
+            location = (*location[:-1], "<redacted>")
+        rendered.append({"type": error["type"], "loc": location, "msg": error["msg"]})
+    return rendered
 
 
 class StateMachine:

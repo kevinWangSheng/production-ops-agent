@@ -25,12 +25,14 @@ question, recorded in the task record rather than decided here.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeVar
 from unicodedata import category
 
-from pydantic import AwareDatetime, Field, field_validator
+from pydantic import AwareDatetime, Field, ValidationError, field_validator
 
 from .domain.base import DTO, DomainError
+
+_ModelT = TypeVar("_ModelT", bound=DTO)
 
 AuthChannel = Literal["ui_basic", "event_token"]
 
@@ -100,7 +102,13 @@ class IntakeRequest(DTO):
 
 
 class IntakeEnvelope(DTO):
-    """The only data a controller may pass to durable intake creation."""
+    """The only data a controller may pass to durable intake creation.
+
+    Revalidated for the same reason its members are: an envelope can itself be
+    produced by ``model_construct`` or ``model_copy(update=...)``, and an
+    ``isinstance`` check cannot tell that apart from a validated one."""
+
+    model_config = _REVALIDATED
 
     request_id: Identifier
     principal: Principal
@@ -116,9 +124,27 @@ class IntakeEnvelope(DTO):
 def verify_channel(principal: Principal, *, expected: AuthChannel) -> Principal:
     """Require the caller to use the channel intended for this entry point."""
 
-    if not isinstance(principal, Principal) or principal.channel != expected:
+    checked = _revalidate(principal, Principal)
+    if checked.channel != expected:
         raise DomainError("INVALID_INPUT", "authentication channel mismatch")
-    return principal
+    return checked
+
+
+def _revalidate(value: object, model: type[_ModelT]) -> _ModelT:
+    """Re-run validation on an instance the caller says is already valid.
+
+    ``isinstance`` cannot distinguish a validated instance from one built by
+    ``model_construct`` or derived by ``model_copy(update=...)``; both skip
+    every field validator. Re-running validation at the entry point is what
+    makes the check mean something.
+    """
+
+    if not isinstance(value, model):
+        raise DomainError("INVALID_INPUT", f"{model.__name__} is required")
+    try:
+        return model.model_validate(value)
+    except ValidationError as error:
+        raise DomainError("INVALID_INPUT", f"{model.__name__} is not valid") from error
 
 
 #: Categories that make a stored identifier and its rendered audit line
@@ -182,8 +208,8 @@ def classify_intake_delivery(
     conflict a branch the caller has to write.
     """
 
-    if not isinstance(left, IntakeEnvelope) or not isinstance(right, IntakeEnvelope):
-        raise DomainError("INVALID_INPUT", "intake envelopes are required")
+    left = _revalidate(left, IntakeEnvelope)
+    right = _revalidate(right, IntakeEnvelope)
     if left.request.idempotency_key != right.request.idempotency_key:
         return "different_request"
     if (

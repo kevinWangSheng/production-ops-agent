@@ -368,3 +368,73 @@ def test_every_request_field_is_accounted_for_in_the_delivery_comparison():
 
     compared = {"target_id", "question", "idempotency_key"}
     assert set(IntakeRequest.model_fields) == compared
+
+
+# --- the API boundary revalidates, and errors redact attacker-chosen names ----
+
+
+def test_a_credential_sent_as_a_field_name_is_not_exported_through_loc():
+    """`extra_forbidden` puts the caller's own key in `loc`, not just `input`.
+
+    Redacting the input alone would still export a secret sent as a field name
+    rather than a field value.
+    """
+
+    with pytest.raises(ValidationError) as rejected:
+        Principal(**PRINCIPAL, **{"Basic PLACEHOLDER-NOT-A-CREDENTIAL": "x"})
+    rendered = repr(sanitized_errors(rejected.value))
+    assert "PLACEHOLDER-NOT-A-CREDENTIAL" not in rendered
+    assert "<redacted>" in rendered
+
+
+def test_a_declared_field_path_is_still_reported():
+    """Redaction must not blind the caller to which field actually failed."""
+
+    with pytest.raises(ValidationError) as rejected:
+        Principal(**{**PRINCIPAL, "actor_id": "oncall\x00-1"})
+    assert sanitized_errors(rejected.value)[0]["loc"] == ("actor_id",)
+
+
+@pytest.mark.parametrize(
+    ("name", "update"),
+    [
+        (
+            "a control character in a nested field",
+            {"request": {**REQUEST, "target_id": "t\x00"}},
+        ),
+        ("a nested field removed", {"request": {"target_id": "t", "question": "q"}}),
+        ("a member replaced by a string", {"request": "not-a-request"}),
+        (
+            "a credential on a nested member",
+            {"principal": {**PRINCIPAL, "password": "x"}},
+        ),
+    ],
+)
+def test_an_unvalidated_envelope_is_refused_at_the_api_boundary(name, update):
+    """`isinstance` cannot tell a validated envelope from a derived one.
+
+    `model_copy(update=...)` and `model_construct` both skip validation, so the
+    entry point revalidates rather than trusting the type.
+    """
+
+    valid = envelope()
+    with pytest.raises(DomainError, match="INVALID_INPUT"):
+        classify_intake_delivery(valid, valid.model_copy(update=update))
+
+
+def test_an_unvalidated_envelope_is_refused_even_when_built_wholesale():
+    valid = envelope()
+    forged = IntakeEnvelope.model_construct(
+        request_id="req\x001",
+        principal=Principal(**PRINCIPAL),
+        request=IntakeRequest(**REQUEST),
+        received_at=NOW,
+    )
+    with pytest.raises(DomainError, match="INVALID_INPUT"):
+        classify_intake_delivery(valid, forged)
+
+
+def test_verify_channel_refuses_a_principal_that_skipped_validation():
+    tampered = Principal(**PRINCIPAL).model_copy(update={"actor_id": "oncall\x00-1"})
+    with pytest.raises(DomainError, match="INVALID_INPUT"):
+        verify_channel(tampered, expected="ui_basic")
