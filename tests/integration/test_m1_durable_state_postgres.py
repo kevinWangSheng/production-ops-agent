@@ -264,6 +264,9 @@ def test_waiting_human_run_is_paused_and_cancelled_consistently():
     assert store.rebuild(incident)["run"]["state"] == "queued"
     with store.transaction() as conn:
         conn.execute("UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s", (run,))
+    for action in ("pause", "resume", "follow_up", "correct"):
+        with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+            store.control(incident, 2, action, "operator")
     assert store.control(incident, 2, "cancel", "operator") == 3
     assert store.rebuild(incident)["run"]["state"] == "cancelled"
 

@@ -319,7 +319,7 @@ class DurableStore:
     ) -> int:
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT control_generation,state,conclusion FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT i.control_generation,i.state,i.conclusion,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row or row["control_generation"] != expected_generation:
@@ -335,6 +335,8 @@ class DurableStore:
             # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
             # 追问与纠正不得静默解除人工暂停。
             if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            if row["run_state"] == "blocked" and action != "cancel":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
