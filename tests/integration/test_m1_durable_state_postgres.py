@@ -11,7 +11,8 @@ import pytest
 from psycopg import errors
 from psycopg.rows import dict_row
 
-from opspilot.persistence import DurableStore, PersistenceError
+from opspilot.domain import RUN_EXECUTION
+from opspilot.persistence import DurableStore, Lease, PersistenceError
 from scripts.m0.postgres_lab import DSN
 
 pytestmark = pytest.mark.skipif(
@@ -727,19 +728,23 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
     }
 
     # 先删掉再 install()：断言的是「已有数据库上也会补建」，不是「建表时顺手建了」。
-    with store.transaction() as conn:
-        for _, index in expected:
-            conn.execute(f"DROP INDEX IF EXISTS {index}")
-    store.install()
+    # 本地 lab 是多个 worktree 共用的，因此用 finally 保证中途失败也把索引还回去。
+    try:
+        with store.transaction() as conn:
+            conn.execute("DROP INDEX IF EXISTS opspilot_runs_incident_id_idx")
+            conn.execute("DROP INDEX IF EXISTS opspilot_controls_incident_id_idx")
+        store.install()
 
-    with store.transaction(snapshot=True) as conn:
-        actual = {
-            (row["tablename"], row["indexname"]): row["indexdef"]
-            for row in conn.execute(
-                "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE indexname = ANY(%s)",
-                ([index for _, index in expected],),
-            ).fetchall()
-        }
+        with store.transaction(snapshot=True) as conn:
+            actual = {
+                (row["tablename"], row["indexname"]): row["indexdef"]
+                for row in conn.execute(
+                    "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE indexname = ANY(%s)",
+                    ([index for _, index in expected],),
+                ).fetchall()
+            }
+    finally:
+        store.install()
     assert set(actual) == expected, f"缺少 incident_id 索引：{expected - set(actual)}"
     for definition in actual.values():
         assert "(incident_id)" in definition, definition
@@ -785,26 +790,32 @@ def test_control_distinguishes_unknown_identity_from_a_retryable_conflict():
 
 
 def test_non_cancel_control_is_refused_from_every_unlisted_run_state():
-    """非 cancel 的人工动作按放行名单判定，新终态不会静默变成「允许」。
+    """非 cancel 的人工动作按放行名单判定，新状态不会静默变成「允许」。
 
-    原实现只点名 blocked。`failed` 与 `budget_exhausted` 在 RUN_EXECUTION 里
-    与 blocked 同为终态，本模块目前不写入它们，因此没有测试会发现这个不对称；
-    一旦写入路径出现，pause/resume/follow_up/correct 会直接放行。cancel 始终
-    放行——它是人工控制的兜底出口。
+    原实现只点名 `blocked`。`failed` 与 `budget_exhausted` 是 RUN_EXECUTION 的
+    终态（`blocked` 不是，它还有 human_cancel / handoff_failed 两条出边），本模块
+    目前不写入这两个，因此没有测试会发现这个不对称；一旦写入路径出现，
+    pause/resume/follow_up/correct 会直接放行。
+
+    遍历的是「RUN_EXECUTION 全集减去四个放行状态」而不是实现里的常量：
+    往领域里加一个新 run 状态，它会自动落进这里并要求给出决定。
+    cancel 始终放行——它是人工控制的兜底出口。
     """
     store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-terminal-run-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    store.claim(incident, run, uuid4(), {"state": "v1"})
+    closed = RUN_EXECUTION.states - {"queued", "running", "paused", "waiting_human"}
+    assert closed == {"blocked", "budget_exhausted", "cancelled", "completed", "failed"}
 
-    for run_state in ("failed", "budget_exhausted"):
+    for run_state in sorted(closed):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-closed-{run_state}-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        store.claim(incident, run, uuid4(), {"state": "v1"})
         with store.transaction() as conn:
             conn.execute(
                 "UPDATE opspilot_runs SET state=%s WHERE run_id=%s", (run_state, run)
@@ -813,5 +824,101 @@ def test_non_cancel_control_is_refused_from_every_unlisted_run_state():
             with pytest.raises(PersistenceError, match="^ILLEGAL_TRANSITION$"):
                 store.control(incident, 0, action, "operator")
         assert store.rebuild(incident)["control_generation"] == 0
+        assert store.control(incident, 0, "cancel", "operator") == 1
 
-    assert store.control(incident, 0, "cancel", "operator") == 1
+
+def test_rebuild_filters_pending_tools_by_the_incident_generation_not_the_run_copy():
+    """`rebuild()` 的代际过滤读的是事故代际，不是 run 行上的副本。
+
+    与三条写路径的栅栏同一条契约（见
+    test_generational_fence_is_keyed_to_the_incident_not_the_run_copy）：人工决定
+    只递增 `opspilot_incidents.control_generation`。读路径若改读 run 行副本，
+    断点会把已经被 commit_tool 拒绝的旧代际待办重新列出来，而公开接口下两份
+    代际不会分叉，没有任何现有用例会转红——所以这里直接安排存储状态。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-rebuild-generation-source-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=300)
+    at_incident = store.commit_step(lease, "current", {"tool_calls": [{"id": "a"}]})
+    at_run = store.commit_step(lease, "superseded", {"tool_calls": [{"id": "b"}]})
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=77 WHERE incident_id=%s",
+            (incident,),
+        )
+        conn.execute(
+            "UPDATE opspilot_runs SET control_generation=11 WHERE run_id=%s", (run,)
+        )
+        conn.execute(
+            "UPDATE opspilot_steps SET control_generation=77 WHERE step_id=%s",
+            (at_incident,),
+        )
+        conn.execute(
+            "UPDATE opspilot_steps SET control_generation=11 WHERE step_id=%s",
+            (at_run,),
+        )
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["control_generation"] == 77
+    assert rebuilt["pending_tools"] == [{"step_id": at_incident, "ordinal": 0}]
+    # 旧代际的步骤仍留在业务记录里，只是不再作为待办派发。
+    assert {step["step_id"] for step in rebuilt["steps"]} == {at_incident, at_run}
+
+
+def test_lease_identity_and_deadline_each_fence_all_four_write_paths():
+    """收敛后的租约守卫里，owner / epoch / deadline 三条子句各自都承重。
+
+    `control()` 收回权限时 owner、lease_until、代际是一起变的，所以既有用例即使
+    删掉 owner 与 epoch 判定也不会转红（在 main 上同样如此）。A3 把四份守卫合成
+    一份之后，这三条子句只有一个实现，逐条钉住的成本已经降到最低。
+    """
+    store = DurableStore(DSN)
+
+    def arrange(tag: str) -> tuple[UUID, UUID, Lease, UUID]:
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-guard-{tag}-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=300)
+        step = store.commit_step(lease, "round-0", {"tool_calls": [{"id": "a"}]})
+        return incident, run, lease, step
+
+    def assert_all_paths_denied(lease: Lease, step: UUID) -> None:
+        with pytest.raises(PersistenceError, match="^CONTROL_DENIED$"):
+            store.reserve_budget(lease, uuid4(), 1)
+        with pytest.raises(PersistenceError, match="^CONTROL_DENIED$"):
+            store.commit_step(lease, f"k-{uuid4()}", {})
+        with pytest.raises(PersistenceError, match="^CONTROL_DENIED$"):
+            store.commit_tool(lease, step, 0, {"ok": True})
+        assert store.publish(lease, {"result": "denied"}, step_id=step) is False
+
+    # owner：另一个 worker 拿着同一个 run 的身份，其余全部有效。
+    _, _, lease, step = arrange("owner")
+    assert_all_paths_denied(replace(lease, owner=uuid4()), step)
+
+    # epoch：同一个 owner，但租约来自上一个执行轮次。
+    _, _, lease, step = arrange("epoch")
+    assert_all_paths_denied(replace(lease, epoch=lease.epoch - 1), step)
+
+    # deadline：租约本身没过期，但 Run 的 deadline 已过。
+    _, run, lease, step = arrange("deadline")
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    assert_all_paths_denied(lease, step)

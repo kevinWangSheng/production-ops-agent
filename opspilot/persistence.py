@@ -533,6 +533,10 @@ class DurableStore:
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            # 与写路径的栅栏同一条规则：人工决定的权威是事故代际，`run` 行上的
+            # 同名列只是 claim()/control() 盖下的副本。这里绑成具名变量，是为了
+            # 让「读的是哪一份」在读点上就可见，而不是靠 `row` 指向谁来推断。
+            incident_generation = row["control_generation"]
             run = conn.execute(
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
@@ -543,7 +547,7 @@ class DurableStore:
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],
-                "control_generation": row["control_generation"],
+                "control_generation": incident_generation,
                 "run": run,
                 "steps": steps,
                 # 只列出当前代际的待办工具调用。旧代际的步骤仍留在 steps 里作为
@@ -553,7 +557,7 @@ class DurableStore:
                 "pending_tools": [
                     {"step_id": step["step_id"], "ordinal": ordinal}
                     for step in steps
-                    if step["control_generation"] == row["control_generation"]
+                    if step["control_generation"] == incident_generation
                     for ordinal in range(
                         len((step["response"] or {}).get("tool_calls", []))
                     )
