@@ -48,7 +48,9 @@
    且无 revision 生成规则；`ToolRegistration` 无 `description` 字段
    （`opspilot/tools/` 全包搜索无面向模型的描述文本，且 fingerprint 的工具层与参数层两处投影都会静默丢弃新字段）；
    调查纪律因 L1 混入 L3 内容而按工具面分叉成两份，
-   `candidate_runner.py` 的 15 句是 `holmes_baseline.py` 24 句的真子集，0 句独有。
+   `candidate_runner.py` 的 15 句是 `holmes_baseline.py` multi-step 变体 24 句的真子集，0 句独有。
+   另有 `max_steps == 1` 的 final-report 变体（同为 24 句，与前者共享 18 句），
+   故 **L1 全集为两变体并集 30 句**；覆盖检查以 30 句为分母并按变体分别校验（提案 §3.3）。
 
 2. **来源索引已建立**，见提案第 3 节：**L1 全集 24 句**逐条回溯，
    区分规范派生 / 失败派生 / 效率派生 / 设计派生。
