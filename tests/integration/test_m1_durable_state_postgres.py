@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from psycopg import errors
+from psycopg import errors, sql
 from psycopg.rows import dict_row
 
 from opspilot.domain import RUN_EXECUTION
@@ -719,34 +719,66 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
     PostgreSQL 不为外键列建索引。control() 的 `UPDATE opspilot_runs ...
     WHERE incident_id=%s` 因此走 Seq Scan，而三条写路径都排在它持有的
     incident 行锁之后，全表扫描的时间直接变成写路径的排队时间。
+
+    「补建」这一半在一次性 schema 里验证，不碰默认 schema 的产品索引：
+    `DROP INDEX` 取 ACCESS EXCLUSIVE 表锁，而本地 lab 由多个 worktree 共用，
+    删到一半失败会把 lab 留在「索引已删、未重建」状态并改变别人的查询计划。
+    默认 schema 这边只做只读断言。
     """
-    store = DurableStore(DSN)
-    store.install()
     expected = {
         ("opspilot_runs", "opspilot_runs_incident_id_idx"),
         ("opspilot_controls", "opspilot_controls_incident_id_idx"),
     }
+    names = sorted(index for _, index in expected)
 
-    # 先删掉再 install()：断言的是「已有数据库上也会补建」，不是「建表时顺手建了」。
-    # 本地 lab 是多个 worktree 共用的，因此用 finally 保证中途失败也把索引还回去。
-    try:
-        with store.transaction() as conn:
-            conn.execute("DROP INDEX IF EXISTS opspilot_runs_incident_id_idx")
-            conn.execute("DROP INDEX IF EXISTS opspilot_controls_incident_id_idx")
-        store.install()
-
+    def present(store: DurableStore, schema: str) -> dict[tuple[str, str], str]:
         with store.transaction(snapshot=True) as conn:
-            actual = {
+            return {
                 (row["tablename"], row["indexname"]): row["indexdef"]
                 for row in conn.execute(
-                    "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE indexname = ANY(%s)",
-                    ([index for _, index in expected],),
+                    "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname=%s AND indexname = ANY(%s)",
+                    (schema, names),
                 ).fetchall()
             }
+
+    # 默认 schema：只读断言产品索引确实在，不做任何 DDL。
+    base = DurableStore(DSN)
+    base.install()
+    live = present(base, "public")
+    assert set(live) == expected, (
+        f"默认 schema 缺少 incident_id 索引：{expected - set(live)}"
+    )
+
+    # 一次性 schema：删掉索引后再 install()，断言的是「已有数据库上也会补建」，
+    # 而不是「建表时顺手建了」。
+    schema = "m1_index_backfill_" + uuid4().hex
+    with base.transaction() as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    try:
+        scoped = DurableStore(f"{DSN} options=-csearch_path={schema}")
+        scoped.install()
+        with scoped.transaction() as conn:
+            for index in names:
+                conn.execute(
+                    sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index))
+                )
+        assert present(scoped, schema) == {}, (
+            "一次性 schema 的索引未被删掉，补建无从验证"
+        )
+
+        scoped.install()
+        backfilled = present(scoped, schema)
     finally:
-        store.install()
-    assert set(actual) == expected, f"缺少 incident_id 索引：{expected - set(actual)}"
-    for definition in actual.values():
+        with base.transaction() as conn:
+            conn.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema)
+                )
+            )
+    assert set(backfilled) == expected, (
+        f"install() 未在已有数据库上补建：{expected - set(backfilled)}"
+    )
+    for definition in backfilled.values():
         assert "(incident_id)" in definition, definition
 
 
