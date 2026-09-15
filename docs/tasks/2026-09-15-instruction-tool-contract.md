@@ -6,7 +6,11 @@
   [C3](../design/technical-proposal-2026-09-07.md) 第 5、7、8 节；
   [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md)；[ADR-0002](../adr/0002-context-driven-investigation.md)。
 - 工作区：`chore/prompt-tool-contract` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-prompt-tool-contract`
-- PR：[#24](https://github.com/kevinWangSheng/production-ops-agent/pull/24)，HEAD `23d6703`；最新 CI `checks` 与 `m0-postgres` 均 success；5 个审查 thread 全部已回复并 resolve；`mergeStateStatus` 为 `CLEAN`。
+- PR：[#24](https://github.com/kevinWangSheng/production-ops-agent/pull/24)。
+  交付状态以 PR 当前 HEAD 为准，不在此复制提交哈希（避免记录随推送失效）。
+  收尾时的状态：最新提交的 `checks` 与 `m0-postgres` 均 success，
+  机器人审查 thread 全部已回复并 resolve，`mergeStateStatus` 为 `CLEAN`、`mergeable` 为 `MERGEABLE`。
+  **合并由用户审核后执行，本任务不自动合并。**
 
 ## 目标与范围
 
@@ -149,5 +153,12 @@ F4 留下的「权限收紧连带作废在途 Run」链路已由 §1.3 与 §7 �
 | P1-2 | L1 自身含运行时插值，与 §1.1「L1/L2 覆盖最终拼装字符串」+「不得运行时注入」矛盾 | **采纳** | 实测确认 L1 24 句中有两处插值：第 5 句 `{args.max_steps}`、第 24 句按 scope 拼接的授权服务列表。若计入 `prompt_revision`，两个仅预算或授权范围不同的 Run 会仅因此被 blocked。L1 比照 L3 拆为 **L1a 模板 / L1b 实例值**，规则 2 改为三层一律适用；§7 第 1 项新增断言「仅 `max_steps` 或授权服务列表不同的两个 Run，`prompt_revision` 必须相同」 |
 | P2-2 | L1 句数不一致（§0.3 写 23，§3 写 24） | **采纳** | 实测：基础段 22 句 + 按 scope 拼接的两句 = **24 句**。§0.3 更正为 24 并补全文统一的口径说明，明确第 3 节按这 24 句编号 |
 
-四条均为采纳并修复，无拒绝项。第二轮的 P1-2 与第一轮的 F4 同源——
+第三轮（`6570652` 复审）P2-3：任务记录「执行进展与证据」第 2、4 项仍是初稿口径
+（11 条 L1 约束、窗口约束标为设计派生、模型代际冲突牵连 B2 校准值）——**采纳**，已按 F1/F2/F3 结论同步。
+
+第四轮（`917d225` 复审）P2-4：§0.3 句数改 24 时独有句数同步改为 9，
+正文却仍称「独有的 8 句全部是投影字段语义」，第 9 句未点名——**采纳**，
+已分两类点名：8 句投影字段语义迁往 L3，第 9 句（第 24 句授权服务列表）属 L1b 不迁。
+
+机器人审查共四轮 5 条，**全部采纳并修复，无拒绝项**。第二轮的 P1-2 与第一轮的 F4 同源——
 模板/实例拆分当时只做在 L3，L1 原地漏掉；机器人复审补上了这个缺口。
