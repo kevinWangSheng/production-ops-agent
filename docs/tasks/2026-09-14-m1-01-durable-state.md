@@ -13,7 +13,13 @@
 - `make check`：1036 passed，56 skipped；Ruff 与格式检查通过。
 - `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest -q tests/integration/test_m1_durable_state_postgres.py`：2 passed。
 - 本地 PostgreSQL lab 已启动于 `scripts/m0/postgres_lab.py start`；无模型/trace/外部付费调用。
-- 独立审查：进行中；尚未提交、推送或创建 PR。
+- 独立审查：已完成首轮；P1 findings 已修复，待新提交复审。
+
+## PR #19 review 修复
+
+- 审查接受并修复：过期 lease、Run deadline、完成/取消 incident 的 claim 与 publish fencing；暂停/恢复的 owner、lease 和 control generation 同步；终态人工操作拒绝。
+- 审查意见中关于 security review 的额度提示不属于代码 finding；未作为通过条件。
+- 修复后 PG 定向测试 5 passed，`make check` 1036 passed / 59 skipped；待新提交 CI 与复审。
 
 ## PR 交付状态
 

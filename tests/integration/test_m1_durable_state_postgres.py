@@ -74,3 +74,49 @@ def test_partial_tool_checkpoint_and_lease_fencing():
     )
     store.commit_tool(lease, step, 0, {"ok": True})
     assert store.rebuild(incident)["pending_tools"][0]["ordinal"] == 1
+
+
+def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-control-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+    assert store.control(incident, 1, "resume", "operator") == 2
+    resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert resumed.control_generation == 2
+    assert store.publish(resumed, {"result": "supported"}) is True
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.control(incident, 2, "resume", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.publish(lease, {"result": "late"}) is False
+
+
+def test_expired_lease_cannot_publish_or_reserve():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-expiry-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.reserve_budget(lease, uuid4(), 1)
+    assert store.publish(lease, {"result": "expired"}) is False

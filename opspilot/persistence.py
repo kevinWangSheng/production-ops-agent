@@ -116,7 +116,7 @@ class DurableStore:
         lease = None
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.control_generation,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
+                "SELECT i.control_generation,i.state AS incident_state,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
@@ -127,6 +127,8 @@ class DurableStore:
                     (run_id,),
                 )
                 incompatible = True
+            elif row["incident_state"] in {"completed", "cancelled"}:
+                raise PersistenceError("CONTROL_DENIED")
             elif row["state"] not in ("queued", "running"):
                 raise PersistenceError("CONTROL_DENIED")
             elif (
@@ -166,6 +168,7 @@ class DurableStore:
                     row["lease_until"] is not None
                     and row["lease_until"] <= datetime.now().astimezone()
                 )
+                or row["deadline"] <= datetime.now().astimezone()
             ):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
@@ -210,6 +213,7 @@ class DurableStore:
                     row["lease_until"] is not None
                     and row["lease_until"] <= datetime.now().astimezone()
                 )
+                or row["deadline"] <= datetime.now().astimezone()
             ):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
@@ -249,6 +253,7 @@ class DurableStore:
                     row["lease_until"] is not None
                     and row["lease_until"] <= datetime.now().astimezone()
                 )
+                or row["deadline"] <= datetime.now().astimezone()
             ):
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
@@ -272,7 +277,13 @@ class DurableStore:
                 raise PersistenceError("CONTROL_CONFLICT")
             if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
                 raise PersistenceError("INVALID_INPUT")
-            if action in {"cancel", "pause"} and row.get("state") in {
+            if action in {
+                "cancel",
+                "pause",
+                "resume",
+                "follow_up",
+                "correct",
+            } and row.get("state") in {
                 "cancelled",
                 "completed",
             }:
@@ -287,10 +298,21 @@ class DurableStore:
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
             )
-            conn.execute(
-                "UPDATE opspilot_runs SET state='cancelled' WHERE incident_id=%s AND state IN ('queued','running')",
-                (incident_id,),
-            ) if action == "cancel" else None
+            if action == "cancel":
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running')",
+                    (nxt, incident_id),
+                )
+            elif action == "pause":
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
+                    (nxt, incident_id),
+                )
+            elif action == "resume":
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running')",
+                    (nxt, incident_id),
+                )
             conn.execute(
                 "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,%s,%s,%s,%s)",
                 (uuid4(), incident_id, action, expected_generation, nxt, actor),
@@ -300,7 +322,7 @@ class DurableStore:
     def publish(self, lease: Lease, conclusion: dict[str, Any]) -> bool:
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.*,r.owner,r.epoch,r.control_generation AS run_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT i.*,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,r.control_generation AS run_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
                 (lease.incident_id,),
             ).fetchone()
             if (
@@ -309,6 +331,11 @@ class DurableStore:
                 or row["owner"] != lease.owner
                 or row["epoch"] != lease.epoch
                 or row["control_generation"] != lease.control_generation
+                or row["run_state"] != "running"
+                or row["state"] in {"completed", "cancelled"}
+                or row["lease_until"] is None
+                or row["lease_until"] <= datetime.now().astimezone()
+                or row["deadline"] <= datetime.now().astimezone()
             ):
                 conn.execute(
                     "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
