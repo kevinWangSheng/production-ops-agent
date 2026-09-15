@@ -13,6 +13,7 @@
 - [M0 execution plan](plans/m0-validation-plan-2026-09-07.md): reviewed P2 experiment scope, upgrade/recovery and eval rules, resource planning, evidence and implementation handoff. [Isolated-context review](reviews/m0-plan-adversarial-review-2026-09-07.md) records the two closed omissions; experiments have not run.
 
 - [Approved C3 technical plan](design/technical-proposal-2026-09-07.md): current stack direction, recovery/control contracts, release observations, model adaptation, UI, eval, resource candidates and M0–M3. User-reviewed and authorized for persistence; [whole-design review](reviews/technical-design-c3-review-2026-09-07.md) records C1–C3 findings. Compatibility and runtime acceptance remain unproven.
+- [调查指令与工具接口合同（提案）](design/instruction-and-tool-interface-contract-2026-09-15.md)：模型可见文字（调查纪律、报告契约、工具描述）的归属、版本与来源索引，并记录 DeepSeek 官方约束。**未批准**，不改变已批准的合同、门槛或验收步骤；其中 4.3 的模型代际冲突与第 5 节决策点待用户处置。
 - [ADR-0003](adr/0003-business-state-recovery-authority.md): why committed business records own cross-process recovery and graph checkpoints do not.
 - `../SPEC.md`: current scope, technology selection, verification and delivery method, status and the implementation gate. Product scope and C3 design are approved; M0 evidence and acceptance calibration remain.
 - `../PRODUCT-CONSTRAINTS.md`: what product code must satisfy at runtime — exclusions, workflow, evidence, human control, recovery and data flow.
