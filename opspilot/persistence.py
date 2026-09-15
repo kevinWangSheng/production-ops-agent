@@ -47,9 +47,10 @@ class DurableStore:
             conn.execute("""
             CREATE TABLE IF NOT EXISTS opspilot_incidents (
               incident_id uuid PRIMARY KEY, intake_key text UNIQUE NOT NULL,
-              state text NOT NULL, control_generation integer NOT NULL DEFAULT 0,
+              state text NOT NULL, lifecycle text NOT NULL DEFAULT 'open', control_generation integer NOT NULL DEFAULT 0,
               current_run_id uuid, conclusion jsonb, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
             );
+            ALTER TABLE opspilot_incidents ADD COLUMN IF NOT EXISTS lifecycle text NOT NULL DEFAULT 'open';
             CREATE TABLE IF NOT EXISTS opspilot_runs (
               run_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
               state text NOT NULL, epoch integer NOT NULL DEFAULT 0, owner uuid,
@@ -96,7 +97,7 @@ class DurableStore:
                     raise PersistenceError("IDENTITY_CONFLICT")
                 return
             conn.execute(
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,current_run_id) VALUES(%s,%s,'queued',%s)",
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s)",
                 (incident_id, intake_key, run_id),
             )
             conn.execute(
@@ -121,6 +122,13 @@ class DurableStore:
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            active_lease = (
+                row["state"] == "running"
+                and row["lease_until"] is not None
+                and row["lease_until"] > datetime.now().astimezone()
+            )
+            if active_lease:
+                raise PersistenceError("LEASE_ACTIVE")
             if row["versions"] != versions:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
@@ -140,8 +148,8 @@ class DurableStore:
             else:
                 epoch = int(row["epoch"]) + 1
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
-                    (owner, epoch, lease_seconds, run_id),
+                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
+                    (owner, epoch, row["control_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
                     incident_id, run_id, owner, epoch, int(row["control_generation"])
@@ -270,7 +278,7 @@ class DurableStore:
     ) -> int:
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT control_generation,state FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,conclusion FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row or row["control_generation"] != expected_generation:
@@ -283,10 +291,14 @@ class DurableStore:
                 "resume",
                 "follow_up",
                 "correct",
-            } and row.get("state") in {
-                "cancelled",
-                "completed",
-            }:
+            } and (
+                row.get("state")
+                in {
+                    "cancelled",
+                    "completed",
+                }
+                or row.get("conclusion") is not None
+            ):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
@@ -349,8 +361,12 @@ class DurableStore:
                 )
                 return False
             conn.execute(
-                "UPDATE opspilot_incidents SET conclusion=%s,state='completed' WHERE incident_id=%s",
+                "UPDATE opspilot_incidents SET conclusion=%s WHERE incident_id=%s",
                 (Jsonb(conclusion), lease.incident_id),
+            )
+            conn.execute(
+                "UPDATE opspilot_runs SET state='completed',owner=NULL,lease_until=NULL WHERE run_id=%s",
+                (lease.run_id,),
             )
             return True
 
