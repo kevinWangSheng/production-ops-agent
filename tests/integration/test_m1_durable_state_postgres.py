@@ -121,3 +121,21 @@ def test_expired_lease_cannot_publish_or_reserve():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.reserve_budget(lease, uuid4(), 1)
     assert store.publish(lease, {"result": "expired"}, step_id=uuid4()) is False
+
+
+def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-human-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(lease, "old", {"result": "stale"})
+    assert store.control(incident, 1, "correct", "operator") == 2

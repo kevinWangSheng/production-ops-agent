@@ -20,6 +20,7 @@
 - 审查接受并修复：过期 lease、Run deadline、完成/取消 incident 的 claim 与 publish fencing；暂停/恢复的 owner、lease 和 control generation 同步；终态人工操作拒绝。
 - 审查意见中关于 security review 的额度提示不属于代码 finding；未作为通过条件。
 - 修复后 PG 定向测试 5 passed，`make check` 1036 passed / 59 skipped；待新提交 CI 与复审。
+- 追加人工追问/纠正回归：PG 定向测试 6 passed，覆盖 `follow_up` / `correct` generation 递增与旧 lease 拒绝。
 
 ## PR 交付状态
 
