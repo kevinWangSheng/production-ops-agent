@@ -280,8 +280,16 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 3. `test_non_cancel_control_is_refused_from_every_unlisted_run_state` 名字承诺
    "every unlisted run state"，实际只遍历两个状态。已改为遍历
    `RUN_EXECUTION.states` 减去四个放行状态。
-4. A2 测试对共用 lab 做 `DROP INDEX`，中途失败会把索引留在删除状态。已加
-   `finally: store.install()`。
+4. A2 测试对共用 lab 的**产品索引**做 `DROP INDEX`（取 ACCESS EXCLUSIVE 表锁）。
+   审查方在自建表上实测：并发写入方持 ROW EXCLUSIVE 时 `CREATE INDEX` 会
+   `LockNotAvailable: canceling statement due to lock timeout after 4.0s`——删到一半失败
+   就把 lab 留在「索引已删、未重建」状态并改变其他 worktree 的查询计划。
+   初版只加了 `finally: store.install()`，缩小窗口但没有消除。
+   **已在提交 `131b7b9` 重做**：默认 schema 只做只读断言；「已有数据库上也补得上」
+   这一半改在 `m1_index_backfill_<uuid>` 一次性 schema 里验证
+   （`options=-csearch_path=` 把 `install()` 指过去，用完 `DROP SCHEMA CASCADE`），
+   默认 schema 全程零 DDL。变异验证：删掉任一条 `CREATE INDEX`，该用例仍转红
+   （`1 failed, 31 passed`），承重性未因改写减弱。
 
 **采纳，但只能在记录层面更正（历史改写与 force-push 未获授权）**
 
@@ -303,14 +311,57 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 8. A2 的两条索引在产品代码里**没有调用方**：`opspilot/` 内零处调用 `install()`，
    14 处全在 `tests/integration/` 与 `scripts/` 下。这与 C1 同源，C1 仍开着。
 9. `install()` 的 `CREATE INDEX` 不是 `CONCURRENTLY`，且跑在
-   `statement_timeout=5s` / `lock_timeout=4s` 的事务里；表大到一定程度会超时。
-   `CONCURRENTLY` 不能在事务块内执行，改它要动 `install()` 的结构——属 C1。
+   `statement_timeout=5s` / `lock_timeout=4s` 的事务里（`persistence.py:116-117`）。
+   审查方在自建表上实测：有并发写入时会 `LockNotAvailable` 超时，映射为 `TIMEOUT`。
+   因此提交 `4867bae` 的「对已建好的库再次 `install()` 即补建」**只在空库/小库或无并发写入时成立**，
+   在有并发写入的非空库上不成立。`CONCURRENTLY` 不能在事务块内执行，改它要动
+   `install()` 的结构——属 C1。叠加第 8 条（生产零调用方），这条 DDL 目前只对开发 lab 实际生效。
+   **该限定已写入 PR 描述。**
+12. `control()` 的实际行为 delta 比本记录 A3 的字面更宽：除「run 行缺失」与
+    「`failed`/`budget_exhausted`」外，还改了①事故不存在的错误码、②非法 action 与 run 行缺失
+    同时出现时的检查顺序（`CONTROL_CONFLICT` → `INVALID_INPUT`）、③`completed`/`cancelled`
+    两个 run 状态。三项均实测为 fail-closed、公开接口不可达、无生产调用方，不回退；
+    **完整 delta 已列入 PR 描述**供用户判断是否超范围。
 10. `_CONTROL_OPEN_RUN_STATES` 是 run 状态词汇的第四份副本，
     与 `opspilot/domain/runs.py:78` 的 `ACTIVE_RUN_EXECUTIONS` 差一个 `paused` 却没引用它。
     引用它会让 persistence 依赖 domain，直接翻掉 `test_persistence_builds_on_domain`
     的 `xfail(strict=True)`——那正是 C2 要决的事，本 PR 不代为决定。C2 的欠债因此加大一点。
 11. `cancel` 在终态 run 上仍会造成 incident/run 状态分叉（既存，非本 PR 引入）。
-12. `rebuild()` 保留三处裸 `SELECT *` 并原样返回给调用方（单表查询，无重复列风险）。
+    审查方实测：run 强制为 `failed` 时 `control(incident,0,"cancel")` 返回 1，事后
+    incident 为 `cancelled`/gen 1 而 run 仍是 `failed`/gen 0，因为 `persistence.py`
+    cancel 分支的 `state IN (...)` 不含 `failed`。main 行为相同。本 PR 关掉了非 cancel
+    的一半不对称，另一半留着待决。
+13. `rebuild()` 保留三处裸 `SELECT *` 并原样返回给调用方（单表查询，无重复列风险）。
+    新增的结构测试只禁「带表别名的 `*`」，向这三张表加一列仍会静默改变
+    `rebuild()["run"]` / `["steps"]` 的返回形状。
+14. A1 四条路径的行为覆盖集中在
+    `test_generational_fence_is_keyed_to_the_incident_not_the_run_copy` 一个用例上
+    （四次变异每次只有它转红）。结构测试是第二道但覆盖的是另一种失效模式，
+    两者互补、不可合并或删除其一。审查方另用 MUT-C 实测：既有的
+    `test_old_generation_step_and_tool_writes_are_fenced` 在代际栅栏被削弱时**不会**转红
+    （`control()` 同时清空 owner，owner 一项就足以拒绝），即新用例是代际栅栏的唯一承重点。
+
+#### 独立审查明确标注的未验证项（不得记为已验证）
+
+- **并发 / ABBA 死锁压测未做。** 第一份审查的加锁顺序结论来自 `EXPLAIN` 计划与代码路径
+  分析；第二份用 `FOR UPDATE NOWAIT` 实测了 main 与 HEAD 的加锁行集合完全一致
+  （`commit_step`/`publish` 为 `['incident','run']`，`commit_tool` 为 `['incident','run','step']`），
+  这比 EXPLAIN 推断强，但**仍不是死锁注入压测**。`control()` 拆成两条语句后的新路径未做交错压测。
+- **真实生产库或大表上 `install()` 补建索引的可行性未验证**（见第 9 条）。
+- **A2 的 `EXPLAIN (ANALYZE, BUFFERS)` 数字第二份审查未复现**；第一份在 lab 长到
+  8555 runs / 36412 controls 时复核，方向一致（cost 8.30 vs 277.06、4.35 vs 905.71）。
+- **B 类、C 类未审**（不在本轮范围）。
+- 第二份审查未单独跑 `make check`，跑的是 `pytest -q` + `mypy` + `ruff check .`；
+  未逐行通读 PRODUCT-CONSTRAINTS 与 SPEC 的 Verification and delivery 一节。
+
+#### ROADMAP 未在本分支更新（team lead 判定）
+
+现有四条分支并行（`feature/m1-01-tool-executor`、`feature/m1-01-intake-auth`、
+`chore/instruction-contract-impl` 与本分支），ROADMAP 顶部是所有人共用的同一段项目级状态
+文字，各分支各改一次必然连环冲突，且合并顺序未定、先合的那条写的状态到后面就是错的
+（`docs/tasks/2026-09-14-m1-01-tool-executor.md:152-153` 记有同样判断）。
+本分支曾在 `d399b3b` 改过 ROADMAP，已于 `131b7b9` 回退到与 main 一致；
+项目级状态由 team lead 在四条 PR 合并后按真实状态统一更新。
 
 #### 差分探针：公开接口可达状态下的行为对照
 
@@ -370,7 +421,9 @@ run 35033476575  d399b3b  started 2026-09-15T22:57:49Z  failure（重跑一次�
 
 ## 下一步与交接
 
-1. A 类实施与变异验证已完成，两轮独立审查已完成且发现已处置；PR #26 等待用户审核合并（Agent 不合并）。
+1. A 类实施与变异验证已完成，两轮独立审查已完成且发现已逐条处置（采纳并修复 5 项、
+   记录层面更正 3 项、记录不实施 7 项）；PR #26 等待用户审核合并（Agent 不合并）。
+   ROADMAP 由 team lead 在四条并行 PR 合并后统一更新，不在本分支改。
    **阻塞**：`checks` job 因 `feature/m1-01-intake-auth` 上的 secret-scan 命中而红（见上节），
    该分支处理完后重跑 CI；`m0-postgres` 已通过，Codex code review 与 security review 均无发现。
 2. B 类需用户就「运行时依赖边界怎么划 + 是否引入 psycopg_pool」给出决定后另立任务。
