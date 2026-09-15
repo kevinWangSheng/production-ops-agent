@@ -241,3 +241,65 @@ def test_follow_up_and_correct_cannot_silently_lift_a_pause():
     assert rebuilt["control_generation"] == 1
 
     assert store.control(incident, 1, "resume", "operator") == 2
+
+
+def test_waiting_human_run_is_paused_and_cancelled_consistently():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-waiting-human-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET state='waiting_human' WHERE run_id=%s", (run,)
+        )
+    assert store.control(incident, 0, "pause", "operator") == 1
+    assert store.rebuild(incident)["run"]["state"] == "paused"
+    assert store.control(incident, 1, "resume", "operator") == 2
+    assert store.rebuild(incident)["run"]["state"] == "queued"
+    with store.transaction() as conn:
+        conn.execute("UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s", (run,))
+    assert store.control(incident, 2, "cancel", "operator") == 3
+    assert store.rebuild(incident)["run"]["state"] == "cancelled"
+
+
+def test_queued_follow_up_rebinds_generation_before_claim():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-queued-follow-up-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert lease.control_generation == 1
+
+
+def test_old_generation_step_and_tool_writes_are_fenced():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-step-generation-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "final", {"result": "old"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(lease, step, 0, {"ok": True})
+    with pytest.raises(PersistenceError, match="FINAL_STEP_REQUIRED"):
+        store.publish(fresh, {"result": "old"}, step_id=step)

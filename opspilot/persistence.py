@@ -148,7 +148,7 @@ class DurableStore:
         lease = None
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.control_generation,i.state AS incident_state,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
+                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
@@ -182,10 +182,10 @@ class DurableStore:
                 epoch = int(row["epoch"]) + 1
                 conn.execute(
                     "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
-                    (owner, epoch, row["control_generation"], lease_seconds, run_id),
+                    (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
-                    incident_id, run_id, owner, epoch, int(row["control_generation"])
+                    incident_id, run_id, owner, epoch, int(row["incident_generation"])
                 )
         if incompatible:
             raise PersistenceError("INCOMPATIBLE_STATE")
@@ -289,7 +289,7 @@ class DurableStore:
         """Commit one tool result idempotently; late or expired leases are rejected."""
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT r.*,i.control_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.*,i.control_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
             if (
@@ -297,6 +297,7 @@ class DurableStore:
                 or row["owner"] != lease.owner
                 or row["epoch"] != lease.epoch
                 or row["control_generation"] != lease.control_generation
+                or row["step_generation"] != lease.control_generation
                 or (
                     row["lease_until"] is not None
                     and row["lease_until"] <= self._db_now(conn)
@@ -347,22 +348,22 @@ class DurableStore:
             )
             if action == "cancel":
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running')",
+                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
             elif action == "pause":
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
+                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
                     (nxt, incident_id),
                 )
             elif action == "resume":
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running')",
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
                     (nxt, incident_id),
                 )
             elif action in {"follow_up", "correct"}:
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state='running'",
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','waiting_human')",
                     (nxt, incident_id),
                 )
             conn.execute(
@@ -413,11 +414,12 @@ class DurableStore:
                 )
                 return False
             final_step = conn.execute(
-                "SELECT response,status FROM opspilot_steps WHERE step_id=%s AND run_id=%s FOR UPDATE",
+                "SELECT response,status,control_generation FROM opspilot_steps WHERE step_id=%s AND run_id=%s FOR UPDATE",
                 (step_id, lease.run_id),
             ).fetchone()
             if (
                 not final_step
+                or final_step["control_generation"] != lease.control_generation
                 or final_step["status"]
                 not in {"response_committed", "tool_result_committed"}
                 or final_step["response"] != conclusion
