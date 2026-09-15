@@ -1,5 +1,9 @@
 # Roadmap
 
+当前工程交付状态（2026-09-15）：M1-01 持久化与恢复已合并到 main。PR #19（`582ab56`）交付 PG 业务状态、租约/断点、原子预算、控制代际与人工暂停红线；PR #22（`686965f`）修复 `rebuild()` 撕裂快照、ABBA 死锁、并发幂等 `accept()` 与错误码压平四项既存缺陷。两者 main CI 均 success，本地 main 复验 `make check` 为 `1038 passed, 75 skipped, 2 xfailed`，`M1_DURABLE_POSTGRES=1` 定向测试 `21 passed`；任务分支已清理。见[任务记录](docs/tasks/2026-09-14-m1-01-durable-state.md)。
+
+合并后对 `opspilot/persistence.py` 做了一轮技术栈复核（SQL 写法、依赖选型、schema 演进机制），发现三条写路径的代际栅栏建在重复列名上且现有 21 条测试无一能检出、两张表的 `incident_id` 缺索引、产品运行时依赖未声明（`dependencies = []` 而代码实际 import `psycopg`/`pydantic`）、schema 演进无机制。确定性缺陷、待选型决策项与待架构决策项已分类收拢于[DurableStore 技术栈与 SQL 加固](docs/tasks/2026-09-15-durable-store-hardening.md)，状态为待开始。SQL 注入面经扫描为零。本轮不改变 11 个 feature `passes`、SPEC 门槛陈述或 M1-01 验收状态。
+
 当前工程交付状态（2026-09-14）：M1-01 类型层（C3 第 4 节持久对象与状态机）已在本地分支 `feature/m1-01-domain-types` 实现，`make check` 通过，见[任务记录](docs/tasks/2026-09-14-m1-01-domain-types.md)。该工作未推送、未建 PR、未经独立审查，且不含持久化；11 个 feature `passes` 与 SPEC 门槛陈述均未改动，不代表 M1-01 或任何功能验收通过。
 
 当前工程交付状态（2026-09-13）：PR #16 已 squash 合并到 main（`cce4c41`），main CI 通过。用户选择 gate 决策 B：**有界开放 M1-01**，预算候选值冻结，judge 标注包单人确认。M0 未完成项（K8s RBAC/OS 隔离、正式保留集、账单对账、产品级 streaming/PG 审计/压缩器接入）转为 M1 入口验收条件，不视为 M0 通过。下一工作：按 [M1-01 拆分](docs/evidence/m0-real-investigation/m0-exit-matrix.md) 以 `feature/` 分支逐子任务实施。
