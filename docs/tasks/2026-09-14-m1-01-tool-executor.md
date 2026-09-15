@@ -174,17 +174,17 @@
 - 独立审查发现并已修复：在途控制失效时证据 sink 未提交不得把未提交记录放入结果；
   新增 `test_an_uncommitted_in_flight_history_never_reaches_the_outcome`。
 - 本地定向检查（mypy、ruff、format、M1 三个测试文件）通过；完整 `make check`
-  待最新基线兼容修复后重跑。PR #20 的 CI/Review 仍以最新提交为准。
+  已在最新基线兼容修复后重跑。PR #20 的 CI/Review 仍以最新提交为准。
 
 ## PR #20 code review 处置（2026-09-15）
 
 - P1「凭据绑定未进入 target registry revision」：已在 `25b090b` 修复，且已在
-  PR 线程回复“采纳并修复”；后续回归确认凭据句柄变化会使 revision 改变。
+  PR 线程回复“采纳并修复”；后续回归确认凭据句柄变化会使 revision 改变，thread 已 resolve。
 - P1「scope 未绑定完整 tool registry revision」：reviewer 在当前 HEAD 返回后发现，
-  已加入 `QueryScope.tool_registry_revision`、完整注册合同哈希、操作/证据审计字段，
+  已在 `235e801` 加入 `QueryScope.tool_registry_revision`、完整注册合同哈希、操作/证据审计字段，
   执行前 fail-closed 检查，并新增 9 类合同变更、稳定排序、新 scope 成功审计测试。
 - 另外将 `SystemClock` 改为调用方显式注入 `Clock`，满足最新 main 的数据库时钟规则；
   strict mypy 兼容守卫一并保留。最新本地 `make check`：**1193 passed, 75 skipped,
   2 xfailed**；mypy、Ruff、format、lock、doctor 均通过。
-- 本次修改尚未推送；下一步是提交、推送 PR #20、回复并 resolve 两个 inline thread，
-  等待覆盖最新 HEAD 的 CI/Code Review。feature passes 仍保持 false。
+- 修复已提交并推送到 PR #20；两个 inline thread 均已回复并 resolve。最新 HEAD 的
+  CI 已通过，Code Review 已覆盖 `235e801` 且无新增发现；feature passes 仍保持 false。
