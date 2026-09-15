@@ -123,7 +123,8 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 
 适配层负责接口地址和认证、请求参数及能力差异、工具调用与流式响应归一化、必要协议字段的保存和续传、错误分类、超时、重试和用量记录。
 
-业务 prompt 尽量共享。只有实验显示确有必要时，才增加模型专属 prompt 调整。接入 GLM 等其他 provider 时，通过新 Run 继承允许迁移的业务事实，不直接迁移旧 provider 的私有协议历史。
+业务 prompt 尽量共享。只有实验显示确有必要时，才增加模型专属 prompt 调整。
+撰写与版本化的具体规则见[调查指令与工具接口合同](instruction-and-tool-interface-contract-2026-09-15.md)（分层、revision 生成、bump 条件）与 [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)（官方特性推出的排列顺序与措辞）；实现调查循环前先读这两份。接入 GLM 等其他 provider 时，通过新 Run 继承允许迁移的业务事实，不直接迁移旧 provider 的私有协议历史。
 
 选择薄适配器的依据是核查版本的 ChatDeepSeek 接收端保留 `reasoning_content`，出站转换却遗漏该字段；避免依赖私有方法覆写，但需要维护并验证消息转换。该结论限定于审计版本，不表示未来上游版本必然有同一缺口。见 [适配源码证据](../research/deepseek-adapter-design-evidence-2026-09-07.md)、[模型适配与设计职责](../research/model-adaptation-and-design-ownership-2026-09-07.md)。
 
@@ -201,6 +202,7 @@ Outbox 用于外部导出，不替代数据库内部任务调度。标准机制�
 ## 8. 工具网关
 
 工具注册合同包含名称、版本、参数 schema、数据源、精确目标、绝对查询时间窗、请求 deadline、结果大小上限、错误分类及不完整结果标记。
+上述为执行侧登记项；**模型可见的工具描述**另有必填项与禁止项，见[调查指令与工具接口合同](instruction-and-tool-interface-contract-2026-09-15.md)第 2 节与 [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)第 3 节。注册描述前先读。
 
 授权以 Controller 保存的真实身份和控制状态为准，不信任模型提供的权限字段。
 

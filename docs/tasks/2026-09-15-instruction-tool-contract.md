@@ -101,6 +101,20 @@ PR #24 的首次 CI 因此失败（`docs/design/...md:193` 的行内注释缩进
 与 `ruff check docs/`（All checks passed）本地复验。
 **教训**：本仓库的文档改动同样受 `make check` 覆盖，不能以「只改文档」跳过。
 
+## 接入点（实施者从哪里会被指到这两份文档）
+
+文档写完不接线等于没写。已接入四处，都是 AGENTS.md 要求「每个编辑任务前固定复核」
+或「沿引用核对」会经过的位置：
+
+| 位置 | 接入内容 |
+|---|---|
+| `SPEC.md`「Model priority and design ownership」 | 在 *Record effective prompt … versions per run* 之后，注明两份文档承担该要求，**写任何 prompt 或工具描述前必读** |
+| C3 第 5 节「模型接入」 | 在「业务 prompt 尽量共享」之后，指向分层/版本规则与官方特性撰写规则，实现调查循环前先读 |
+| C3 第 8 节「工具网关」 | 在注册合同句之后，说明该句是**执行侧**登记项，模型可见描述另有必填项与禁止项 |
+| `m0-exit-matrix.md` 的 M1-01 拆分表 | 「只读工具执行器」「Flash 调查 loop」两行之后加说明，实施前另读这两份 |
+
+`docs/README.md` 的导航两条为补充入口，不作为唯一接入点。
+
 ## 下一步与交接
 
 1. 用户裁决提案第 5 节 U1（`deepseek-v4-flash` 请求别名的弃用风险如何处置）与
