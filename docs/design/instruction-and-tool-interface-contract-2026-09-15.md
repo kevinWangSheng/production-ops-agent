@@ -167,8 +167,23 @@ C3 第 5 节明确要求「取消和**权限收紧即时生效**，不受旧快�
 
 ### 2.1 建议的变更
 
-给 `ToolRegistration` 增加一个 `description: str` 字段，`ParameterSpec` 增加 `description: str`，
-两者与其他注册项同受 `__post_init__` 校验。
+给 `ToolRegistration` 增加一个 `description: ToolDescription` 字段，
+`ParameterSpec` 增加 `description: str`，两者与其他注册项同受 `__post_init__` 校验。
+
+`ToolDescription` 是结构体而不是自由文本，因为 D1–D5 必须能在注册期确定性校验
+（第 7 节前言禁止 LLM judge 顶替确定性断言，而「这段散文是否说清了返回什么」无确定性判据）：
+
+| 字段 | 对应 | 层 | 校验时点 |
+|---|---|---|---|
+| `returns` | D1 返回什么、数据源、投影形态 | L3a 模板 | 注册期断言非空 |
+| `window_format` | D2 绝对时间窗的位置与格式 | L3a 模板（值属 L3b） | 注册期断言占位符存在 |
+| `values_format` | D3 可用取值枚举的位置与格式 | L3a 模板（值属 L3b） | 注册期断言占位符存在 |
+| `limits` | D4 结果上限与截断语义 | L3a 模板 | 注册期断言非空 |
+| `cannot_prove` | D5 这个返回不能证明什么 | L3a 模板 | 注册期断言非空 |
+
+注册期只判断结构完整性；**文字质量由人工审查承担，不进确定性测试**。
+实例化时把 `window_format` / `values_format` 的占位符填成实际窗口与枚举，
+结果计入 L3b 的 `tool_face_sha256`。
 
 **必须同时改 fingerprint 的两处投影，否则两层都会静默丢失。**
 `_FrozenIndex.__init__` 的 `revision` 取自传入的 `fingerprint` 参数，
@@ -405,17 +420,28 @@ U1 需要用户裁定的只是：既有决定的依据是否按 Change Log 更�
 
 本文件被批准并实现后，下列检查必须为确定性测试，不得由 LLM judge 代替：
 
-1. 改动 L1/L2/L3 任一送模字节而未 bump 对应 revision → 测试转红。
+1. 版本绑定，分两句，且**不适用于 L3b**：
+   - L3a 模板字节改变而 `ToolRegistry.revision` 不变 → 测试转红（第 2 项的上位断言）；
+   - L1/L2 拼装结果改变而 golden hash 未更新 → 测试转红。
+     这是有意的双重保险，不是 1.1 规则 1 反对的人工编号：revision 仍由内容哈希产生，
+     golden hash 只用来让「改了什么」在 PR diff 里可见。
+   - **L3b 字节改变不要求 `versions` 变化**，由第 7 项断言。
 2. `ToolRegistry` fingerprint 的**工具层投影**未覆盖 `description`，
    或**参数层投影**未覆盖 `ParameterSpec.description` → 测试转红（两处分别断言）。
-3. 工具描述缺 D1–D5 任一项 → 注册期 `ToolContractError`。
-   D2/D3 的运行时部分在实例化期校验，不在注册期。
+3. `ToolDescription` 的 `returns` / `limits` / `cannot_prove` 任一为空，
+   或 `window_format` / `values_format` 缺占位符 → 注册期 `ToolContractError`。
+   这是结构断言，可确定性实现；**描述文字是否写得好不在此项**，由人工审查承担。
+   D2/D3 的实际值在实例化期校验，不在注册期。
 4. 两项独立检查，**都不做描述全文关键词匹配**：
    - 凭据形态正则（`sk-` 前缀、`Bearer`、URL 内含凭据等）命中描述 → 拒绝；
    - 参数名集合检查 `RESERVED_PARAMETERS & set(parameters)` → 拒绝（作用于参数键，不作用于描述文本）。
-5. `versions` 不一致的续跑 → `blocked(INCOMPATIBLE_STATE)`（已有，需补 prompt/tool 维度用例）。
-6. 第 3 节表格覆盖 L1 全集的每一句，且每句的来源字段非空 → 静态检查。
+5. `versions` 不一致的续跑 → `blocked(INCOMPATIBLE_STATE)`。基线已存在：
+   `tests/integration/test_m1_durable_state_postgres.py` 的
+   `test_incompatible_versions_block_without_silent_resume`；需补 prompt/tool 维度用例。
+6. 第 3 节来源索引覆盖 L1 全集的每一句，且每句的来源字段非空 → 静态检查。
    来源字段允许取值「无记录来源」，但必须同时给出性质标注；
    检查的是覆盖与标注的完整性，不是要求每句都有失败背书。
+   **载体**：索引以结构化数据为准，与 L1 单一来源模块同处存放（每句一条记录：
+   句子、来源、性质），第 3 节的表格由它生成。静态检查读结构化数据，不解析 Markdown。
 7. 仅授权范围变化（服务枚举增减、窗口推进）时，`versions` 不变、Run 不进 blocked，
    而 `tool_face_sha256` 改变并被记录 → 测试断言两者的变与不变。
