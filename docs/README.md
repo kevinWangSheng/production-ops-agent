@@ -13,6 +13,7 @@
 - [M0 execution plan](plans/m0-validation-plan-2026-09-07.md): reviewed P2 experiment scope, upgrade/recovery and eval rules, resource planning, evidence and implementation handoff. [Isolated-context review](reviews/m0-plan-adversarial-review-2026-09-07.md) records the two closed omissions; experiments have not run.
 
 - [Approved C3 technical plan](design/technical-proposal-2026-09-07.md): current stack direction, recovery/control contracts, release observations, model adaptation, UI, eval, resource candidates and M0–M3. User-reviewed and authorized for persistence; [whole-design review](reviews/technical-design-c3-review-2026-09-07.md) records C1–C3 findings. Compatibility and runtime acceptance remain unproven.
+- [DeepSeek V4.1 Flash：模型特性与 prompt / tool description 设计参考](design/deepseek-flash-prompt-tool-reference.md)：以官方模型特性为主体（无状态全量重发、上下文缓存前缀全匹配且价差 50 倍、thinking 与 `reasoning_content` 回传要求、采样参数无效、推理占用 `max_tokens`、JSON 模式硬性要求、工具调用与错误码），并由这些特性推出 prompt 排列顺序与分层、tool description 的 D1–D5、实现前检查清单。参考资料，非验收标准。
 - [ADR-0003](adr/0003-business-state-recovery-authority.md): why committed business records own cross-process recovery and graph checkpoints do not.
 - `../SPEC.md`: current scope, technology selection, verification and delivery method, status and the implementation gate. Product scope and C3 design are approved; M0 evidence and acceptance calibration remain.
 - `../PRODUCT-CONSTRAINTS.md`: what product code must satisfy at runtime — exclusions, workflow, evidence, human control, recovery and data flow.

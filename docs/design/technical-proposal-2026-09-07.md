@@ -139,6 +139,55 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 
 DeepSeek 的 `reasoning_content` 仅作为受限协议状态保存，并在同 provider、同 Run 必要续传，不作为证据、复盘内容或评分对象。压缩或恢复后续传不兼容时，阻塞并交接，不猜测删除协议字段。
 
+### 指令分层与版本
+
+> 2026-09-15 用户决定并入本节。撰写规则按当前模型的官方特性另见
+> [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)（日期绑定，随供应商变更重核）。
+
+模型可见的文字分层，各有单一来源，不得互相内联：
+
+| 层 | 内容 | revision |
+|---|---|---|
+| L1a 纪律模板 | 只读边界、证据可信度、结论分类、反误读约束；运行时值以占位符表示 | `discipline_revision`，**须标识变体** |
+| L1b 纪律实例值 | 填入占位符的本 Run 预算轮次与授权服务列表 | 每 Run `prompt_face_sha256` |
+| L2 报告契约 | 输出 schema、字段语义、JSON 示例、引用规则 | 独立版本号 |
+| L3a 工具模板 | 工具名、描述模板、参数描述、上限与错误语义 | `tool_schema_revision` |
+| L3b 实例快照 | 模板填入本 Run 窗口、目标与可用枚举后的实际 tools 数组 | 每 Run `tool_face_sha256` |
+
+`ModelProfile.prompt_revision` = L1a 与 L2 的复合版本；`tool_schema_revision` = L3a 的版本。
+**L1b 与 L3b 不进 `versions` 比对**，只记录。
+
+L1a 不是单一文本而是一组变体（例如 final-report Run 与多轮调查 Run 的开头不同），
+`discipline_revision` 必须标识变体身份，否则两条路径共用一个版本号而内容不同。
+
+revision 生成规则：
+
+1. **内容哈希，不是人工编号**，对规范化 JSON 取 sha256；人工编号会漏 bump。
+2. **哈希覆盖模板字节，不覆盖实例字节。** 运行时值（预算数字、时间窗、授权枚举）
+   属实例层，不进 revision——否则两个仅预算或授权范围不同的 Run 会仅因此互相不兼容。
+3. 人类可读前缀 + 哈希短码，便于在 PR 与证据中辨认，比对仍用完整值。
+4. **凡进入 `versions` 的量必须能从代码确定性重算**，不得由运行时拼接或环境变量注入。
+
+任何改变模板字节的改动都 bump，包括改一个词或调整顺序。
+bump 后被重新领取的在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，按第 7 节处理；
+**不得为避免 blocked 而不 bump**。
+
+四类变化走四套机制，不得互相顶替：
+
+| 变化 | 机制 | 在途 Run |
+|---|---|---|
+| 合同变更：工具名、描述模板、参数、上限、错误语义 | `tool_schema_revision` → `versions` 比对 | 被重新领取时 `blocked(INCOMPATIBLE_STATE)` |
+| 实例变化：**同一授权范围内**的窗口推进、枚举增减、本 Run 预算轮次 | 每 Run face hash，记录不比对 | 继续 |
+| 目标重新绑定 / 事故合并 / 拆分 | 第 4 节：事务内撤销受影响的旧调查与观察授权 | 旧授权撤销，须重新授权 |
+| 授权收紧 / suspension | 第 4 节：scope generation / 控制版本 | 在途结果失效，须显式重新授权 |
+
+判断口径：**授权范围本身有没有变？** 范围不变、范围内取值变 → 实例层；范围本身变了 → 授权机制。
+
+**授权变化不得经由 `versions` 触发 `INCOMPATIBLE_STATE`。** 理由不是让 Run 继续——
+授权收紧必须让在途结果失效——而是两者语义与恢复路径不同：
+`INCOMPATIBLE_STATE` 指状态版本不兼容，恢复路径是显式迁移或新建 Run；
+授权收回的恢复路径是解除后重新授权。用前者表达后者会把正常权限操作记成版本事故。
+
 ### 调查循环
 
 `组装上下文 → 调用模型 → 提交完整响应和工具计划 → 执行并提交工具观察 → 下一轮`
@@ -201,6 +250,36 @@ Outbox 用于外部导出，不替代数据库内部任务调度。标准机制�
 ## 8. 工具网关
 
 工具注册合同包含名称、版本、参数 schema、数据源、精确目标、绝对查询时间窗、请求 deadline、结果大小上限、错误分类及不完整结果标记。
+
+以上是**执行侧**登记项。工具还有一个**模型可见面**，即送进模型的 `description` 与参数描述，
+它决定模型如何解读返回，同样属注册合同（2026-09-15 用户决定并入本节）。
+
+模型可见面以结构体登记而非自由文本，以便注册期确定性校验：
+
+| 字段 | 内容 | 校验 |
+|---|---|---|
+| `returns` | 返回什么、数据源、投影形态 | 注册期非空 |
+| `window_format` | 绝对时间窗的位置与格式 | 注册期校验占位符 |
+| `values_format` | 可用取值枚举的位置与格式 | 注册期校验占位符 |
+| `limits` | 结果上限与截断语义 | 注册期非空 |
+| `cannot_prove` | **这个返回不能证明什么** | 注册期非空 |
+
+`cannot_prove` 是最容易省略也最要紧的一项：在不支持采样调参的模型上，
+它是纠正模型误读的唯一手段。写法是问「模型拿到这个返回最可能得出什么它不该得出的结论」并直接否掉。
+有限枚举必须内联并写明其它取值返回错误；枚举随授权范围变化，属实例层。
+
+描述的禁止项分两类，互不重叠：
+
+- **保密**：不得出现凭据、认证信息或具体 endpoint / base_url / 凭据句柄。
+- **权限**：不得出现让模型自行选择 target 或 endpoint 的语义。
+
+保留参数名集合（gateway 自行解析的参数）作用于**参数键**，
+不可平移到描述文本——授权范围内的服务名枚举与实例标识是必须写入描述的内容。
+描述也不得承诺执行器不保证的行为，不得引用测试故障类别、注入参数或答案。
+
+模型可见面纳入工具注册表的内容哈希；新增字段必须同步纳入该哈希的投影，
+否则描述改变而 `tool_schema_revision` 不变。撰写规则按当前模型特性另见
+[DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)。
 
 授权以 Controller 保存的真实身份和控制状态为准，不信任模型提供的权限字段。
 
@@ -388,6 +467,7 @@ PostgreSQL 保存业务和审计真相。LangSmith 接收通过白名单 DTO 导
 - [HolmesGPT / OpenSRE / Stratus 源码比较](../research/investigation-source-comparison-2026-09-07.md)：调查机制、上下文、工具与状态管理参考。
 - [Pi / LangGraph / OpenAI Agents SDK 底座比较](../research/runtime-selection-2026-09-07.md)：选型依据及替代条件。
 - [DeepSeek 适配源码调查](../research/deepseek-adapter-design-evidence-2026-09-07.md)：模型续传合同。
+- [DeepSeek V4.1 Flash 设计参考](deepseek-flash-prompt-tool-reference.md)：官方模型特性（无状态、上下文缓存前缀匹配、thinking 与 `reasoning_content` 回传、采样参数无效、推理占用 `max_tokens`、JSON 与工具调用要求、错误码）及由其推出的 prompt 排列与描述撰写规则。**日期绑定**，供应商变更时重核。
 - [状态协议设计输入](../research/state-protocol-design-input-2026-09-07.md)：持久任务和条件提交机制。
 - [平台选型](../research/eval-platform-selection-2026-09-07.md)：LangSmith 与其他平台的适用条件。
 - [最终全文对抗性审查](../reviews/technical-design-c3-review-2026-09-07.md)：C1—C3 修订和审查范围。
