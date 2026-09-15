@@ -2,6 +2,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -575,3 +576,98 @@ def test_snapshot_transactions_refuse_writes():
                 "UPDATE opspilot_incidents SET state='queued' WHERE incident_id=%s",
                 (incident,),
             )
+
+
+def test_generational_fence_is_keyed_to_the_incident_not_the_run_copy():
+    """三条写路径的代际栅栏必须读事故代际，不是 run 行里的那份副本。
+
+    人工决定只递增 `opspilot_incidents.control_generation`；run 行上的同名列是
+    claim()/control() 盖下的副本。原实现写成 `SELECT r.*,i.control_generation`，
+    结果集里 `control_generation` 出现两次，`dict_row` 静默取最后一个——取到的
+    恰好是事故代际，但那是书写顺序的副产物：把 `i.control_generation` 挪到
+    `r.*` 之前，栅栏就改读副本，而整个套件、mypy strict 与 ruff 都无感。
+
+    两份代际在当前公开接口下不会分叉（control() 同时推进两者），所以这里直接
+    安排存储状态，与 test_require_row_reports_inconsistent_state_not_a_transient_failure
+    同一思路：对外可见的契约需要有人守护，不能因为暂时不可达就无人认领。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-fence-key-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    claimed = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=300)
+    step_at_incident = store.commit_step(claimed, "a", {"tool_calls": [{"id": "a"}]})
+    step_at_run = store.commit_step(claimed, "b", {"tool_calls": [{"id": "b"}]})
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET control_generation=11 WHERE run_id=%s", (run,)
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=77 WHERE incident_id=%s",
+            (incident,),
+        )
+        conn.execute(
+            "UPDATE opspilot_steps SET control_generation=77 WHERE step_id=%s",
+            (step_at_incident,),
+        )
+        conn.execute(
+            "UPDATE opspilot_steps SET control_generation=11 WHERE step_id=%s",
+            (step_at_run,),
+        )
+
+    at_incident = replace(claimed, control_generation=77)
+    at_run = replace(claimed, control_generation=11)
+
+    # 与事故代际一致：没有更新的人工决定，放行。
+    store.reserve_budget(at_incident, uuid4(), 1)
+    store.commit_step(at_incident, "c", {})
+    store.commit_tool(at_incident, step_at_incident, 0, {"ok": True})
+
+    # 只与 run 行里的副本一致：栅栏若读副本就会放行，必须拒绝。
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.reserve_budget(at_run, uuid4(), 1)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(at_run, "d", {})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(at_run, step_at_run, 0, {"ok": True})
+    assert store.publish(at_run, {"result": "stale"}, step_id=step_at_run) is False
+
+
+def test_a_cleared_lease_cannot_be_used_even_when_owner_and_epoch_still_match():
+    """`lease_until IS NULL` 是「这个 run 没有租约」，不是「租约没过期」。
+
+    control() 收回 worker 权限时同时清空 owner 与 lease_until。四份租约守卫
+    里只有 publish 把 NULL 判为拒绝，另三份判为通过——它们能挡住人工操作，
+    靠的是 owner 也一起被清空。本测试只清 lease_until，把守卫单独暴露出来。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-null-lease-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=300)
+    step = store.commit_step(lease, "round-0", {"tool_calls": [{"id": "a"}]})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=NULL WHERE run_id=%s", (run,)
+        )
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.reserve_budget(lease, uuid4(), 1)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(lease, "round-1", {})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(lease, step, 0, {"ok": True})
+    assert store.publish(lease, {"result": "no-lease"}, step_id=step) is False

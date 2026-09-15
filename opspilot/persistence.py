@@ -70,6 +70,29 @@ class DurableStore:
         row = DurableStore._require_row(conn.execute("SELECT clock_timestamp() AS now"))
         return cast(datetime, row["now"])
 
+    @staticmethod
+    def _lease_revoked(row: dict[str, Any], lease: Lease, now: datetime) -> bool:
+        """租约栅栏的唯一实现：四条写路径共用，语义不再逐份分叉。
+
+        `row` 必须带 `incident_generation` —— 人工决定只递增
+        `opspilot_incidents.control_generation`，`opspilot_runs` 上的同名列是
+        `claim()`/`control()` 盖下的副本。栅栏要拦的是「租约早于一个更新的人工
+        决定」，因此权威是事故代际，不是 run 行里的副本。
+
+        `lease_until IS NULL` 判为撤销：`Lease` 是持有租约的凭据，而 run 行说
+        它没有租约。`control()` 清空 `lease_until` 正是收回 worker 权限的动作，
+        把 NULL 读成通过，等于让被收回权限的 worker 依赖 owner 一项守住。
+        `publish()` 原本就是这个语义，另三条取它。
+        """
+        return (
+            row["owner"] != lease.owner
+            or row["epoch"] != lease.epoch
+            or row["incident_generation"] != lease.control_generation
+            or row["lease_until"] is None
+            or row["lease_until"] <= now
+            or row["deadline"] <= now
+        )
+
     @contextmanager
     def transaction(self, *, snapshot: bool = False) -> Iterator[Connection]:
         """一个事务。`snapshot=True` 用 REPEATABLE READ 取一致快照。
@@ -194,19 +217,20 @@ class DurableStore:
         lease = None
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
+                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            now = self._db_now(conn)
             active_lease = (
-                row["state"] == "running"
+                row["run_state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > self._db_now(conn)
+                and row["lease_until"] > now
             )
             if active_lease:
                 raise PersistenceError("LEASE_ACTIVE")
-            if row["deadline"] <= self._db_now(conn):
+            if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
             if row["versions"] != versions:
                 conn.execute(
@@ -216,12 +240,12 @@ class DurableStore:
                 incompatible = True
             elif row["incident_state"] in {"completed", "cancelled", "paused"}:
                 raise PersistenceError("CONTROL_DENIED")
-            elif row["state"] not in ("queued", "running"):
+            elif row["run_state"] not in ("queued", "running"):
                 raise PersistenceError("CONTROL_DENIED")
             elif (
-                row["state"] == "running"
+                row["run_state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > self._db_now(conn)
+                and row["lease_until"] > now
             ):
                 raise PersistenceError("LEASE_ACTIVE")
             else:
@@ -250,20 +274,10 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
             ).fetchone()
-            if (
-                not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
-            ):
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT amount,run_id FROM opspilot_budget_reservations WHERE reservation_id=%s",
@@ -302,20 +316,10 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
             ).fetchone()
-            if (
-                not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
-            ):
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
@@ -356,20 +360,13 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
             if (
                 not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
                 or row["step_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
+                or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
@@ -446,7 +443,7 @@ class DurableStore:
     ) -> bool:
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.*,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,r.control_generation AS run_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT i.current_run_id,i.conclusion,i.state AS incident_state,i.control_generation AS incident_generation,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
                 (lease.incident_id,),
             ).fetchone()
             if (
@@ -458,18 +455,14 @@ class DurableStore:
             if (
                 not row
                 or row["current_run_id"] != lease.run_id
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
                 or row["run_state"] != "running"
                 # `paused` 在当前实现下是纵深防御而非承重判定：暂停必然递增
                 # control_generation，且 claim() 已拒绝在暂停期间发放租约，
-                # 因此上面的 generation 栅栏先行拦截。变异测试确认去掉本项
-                # 不会导致任何用例失败。保留它是为了在栅栏被削弱时仍然兜底。
-                or row["state"] in {"completed", "cancelled", "paused"}
-                or row["lease_until"] is None
-                or row["lease_until"] <= self._db_now(conn)
-                or row["deadline"] <= self._db_now(conn)
+                # 因此 _lease_revoked() 的 generation 栅栏已经拦下同一批调用。
+                # 变异测试确认去掉本项不会导致任何用例失败。保留它是为了在
+                # 栅栏被削弱时仍然兜底。
+                or row["incident_state"] in {"completed", "cancelled", "paused"}
+                or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 conn.execute(
                     "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
