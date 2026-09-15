@@ -1,9 +1,9 @@
 # DurableStore 技术栈与 SQL 加固
 
-- 状态：待开始
+- 状态：A 类实施完成，PR 待用户审核合并；B、C 类仍待用户决定
 - 更新日期：2026-09-15
 - 依据：`docs/design/technical-proposal-2026-09-07.md` 第 4、5、7 节；`ADR-0003` 业务记录恢复权威；`SPEC.md` 第 63 行（依赖锁定清单尚未选定）；承接 [M1-01 持久化与恢复](2026-09-14-m1-01-durable-state.md) 的未完成项。
-- 工作区：未开始（建议 `chore/durable-store-hardening`）
+- 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-durable-hardening`，分支 `chore/durable-store-hardening`（起点 main `b483a12`）
 
 ## 目标与范围
 
@@ -190,13 +190,88 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 
 ## 执行进展与证据
 
-- 2026-09-15：复核完成，尚未实施任何修复。上述各条的实测命令与输出在本记录内，
+- 2026-09-15（复核阶段，历史）：复核完成，尚未实施任何修复。上述各条的实测命令与输出在本记录内，
   探针针对本地 PostgreSQL 17.9 lab；变异测试用文件副本还原，`git diff --stat` 无残留。
-- 未执行：A 类全部修复、对应回归测试、独立审查。
+
+### A 类实施（2026-09-15）
+
+五个提交，每个提交都单独跑过 ruff / ruff format / mypy strict / 全量 pytest（含 PG opt-in）并通过：
+
+| 提交 | 缺陷 |
+|---|---|
+| `fix: read the lease fence from an explicit incident generation column` | A1 + A3 租约守卫分叉 |
+| `fix: index the incident_id foreign keys in the durable schema` | A2 |
+| `fix: filter rebuild pending tools by the current control generation` | A3 `pending_tools` |
+| `fix: separate unknown identity and missing run rows from CONTROL_CONFLICT` | A3 `CONTROL_CONFLICT` 收窄 |
+| `fix: refuse non-cancel control from run states outside the open list` | A3 `control()` 只守 `blocked` |
+
+#### 取舍与依据
+
+- **租约守卫收敛到哪一侧**：取 `publish` 的「`lease_until IS NULL` 视为拒绝」。
+  `control()` 清空 `lease_until` 正是收回 worker 权限的动作；另三份把 NULL 读成通过，
+  等于让被收回权限的 worker 只靠 owner 一项守住。
+- **A3 第 4 条（`failed`/`budget_exhausted` 当前不可达）选「补守卫」而非「补一条断言不可达的测试」**：
+  改成放行名单是*拒绝*，不为这两个状态发明新策略；所有当前可达 run 状态逐一核对行为不变；
+  且守卫可被确定性测试覆盖，而「断言不可达」的测试只能钉住今天的实现。
+- **A3 第 3 条顺带纠正了「事故不存在」也报 `CONTROL_CONFLICT`**：同一条 JOIN 造成的同类缺陷，
+  纠正后与 `claim()`/`rebuild()` 已有的 `UNKNOWN_IDENTITY` 用法一致。**这是本次唯一一处
+  可达的对外错误码变化**，已在 PR 中单独列出。
+- **A2 不引入迁移机制**：`CREATE INDEX IF NOT EXISTS` 跟随 `install()` 内既有的
+  `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 写法，对已有库再次 `install()` 即补建。
+  C1「schema 演进无机制」未被本任务改变，仍然开着。
+- **`publish()` 当前不是缺陷**：原写法里所有 `r.x` 都排在 `i.*` 之后（本记录 A1 节已核实）。
+  纳入展开范围的理由是可维护性，不是已存在的漏洞。
+
+#### 变异验证（完成条件要求的「测试能转红」）
+
+修复后逐条把代码变异回旧写法，记录真实输出。基线（未变异）：
+`make check` = `1051 passed, 81 skipped, 2 xfailed`；
+`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py` = `27 passed`
+（实施前基线分别为 `1050 passed, 75 skipped, 2 xfailed` 与 `21 passed`）。
+
+| 变异 | 转红的测试 | 全量（无 PG opt-in） |
+|---|---|---|
+| `reserve_budget` 栅栏改读 run 副本 | `test_generational_fence_is_keyed_to_the_incident_not_the_run_copy` | `1051 passed` |
+| `commit_step` 同上 | 同上 | `1051 passed` |
+| `commit_tool` 同上 | 同上 | `1051 passed` |
+| `publish` 同上 | 同上 | `1051 passed` |
+| `commit_step` 改回 `SELECT r.*,i.control_generation` | `test_persistence_sql_never_selects_a_qualified_star` | `1 failed, 1050 passed` |
+| 删掉两条 `CREATE INDEX` | `test_install_indexes_the_incident_foreign_keys_on_an_existing_database` | `1051 passed` |
+| 去掉 `pending_tools` 代际过滤 | `test_rebuild_drops_pending_tools_from_a_superseded_generation` 与 `test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step` | `1051 passed` |
+| 租约守卫改回「NULL 视为通过」 | `test_a_cleared_lease_cannot_be_used_even_when_owner_and_epoch_still_match` | `1051 passed` |
+| `control()` 改回单条 JOIN | `test_control_distinguishes_unknown_identity_from_a_retryable_conflict` | `1051 passed` |
+| 放行名单改回只点名 `blocked` | `test_non_cancel_control_is_refused_from_every_unlisted_run_state` | `1051 passed` |
+
+十次变异中，mypy strict 九次报 `Success: no issues found in 13 source files`、ruff 十次 `All checks passed!`——
+**与复核阶段的结论一致：这一类缺陷靠 lint 与类型检查检不出来，只能靠测试。**
+其中五条（A1 四条 + 租约守卫）必须安排存储状态才能暴露，因为公开接口下两份代际
+不会分叉、`lease_until` 与 `owner` 总是被一起清空；沿用
+`test_require_row_reports_inconsistent_state_not_a_transient_failure` 的同一思路。
+
+#### A2 索引证据
+
+本地 lab（PostgreSQL 17.9，6876 runs / 30645 controls）`EXPLAIN (ANALYZE, BUFFERS)`：
+
+| 查询 | 补索引前 | 补索引后 |
+|---|---|---|
+| `UPDATE opspilot_runs ... WHERE incident_id=%s AND state IN (...)` | Seq Scan，cost 239.75，137 buffers，过滤掉 6875 行 | Index Scan，cost 8.31，3 buffers |
+| `SELECT * FROM opspilot_controls WHERE incident_id=%s` | Seq Scan，cost 652.05，378 buffers，过滤掉 30645 行 | Bitmap Index Scan，cost 33.06，2 buffers |
+
+#### 本轮新观察到、未处理的项
+
+- `claim()` 内 `elif row["run_state"] == "running" and ... lease_until > now` 与函数开头的
+  `active_lease` 判定重复且不可达（同一个 `now` 下前者为真必已抛 `LEASE_ACTIVE`）。
+  属范围外的死分支清理，本任务未动。
+- 共用的本地 lab 里 `public.m0_live_once` 缺 PR #25 新增的 `models_metadata_sha256` 列，
+  导致 `tests/integration/test_m0_live_postgres.py` 三条用例在本机失败。该文件只 import
+  `scripts.m0.*`，与本任务改动无接触；CI 用全新容器不复现。这是 **C1 的又一个实例**
+  （`install_live()` 的 `CREATE TABLE IF NOT EXISTS` 不会给已有表补列），未在本任务内处理。
 
 ## 下一步与交接
 
-1. 取得 A 类实施授权后开 `chore/durable-store-hardening` 分支，按 A1 → A2 → A3 顺序修复，每条配回归测试并做变异验证。
+1. A 类实施与变异验证已完成，独立审查已进行；PR 等待用户审核合并（Agent 不合并）。
 2. B 类需用户就「运行时依赖边界怎么划 + 是否引入 psycopg_pool」给出决定后另立任务。
-3. C1 需用户就迁移机制给出决定；C2 的前置工作已在 main，取得依赖方向决定后即可开 ADR；C3 随 A1 一并定。
+3. C1 需用户就迁移机制给出决定（本轮又新增一个实例，见上）；C2 的前置工作已在 main，
+   取得依赖方向决定后即可开 ADR；C3 随 A1 一并定——A1 已把长 SQL 展开得更长，
+   开启 E501 的取舍未变，仍待决定。
 4. 本记录不改变任何 SPEC 门槛、`feature_list.json` 的 `passes`，也不代表 M1-01 验收状态变化。
