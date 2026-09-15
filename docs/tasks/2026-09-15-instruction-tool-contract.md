@@ -1,11 +1,12 @@
 # 调查指令与工具接口合同
 
-- 状态：进行中
+- 状态：PR 已就绪，待用户审核合并（PR #24）
 - 更新日期：2026-09-15
 - 依据：[SPEC.md](../../SPEC.md)「Model priority and design ownership」「Verification and delivery」；
   [C3](../design/technical-proposal-2026-09-07.md) 第 5、7、8 节；
   [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md)；[ADR-0002](../adr/0002-context-driven-investigation.md)。
 - 工作区：`chore/prompt-tool-contract` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-prompt-tool-contract`
+- PR：[#24](https://github.com/kevinWangSheng/production-ops-agent/pull/24)，HEAD `23d6703`；最新 CI `checks` 与 `m0-postgres` 均 success；5 个审查 thread 全部已回复并 resolve；`mergeStateStatus` 为 `CLEAN`。
 
 ## 目标与范围
 
