@@ -122,7 +122,8 @@ M0 退出条件与产品验收均不因本次探针改变。
 | R3 | `live.py` 的 `token_usage()` 识别集含虚构 id `deepseek-v4.1-flash`、缺真实回报名 `deepseek-flash`，且在准入校验前逐响应调用 | **采纳** | 切换后每条真实响应会被记成 `unreported_or_unrecognized`。已补 `deepseek-flash`/`DeepSeek-Flash`、移除虚构 id、加注释区分账本识别与准入校验 |
 | R3b | `docs/development.md` 的操作指引仍写 `reported_alias=deepseek-v4-flash` | **采纳** | 已更新为 `deepseek-flash` 并注明旧名对应模型已退役 |
 | R3c | 「原先的双名允许集」前提对 `live.py` 不成立，该文件从来是单值 | **采纳** | 双名允许集在 `round02/03.py` 与 provider-identity 决定文档，是另一套机制。已更正表述，并如实说明本次顺带修复了 `live.py` 对真实端点的必然失败 |
-| R4 | `deepseek-flash` 是浮动别名，精确匹配更严但**分辨力更低**，无法再检测代次更替 | **采纳** | SPEC/C3 补 caveat：代次漂移须另立信号，不能依赖名称校验；对 B2 冻结校准尤其重要。`version_scope` 语义是否调整列为开放项 |
+| R4 | `deepseek-flash` 是浮动别名，精确匹配更严但**分辨力更低**，无法再检测代次更替 | **采纳** | SPEC/C3 补 caveat。`version_scope` 语义调整初列为开放项，后由机器人 P1 推动落实，见下行 |
+| 机器人 P1 | 浮动别名 + `version_scope` 仍写 `reported_alias`，未来每一代都能通过名称校验并被记成同一模型，可能与冻结校准静默跑在不同后端上 | **采纳** | 三处落实：(1) `version_scope` 改为 **`floating_alias`**，如实记录更弱的保证，不再高估；(2) SPEC/C3 把漂移检测从 caveat 升级为**前置条件**——任何 Run 与冻结校准比较前须先用 `/models` 元数据核对确立后端身份，该机制仓库已有（`provider_models_response_sha256`）；(3) 在 live profile 内携带已批准的 models 元数据 hash 列为开放项，因其使每次批准多一次调用，须另有决定与授权，不自行实施 |
 | R4b | B6 的 runner 仍钉已退役名，改与不改都有代价 | **采纳（仅记录）** | 列入「未决开放项」，不静默编辑 runner |
 | R4c | `adapters.py` 被归为「真实出站」实为合成排演；同类 `protocol.py` 未归类 | **采纳** | 两者都在 `no_network()` + `model.invalid` 下运行。已更正分类、同步 `protocol.py`，并写明唯一真实出站是 `live.py` |
 | R4d | `docs/plans/delivery-and-resources-2026-09-08.md` 的现在时断言未更新 | **采纳** | 已加注被 2026-09-15 决定取代 |
@@ -136,10 +137,11 @@ ROADMAP 记 B6 为**部分完成**，「正式可比报告、人工校准和盲�
 于是形成两难：改 runner 会破坏与已记录 M004 runs 的可比性；不改则 B6 只能用已退役名完成。
 **本任务只记录该开放项，不静默编辑 runner**——选哪条属实验设计决定，须单独立项。
 
-**浮动别名削弱了代次检测。** 见 SPEC/C3 新增的 caveat：`deepseek-flash` 定义为
-「the latest V4.1 Flash model」，换代时回报字符串不变，名称校验无法再发现后端更替。
-需要另立漂移检测信号；`MODEL_PROFILE["version_scope"]` 仍写 `reported_alias`，
-该字段语义是否需要调整同样待定。
+**在 live profile 内携带已批准的 models 元数据 hash。** 浮动别名下名称校验无法发现后端更替，
+SPEC/C3 已把「比较前须经 `/models` 元数据核对」定为前置条件，`version_scope` 也已改为
+`floating_alias`。但把该 hash 钉进 profile 并在 claim 时校验尚未实施——
+它使每次批准多一次 `/models` 调用，涉及费用与授权，须单独决定。
+在此之前，漂移检测依赖执行者按前置条件手动核对。
 
 ## 下一步与交接
 

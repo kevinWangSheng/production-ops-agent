@@ -32,7 +32,11 @@ ENDPOINTS = {"https://api.smith.langchain.com", "https://eu.api.smith.langchain.
 MODEL_PROFILE = {
     "request_model": "deepseek-flash",
     "accepted_response_model": "deepseek-flash",
-    "version_scope": "reported_alias",
+    # deepseek-flash 是浮动别名（官方定义为 the latest V4.1 Flash model），换代时
+    # 回报字符串不变。故响应名校验只能证明「是当前 Flash」，不能证明代次未变；
+    # 该标签如实记录这一更弱的保证，不写成 reported_alias 以免高估。
+    # 代次漂移须由独立信号检测，见 SPEC「Model priority」与 C3 第 5 节。
+    "version_scope": "floating_alias",
     "thinking": "enabled",
     "reasoning_effort": "high",
 }
