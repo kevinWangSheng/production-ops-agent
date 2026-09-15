@@ -169,3 +169,75 @@ def test_paused_incident_cannot_be_claimed_or_published():
     assert store.control(incident, 1, "resume", "operator") == 2
     resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert resumed.control_generation == 2
+
+
+def test_never_claimed_run_cannot_be_claimed_while_paused():
+    """Run 从未被领取时，pause 不改写 Run 状态，incident 状态判定是唯一闸门。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-paused-queued-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "pause", "operator") == 1
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["run"]["state"] == "queued"
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+
+    assert store.control(incident, 1, "resume", "operator") == 2
+    assert store.claim(incident, run, uuid4(), {"state": "v1"}).control_generation == 2
+
+
+def test_paused_run_reaches_terminal_state_on_cancel():
+    """暂停中的 Run 被取消时必须进入终态，不得留下 incident/run 互相矛盾的记录。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-paused-cancel-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+    assert store.control(incident, 1, "cancel", "operator") == 2
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "cancelled"
+    assert rebuilt["run"]["state"] == "cancelled"
+
+
+def test_follow_up_and_correct_cannot_silently_lift_a_pause():
+    """追问与纠正不解除人工暂停；恢复必须由显式 resume 完成。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-paused-followup-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+
+    for action in ("follow_up", "correct", "pause"):
+        with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+            store.control(incident, 1, action, "operator")
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["control_generation"] == 1
+
+    assert store.control(incident, 1, "resume", "operator") == 2

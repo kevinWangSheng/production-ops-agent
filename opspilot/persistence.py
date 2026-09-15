@@ -325,20 +325,15 @@ class DurableStore:
                 raise PersistenceError("CONTROL_CONFLICT")
             if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
                 raise PersistenceError("INVALID_INPUT")
-            if action in {
-                "cancel",
-                "pause",
-                "resume",
-                "follow_up",
-                "correct",
-            } and (
-                row.get("state")
-                in {
-                    "cancelled",
-                    "completed",
-                }
-                or row.get("conclusion") is not None
+            if (
+                row["state"] in {"cancelled", "completed"}
+                or row["conclusion"] is not None
             ):
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            # 暂停态只接受 resume 与 cancel，与 opspilot/domain/runs.py 的
+            # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
+            # 追问与纠正不得静默解除人工暂停。
+            if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
@@ -352,7 +347,7 @@ class DurableStore:
             )
             if action == "cancel":
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running')",
+                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running')",
                     (nxt, incident_id),
                 )
             elif action == "pause":
@@ -397,6 +392,10 @@ class DurableStore:
                 or row["epoch"] != lease.epoch
                 or row["control_generation"] != lease.control_generation
                 or row["run_state"] != "running"
+                # `paused` 在当前实现下是纵深防御而非承重判定：暂停必然递增
+                # control_generation，且 claim() 已拒绝在暂停期间发放租约，
+                # 因此上面的 generation 栅栏先行拦截。变异测试确认去掉本项
+                # 不会导致任何用例失败。保留它是为了在栅栏被削弱时仍然兜底。
                 or row["state"] in {"completed", "cancelled", "paused"}
                 or row["lease_until"] is None
                 or row["lease_until"] <= self._db_now(conn)
