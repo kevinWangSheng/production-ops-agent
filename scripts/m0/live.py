@@ -490,15 +490,17 @@ def token_usage(response):
     if type(usage) is not dict:
         usage = {}
     reported = response.get("model")
+    # 账本识别集，逐响应记录回报名；与 accepted_response_model 的准入校验分开。
+    # deepseek-flash 是当前官方 Flash id；其余为历史回报名，保留以便回读旧记录。
     known = {
+        "deepseek-flash",
+        "DeepSeek-Flash",
         "deepseek-v4-flash",
         "deepseek-v4-flash-0731",
         "DeepSeek-V4-Flash-0731",
         "deepseek-v4-pro",
         "deepseek-v4-pro-0813",
         "DeepSeek-V4-Pro-0813",
-        "deepseek-v4.1-flash",
-        "DeepSeek-V4.1-Flash",
     }
     result = (
         {

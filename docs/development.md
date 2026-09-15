@@ -110,7 +110,7 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 回读诊断：CLI的trace_code为固定分类；trace_readback_code严格核对业务DTO，仅允许平台返回的根层级metadata.ls_run_depth=int0，出站extra规则仍不变。2xx null明确失败而非按404重试。初次失败可继续只读核对已有Run，无需重跑模型或重新上传；参考[真实误判修复](evidence/m0-01-live/trace-diagnosis.md)。
 
-模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-v4-flash，拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
+模型授权：当前live仅接受m0-normal-1-v2合同，必须显式model_profile（request_model/accepted_response_model/version_scope/thinking/reasoning_effort），且逐响应核验报告模型。当前仅支持reported_alias=deepseek-flash（2026-09-15 用户决定；旧名 deepseek-v4-flash 对应的模型已由供应商退役），拒绝无法证明的fixed_weights批准；旧v1文件不可自动迁移，原实验不重跑。参见[审查修复](evidence/m0-01-live/pr-review-closure.md)。
 批准合同v2还需runtime={python,implementation}，明确完整Python版本（包括patch）及CPython实现。入口在claim前核对实际运行环境与锁定依赖闭包（含当前平台marker和binary extra）；旧/缺失依赖或Python错配固定拒绝。此核对不自动安装环境，也不承诺检测伪造distribution元数据或被篡改的二进制。
 撰写 prompt 与 tool description：分层、revision 生成与 bump 条件见 [C3 第 5 节「指令分层与版本」](design/technical-proposal-2026-09-07.md)，模型可见的工具描述必填项与禁止项见同文件第 8 节；按当前模型官方特性的撰写规则（排列顺序、措辞、`cannot_prove` 写法、实现前检查清单）见 [DeepSeek V4.1 Flash 设计参考](design/deepseek-flash-prompt-tool-reference.md)。改动送模文字前先读这两处；参考文档为日期绑定，供应商变更时重核。
 

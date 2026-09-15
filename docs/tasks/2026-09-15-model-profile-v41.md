@@ -2,7 +2,8 @@
 
 - 状态：进行中
 - 更新日期：2026-09-15
-- 依据：用户 2026-09-15 决定（对应[指令与工具接口合同提案](../design/instruction-and-tool-interface-contract-2026-09-15.md) §5 的 U1）；
+- 依据：用户 2026-09-15 直接决定。（同一问题也出现在 PR #24 的合同提案 §5 U1，
+  但该提案**尚未合并、本分支不存在该文件**，因此不作为本次变更的依据引用。）
   官方 [Change Log](https://api-docs.deepseek.com/updates/) 2026-09-10 条目；
   [SPEC.md](../../SPEC.md)「Model priority and design ownership」；[C3 第 5 节](../design/technical-proposal-2026-09-07.md)。
 - 工作区：`chore/model-profile-v41` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-model-v41`
@@ -74,11 +75,21 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 | 响应名合同 | 同上，`test_m0_live.py::test_complete_boundary` | 通过；正常分支替身值改为 `deepseek-flash` |
 | 残留字面量 | `grep -rn deepseek-v4-flash`（排除 docs/.venv） | 仅存于历史实验脚本与历史 fixture，符合上表划分 |
 
-**响应校验收紧的副作用（有意保留）**：`live.py` 的校验是精确匹配 fail-closed
-（`response.get("model") != profile["accepted_response_model"]`）。
-切换后请求 `deepseek-flash` 时，回报已退役的 `deepseek-v4-flash` 将被**拒绝**。
-这比原先的双名允许集更严，不是削弱；原双名允许集是 2026-09-10 针对
-「请求旧名」情形的决定，请求规范名后不再适用。
+**响应校验：这次实际是修了一个潜伏缺陷，不是"收紧"。**
+`live.py` 的校验一直是单值精确匹配 fail-closed
+（`response.get("model") != profile["accepted_response_model"]`），
+**从来没有双名允许集**——双名允许集在 `round02.py`/`round03.py` 的 `Profile.reported_models`
+与 `round-02-provider-identity-decision.md`，是另一套机制。初稿把两者混为一谈，已更正。
+
+后果是：`live.py` 原本只接受 `deepseek-v4-flash`，而供应商自 2026-09-10 起回报
+`deepseek-flash`，因此该文件对真实端点已处于必然失败状态。本次切换顺带修复了它。
+切换后请求 `deepseek-flash`，回报已退役的 `deepseek-v4-flash` 会被拒绝，这是正确的 fail-closed。
+
+**同一文件的账本识别集也有漏**（独立审查发现）：`token_usage()` 的 `known` 集合
+原含 `deepseek-v4.1-flash`（一个**并不存在的官方 id**）却不含 `deepseek-flash`，
+而它在准入校验之前逐响应调用。不修的话，切换后每条真实响应都会被记成
+`unreported_or_unrecognized`。已补入 `deepseek-flash`/`DeepSeek-Flash` 并移除虚构 id，
+保留历史回报名以便回读旧记录。这个漏正是"V4.1 Flash 到底叫什么"没查清官方文档的直接后果。
 
 **未执行**：真实模型调用。本任务不验证新请求名在真实端点上的行为，
 该验证需要单独的实验授权与预算合同。**因此「切换已完成」不等于「新 profile 已验证」。**
@@ -93,7 +104,10 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 | R1b | SPEC 只写旧名「已退役」，漏掉定价页「still accepted」 | **采纳** | SPEC/C3 补全：旧名今天仍可用，但带未标注期限的失效风险 |
 | R2 | 「只换请求名不换后端」把推断写成已核查事实 | **采纳** | 实测确认：分界是区间而非 02:19Z 时点；M002 起始于 02:19:02Z 位于区间内而非其后，首条 Run 响应未保留；8 条 per-run 仅 3 条有身份、4 个调查 Run 无身份字段；B2 的 wall-time 实际只取材 M002。四处表述已更正并标注结论依据退役公告而非身份覆盖。**实质结论（不重新校准）不变** |
 
-决策点 3–6 的审查结果待回，处置后再补入本表。
+| R3 | `live.py` 的 `token_usage()` 识别集含虚构 id `deepseek-v4.1-flash`、缺真实回报名 `deepseek-flash`，且在准入校验前逐响应调用 | **采纳** | 切换后每条真实响应会被记成 `unreported_or_unrecognized`。已补 `deepseek-flash`/`DeepSeek-Flash`、移除虚构 id、加注释区分账本识别与准入校验 |
+| R3b | `docs/development.md` 的操作指引仍写 `reported_alias=deepseek-v4-flash` | **采纳** | 已更新为 `deepseek-flash` 并注明旧名对应模型已退役 |
+| R3c | 「原先的双名允许集」前提对 `live.py` 不成立，该文件从来是单值 | **采纳** | 双名允许集在 `round02/03.py` 与 provider-identity 决定文档，是另一套机制。已更正表述，并如实说明本次顺带修复了 `live.py` 对真实端点的必然失败 |
+| R5 | 任务记录把未合并分支上的合同提案当作变更依据引用 | **采纳** | 改为引用用户 2026-09-15 直接决定；提案（PR #24）另行提及并标注尚未合并 |
 
 ## 下一步与交接
 
