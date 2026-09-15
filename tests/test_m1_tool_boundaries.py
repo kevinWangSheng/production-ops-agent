@@ -31,9 +31,11 @@ from tests.m1_tool_support import (
     NOW,
     TRANSPORT_ONLY_MARKER,
     WINDOW_START,
+    FakeClock,
     FakeTransport,
     FixedControl,
     RecordingSink,
+    SlowControl,
     UnavailableControl,
     body,
     build,
@@ -287,6 +289,76 @@ def test_an_expired_authorization_deadline_denies_the_call():
 
     assert (outcome.status, outcome.reason) == ("denied", "DEADLINE_EXCEEDED")
     assert not transport.called
+
+
+def test_a_deadline_that_expires_during_the_control_lookup_is_denied():
+    """The deadline is re-read after the control lookup, not before it.
+
+    The Controller round trip has no bounded duration. Timing the deadline
+    from the instant the request was accepted lets a slow lookup cross the
+    deadline and still produce a positive transport timeout, which would send
+    and expose a read after the authorization ended.
+    """
+
+    clock = FakeClock()
+    control = SlowControl(clock, 5.0)  # the lookup outlives the authorization
+    executor, transport, sink, _ = build(
+        clock=clock,
+        control=control,
+        scope_overrides={"deadline": NOW + timedelta(seconds=2)},
+    )
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "DEADLINE_EXCEEDED")
+    assert not transport.called  # the read was never sent
+    assert outcome.source_contact == "none"
+    assert outcome.evidence is None and sink.records == []
+    assert outcome.model_view["content"] is None
+    # The audit record shows the expiry was observed after the lookup, not at
+    # the instant the request was accepted.
+    audit = outcome.operation.audit_json()
+    assert audit["started_at"] == NOW.isoformat()
+    assert audit["authorized_at"] == (NOW + timedelta(seconds=5)).isoformat()
+    assert audit["sent"] is False
+
+
+def test_the_control_lookup_time_is_charged_against_the_request_timeout():
+    clock = FakeClock()
+    executor, transport, _, _ = build(
+        clock=clock,
+        control=SlowControl(clock, 3.0),
+        scope_overrides={"deadline": NOW + timedelta(seconds=10)},
+    )
+    transport.response = TransportResponse(body=body([]))
+
+    executor.execute(request())
+
+    # 10 s of authorization minus the 3 s the control read consumed, not 10.
+    assert transport.requests[0].timeout_seconds == 7.0
+
+
+def test_a_result_arriving_at_the_deadline_is_kept_as_history_only():
+    executor, transport, sink, clock = build(
+        scope_overrides={"deadline": NOW + timedelta(seconds=2)}
+    )
+    # Exactly the effective timeout, so the request bound itself lets it pass.
+    transport.clock, transport.duration = clock, 2.0
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert transport.requests[0].timeout_seconds == 2.0
+    assert (outcome.status, outcome.reason) == ("denied", "DEADLINE_EXCEEDED")
+    # The read reached the source and cannot be recalled, but it is not adopted.
+    assert outcome.source_contact == "confirmed"
+    assert not outcome.adopted
+    assert outcome.model_view["content"] is None
+    assert len(sink.records) == 1
+    assert sink.records[0].adopted is False
+    assert sink.records[0].raw == body([{"value": 1}])
+    assert sink.records[0].view["content"] is None
 
 
 # --- refusal path 4: over limit ---------------------------------------------

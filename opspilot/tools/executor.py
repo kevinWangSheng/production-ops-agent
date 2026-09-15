@@ -400,8 +400,16 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
         if self._operations_used >= scope.max_operations:
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
-        assert operation.started_at is not None
-        remaining_deadline = (scope.deadline - operation.started_at).total_seconds()
+        # Re-read the trusted clock here rather than reusing ``started_at``.
+        # The control lookup above is a Controller round trip of unbounded
+        # duration, so an authorization that was still valid when the request
+        # was accepted may have expired by the time the snapshot comes back.
+        # Measuring from ``started_at`` would charge none of that lookup to the
+        # deadline and still hand the transport a positive timeout, dispatching
+        # a read after the authorization ended.
+        authorized_at = self._clock.now()
+        operation = replace(operation, authorized_at=authorized_at)
+        remaining_deadline = (scope.deadline - authorized_at).total_seconds()
         if remaining_deadline <= 0:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
         remaining_budget = scope.max_tool_seconds - self._tool_seconds_used
@@ -495,18 +503,25 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
-        # Re-check control state: a suspension that took effect while the
-        # request was in flight invalidates the result, which then survives as
-        # history only (technical plan sections 4 and 8).
-        control = self._read_control()
-        if control is None:
-            invalid = "CONTROL_UNAVAILABLE"
-        elif control.suspended:
-            invalid = "SUSPENDED"
-        elif control.control_generation != self._scope.control_generation:
-            invalid = "CONTROL_GENERATION_CHANGED"
+        # Re-check the authorization deadline and the control state: an expiry
+        # or a suspension that took effect while the request was in flight
+        # invalidates the result, which then survives as history only
+        # (technical plan sections 4 and 8). The deadline is checked first and
+        # against the trusted clock, so a result the gateway's own request
+        # bound let through still cannot be adopted past its authorization.
+        assert operation.finished_at is not None
+        if operation.finished_at >= self._scope.deadline:
+            invalid = "DEADLINE_EXCEEDED"
         else:
-            invalid = ""
+            control = self._read_control()
+            if control is None:
+                invalid = "CONTROL_UNAVAILABLE"
+            elif control.suspended:
+                invalid = "SUSPENDED"
+            elif control.control_generation != self._scope.control_generation:
+                invalid = "CONTROL_GENERATION_CHANGED"
+            else:
+                invalid = ""
         record = self._record(
             operation,
             plan,

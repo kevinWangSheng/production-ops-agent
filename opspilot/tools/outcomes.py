@@ -15,8 +15,8 @@ human control requirements"):
 ``timeout``  the request deadline was reached or the result came back too late
              to be adopted. Status at the source is unknown, never success.
 ``denied``   authorization, scope, control-state or budget refusal. The request
-             was never sent, unless an in-flight control change invalidated a
-             result that had already arrived.
+             was never sent, unless an in-flight control change or deadline
+             expiry invalidated a result that had already arrived.
 
 ``source_contact`` is tracked separately from the status because technical plan
 section 7 forbids treating unknown state as success, and section 8 states that
@@ -174,6 +174,13 @@ class ToolOperation:
     query: str | None = None
     window: Window | None = None
     started_at: datetime | None = None
+    # Trusted-clock instant at which control state and the scope deadline were
+    # last verified, immediately before dispatch. It is recorded separately
+    # from ``started_at`` because the control lookup sits between them: on a
+    # ``DEADLINE_EXCEEDED`` denial it is the only field showing when the
+    # expiry was observed, and nothing else in the record can be used to
+    # derive it.
+    authorized_at: datetime | None = None
     finished_at: datetime | None = None
     elapsed_seconds: float | None = None
     timeout_seconds: float | None = None
@@ -209,6 +216,9 @@ class ToolOperation:
             "query": self.query,
             "window": self.window.as_json() if self.window else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
+            "authorized_at": self.authorized_at.isoformat()
+            if self.authorized_at
+            else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "elapsed_seconds": self.elapsed_seconds,
             "timeout_seconds": self.timeout_seconds,

@@ -100,6 +100,23 @@ class FixedControl:
         )
 
 
+class SlowControl(FixedControl):
+    """A control lookup that burns fake wall time, as a real PG read would.
+
+    The duration is charged to the fake clock, so a test can put the scope
+    deadline inside the lookup without sleeping.
+    """
+
+    def __init__(self, clock, duration, **overrides):
+        super().__init__(**overrides)
+        self.clock = clock
+        self.duration = duration
+
+    def snapshot(self, scope):
+        self.clock.advance(self.duration)
+        return super().snapshot(scope)
+
+
 class UnavailableControl:
     def __init__(self):
         self.calls = 0
