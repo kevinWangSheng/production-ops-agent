@@ -328,6 +328,36 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 状态被直接改库改成互相矛盾时可见；`publish()` 与 `control('cancel')` 都在同一事务里
 同时写两边，公开接口构造不出这种状态。
 
+#### CI 状态与一个仓库级阻塞（不在本任务范围）
+
+PR #26 的 `m0-postgres` job 通过；`checks` job 在 "Secret scan and synthetic detection
+self-test" 这一步红，**原因不在本 PR 内**：
+
+- `.github/workflows/ci.yml:27` 的 checkout 用 `fetch-depth: 0`，CI 会取下 origin 上**所有分支**；
+- `scripts/check_secrets.py` 最后一段是
+  `gitleaks git --log-opts="--all --no-ext-diff --no-textconv"`，扫的是**所有 ref 的历史**。
+
+两者叠加，任何一条分支上的命中都会让**仓库里每个 PR** 的 secret scan 失败。当前命中的是
+`feature/m1-01-intake-auth` 的 `64254dfe`（`tests/test_m1_intake_auth.py:198`，
+`generic-api-key` 规则）。`git merge-base --is-ancestor` 核实：只有该分支含它，main 不含。
+
+时间线一致：
+
+```
+run 35032644464  cf67cb5  started 2026-09-15T22:47:02Z  success
+leak commit 64254dfe                 committed 22:54:45Z
+run 35033476575  d399b3b  started 2026-09-15T22:57:49Z  failure（重跑一次同样失败）
+```
+
+本 PR 内容本身经三次独立复现均为干净：只扫本分支历史 `0 findings`；depth-1 单分支 clone
+跑完整 `check_secrets.py` 得 `SECRET_SCAN_PASSED`；取 `refs/pull/26/merge` 后在
+**linux/amd64 容器**里用 CI 同一个 checksum 校验过的 `gitleaks_8.30.1_linux_x64` 跑同一脚本，
+三段扫描分别为 `SNAPSHOT index 0 / SNAPSHOT worktree 0 / GIT 0`。
+
+未处理，已上报：修 `feature/m1-01-intake-auth` 属该任务的范围；改
+`scripts/check_secrets.py` 的 allowlist 或 workflow 的扫描范围属安全检查本身的变更，
+两者都不在本任务授权内。该分支处理完后重跑 CI 即可。
+
 #### 本轮新观察到、未处理的项
 
 - `claim()` 内 `elif row["run_state"] == "running" and ... lease_until > now` 与函数开头的
@@ -340,7 +370,9 @@ SQL 字面量、`opspilot/domain` 的 `Literal` 与状态机三处。
 
 ## 下一步与交接
 
-1. A 类实施与变异验证已完成，独立审查已进行；PR 等待用户审核合并（Agent 不合并）。
+1. A 类实施与变异验证已完成，两轮独立审查已完成且发现已处置；PR #26 等待用户审核合并（Agent 不合并）。
+   **阻塞**：`checks` job 因 `feature/m1-01-intake-auth` 上的 secret-scan 命中而红（见上节），
+   该分支处理完后重跑 CI；`m0-postgres` 已通过，Codex code review 与 security review 均无发现。
 2. B 类需用户就「运行时依赖边界怎么划 + 是否引入 psycopg_pool」给出决定后另立任务。
 3. C1 需用户就迁移机制给出决定（本轮又新增一个实例，见上）；C2 的前置工作已在 main，
    取得依赖方向决定后即可开 ADR；C3 随 A1 一并定——A1 已把长 SQL 展开得更长，
