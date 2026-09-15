@@ -121,7 +121,9 @@ Run 状态包括 `queued / running / waiting_human / paused / blocked / complete
 
 「只换请求名不换后端」依据的是上述供应商文档，**不是逐 Run 身份记录**，不得当作冻结校准集的已核验属性。仓库实际能证实的是：响应名分界落在 `flash-results.json`（`ended` 2026-09-09T17:18:01Z，回报旧名）与 `m002-saved-report-02`（2026-09-10T02:26:34Z，回报 `deepseek-flash`）之间约九小时的区间内；首个校准 Run `m002-saved-report-01` 起始于 2026-09-10T02:19:02Z，即**位于**该区间之内而非其后，且其响应因身份校验失败未保留。M002 的 8 条 per-run 记录中，3 条有回报名、1 条为未保留响应、4 个调查 Run 完全没有模型身份字段。M002–M004 范围内没有任何记录回报 `deepseek-v4-flash`。
 
-故不需要重新校准——今天的 `deepseek-flash` 与校准期服务旧名的是同一后端——但依据是供应商的退役公告，不是逐 Run 身份覆盖。响应名校验为精确匹配 fail-closed：请求 `deepseek-flash` 时，回报已退役的 `deepseek-v4-flash` 将被拒绝。此前 Pro 实验作为历史证据保留，不替代 Flash 验证。2026-09-09 新 Flash 固定工具/严格 JSON/PG/白名单 trace 链路已单次通过，真实调查基线另见[本轮证据](../tasks/2026-09-09-m0-real-investigation.md)；不代表全部协议/恢复矩阵或产品验收。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。完整协议/恢复兼容矩阵仍需实验，单次链路通过不代表该矩阵通过。
+故不需要重新校准——今天的 `deepseek-flash` 与校准期服务旧名的是同一后端——但依据是供应商的退役公告，不是逐 Run 身份覆盖。响应名校验为精确匹配 fail-closed：请求 `deepseek-flash` 时，回报已退役的 `deepseek-v4-flash` 将被拒绝。
+
+**注意新名是浮动别名。** Change Log 对 `deepseek-flash` 的定义是「the latest V4.1 Flash model」，因此供应商下次换代时回报字符串不变。精确匹配因此**更严但分辨力更低**：它无法再检测已退役固定名本会以字符串变化暴露的后端更替，而 `MODEL_PROFILE["version_scope"]` 仍写 `reported_alias`。代次漂移的检测须另立信号（记录响应元数据、定期核对定价页/Change Log，或行为校准），不能依赖名称校验。这对 B2 冻结校准尤其重要——它的目的正是发现这类漂移。此前 Pro 实验作为历史证据保留，不替代 Flash 验证。2026-09-09 新 Flash 固定工具/严格 JSON/PG/白名单 trace 链路已单次通过，真实调查基线另见[本轮证据](../tasks/2026-09-09-m0-real-investigation.md)；不代表全部协议/恢复矩阵或产品验收。记录请求模型名、可获得的响应版本信息、调用日期和依赖锁版本。完整协议/恢复兼容矩阵仍需实验，单次链路通过不代表该矩阵通过。
 
 使用 OpenAI 兼容客户端不意味着使用 OpenAI 模型服务，也不意味着采用 OpenAI Agents SDK。
 

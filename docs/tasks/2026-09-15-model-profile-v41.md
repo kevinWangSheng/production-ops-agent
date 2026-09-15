@@ -52,10 +52,11 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 | `scripts/m0/config.py` | `PROFILE["OPSPILOT_MODEL"]` |
 | `.env.example` | `OPSPILOT_MODEL` |
 | `scripts/m0/live.py` | `MODEL_PROFILE` 的 `request_model` 与 `accepted_response_model` |
-| `scripts/m0/adapters.py` | 出站 `chat.completions.create(model=...)` |
+| `scripts/m0/adapters.py`、`scripts/m0/protocol.py` | 合成排演的 `create(model=...)`。**两者都不是真实出站**（`no_network()` + `base_url="https://model.invalid"`），改动目的是让排演跟随当前 profile、保持代表性。唯一真实出站路径是 `live.py`。初稿把 `adapters.py` 归为「决定下次真的调用什么」是错的，且漏了同类的 `protocol.py`（独立审查发现） |
 | `tests/test_m0_live.py` | 响应名合同测试的正常分支替身值 |
 
 **已改（权威来源记录决定）**：`SPEC.md`、`docs/design/technical-proposal-2026-09-07.md`、`ROADMAP.md`。
+另 `docs/development.md` 的操作指引与 `docs/plans/delivery-and-resources-2026-09-08.md` 的现在时断言已同步/加注。
 
 **加注但保留原文**：`docs/testing/first-investigation-v4-2026-09-10.md`——
 冻结包「接口仍为显式 `deepseek-v4-flash`」原文不改写，
@@ -107,7 +108,24 @@ M003/M004 的 sidecar 未提交（`round-07-wall-time-bound.md` 记为证据不�
 | R3 | `live.py` 的 `token_usage()` 识别集含虚构 id `deepseek-v4.1-flash`、缺真实回报名 `deepseek-flash`，且在准入校验前逐响应调用 | **采纳** | 切换后每条真实响应会被记成 `unreported_or_unrecognized`。已补 `deepseek-flash`/`DeepSeek-Flash`、移除虚构 id、加注释区分账本识别与准入校验 |
 | R3b | `docs/development.md` 的操作指引仍写 `reported_alias=deepseek-v4-flash` | **采纳** | 已更新为 `deepseek-flash` 并注明旧名对应模型已退役 |
 | R3c | 「原先的双名允许集」前提对 `live.py` 不成立，该文件从来是单值 | **采纳** | 双名允许集在 `round02/03.py` 与 provider-identity 决定文档，是另一套机制。已更正表述，并如实说明本次顺带修复了 `live.py` 对真实端点的必然失败 |
+| R4 | `deepseek-flash` 是浮动别名，精确匹配更严但**分辨力更低**，无法再检测代次更替 | **采纳** | SPEC/C3 补 caveat：代次漂移须另立信号，不能依赖名称校验；对 B2 冻结校准尤其重要。`version_scope` 语义是否调整列为开放项 |
+| R4b | B6 的 runner 仍钉已退役名，改与不改都有代价 | **采纳（仅记录）** | 列入「未决开放项」，不静默编辑 runner |
+| R4c | `adapters.py` 被归为「真实出站」实为合成排演；同类 `protocol.py` 未归类 | **采纳** | 两者都在 `no_network()` + `model.invalid` 下运行。已更正分类、同步 `protocol.py`，并写明唯一真实出站是 `live.py` |
+| R4d | `docs/plans/delivery-and-resources-2026-09-08.md` 的现在时断言未更新 | **采纳** | 已加注被 2026-09-15 决定取代 |
 | R5 | 任务记录把未合并分支上的合同提案当作变更依据引用 | **采纳** | 改为引用用户 2026-09-15 直接决定；提案（PR #24）另行提及并标注尚未合并 |
+
+## 未决开放项（本任务不处理，需单独决定）
+
+**B6 的 runner 仍钉已退役名。** `scripts/m0_environment/holmes_baseline.py`、
+`scripts/m0_lab/round07/upstream_runner.py`、`candidate_runner.py` 都发 `deepseek-v4-flash`。
+ROADMAP 记 B6 为**部分完成**，「正式可比报告、人工校准和盲测仍未完成」。
+于是形成两难：改 runner 会破坏与已记录 M004 runs 的可比性；不改则 B6 只能用已退役名完成。
+**本任务只记录该开放项，不静默编辑 runner**——选哪条属实验设计决定，须单独立项。
+
+**浮动别名削弱了代次检测。** 见 SPEC/C3 新增的 caveat：`deepseek-flash` 定义为
+「the latest V4.1 Flash model」，换代时回报字符串不变，名称校验无法再发现后端更替。
+需要另立漂移检测信号；`MODEL_PROFILE["version_scope"]` 仍写 `reported_alias`，
+该字段语义是否需要调整同样待定。
 
 ## 下一步与交接
 
