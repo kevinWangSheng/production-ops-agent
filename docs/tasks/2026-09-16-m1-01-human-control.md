@@ -49,3 +49,7 @@
 - `.venv/bin/python -m scripts.m0.postgres_lab stop`：成功停止；数据保留。
 
 跳过项是其他 M0 集成测试的独立 opt-in（预算、live、restart 等），不影响 M1 durable 集合的 32 项实际运行。
+
+## 当前 HEAD 审查结果
+
+PR #28 当前 HEAD 的自动审查发现以下未完成项，已保留为交付阻塞而非宣称 M1-01 全部完成：全局/目标 suspension 尚未持久化并接入 DurableStore claim/budget/adoption；follow-up/correction 未持久化输入内容；commit_step/commit_tool 的迟到结果只拒绝、未写历史；取消后同事故新 Run 接续路径缺失；close/reopen 与重绑定/合并/拆分的持久化操作及测试缺失。此前映射表中引用的部分测试名不存在，需后续修正。PG 实跑证据已补齐（见上一节）。
