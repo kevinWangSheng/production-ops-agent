@@ -87,15 +87,14 @@
 - 命令（worktree 根目录）：`make check`
 - 结果：`uv lock --check` 通过；`ruff check` All checks passed；
   `ruff format --check` formatted；`mypy` Success: no issues found in 26 source files；
-  `pytest` **1278 passed, 75 skipped, 2 xfailed**（第二轮机器人审查修复后；
-  定向 `tests/test_m1_investigation_*.py` 全绿）。
+  `pytest` **1282 passed, 75 skipped, 2 xfailed**（第三轮机器人审查修复后）。
 - 真实 Run 命令：`PYTHONPATH=. M0_ENV_FILE=<main .env> .venv/bin/python scripts/m1_live_flash_loop.py`
   stdout：`{"status": "completed", "handoff": true, "http_count": 2, "known_cost_cny_upper": 0.024617, "report_schema_version": "m0-report-v2", "handoff_reasons": ["INCOMPLETE_INVESTIGATION"]}`
 
 ## 最终汇报
 
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
-- 本地 `make check`：1278 passed / 75 skipped / 2 xfailed。
+- 本地 `make check`：1282 passed / 75 skipped / 2 xfailed。
 - 真实 Run：2 HTTP，`m0-report-v2` incomplete + handoff，上界 0.024617 CNY。
 - 独立审查 P2 三条已修；第一轮机器人审查 4 P1 + 1 P2：采纳 4 条并修于 `122862d`，拒绝「崩溃后续跑」一条（属重启子任务）。
 - 第二轮机器人审查（覆盖 `fe30cd4`）：3 P1 + 4 P2，**7 条全部采纳**，修于 `ce9837a`：
@@ -106,10 +105,15 @@
   5. P2 请求体积按实际 POST 字节（含 thinking / response_format / tool_choice）
   6. P2 live ledger 记录失败 HTTP（usage 为 unknown）
   7. P2 live 脚本生成新 `run_id` 并写入 scope（历史 ledger 不改写）
-- CI workflow 不对非 main base 的 PR 自动挂 checks；修复后对当前 HEAD `workflow_dispatch`。
+- 第三轮机器人审查（覆盖 `6dcf0dd`）：2 P1 + 1 P2，**3 条全部采纳**，修于 `2e9f5d3`：
+  1. P1 v4 `target_refs` 按 `target_catalog` 的不透明键校验，不再用 registry id 顶替
+  2. P1 每条 cited view 必须自带 `time_scope_refs`，fact 不得借用 context 里其它 policy
+  3. P2 `request.run_id` 必须等于授权 `scope.run_id` 才预留预算
+- CI workflow 不对非 main base 的 PR 自动挂 checks；第三轮修复后对当前 HEAD `workflow_dispatch`。
+- **此后停止扩范围，等待用户审核合并。**
 - 未完成：intake/UI、PG DurableStore 集成、流式续接、tokenizer 上下文计数。11 个 `passes` 未改。
 - 合并由用户审核后执行，本任务不自动合并。
 
 ## 下一步与交接
 
-用户审核 PR #29。若 PR #20 先合进 main，将本 PR rebase 到 main。
+用户审核合并 PR #29。第三轮审查已闭环；不再主动扩范围。若 PR #20 先合进 main，再 rebase 到 main。
