@@ -50,28 +50,18 @@ class DeepSeekClient:
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def complete(self, call: ModelCall) -> ModelReply:
+        """One physical HTTPS request. Retries are the loop's budget decision."""
         body = _request_body(call, self._model)
-        raw, status, retryable = self._attempt(body, call.timeout_seconds)
-        if retryable:
-            raw, status, retryable = self._attempt(body, call.timeout_seconds)
+        raw, status = self._post(body, call.timeout_seconds)
         if status in {400, 401, 402, 422}:
             raise ModelError("MODEL_REJECTED")
-        if retryable or status < 200 or status >= 300:
+        if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
             raise ModelError("MODEL_UNAVAILABLE")
         try:
             payload = json.loads(raw)
         except ValueError as exc:
             raise ModelError("MODEL_UNAVAILABLE") from exc
         return _parse_reply(payload)
-
-    def _attempt(self, body: bytes, timeout: float) -> tuple[bytes, int, bool]:
-        try:
-            raw, status = self._post(body, timeout)
-        except ModelError as exc:
-            if exc.code == "MODEL_UNAVAILABLE":
-                return b"", 0, True
-            raise
-        return raw, status, status in _RETRYABLE_STATUS
 
     def _post(self, body: bytes, timeout: float) -> tuple[bytes, int]:
         request = Request(

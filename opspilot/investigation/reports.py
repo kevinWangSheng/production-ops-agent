@@ -171,10 +171,10 @@ def parse_report(
 
 @dataclass(frozen=True)
 class DeliveredView:
-    """One adopted tool view the report is allowed to cite."""
+    """One adopted view the report is allowed to cite."""
 
     evidence_id: str
-    target_id: str | None
+    target_ids: frozenset[str]
     status: str
 
 
@@ -222,7 +222,36 @@ def unsupported_citations(
         cited = [by_id[eid] for eid in claim.evidence_ids]
         if any(view.status != "ok" for view in cited):
             return True
-        observed = {view.target_id for view in cited}
+        observed: set[str] = set()
+        for view in cited:
+            observed.update(view.target_ids)
         if any(ref not in observed for ref in claim.target_refs):
             return True
     return False
+
+
+def delivered_from_context(context: object) -> list[DeliveredView]:
+    """Seed trusted views from a v4 evidence context's view_bindings."""
+    if not isinstance(context, Mapping):
+        return []
+    bindings = context.get("view_bindings")
+    if not isinstance(bindings, Mapping):
+        return []
+    delivered: list[DeliveredView] = []
+    for eid, binding in bindings.items():
+        if not isinstance(eid, str) or not eid or not isinstance(binding, Mapping):
+            continue
+        status = binding.get("status")
+        if status != "ok":
+            continue
+        refs = binding.get("target_refs")
+        if isinstance(refs, list):
+            targets = frozenset(item for item in refs if isinstance(item, str) and item)
+        elif isinstance(binding.get("target_id"), str) and binding["target_id"]:
+            targets = frozenset({str(binding["target_id"])})
+        else:
+            targets = frozenset()
+        delivered.append(
+            DeliveredView(evidence_id=eid, target_ids=targets, status="ok")
+        )
+    return delivered

@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
@@ -37,6 +37,7 @@ from opspilot.investigation.reports import (
     DeliveredView,
     ReportV2,
     context_time_policy_ids,
+    delivered_from_context,
     parse_report,
     unsupported_citations,
 )
@@ -139,6 +140,8 @@ class InvestigationLoop:
     store: StepCommitter
     clock: Clock
     accepted_response_model: str = ACCEPTED_RESPONSE_MODEL
+    _physical_requests: int = field(default=0, init=False, repr=False)
+    _steps_committed: int = field(default=0, init=False, repr=False)
 
     def run(self, request: InvestigationRequest) -> LoopOutcome:
         if not isinstance(request, InvestigationRequest):
@@ -172,9 +175,12 @@ class InvestigationLoop:
                 }
             )
         evidence_ids: list[str] = []
-        delivered: list[DeliveredView] = []
-        steps = 0
-        used = 0
+        delivered: list[DeliveredView] = delivered_from_context(
+            request.evidence_context
+        )
+        evidence_ids.extend(view.evidence_id for view in delivered)
+        self._physical_requests = 0
+        self._steps_committed = 0
         try:
             for ordinal in range(1, request.model_requests + 1):
                 final = ordinal == request.model_requests
@@ -187,8 +193,6 @@ class InvestigationLoop:
                     evidence_ids=evidence_ids,
                     delivered=delivered,
                 )
-                used = ordinal
-                steps += 1
                 if outcome is not None:
                     return self._finish(
                         execution=outcome[0],
@@ -196,8 +200,8 @@ class InvestigationLoop:
                         report=outcome[2],
                         content=outcome[3],
                         evidence_ids=evidence_ids,
-                        used=used,
-                        steps=steps,
+                        used=self._physical_requests,
+                        steps=self._steps_committed,
                         revision=revision,
                         face=face,
                         question_sha=question_sha,
@@ -209,8 +213,8 @@ class InvestigationLoop:
                 report=None,
                 content=None,
                 evidence_ids=evidence_ids,
-                used=used,
-                steps=steps,
+                used=self._physical_requests,
+                steps=self._steps_committed,
                 revision=revision,
                 face=face,
                 question_sha=question_sha,
@@ -221,8 +225,8 @@ class InvestigationLoop:
             report=None,
             content=None,
             evidence_ids=evidence_ids,
-            used=used,
-            steps=steps,
+            used=self._physical_requests,
+            steps=self._steps_committed,
             revision=revision,
             face=face,
             question_sha=question_sha,
@@ -253,8 +257,8 @@ class InvestigationLoop:
         )
         self._reject_oversized(call)
         logical_key = f"round-{ordinal}"
-        self._reserve(logical_key)
-        reply = self._call_model(call)
+        self._reserve(request.run_id, logical_key)
+        reply = self._call_model(call, request=request, started=started)
         assistant = assistant_message(
             content=reply.content,
             reasoning_content=reply.reasoning_content,
@@ -343,7 +347,11 @@ class InvestigationLoop:
                 delivered.append(
                     DeliveredView(
                         evidence_id=evidence_id,
-                        target_id=target if isinstance(target, str) else None,
+                        target_ids=(
+                            frozenset({target})
+                            if isinstance(target, str)
+                            else frozenset()
+                        ),
                         status=outcome.status,
                     )
                 )
@@ -356,9 +364,9 @@ class InvestigationLoop:
             )
         return results
 
-    def _reserve(self, logical_key: str) -> None:
+    def _reserve(self, run_id: str, logical_key: str) -> None:
         try:
-            self.store.reserve_budget(reservation_id_for(logical_key), 1)
+            self.store.reserve_budget(reservation_id_for(run_id, logical_key), 1)
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
 
@@ -372,21 +380,44 @@ class InvestigationLoop:
             "usage": dict(reply.usage),
         }
         try:
-            return self.store.commit_step(logical_key, payload)
+            step_id = self.store.commit_step(logical_key, payload)
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
+        self._steps_committed += 1
+        return step_id
 
-    def _call_model(self, call: ModelCall) -> ModelReply:
-        try:
-            reply = self.model.complete(call)
-        except ModelError as exc:
-            execution: LoopExecution = (
-                "budget_exhausted" if exc.code == "BUDGET_EXHAUSTED" else "failed"
+    def _call_model(
+        self,
+        call: ModelCall,
+        *,
+        request: InvestigationRequest,
+        started: float,
+    ) -> ModelReply:
+        last_error: ModelError | None = None
+        for attempt in (1, 2):
+            if self._physical_requests >= MAX_MODEL_REQUESTS_PER_RUN:
+                raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
+            timed = replace(
+                call, timeout_seconds=self._remaining_timeout(request, started)
             )
-            raise _LoopHalt(execution, (exc.code,)) from exc
-        if reply.response_model != self.accepted_response_model:
-            raise _LoopHalt("failed", ("MODEL_IDENTITY_MISMATCH",))
-        return reply
+            self._physical_requests += 1
+            try:
+                reply = self.model.complete(timed)
+            except ModelError as exc:
+                last_error = exc
+                if exc.code != "MODEL_UNAVAILABLE" or attempt == 2:
+                    execution: LoopExecution = (
+                        "budget_exhausted"
+                        if exc.code == "BUDGET_EXHAUSTED"
+                        else "failed"
+                    )
+                    raise _LoopHalt(execution, (exc.code,)) from exc
+                continue
+            if reply.response_model != self.accepted_response_model:
+                raise _LoopHalt("failed", ("MODEL_IDENTITY_MISMATCH",))
+            return reply
+        assert last_error is not None
+        raise _LoopHalt("failed", (last_error.code,)) from last_error
 
     def _remaining_timeout(
         self, request: InvestigationRequest, started: float

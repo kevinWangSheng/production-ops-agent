@@ -24,6 +24,7 @@ from opspilot.investigation.limits import (
 )
 from opspilot.investigation.loop import ACCEPTED_RESPONSE_MODEL, ModelError
 from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION, parse_report
+from opspilot.investigation.store import reservation_id_for
 from tests.m1_investigation_support import (
     assemble,
     reply,
@@ -32,6 +33,60 @@ from tests.m1_investigation_support import (
     tool_call,
 )
 from tests.m1_tool_support import NOW, FakeClock
+
+
+def test_reservation_ids_are_scoped_to_the_run():
+    first = reservation_id_for("run-a", "round-1")
+    assert first == reservation_id_for("run-a", "round-1")
+    assert first != reservation_id_for("run-b", "round-1")
+
+
+def test_supplied_context_views_can_be_cited_without_new_tools():
+    evidence_id = "ev-supplied"
+    loop, request, _, transport, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [{"id": "policy-window-1"}],
+            "view_bindings": {
+                evidence_id: {"status": "ok", "target_refs": ["checkout-prod"]},
+            },
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.handoff is False
+    assert transport.called is False
+    assert evidence_id in outcome.evidence_ids
+
+
+def test_unavailable_retry_is_a_second_physical_request():
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["Retry recovered enough to close the run."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, _, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 2
+    assert outcome.model_requests_used == 2
+    assert outcome.execution == "completed"
 
 
 def test_frozen_ceilings_match_the_v4_b2_values():

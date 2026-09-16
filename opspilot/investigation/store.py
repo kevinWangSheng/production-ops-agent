@@ -37,11 +37,21 @@ class StepCommitter(Protocol):
     ) -> None: ...
 
 
-def reservation_id_for(logical_key: str) -> UUID:
-    """Stable reservation id so a retried round does not double-charge."""
-    if not isinstance(logical_key, str) or not logical_key:
+def reservation_id_for(run_id: str, logical_key: str) -> UUID:
+    """Stable per-run reservation so a retried round does not double-charge.
+
+    The key includes ``run_id``. A global key of only ``round-1`` would collide
+    across investigations in DurableStore and abort the next Run with
+    ``IDENTITY_CONFLICT``.
+    """
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or not isinstance(logical_key, str)
+        or not logical_key
+    ):
         raise StepStoreError("INVALID_INPUT")
-    return uuid5(_RESERVATION_NAMESPACE, logical_key)
+    return uuid5(_RESERVATION_NAMESPACE, f"{run_id}:{logical_key}")
 
 
 class MemoryStepStore:

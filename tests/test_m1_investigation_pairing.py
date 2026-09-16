@@ -87,6 +87,8 @@ def test_loop_does_not_execute_tools_when_pairing_is_invalid():
     assert outcome.execution == "failed"
     assert outcome.handoff is True
     assert outcome.handoff_reasons == ("TOOL_PAIRING_INVALID",)
+    assert outcome.model_requests_used == 1
+    assert outcome.steps_committed == 1
     assert transport.called is False
     assert store.tool_results == {} or all(
         not items for items in store.tool_results.values()
