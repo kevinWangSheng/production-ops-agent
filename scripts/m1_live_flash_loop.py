@@ -18,6 +18,7 @@ from opspilot.investigation.loop import (
     InvestigationLoop,
     InvestigationRequest,
     ModelCall,
+    ModelError,
     ModelReply,
 )
 from opspilot.investigation.store import MemoryStepStore
@@ -75,7 +76,18 @@ class RecordingClient:
 
     def complete(self, call: ModelCall) -> ModelReply:
         started = time.monotonic()
-        reply = self.inner.complete(call)
+        try:
+            reply = self.inner.complete(call)
+        except ModelError as exc:
+            self.attempts.append(
+                {
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "error": exc.code,
+                    "usage": None,
+                    "json_mode": call.json_mode,
+                }
+            )
+            raise
         self.attempts.append(
             {
                 "elapsed_seconds": round(time.monotonic() - started, 3),
@@ -133,10 +145,15 @@ def main() -> int:
         return 2
     clock = SystemClock()
     deadline = clock.now() + timedelta(minutes=12)
+    run_id = str(uuid4())
     executor, transport, _sink, _ = build(
         clock=clock,
         registrations=[registration(name=LIVE_TOOL)],
-        scope_overrides={"deadline": deadline, "tool_names": frozenset({LIVE_TOOL})},
+        scope_overrides={
+            "deadline": deadline,
+            "tool_names": frozenset({LIVE_TOOL}),
+            "run_id": run_id,
+        },
     )
     transport.response = TransportResponse(
         body=body([{"metric": "http_errors_rate", "value": 0.042}]),
@@ -165,7 +182,11 @@ def main() -> int:
     started = clock.now()
     outcome = loop.run(request)
     ended = clock.now()
-    usages = [item["usage"] for item in recorder.attempts]
+    usages = [
+        item["usage"]
+        for item in recorder.attempts
+        if isinstance(item.get("usage"), dict)
+    ]
     ledger = {
         "experiment": "m1-01-flash-loop",
         "run_id": request.run_id,

@@ -22,9 +22,18 @@ from opspilot.investigation.limits import (
     MODEL_REQUEST_TIMEOUT_SECONDS,
     RUN_WALL_SECONDS,
 )
-from opspilot.investigation.loop import ACCEPTED_RESPONSE_MODEL, ModelError
+from opspilot.investigation.loop import (
+    ACCEPTED_RESPONSE_MODEL,
+    ModelCall,
+    ModelError,
+    serialized_request,
+)
 from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION, parse_report
-from opspilot.investigation.store import reservation_id_for
+from opspilot.investigation.store import (
+    MemoryStepStore,
+    StepStoreError,
+    reservation_id_for,
+)
 from tests.m1_investigation_support import (
     assemble,
     reply,
@@ -62,6 +71,100 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
     assert outcome.handoff is False
     assert transport.called is False
     assert evidence_id in outcome.evidence_ids
+
+
+def test_retry_re_reserves_and_rechecks_control():
+    class DenyOnSecondReserve(MemoryStepStore):
+        def reserve_budget(self, reservation_id, amount):
+            if self.reservations:
+                raise StepStoreError("CONTROL_DENIED")
+            super().reserve_budget(reservation_id, amount)
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content="should-not-run", finish="stop"),
+        ],
+        model_requests=1,
+    )
+    loop.store = DenyOnSecondReserve(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    assert outcome.execution == "failed"
+
+
+def test_exploration_retry_does_not_consume_the_final_slot():
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["The reserved final request still ran."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, _, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 2
+    assert model.calls[0].json_mode is False
+    assert model.calls[1].json_mode is True
+    assert model.calls[1].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
+    assert outcome.execution == "completed"
+
+
+def test_committed_step_records_request_hash_and_response_id():
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["No further evidence was required."],
+            "next_steps": ["Have a human close the incident."],
+        }
+    )
+    loop, request, model, _, store, _ = assemble(
+        replies=[reply(content=payload, finish="stop", raw={"id": "chatcmpl-live-1"})],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    recorded = store.steps["round-1"]["response"]
+    assert recorded["response_id"] == "chatcmpl-live-1"
+    assert (
+        recorded["request_sha256"]
+        == hashlib.sha256(serialized_request(model.calls[0])).hexdigest()
+    )
+    assert b'"thinking"' in serialized_request(model.calls[0])
+
+
+def test_serialized_request_includes_vendor_fields_counted_in_the_size_cap():
+    call = ModelCall(
+        messages=({"role": "user", "content": "q"},),
+        tools=None,
+        json_mode=True,
+        max_tokens=16,
+        timeout_seconds=1,
+    )
+    body = serialized_request(call)
+    assert b'"thinking"' in body
+    assert b'"reasoning_effort"' in body
+    assert b'"response_format"' in body
+    assert b'"stream"' in body
 
 
 def test_unavailable_retry_is_a_second_physical_request():
@@ -231,6 +334,26 @@ def test_invented_time_scope_is_not_published():
     outcome = loop.run(request)
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
     assert outcome.report is None
+
+
+@pytest.mark.parametrize("container", [{}, "", 0, False])
+def test_provider_non_list_tool_calls_are_rejected(container):
+    payload = {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "{}",
+                    "tool_calls": container,
+                },
+            }
+        ],
+        "model": "deepseek-flash",
+        "usage": {},
+    }
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        _parse_reply(payload)
 
 
 def test_provider_mixed_tool_calls_are_rejected():

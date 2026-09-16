@@ -82,6 +82,28 @@ class ModelCall:
     model: str = ACCEPTED_RESPONSE_MODEL
 
 
+def serialized_request(call: ModelCall) -> bytes:
+    """Exact Chat Completions body the DeepSeek client will POST.
+
+    Timeout is a transport deadline, not a JSON field. Size checks and
+    request hashes must use these bytes, not a reduced projection.
+    """
+    payload: dict[str, Any] = {
+        "model": call.model,
+        "messages": [dict(message) for message in call.messages],
+        "max_tokens": call.max_tokens,
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "high",
+        "stream": False,
+    }
+    if call.json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    if call.tools is not None:
+        payload["tools"] = [dict(tool) for tool in call.tools]
+        payload["tool_choice"] = "auto"
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
 @dataclass(frozen=True)
 class ModelReply:
     """Normalized provider reply after identity and completeness checks."""
@@ -183,7 +205,10 @@ class InvestigationLoop:
         self._steps_committed = 0
         try:
             for ordinal in range(1, request.model_requests + 1):
-                final = ordinal == request.model_requests
+                remaining = request.model_requests - self._physical_requests
+                if remaining <= 0:
+                    raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
+                final = ordinal == request.model_requests or remaining <= 1
                 outcome = self._round(
                     request,
                     messages,
@@ -257,14 +282,23 @@ class InvestigationLoop:
         )
         self._reject_oversized(call)
         logical_key = f"round-{ordinal}"
-        self._reserve(request.run_id, logical_key)
-        reply = self._call_model(call, request=request, started=started)
+        try:
+            reply, dispatched = self._call_model(
+                call,
+                request=request,
+                started=started,
+                logical_key=logical_key,
+                final=final,
+            )
+        except _RoundAborted:
+            # Keep the last physical slot for the final-report request.
+            return None
         assistant = assistant_message(
             content=reply.content,
             reasoning_content=reply.reasoning_content,
             tool_calls=reply.tool_calls,
         )
-        step_id = self._commit_step(logical_key, assistant, reply)
+        step_id = self._commit_step(logical_key, assistant, reply, dispatched)
         try:
             calls = validate_tool_calls(assistant)
         except PairingError as exc:
@@ -371,13 +405,22 @@ class InvestigationLoop:
             raise _halt_from_store(exc) from exc
 
     def _commit_step(
-        self, logical_key: str, assistant: Mapping[str, Any], reply: ModelReply
+        self,
+        logical_key: str,
+        assistant: Mapping[str, Any],
+        reply: ModelReply,
+        dispatched: ModelCall,
     ) -> UUID:
+        response_id = reply.raw.get("id")
         payload = {
             "assistant": dict(assistant),
             "finish_reason": reply.finish_reason,
             "response_model": reply.response_model,
             "usage": dict(reply.usage),
+            "request_sha256": hashlib.sha256(
+                serialized_request(dispatched)
+            ).hexdigest(),
+            "response_id": response_id if isinstance(response_id, str) else None,
         }
         try:
             step_id = self.store.commit_step(logical_key, payload)
@@ -392,7 +435,9 @@ class InvestigationLoop:
         *,
         request: InvestigationRequest,
         started: float,
-    ) -> ModelReply:
+        logical_key: str,
+        final: bool,
+    ) -> tuple[ModelReply, ModelCall]:
         last_error: ModelError | None = None
         for attempt in (1, 2):
             if self._physical_requests >= MAX_MODEL_REQUESTS_PER_RUN:
@@ -400,12 +445,21 @@ class InvestigationLoop:
             timed = replace(
                 call, timeout_seconds=self._remaining_timeout(request, started)
             )
+            self._reserve(request.run_id, f"{logical_key}#a{attempt}")
             self._physical_requests += 1
             try:
                 reply = self.model.complete(timed)
             except ModelError as exc:
                 last_error = exc
-                if exc.code != "MODEL_UNAVAILABLE" or attempt == 2:
+                slots_left = request.model_requests - self._physical_requests
+                preserve_final = not final and slots_left <= 1
+                if preserve_final:
+                    raise _RoundAborted() from exc
+                if (
+                    exc.code != "MODEL_UNAVAILABLE"
+                    or attempt == 2
+                    or self._physical_requests >= MAX_MODEL_REQUESTS_PER_RUN
+                ):
                     execution: LoopExecution = (
                         "budget_exhausted"
                         if exc.code == "BUDGET_EXHAUSTED"
@@ -415,7 +469,7 @@ class InvestigationLoop:
                 continue
             if reply.response_model != self.accepted_response_model:
                 raise _LoopHalt("failed", ("MODEL_IDENTITY_MISMATCH",))
-            return reply
+            return reply, timed
         assert last_error is not None
         raise _LoopHalt("failed", (last_error.code,)) from last_error
 
@@ -432,15 +486,7 @@ class InvestigationLoop:
         return min(MODEL_REQUEST_TIMEOUT_SECONDS, remaining_deadline, remaining_wall)
 
     def _reject_oversized(self, call: ModelCall) -> None:
-        body = {
-            "model": call.model,
-            "messages": list(call.messages),
-            "max_tokens": call.max_tokens,
-        }
-        if call.tools is not None:
-            body["tools"] = list(call.tools)
-        size = len(json.dumps(body, ensure_ascii=False).encode("utf-8"))
-        if size > MAX_HTTP_REQUEST_BYTES:
+        if len(serialized_request(call)) > MAX_HTTP_REQUEST_BYTES:
             raise _LoopHalt("failed", ("REQUEST_TOO_LARGE",))
 
     def _finish(
@@ -485,6 +531,10 @@ class InvestigationLoop:
 class _LoopHalt(Exception):
     execution: LoopExecution
     reasons: tuple[str, ...]
+
+
+class _RoundAborted(Exception):
+    """This logical round gave up a retry so the reserved final request can run."""
 
 
 def _halt_from_store(exc: StepStoreError) -> _LoopHalt:

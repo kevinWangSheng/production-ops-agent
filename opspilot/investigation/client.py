@@ -1,8 +1,9 @@
 """Thin DeepSeek Chat Completions client for the investigation loop.
 
 Credentials travel only on the Authorization header and never enter
-``ModelCall`` or ``ModelReply``. 400/422 are not retried; 429 and network
-errors get a single bounded retry (technical plan section 5).
+``ModelCall`` or ``ModelReply``. 400/422 are not retried. 429 and network
+errors surface as ``MODEL_UNAVAILABLE`` so the loop can count, re-reserve
+and re-check the deadline before any retry.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from opspilot.investigation.loop import (
     ModelCall,
     ModelError,
     ModelReply,
+    serialized_request,
 )
 
 _ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
@@ -51,7 +53,7 @@ class DeepSeekClient:
 
     def complete(self, call: ModelCall) -> ModelReply:
         """One physical HTTPS request. Retries are the loop's budget decision."""
-        body = _request_body(call, self._model)
+        body = serialized_request(call)
         raw, status = self._post(body, call.timeout_seconds)
         if status in {400, 401, 402, 422}:
             raise ModelError("MODEL_REJECTED")
@@ -87,23 +89,6 @@ class DeepSeekClient:
             raise ModelError("MODEL_UNAVAILABLE") from exc
 
 
-def _request_body(call: ModelCall, model: str) -> bytes:
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [dict(message) for message in call.messages],
-        "max_tokens": call.max_tokens,
-        "thinking": {"type": "enabled"},
-        "reasoning_effort": "high",
-        "stream": False,
-    }
-    if call.json_mode:
-        payload["response_format"] = {"type": "json_object"}
-    if call.tools is not None:
-        payload["tools"] = [dict(tool) for tool in call.tools]
-        payload["tool_choice"] = "auto"
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
-
-
 def _read_capped(response: Any) -> bytes:
     chunks = bytearray()
     while True:
@@ -133,13 +118,14 @@ def _parse_reply(payload: Mapping[str, Any]) -> ModelReply:
         reasoning = message.get("reasoning_content")
         if reasoning is not None and not isinstance(reasoning, str):
             raise ValueError
-        calls = message.get("tool_calls") or []
-        if calls == []:
-            calls = []
-        if not isinstance(calls, list) or any(
-            not isinstance(call, Mapping) for call in calls
-        ):
-            raise ValueError
+        if "tool_calls" not in message or message["tool_calls"] is None:
+            calls: list[Any] = []
+        else:
+            calls = message["tool_calls"]
+            if not isinstance(calls, list) or any(
+                not isinstance(call, Mapping) for call in calls
+            ):
+                raise ValueError
         finish = choice.get("finish_reason")
         if not isinstance(finish, str) or not finish:
             raise ValueError

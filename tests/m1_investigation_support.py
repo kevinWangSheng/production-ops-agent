@@ -66,6 +66,7 @@ def reply(
     tool_calls=(),
     finish="stop",
     model="deepseek-flash",
+    raw=None,
 ):
     return ModelReply(
         content=content,
@@ -74,7 +75,7 @@ def reply(
         finish_reason=finish,
         response_model=model,
         usage={"prompt_tokens": 8, "completion_tokens": 16},
-        raw={},
+        raw={} if raw is None else raw,
     )
 
 
