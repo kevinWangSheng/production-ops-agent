@@ -1,6 +1,6 @@
 # M1-01 子任务：追问/纠正/取消（人工控制）
 
-- 状态：进行中（PR #28 收尾：独立审查 P1 已修，待推送 / thread resolve / CI）
+- 状态：PR 已就绪，待 #26 合并后 retarget 到 main，待用户审核合并
 - 更新日期：2026-09-16
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/28
   （stacked，base = `chore/durable-store-hardening` / PR #26；待 #26 合并后 retarget 到 main）
@@ -109,11 +109,11 @@
 
 独立审查（全新上下文，仅 `9c9b6dd..` 本轮改动）：P1 为 `new_run` 把 `accept()` 后的 queued 当前 Run 误当成丢失确认重试；已用 `new_run` 审计收窄幂等并补 `test_new_run_is_refused_until_the_incident_is_cancelled`。P3 两条为 C3 映射引用过宽，已收紧。随后机器人 P2 要求保留迟到 `logical_key` 命名空间：已改为 `late_result:` 前缀，业务 `commit_step` 拒绝该前缀。`rebuild` 不展示旧 Run 迟到历史仍为残留，不在本 PR 扩大范围。
 
-CI：仓库 workflow 仅对 base 为 `main` 或 `chore/m0-*` 的 PR 自动触发；本 PR 用 `gh workflow run`（`workflow_dispatch`）在本分支跑 CI。待 #26 合并后 retarget 到 main。
+CI：仓库 workflow 仅对 base 为 `main` 或 `chore/m0-*` 的 PR 自动触发。代码 HEAD `ec567e3` 的 `workflow_dispatch` 已 success：`checks` 与 `m0-postgres`（[run 35124652364](https://github.com/kevinWangSheng/production-ops-agent/actions/runs/35124652364)）。待 #26 合并后 retarget 到 main。
 
 ## 下一步与交接
 
-- 推送本分支、回复并 resolve PR #28 的 12 条审查 thread、用 `workflow_dispatch` 跑 CI 并确认 success。
+- PR #28 审查 thread 已逐条回复并 resolve；`workflow_dispatch` CI 在当前 HEAD 上跑。
 - 用户只审核最终可合并 PR。合并及 retarget 仍待 #26 与用户审核。
 - 待决（超出本子任务）：close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化接入、follow-up/correction 输入内容、持久化输入水位。
 
