@@ -201,7 +201,14 @@ def render(
         if segment.layer == LAYER_TEMPLATE:
             parts.append(segment.text)
         elif segment.key == "model_request_budget":
-            # 预算数字回填进开场里的占位符，而不是另起一句。
+            # 预算数字回填进**前一段**模板里的占位符，而不是另起一句。
+            # 校验前一段确实带占位符：槽位一旦被排到别处，这里会默默改写
+            # 另一段文字（比如报告契约），字节错了却不报错。
+            if not parts or "{steps}" not in parts[-1]:
+                raise ValueError(
+                    f"variant {variant_id!r}: the budget slot must follow a "
+                    "template segment containing the {steps} placeholder"
+                )
             parts[-1] = parts[-1].format(steps=model_requests)
         elif segment.key == "authorized_services":
             parts.append(", ".join(authorized_services))

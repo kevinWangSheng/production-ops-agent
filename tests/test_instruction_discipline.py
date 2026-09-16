@@ -431,6 +431,25 @@ def test_services_for_a_variant_without_the_slot_are_refused_not_dropped() -> No
         )
 
 
+def test_budget_slot_must_follow_its_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """预算槽位被排到不带占位符的段之后 → 拒绝，而不是默默改写别的段。
+
+    ``render`` 是把数字回填进**前一段**。槽位一旦挪位，原实现会对报告契约那段
+    调用 ``.format``，字节错了却不报错。今天三个变体都把开场排在第一位，
+    所以这是给下一个加变体的人留的护栏——M1-01 的调查 loop 就要加。
+    """
+    broken = (
+        d.VARIANTS["replay-candidate"][0],
+        d.VARIANTS["replay-candidate"][2],  # 证据纪律段，不含 {steps}
+        d.VARIANTS["replay-candidate"][1],  # 预算槽位被排到它后面
+    )
+    monkeypatch.setitem(d.VARIANTS, "broken", broken)
+    with pytest.raises(ValueError, match="budget slot must follow"):
+        d.render("broken", model_requests=2, report_contract=LEGACY_REPORT_CONTRACT)
+
+
 def test_scope_conditional_segments_are_structural_not_a_suffix_trim() -> None:
     """无 scope 时窗口句与服务列表整段消失，且该行为由 ``scoped`` 标记决定。
 

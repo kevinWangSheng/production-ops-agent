@@ -298,17 +298,17 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
 
 | 检查 | 命令 | 真实结果 |
 |---|---|---|
-| 开发检查全量 | `make check` | `1078 passed, 77 skipped, 2 xfailed in 26.67s` |
-| 新增确定性测试 | `.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` | `28 passed` |
+| 开发检查全量 | `make check` | `1079 passed, 77 skipped, 2 xfailed in 30.93s` |
+| 新增确定性测试 | `.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` | `29 passed` |
 | PG 持久化集成 | `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` | `23 passed`（原 21 + 本轮 2） |
 | 冻结哈希复算 | 见上方「收敛前先固定住硬约束」 | 收敛前后同为 `9648c6de…a3cfd4abc`，与 M0 证据一致 |
 
 `make check` 的基线（本分支起点 main `b483a12`）为 `1050 passed, 75 skipped`；
-本轮净增 **28 个通过用例**与 **2 个 skipped**（PG 用例未开 `M1_DURABLE_POSTGRES` 时跳过）。
+本轮净增 **29 个通过用例**与 **2 个 skipped**（PG 用例未开 `M1_DURABLE_POSTGRES` 时跳过）。
 
 ### 变异验证：每条断言都确认过能转红
 
-不做变异就无法区分「断言成立」与「断言恒真」。**16 个单元变异 + 2 个 PG 变异，各自至少让一条测试转红**（16/16）：
+不做变异就无法区分「断言成立」与「断言恒真」。**17 个单元变异 + 2 个 PG 变异，各自至少让一条测试转红**（17/17）：
 
 | 变异 | 转红的测试 |
 |---|---|
@@ -328,6 +328,7 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
 | M14 `render` 回到静默丢弃服务列表 | 无槽位变体收到服务列表须拒绝 |
 | M15 `render` 不再校验预算为正整数 | 预算校验（5 个参数化用例） |
 | M16 `scoped` 段不再被跳过 | 无 scope 裁剪、scope 条件性 |
+| M17 预算槽位不再校验前一段带占位符 | 槽位错位护栏 |
 | P1 `prompt_revision` 只覆盖 L2 不覆盖 L1a | PG：模板换版必须 blocked |
 | P2 `render` 丢掉授权服务列表槽位 | PG：实例值必须真的改变字节 |
 
@@ -352,6 +353,10 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
    `You have at most -1 model requests` 并照常送进模型。已改为「必须是正整数」，
    并按仓库既有 `validate_max_http` 的写法用 `type(x) is not int` 连 `bool` 一起拒
    （`True` 会拼出 `at most True model requests`）。变异 M15 证明转红。
+3. **预算槽位假定自己排在带占位符的那段之后**：`render` 是把数字回填进**前一段**，
+   槽位一旦被排到别处（比如报告契约之后），会对那一段调用 `.format`——字节错了却不报错。
+   今天三个变体都把开场排在第一位，所以这是给下一个加变体的人留的护栏
+   （M1-01 的调查 loop 就要加一个）。已加显式校验，变异 M17 证明转红。
 
 同时把「无 scope 时窗口句整段不出现」从**渲染后按后缀裁剪**改为**结构判定**
 （`Segment.scoped`）。原写法只要 segment 顺序一变，裁剪就静默失效，
