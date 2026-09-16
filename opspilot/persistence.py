@@ -545,6 +545,8 @@ class DurableStore:
             run = conn.execute(
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
+            if run is None or run["incident_id"] != incident_id:
+                raise PersistenceError("INCONSISTENT_STATE")
             steps = conn.execute(
                 "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
                 (row["current_run_id"],),
@@ -560,7 +562,14 @@ class DurableStore:
                 # 把过期证据重新提交成「当前已提交的证据」，而 commit_tool 在
                 # 写入处拒绝它们——断点会因此永远重建出做不完的待办。
                 "pending_tools": [
-                    {"step_id": step["step_id"], "ordinal": ordinal}
+                    {
+                        "step_id": step["step_id"],
+                        "ordinal": ordinal,
+                        "operation_id": f"{step['step_id']}:{ordinal}",
+                        "tool_call": (step["response"] or {}).get("tool_calls", [])[
+                            ordinal
+                        ],
+                    }
                     for step in steps
                     if step["control_generation"] == incident_generation
                     for ordinal in range(
