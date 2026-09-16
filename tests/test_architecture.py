@@ -71,6 +71,19 @@ def test_persistence_has_no_bare_domain_state_literals() -> None:
     )
 
 
+def test_product_package_does_not_import_scripts() -> None:
+    """Product code must not depend on M0 experiment scaffolding."""
+    offenders = []
+    for path in (REPO_ROOT / "opspilot").rglob("*.py"):
+        modules = _imported_modules(path)
+        bad = [
+            name for name in modules if name == "scripts" or name.startswith("scripts.")
+        ]
+        if bad:
+            offenders.append((path.relative_to(REPO_ROOT).as_posix(), sorted(bad)))
+    assert not offenders, f"opspilot imported scripts: {offenders}"
+
+
 def test_literal_types_match_state_machine_keys() -> None:
     """同一状态集合被声明两次（Literal 与状态机键）时，两处必须一致。"""
     pairs = [
