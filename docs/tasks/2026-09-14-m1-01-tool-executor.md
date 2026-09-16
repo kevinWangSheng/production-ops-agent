@@ -355,13 +355,19 @@ PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
 与 `feature/m1-01-intake-auth` 推送的时间一致。即**该仓库当前所有分支的
 `checks` 都因此变红**。
 
-**本任务不做处置，须由用户决定**，三条路径都超出本任务授权：
+**本任务不做处置，须由用户决定**，四条路径都超出本任务授权：
 
 1. 由 `feature/m1-01-intake-auth` 任务改写其分支历史（需 force-push 授权，
    本任务被明确禁止）；
 2. 收窄 `scripts/check_secrets.py` 的扫描范围（等于削弱一项安全检查，
    须用户批准，且 AGENTS.md 禁止为迁就实现而弱化验收步骤）；
-3. 保留现状并接受 `checks` 红。
+3. 在 `scripts/check_secrets.py` 的扫描配置中，为该合成夹具加一条
+   **窄范围 allowlist**（精确规则 + 精确路径 + 精确值三者同时匹配）。
+   该文件已有同形式的先例（M0 证据清单中两个经审查的非凭据 SHA256 摘要），
+   因此这是四条路径中对检查强度损害最小的一条——它不收窄扫描范围，
+   只对一个已审查的具体值开豁免。但它仍是对安全检查的修改，
+   且该夹具属 `feature/m1-01-intake-auth` 任务，处置权不在本任务。
+4. 保留现状并接受 `checks` 红。
 
-在此之前，PR #20 的 `mergeStateStatus` 不会是 `CLEAN`，
+在此之前，PR #20 的 `mergeStateStatus` 为 `BLOCKED`（`mergeable` 为 `MERGEABLE`），
 **不能按「CI 全绿」交付**。
