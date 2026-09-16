@@ -149,6 +149,293 @@ def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
     assert store.control(incident, 1, "correct", "operator") == 2
 
 
+def test_correction_rejects_late_publish_and_keeps_history_only():
+    """纠正后的旧代际结果只能进入 late_result 历史，不能成为结论。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-correction-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(stale, "old-final", {"result": "old"})
+    assert store.control(incident, 0, "correct", "operator") == 1
+    assert store.publish(stale, {"result": "old"}, step_id=step) is False
+    assert store.publish(stale, {"result": "old-retry"}, step_id=step) is False
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["conclusion"] is None
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert len(late) == 1
+    assert late[0]["logical_key"] == f"late_result:publish:{step}"
+    assert late[0]["sequence"] >= 0
+    assert late[0]["observed_at"] is not None
+    assert late[0]["response"] == {"result": "old"}
+
+
+def test_late_step_and_tool_results_are_recorded_as_history():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-writes-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(stale, "round", {"tool_calls": [{"id": "x"}]})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "late-round", {"result": "late"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, step, 0, {"result": "late-tool"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "late-round", {"result": "late-retry"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, step, 0, {"result": "late-tool-retry"})
+    steps = store.rebuild(incident)["steps"]
+    original = next(item for item in steps if item["step_id"] == step)
+    late = [item for item in steps if item["status"] == "late_result"]
+    assert len(late) == 2
+    assert {item["logical_key"] for item in late} == {
+        "late_result:step:late-round",
+        f"late_result:tool:{step}:0",
+    }
+    assert all(item["sequence"] > original["sequence"] for item in late)
+    assert all(item["observed_at"] is not None for item in late)
+    assert [item["logical_key"] for item in late] == [
+        "late_result:step:late-round",
+        f"late_result:tool:{step}:0",
+    ]
+    assert late[0]["response"] == {"result": "late"}
+    assert late[1]["response"] == {"result": "late-tool"}
+
+
+def test_commit_tool_rejects_unknown_step_without_history():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-unknown-tool-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.commit_tool(lease, uuid4(), 0, {"ok": True})
+    assert store.rebuild(incident)["steps"] == []
+
+
+def test_expired_late_step_is_history_and_not_pending_work():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-expired-late-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "round-0", {"tool_calls": [{"id": "a"}]})
+    rebuilt = store.rebuild(incident)
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert len(late) == 1
+    assert rebuilt["pending_tools"] == []
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, late[0]["step_id"], 0, {"ok": True})
+    still = next(
+        item
+        for item in store.rebuild(incident)["steps"]
+        if item["step_id"] == late[0]["step_id"]
+    )
+    assert still["status"] == "late_result"
+    assert still["tool_results"] == []
+    assert store.rebuild(incident)["pending_tools"] == []
+
+
+def test_live_steps_cannot_use_the_late_result_key_namespace():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-namespace-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    colliding = store.commit_step(stale, "late-step:foo", {"result": "live"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "foo", {"result": "late"})
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        store.commit_step(stale, "late_result:step:foo", {"result": "blocked"})
+    rebuilt = store.rebuild(incident)
+    live = next(item for item in rebuilt["steps"] if item["step_id"] == colliding)
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert live["logical_key"] == "late-step:foo"
+    assert live["status"] == "response_committed"
+    assert [item["logical_key"] for item in late] == ["late_result:step:foo"]
+    assert late[0]["response"] == {"result": "late"}
+
+
+def test_new_run_is_refused_until_the_incident_is_cancelled():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-new-run-uncancelled-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "queued"
+    assert rebuilt["control_generation"] == 0
+    assert rebuilt["run"]["run_id"] == run
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    assert store.rebuild(incident)["control_generation"] == 1
+
+
+def test_cancelled_incident_can_continue_with_a_new_run():
+    store = DurableStore(DSN)
+    incident, run, next_run = uuid4(), uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-new-run-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    generation = store.new_run(
+        incident,
+        next_run,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+        actor="operator",
+    )
+    assert generation == 2
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "queued"
+    assert rebuilt["run"]["run_id"] == next_run
+    assert (
+        store.claim(incident, next_run, uuid4(), {"state": "v1"}).control_generation
+        == 2
+    )
+    assert (
+        store.new_run(
+            incident,
+            next_run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+        == 2
+    )
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            uuid4(),
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with store.transaction(snapshot=True) as conn:
+        audits = conn.execute(
+            "SELECT action FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation, created_at",
+            (incident,),
+        ).fetchall()
+    assert [item["action"] for item in audits] == ["cancel", "new_run"]
+
+
+def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
+    """同一 expected_generation 的并发人工操作必须只有一个提交成功。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-concurrent-control-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    barrier = threading.Barrier(2)
+
+    def apply(action):
+        barrier.wait()
+        try:
+            return ("ok", store.control(incident, 0, action, "operator"))
+        except PersistenceError as exc:
+            return (exc.args[0], None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(apply, ("follow_up", "cancel")))
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("CONTROL_CONFLICT") == 1
+    assert store.rebuild(incident)["control_generation"] == 1
+
+
 def test_paused_incident_cannot_be_claimed_or_published():
     """人工暂停期间不得领取新租约，也不得发布结论。"""
     store = DurableStore(DSN)
