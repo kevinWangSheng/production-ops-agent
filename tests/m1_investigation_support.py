@@ -12,7 +12,7 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import NOW, WINDOW_START, body, build
+from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, body, build
 
 TOOL_SCHEMAS = (
     {
@@ -143,6 +143,7 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
         budget_limit=budget_limit,
         deadline=deadline or (NOW.replace(year=NOW.year)),
         clock=clock,
+        run_id=executor.scope.run_id,
     )
     # Default tool-support deadline is NOW+600s; keep the store in agreement.
     if deadline is None:
@@ -157,7 +158,16 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
         model_requests=model_requests,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
-            "time_policies": [{"id": "policy-window-1"}],
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": WINDOW_END.isoformat(),
+                    },
+                }
+            ],
         },
     )
     return loop, request, model, transport, store, sink

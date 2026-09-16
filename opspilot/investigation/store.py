@@ -28,6 +28,9 @@ class StepStoreError(Exception):
 
 
 class StepCommitter(Protocol):
+    @property
+    def authorized_run_id(self) -> str: ...
+
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None: ...
 
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID: ...
@@ -63,10 +66,14 @@ class MemoryStepStore:
         budget_limit: int,
         deadline: datetime,
         clock: Clock,
+        run_id: str,
         control_denied: bool = False,
     ) -> None:
         if type(budget_limit) is not int or budget_limit < 0:
             raise StepStoreError("INVALID_INPUT")
+        if not isinstance(run_id, str) or not run_id:
+            raise StepStoreError("INVALID_INPUT")
+        self.authorized_run_id = run_id
         self.budget_limit = budget_limit
         self.deadline = deadline
         self._clock = clock
@@ -137,6 +144,10 @@ class DurableStepStore:
     def __init__(self, store: DurableStore, lease: Lease) -> None:
         self._store = store
         self._lease = lease
+
+    @property
+    def authorized_run_id(self) -> str:
+        return str(self._lease.run_id)
 
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         try:

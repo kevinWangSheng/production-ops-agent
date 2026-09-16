@@ -39,6 +39,7 @@ from opspilot.investigation.reports import (
     context_target_catalog,
     context_time_policy_ids,
     delivered_from_context,
+    eligible_time_policies,
     parse_report,
     unsupported_citations,
 )
@@ -178,6 +179,7 @@ class InvestigationLoop:
         if (
             request.run_id != request.scope.run_id
             or request.scope.run_id != self.executor.scope.run_id
+            or request.run_id != self.store.authorized_run_id
         ):
             raise ValueError("INVALID_INPUT")
         started = self.clock.monotonic()
@@ -325,7 +327,10 @@ class InvestigationLoop:
                 views=delivered,
                 authorized_targets=request.scope.target_ids,
                 time_policy_ids=context_time_policy_ids(request.evidence_context),
-                target_catalog=context_target_catalog(request.evidence_context),
+                target_catalog=context_target_catalog(
+                    request.evidence_context,
+                    authorized_targets=request.scope.target_ids,
+                ),
             ):
                 report, reason = None, "REPORT_INVALID"
             if report is not None:
@@ -384,21 +389,31 @@ class InvestigationLoop:
                 evidence_ids.append(evidence_id)
                 target = view.get("target_id")
                 registry = target if isinstance(target, str) else None
-                catalog = context_target_catalog(request.evidence_context)
+                catalog = context_target_catalog(
+                    request.evidence_context,
+                    authorized_targets=request.scope.target_ids,
+                )
                 aliases = frozenset(
                     key for key, mapped in catalog.items() if mapped == registry
                 )
-                policies = context_time_policy_ids(request.evidence_context)
+                target_ids = (
+                    frozenset({registry}) if registry else frozenset()
+                ) | aliases
+                ctx = request.evidence_context
                 delivered.append(
                     DeliveredView(
                         evidence_id=evidence_id,
-                        target_ids=(
-                            (frozenset({registry}) if registry else frozenset())
-                            | aliases
-                        ),
+                        target_ids=target_ids,
                         status=outcome.status,
-                        time_scope_refs=(
-                            frozenset(policies) if len(policies) == 1 else frozenset()
+                        time_scope_refs=eligible_time_policies(
+                            ctx.get("time_policies")
+                            if isinstance(ctx, Mapping)
+                            else None,
+                            source=view.get("source"),
+                            tool=view.get("tool"),
+                            target_ids=target_ids,
+                            window=view.get("window"),
+                            freshness_seconds=view.get("freshness_seconds"),
                         ),
                     )
                 )

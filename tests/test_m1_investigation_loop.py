@@ -41,13 +41,101 @@ from tests.m1_investigation_support import (
     report_json,
     tool_call,
 )
-from tests.m1_tool_support import NOW, FakeClock
+from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, FakeClock
 
 
 def test_reservation_ids_are_scoped_to_the_run():
     first = reservation_id_for("run-a", "round-1")
     assert first == reservation_id_for("run-a", "round-1")
     assert first != reservation_id_for("run-b", "round-1")
+
+
+def test_mismatched_store_run_id_is_rejected():
+    loop, request, _, _, store, _ = assemble(
+        replies=[reply(content="unused", finish="stop")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id="some-other-run",
+    )
+    with pytest.raises(ValueError, match="INVALID_INPUT"):
+        loop.run(request)
+
+
+def test_canonical_catalog_target_maps_onto_the_sole_authorized_target():
+    opaque = "target:deadbeef"
+
+    def cite_opaque(call):
+        evidence_id = "missing"
+        for message in reversed(call.messages):
+            if message.get("role") == "tool":
+                evidence_id = json.loads(message["content"])["evidence_id"]
+                break
+        return reply(
+            content=report_json(evidence_id=evidence_id, target_ref=opaque),
+            finish="stop",
+        )
+
+    loop, request, _, transport, _, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls"), cite_opaque],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": WINDOW_END.isoformat(),
+                    },
+                }
+            ],
+            "target_catalog": {
+                opaque: {
+                    "namespace": "checkout",
+                    "resource_uid": "svc-checkout",
+                    "cluster_uid": "cluster-a",
+                }
+            },
+        },
+    )
+    outcome = loop.run(request)
+    assert transport.called is True
+    assert outcome.execution == "completed"
+    assert outcome.handoff is False
+
+
+def test_stale_view_is_not_bound_to_a_current_policy():
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "max_source_age_seconds": 60,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
 
 def test_mismatched_request_run_id_is_rejected():
@@ -204,6 +292,7 @@ def test_retry_re_reserves_and_rechecks_control():
         budget_limit=store.budget_limit,
         deadline=store.deadline,
         clock=loop.clock,
+        run_id=store.authorized_run_id,
     )
     outcome = loop.run(request)
     assert len(model.calls) == 1
@@ -460,6 +549,21 @@ def test_provider_non_list_tool_calls_are_rejected(container):
                     "content": "{}",
                     "tool_calls": container,
                 },
+            }
+        ],
+        "model": "deepseek-flash",
+        "usage": {},
+    }
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        _parse_reply(payload)
+
+
+def test_provider_response_without_id_is_rejected():
+    payload = {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": "{}"},
             }
         ],
         "model": "deepseek-flash",

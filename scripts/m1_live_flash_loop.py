@@ -159,7 +159,9 @@ def main() -> int:
         body=body([{"metric": "http_errors_rate", "value": 0.042}]),
         data_as_of=WINDOW_START,
     )
-    store = MemoryStepStore(budget_limit=4, deadline=deadline, clock=clock)
+    store = MemoryStepStore(
+        budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
+    )
     recorder = RecordingClient(DeepSeekClient(key))
     del key
     loop = InvestigationLoop(

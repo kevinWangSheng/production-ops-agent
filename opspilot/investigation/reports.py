@@ -15,6 +15,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import Field, ValidationError, model_validator
@@ -179,11 +180,14 @@ class DeliveredView:
     time_scope_refs: frozenset[str] = frozenset()
 
 
-def context_target_catalog(context: object) -> dict[str, str | None]:
+def context_target_catalog(
+    context: object, *, authorized_targets: frozenset[str] = frozenset()
+) -> dict[str, str | None]:
     """Opaque v4 target_ref -> optional registry target_id.
 
-    ``scripts/m0/outcomes_v4.py`` keys the catalog with ``target:<digest>``.
-    A catalog entry may also carry the authorized registry ``target_id``.
+    Catalog values may be a registry ``target_id`` wrapper, or a canonical
+    v4 Target object with no ``target_id``. A unique unmapped catalog key
+    binds to a unique authorized target; otherwise the mapping stays None.
     """
     if not isinstance(context, Mapping):
         return {}
@@ -198,7 +202,87 @@ def context_target_catalog(context: object) -> dict[str, str | None]:
         if isinstance(entry, Mapping) and isinstance(entry.get("target_id"), str):
             registry = str(entry["target_id"]) or None
         result[key] = registry
+    unmapped = [key for key, mapped in result.items() if mapped is None]
+    if len(unmapped) == 1 and len(authorized_targets) == 1:
+        result[unmapped[0]] = next(iter(authorized_targets))
     return result
+
+
+def _aware(text: object) -> datetime | None:
+    if not isinstance(text, str) or not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if moment.tzinfo is None or moment.utcoffset() is None:
+        return None
+    return moment.astimezone(timezone.utc)
+
+
+def eligible_time_policies(
+    policies: object,
+    *,
+    source: object,
+    tool: object,
+    target_ids: frozenset[str],
+    window: object,
+    freshness_seconds: object,
+) -> frozenset[str]:
+    """Policies this view is allowed to wear. Missing facts fail closed."""
+    if not isinstance(policies, list):
+        return frozenset()
+    view_start = view_end = None
+    if isinstance(window, Mapping):
+        view_start, view_end = _aware(window.get("start")), _aware(window.get("end"))
+    eligible: set[str] = set()
+    for policy in policies:
+        if not isinstance(policy, Mapping):
+            continue
+        ident = policy.get("id")
+        mode = policy.get("mode")
+        if not isinstance(ident, str) or not ident:
+            continue
+        if mode not in {"historical_window", "current"}:
+            continue
+        interfaces = policy.get("interfaces")
+        if isinstance(interfaces, list) and interfaces:
+            allowed = {item for item in interfaces if isinstance(item, str)}
+            if source not in allowed and tool not in allowed:
+                continue
+        refs = policy.get("target_refs")
+        if policy.get("all_authorized_targets") is not True and isinstance(refs, list):
+            named = {item for item in refs if isinstance(item, str) and item}
+            if named and named.isdisjoint(target_ids):
+                continue
+        if mode == "historical_window":
+            bounds = policy.get("window")
+            if (
+                not isinstance(bounds, Mapping)
+                or view_start is None
+                or view_end is None
+            ):
+                continue
+            policy_start, policy_end = (
+                _aware(bounds.get("start")),
+                _aware(bounds.get("end")),
+            )
+            if (
+                policy_start is None
+                or policy_end is None
+                or not (policy_start <= view_start <= view_end <= policy_end)
+            ):
+                continue
+        else:
+            max_age = policy.get("max_source_age_seconds")
+            if type(max_age) is not int or max_age <= 0:
+                continue
+            if not isinstance(freshness_seconds, (int, float)):
+                continue
+            if float(freshness_seconds) > max_age:
+                continue
+        eligible.add(ident)
+    return frozenset(eligible)
 
 
 def context_time_policy_ids(context: object) -> tuple[str, ...]:

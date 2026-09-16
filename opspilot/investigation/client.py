@@ -134,6 +134,9 @@ def _parse_reply(payload: Mapping[str, Any]) -> ModelReply:
             raise ValueError
         usage_obj = payload.get("usage")
         usage: dict[str, Any] = dict(usage_obj) if isinstance(usage_obj, dict) else {}
+        response_id = payload.get("id")
+        if not isinstance(response_id, str) or not response_id:
+            raise ValueError
     except (KeyError, TypeError, ValueError) as exc:
         raise ModelError("MODEL_UNAVAILABLE") from exc
     return ModelReply(
@@ -143,5 +146,5 @@ def _parse_reply(payload: Mapping[str, Any]) -> ModelReply:
         finish_reason=finish,
         response_model=reported,
         usage=usage,
-        raw={"id": payload.get("id"), "usage": usage},
+        raw={"id": response_id, "usage": usage},
     )
