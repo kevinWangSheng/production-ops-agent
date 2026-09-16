@@ -112,6 +112,29 @@ def test_rebuild_rejects_malformed_persisted_tool_calls():
         store.rebuild(incident)
 
 
+def test_recovered_session_checks_epoch_before_dispatch():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-session-fence-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    first = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        first, "round", {"tool_calls": [{"name": "query", "arguments": {}}]}
+    )
+    store.commit_tool(first, step, 0, {"ok": True})
+    # A new worker can claim only after the old lease expires.
+    time.sleep(1.2)
+    second = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=30)
+    assert not store.lease_current(first)
+    assert store.lease_current(second)
+
+
 def test_incompatible_versions_block_without_silent_resume():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()

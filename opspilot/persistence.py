@@ -313,6 +313,23 @@ class DurableStore:
                 (amount, lease.run_id),
             )
 
+    def lease_current(self, lease: Lease) -> bool:
+        """Read the authoritative owner/epoch/generation/expiry fence."""
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            return bool(row and not self._lease_revoked(row, lease, self._db_now(conn)))
+
+    def abandon(self, lease: Lease) -> None:
+        """Release only this exact lease after a recovery plan is rejected."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL WHERE run_id=%s AND owner=%s AND epoch=%s AND control_generation=%s",
+                (lease.run_id, lease.owner, lease.epoch, lease.control_generation),
+            )
+
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:

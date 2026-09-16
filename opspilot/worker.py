@@ -18,6 +18,8 @@ class RecoverySession:
     store: DurableStore
 
     def _assert_current(self) -> None:
+        if not self.store.lease_current(self.lease):
+            raise PersistenceError("CONTROL_DENIED")
         current = self.store.rebuild(self.plan.incident_id)
         if (
             current["control_generation"] != self.lease.control_generation
@@ -68,5 +70,6 @@ class Worker:
             raise PersistenceError("CONTROL_DENIED")
         lease = self.claim(incident_id, plan.run_id, lease_seconds=lease_seconds)
         if plan.control_generation != lease.control_generation:
+            self.store.abandon(lease)
             raise PersistenceError("CONTROL_DENIED")
         return RecoverySession(plan, lease, self.store)
