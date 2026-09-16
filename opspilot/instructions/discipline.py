@@ -84,10 +84,17 @@ class Segment(NamedTuple):
     layer: Layer
     text: str
     tool_specific: bool = False
+    scoped: bool = False
+    """只在本 Run 有授权 scope 时出现。
+
+    baseline 把窗口句连同服务列表整段放在 ``if scope else ""`` 里，候选臂的窗口句
+    则是无条件的。这个差别必须建在结构里：早先的实现靠「渲染完再按后缀裁掉」，
+    顺序一变裁剪就静默失效，而失效的表现是送进模型的字节错了却没人报错。
+    """
 
 
 _STEPS_SLOT: Final = Segment("model_request_budget", LAYER_INSTANCE, "")
-_SERVICES_SLOT: Final = Segment("authorized_services", LAYER_INSTANCE, "")
+_SERVICES_SLOT: Final = Segment("authorized_services", LAYER_INSTANCE, "", scoped=True)
 _REPORT_SLOT: Final = Segment("report_contract", LAYER_REPORT, "")
 
 _OPENING_MULTI: Final = Segment("read_only_opening", LAYER_TEMPLATE, READ_ONLY_OPENING)
@@ -100,8 +107,13 @@ _PROJECTION: Final = Segment(
 )
 _MISSING: Final = Segment("missing_series", LAYER_TEMPLATE, MISSING_SERIES)
 _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
+# 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
+_WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
-    "authorized_services_prefix", LAYER_TEMPLATE, AUTHORIZED_SERVICES_PREFIX
+    "authorized_services_prefix",
+    LAYER_TEMPLATE,
+    AUTHORIZED_SERVICES_PREFIX,
+    scoped=True,
 )
 
 # 每个变体是一个有序序列。顺序即历史拼装顺序，不是排版偏好。
@@ -114,7 +126,7 @@ VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _PROJECTION,
         _MISSING,
         _REPORT_SLOT,
-        _WINDOW,
+        _WINDOW_SCOPED,
         _SERVICES_PREFIX,
         _SERVICES_SLOT,
     ),
@@ -125,7 +137,7 @@ VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _PROJECTION,
         _MISSING,
         _REPORT_SLOT,
-        _WINDOW,
+        _WINDOW_SCOPED,
         _SERVICES_PREFIX,
         _SERVICES_SLOT,
     ),
@@ -164,9 +176,28 @@ def render(
 
     ``model_requests`` 与 ``authorized_services`` 是 L1b 实例值，
     只影响渲染结果，不影响 :func:`discipline_revision` 与 :func:`prompt_revision`。
+
+    两处 fail-closed，理由都是「静默产生错误字节」比报错危险：
+
+    - ``model_requests`` 必须是正整数。放行 0 或负数会拼出
+      ``You have at most -1 model requests`` 这种句子并照常送进模型。
+    - 给一个**没有授权服务槽位**的变体传非空 ``authorized_services``，直接拒绝。
+      默默丢掉它会让调用方以为查询范围已被限定，而模型拿到的是未限定的纪律——
+      查询范围属 Controller 权限，不能悄悄落空（PRODUCT-CONSTRAINTS「Runtime and
+      human control requirements」）。
     """
+    segments = _variant(variant_id)
+    if type(model_requests) is not int or model_requests < 1:
+        raise ValueError("model_requests must be a positive integer")
+    if authorized_services and not any(
+        s.key == "authorized_services" for s in segments
+    ):
+        raise ValueError(f"variant {variant_id!r} carries no authorized service list")
+
     parts: list[str] = []
-    for segment in _variant(variant_id):
+    for segment in segments:
+        if segment.scoped and not authorized_services:
+            continue  # 无授权 scope：窗口句与服务列表整段不出现（历史行为）。
         if segment.layer == LAYER_TEMPLATE:
             parts.append(segment.text)
         elif segment.key == "model_request_budget":
@@ -176,13 +207,7 @@ def render(
             parts.append(", ".join(authorized_services))
         elif segment.key == "report_contract":
             parts.append(" " + report_contract)
-    rendered = "".join(parts)
-    if not authorized_services:
-        # 历史行为：没有授权 scope 时，窗口句与服务列表整段不出现。
-        suffix = FIXED_WINDOW + AUTHORIZED_SERVICES_PREFIX
-        if rendered.endswith(suffix):
-            rendered = rendered[: -len(suffix)]
-    return rendered
+    return "".join(parts)
 
 
 def template_projection(variant_id: str) -> list[dict[str, object]]:
@@ -192,7 +217,12 @@ def template_projection(variant_id: str) -> list[dict[str, object]]:
     ——与 C3 第 8 节对工具注册表哈希的要求同理。
     """
     return [
-        {"key": s.key, "text": s.text, "tool_specific": s.tool_specific}
+        {
+            "key": s.key,
+            "text": s.text,
+            "tool_specific": s.tool_specific,
+            "scoped": s.scoped,
+        }
         for s in _variant(variant_id)
         if s.layer == LAYER_TEMPLATE
     ]

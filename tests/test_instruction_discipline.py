@@ -113,6 +113,17 @@ def _historical_baseline_prompt(opening: str, report_contract: str) -> str:
     return addition + baseline["window_scope"] + ", ".join(SERVICES)
 
 
+def scoped_services(variant_id: str, services: tuple[str, ...]) -> tuple[str, ...]:
+    """只给带授权服务槽位的变体传服务列表。
+
+    候选臂没有这个槽位；对它传非空列表现在是 ``ValueError``（fail-closed），
+    而不是被静默丢掉。这个 helper 让参数化测试覆盖全部变体而不触发那条拒绝。
+    """
+    if any(s.key == "authorized_services" for s in d.VARIANTS[variant_id]):
+        return services
+    return ()
+
+
 # --- 硬约束：冻结的 prompt_sha256 -------------------------------------------
 
 
@@ -254,13 +265,13 @@ def test_instance_values_do_not_move_the_revision(variant_id: str) -> None:
         variant_id,
         model_requests=2,
         report_contract=LEGACY_REPORT_CONTRACT,
-        authorized_services=("checkoutservice",),
+        authorized_services=scoped_services(variant_id, ("checkoutservice",)),
     )
     rich = d.render(
         variant_id,
         model_requests=9,
         report_contract=LEGACY_REPORT_CONTRACT,
-        authorized_services=SERVICES,
+        authorized_services=scoped_services(variant_id, SERVICES),
     )
     assert one == d.prompt_revision(variant_id, report_contract=LEGACY_REPORT_CONTRACT)
     if "{steps}" in "".join(
@@ -370,7 +381,7 @@ def test_no_credential_shaped_text_reaches_the_prompt(variant_id: str) -> None:
         variant_id,
         model_requests=4,
         report_contract=LEGACY_REPORT_CONTRACT,
-        authorized_services=SERVICES,
+        authorized_services=scoped_services(variant_id, SERVICES),
     )
     for pattern in CREDENTIAL_SHAPES:
         assert not pattern.search(rendered), (
@@ -381,6 +392,68 @@ def test_no_credential_shaped_text_reaches_the_prompt(variant_id: str) -> None:
 def test_unknown_variant_fails_closed() -> None:
     with pytest.raises(d.UnknownVariantError):
         d.render("does-not-exist", model_requests=1, report_contract="x")
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.0, "many"])
+def test_non_positive_budget_is_refused(value: object) -> None:
+    """预算轮次必须是正整数。
+
+    放行 0 或负数会拼出 ``You have at most -1 model requests`` 并照常送进模型——
+    错误的字节比一个异常危险。``True`` 也要拒：``bool`` 是 ``int`` 的子类，
+    放行它会让 ``at most True model requests`` 通过。
+    """
+    with pytest.raises(ValueError, match="positive integer"):
+        d.render(
+            "replay-candidate",
+            model_requests=value,  # type: ignore[arg-type]
+            report_contract=LEGACY_REPORT_CONTRACT,
+        )
+
+
+def test_services_for_a_variant_without_the_slot_are_refused_not_dropped() -> None:
+    """给没有授权服务槽位的变体传服务列表 → 拒绝，而不是静默丢掉。
+
+    静默丢掉会让调用方以为查询范围已被限定，而模型拿到的是未限定的纪律。
+    查询范围属 Controller 权限（PRODUCT-CONSTRAINTS「Runtime and human control
+    requirements」：*Read identity, exact target resolution, query budgets,
+    cancellation and human control decisions are scoped outside the model's
+    authority*），不能悄悄落空。
+    """
+    assert not any(
+        s.key == "authorized_services" for s in d.VARIANTS["replay-candidate"]
+    )
+    with pytest.raises(ValueError, match="no authorized service list"):
+        d.render(
+            "replay-candidate",
+            model_requests=2,
+            report_contract=LEGACY_REPORT_CONTRACT,
+            authorized_services=("checkoutservice",),
+        )
+
+
+def test_scope_conditional_segments_are_structural_not_a_suffix_trim() -> None:
+    """无 scope 时窗口句与服务列表整段消失，且该行为由 ``scoped`` 标记决定。
+
+    早先的实现是「渲染完再按后缀裁掉」：只要 segment 顺序变一下，裁剪就静默失效，
+    而失效的表现是字节错了却没人报错。改成结构判定后，候选臂那句**无条件**的窗口句
+    不受影响——同一段文字在两类变体里的条件性不同，这一点必须保住。
+    """
+    contract = report_instruction(version=REPORT_VERSION)
+    unscoped = d.render(
+        "baseline-multi-step", model_requests=2, report_contract=contract
+    )
+    assert d.FIXED_WINDOW not in unscoped
+    assert d.AUTHORIZED_SERVICES_PREFIX not in unscoped
+
+    candidate = d.render("replay-candidate", model_requests=2, report_contract=contract)
+    assert d.FIXED_WINDOW in candidate, "候选臂的窗口句是无条件的，不得被一并裁掉"
+
+    scoped_keys = {s.key for s in d.VARIANTS["baseline-multi-step"] if s.scoped}
+    assert scoped_keys == {
+        "fixed_window",
+        "authorized_services_prefix",
+        "authorized_services",
+    }
 
 
 # --- C3 第 5 节：四类变化各走各的机制 ----------------------------------------
