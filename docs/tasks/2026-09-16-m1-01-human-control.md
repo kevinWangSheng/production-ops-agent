@@ -35,3 +35,7 @@
 | 暂停优先于 resume/automatic/human-owned observation，覆盖查询与 Observer 采样但不阻止事件/历史/人工操作 | `tests/test_domain_contracts.py::test_suspension_outranks_resume_mode_and_observation_authorization` |
 | scope generation 递增；领取/预算/请求/采纳复核版本；在途结果失效并保留历史 | `tests/test_domain_contracts.py::test_a_suspension_transaction_increments_its_scope_generation`；PG `test_paused_incident_cannot_be_claimed_or_published`、`test_correction_rejects_late_publish_and_keeps_history_only` |
 | 解暂停只移除该层阻挡，不恢复旧任务/授权/采样窗口 | `tests/test_domain_contracts.py::test_resume_does_not_restore_an_observation_authorization`、`test_a_paused_run_resumes_as_a_new_attempt`；PG `test_paused_run_reaches_terminal_state_on_cancel` |
+
+## PG 实跑状态
+
+已核对 `docs/evidence/m0-b/results.md`：端口 55431 属于另一工作区 `/Users/shenghuikevin/dev/AI/production-ops-agent` 的存活 PostgreSQL（PID 45335）。本工作区脚本在启动前正确拒绝端口占用；为避免跨 worktree 停止或复用他人实例，本次未执行 `M1_DURABLE_POSTGRES=1`，该项保持阻塞，待端口归属释放后从本 worktree start/run/stop。
