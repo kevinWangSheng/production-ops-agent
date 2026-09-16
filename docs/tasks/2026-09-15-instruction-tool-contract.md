@@ -1,7 +1,9 @@
 # 调查指令与工具接口合同
 
 - 状态：第一轮（合同撰写，PR #24）**已合并**；
-  第二轮（DISCIPLINE 收敛 + 确定性测试）PR 已就绪，待用户审核合并。
+  第二轮（DISCIPLINE 收敛 + 确定性测试）**实现完成，PR #27 已提交，但尚未达到「可合并」**。
+  三项阻塞：`checks` 因**他人分支**的 secret-scan 命中而红、独立审查未拿到结论、
+  机器人 code review 执行失败且只覆盖过时提交。详见下方「第二轮」。
 - 更新日期：2026-09-15
 - 依据：[SPEC.md](../../SPEC.md)「Model priority and design ownership」「Verification and delivery」；
   [C3](../design/technical-proposal-2026-09-07.md) 第 5、7、8 节；
@@ -432,6 +434,20 @@ AGENTS.md 要求「需要独立审查的任务，不得仅凭实现者自检宣�
 
 因此本 PR 的验证**只有实现者自检**（确定性测试 + 17/17 变异验证 + 自测探边界查出并修掉的
 三处 fail-open），**不得记为「独立验证通过」**。合并前仍需要一次覆盖当前 HEAD 的独立审查。
+
+### PR 交付状态：**未达可合并**，三项阻塞
+
+按 AGENTS.md「code review 待审、失败、thread 未处理，或 `mergeStateStatus` 不是 `CLEAN` 时，
+明确报告未完成及具体阻塞」，本 PR **不能**记为「PR 已就绪，待用户审核合并」：
+
+| # | 阻塞 | 性质 |
+|---|---|---|
+| 1 | `checks` = FAILURE | 失败步骤是 Secret scan，命中来自**他人分支** `feature/m1-01-intake-auth`（PR #21，commit `64254dfeb2`）。`check_secrets.py` 用 `--log-opts=--all` 扫所有 ref，CI 又是 `fetch-depth: 0`，故全仓 PR 一起红（实测 #20/#26/#27 同签名）。**不在本 PR 范围内**，已通知对应执行者，未动其分支 |
+| 2 | 独立审查未完成 | 见上一节，记为交接缺口 |
+| 3 | 机器人 code review **执行失败** | Codex Code Review 与 Security Review 均 `failed`，且只覆盖已过时的 `59cafba`（当前 HEAD 更靠后）。按 AGENTS.md，机器人**安全**审查不可用不计入阻塞，但 code review 失败须如实报告 |
+
+`m0-postgres` = SUCCESS，`mergeable` = MERGEABLE，`mergeStateStatus` = BLOCKED。
+本任务不合并，也不为绕过阻塞 1 而改动本 PR 或他人分支。
 
 ### 本轮未做与限制
 
