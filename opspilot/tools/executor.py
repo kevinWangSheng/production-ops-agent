@@ -509,6 +509,10 @@ class ReadOnlyToolExecutor:
         # (technical plan sections 4 and 8). The deadline is checked first and
         # against the trusted clock, so a result the gateway's own request
         # bound let through still cannot be adopted past its authorization.
+        # The test is the instant the read *arrived*, not the instant adoption
+        # finishes: a read that completed inside the window was authorized, and
+        # keying it on a later reading would discard lawfully obtained evidence
+        # because the gateway's own control or evidence store was slow.
         assert operation.finished_at is not None
         if operation.finished_at >= self._scope.deadline:
             invalid = "DEADLINE_EXCEEDED"
