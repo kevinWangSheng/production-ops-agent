@@ -26,7 +26,7 @@
 - `DurableStore.commit_step()` / `commit_tool()`：代际或租约拒绝前把迟到结果写入 `late_result` 历史，并提交该历史事务。
 - `DurableStore._late_result()`：`logical_key` 绑定原步骤/工具身份（保留前缀 `late_result:step:` / `late_result:tool:` / `late_result:publish:`）；写入单调 `sequence` 与 `observed_at`；同一身份重放 `ON CONFLICT DO NOTHING`。业务 `commit_step` 不得使用该前缀。
 - `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；同一 `run_id` 在已接续的 queued 事故上重试返回既有代际。
-- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_live_steps_cannot_use_the_late_result_key_namespace`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
+- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_expired_late_step_is_history_and_not_pending_work`、`test_live_steps_cannot_use_the_late_result_key_namespace`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
 
 ## PR #19 既有并在本 PR 验证
 
@@ -96,7 +96,7 @@
 
 针对 PR #28 当时 12 条未 resolve 的机器人审查 thread：
 
-- 代码采纳：迟到结果保留稳定 `logical_key`（步骤/工具/publish 身份）并幂等写入；`late_result` 行写入单调 `sequence` 与 `observed_at`；`new_run` 对同一 `run_id` 仅在已有 `new_run` 审计且仍为当前 queued Run 时重试返回既有代际。未取消事故上的 `new_run` 仍是 `ILLEGAL_TRANSITION`（独立审查 P1）。
+- 代码采纳：迟到结果保留稳定 `logical_key`（步骤/工具/publish 身份）并幂等写入；`late_result` 行写入单调 `sequence` 与 `observed_at`；`new_run` 对同一 `run_id` 仅在已有 `new_run` 审计且仍为当前 queued Run 时重试返回既有代际。未取消事故上的 `new_run` 仍是 `ILLEGAL_TRANSITION`（独立审查 P1）。租约过期写入的 `late_result` 不进入 `pending_tools`，也不得被 `commit_tool` 改写成活步骤（HEAD 机器人 P1）。
 - 任务记录采纳：分清本 PR 新增 / PR #19 既有并验证 / 未实现待决；删除不存在的测试名；PG 阻塞出处改为未落盘本地观察并标为历史；未完成 PG 实跑的旧待办移入历史。
 - 未实现、按审查意见标为待决而不在本 PR 实现：close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化接入 claim/budget/adoption、follow-up/correction 输入内容、持久化输入水位。
 

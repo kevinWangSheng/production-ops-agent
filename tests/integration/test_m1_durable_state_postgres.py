@@ -217,6 +217,42 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     assert late[1]["response"] == {"result": "late-tool"}
 
 
+def test_expired_late_step_is_history_and_not_pending_work():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-expired-late-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "round-0", {"tool_calls": [{"id": "a"}]})
+    rebuilt = store.rebuild(incident)
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert len(late) == 1
+    assert rebuilt["pending_tools"] == []
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, late[0]["step_id"], 0, {"ok": True})
+    still = next(
+        item
+        for item in store.rebuild(incident)["steps"]
+        if item["step_id"] == late[0]["step_id"]
+    )
+    assert still["status"] == "late_result"
+    assert still["tool_results"] == []
+    assert store.rebuild(incident)["pending_tools"] == []
+
+
 def test_live_steps_cannot_use_the_late_result_key_namespace():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()

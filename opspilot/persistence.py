@@ -469,12 +469,13 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
             if (
                 not row
                 or row["step_generation"] != lease.control_generation
+                or row["step_status"] == "late_result"
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 self._late_result(
@@ -660,14 +661,15 @@ class DurableStore:
                 "control_generation": incident_generation,
                 "run": run,
                 "steps": steps,
-                # 只列出当前代际的待办工具调用。旧代际的步骤仍留在 steps 里作为
-                # 记录，但人工决定之后它们已经不该再被执行；照旧列出会让调用方
-                # 把过期证据重新提交成「当前已提交的证据」，而 commit_tool 在
-                # 写入处拒绝它们——断点会因此永远重建出做不完的待办。
+                # 只列出当前代际、且仍是活步骤的待办工具调用。late_result 即使
+                # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
+                # 租约把迟到响应写回成可发布步骤。
                 "pending_tools": [
                     {"step_id": step["step_id"], "ordinal": ordinal}
                     for step in steps
                     if step["control_generation"] == incident_generation
+                    and step["status"]
+                    in {"response_committed", "tool_result_committed"}
                     for ordinal in range(
                         len((step["response"] or {}).get("tool_calls", []))
                     )
