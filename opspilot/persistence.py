@@ -472,9 +472,10 @@ class DurableStore:
                 "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
             if (
-                not row
-                or row["step_generation"] != lease.control_generation
+                row["step_generation"] != lease.control_generation
                 or row["step_status"] == "late_result"
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):

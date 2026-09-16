@@ -45,6 +45,7 @@
 - 全局/目标 suspension 持久化并接入 DurableStore `claim` / `reserve_budget` / 结果采纳。当前 schema 与租约只有事故代际；领域暂停状态只在 `opspilot/domain/control.py`。
 - `follow_up` / `correct` 的输入内容（问题、事实、纠正）持久化。`control()` 只接受 incident、generation、action、actor，`opspilot_controls` 无载荷列。
 - 持久化输入水位：`opspilot_runs.input_watermark` 初始化为 0，没有更新/纳入路径。领域层 `test_the_input_watermark_only_moves_forward_and_only_while_running` 不是 DurableStore 证据。
+- 事故级历史视图：`rebuild()` 只重建 `current_run_id` 的断点。取消 Run 的步骤与 `late_result` 仍留在 `opspilot_steps`，但不经 `rebuild()` 返回。本子任务不把 `rebuild()` 扩成全量审计接口。
 
 ## C3 第 4 节逐条映射
 

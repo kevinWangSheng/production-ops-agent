@@ -217,6 +217,23 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     assert late[1]["response"] == {"result": "late-tool"}
 
 
+def test_commit_tool_rejects_unknown_step_without_history():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-unknown-tool-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.commit_tool(lease, uuid4(), 0, {"ok": True})
+    assert store.rebuild(incident)["steps"] == []
+
+
 def test_expired_late_step_is_history_and_not_pending_work():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
