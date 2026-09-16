@@ -1,7 +1,7 @@
 # M1-01 只读工具执行器（纯逻辑部分）
 
-- 状态：进行中
-- 更新日期：2026-09-14
+- 状态：PR 已就绪，待用户审核合并（[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
+- 更新日期：2026-09-15
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md#m1-01-任务拆分与投入估算待-gate-决定)
   「只读工具执行器」子任务；[C3 技术方案](../design/technical-proposal-2026-09-07.md)
   第 3 节（Tool Gateway 角色）、第 8 节（工具注册合同）、第 4/7 节（控制版本、
@@ -11,7 +11,9 @@
   冻结上限见 [v4 验收包](../testing/first-investigation-v4-2026-09-10.md)。
   相关验收条目：F3（证据可区分性）、F7（只读安全与审计），二者 `passes` 保持 false。
 - 工作区：分支 `feature/m1-01-tool-executor`，
-  worktree `/Users/shenghuikevin/dev/AI/production-ops-agent/.claude/worktrees/agent-addafc240c953e663`
+  当前 worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-tool-executor`
+  （2026-09-14 记录的 `.claude/worktrees/agent-addafc240c953e663` 为历史路径）。
+  交付状态以 PR #20 当前 HEAD 为准，不在此复制提交哈希。
 
 ## 目标与范围
 
@@ -142,7 +144,11 @@
 
 ## 下一步与交接
 
-- 已完成本地实现、自测与 `make check`；按任务要求**未推送、未建 PR、未合并**。
+- 已完成本地实现、自测与 `make check`；分支已推送，[PR #20]
+  (https://github.com/kevinWangSheng/production-ops-agent/pull/20) 已创建并多次更新。
+  **未合并**，合并由用户审核后执行。
+  （2026-09-14 原记录此处写「未推送、未建 PR、未合并」，与实际不符，已按真实状态更正；
+  该表述反映的是建 PR 之前的历史状态。）
 - 待办（交接给后续任务）：
   1. 与并行的领域类型任务对接：目前 `ToolOperation`/`EvidenceRecord` 是本模块自用的
      最小结构，需与 C3 第 4 节的 `ToolOperation / Evidence` 持久对象合并，
@@ -188,3 +194,174 @@
   2 xfailed**；mypy、Ruff、format、lock、doctor 均通过。
 - 修复已提交并推送到 PR #20；两个 inline thread 均已回复并 resolve。最新 HEAD 的
   CI 已通过，Code Review 已覆盖 `235e801` 且无新增发现；feature passes 仍保持 false。
+
+## 本轮收尾（2026-09-15，T1）
+
+### 1. 机器人安全发现：派发前未按可信时钟复核 scope deadline
+
+Codex Security Review 在 `opspilot/tools/executor.py` 留下一条 P2 未 resolve 发现，
+指出 `_reserve()` 用 `operation.started_at` 计算剩余授权时间，而该时间戳早于
+`ControlAuthority.snapshot()` 的往返；慢查询跨过 deadline 后仍算出正的传输超时，
+`_run()` 只核对 fetch 耗时，结果被采纳。
+
+**独立复核结论：发现成立，已采纳并修复。** 复现（离线假时钟，非 sleep）：
+scope deadline 为 `NOW+2s`，control lookup 耗 5s，修复前的实际行为是
+transport 被调用、`timeout_seconds=2.0`、outcome 为 `ok`、`adopted=True`、
+`model_view["content"]` 带回源数据——即授权到期后仍发出读取并把内容交给模型。
+
+修复（`89744fd`）分两处，均复用既有 `denied` / `DEADLINE_EXCEEDED` 类别，
+**未新增任何 reason 码**：
+
+1. `_reserve()` 在 control lookup **之后**重读可信时钟（`authorized_at`），
+   以该时刻计算剩余 deadline。control 读取耗时因此计入 deadline，
+   而不是作为额外超时发给传输层。过期则拒绝，请求不发出。
+2. `_run()` 在采纳前按可信时钟复核 deadline，与既有在途控制检查并列且排在其前。
+   过期结果按既有在途失效路径处理：`adopted=False` 登记为历史、视图不含内容、
+   `source_contact="confirmed"`（读取确已到达数据源，不可撤回）。
+
+`ToolOperation.authorized_at` 记录该次检查的时刻并进入 `audit_json()`。
+它不是冗余字段：`DEADLINE_EXCEEDED` 拒绝路径没有 `finished_at`/`elapsed_seconds`，
+不加该字段则审计记录只剩 control 读取**之前**的 `started_at`，无法说明过期在何时被观察到。
+
+### 2. 确定性回归测试与变异验证
+
+新增 `tests/m1_tool_support.py::SlowControl`（control 查询按假时钟消耗墙钟时间）
+与三条测试于 `tests/test_m1_tool_boundaries.py`：
+
+| 测试 | 约束 |
+|---|---|
+| `test_a_deadline_that_expires_during_the_control_lookup_is_denied` | control lookup 跨过 deadline 时拒绝，`not transport.called`，无证据登记，审计中 `authorized_at` 晚于 `started_at` |
+| `test_the_control_lookup_time_is_charged_against_the_request_timeout` | 10s 授权 − 3s control 读取 = 传输超时 7.0s，而不是 10.0s |
+| `test_a_result_arriving_at_the_deadline_is_kept_as_history_only` | 恰好在 deadline 到达的结果不被采纳，按历史登记，视图不含内容 |
+
+**变异验证（真实输出）**：
+
+- 变异 1：把 `_reserve()` 改回 `remaining_deadline = (scope.deadline - operation.started_at)`
+  → `2 failed, 45 passed`，失败项为
+  `test_a_deadline_that_expires_during_the_control_lookup_is_denied`
+  （`assert not True`，transport 已被调用）与
+  `test_the_control_lookup_time_is_charged_against_the_request_timeout`
+  （`assert 10.0 == 7.0`）。
+- 变异 2：删除 `_run()` 中的 deadline 复核
+  → `1 failed, 46 passed`，失败项为
+  `test_a_result_arriving_at_the_deadline_is_kept_as_history_only`
+  （`assert ('ok', None) == ('denied', 'DEADLINE_EXCEEDED')`）。
+
+两次变异后均已还原为修复版本并复跑通过。
+
+### 3. 同步最新 main
+
+`origin/main` 已推进到 `b483a12`（PR #22/#23/#24/#25）。合并入本分支（`38ea27f`），
+**无冲突**。实际核对而非假设：
+
+- PR #22 的 `opspilot/persistence.py` 并发语义改动早已在本分支的合并基点
+  `686965f` 之内，本轮 main 增量**未触及** `opspilot/`。
+- PR #25 的模型请求名 `deepseek-flash` 只改 `scripts/m0/`、`.env.example` 与文档，
+  与 `opspilot/tools/` 无交互。
+
+### 4. 验证证据
+
+worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-tool-executor` 根目录：
+
+- `make check` → `uv lock --check` Resolved 43 packages；`ruff check .` All checks passed；
+  `ruff format --check .` 420 files already formatted；`mypy` Success: no issues found
+  in 17 source files；`pytest` **1208 passed, 75 skipped, 2 xfailed in 25.65s**。
+  （合并 main 前的分支基线为 1193 passed / 75 skipped / 2 xfailed；
+  增量来自 main 带入的测试与本轮新增的 3 条。75 条 skip 为既有 PostgreSQL opt-in 用例。）
+- 定向：`.venv/bin/python -m pytest tests/test_m1_tool_boundaries.py
+  tests/test_m1_tool_outcomes.py tests/test_m1_tool_registry.py
+  tests/test_m1_tool_registry_binding.py -q` → **158 passed**。
+
+### 5. PR #20 全部 review thread 处置状态
+
+三条 thread 逐条核对（`gh api graphql` 读取 `reviewThreads`），
+且不只看回复文字，实际回到代码确认修复存在：
+
+| thread | 结论 | 代码证据 |
+|---|---|---|
+| P1 凭据绑定未进入 target registry revision（`registry.py`） | 采纳并修复（`25b090b`），已 resolve | `TargetRegistry` fingerprint 含 `credential_ref`（`opspilot/tools/registry.py:385`） |
+| P1 scope 未绑定完整 tool registry revision（`executor.py`） | 采纳并修复（`235e801`），已 resolve | `QueryScope.tool_registry_revision` 于 `_authorize()` fail-closed 校验；`ToolRegistry` fingerprint 覆盖参数 schema、result_path、超时/体积/窗口上限、错误映射、incomplete marker、read_only |
+| P2 派发前未复核 scope deadline（`executor.py`） | 采纳并修复（`89744fd`），本轮处置 | 见上第 1、2 节 |
+
+### 6. 独立审查状态（未完成）
+
+AGENTS.md 要求安全边界变更由未参与实现的 Agent 以全新上下文复核。
+本轮**派出三个独立审查 Agent 均未能回传报告**（harness 的 handback 失败，
+非审查本身失败）：它们各自实际执行了 18–42 次工具调用并在结束后把 worktree
+还原干净（`git status --porcelain` 仅剩本记录的改动），但报告内容未送达。
+因此**本轮不得标记为「独立验证通过」**，该项列为未完成。
+
+作为替代，实现者自行做了对抗性边界探测（非独立审查，不能替代上述要求），
+覆盖 9 种时序组合，断言两条不变量：不得在 deadline 之后发出读取、
+不得采纳在 deadline 之后到达的数据。
+
+| 场景（授权秒 / control 秒 / fetch 秒） | 结果 |
+|---|---|
+| control 跨过 deadline（2/5/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
+| control 恰好落在 deadline（5/5/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
+| control 早于 deadline 1s（6/5/0） | `ok`，已发出且采纳（授权内） |
+| fetch 使到达晚于 deadline（10/0/20） | `timeout` `GATEWAY_TIMEOUT`，未采纳 |
+| fetch 恰好在 deadline 到达（2/0/2） | `denied` `DEADLINE_EXCEEDED`，未采纳，登记为历史 |
+| fetch 早于 deadline 1s 到达（3/0/2） | `ok`，已采纳（授权内） |
+| control 与 fetch 都慢（10/6/5） | `timeout` `GATEWAY_TIMEOUT`，未采纳 |
+| 授权剩余为 0（0/0/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
+| 授权已过期（-5/0/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
+
+九种组合均未出现「deadline 后发出」或「采纳 deadline 后到达的数据」。
+
+探测暴露出一处**原先未写明的语义判断**，已在 `2c16431` 补入代码注释：
+采纳与否以**读取到达的时刻**为准，而不是采纳动作完成的时刻。
+即在授权窗口内完成的读取，即便其后网关自身的 control 查询跨过了 deadline 仍会被采纳。
+理由：在授权期内完成的读取本身是被授权的；若改用更晚的时钟读数，
+会因网关自身 control/证据存储变慢而丢弃合法取得的证据。
+这一判断应由后续独立审查复核。
+
+### 7. 本轮新增的未完成项
+
+- **C3 第 8 节「工具模型可见面」尚未实现。** main 的 PR #24 把模型可见面
+  （`returns` / `window_format` / `values_format` / `limits` / `cannot_prove`）
+  写入 C3 第 8 节注册合同，并要求它纳入工具注册表的内容哈希。
+  当前 `ToolRegistration` 无这些字段，`ToolRegistry` 的 fingerprint 投影也未覆盖。
+  该实现被 PR #24 自身的完成条件明确排除（「不在完成条件内：合同的实现与实现后的
+  确定性测试」），因此是本任务之外的交接项，本 PR 不做。
+  接手时须同时更新 fingerprint 投影，否则描述变化不会 bump `tool_schema_revision`。
+- 原有交接项（领域类型合并、真实传输/凭据/PG 证据存储、数据源 payload 脱敏、
+  `TransportUnavailable` 未细分、并发/取消运行期实现）保持不变，均未在本轮解决。
+- F3/F7 的 `passes` 仍为 `false`；本轮是纯逻辑层的安全修复，不构成产品验收证据。
+
+### 8. 交付阻塞：secret scan 因**其它分支**的历史而失败
+
+PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
+失败步骤是 "Secret scan and synthetic detection self-test"，输出 `SECRET_DETECTED`。
+
+**该失败与本分支的改动无关，本分支也无法在自身范围内修复。** 证据：
+`scripts/check_secrets.py` 扫描 git 历史时传 `--log-opts=--all`，即扫描 clone 中
+**全部 ref**，而非本分支可达的历史。本地用同一固定版本 gitleaks 8.30.1 与同一配置
+分三种范围扫描：
+
+| 扫描范围 | 命中数 |
+|---|---|
+| 全部 ref（CI 实际扫描的范围） | **1** |
+| 仅本分支 HEAD 可达历史 | **0** |
+| 仅 `origin/main` 可达历史 | **0** |
+
+唯一命中位于 `feature/m1-01-intake-auth` 分支的提交 `64254df`
+（`tests/test_m1_intake_auth.py:183`，合成测试夹具 `"s3cr3t-password"`，
+被 `generic-api-key` 规则匹配）。该分支的**当前 tip 已从文件中移除**该字面量，
+但 git 历史仍保留，故 `--all` 扫描持续命中。
+
+影响范围不限于本 PR：`chore/durable-store-hardening` 分支的 CI 在
+2026-09-15T22:47 仍为 success，自 22:55 起转为连续 failure，
+与 `feature/m1-01-intake-auth` 推送的时间一致。即**该仓库当前所有分支的
+`checks` 都因此变红**。
+
+**本任务不做处置，须由用户决定**，三条路径都超出本任务授权：
+
+1. 由 `feature/m1-01-intake-auth` 任务改写其分支历史（需 force-push 授权，
+   本任务被明确禁止）；
+2. 收窄 `scripts/check_secrets.py` 的扫描范围（等于削弱一项安全检查，
+   须用户批准，且 AGENTS.md 禁止为迁就实现而弱化验收步骤）；
+3. 保留现状并接受 `checks` 红。
+
+在此之前，PR #20 的 `mergeStateStatus` 不会是 `CLEAN`，
+**不能按「CI 全绿」交付**。
