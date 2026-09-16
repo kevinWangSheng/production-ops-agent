@@ -10,3 +10,4 @@
 - CI/审查收尾：修复 HEAD `2f31655` 的 workflow_dispatch run [35146834206](https://github.com/kevinWangSheng/production-ops-agent/actions/runs/35146834206) 已 success，`checks` 与 `m0-postgres` 均 success。三个机器人 thread 已逐条采纳修复并 resolve。当前 PR 仍以未合并的 #26 为 base；#26 合并后需 retarget `main`。本记录追加提交后需再以最终 HEAD 重跑 CI。
 - 未运行真实模型调用；不声称产品验收或 feature passes 通过。
 - 新一轮机器人 thread：lease epoch/owner/expiry 在工具 dispatch 前校验，并在代际不匹配时调用精确 lease relinquish；新增 PG fencing 回归。修复后本地 `ruff`、`mypy` 通过，M1 PG 集成 33 passed。待最终 HEAD CI。
+- 最终收尾：HEAD `193539d` 的 workflow_dispatch run [35150133043](https://github.com/kevinWangSheng/production-ops-agent/actions/runs/35150133043) 中 `checks`、`m0-postgres` 均 success；本轮 2 个 thread 已逐条回复、修复并 resolve，当前 GraphQL 查询无 `isResolved=false` thread。PR 等待用户合并。
