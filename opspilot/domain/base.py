@@ -8,7 +8,7 @@ enter a domain object by accident.
 from collections.abc import Mapping
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 ErrorCode = Literal[
     "INVALID_INPUT",
@@ -36,7 +36,39 @@ Positive = Annotated[int, Field(gt=0)]
 
 
 class DTO(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    #: ``hide_input_in_errors`` keeps the rejected value out of the raised
+    #: ``ValidationError``. Forbidding a credential field is not enough on its
+    #: own: the default message quotes the input, so a caller that logs the
+    #: rejection would export the very secret the field rejected.
+    model_config = ConfigDict(
+        extra="forbid", strict=True, frozen=True, hide_input_in_errors=True
+    )
+
+
+def sanitized_errors(exc: ValidationError) -> list[dict[str, object]]:
+    """Render a validation failure without the value that was rejected.
+
+    ``hide_input_in_errors`` only reaches ``str(exc)``. ``exc.errors()`` and
+    ``exc.json()`` still carry the rejected input, and those are the paths a
+    structured logger takes, so a refused credential would be exported by the
+    very failure that refused it. This is the only sanctioned way to render a
+    ``ValidationError`` in product code; ``tests/test_architecture.py`` keeps
+    the raw accessors out of ``opspilot/``.
+
+    ``loc`` needs the same care as ``input``. For every error type but one it
+    is a path of declared field names, which are safe to report. For
+    ``extra_forbidden`` the final segment *is* the caller's unexpected key, so
+    a credential sent as a field name rather than a field value would ride out
+    through the location instead of the input.
+    """
+
+    rendered: list[dict[str, object]] = []
+    for error in exc.errors():
+        location = tuple(error["loc"])
+        if error["type"] == "extra_forbidden" and location:
+            location = (*location[:-1], "<redacted>")
+        rendered.append({"type": error["type"], "loc": location, "msg": error["msg"]})
+    return rendered
 
 
 class StateMachine:
