@@ -217,6 +217,43 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     assert late[1]["response"] == {"result": "late-tool"}
 
 
+def test_new_run_is_refused_until_the_incident_is_cancelled():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-new-run-uncancelled-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "queued"
+    assert rebuilt["control_generation"] == 0
+    assert rebuilt["run"]["run_id"] == run
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    assert store.rebuild(incident)["control_generation"] == 1
+
+
 def test_cancelled_incident_can_continue_with_a_new_run():
     store = DurableStore(DSN)
     incident, run, next_run = uuid4(), uuid4(), uuid4()
@@ -229,6 +266,15 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         versions={"state": "v1"},
     )
     assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
     generation = store.new_run(
         incident,
         next_run,

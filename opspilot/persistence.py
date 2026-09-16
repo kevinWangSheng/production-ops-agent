@@ -234,15 +234,27 @@ class DurableStore:
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
-            # run_id 是幂等键：提交成功但确认丢失时，同一 run_id 必须回到已
-            # 写入的代际，而不是因为事故已变成 queued 再报 ILLEGAL_TRANSITION。
+            # run_id 是幂等键，但 queued + 当前 Run 也是 accept()/follow_up 之后
+            # 的状态。只有已经写过 new_run 审计的接续才能当作丢失确认后的重试。
             existing_run = conn.execute(
                 "SELECT control_generation FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
                 (run_id, incident_id),
             ).fetchone()
             if existing_run is not None:
-                if row["state"] == "queued" and row["current_run_id"] == run_id:
-                    return int(existing_run["control_generation"])
+                generation = int(existing_run["control_generation"])
+                replay = conn.execute(
+                    "SELECT 1 FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
+                    (incident_id, generation),
+                ).fetchone()
+                if (
+                    replay is not None
+                    and row["state"] == "queued"
+                    and row["current_run_id"] == run_id
+                    and int(row["control_generation"]) == generation
+                ):
+                    return generation
+                if row["current_run_id"] == run_id and row["state"] != "cancelled":
+                    raise PersistenceError("ILLEGAL_TRANSITION")
                 raise PersistenceError("IDENTITY_CONFLICT")
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
