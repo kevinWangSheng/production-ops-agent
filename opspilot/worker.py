@@ -17,11 +17,20 @@ class RecoverySession:
     lease: Lease
     store: DurableStore
 
+    def _assert_current(self) -> None:
+        current = self.store.rebuild(self.plan.incident_id)
+        if (
+            current["control_generation"] != self.lease.control_generation
+            or current["run"]["run_id"] != self.lease.run_id
+        ):
+            raise PersistenceError("CONTROL_DENIED")
+
     def execute_pending(
         self, execute: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     ) -> int:
         count = 0
         for item in self.plan.pending_tools:
+            self._assert_current()
             result = execute(item)
             self.store.commit_tool(
                 self.lease, item["step_id"], int(item["ordinal"]), dict(result)
@@ -57,8 +66,7 @@ class Worker:
         plan = self.recover(incident_id)
         if not plan.candidate:
             raise PersistenceError("CONTROL_DENIED")
-        return RecoverySession(
-            plan,
-            self.claim(incident_id, plan.run_id, lease_seconds=lease_seconds),
-            self.store,
-        )
+        lease = self.claim(incident_id, plan.run_id, lease_seconds=lease_seconds)
+        if plan.control_generation != lease.control_generation:
+            raise PersistenceError("CONTROL_DENIED")
+        return RecoverySession(plan, lease, self.store)

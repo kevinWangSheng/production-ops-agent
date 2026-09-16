@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from psycopg import errors, sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from opspilot.domain import RUN_EXECUTION
 from opspilot.persistence import DurableStore, Lease, PersistenceError
@@ -87,6 +88,28 @@ def test_worker_subprocess_kill_then_resume_from_business_rows():
     time.sleep(1.2)
     session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=5)
     assert session.lease.epoch == 2
+
+
+def test_rebuild_rejects_malformed_persisted_tool_calls():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-malformed-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "malformed", {"tool_calls": []})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+            (Jsonb({"tool_calls": "abc"}), step),
+        )
+    with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+        store.rebuild(incident)
 
 
 def test_incompatible_versions_block_without_silent_resume():

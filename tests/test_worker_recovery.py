@@ -42,6 +42,25 @@ def test_pending_tool_keeps_stable_operation_and_call_details():
     assert plan.pending_tools[0]["tool_call"]["name"] == "query"
 
 
+def test_recovery_plan_nested_values_are_immutable():
+    plan = rebuild_plan(
+        {
+            "incident_id": uuid4(),
+            "control_generation": 0,
+            "run": {"run_id": uuid4(), "state": "running"},
+            "steps": [],
+            "pending_tools": [{"ordinal": 0, "tool_call": {"name": "query"}}],
+            "conclusion": None,
+        }
+    )
+    try:
+        plan.pending_tools[0]["tool_call"]["name"] = "mutated"  # type: ignore[index]
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("recovery plan must be immutable")
+
+
 def test_terminal_plan_is_not_resumable():
     plan = rebuild_plan(
         {

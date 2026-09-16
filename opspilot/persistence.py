@@ -551,6 +551,12 @@ class DurableStore:
                 "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
                 (row["current_run_id"],),
             ).fetchall()
+            for step in steps:
+                calls = (step["response"] or {}).get("tool_calls", [])
+                if not isinstance(calls, list) or any(
+                    not isinstance(call, dict) for call in calls
+                ):
+                    raise PersistenceError("INCONSISTENT_STATE")
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],

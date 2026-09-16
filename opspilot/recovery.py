@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Mapping
 from uuid import UUID
 
@@ -27,7 +27,7 @@ class RecoveryPlan:
 
 
 def rebuild_plan(snapshot: Mapping[str, Any]) -> RecoveryPlan:
-    data = deepcopy(dict(snapshot))
+    data = _freeze(dict(snapshot))
     run = data["run"]
     return RecoveryPlan(
         data["incident_id"],
@@ -39,6 +39,16 @@ def rebuild_plan(snapshot: Mapping[str, Any]) -> RecoveryPlan:
         tuple(data.get("pending_tools", ())),
         data.get("conclusion"),
     )
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze(item) for item in value)
+    return value
 
 
 def recover(store: DurableStore, incident_id: UUID) -> RecoveryPlan:
