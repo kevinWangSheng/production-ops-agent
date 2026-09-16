@@ -165,9 +165,15 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     step = store.commit_step(stale, "old-final", {"result": "old"})
     assert store.control(incident, 0, "correct", "operator") == 1
     assert store.publish(stale, {"result": "old"}, step_id=step) is False
+    assert store.publish(stale, {"result": "old-retry"}, step_id=step) is False
     rebuilt = store.rebuild(incident)
     assert rebuilt["conclusion"] is None
-    assert any(item["status"] == "late_result" for item in rebuilt["steps"])
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert len(late) == 1
+    assert late[0]["logical_key"] == f"late-publish:{step}"
+    assert late[0]["sequence"] >= 0
+    assert late[0]["observed_at"] is not None
+    assert late[0]["response"] == {"result": "old"}
 
 
 def test_late_step_and_tool_results_are_recorded_as_history():
@@ -189,9 +195,26 @@ def test_late_step_and_tool_results_are_recorded_as_history():
         store.commit_step(stale, "late-round", {"result": "late"})
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(fresh, step, 0, {"result": "late-tool"})
-    assert (
-        sum(s["status"] == "late_result" for s in store.rebuild(incident)["steps"]) == 2
-    )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "late-round", {"result": "late-retry"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, step, 0, {"result": "late-tool-retry"})
+    steps = store.rebuild(incident)["steps"]
+    original = next(item for item in steps if item["step_id"] == step)
+    late = [item for item in steps if item["status"] == "late_result"]
+    assert len(late) == 2
+    assert {item["logical_key"] for item in late} == {
+        "late-step:late-round",
+        f"late-tool:{step}:0",
+    }
+    assert all(item["sequence"] > original["sequence"] for item in late)
+    assert all(item["observed_at"] is not None for item in late)
+    assert [item["logical_key"] for item in late] == [
+        "late-step:late-round",
+        f"late-tool:{step}:0",
+    ]
+    assert late[0]["response"] == {"result": "late"}
+    assert late[1]["response"] == {"result": "late-tool"}
 
 
 def test_cancelled_incident_can_continue_with_a_new_run():
@@ -222,6 +245,41 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.claim(incident, next_run, uuid4(), {"state": "v1"}).control_generation
         == 2
     )
+    assert (
+        store.new_run(
+            incident,
+            next_run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+        == 2
+    )
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            uuid4(),
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with store.transaction(snapshot=True) as conn:
+        audits = conn.execute(
+            "SELECT action FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation, created_at",
+            (incident,),
+        ).fetchall()
+    assert [item["action"] for item in audits] == ["cancel", "new_run"]
 
 
 def test_concurrent_follow_up_and_cancel_have_one_winner_generation():

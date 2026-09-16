@@ -152,9 +152,11 @@ class DurableStore:
               step_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL, status text NOT NULL, response jsonb,
               tool_results jsonb NOT NULL DEFAULT '[]'::jsonb, control_generation integer NOT NULL,
+              observed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
               UNIQUE(run_id, logical_key)
             );
             ALTER TABLE opspilot_steps ADD COLUMN IF NOT EXISTS sequence integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_steps ADD COLUMN IF NOT EXISTS observed_at timestamptz NOT NULL DEFAULT clock_timestamp();
             CREATE TABLE IF NOT EXISTS opspilot_controls (
               audit_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
               action text NOT NULL, expected_generation integer NOT NULL,
@@ -227,11 +229,21 @@ class DurableStore:
         """Continue a cancelled incident with a fresh Run and control generation."""
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT state,control_generation FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            # run_id 是幂等键：提交成功但确认丢失时，同一 run_id 必须回到已
+            # 写入的代际，而不是因为事故已变成 queued 再报 ILLEGAL_TRANSITION。
+            existing_run = conn.execute(
+                "SELECT control_generation FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+                (run_id, incident_id),
+            ).fetchone()
+            if existing_run is not None:
+                if row["state"] == "queued" and row["current_run_id"] == run_id:
+                    return int(existing_run["control_generation"])
+                raise PersistenceError("IDENTITY_CONFLICT")
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = int(row["control_generation"]) + 1
@@ -251,11 +263,30 @@ class DurableStore:
 
     @staticmethod
     def _late_result(
-        conn: Connection, run_id: UUID, payload: dict[str, Any], generation: int
+        conn: Connection,
+        run_id: UUID,
+        logical_key: str,
+        payload: dict[str, Any],
+        generation: int,
     ) -> None:
+        """登记迟到结果。logical_key 绑定原步骤/工具身份，重放不得另写一行。"""
+        if (
+            conn.execute(
+                "SELECT 1 FROM opspilot_runs WHERE run_id=%s",
+                (run_id,),
+            ).fetchone()
+            is None
+        ):
+            return
+        sequence = DurableStore._require_row(
+            conn.execute(
+                "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                (run_id,),
+            )
+        )["next_sequence"]
         conn.execute(
-            "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s)",
-            (uuid4(), run_id, f"late:{uuid4()}", Jsonb(payload), generation),
+            "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation,observed_at) VALUES(%s,%s,%s,%s,'late_result',%s,%s,clock_timestamp()) ON CONFLICT (run_id, logical_key) DO NOTHING",
+            (uuid4(), run_id, sequence, logical_key, Jsonb(payload), generation),
         )
 
     def claim(
@@ -374,7 +405,11 @@ class DurableStore:
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 self._late_result(
-                    conn, lease.run_id, response, lease.control_generation
+                    conn,
+                    lease.run_id,
+                    f"late-step:{logical_key}",
+                    response,
+                    lease.control_generation,
                 )
                 conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
@@ -425,7 +460,13 @@ class DurableStore:
                 or row["step_generation"] != lease.control_generation
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
-                self._late_result(conn, lease.run_id, result, lease.control_generation)
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"late-tool:{step_id}:{ordinal}",
+                    result,
+                    lease.control_generation,
+                )
                 conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
@@ -547,15 +588,12 @@ class DurableStore:
                 or row["incident_state"] in {"completed", "cancelled", "paused"}
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
-                conn.execute(
-                    "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
-                    (
-                        uuid4(),
-                        lease.run_id,
-                        f"late:{uuid4()}",
-                        Jsonb(conclusion),
-                        lease.control_generation,
-                    ),
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"late-publish:{step_id}",
+                    conclusion,
+                    lease.control_generation,
                 )
                 return False
             final_step = conn.execute(
