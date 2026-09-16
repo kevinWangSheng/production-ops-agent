@@ -403,6 +403,23 @@ class DurableStore:
                 (amount, lease.run_id),
             )
 
+    def lease_current(self, lease: Lease) -> bool:
+        """Read the authoritative owner/epoch/generation/expiry fence."""
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            return bool(row and not self._lease_revoked(row, lease, self._db_now(conn)))
+
+    def abandon(self, lease: Lease) -> None:
+        """Release only this exact lease after a recovery plan is rejected."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL WHERE run_id=%s AND owner=%s AND epoch=%s AND control_generation=%s",
+                (lease.run_id, lease.owner, lease.epoch, lease.control_generation),
+            )
+
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
@@ -652,10 +669,18 @@ class DurableStore:
             run = conn.execute(
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
+            if run is None or run["incident_id"] != incident_id:
+                raise PersistenceError("INCONSISTENT_STATE")
             steps = conn.execute(
                 "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
                 (row["current_run_id"],),
             ).fetchall()
+            for step in steps:
+                calls = (step["response"] or {}).get("tool_calls", [])
+                if not isinstance(calls, list) or any(
+                    not isinstance(call, dict) for call in calls
+                ):
+                    raise PersistenceError("INCONSISTENT_STATE")
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],
@@ -666,7 +691,14 @@ class DurableStore:
                 # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
                 # 租约把迟到响应写回成可发布步骤。
                 "pending_tools": [
-                    {"step_id": step["step_id"], "ordinal": ordinal}
+                    {
+                        "step_id": step["step_id"],
+                        "ordinal": ordinal,
+                        "operation_id": f"{step['step_id']}:{ordinal}",
+                        "tool_call": (step["response"] or {}).get("tool_calls", [])[
+                            ordinal
+                        ],
+                    }
                     for step in steps
                     if step["control_generation"] == incident_generation
                     and step["status"]
