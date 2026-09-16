@@ -1,7 +1,9 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：进行中
+- 状态：进行中（PR 已开，等待 CI 与 code review）
 - 更新日期：2026-09-16
+- PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
+  （stacked，base = `feature/m1-01-tool-executor` / PR #20）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md)「Flash 调查 loop」；
   [C3 第 5 节](../design/technical-proposal-2026-09-07.md)「调查循环」「指令分层与版本」「上下文」；
   [v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；
