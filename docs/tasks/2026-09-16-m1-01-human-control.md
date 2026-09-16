@@ -118,3 +118,7 @@ CI：仓库 workflow 仅对 base 为 `main` 或 `chore/m0-*` 的 PR 自动触发
 - 用户只审核最终可合并 PR。合并及 retarget 仍待 #26 与用户审核。
 - 待决（超出本子任务）：close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化接入、follow-up/correction 输入内容、持久化输入水位。
 
+
+## 接手记录（2026-09-16）
+
+执行者更换为 Codex。当前 HEAD：`0aed9fb4cce9081294bbf4f12d64d2ffa735543a`（`0aed9fb`）。PR #28 仍为 OPEN，base=`chore/durable-store-hardening`，head=`feature/m1-01-human-control`，当前 merge state 为 `CLEAN`；GraphQL reviewThreads 检查结果为全部已 resolve，未发现最后一次推送后新增的未解决机器人 thread。既有 workflow_dispatch CI（run `35124652364`）在当时 HEAD `ec567e3` 上 `checks` 与 `m0-postgres` 均 success；本次无代码变更，未重新触发 CI。待 #26 合并后按交接要求 rebase 到 `main`、retarget PR、确认自动 CI 并处理新增 review thread。
