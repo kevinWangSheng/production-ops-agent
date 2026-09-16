@@ -1,0 +1,95 @@
+# M1-01 子任务「Flash 调查 loop」
+
+- 状态：进行中
+- 更新日期：2026-09-16
+- 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md)「Flash 调查 loop」；
+  [C3 第 5 节](../design/technical-proposal-2026-09-07.md)「调查循环」「指令分层与版本」「上下文」；
+  [v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；
+  [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md)；
+  [SPEC.md](../../SPEC.md) 有界开放 M1-01；
+  B2 冻结上限见 ROADMAP 与 v4 校准段；
+  纪律单一来源 [PR #27](https://github.com/kevinWangSheng/production-ops-agent/pull/27)
+  `opspilot/instructions/discipline.py`；
+  工具执行器 [PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)；
+  DurableStore `opspilot/persistence.py`。
+  相关验收：F3（证据可区分性），`passes` 保持 false。
+- 工作区：分支 `feature/m1-01-investigation-loop`，
+  worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-investigation-loop`，
+  起点 `origin/feature/m1-01-tool-executor`（PR #20）。
+
+## 目标与范围
+
+实现 C3 第 5 节定义的调查 loop：v4 输入/输出绑定、模型工具调用与
+`ToolOperation` 结果的消息配对、handoff/最终报告、冻结的每 Run 资源上限，
+以及与 DurableStore 的 `reserve_budget` / `commit_step` / `commit_tool` 提交。
+
+范围内：
+
+- `opspilot/instructions/`：复用 PR #27 纪律模块，不另写拷贝。
+- `opspilot/investigation/`：loop、L2 报告契约、配对、冻结上限、步骤提交接缝。
+- 确定性单元/合同测试：消息配对、预算/deadline 拒绝、handoff。
+- 一次有界真实 DeepSeek Run（ledger 记账），证明 loop 产出 v4 结构化报告。
+
+范围外：
+
+- UI、intake 接线（intake 合同只读参考 PR #21）。
+- 不改 11 个 feature `passes`、验收步骤、SPEC 门槛陈述。
+- 不扩展产品权限（只读、人工优先）。
+- 不 `import scripts/`（产品代码）；M0 adapters/live 仅作参考。
+
+## 前提与完成条件
+
+- 前提：SPEC 已有界开放 M1-01；本 worktree 基于 PR #20；
+  `make setup`、本地 PG 集成、少量真实 DeepSeek 调用（走 scripts/m0 合同/ledger）已获用户授权。
+- 完成条件：
+  1. 确定性测试覆盖消息配对、预算/deadline 拒绝、handoff。
+  2. 至少一次有界真实 DeepSeek Run 产出 v4 结构化报告，有 ledger 记账。
+  3. `make check` 通过并保留实际输出。
+  4. 独立审查完成并处置发现。
+  5. 提交、推送、按 stacked PR 规则开 PR（base 为 PR #20 分支，若已进 main 则 rebase 到 main）。
+
+## 必要上下文
+
+- C3 循环：`组装上下文 → 调用模型 → 提交完整响应和工具计划 → 执行并提交工具观察 → 下一轮`。
+- 指令分层：L1a `discipline.py`；L2 本任务按
+  [DeepSeek 参考](../design/deepseek-flash-prompt-tool-reference.md) 撰写；L3 工具面由调用方提供实例快照。
+- 冻结上限（2026-09-13）：每 Run 4 HTTP / 20 工具；输出 16,384 tokens；
+  HTTP 512KiB/2MiB；模型 360s / Run 1800s；单工具 30s / 累计 240s。
+- `opspilot/tools/`：`ToolRequest` / `ToolOutcome` / `ReadOnlyToolExecutor`。
+- `opspilot/persistence.py`：`DurableStore.reserve_budget/commit_step/commit_tool`。
+
+## 执行进展与证据
+
+- 2026-09-16：确认 worktree 与分支，阅读 SPEC 门槛 / Operating constraints /
+  Verification and delivery、PRODUCT-CONSTRAINTS 全文、C3 第 5 节、v4 包与拆分表。
+  工作区干净，HEAD 与 `origin/feature/m1-01-tool-executor` 一致。
+- 复用 `origin/chore/instruction-contract-impl` 的 `opspilot/instructions/`
+  与 `tests/test_instruction_discipline.py`，未另写 L1 拷贝。
+- 实现 `opspilot/investigation/`：loop、L2 `m0-report-v2` 契约、配对、
+  B2 冻结上限、Memory/Durable 步骤提交接缝、DeepSeek 薄客户端。
+- 确定性测试：配对、预算/deadline 拒绝、handoff、v4 引用绑定
+  （invented evidence_id / target_ref / time_scope）、truncated tool plan 不执行。
+- `make check`（P2 修复后复跑）：见本记录验证节。
+- 有界真实 Run：`scripts/m1_live_flash_loop.py`，证据
+  [`docs/evidence/m1-01-investigation-loop/run.md`](../evidence/m1-01-investigation-loop/run.md)。
+  2 HTTP、回报名 `deepseek-flash`、`m0-report-v2` incomplete/inconclusive + handoff，
+  峰值上界 0.024617 CNY。fixture 工具，MemoryStepStore，不是 PG 集成。
+- 独立审查（全新 explore 子代理）：P1 无；P2 三条已修复
+  （v4 目标/时间窗绑定、client 对非 mapping tool_calls fail-closed、
+  `finish_reason!=tool_calls` 不执行工具）。P3 ledger `run_id` 脚本已改，
+  已记录的那次 Run 未重放。
+
+## 验证证据
+
+- 检查对象与版本：Python 3.12.13、pytest 9.1.1、ruff 0.16.6、mypy 2.3.1。
+- 命令（worktree 根目录）：`make check`
+- 结果：`uv lock --check` 通过；`ruff check` All checks passed；
+  `ruff format --check` formatted；`mypy` Success: no issues found in 26 source files；
+  `pytest` **1267 passed, 75 skipped, 2 xfailed**（P2 修复后定向
+  `tests/test_m1_investigation_*.py` **27 passed**）。
+- 真实 Run 命令：`PYTHONPATH=. M0_ENV_FILE=<main .env> .venv/bin/python scripts/m1_live_flash_loop.py`
+  stdout：`{"status": "completed", "handoff": true, "http_count": 2, "known_cost_cny_upper": 0.024617, "report_schema_version": "m0-report-v2", "handoff_reasons": ["INCOMPLETE_INVESTIGATION"]}`
+
+## 下一步与交接
+
+独立审查发现已处置；提交、推送 stacked PR（base = `feature/m1-01-tool-executor` / PR #20）。
