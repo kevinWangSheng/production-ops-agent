@@ -361,6 +361,69 @@ def test_a_result_arriving_at_the_deadline_is_kept_as_history_only():
     assert sink.records[0].view["content"] is None
 
 
+def test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed():
+    """A human decision outranks the deadline, as it does before dispatch.
+
+    ``PRODUCT-CONSTRAINTS.md`` ("Runtime and human control requirements")
+    forbids a late completion from erasing a newer human decision. If the
+    deadline short-circuited the in-flight control read, an operator's
+    suspension would leave no trace in the outcome or the audit record.
+    """
+
+    control = FixedControl(later=ControlSnapshot(7, suspended=True))
+    executor, transport, sink, clock = build(
+        control=control, scope_overrides={"deadline": NOW + timedelta(seconds=2)}
+    )
+    transport.clock, transport.duration = clock, 2.0  # arrives at the deadline
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    # Both conditions hold; the human decision is the one reported.
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert control.calls == 2, "the in-flight control re-check must still run"
+    assert not outcome.adopted
+    assert outcome.model_view["content"] is None
+    assert sink.records[0].adopted is False
+    # The same ordering the pre-dispatch path in _reserve() already uses.
+    pre = build(control=FixedControl(suspended=True), scope_overrides={"deadline": NOW})
+    assert pre[0].execute(request()).reason == "SUSPENDED"
+
+
+def test_a_read_completed_inside_the_window_survives_a_late_control_re_read():
+    """Adoption keys on when the read *arrived*, not on when adoption ends.
+
+    This pins a deliberate trade-off rather than an accident. The gateway's own
+    in-flight control lookup is an unbounded round trip; letting it push the
+    observation past the deadline would discard lawfully obtained evidence
+    whenever the control store was slow. So a read that completed inside the
+    authorization window is adopted even when the control re-read that follows
+    it crosses the deadline. Changing this is a design decision that has to be
+    argued, not a refactor to be applied silently.
+    """
+
+    clock = FakeClock()
+    # Only the second lookup - the in-flight re-check - is slow.
+    control = SlowControl(clock, 20.0, slow_on={2})
+    executor, transport, sink, _ = build(
+        clock=clock,
+        control=control,
+        scope_overrides={"deadline": NOW + timedelta(seconds=10)},
+    )
+    transport.clock, transport.duration = clock, 1.0
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    deadline = executor.scope.deadline
+    assert outcome.operation.finished_at < deadline  # the read landed in time
+    assert clock.now() > deadline  # adoption itself finishes after the deadline
+    assert (outcome.status, outcome.reason) == ("ok", None)
+    assert outcome.adopted
+    assert outcome.model_view["content"] == [{"value": 1}]
+    assert sink.records[0].adopted is True
+
+
 # --- refusal path 4: over limit ---------------------------------------------
 
 

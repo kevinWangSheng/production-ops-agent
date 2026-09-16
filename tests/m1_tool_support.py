@@ -104,16 +104,20 @@ class SlowControl(FixedControl):
     """A control lookup that burns fake wall time, as a real PG read would.
 
     The duration is charged to the fake clock, so a test can put the scope
-    deadline inside the lookup without sleeping.
+    deadline inside the lookup without sleeping. ``slow_on`` limits the cost to
+    specific 1-based call numbers, so a test can make only the pre-dispatch
+    lookup slow, or only the in-flight re-check.
     """
 
-    def __init__(self, clock, duration, **overrides):
+    def __init__(self, clock, duration, slow_on=None, **overrides):
         super().__init__(**overrides)
         self.clock = clock
         self.duration = duration
+        self.slow_on = slow_on
 
     def snapshot(self, scope):
-        self.clock.advance(self.duration)
+        if self.slow_on is None or (self.calls + 1) in self.slow_on:
+            self.clock.advance(self.duration)
         return super().snapshot(scope)
 
 

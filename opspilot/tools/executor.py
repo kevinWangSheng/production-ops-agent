@@ -503,29 +503,41 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
-        # Re-check the authorization deadline and the control state: an expiry
-        # or a suspension that took effect while the request was in flight
-        # invalidates the result, which then survives as history only
-        # (technical plan sections 4 and 8). The deadline is checked first and
-        # against the trusted clock, so a result the gateway's own request
-        # bound let through still cannot be adopted past its authorization.
-        # The test is the instant the read *arrived*, not the instant adoption
-        # finishes: a read that completed inside the window was authorized, and
-        # keying it on a later reading would discard lawfully obtained evidence
-        # because the gateway's own control or evidence store was slow.
+        # Re-check the control state and the authorization deadline: a
+        # suspension or an expiry that took effect while the request was in
+        # flight invalidates the result, which then survives as history only
+        # (technical plan sections 4 and 8).
+        #
+        # Control is read first, in the same order as ``_reserve()``, so that a
+        # human suspension is still reported as ``SUSPENDED`` when the deadline
+        # has also passed. ``PRODUCT-CONSTRAINTS.md`` ("Runtime and human
+        # control requirements") forbids a late completion from erasing a newer
+        # human decision, and letting the deadline short-circuit the control
+        # read would leave no trace of the suspension in the outcome or the
+        # audit record.
+        #
+        # The deadline test uses the instant the read *arrived*, not the
+        # instant adoption finishes. A read that completed inside the window
+        # was authorized, and keying it on a later reading would discard
+        # lawfully obtained evidence whenever the gateway's own control or
+        # evidence store happened to be slow. That choice has a cost, and it is
+        # deliberate rather than overlooked: when the control re-read itself
+        # crosses the deadline, an observation fetched inside the window is
+        # still adopted after the deadline has passed. What this check
+        # guarantees is that nothing is adopted whose *read* completed outside
+        # the authorization window -- not that adoption finishes inside it.
         assert operation.finished_at is not None
-        if operation.finished_at >= self._scope.deadline:
+        control = self._read_control()
+        if control is None:
+            invalid = "CONTROL_UNAVAILABLE"
+        elif control.suspended:
+            invalid = "SUSPENDED"
+        elif control.control_generation != self._scope.control_generation:
+            invalid = "CONTROL_GENERATION_CHANGED"
+        elif operation.finished_at >= self._scope.deadline:
             invalid = "DEADLINE_EXCEEDED"
         else:
-            control = self._read_control()
-            if control is None:
-                invalid = "CONTROL_UNAVAILABLE"
-            elif control.suspended:
-                invalid = "SUSPENDED"
-            elif control.control_generation != self._scope.control_generation:
-                invalid = "CONTROL_GENERATION_CHANGED"
-            else:
-                invalid = ""
+            invalid = ""
         record = self._record(
             operation,
             plan,

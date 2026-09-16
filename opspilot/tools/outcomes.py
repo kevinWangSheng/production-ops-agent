@@ -12,11 +12,17 @@ human control requirements"):
              never an error.
 ``error``    input, source or result-handling failure, further separated by a
              fixed ``reason`` code.
-``timeout``  the request deadline was reached or the result came back too late
-             to be adopted. Status at the source is unknown, never success.
+``timeout``  the *request* bound was reached: the transport timed out, or the
+             fetch outlasted the timeout the gateway handed it. Status at the
+             source is unknown, never success.
 ``denied``   authorization, scope, control-state or budget refusal. The request
              was never sent, unless an in-flight control change or deadline
              expiry invalidated a result that had already arrived.
+
+The two late cases are separated by *which* bound was exceeded, not by how late
+the result was: outlasting the per-request timeout produces ``timeout``, while
+outlasting the Run's authorization deadline produces ``denied`` /
+``DEADLINE_EXCEEDED``.
 
 ``source_contact`` is tracked separately from the status because technical plan
 section 7 forbids treating unknown state as success, and section 8 states that
@@ -175,11 +181,13 @@ class ToolOperation:
     window: Window | None = None
     started_at: datetime | None = None
     # Trusted-clock instant at which control state and the scope deadline were
-    # last verified, immediately before dispatch. It is recorded separately
-    # from ``started_at`` because the control lookup sits between them: on a
-    # ``DEADLINE_EXCEEDED`` denial it is the only field showing when the
-    # expiry was observed, and nothing else in the record can be used to
-    # derive it.
+    # verified immediately before dispatch. Set once, by the pre-dispatch
+    # check; the in-flight re-check after the fetch does not update it, and
+    # keys on ``finished_at`` instead. It is recorded separately from
+    # ``started_at`` because the control lookup sits between them: on a
+    # pre-dispatch ``DEADLINE_EXCEEDED`` denial it is the only field showing
+    # when the expiry was observed, and nothing else in the record can be used
+    # to derive it.
     authorized_at: datetime | None = None
     finished_at: datetime | None = None
     elapsed_seconds: float | None = None
