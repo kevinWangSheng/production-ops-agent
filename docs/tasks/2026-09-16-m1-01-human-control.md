@@ -24,9 +24,9 @@
 ## 本 PR 新增
 
 - `DurableStore.commit_step()` / `commit_tool()`：代际或租约拒绝前把迟到结果写入 `late_result` 历史，并提交该历史事务。
-- `DurableStore._late_result()`：`logical_key` 绑定原步骤/工具身份（`late-step:{logical_key}`、`late-tool:{step_id}:{ordinal}`、`late-publish:{step_id}`）；写入单调 `sequence` 与 `observed_at`；同一身份重放 `ON CONFLICT DO NOTHING`。
+- `DurableStore._late_result()`：`logical_key` 绑定原步骤/工具身份（保留前缀 `late_result:step:` / `late_result:tool:` / `late_result:publish:`）；写入单调 `sequence` 与 `observed_at`；同一身份重放 `ON CONFLICT DO NOTHING`。业务 `commit_step` 不得使用该前缀。
 - `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；同一 `run_id` 在已接续的 queued 事故上重试返回既有代际。
-- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
+- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_live_steps_cannot_use_the_late_result_key_namespace`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
 
 ## PR #19 既有并在本 PR 验证
 
@@ -103,12 +103,11 @@
 本 worktree 专属 PostgreSQL：
 
 - `.venv/bin/python -m scripts.m0.postgres_lab start`：成功（既有 `tmp/m0-b/postgres`，PostgreSQL 17.9，端口 55431）。
-- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`：独立审查 P1 修复后 `35 passed in 2.14s`。
-- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`：`35 passed, 54 skipped in 2.61s`。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`：命名空间修复后 `36 passed in 2.24s`。
 - `.venv/bin/python -m scripts.m0.postgres_lab stop`：成功停止；数据保留。
-- `make check`：ruff / format / mypy 通过；`1051 passed, 89 skipped, 2 xfailed`（新增 1 条 PG opt-in 用例，默认跳过）。
+- `make check`：ruff / format / mypy 通过；`1051 passed, 90 skipped, 2 xfailed`（M1 PG 用例默认跳过）。
 
-独立审查（全新上下文，仅 `9c9b6dd..` 本轮改动）：P1 为 `new_run` 把 `accept()` 后的 queued 当前 Run 误当成丢失确认重试；已用 `new_run` 审计收窄幂等并补 `test_new_run_is_refused_until_the_incident_is_cancelled`。P3 两条为 C3 映射引用过宽，已收紧。P3 前缀碰撞与 `rebuild` 不展示旧 Run 迟到历史列为残留风险，不在本 PR 扩大范围。
+独立审查（全新上下文，仅 `9c9b6dd..` 本轮改动）：P1 为 `new_run` 把 `accept()` 后的 queued 当前 Run 误当成丢失确认重试；已用 `new_run` 审计收窄幂等并补 `test_new_run_is_refused_until_the_incident_is_cancelled`。P3 两条为 C3 映射引用过宽，已收紧。随后机器人 P2 要求保留迟到 `logical_key` 命名空间：已改为 `late_result:` 前缀，业务 `commit_step` 拒绝该前缀。`rebuild` 不展示旧 Run 迟到历史仍为残留，不在本 PR 扩大范围。
 
 CI：仓库 workflow 仅对 base 为 `main` 或 `chore/m0-*` 的 PR 自动触发；本 PR 用 `gh workflow run`（`workflow_dispatch`）在本分支跑 CI。待 #26 合并后 retarget 到 main。
 

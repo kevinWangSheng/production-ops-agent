@@ -170,7 +170,7 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     assert rebuilt["conclusion"] is None
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
     assert len(late) == 1
-    assert late[0]["logical_key"] == f"late-publish:{step}"
+    assert late[0]["logical_key"] == f"late_result:publish:{step}"
     assert late[0]["sequence"] >= 0
     assert late[0]["observed_at"] is not None
     assert late[0]["response"] == {"result": "old"}
@@ -204,17 +204,44 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     late = [item for item in steps if item["status"] == "late_result"]
     assert len(late) == 2
     assert {item["logical_key"] for item in late} == {
-        "late-step:late-round",
-        f"late-tool:{step}:0",
+        "late_result:step:late-round",
+        f"late_result:tool:{step}:0",
     }
     assert all(item["sequence"] > original["sequence"] for item in late)
     assert all(item["observed_at"] is not None for item in late)
     assert [item["logical_key"] for item in late] == [
-        "late-step:late-round",
-        f"late-tool:{step}:0",
+        "late_result:step:late-round",
+        f"late_result:tool:{step}:0",
     ]
     assert late[0]["response"] == {"result": "late"}
     assert late[1]["response"] == {"result": "late-tool"}
+
+
+def test_live_steps_cannot_use_the_late_result_key_namespace():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-namespace-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    colliding = store.commit_step(stale, "late-step:foo", {"result": "live"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "foo", {"result": "late"})
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        store.commit_step(stale, "late_result:step:foo", {"result": "blocked"})
+    rebuilt = store.rebuild(incident)
+    live = next(item for item in rebuilt["steps"] if item["step_id"] == colliding)
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert live["logical_key"] == "late-step:foo"
+    assert live["status"] == "response_committed"
+    assert [item["logical_key"] for item in late] == ["late_result:step:foo"]
+    assert late[0]["response"] == {"result": "late"}
 
 
 def test_new_run_is_refused_until_the_incident_is_cancelled():

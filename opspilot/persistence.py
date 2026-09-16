@@ -34,6 +34,9 @@ _ERROR_CODES: tuple[tuple[type[psycopg.Error], str], ...] = (
 
 # 非 cancel 的人工动作只对这些 run 状态开放；其余一律拒绝（fail closed）。
 _CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_human"})
+# 迟到历史占用 (run_id, logical_key) 唯一键。业务步骤不得使用此外缀，否则会
+# 把迟到结果挤掉或把 late_result 行当成已提交步骤返回。
+_LATE_RESULT_KEY_PREFIX = "late_result:"
 
 
 class PersistenceError(RuntimeError):
@@ -281,7 +284,7 @@ class DurableStore:
         payload: dict[str, Any],
         generation: int,
     ) -> None:
-        """登记迟到结果。logical_key 绑定原步骤/工具身份，重放不得另写一行。"""
+        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。"""
         if (
             conn.execute(
                 "SELECT 1 FROM opspilot_runs WHERE run_id=%s",
@@ -403,6 +406,8 @@ class DurableStore:
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
+        if logical_key.startswith(_LATE_RESULT_KEY_PREFIX):
+            raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
@@ -419,7 +424,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"late-step:{logical_key}",
+                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}",
                     response,
                     lease.control_generation,
                 )
@@ -475,7 +480,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"late-tool:{step_id}:{ordinal}",
+                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}",
                     result,
                     lease.control_generation,
                 )
@@ -603,7 +608,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"late-publish:{step_id}",
+                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}",
                     conclusion,
                     lease.control_generation,
                 )
