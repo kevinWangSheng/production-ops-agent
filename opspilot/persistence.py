@@ -214,6 +214,50 @@ class DurableStore:
                 (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
             )
 
+    def new_run(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        actor: str,
+    ) -> int:
+        """Continue a cancelled incident with a fresh Run and control generation."""
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT state,control_generation FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if row["state"] != "cancelled":
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            nxt = int(row["control_generation"]) + 1
+            conn.execute(
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
+                (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
+            )
+            conn.execute(
+                "UPDATE opspilot_incidents SET state='queued',lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
+                (nxt, run_id, incident_id),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,'new_run',%s,%s,%s)",
+                (uuid4(), incident_id, nxt - 1, nxt, actor),
+            )
+            return nxt
+
+    @staticmethod
+    def _late_result(
+        conn: Connection, run_id: UUID, payload: dict[str, Any], generation: int
+    ) -> None:
+        conn.execute(
+            "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s)",
+            (uuid4(), run_id, f"late:{uuid4()}", Jsonb(payload), generation),
+        )
+
     def claim(
         self,
         incident_id: UUID,
@@ -329,6 +373,10 @@ class DurableStore:
                 (lease.run_id,),
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
+                self._late_result(
+                    conn, lease.run_id, response, lease.control_generation
+                )
+                conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
@@ -377,6 +425,8 @@ class DurableStore:
                 or row["step_generation"] != lease.control_generation
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                self._late_result(conn, lease.run_id, result, lease.control_generation)
+                conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
             if any(item.get("ordinal") == ordinal for item in results):

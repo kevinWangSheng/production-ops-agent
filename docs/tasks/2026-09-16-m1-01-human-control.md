@@ -24,12 +24,12 @@
 | C3 要求 | 现有确定性证据 |
 |---|---|
 | 人工操作用 `expected_version` 条件更新并递增主体代际 | `tests/test_domain_contracts.py::test_a_control_operation_requires_the_expected_version`、`test_each_accepted_control_increments_the_control_generation`；PG `tests/integration/test_m1_durable_state_postgres.py::test_concurrent_follow_up_and_cancel_have_one_winner_generation` |
-| Run 绑定主体且单一当前 Run 可更新结论，跨主体不得修改 | `tests/test_domain_contracts.py::test_an_adoption_rechecks_every_recorded_control_version`；`tests/integration/test_m1_durable_state_postgres.py::test_rebuild_reads_a_consistent_snapshot` |
+| Run 绑定主体且单一当前 Run 可更新结论，跨主体不得修改 | `tests/test_domain_contracts.py::test_a_revoked_session_and_a_suspended_scope_stop_adoption`、`tests/integration/test_m1_durable_state_postgres.py::test_rebuild_reads_a_consistent_snapshot` |
 | 旧 Run 迟到结果仅保存历史 | `tests/integration/test_m1_durable_state_postgres.py::test_correction_rejects_late_publish_and_keeps_history_only`、`test_old_generation_step_and_tool_writes_are_fenced` |
 | 暂停继续接收事件但不自动查询 | `tests/test_domain_contracts.py::test_suspension_outranks_resume_mode_and_observation_authorization`（含 `event_intake_allowed` 与查询拒绝）；`tests/integration/test_m0_pause_observer_postgres.py::test_pause_blocks_queries_but_keeps_events` |
 | 取消保持终态，新调查使用新 Run；取消不关闭事故 | `tests/test_domain_contracts.py::test_a_cancelled_run_is_terminal`；`tests/integration/test_m1_durable_state_postgres.py::test_paused_run_reaches_terminal_state_on_cancel` |
-| 关闭事故新异常默认新关联事故，可显式重开 | `tests/test_domain_contracts.py::test_new_anomaly_after_close_creates_new_incident`、`test_reopen_is_explicit` |
-| 重绑定/合并/拆分撤销旧授权并保留历史身份 | `tests/test_domain_contracts.py::test_an_adoption_rechecks_every_recorded_control_version` |
+| 关闭事故新异常默认新关联事故，可显式重开 | **未实现于本子任务**；close/reopen 列为超出范围待决项 |
+| 重绑定/合并/拆分撤销旧授权并保留历史身份 | **未实现于本子任务**；列为超出范围待决项 |
 | 每轮固定输入水位，新输入不得显示已分析 | `tests/test_domain_contracts.py::test_the_input_watermark_only_moves_forward_and_only_while_running`；`tests/integration/test_m1_durable_state_postgres.py::test_rebuild_drops_pending_tools_from_a_superseded_generation` |
 | 全局/目标暂停是确定性状态，目标只能由登记身份解析 | `tests/test_domain_contracts.py::test_target_scope_resolves_to_registered_identities_not_names` |
 | 暂停优先于 resume/automatic/human-owned observation，覆盖查询与 Observer 采样但不阻止事件/历史/人工操作 | `tests/test_domain_contracts.py::test_suspension_outranks_resume_mode_and_observation_authorization` |
@@ -52,4 +52,16 @@
 
 ## 当前 HEAD 审查结果
 
-PR #28 当前 HEAD 的自动审查发现以下未完成项，已保留为交付阻塞而非宣称 M1-01 全部完成：全局/目标 suspension 尚未持久化并接入 DurableStore claim/budget/adoption；follow-up/correction 未持久化输入内容；commit_step/commit_tool 的迟到结果只拒绝、未写历史；取消后同事故新 Run 接续路径缺失；close/reopen 与重绑定/合并/拆分的持久化操作及测试缺失。此前映射表中引用的部分测试名不存在，需后续修正。PG 实跑证据已补齐（见上一节）。
+PR #28 当前 HEAD 的自动审查发现以下未完成项，已保留为交付阻塞而非宣称 M1-01 全部完成：全局/目标 suspension 尚未持久化并接入 DurableStore claim/budget/adoption；follow-up/correction 未持久化输入内容；全局/目标 suspension 持久化、follow-up/correction 输入载荷持久化，以及 close/reopen 与重绑定/合并/拆分的持久化操作仍未实现；这些超出本子任务范围，列为待决项。PG 实跑证据已补齐（见上一节）。
+
+## 本轮实现与验证（2026-09-16）
+
+- `DurableStore.commit_step()` 与 `commit_tool()` 在代际/租约拒绝前写入 `late_result` 历史，并显式提交该历史事务；新增 `test_late_step_and_tool_results_are_recorded_as_history`。
+- 新增 `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；新增 `test_cancelled_incident_can_continue_with_a_new_run`。
+- `.venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`（专属 PG）：`34 passed`。
+- `.venv/bin/python -m pytest tests/integration -q`（专属 PG）：`34 passed, 54 skipped in 2.49s`；随后 `postgres_lab stop` 成功。
+- `make check`：`1051 passed, 88 skipped, 2 xfailed`；ruff、format、mypy 全通过。
+
+## 超出本子任务范围的未完成项/待决
+
+全局/目标 suspension 的持久化接入、follow-up/correction 输入载荷持久化、close/reopen、目标重绑定、事故合并/拆分及授权撤销不在本子任务实现，保留给用户决定是否另立任务；PR 描述已明确列出。

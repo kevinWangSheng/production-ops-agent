@@ -153,9 +153,14 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     """纠正后的旧代际结果只能进入 late_result 历史，不能成为结论。"""
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
-    store.accept(incident, run, f"m1-late-correction-{incident}",
-                 deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-                 budget_limit=10, versions={"state": "v1"})
+    store.accept(
+        incident,
+        run,
+        f"m1-late-correction-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
     stale = store.claim(incident, run, uuid4(), {"state": "v1"})
     step = store.commit_step(stale, "old-final", {"result": "old"})
     assert store.control(incident, 0, "correct", "operator") == 1
@@ -165,13 +170,72 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     assert any(item["status"] == "late_result" for item in rebuilt["steps"])
 
 
+def test_late_step_and_tool_results_are_recorded_as_history():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-writes-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(stale, "round", {"tool_calls": [{"id": "x"}]})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "late-round", {"result": "late"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(fresh, step, 0, {"result": "late-tool"})
+    assert (
+        sum(s["status"] == "late_result" for s in store.rebuild(incident)["steps"]) == 2
+    )
+
+
+def test_cancelled_incident_can_continue_with_a_new_run():
+    store = DurableStore(DSN)
+    incident, run, next_run = uuid4(), uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-new-run-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    generation = store.new_run(
+        incident,
+        next_run,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+        actor="operator",
+    )
+    assert generation == 2
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "queued"
+    assert rebuilt["run"]["run_id"] == next_run
+    assert (
+        store.claim(incident, next_run, uuid4(), {"state": "v1"}).control_generation
+        == 2
+    )
+
+
 def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
     """同一 expected_generation 的并发人工操作必须只有一个提交成功。"""
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
-    store.accept(incident, run, f"m1-concurrent-control-{incident}",
-                 deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-                 budget_limit=10, versions={"state": "v1"})
+    store.accept(
+        incident,
+        run,
+        f"m1-concurrent-control-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
     barrier = threading.Barrier(2)
 
     def apply(action):
