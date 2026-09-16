@@ -286,14 +286,13 @@ worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-tool-executor` 根
 ### 6. 独立审查状态（未完成）
 
 AGENTS.md 要求安全边界变更由未参与实现的 Agent 以全新上下文复核。
-本轮**派出三个独立审查 Agent 均未能回传报告**（harness 的 handback 失败，
-非审查本身失败）：它们各自实际执行了 18–42 次工具调用并在结束后把 worktree
-还原干净（`git status --porcelain` 仅剩本记录的改动），但报告内容未送达。
-因此**本轮不得标记为「独立验证通过」**，该项列为未完成。
+本轮派出四份独立审查，报告一度因 harness handback 失败未送达，
+后续全部回传，处置见第 6b/6c 节。四份结论互相冲突，
+由 team lead 逐条裁定；**未再另派第五份复审**（避免挑结论）。
 
-作为替代，实现者自行做了对抗性边界探测（非独立审查，不能替代上述要求），
+实现者另自行做了对抗性边界探测（非独立审查，不替代上述要求），
 覆盖 9 种时序组合，断言两条不变量：不得在 deadline 之后发出读取、
-不得采纳在 deadline 之后到达的数据。
+不得采纳**读取完成于** deadline 之后的数据。
 
 | 场景（授权秒 / control 秒 / fetch 秒） | 结果 |
 |---|---|
@@ -307,7 +306,7 @@ AGENTS.md 要求安全边界变更由未参与实现的 Agent 以全新上下文
 | 授权剩余为 0（0/0/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
 | 授权已过期（-5/0/0） | `denied` `DEADLINE_EXCEEDED`，未发出 |
 
-九种组合均未出现「deadline 后发出」或「采纳 deadline 后到达的数据」。
+九种组合均未出现「deadline 后发出」或「采纳读取完成于 deadline 后的数据」。
 
 探测暴露出一处**原先未写明的语义判断**，已在 `2c16431` 补入代码注释：
 采纳与否以**读取到达的时刻**为准，而不是采纳动作完成的时刻。
@@ -315,6 +314,64 @@ AGENTS.md 要求安全边界变更由未参与实现的 Agent 以全新上下文
 理由：在授权期内完成的读取本身是被授权的；若改用更晚的时钟读数，
 会因网关自身 control/证据存储变慢而丢弃合法取得的证据。
 这一判断应由后续独立审查复核。
+
+### 6b. 独立审查回传后的处置（2026-09-16）
+
+四份独立审查最终回传。结论冲突，由 team lead 逐条裁定后处置如下。
+**未再另派第五份复审。**
+
+| 审查 | 对采纳侧窗口的判断 | 是否构造了 control 再读变慢的场景 |
+|---|---|---|
+| 审查一 | 报 P1，复现「晚 11 秒采纳」 | 是 |
+| 审查二 | 报 P2，复现「晚 2 秒采纳」 | 是 |
+| 审查三 | 判 no remaining path | **否**，只推理语句顺序 |
+| 审查四 | 判 no remaining path | **否**，只讨论 dispatch 竞态 |
+
+裁定：机制成立（代码保证的是「`finished_at` 那一刻未过期」，不是「采纳那一刻未过期」），
+有复现的两份胜过无复现的两份。但审查一、二都**未引用** `:512-515` 的注释，
+该注释已写明以到达时刻为准是有意权衡，因此它不是疏忽。
+
+实际处置（`116e110`），三项：
+
+1. **注释 overclaim 已改正。** 原 `:507-511` 写「a result ... still cannot be adopted
+   past its authorization」，与 `:512-515` 的到达时刻语义自相矛盾，且事实上不成立。
+   改为陈述真实不变量：**不采纳任何「读取完成于授权窗口之外」的观察**，
+   而不是「采纳动作完成于窗口之内」；并显式写明该权衡的代价。
+2. **选定语义已由测试钉住。**
+   `test_a_read_completed_inside_the_window_survives_a_late_control_re_read`
+   断言「读取在窗口内完成、其后 control 再读跨过 deadline」仍然采纳。
+   变异验证：把判定改成 `self._clock.now() >= deadline` → 该测试转红
+   （`assert ('denied','DEADLINE_EXCEEDED') == ('ok', None)`）。
+   即后人若要静默翻转该权衡，测试会拦住，必须先论证。
+3. **审查一报的 P2 经自行复现，成立，已修复。**
+
+### 6c. P2：飞行中人工暂停被 deadline 短路吞掉（成立，已修复）
+
+自行复现（非采信审查结论）：operator 在飞行中暂停 + 结果恰在 deadline 到达时，
+`89744fd` 的行为是 `("denied","DEADLINE_EXCEEDED")`、`control.calls == 1`
+（在途 control 复检**根本没跑**）、`SUSPENDED` 不出现在 outcome 或审计记录中。
+同一暂停若结果在 deadline 内到达则报 `SUSPENDED`、`control.calls == 2`。
+
+判定为**真实回归**：`89744fd` 之前该场景报 `SUSPENDED`。依据
+[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Runtime and human control
+requirements」——late completion 不得抹去更新的人工决定；且 `_reserve()` 在
+`:394-405` 本就是 control 先于 deadline，post-fetch 路径与之相反。
+不是安全漏洞（两种情况都 denied 且未采纳），是**人工控制的上报/审计回归**。
+
+修复：post-fetch 判定改为与 `_reserve()` 同序的单条链——
+control 状态在前、deadline 在后。
+新增 `test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed`，
+并断言 `control.calls == 2` 与 pre-dispatch 路径同样报 `SUSPENDED`。
+变异验证：把 deadline 判定移回 control 之前 → 该测试转红
+（`assert ('denied','DEADLINE_EXCEEDED') == ('denied','SUSPENDED')`）。
+
+另修正两处文档 overclaim：`timeout` 与 `denied` 两个类别原先都写「came back too
+late」，现按**越过的是哪条界限**区分（每请求超时 → `timeout`；
+Run 授权 deadline → `denied`）；`authorized_at` 的注释补明它只由 pre-dispatch
+检查设置一次，在途复检不更新它。
+
+复跑：`make check` → **1210 passed, 75 skipped, 2 xfailed**；
+M1 四个测试文件 **160 passed**。
 
 ### 7. 本轮新增的未完成项
 
