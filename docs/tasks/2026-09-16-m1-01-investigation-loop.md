@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：进行中（PR 已开，等待 CI 与 code review）
+- 状态：PR 已就绪，待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-16
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -87,11 +87,21 @@
 - 命令（worktree 根目录）：`make check`
 - 结果：`uv lock --check` 通过；`ruff check` All checks passed；
   `ruff format --check` formatted；`mypy` Success: no issues found in 26 source files；
-  `pytest` **1267 passed, 75 skipped, 2 xfailed**（P2 修复后定向
-  `tests/test_m1_investigation_*.py` **27 passed**）。
+  `pytest` **1270 passed, 75 skipped, 2 xfailed**（审查修复后定向
+  `tests/test_m1_investigation_*.py` **30 passed**）。
 - 真实 Run 命令：`PYTHONPATH=. M0_ENV_FILE=<main .env> .venv/bin/python scripts/m1_live_flash_loop.py`
   stdout：`{"status": "completed", "handoff": true, "http_count": 2, "known_cost_cny_upper": 0.024617, "report_schema_version": "m0-report-v2", "handoff_reasons": ["INCOMPLETE_INVESTIGATION"]}`
 
+## 最终汇报
+
+- PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
+- 本地 `make check`：1270 passed / 75 skipped / 2 xfailed。
+- 真实 Run：2 HTTP，`m0-report-v2` incomplete + handoff，上界 0.024617 CNY。
+- 独立审查 P2 三条已修；机器人审查 4 P1 + 1 P2：采纳 4 条并修于 `122862d`，拒绝「崩溃后续跑」一条（属重启子任务）。5 条 thread 均已回复并 resolve。
+- CI workflow 不对非 main base 的 PR 自动挂 checks；已对分支 `workflow_dispatch`。
+- 未完成：intake/UI、PG DurableStore 集成、流式续接、tokenizer 上下文计数。11 个 `passes` 未改。
+- 合并由用户审核后执行，本任务不自动合并。
+
 ## 下一步与交接
 
-独立审查发现已处置；提交、推送 stacked PR（base = `feature/m1-01-tool-executor` / PR #20）。
+用户审核 PR #29。若 PR #20 先合进 main，将本 PR rebase 到 main。
