@@ -271,9 +271,9 @@ baseline 把窗口句拼在报告契约**之后**，候选臂拼在**之前**，
 
 | 变体 | `discipline_revision` |
 |---|---|
-| `baseline-multi-step` | `l1a-baseline-multi-step-33e876f75b06` |
-| `baseline-final-report` | `l1a-baseline-final-report-54e5fc76ca7a` |
-| `replay-candidate` | `l1a-replay-candidate-e002af2fbbcd` |
+| `baseline-multi-step` | `l1a-baseline-multi-step-89166c68a0b0` |
+| `baseline-final-report` | `l1a-baseline-final-report-8d87a738d81f` |
+| `replay-candidate` | `l1a-replay-candidate-bc2730f23697` |
 
 ### 哪些收敛、哪些冻结为历史，依据是什么
 
@@ -298,17 +298,17 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
 
 | 检查 | 命令 | 真实结果 |
 |---|---|---|
-| 开发检查全量 | `make check` | `1071 passed, 77 skipped, 2 xfailed in 31.54s` |
-| 新增确定性测试 | `.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` | `21 passed` |
+| 开发检查全量 | `make check` | `1078 passed, 77 skipped, 2 xfailed in 26.67s` |
+| 新增确定性测试 | `.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` | `28 passed` |
 | PG 持久化集成 | `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` | `23 passed`（原 21 + 本轮 2） |
 | 冻结哈希复算 | 见上方「收敛前先固定住硬约束」 | 收敛前后同为 `9648c6de…a3cfd4abc`，与 M0 证据一致 |
 
 `make check` 的基线（本分支起点 main `b483a12`）为 `1050 passed, 75 skipped`；
-本轮净增 **21 个通过用例**与 **2 个 skipped**（PG 用例未开 `M1_DURABLE_POSTGRES` 时跳过）。
+本轮净增 **28 个通过用例**与 **2 个 skipped**（PG 用例未开 `M1_DURABLE_POSTGRES` 时跳过）。
 
 ### 变异验证：每条断言都确认过能转红
 
-不做变异就无法区分「断言成立」与「断言恒真」。12 个变异各自至少让一条测试转红：
+不做变异就无法区分「断言成立」与「断言恒真」。**16 个单元变异 + 2 个 PG 变异，各自至少让一条测试转红**（16/16）：
 
 | 变异 | 转红的测试 |
 |---|---|
@@ -324,6 +324,10 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
 | M10 `prompt_revision` 不复合 L2 | L2 换版必须 bump |
 | M11 `render` 把预算数字当独立句追加 | 冻结哈希、逐字节、模板字节（共 5 条） |
 | M12 未登记变体静默返回空序列 | fail-closed |
+| M13 候选臂的无条件窗口句被误标为 scoped | 冻结哈希、逐字节、scope 条件性 |
+| M14 `render` 回到静默丢弃服务列表 | 无槽位变体收到服务列表须拒绝 |
+| M15 `render` 不再校验预算为正整数 | 预算校验（5 个参数化用例） |
+| M16 `scoped` 段不再被跳过 | 无 scope 裁剪、scope 条件性 |
 | P1 `prompt_revision` 只覆盖 L2 不覆盖 L1a | PG：模板换版必须 blocked |
 | P2 `render` 丢掉授权服务列表槽位 | PG：实例值必须真的改变字节 |
 
@@ -335,6 +339,25 @@ HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检�
 2. 「实例值不移动 revision」当时没有任何断言真正承重——`prompt_revision` 的签名本就不收实例值，
    结构上不可能失败。补了 `test_projection_carries_template_bytes_not_filled_values`，
    挡住「把占位符提前填掉」这类真实回归（M5/M11 证明它转红）。
+
+**自测阶段另查出两处 fail-open，已修并补测**（不是审查提出的，是实现者自己探边界发现的）：
+
+1. **给没有授权服务槽位的变体传服务列表会被静默丢掉。** 对 `replay-candidate` 传
+   `authorized_services=("checkoutservice",)` 与不传得到**完全相同的字节**。
+   调用方会以为查询范围已被限定，而模型拿到的是未限定的纪律。查询范围属 Controller 权限
+   （PRODUCT-CONSTRAINTS：*Read identity, exact target resolution, query budgets,
+   cancellation and human control decisions are scoped outside the model's authority*），
+   不能悄悄落空。已改为 `ValueError` fail-closed（变异 M14 证明转红）。
+2. **预算轮次不校验**：`model_requests=0 / -1 / "many"` 都被接受，会拼出
+   `You have at most -1 model requests` 并照常送进模型。已改为「必须是正整数」，
+   并按仓库既有 `validate_max_http` 的写法用 `type(x) is not int` 连 `bool` 一起拒
+   （`True` 会拼出 `at most True model requests`）。变异 M15 证明转红。
+
+同时把「无 scope 时窗口句整段不出现」从**渲染后按后缀裁剪**改为**结构判定**
+（`Segment.scoped`）。原写法只要 segment 顺序一变，裁剪就静默失效，
+失效的表现是送进模型的字节错了却没人报错。改后候选臂那句**无条件**的窗口句不受影响——
+同一段文字在两类变体里条件性不同，这一点必须保住（变异 M13、M16 分别证明两侧都转红）。
+`scoped` 已同步纳入哈希投影，故三个 `discipline_revision` 短码相应变化（上表已是新值）。
 
 另有两个变异（P1、P2）最初没转红，复查确认是**变异构造得不对**而非测试有洞：
 `prompt_revision` 的变体 id 同时出现在前缀与哈希载荷里，只去掉一处不足以让两个变体撞号；
