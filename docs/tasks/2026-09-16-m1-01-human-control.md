@@ -39,3 +39,13 @@
 ## PG 实跑状态
 
 已核对 `docs/evidence/m0-b/results.md`：端口 55431 属于另一工作区 `/Users/shenghuikevin/dev/AI/production-ops-agent` 的存活 PostgreSQL（PID 45335）。本工作区脚本在启动前正确拒绝端口占用；为避免跨 worktree 停止或复用他人实例，本次未执行 `M1_DURABLE_POSTGRES=1`，该项保持阻塞，待端口归属释放后从本 worktree start/run/stop。
+
+## PG 实跑补充（2026-09-16）
+
+调度方释放 55431 后，在本 worktree 实际执行：
+
+- `.venv/bin/python -m scripts.m0.postgres_lab start`：成功初始化并启动专属 PostgreSQL 17.9，数据目录为 `tmp/m0-b/postgres`。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`：`32 passed, 54 skipped in 2.69s`。新增 `test_correction_rejects_late_publish_and_keeps_history_only` 与 `test_concurrent_follow_up_and_cancel_have_one_winner_generation` 均在通过集合中。
+- `.venv/bin/python -m scripts.m0.postgres_lab stop`：成功停止；数据保留。
+
+跳过项是其他 M0 集成测试的独立 opt-in（预算、live、restart 等），不影响 M1 durable 集合的 32 项实际运行。
