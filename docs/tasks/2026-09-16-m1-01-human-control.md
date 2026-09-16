@@ -1,6 +1,6 @@
 # M1-01 子任务：追问/纠正/取消（人工控制）
 
-- 状态：进行中（PR #28 收尾：审查 thread 处置与 CI）
+- 状态：进行中（PR #28 收尾：独立审查 P1 已修，待推送 / thread resolve / CI）
 - 更新日期：2026-09-16
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/28
   （stacked，base = `chore/durable-store-hardening` / PR #26；待 #26 合并后 retarget 到 main）
@@ -26,7 +26,7 @@
 - `DurableStore.commit_step()` / `commit_tool()`：代际或租约拒绝前把迟到结果写入 `late_result` 历史，并提交该历史事务。
 - `DurableStore._late_result()`：`logical_key` 绑定原步骤/工具身份（`late-step:{logical_key}`、`late-tool:{step_id}:{ordinal}`、`late-publish:{step_id}`）；写入单调 `sequence` 与 `observed_at`；同一身份重放 `ON CONFLICT DO NOTHING`。
 - `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；同一 `run_id` 在已接续的 queued 事故上重试返回既有代际。
-- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
+- PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
 
 ## PR #19 既有并在本 PR 验证
 
@@ -52,7 +52,7 @@
 |---|---|---|
 | 人工操作用 `expected_version` 条件更新并递增主体代际 | PR #19 既有，本 PR 验证 | 领域 `test_a_control_operation_requires_the_expected_version`、`test_each_accepted_control_increments_the_control_generation`；PG `test_concurrent_follow_up_and_cancel_have_one_winner_generation` |
 | Run 绑定主体且单一当前 Run 可更新结论，跨主体不得修改 | PR #19 既有 | 领域 `test_a_release_run_may_not_write_an_incident_conclusion`、`test_a_revoked_session_and_a_suspended_scope_stop_adoption`；PG `test_rebuild_reads_a_consistent_snapshot`、`test_control_refuses_a_current_run_pointer_into_another_incident` |
-| 旧 Run 迟到结果仅保存历史 | PR #19 有 `publish` 路径；本 PR 补步骤/工具并统一身份/时序 | PG `test_correction_rejects_late_publish_and_keeps_history_only`、`test_late_step_and_tool_results_are_recorded_as_history`、`test_old_generation_step_and_tool_writes_are_fenced` |
+| 旧 Run 迟到结果仅保存历史 | PR #19 有 `publish` 路径；本 PR 补步骤/工具并统一身份/时序 | PG `test_correction_rejects_late_publish_and_keeps_history_only`、`test_late_step_and_tool_results_are_recorded_as_history`。`test_old_generation_step_and_tool_writes_are_fenced` 只证明拒绝写入，不检查 `late_result` 行 |
 | 暂停继续接收事件但不自动查询 | 领域既有；DurableStore 未持久化全局/目标 suspension | 领域 `test_suspension_outranks_resume_mode_and_observation_authorization`。M0 `test_m0_pause_observer_postgres.py` 是实验存储，不是本模块 DurableStore |
 | 取消保持终态，新调查使用新 Run；取消不关闭事故 | 取消终态 PR #19 既有；新 Run 接续为本 PR 新增 | 领域终态 `test_terminal_states_reject_all_triggers`；PG `test_paused_run_reaches_terminal_state_on_cancel`、`test_cancelled_incident_can_continue_with_a_new_run` |
 | 关闭事故新异常默认新关联事故，可显式重开 | 未实现待决 | 无 DurableStore 路径。领域 `test_a_new_anomaly_on_a_closed_incident_defaults_to_a_new_incident`、`test_a_closed_incident_stays_reopenable` 只覆盖内存状态机 |
@@ -61,7 +61,7 @@
 | 全局/目标暂停是确定性状态，目标只能由登记身份解析 | 领域既有；持久化未实现待决 | 领域 `test_target_scope_resolves_to_registered_identities_not_names` |
 | 暂停优先于 resume/automatic/human-owned observation | 领域既有；持久化未实现待决 | 领域 `test_suspension_outranks_resume_mode_and_observation_authorization` |
 | scope generation 递增；领取/预算/请求/采纳复核版本 | 领域既有；DurableStore 只复核事故代际 | 领域 `test_a_suspension_transaction_increments_its_scope_generation`；PG 事故级 `test_paused_incident_cannot_be_claimed_or_published`、`test_correction_rejects_late_publish_and_keeps_history_only`。全局/目标 generation 未接入 claim/budget/adoption |
-| 解暂停只移除该层阻挡，不恢复旧任务/授权/采样窗口 | 领域既有 | 领域 `test_resume_does_not_restore_an_observation_authorization`、`test_a_paused_run_resumes_as_a_new_attempt`；PG 事故暂停 `test_paused_run_reaches_terminal_state_on_cancel` |
+| 解暂停只移除该层阻挡，不恢复旧任务/授权/采样窗口 | 领域既有 | 领域 `test_resume_does_not_restore_an_observation_authorization`、`test_a_paused_run_resumes_as_a_new_attempt`。PG `test_paused_run_reaches_terminal_state_on_cancel` 只覆盖暂停后取消，不是解暂停 |
 
 ## 验证
 
@@ -96,22 +96,25 @@
 
 针对 PR #28 当时 12 条未 resolve 的机器人审查 thread：
 
-- 代码采纳：迟到结果保留稳定 `logical_key`（步骤/工具/publish 身份）并幂等写入；`late_result` 行写入单调 `sequence` 与 `observed_at`；`new_run` 对同一 `run_id` 在已接续 queued 事故上重试返回既有代际。
+- 代码采纳：迟到结果保留稳定 `logical_key`（步骤/工具/publish 身份）并幂等写入；`late_result` 行写入单调 `sequence` 与 `observed_at`；`new_run` 对同一 `run_id` 仅在已有 `new_run` 审计且仍为当前 queued Run 时重试返回既有代际。未取消事故上的 `new_run` 仍是 `ILLEGAL_TRANSITION`（独立审查 P1）。
 - 任务记录采纳：分清本 PR 新增 / PR #19 既有并验证 / 未实现待决；删除不存在的测试名；PG 阻塞出处改为未落盘本地观察并标为历史；未完成 PG 实跑的旧待办移入历史。
 - 未实现、按审查意见标为待决而不在本 PR 实现：close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化接入 claim/budget/adoption、follow-up/correction 输入内容、持久化输入水位。
 
 本 worktree 专属 PostgreSQL：
 
 - `.venv/bin/python -m scripts.m0.postgres_lab start`：成功（既有 `tmp/m0-b/postgres`，PostgreSQL 17.9，端口 55431）。
-- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`：`34 passed in 2.47s`。
-- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`：`34 passed, 54 skipped in 2.72s`。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`：独立审查 P1 修复后 `35 passed in 2.14s`。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`：`35 passed, 54 skipped in 2.61s`。
 - `.venv/bin/python -m scripts.m0.postgres_lab stop`：成功停止；数据保留。
-- `make check`：ruff / format / mypy 通过；`1051 passed, 88 skipped, 2 xfailed`。
+- `make check`：ruff / format / mypy 通过；`1051 passed, 89 skipped, 2 xfailed`（新增 1 条 PG opt-in 用例，默认跳过）。
+
+独立审查（全新上下文，仅 `9c9b6dd..` 本轮改动）：P1 为 `new_run` 把 `accept()` 后的 queued 当前 Run 误当成丢失确认重试；已用 `new_run` 审计收窄幂等并补 `test_new_run_is_refused_until_the_incident_is_cancelled`。P3 两条为 C3 映射引用过宽，已收紧。P3 前缀碰撞与 `rebuild` 不展示旧 Run 迟到历史列为残留风险，不在本 PR 扩大范围。
 
 CI：仓库 workflow 仅对 base 为 `main` 或 `chore/m0-*` 的 PR 自动触发；本 PR 用 `gh workflow run`（`workflow_dispatch`）在本分支跑 CI。待 #26 合并后 retarget 到 main。
 
 ## 下一步与交接
 
-- 独立新上下文审查本次改动、处置发现、推送、回复并 resolve 12 条 thread、确认 CI success。
+- 推送本分支、回复并 resolve PR #28 的 12 条审查 thread、用 `workflow_dispatch` 跑 CI 并确认 success。
 - 用户只审核最终可合并 PR。合并及 retarget 仍待 #26 与用户审核。
+- 待决（超出本子任务）：close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化接入、follow-up/correction 输入内容、持久化输入水位。
 
