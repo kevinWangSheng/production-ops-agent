@@ -50,6 +50,115 @@ def test_reservation_ids_are_scoped_to_the_run():
     assert first != reservation_id_for("run-b", "round-1")
 
 
+def test_mismatched_request_run_id_is_rejected():
+    loop, request, _, _, _, _ = assemble(
+        replies=[reply(content="unused", finish="stop")],
+        model_requests=1,
+    )
+    request = replace(request, run_id="not-the-authorized-run")
+    with pytest.raises(ValueError, match="INVALID_INPUT"):
+        loop.run(request)
+
+
+def test_v4_opaque_target_refs_are_validated_via_catalog():
+    evidence_id = "ev-v4"
+    opaque = "target:deadbeef"
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(
+                content=report_json(evidence_id=evidence_id, target_ref=opaque),
+                finish="stop",
+            )
+        ],
+        model_requests=1,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [{"id": "policy-window-1"}],
+            "target_catalog": {opaque: {"target_id": "checkout-prod"}},
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": [opaque],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.handoff is False
+    assert transport.called is False
+
+
+def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
+    evidence_id = "ev-v4"
+    opaque = "target:deadbeef"
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(
+                content=report_json(
+                    evidence_id=evidence_id, target_ref="checkout-prod"
+                ),
+                finish="stop",
+            )
+        ],
+        model_requests=1,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [{"id": "policy-window-1"}],
+            "target_catalog": {opaque: {"target_id": "checkout-prod"}},
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": [opaque],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_fact_time_scope_must_match_the_cited_view():
+    evidence_id = "ev-time"
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(
+                content=report_json(
+                    evidence_id=evidence_id, time_scope="policy-window-1"
+                ),
+                finish="stop",
+            )
+        ],
+        model_requests=1,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [{"id": "policy-window-1"}, {"id": "policy-other"}],
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-other"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
 def test_supplied_context_views_can_be_cited_without_new_tools():
     evidence_id = "ev-supplied"
     loop, request, _, transport, _, _ = assemble(
@@ -62,7 +171,11 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
             "type": "opspilot-evidence-context-v4",
             "time_policies": [{"id": "policy-window-1"}],
             "view_bindings": {
-                evidence_id: {"status": "ok", "target_refs": ["checkout-prod"]},
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-window-1"],
+                },
             },
         },
     )

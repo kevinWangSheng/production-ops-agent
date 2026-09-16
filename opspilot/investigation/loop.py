@@ -36,6 +36,7 @@ from opspilot.investigation.reports import (
     REPORT_CONTRACT,
     DeliveredView,
     ReportV2,
+    context_target_catalog,
     context_time_policy_ids,
     delivered_from_context,
     parse_report,
@@ -174,7 +175,10 @@ class InvestigationLoop:
             or request.model_requests > MAX_MODEL_REQUESTS_PER_RUN
         ):
             raise ValueError("INVALID_INPUT")
-        if request.scope.run_id != self.executor.scope.run_id:
+        if (
+            request.run_id != request.scope.run_id
+            or request.scope.run_id != self.executor.scope.run_id
+        ):
             raise ValueError("INVALID_INPUT")
         started = self.clock.monotonic()
         system = render(
@@ -321,6 +325,7 @@ class InvestigationLoop:
                 views=delivered,
                 authorized_targets=request.scope.target_ids,
                 time_policy_ids=context_time_policy_ids(request.evidence_context),
+                target_catalog=context_target_catalog(request.evidence_context),
             ):
                 report, reason = None, "REPORT_INVALID"
             if report is not None:
@@ -378,15 +383,23 @@ class InvestigationLoop:
             if outcome.adopted and isinstance(evidence_id, str) and evidence_id:
                 evidence_ids.append(evidence_id)
                 target = view.get("target_id")
+                registry = target if isinstance(target, str) else None
+                catalog = context_target_catalog(request.evidence_context)
+                aliases = frozenset(
+                    key for key, mapped in catalog.items() if mapped == registry
+                )
+                policies = context_time_policy_ids(request.evidence_context)
                 delivered.append(
                     DeliveredView(
                         evidence_id=evidence_id,
                         target_ids=(
-                            frozenset({target})
-                            if isinstance(target, str)
-                            else frozenset()
+                            (frozenset({registry}) if registry else frozenset())
+                            | aliases
                         ),
                         status=outcome.status,
+                        time_scope_refs=(
+                            frozenset(policies) if len(policies) == 1 else frozenset()
+                        ),
                     )
                 )
             results.append(

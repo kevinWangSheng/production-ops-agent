@@ -176,6 +176,29 @@ class DeliveredView:
     evidence_id: str
     target_ids: frozenset[str]
     status: str
+    time_scope_refs: frozenset[str] = frozenset()
+
+
+def context_target_catalog(context: object) -> dict[str, str | None]:
+    """Opaque v4 target_ref -> optional registry target_id.
+
+    ``scripts/m0/outcomes_v4.py`` keys the catalog with ``target:<digest>``.
+    A catalog entry may also carry the authorized registry ``target_id``.
+    """
+    if not isinstance(context, Mapping):
+        return {}
+    catalog = context.get("target_catalog")
+    if not isinstance(catalog, Mapping):
+        return {}
+    result: dict[str, str | None] = {}
+    for key, entry in catalog.items():
+        if not isinstance(key, str) or not key:
+            continue
+        registry = None
+        if isinstance(entry, Mapping) and isinstance(entry.get("target_id"), str):
+            registry = str(entry["target_id"]) or None
+        result[key] = registry
+    return result
 
 
 def context_time_policy_ids(context: object) -> tuple[str, ...]:
@@ -200,18 +223,30 @@ def unsupported_citations(
     views: Sequence[DeliveredView],
     authorized_targets: frozenset[str],
     time_policy_ids: Sequence[str],
+    target_catalog: Mapping[str, str | None] | None = None,
 ) -> bool:
     """True when a claim fails the v4 evidence/target/time bind.
 
     Fact-like claims must cite delivered ok views, targets those views
-    actually observed, and a time policy from the trusted context.
+    actually observed, and the time policy each cited view was delivered
+    under. When a v4 ``target_catalog`` is present, claim ``target_refs``
+    are opaque catalog keys, not registry target ids.
     """
     by_id = {view.evidence_id: view for view in views}
     policies = set(time_policy_ids)
+    catalog = dict(target_catalog) if target_catalog else {}
     for claim in report.claims:
         if any(eid not in by_id for eid in claim.evidence_ids):
             return True
-        if any(ref not in authorized_targets for ref in claim.target_refs):
+        if catalog:
+            if any(ref not in catalog for ref in claim.target_refs):
+                return True
+            if any(
+                catalog[ref] is not None and catalog[ref] not in authorized_targets
+                for ref in claim.target_refs
+            ):
+                return True
+        elif any(ref not in authorized_targets for ref in claim.target_refs):
             return True
         if claim.time_scope_ref is not None and claim.time_scope_ref not in policies:
             return True
@@ -221,6 +256,8 @@ def unsupported_citations(
             return True
         cited = [by_id[eid] for eid in claim.evidence_ids]
         if any(view.status != "ok" for view in cited):
+            return True
+        if any(claim.time_scope_ref not in view.time_scope_refs for view in cited):
             return True
         observed: set[str] = set()
         for view in cited:
@@ -251,7 +288,19 @@ def delivered_from_context(context: object) -> list[DeliveredView]:
             targets = frozenset({str(binding["target_id"])})
         else:
             targets = frozenset()
+        scopes = binding.get("time_scope_refs")
+        if isinstance(scopes, list):
+            time_refs = frozenset(
+                item for item in scopes if isinstance(item, str) and item
+            )
+        else:
+            time_refs = frozenset()
         delivered.append(
-            DeliveredView(evidence_id=eid, target_ids=targets, status="ok")
+            DeliveredView(
+                evidence_id=eid,
+                target_ids=targets,
+                status="ok",
+                time_scope_refs=time_refs,
+            )
         )
     return delivered
