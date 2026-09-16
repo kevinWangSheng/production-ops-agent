@@ -149,6 +149,45 @@ def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
     assert store.control(incident, 1, "correct", "operator") == 2
 
 
+def test_correction_rejects_late_publish_and_keeps_history_only():
+    """纠正后的旧代际结果只能进入 late_result 历史，不能成为结论。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(incident, run, f"m1-late-correction-{incident}",
+                 deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+                 budget_limit=10, versions={"state": "v1"})
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(stale, "old-final", {"result": "old"})
+    assert store.control(incident, 0, "correct", "operator") == 1
+    assert store.publish(stale, {"result": "old"}, step_id=step) is False
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["conclusion"] is None
+    assert any(item["status"] == "late_result" for item in rebuilt["steps"])
+
+
+def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
+    """同一 expected_generation 的并发人工操作必须只有一个提交成功。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(incident, run, f"m1-concurrent-control-{incident}",
+                 deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+                 budget_limit=10, versions={"state": "v1"})
+    barrier = threading.Barrier(2)
+
+    def apply(action):
+        barrier.wait()
+        try:
+            return ("ok", store.control(incident, 0, action, "operator"))
+        except PersistenceError as exc:
+            return (exc.args[0], None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(apply, ("follow_up", "cancel")))
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("CONTROL_CONFLICT") == 1
+    assert store.rebuild(incident)["control_generation"] == 1
+
+
 def test_paused_incident_cannot_be_claimed_or_published():
     """人工暂停期间不得领取新租约，也不得发布结论。"""
     store = DurableStore(DSN)
