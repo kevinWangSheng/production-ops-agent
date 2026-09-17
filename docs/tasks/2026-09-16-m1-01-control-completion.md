@@ -42,3 +42,9 @@
 - 当前代码尚未提交、推送或创建 PR；需完成最终 diff 审核后提交 `feat: complete durable human control [M1-01]`，推送并创建 base=`integration/m1-01` 的 stacked PR。
 - 需要 workflow_dispatch CI 覆盖当前 HEAD，等待 code review 并处理线程；不自动合并。
 - close/reopen、目标重绑定、事故合并/拆分仍是用户待决，未实现；11 个 feature passes 未改。
+
+### 最终 PG 复验（2026-09-17）
+
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_control_completion_postgres.py -q`：3 passed。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q`：41 passed。
+- 前述专属 PostgreSQL 已由 `postgres_lab start/stop` 启停，输出为 server started / server stopped；实例数据保留。
