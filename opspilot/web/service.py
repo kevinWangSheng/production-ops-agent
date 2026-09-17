@@ -121,6 +121,11 @@ class _EmittingCommitter:
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         self._base.reserve_budget(reservation_id, amount)
 
+    # PR #29 adds ``settle_budget`` to the committer seam; forwarded the same
+    # way as the PR #31 methods above until that protocol lands on this base.
+    def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
+        getattr(self._base, "settle_budget")(reservation_id, outcome)
+
     # PR #31 extends the committer seam with ``begin_round``/``assert_current``.
     # Forward them when the base has them so this wrapper stays transparent
     # after that merge; on this branch the loop never calls them.

@@ -477,6 +477,20 @@ class _MemoryCommitter:
         run["reservations"][reservation_id] = amount
         run["budget_reserved"] += amount
 
+    def settle_budget(self, reservation_id, outcome):
+        run = self._run()
+        if reservation_id not in run["reservations"]:
+            raise StepStoreError("UNKNOWN_IDENTITY")
+        settled = run.setdefault("settled", {})
+        if reservation_id in settled:
+            if settled[reservation_id] != outcome:
+                raise StepStoreError("IDENTITY_CONFLICT")
+            return
+        settled[reservation_id] = outcome
+        amount = run["reservations"][reservation_id]
+        run["budget_reserved"] -= amount
+        run["budget_spent" if outcome == "spent" else "budget_unknown"] += amount
+
     def commit_step(self, logical_key, response):
         run = self._store.runs[self._lease.run_id]
         if self._store._revoked(run, self._lease):
