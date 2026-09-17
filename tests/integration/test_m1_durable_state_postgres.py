@@ -16,6 +16,9 @@ from psycopg.types.json import Jsonb
 from opspilot.domain import RUN_EXECUTION
 from opspilot.instructions import prompt_revision
 from opspilot.instructions import render as d_render
+from opspilot.investigation.loop import prompt_revision_versions
+from opspilot.investigation.reports import REPORT_CONTRACT
+from opspilot.investigation.store import StepStoreError
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
@@ -154,6 +157,55 @@ def test_incompatible_versions_block_without_silent_resume():
     assert store.rebuild(incident)["run"]["state"] == "blocked"
 
 
+def test_prompt_revision_content_change_blocks_an_in_flight_run():
+    """A real L2 report-contract edit must move ``prompt_revision`` and, on
+    reclaim, hit the same generic ``INCOMPATIBLE_STATE`` barrier proven above
+    -- not a hand-typed ``{"state": "v2"}`` stand-in (C3 §5)."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    original = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=original,
+    )
+    edited = prompt_revision_versions(
+        report_contract=REPORT_CONTRACT + " New required field: severity."
+    )
+    assert edited != original
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), edited)
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_prompt_revision_ignores_instance_values_so_reclaim_is_not_blocked():
+    """A retried attempt recomputes ``prompt_revision_versions`` from the same
+    code and gets back the identical dict regardless of that attempt's own
+    instance data (budget, authorized services); reclaim must proceed, not
+    ``blocked(INCOMPATIBLE_STATE)`` (C3 §5, "实例变化...继续")."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    versions = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-stable-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=versions,
+    )
+    first = store.claim(incident, run, uuid4(), versions, lease_seconds=1)
+    assert first.epoch == 1
+    time.sleep(1.1)
+    retry_versions = prompt_revision_versions()
+    assert retry_versions == versions
+    second = store.claim(incident, run, uuid4(), retry_versions)
+    assert second.epoch == 2
+
+
 def test_partial_tool_checkpoint_and_lease_fencing():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -196,6 +248,34 @@ def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.claim(incident, run, uuid4(), {"state": "v1"})
     assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
+
+
+def test_a_fenced_model_reply_is_retained_as_late_result_history():
+    """Bot review finding #4: commit_step() must not silently drop a fenced
+    reply. A pause between claim and commit_step fences the lease the same
+    way it fences publish() above; the reply becomes ``late_result`` history
+    instead of vanishing."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-step-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    store.control(incident, 0, "pause", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(
+            lease, "round-1", {"finish_reason": "stop", "response_id": "resp-late"}
+        )
+    rebuilt = store.rebuild(incident)
+    late_steps = [s for s in rebuilt["steps"] if s["status"] == "late_result"]
+    assert len(late_steps) == 1
+    assert late_steps[0]["response"]["response_id"] == "resp-late"
+    assert rebuilt["pending_tools"] == []
 
 
 def test_expired_lease_cannot_publish_or_reserve():
@@ -1660,3 +1740,89 @@ def test_rebuild_rejects_a_malformed_loop_shaped_step():
         store.commit_step(lease, "round-1", broken)
         with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
             store.rebuild(incident)
+
+
+def test_budget_reservations_settle_to_spent_or_unknown_and_never_release():
+    """C3 §13：预算在 PostgreSQL 原子预留和结算，未知费用保持占用。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=3,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    answered, lost, fenced = uuid4(), uuid4(), uuid4()
+    for reservation in (answered, lost, fenced):
+        store.reserve_budget(lease, reservation, 1)
+
+    def totals():
+        row = store.rebuild(incident)["run"]
+        return (row["budget_reserved"], row["budget_spent"], row["budget_unknown"])
+
+    assert totals() == (3, 0, 0)
+    store.settle_budget(lease, answered, "spent")
+    store.settle_budget(lease, answered, "spent")  # replayed settlement
+    store.settle_budget(lease, lost, "unknown")
+    assert totals() == (1, 1, 1)
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.settle_budget(lease, lost, "spent")
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.settle_budget(lease, uuid4(), "spent")
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        store.settle_budget(lease, fenced, "released")
+    # Settlement never frees budget: the limit stays exhausted.
+    with pytest.raises(PersistenceError, match="BUDGET_EXHAUSTED"):
+        store.reserve_budget(lease, uuid4(), 1)
+
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.settle_budget(lease, fenced, "spent")
+    # A fenced attempt leaves its reservation occupied, not lost.
+    assert totals() == (1, 1, 1)
+
+
+def test_a_reclaimed_run_settles_its_own_reservations_without_conflict():
+    """C3 §7 first row: a bounded retry by a new attempt must be able to succeed.
+
+    The loop derives the same reservation id for ``round-1#a1`` in every
+    attempt; ``DurableStepStore`` namespaces it by the lease epoch, so the new
+    attempt never collides with the dead attempt's ``unknown`` reservation,
+    which stays occupied.
+    """
+    from opspilot.investigation.store import DurableStepStore, reservation_id_for
+
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-reclaim-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=4,
+        versions={"state": "v1"},
+    )
+    same_id = reservation_id_for(str(run), "round-1#a1")
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    dead_store = DurableStepStore(store, dead)
+    dead_store.reserve_budget(same_id, 1)
+    dead_store.settle_budget(same_id, "unknown")
+    time.sleep(1.2)
+
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    fresh_store = DurableStepStore(store, fresh)
+    fresh_store.reserve_budget(same_id, 1)
+    fresh_store.settle_budget(same_id, "spent")
+    row = store.rebuild(incident)["run"]
+    assert (row["budget_reserved"], row["budget_spent"], row["budget_unknown"]) == (
+        0,
+        1,
+        1,
+    )
+    # Within one attempt the id is still idempotent.
+    fresh_store.reserve_budget(same_id, 1)
+    with pytest.raises(StepStoreError, match="IDENTITY_CONFLICT"):
+        fresh_store.settle_budget(same_id, "unknown")
