@@ -550,6 +550,11 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
         if self._clock.now() >= self._scope.deadline:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
+        # Mark dispatch only now, right before the transport is actually
+        # called -- not earlier, when ``_reserve()`` merely computed a
+        # timeout. Every ``_refuse()`` return above this line therefore
+        # correctly reports ``sent: false`` in the audit record.
+        operation = replace(operation, dispatched=True)
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None

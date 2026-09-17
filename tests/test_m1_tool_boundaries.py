@@ -377,6 +377,31 @@ def test_a_slow_pre_dispatch_ledger_charge_that_crosses_the_deadline_is_denied()
     # The pre-dispatch charge is not refunded: it already recorded the
     # operation as spent before the deadline was found to have lapsed.
     assert len(ledger.charges) == 1
+    # _reserve() already computed timeout_seconds before this denial; the
+    # audit record must not infer "sent" from that alone.
+    assert outcome.operation.audit_json()["sent"] is False
+
+
+def test_a_pre_dispatch_ledger_failure_is_not_reported_as_sent():
+    """The audit record must not claim dispatch for an operation that never
+    reached the transport, even though ``_reserve()`` already computed a
+    ``timeout_seconds`` for it (bot review finding: ``ToolOperation.sent`` was
+    previously inferred from ``timeout_seconds is not None``, which is set by
+    ``_reserve()`` before the pre-dispatch charge or transport call happen at
+    all).
+    """
+
+    ledger = RecordingLedger(fail_on={1})  # the pre-dispatch charge itself
+    executor, transport, sink, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert not transport.called
+    assert outcome.evidence is None and sink.records == []
+    assert outcome.operation.audit_json()["timeout_seconds"] is not None
+    assert outcome.operation.audit_json()["sent"] is False
 
 
 def test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied():
