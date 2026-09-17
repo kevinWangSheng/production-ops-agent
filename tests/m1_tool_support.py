@@ -39,6 +39,14 @@ def historical_window_context():
     The loop fails closed on a policy without ``mode``/``window``; build the
     context here instead of by hand so the live script, the loop doubles and
     the web double cannot drift apart again.
+
+    ``all_authorized_targets: True`` is required explicitly (PR #32 x PR #29
+    seam): this fixture was written against an eligibility check that treated
+    an absent ``target_refs`` as "applies everywhere", but PR #29 later
+    tightened that check to require an explicit opt-in -- a policy scoped to
+    no targets must cover none, not all, of them (bot review finding, PR
+    #29). Without this field every fact citing ``policy-window-1`` fails to
+    bind and the Run ends REPORT_INVALID.
     """
     return {
         "type": "opspilot-evidence-context-v4",
@@ -46,6 +54,7 @@ def historical_window_context():
             {
                 "id": "policy-window-1",
                 "mode": "historical_window",
+                "all_authorized_targets": True,
                 "window": {
                     "start": WINDOW_START.isoformat(),
                     "end": WINDOW_END.isoformat(),
