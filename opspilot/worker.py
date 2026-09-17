@@ -10,13 +10,23 @@ from uuid import UUID, uuid4
 from .persistence import DurableStore, Lease, PersistenceError
 from .recovery import RecoveryPlan, recover
 
+# Borrowed from #33/#35's model-request-timeout-derived lease length, for a
+# single default shared by the initial claim and every renewal: an initial
+# claim shorter than this would leave the *first* pending tool's own
+# execution covered only by that short claim, since renewal only runs after
+# a tool executes (see execute_pending). RecoverySession itself never calls
+# a model -- it replays already-committed tool calls -- so this value is not
+# independently re-derived from a tool-execution time cap here; no such cap
+# is enforced in this branch's code.
+DEFAULT_LEASE_SECONDS = 420
+
 
 @dataclass(frozen=True)
 class RecoverySession:
     plan: RecoveryPlan
     lease: Lease
     store: DurableStore
-    renew_seconds: int = 420
+    renew_seconds: int = DEFAULT_LEASE_SECONDS
 
     def _assert_current(self) -> None:
         if not self.store.lease_current(self.lease):
@@ -71,7 +81,11 @@ class Worker:
         return recover(self.store, incident_id)
 
     def claim(
-        self, incident_id: UUID, run_id: UUID, *, lease_seconds: int = 30
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> Lease:
         return self.store.claim(
             incident_id, run_id, self.owner, self.versions, lease_seconds
@@ -81,8 +95,8 @@ class Worker:
         self,
         incident_id: UUID,
         *,
-        lease_seconds: int = 30,
-        renew_seconds: int = 420,
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
+        renew_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> RecoverySession:
         plan = self.recover(incident_id)
         if not plan.candidate:

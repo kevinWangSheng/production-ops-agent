@@ -83,6 +83,35 @@ def test_worker_uses_unique_owner():
     assert worker.owner
 
 
+def test_the_initial_claim_defaults_to_the_same_length_as_renewal():
+    """Renewal only runs after a tool executes (between execute and commit),
+    so the *first* pending tool's own execution is covered only by the
+    initial claim, not by any renewal. A short initial claim (the pre-#35
+    lease_seconds=30) would defeat the renewal wiring for that first tool;
+    the defaults must match so it is covered too.
+    """
+    import inspect
+
+    from opspilot.worker import DEFAULT_LEASE_SECONDS
+
+    assert (
+        inspect.signature(Worker.claim).parameters["lease_seconds"].default
+        == DEFAULT_LEASE_SECONDS
+    )
+    assert (
+        inspect.signature(Worker.resume).parameters["lease_seconds"].default
+        == DEFAULT_LEASE_SECONDS
+    )
+    assert (
+        inspect.signature(Worker.resume).parameters["renew_seconds"].default
+        == DEFAULT_LEASE_SECONDS
+    )
+    assert (
+        inspect.signature(RecoverySession).parameters["renew_seconds"].default
+        == DEFAULT_LEASE_SECONDS
+    )
+
+
 def _pending_plan(run_id: UUID, pending: list[dict]):
     return rebuild_plan(
         {
