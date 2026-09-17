@@ -1,4 +1,5 @@
 import os
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -10,9 +11,11 @@ import psycopg
 import pytest
 from psycopg import errors, sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from opspilot.domain import RUN_EXECUTION
 from opspilot.persistence import DurableStore, Lease, PersistenceError
+from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
 
 pytestmark = pytest.mark.skipif(
@@ -47,6 +50,115 @@ def test_commit_visibility_restart_control_late_and_budget():
     rebuilt = store.rebuild(incident)
     assert rebuilt["control_generation"] == 1
     assert rebuilt["conclusion"] is None
+
+
+def test_worker_subprocess_kill_then_resume_from_business_rows():
+    """A killed process leaves only PG state; a fresh Worker claims a new epoch."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-worker-kill-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    code = (
+        "import time,sys; from uuid import UUID; "
+        "from opspilot.persistence import DurableStore; "
+        "s=DurableStore(sys.argv[1]); s.claim(UUID(sys.argv[2]), UUID(sys.argv[3]), UUID(sys.argv[4]), {'state':'v1'}, lease_seconds=1); print('CLAIMED', flush=True); time.sleep(30)"
+    )
+    child = subprocess.Popen(
+        [
+            os.fspath(__import__("sys").executable),
+            "-c",
+            code,
+            DSN,
+            str(incident),
+            str(run),
+            str(uuid4()),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert child.stdout is not None and child.stdout.readline().strip() == "CLAIMED"
+    child.kill()
+    child.wait(timeout=5)
+    time.sleep(1.2)
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=5)
+    assert session.lease.epoch == 2
+
+
+def test_rebuild_rejects_malformed_persisted_tool_calls():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-malformed-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "malformed", {"tool_calls": []})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+            (Jsonb({"tool_calls": "abc"}), step),
+        )
+    with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+        store.rebuild(incident)
+
+
+def test_rebuild_rejects_a_falsey_malformed_tool_calls_value():
+    """``{} or []`` would silently swallow a falsey malformed value into a
+    valid-looking empty plan; it must fail closed like any other bad shape.
+    """
+    store = DurableStore(DSN)
+    for broken in ({}, "", 0):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-falsey-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        step = store.commit_step(lease, "malformed", {"tool_calls": []})
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+                (Jsonb({"tool_calls": broken}), step),
+            )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
+def test_recovered_session_checks_epoch_before_dispatch():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-session-fence-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    first = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        first, "round", {"tool_calls": [{"name": "query", "arguments": {}}]}
+    )
+    store.commit_tool(first, step, 0, {"ok": True})
+    # A new worker can claim only after the old lease expires.
+    time.sleep(1.2)
+    second = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=30)
+    assert not store.lease_current(first)
+    assert store.lease_current(second)
 
 
 def test_incompatible_versions_block_without_silent_resume():
@@ -697,9 +809,10 @@ def test_rebuild_drops_pending_tools_from_a_superseded_generation():
         stale, "round-0", {"tool_calls": [{"id": "a"}, {"id": "b"}]}
     )
     store.commit_tool(stale, old_step, 0, {"ok": True})
-    assert store.rebuild(incident)["pending_tools"] == [
-        {"step_id": old_step, "ordinal": 1}
-    ]
+    pending = store.rebuild(incident)["pending_tools"]
+    assert pending[0]["step_id"] == old_step and pending[0]["ordinal"] == 1
+    assert pending[0]["operation_id"].endswith(":1")
+    assert pending[0]["tool_call"] == {"id": "b"}
 
     assert store.control(incident, 0, "follow_up", "operator") == 1
     rebuilt = store.rebuild(incident)
@@ -708,9 +821,9 @@ def test_rebuild_drops_pending_tools_from_a_superseded_generation():
 
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     new_step = store.commit_step(fresh, "round-1", {"tool_calls": [{"id": "c"}]})
-    assert store.rebuild(incident)["pending_tools"] == [
-        {"step_id": new_step, "ordinal": 0}
-    ]
+    pending = store.rebuild(incident)["pending_tools"]
+    assert pending[0]["step_id"] == new_step and pending[0]["ordinal"] == 0
+    assert pending[0]["tool_call"] == {"id": "c"}
 
 
 def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
@@ -901,7 +1014,9 @@ def test_rebuild_filters_pending_tools_by_the_incident_generation_not_the_run_co
 
     rebuilt = store.rebuild(incident)
     assert rebuilt["control_generation"] == 77
-    assert rebuilt["pending_tools"] == [{"step_id": at_incident, "ordinal": 0}]
+    assert len(rebuilt["pending_tools"]) == 1
+    assert rebuilt["pending_tools"][0]["step_id"] == at_incident
+    assert rebuilt["pending_tools"][0]["tool_call"] == {"id": "a"}
     # 旧代际的步骤仍留在业务记录里，只是不再作为待办派发。
     assert {step["step_id"] for step in rebuilt["steps"]} == {at_incident, at_run}
 
@@ -1022,3 +1137,134 @@ def test_control_refuses_a_current_run_pointer_into_another_incident():
     assert audits == 0
     assert own == {"state": "blocked", "control_generation": 0}
     assert foreign == {"state": "running", "control_generation": 0}
+
+
+def _loop_step(*calls):
+    """A step exactly as the investigation loop commits it (``_commit_step``)."""
+    return {
+        "assistant": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": f"call-{index}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": "{}"},
+                }
+                for index, name in enumerate(calls)
+            ],
+        },
+        "finish_reason": "tool_calls",
+        "response_model": "deepseek-flash",
+        "usage": {"total_tokens": 10},
+        "request_sha256": "0" * 64,
+        "response_id": "resp-1",
+    }
+
+
+def test_rebuild_lists_pending_tools_from_a_loop_shaped_step():
+    """C3 §7「响应已提交，部分工具未完成 → 只处理尚未完成的工具操作」。
+
+    The loop commits the complete model response with the tool plan under
+    ``assistant`` (C3 §4: ModelStep = 完整模型响应及工具计划); ``rebuild()``
+    must read the plan from there, or recovery never sees any pending tool.
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-pending-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(
+        lease, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(lease, step, 0, {"ok": True})
+
+    pending = store.rebuild(incident)["pending_tools"]
+    assert [(item["step_id"], item["ordinal"]) for item in pending] == [(step, 1)]
+    assert pending[0]["operation_id"] == f"{step}:1"
+    assert pending[0]["tool_call"]["function"]["name"] == "logs.search"
+    # The legacy top-level shape used by the M0 harness keeps working.
+    legacy = store.commit_step(lease, "round-2", {"tool_calls": [{"id": "x"}]})
+    assert [item["step_id"] for item in store.rebuild(incident)["pending_tools"]] == [
+        step,
+        legacy,
+    ]
+
+
+def test_worker_resume_executes_only_the_pending_tools_of_a_loop_step():
+    """After a dead attempt, ``Worker.resume`` continues the committed plan."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-resume-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(dead, step, 0, {"ok": True, "evidence_id": "e0"})
+    time.sleep(1.2)
+
+    executed = []
+
+    def execute(item):
+        executed.append(
+            (item["step_id"], item["ordinal"], item["tool_call"]["function"]["name"])
+        )
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=5)
+    assert session.lease.epoch == dead.epoch + 1
+    assert session.execute_pending(execute) == 1
+    assert executed == [(step, 1, "logs.search")]
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    results = {
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
+    }
+    assert results == {
+        0: {"ok": True, "evidence_id": "e0"},
+        1: {"ok": True, "evidence_id": "e1"},
+    }
+    # The first attempt's lease cannot write into the plan any more.
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(dead, step, 1, {"late": True})
+
+
+def test_rebuild_rejects_a_malformed_loop_shaped_step():
+    """A corrupt ``assistant`` or plan in the loop shape fails closed too."""
+    store = DurableStore(DSN)
+    for broken in (
+        {"assistant": "oops"},
+        {"assistant": {"tool_calls": "abc"}},
+        # Falsey malformed values must fail closed too: ``{} or []`` would
+        # otherwise swallow them into a valid-looking empty plan.
+        {"assistant": {"tool_calls": {}}},
+        {"assistant": {"tool_calls": ""}},
+        {"assistant": {"tool_calls": 0}},
+    ):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-loop-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        store.commit_step(lease, "round-1", broken)
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
