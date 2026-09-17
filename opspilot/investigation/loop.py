@@ -320,7 +320,39 @@ class InvestigationLoop:
         delivered: list[DeliveredView],
     ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
         timeout = self._remaining_timeout(request, started)
+        try:
+            logical_key, inputs = self.store.begin_round(f"round-{ordinal}")
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
         outbound = list(messages)
+        if inputs:
+            outbound.append(
+                {
+                    "role": "user",
+                    "content": canonical(
+                        {
+                            "investigation_inputs": [
+                                {
+                                    "sequence": i["sequence"],
+                                    "kind": i["kind"],
+                                    "content": {
+                                        k: v
+                                        for k, v in i["content"].items()
+                                        if k.lower()
+                                        not in {
+                                            "password",
+                                            "secret",
+                                            "token",
+                                            "authorization",
+                                        }
+                                    },
+                                }
+                                for i in inputs
+                            ]
+                        }
+                    ),
+                }
+            )
         if final:
             outbound.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
         call = ModelCall(
@@ -332,7 +364,6 @@ class InvestigationLoop:
             model=self.accepted_response_model,
         )
         self._reject_oversized(call)
-        logical_key = f"round-{ordinal}"
         try:
             reply, dispatched = self._call_model(
                 call,
@@ -423,6 +454,10 @@ class InvestigationLoop:
                 params=params,
                 window=window,
             )
+            try:
+                self.store.assert_current()
+            except StepStoreError as exc:
+                raise _halt_from_store(exc) from exc
             outcome = self.executor.execute(tool_request)
             view = dict(outcome.model_view)
             try:
@@ -532,6 +567,10 @@ class InvestigationLoop:
             )
             reservation = f"{logical_key}#a{attempt}"
             self._reserve(request.run_id, reservation)
+            try:
+                self.store.assert_current()
+            except StepStoreError as exc:
+                raise _halt_from_store(exc) from exc
             self._physical_requests += 1
             try:
                 reply = self.model.complete(timed)

@@ -31,6 +31,10 @@ class StepCommitter(Protocol):
     @property
     def authorized_run_id(self) -> str: ...
 
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]: ...
+
+    def assert_current(self) -> None: ...
+
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None: ...
 
     def settle_budget(self, reservation_id: UUID, outcome: str) -> None: ...
@@ -89,6 +93,13 @@ class MemoryStepStore:
         self.step_ids: dict[str, UUID] = {}
         self.tool_results: dict[UUID, list[dict[str, Any]]] = {}
         self.late_results: list[dict[str, Any]] = []
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        self._guard()
+        return logical_key, []
+
+    def assert_current(self) -> None:
+        self._guard()
 
     def deny_control(self) -> None:
         self._control_denied = True
@@ -195,6 +206,25 @@ class DurableStepStore:
         identity conflict; the dead attempt's reservation stays occupied.
         """
         return uuid5(_RESERVATION_NAMESPACE, f"{reservation_id}:e{self._lease.epoch}")
+
+    def assert_current(self) -> None:
+        try:
+            if not self._store.lease_current(self._lease):
+                raise PersistenceError("CONTROL_DENIED")
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        # Each explicit execution attempt owns fresh keys; recovery of committed
+        # tool plans remains Worker/RecoverySession's responsibility.
+        key = f"g{self._lease.control_generation}:e{self._lease.epoch}:{logical_key}"
+        try:
+            frozen = self._store.begin_round(self._lease, key)
+            if frozen["committed"]:
+                raise PersistenceError("ROUND_ALREADY_COMMITTED")
+            return key, list(frozen["inputs"])
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
 
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         try:
