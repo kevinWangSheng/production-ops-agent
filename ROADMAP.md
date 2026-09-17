@@ -1,5 +1,7 @@
 # Roadmap
 
+当前工程交付状态（2026-09-17，入口与进度/证据 UI）：M1-01 子任务「入口与认证提交」「进度与证据 UI」已在 `feature/m1-01-progress-ui` 实现（`opspilot/web/`：FastAPI/Jinja 工作台、ui_basic/event_token 幂等接收、经 `DurableStore.control()` 的人工操作、主体持久事件序列上的 SSE 游标续接、证据 raw/view/hash 回读），不改 `persistence.py`。本地 `make check` 1464 passed，本 worktree PG 集成 59 passed，全新上下文独立审查三轮后关闭。stacked PR base 为 `integration/m1-01`；11 个 feature `passes` 与 SPEC 门槛陈述未改。见[任务记录](docs/tasks/2026-09-16-m1-01-progress-ui.md)。
+
 当前工程交付状态（2026-09-16，M1-01 人工控制）：PR #28（`feature/m1-01-human-control`，stacked 于 PR #26 / `chore/durable-store-hardening`）已完成审查 thread 处置与 `workflow_dispatch` CI。本 PR 补迟到步骤/工具历史、取消后新 Run、迟到身份/时序/幂等；follow-up/correct/cancel 代际语义来自 PR #19。close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化、follow-up/correction 输入内容、持久化输入水位仍为待决。待 #26 合并后 retarget 到 main，由用户审核合并。见[任务记录](docs/tasks/2026-09-16-m1-01-human-control.md)。
 
 当前工程交付状态（2026-09-16，Flash 调查 loop）：M1-01 子任务「Flash 调查 loop」已开 stacked PR [#29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)，base 为 PR #20（`feature/m1-01-tool-executor`）。本地 `make check` 1270 passed / 75 skipped / 2 xfailed；一次有界真实 DeepSeek Run 产出 `m0-report-v2` 结构化报告（2 HTTP，上界 0.024617 CNY）。11 个 feature `passes` 与 SPEC 门槛陈述未改。见[任务记录](docs/tasks/2026-09-16-m1-01-investigation-loop.md)。
