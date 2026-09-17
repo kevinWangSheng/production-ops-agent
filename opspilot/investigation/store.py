@@ -175,15 +175,30 @@ class DurableStepStore:
     def authorized_run_id(self) -> str:
         return str(self._lease.run_id)
 
+    def _attempt_reservation(self, reservation_id: UUID) -> UUID:
+        """Namespace the loop's reservation id by this attempt's epoch.
+
+        The loop derives ids from ``run_id`` and the round key, which repeat
+        when a new attempt re-claims the same Run (C3 §7: bounded retry).
+        Without the epoch the retry would reuse the dead attempt's row and
+        settling it as ``spent`` after an ``unknown`` would be refused as an
+        identity conflict; the dead attempt's reservation stays occupied.
+        """
+        return uuid5(_RESERVATION_NAMESPACE, f"{reservation_id}:e{self._lease.epoch}")
+
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         try:
-            self._store.reserve_budget(self._lease, reservation_id, amount)
+            self._store.reserve_budget(
+                self._lease, self._attempt_reservation(reservation_id), amount
+            )
         except PersistenceError as exc:
             raise StepStoreError(str(exc)) from None
 
     def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
         try:
-            self._store.settle_budget(self._lease, reservation_id, outcome)
+            self._store.settle_budget(
+                self._lease, self._attempt_reservation(reservation_id), outcome
+            )
         except PersistenceError as exc:
             raise StepStoreError(str(exc)) from None
 

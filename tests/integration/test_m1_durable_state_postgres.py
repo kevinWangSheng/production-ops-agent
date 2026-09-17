@@ -10,6 +10,7 @@ import pytest
 from psycopg import errors
 from psycopg.rows import dict_row
 
+from opspilot.investigation.store import StepStoreError
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
 
@@ -623,9 +624,10 @@ def test_budget_reservations_settle_to_spent_or_unknown_and_never_release():
 def test_a_reclaimed_run_settles_its_own_reservations_without_conflict():
     """C3 §7 first row: a bounded retry by a new attempt must be able to succeed.
 
-    ``DurableStepStore.begin_round`` namespaces the round key by generation and
-    epoch, so the new attempt's reservation never collides with the dead
-    attempt's ``unknown`` one; that one stays occupied.
+    The loop derives the same reservation id for ``round-1#a1`` in every
+    attempt; ``DurableStepStore`` namespaces it by the lease epoch, so the new
+    attempt never collides with the dead attempt's ``unknown`` reservation,
+    which stays occupied.
     """
     from opspilot.investigation.store import DurableStepStore, reservation_id_for
 
@@ -639,22 +641,24 @@ def test_a_reclaimed_run_settles_its_own_reservations_without_conflict():
         budget_limit=4,
         versions={"state": "v1"},
     )
+    same_id = reservation_id_for(str(run), "round-1#a1")
     dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
     dead_store = DurableStepStore(store, dead)
-    key, _ = dead_store.begin_round("round-1")
-    dead_store.reserve_budget(reservation_id_for(str(run), f"{key}#a1"), 1)
-    dead_store.settle_budget(reservation_id_for(str(run), f"{key}#a1"), "unknown")
+    dead_store.reserve_budget(same_id, 1)
+    dead_store.settle_budget(same_id, "unknown")
     time.sleep(1.2)
 
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     fresh_store = DurableStepStore(store, fresh)
-    new_key, _ = fresh_store.begin_round("round-1")
-    assert new_key != key
-    fresh_store.reserve_budget(reservation_id_for(str(run), f"{new_key}#a1"), 1)
-    fresh_store.settle_budget(reservation_id_for(str(run), f"{new_key}#a1"), "spent")
+    fresh_store.reserve_budget(same_id, 1)
+    fresh_store.settle_budget(same_id, "spent")
     row = store.rebuild(incident)["run"]
     assert (row["budget_reserved"], row["budget_spent"], row["budget_unknown"]) == (
         0,
         1,
         1,
     )
+    # Within one attempt the id is still idempotent.
+    fresh_store.reserve_budget(same_id, 1)
+    with pytest.raises(StepStoreError, match="IDENTITY_CONFLICT"):
+        fresh_store.settle_budget(same_id, "unknown")
