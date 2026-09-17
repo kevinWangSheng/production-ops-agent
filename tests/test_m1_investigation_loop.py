@@ -779,3 +779,59 @@ def test_prompt_revision_is_stable_across_instance_budgets():
         ).encode()
     ).hexdigest()
     assert face_one != face_four
+
+
+def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
+    """Two real loop runs that differ only in ``model_requests`` (an L1b
+    instance value) must report the same ``ModelProfile.prompt_revision`` --
+    the exact value ``prompt_revision_versions`` would put in ``versions`` --
+    even though their rendered L1 face genuinely differs (C3 §5)."""
+    from opspilot.investigation.loop import prompt_revision_versions
+
+    def with_supplied_view(request, evidence_id):
+        return replace(
+            request,
+            evidence_context={
+                **request.evidence_context,
+                "view_bindings": {
+                    evidence_id: {
+                        "status": "ok",
+                        "target_refs": ["checkout-prod"],
+                        "time_scope_refs": ["policy-window-1"],
+                    },
+                },
+            },
+        )
+
+    loop_one, request_one, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id="ev-a"), finish="stop")],
+        model_requests=1,
+    )
+    outcome_one = loop_one.run(with_supplied_view(request_one, "ev-a"))
+    loop_four, request_four, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id="ev-b"), finish="stop")],
+        model_requests=4,
+    )
+    outcome_four = loop_four.run(with_supplied_view(request_four, "ev-b"))
+    assert outcome_one.execution == "completed"
+    assert outcome_four.execution == "completed"
+    expected = prompt_revision_versions()["prompt_revision"]
+    assert outcome_one.prompt_revision == expected
+    assert outcome_four.prompt_revision == expected
+    assert outcome_one.prompt_face_sha256 != outcome_four.prompt_face_sha256
+
+
+def test_prompt_revision_versions_moves_with_the_l2_report_contract_text():
+    """A real L2 content edit (not a hand-typed stand-in) must move the value
+    a caller would compare in ``versions`` (C3 §5 revision rule 1)."""
+    from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
+    from opspilot.investigation.reports import REPORT_CONTRACT
+
+    original = prompt_revision_versions(DISCIPLINE_VARIANT)
+    edited = prompt_revision_versions(
+        DISCIPLINE_VARIANT,
+        report_contract=REPORT_CONTRACT + " New required field: severity.",
+    )
+    assert original != edited
+
+

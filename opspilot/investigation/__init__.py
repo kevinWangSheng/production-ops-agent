@@ -27,6 +27,7 @@ from .loop import (
     ModelClient,
     ModelError,
     ModelReply,
+    prompt_revision_versions,
     serialized_request,
 )
 from .messages import PairingError, pair_tool_results, validate_tool_calls
@@ -70,6 +71,7 @@ __all__ = [
     "StepStoreError",
     "pair_tool_results",
     "parse_report",
+    "prompt_revision_versions",
     "serialized_request",
     "validate_tool_calls",
 ]

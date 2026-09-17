@@ -56,6 +56,42 @@ ACCEPTED_RESPONSE_MODEL = "deepseek-flash"
 
 LoopExecution = Literal["completed", "failed", "blocked", "budget_exhausted"]
 
+
+def prompt_revision_versions(
+    variant_id: str = DISCIPLINE_VARIANT, *, report_contract: str = REPORT_CONTRACT
+) -> dict[str, str]:
+    """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
+    ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
+
+    This is the loop's single source for that one field -- content-hashed
+    from ``discipline.prompt_revision``, never hand-typed -- so the ledger
+    value the loop reports and the value a future Run-creation caller feeds
+    into the recovery-version barrier are guaranteed to be the same
+    computation. Instance values (budget, authorized services, evidence
+    context) never reach ``prompt_revision`` and so never appear here either;
+    two Runs that differ only in those get the same dict and do not
+    spuriously block each other on reclaim.
+
+    ``tool_schema_revision`` is the L3a half of the same C3 §5 ``versions``
+    comparison. It is not this loop's to compute (it belongs to the tool
+    registry, PR #20); a caller building a full ``versions`` dict must merge
+    it in separately.
+
+    Known gap, not fixed here: ``discipline.template_projection`` in this
+    branch only hashes ``LAYER_TEMPLATE`` segments, so reordering an L1b/L2
+    slot relative to the L1a segments would change ``render()``'s actual
+    bytes without moving this value (PR #27, not yet merged, already fixes
+    this upstream; porting that fix here would re-copy an un-merged PR's
+    implementation rather than depend on it, so it is deferred to the #27 ->
+    #29 merge, per this branch's dependency convention -- not silently
+    ignored). No known variant in this branch has ever reordered those
+    segments, so this does not affect any revision value recorded so far.
+    """
+    return {
+        "prompt_revision": prompt_revision(variant_id, report_contract=report_contract)
+    }
+
+
 _HANDOFF_FROM_STORE: dict[str, tuple[LoopExecution, str]] = {
     "BUDGET_EXHAUSTED": ("budget_exhausted", "BUDGET_EXHAUSTED"),
     "CONTROL_DENIED": ("failed", "CONTROL_DENIED"),
@@ -188,7 +224,7 @@ class InvestigationLoop:
             model_requests=request.model_requests,
             report_contract=REPORT_CONTRACT,
         )
-        revision = prompt_revision(request.variant_id, report_contract=REPORT_CONTRACT)
+        revision = prompt_revision_versions(request.variant_id)["prompt_revision"]
         face = hashlib.sha256(system.encode("utf-8")).hexdigest()
         question_sha = hashlib.sha256(request.question.encode("utf-8")).hexdigest()
         messages: list[dict[str, Any]] = [

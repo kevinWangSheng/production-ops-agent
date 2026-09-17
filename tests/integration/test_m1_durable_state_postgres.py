@@ -10,6 +10,8 @@ import pytest
 from psycopg import errors
 from psycopg.rows import dict_row
 
+from opspilot.investigation.loop import prompt_revision_versions
+from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.investigation.store import StepStoreError
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
@@ -62,6 +64,55 @@ def test_incompatible_versions_block_without_silent_resume():
     with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
         store.claim(incident, run, uuid4(), {"state": "v2"})
     assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_prompt_revision_content_change_blocks_an_in_flight_run():
+    """A real L2 report-contract edit must move ``prompt_revision`` and, on
+    reclaim, hit the same generic ``INCOMPATIBLE_STATE`` barrier proven above
+    -- not a hand-typed ``{"state": "v2"}`` stand-in (C3 §5)."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    original = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=original,
+    )
+    edited = prompt_revision_versions(
+        report_contract=REPORT_CONTRACT + " New required field: severity."
+    )
+    assert edited != original
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), edited)
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_prompt_revision_ignores_instance_values_so_reclaim_is_not_blocked():
+    """A retried attempt recomputes ``prompt_revision_versions`` from the same
+    code and gets back the identical dict regardless of that attempt's own
+    instance data (budget, authorized services); reclaim must proceed, not
+    ``blocked(INCOMPATIBLE_STATE)`` (C3 §5, "实例变化...继续")."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    versions = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-stable-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=versions,
+    )
+    first = store.claim(incident, run, uuid4(), versions, lease_seconds=1)
+    assert first.epoch == 1
+    time.sleep(1.1)
+    retry_versions = prompt_revision_versions()
+    assert retry_versions == versions
+    second = store.claim(incident, run, uuid4(), retry_versions)
+    assert second.epoch == 2
 
 
 def test_partial_tool_checkpoint_and_lease_fencing():
