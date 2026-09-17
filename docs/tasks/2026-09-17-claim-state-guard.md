@@ -1,6 +1,6 @@
 # DurableStore.claim：人工控制状态先于版本判定（红线审计 P2-2）
 
-- 状态：进行中（PR 已开，待 CI/code review）
+- 状态：PR 已就绪，待用户审核合并
 - 更新日期：2026-09-17
 - 依据：对 `integration/m1-01-full`@e42d7b7 的跨 PR 只读红线审计第 2 节 P2-2；
   [C3 第 5 节](../design/technical-proposal-2026-09-07.md)「授权变化不得经由 versions 触发
@@ -53,5 +53,8 @@
 
 ## 下一步与交接
 
-- 已推送并创建 PR，等待 CI 与 code review；结果与 thread 处置回写本记录。
+- PR #34（head `e25c5a5`）：CI `checks` pass、`m0-postgres` pass；`CLEAN`/`MERGEABLE`。
+  Codex Code Review 2026-09-17T15:49Z Completed，无 inline 发现、无 review 意见；
+  Codex Security Review Failed（运行失败，按 AGENTS.md 不是交付门槛）。等待用户审核合并。
+- 合并后：停止无进程；清理 worktree `../production-ops-agent-claim-guard` 与本地分支。
 - PG lab 进程属集成 worktree 会话（`tmp/m0-b/postgres`，端口 55431），任务结束时停止。
