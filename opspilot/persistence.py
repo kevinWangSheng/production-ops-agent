@@ -50,6 +50,8 @@ class Lease:
     owner: UUID
     epoch: int
     control_generation: int
+    global_suspension_generation: int = 0
+    target_suspension_generation: int = 0
 
 
 class DurableStore:
@@ -97,6 +99,12 @@ class DurableStore:
             or row["lease_until"] is None
             or row["lease_until"] <= now
             or row["deadline"] <= now
+            or bool(row.get("global_suspended", False))
+            or bool(row.get("target_suspended", False))
+            or int(row.get("global_generation", 0))
+            != lease.global_suspension_generation
+            or int(row.get("target_generation", 0))
+            != lease.target_suspension_generation
         )
 
     @contextmanager
@@ -139,6 +147,30 @@ class DurableStore:
               current_run_id uuid, conclusion jsonb, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
             );
             ALTER TABLE opspilot_incidents ADD COLUMN IF NOT EXISTS lifecycle text NOT NULL DEFAULT 'open';
+            CREATE TABLE IF NOT EXISTS opspilot_targets (
+              target_id uuid PRIMARY KEY, resource_uid text UNIQUE NOT NULL,
+              created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            );
+            ALTER TABLE opspilot_incidents ADD COLUMN IF NOT EXISTS target_id uuid REFERENCES opspilot_targets;
+            CREATE INDEX IF NOT EXISTS opspilot_incidents_target_id_idx ON opspilot_incidents(target_id);
+            CREATE TABLE IF NOT EXISTS opspilot_scope_controls (
+              scope_id smallint PRIMARY KEY CHECK (scope_id = 1),
+              global_suspended boolean NOT NULL DEFAULT false,
+              global_generation integer NOT NULL DEFAULT 0
+            );
+            INSERT INTO opspilot_scope_controls(scope_id) VALUES(1) ON CONFLICT DO NOTHING;
+            CREATE TABLE IF NOT EXISTS opspilot_target_suspensions (
+              target_id uuid PRIMARY KEY REFERENCES opspilot_targets,
+              suspended boolean NOT NULL DEFAULT false,
+              generation integer NOT NULL DEFAULT 0,
+              updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            );
+            INSERT INTO opspilot_target_suspensions(target_id) SELECT target_id FROM opspilot_targets ON CONFLICT DO NOTHING;
+            CREATE TABLE IF NOT EXISTS opspilot_suspension_audit (
+              audit_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, target_id uuid,
+              suspended boolean NOT NULL, generation integer NOT NULL,
+              created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            );
             CREATE TABLE IF NOT EXISTS opspilot_runs (
               run_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
               state text NOT NULL, epoch integer NOT NULL DEFAULT 0, owner uuid,
@@ -147,6 +179,7 @@ class DurableStore:
               budget_spent bigint NOT NULL DEFAULT 0, budget_unknown bigint NOT NULL DEFAULT 0,
               deadline timestamptz NOT NULL, versions jsonb NOT NULL, input_watermark integer NOT NULL DEFAULT 0
             );
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS input_watermark integer NOT NULL DEFAULT 0;
             -- PostgreSQL 不为外键列自动建索引。control() 按 incident_id 推进 run
             -- 状态，前置的 incident 行锁把 worker 写路径排在这条 UPDATE 之后，
             -- 全表扫描会随表增长直接变成写路径的排队时间。
@@ -167,6 +200,21 @@ class DurableStore:
             );
             -- 同上：审计行按 incident 读取，且外键列无索引时父行的键变更要扫全表。
             CREATE INDEX IF NOT EXISTS opspilot_controls_incident_id_idx ON opspilot_controls(incident_id);
+            ALTER TABLE opspilot_controls ADD COLUMN IF NOT EXISTS payload jsonb;
+            CREATE TABLE IF NOT EXISTS opspilot_inputs (
+              input_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
+              sequence integer NOT NULL, kind text NOT NULL, content jsonb NOT NULL,
+              actor text, control_generation integer NOT NULL,
+              received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+              UNIQUE(incident_id, sequence)
+            );
+            CREATE INDEX IF NOT EXISTS opspilot_inputs_incident_id_idx ON opspilot_inputs(incident_id, sequence);
+            CREATE TABLE IF NOT EXISTS opspilot_input_rounds (
+              run_id uuid NOT NULL REFERENCES opspilot_runs, logical_key text NOT NULL,
+              control_generation integer NOT NULL, input_watermark integer NOT NULL,
+              committed boolean NOT NULL DEFAULT false,
+              PRIMARY KEY(run_id,logical_key)
+            );
             CREATE TABLE IF NOT EXISTS opspilot_budget_reservations (
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
@@ -182,25 +230,46 @@ class DurableStore:
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
+        target_id: UUID | None = None,
     ) -> None:
         """Create incident/run atomically. Return only after commit."""
         with self.transaction() as conn:
+            scope = self._lock_scope(conn, None)
+            if (
+                target_id is not None
+                and not conn.execute(
+                    "SELECT 1 FROM opspilot_targets WHERE target_id=%s", (target_id,)
+                ).fetchone()
+            ):
+                raise PersistenceError("UNKNOWN_TARGET")
+            if target_id is not None:
+                target_scope = self._require_row(
+                    conn.execute(
+                        "SELECT suspended FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                        (target_id,),
+                    )
+                )
+                scope["target_suspended"] = target_scope["suspended"]
             row = conn.execute(
-                "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
+                "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
                 (intake_key,),
             ).fetchone()
             if row:
-                if row["incident_id"] != incident_id or row["current_run_id"] != run_id:
+                if (
+                    row["incident_id"] != incident_id
+                    or row["current_run_id"] != run_id
+                    or row["target_id"] != target_id
+                ):
                     raise PersistenceError("IDENTITY_CONFLICT")
                 return
             inserted = conn.execute(
                 # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
                 # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id) VALUES(%s,%s,'queued','open',%s) ON CONFLICT DO NOTHING RETURNING incident_id",
-                (incident_id, intake_key, run_id),
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'queued','open',%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+                (incident_id, intake_key, run_id, target_id),
             ).fetchone()
             existing = conn.execute(
-                "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
+                "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
                 (intake_key,),
             ).fetchone()
             if existing is None:
@@ -210,6 +279,7 @@ class DurableStore:
             if (
                 existing["incident_id"] != incident_id
                 or existing["current_run_id"] != run_id
+                or existing["target_id"] != target_id
             ):
                 raise PersistenceError("IDENTITY_CONFLICT")
             if inserted is None:
@@ -218,6 +288,163 @@ class DurableStore:
                 "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
                 (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
             )
+            if scope["global_suspended"] or scope["target_suspended"]:
+                conn.execute(
+                    "UPDATE opspilot_incidents SET state='paused' WHERE incident_id=%s",
+                    (incident_id,),
+                )
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='paused' WHERE run_id=%s", (run_id,)
+                )
+
+    def register_target(
+        self, resource_uid: str, *, target_id: UUID | None = None
+    ) -> UUID:
+        """Register an immutable target identity before it can be suspended."""
+        if not isinstance(resource_uid, str) or not resource_uid:
+            raise PersistenceError("INVALID_INPUT")
+        identity = target_id or uuid4()
+        with self.transaction() as conn:
+            existing = conn.execute(
+                "SELECT target_id,resource_uid FROM opspilot_targets WHERE resource_uid=%s OR target_id=%s",
+                (resource_uid, identity),
+            ).fetchone()
+            if existing:
+                if existing["resource_uid"] != resource_uid or (
+                    target_id is not None and existing["target_id"] != identity
+                ):
+                    raise PersistenceError("IDENTITY_CONFLICT")
+                return cast(UUID, existing["target_id"])
+            conn.execute(
+                "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
+                (identity, resource_uid),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+                (identity,),
+            )
+        return identity
+
+    def set_global_suspension(
+        self, suspended: bool, *, expected_generation: int | None = None
+    ) -> int:
+        """Atomically change the global gate; suspension invalidates active leases."""
+        if type(suspended) is not bool:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            row = self._require_row(
+                conn.execute(
+                    "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1 FOR UPDATE"
+                )
+            )
+            current = int(row["global_generation"])
+            if expected_generation is not None and expected_generation != current:
+                raise PersistenceError("CONTROL_CONFLICT")
+            nxt = current + 1
+            conn.execute(
+                "UPDATE opspilot_scope_controls SET global_suspended=%s,global_generation=%s WHERE scope_id=1",
+                (suspended, nxt),
+            )
+            if suspended:
+                conn.execute(
+                    "SELECT incident_id FROM opspilot_incidents ORDER BY incident_id FOR UPDATE"
+                )
+                conn.execute(
+                    "UPDATE opspilot_incidents i SET state='paused' WHERE conclusion IS NULL AND state NOT IN ('completed','cancelled') AND EXISTS (SELECT 1 FROM opspilot_runs r WHERE r.run_id=i.current_run_id AND r.state IN ('queued','running','waiting_human','paused'))"
+                )
+                conn.execute(
+                    "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human')"
+                )
+            conn.execute(
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(NULL,%s,%s)",
+                (suspended, nxt),
+            )
+            return nxt
+
+    # Short names are useful to callers that model the domain operation directly.
+    suspend_global = set_global_suspension
+
+    def set_target_suspension(
+        self,
+        target_id: UUID,
+        suspended: bool,
+        *,
+        expected_generation: int | None = None,
+    ) -> int:
+        """Change one registered immutable target's gate and invalidate its leases."""
+        if not isinstance(target_id, UUID) or type(suspended) is not bool:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            self._lock_scope(conn)
+            if not conn.execute(
+                "SELECT 1 FROM opspilot_targets WHERE target_id=%s", (target_id,)
+            ).fetchone():
+                raise PersistenceError("UNKNOWN_TARGET")
+            conn.execute(
+                "INSERT INTO opspilot_target_suspensions(target_id,suspended,generation) VALUES(%s,false,0) ON CONFLICT DO NOTHING",
+                (target_id,),
+            )
+            row = self._require_row(
+                conn.execute(
+                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s FOR UPDATE",
+                    (target_id,),
+                )
+            )
+            current = int(row["generation"])
+            if expected_generation is not None and expected_generation != current:
+                raise PersistenceError("CONTROL_CONFLICT")
+            nxt = current + 1
+            conn.execute(
+                "UPDATE opspilot_target_suspensions SET suspended=%s,generation=%s,updated_at=clock_timestamp() WHERE target_id=%s",
+                (suspended, nxt, target_id),
+            )
+            if suspended:
+                conn.execute(
+                    "SELECT incident_id FROM opspilot_incidents WHERE target_id=%s ORDER BY incident_id FOR UPDATE",
+                    (target_id,),
+                )
+                conn.execute(
+                    "UPDATE opspilot_incidents i SET state='paused' WHERE target_id=%s AND conclusion IS NULL AND state NOT IN ('completed','cancelled') AND EXISTS (SELECT 1 FROM opspilot_runs r WHERE r.run_id=i.current_run_id AND r.state IN ('queued','running','waiting_human','paused'))",
+                    (target_id,),
+                )
+                conn.execute(
+                    "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human') AND incident_id IN (SELECT incident_id FROM opspilot_incidents WHERE target_id=%s)",
+                    (target_id,),
+                )
+            conn.execute(
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(%s,%s,%s)",
+                (target_id, suspended, nxt),
+            )
+            return nxt
+
+    suspend_target = set_target_suspension
+
+    def _lock_scope(
+        self, conn: Connection, incident_id: UUID | None = None
+    ) -> dict[str, Any]:
+        scope = self._require_row(
+            conn.execute(
+                "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1 FOR SHARE"
+            )
+        )
+        scope.update(target_suspended=False, target_generation=0)
+        if incident_id is not None:
+            target = conn.execute(
+                "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if target and target["target_id"] is not None:
+                row = conn.execute(
+                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                    (target["target_id"],),
+                ).fetchone()
+                if row is None:
+                    raise PersistenceError("INCONSISTENT_STATE")
+                scope.update(
+                    target_suspended=row["suspended"],
+                    target_generation=row["generation"],
+                )
+        return scope
 
     def new_run(
         self,
@@ -231,6 +458,9 @@ class DurableStore:
     ) -> int:
         """Continue a cancelled incident with a fresh Run and control generation."""
         with self.transaction() as conn:
+            scope = self._lock_scope(conn, incident_id)
+            if scope["global_suspended"] or scope["target_suspended"]:
+                raise PersistenceError("CONTROL_DENIED")
             row = conn.execute(
                 "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
@@ -315,8 +545,9 @@ class DurableStore:
         incompatible = False
         lease = None
         with self.transaction() as conn:
+            self._lock_scope(conn, incident_id)
             row = conn.execute(
-                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
+                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE OF i,r",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
@@ -337,6 +568,8 @@ class DurableStore:
                     (run_id,),
                 )
                 incompatible = True
+            elif row["global_suspended"] or row["target_suspended"]:
+                raise PersistenceError("CONTROL_DENIED")
             elif row["incident_state"] in {"completed", "cancelled", "paused"}:
                 raise PersistenceError("CONTROL_DENIED")
             elif row["run_state"] not in ("queued", "running"):
@@ -354,7 +587,13 @@ class DurableStore:
                     (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
-                    incident_id, run_id, owner, epoch, int(row["incident_generation"])
+                    incident_id,
+                    run_id,
+                    owner,
+                    epoch,
+                    int(row["incident_generation"]),
+                    int(row["global_generation"]),
+                    int(row["target_generation"]),
                 )
         if incompatible:
             raise PersistenceError("INCOMPATIBLE_STATE")
@@ -365,6 +604,7 @@ class DurableStore:
         if amount <= 0:
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
             # 结构上必须先读 incident，因此以它为规范顺序）。
@@ -373,7 +613,7 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
                 (lease.run_id,),
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
@@ -407,7 +647,7 @@ class DurableStore:
         """Read the authoritative owner/epoch/generation/expiry fence."""
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND i.incident_id=%s",
                 (lease.run_id, lease.incident_id),
             ).fetchone()
             return bool(row and not self._lease_revoked(row, lease, self._db_now(conn)))
@@ -426,6 +666,7 @@ class DurableStore:
         if logical_key.startswith(_LATE_RESULT_KEY_PREFIX):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
             # 结构上必须先读 incident，因此以它为规范顺序）。
@@ -434,7 +675,7 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
                 (lease.run_id,),
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
@@ -471,6 +712,15 @@ class DurableStore:
                     lease.control_generation,
                 ),
             )
+            frozen = conn.execute(
+                "UPDATE opspilot_input_rounds SET committed=true WHERE run_id=%s AND logical_key=%s AND control_generation=%s RETURNING input_watermark",
+                (lease.run_id, logical_key, lease.control_generation),
+            ).fetchone()
+            if frozen:
+                conn.execute(
+                    "UPDATE opspilot_runs SET input_watermark=GREATEST(input_watermark,%s) WHERE run_id=%s",
+                    (frozen["input_watermark"], lease.run_id),
+                )
             return step_id
 
     def commit_tool(
@@ -478,6 +728,7 @@ class DurableStore:
     ) -> None:
         """Commit one tool result idempotently; late or expired leases are rejected."""
         with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
             # 结构上必须先读 incident，因此以它为规范顺序）。
@@ -486,7 +737,7 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE OF i,r,s",
                 (lease.run_id, step_id),
             ).fetchone()
             if not row:
@@ -515,9 +766,15 @@ class DurableStore:
             )
 
     def control(
-        self, incident_id: UUID, expected_generation: int, action: str, actor: str
+        self,
+        incident_id: UUID,
+        expected_generation: int,
+        action: str,
+        actor: str,
+        payload: dict[str, Any] | None = None,
     ) -> int:
         with self.transaction() as conn:
+            scope = self._lock_scope(conn, incident_id)
             # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」
             # 与「事故存在但 run 行缺失」，两者都会落到 CONTROL_CONFLICT，
             # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
@@ -555,19 +812,30 @@ class DurableStore:
             # 暂停态只接受 resume 与 cancel，与 opspilot/domain/runs.py 的
             # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
             # 追问与纠正不得静默解除人工暂停。
-            if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
+            if (
+                row["state"] == "paused"
+                and action in {"pause", "follow_up", "correct"}
+                and payload is None
+            ):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个
             # 状态，`failed`/`budget_exhausted` 这类终态一旦开始被写入就会静默
             # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
             if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
                 raise PersistenceError("ILLEGAL_TRANSITION")
+            keep_paused = action != "cancel" and (
+                scope["global_suspended"]
+                or scope["target_suspended"]
+                or (row["state"] == "paused" and action in {"follow_up", "correct"})
+            )
             nxt = expected_generation + 1
             state = (
                 "cancelled"
                 if action == "cancel"
                 else ("paused" if action == "pause" else "running")
             )
+            if keep_paused:
+                state = "paused"
             conn.execute(
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
@@ -577,7 +845,12 @@ class DurableStore:
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
-            elif action == "pause":
+            elif action == "pause" and not keep_paused:
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
+                    (nxt, incident_id),
+                )
+            elif keep_paused:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
                     (nxt, incident_id),
@@ -593,17 +866,145 @@ class DurableStore:
                     (nxt, incident_id),
                 )
             conn.execute(
-                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,%s,%s,%s,%s)",
-                (uuid4(), incident_id, action, expected_generation, nxt, actor),
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    uuid4(),
+                    incident_id,
+                    action,
+                    expected_generation,
+                    nxt,
+                    actor,
+                    Jsonb(payload) if payload is not None else None,
+                ),
             )
+            if action in {"follow_up", "correct"}:
+                content = payload if payload is not None else {}
+                seq = self._require_row(
+                    conn.execute(
+                        "SELECT COALESCE(MAX(sequence),0)+1 AS next_sequence FROM opspilot_inputs WHERE incident_id=%s",
+                        (incident_id,),
+                    )
+                )["next_sequence"]
+                conn.execute(
+                    "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                    (uuid4(), incident_id, seq, action, Jsonb(content), actor, nxt),
+                )
             return nxt
+
+    def append_input(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str = "event",
+    ) -> int:
+        """Receive an event even while paused; it never advances analyzed state."""
+        if not isinstance(content, dict):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (incident_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            existing = conn.execute(
+                "SELECT * FROM opspilot_inputs WHERE input_id=%s", (input_id,)
+            ).fetchone()
+            if existing:
+                if (
+                    existing["incident_id"] != incident_id
+                    or existing["content"] != content
+                    or existing["actor"] != actor
+                ):
+                    raise PersistenceError("IDENTITY_CONFLICT")
+                return int(existing["sequence"])
+            seq = self._require_row(
+                conn.execute(
+                    "SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM opspilot_inputs WHERE incident_id=%s",
+                    (incident_id,),
+                )
+            )["sequence"]
+            conn.execute(
+                "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,'event',%s,%s,%s)",
+                (
+                    input_id,
+                    incident_id,
+                    seq,
+                    Jsonb(content),
+                    actor,
+                    row["control_generation"],
+                ),
+            )
+            return int(seq)
+
+    def begin_round(self, lease: Lease, logical_key: str) -> dict[str, Any]:
+        """Freeze input references before dispatch; retry reads the same boundary."""
+        if not logical_key or logical_key.startswith(_LATE_RESULT_KEY_PREFIX):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            scope = self._lock_scope(conn, lease.incident_id)
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE OF r",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            if not row or self._lease_revoked(
+                {**row, **scope}, lease, self._db_now(conn)
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            frozen = conn.execute(
+                "SELECT * FROM opspilot_input_rounds WHERE run_id=%s AND logical_key=%s",
+                (lease.run_id, logical_key),
+            ).fetchone()
+            if frozen and frozen["control_generation"] != lease.control_generation:
+                raise PersistenceError("CONTROL_DENIED")
+            if frozen is None:
+                watermark = self._require_row(
+                    conn.execute(
+                        "SELECT COALESCE(MAX(sequence),0) AS watermark FROM opspilot_inputs WHERE incident_id=%s",
+                        (lease.incident_id,),
+                    )
+                )["watermark"]
+                frozen = self._require_row(
+                    conn.execute(
+                        "INSERT INTO opspilot_input_rounds(run_id,logical_key,control_generation,input_watermark) VALUES(%s,%s,%s,%s) RETURNING *",
+                        (
+                            lease.run_id,
+                            logical_key,
+                            lease.control_generation,
+                            watermark,
+                        ),
+                    )
+                )
+            inputs = conn.execute(
+                "SELECT sequence,kind,content FROM opspilot_inputs WHERE incident_id=%s AND sequence<=%s ORDER BY sequence",
+                (lease.incident_id, frozen["input_watermark"]),
+            ).fetchall()
+            return {**frozen, "inputs": inputs}
+
+    def read_inputs(
+        self, incident_id: UUID, *, after_sequence: int = 0
+    ) -> list[dict[str, Any]]:
+        with self.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM opspilot_inputs WHERE incident_id=%s AND sequence>%s ORDER BY sequence",
+                    (incident_id, after_sequence),
+                ).fetchall()
+            )
 
     def publish(
         self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
     ) -> bool:
         with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
             row = conn.execute(
-                "SELECT i.current_run_id,i.conclusion,i.state AS incident_state,i.control_generation AS incident_generation,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT i.current_run_id,i.conclusion,i.state AS incident_state,i.control_generation AS incident_generation,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE i.incident_id=%s FOR UPDATE OF i,r",
                 (lease.incident_id,),
             ).fetchone()
             if (
@@ -681,7 +1082,20 @@ class DurableStore:
                     not isinstance(call, dict) for call in calls
                 ):
                     raise PersistenceError("INCONSISTENT_STATE")
+            inputs = conn.execute(
+                "SELECT * FROM opspilot_inputs WHERE incident_id=%s ORDER BY sequence",
+                (incident_id,),
+            ).fetchall()
+            rounds = conn.execute(
+                "SELECT * FROM opspilot_input_rounds WHERE run_id=%s ORDER BY logical_key",
+                (run["run_id"],),
+            ).fetchall()
             return {
+                "inputs": inputs,
+                "input_rounds": rounds,
+                "pending_inputs": [
+                    item for item in inputs if item["sequence"] > run["input_watermark"]
+                ],
                 "incident_id": row["incident_id"],
                 "state": row["state"],
                 "control_generation": incident_generation,
