@@ -53,6 +53,7 @@ from tests.m1_tool_support import (
     FixedControl,
     body,
     build,
+    historical_window_context,
 )
 
 UI_USER = "alice"
@@ -540,19 +541,7 @@ class ScriptedInvestigator:
             scope=executor.scope,
             tool_schemas=TOOL_SCHEMAS,
             model_requests=self.model_requests,
-            evidence_context={
-                "type": "opspilot-evidence-context-v4",
-                "time_policies": [
-                    {
-                        "id": "policy-window-1",
-                        "mode": "historical_window",
-                        "window": {
-                            "start": WINDOW_START.isoformat(),
-                            "end": WINDOW_END.isoformat(),
-                        },
-                    }
-                ],
-            },
+            evidence_context=historical_window_context(),
         )
         outcome: LoopOutcome = loop.run(request)
         return outcome
