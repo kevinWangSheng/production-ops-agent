@@ -330,6 +330,9 @@ class DurableStore:
                 "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
             ).fetchone()
+            # 与 PR #26 收敛后的 `_lease_revoked` 同一口径：`lease_until IS NULL`
+            # 判为撤销（control() 收回 worker 权限时正是清空它）。本文件另三条
+            # 写路径仍是 main 上容忍 NULL 的旧写法，由 #26 统一，本处不回改它们。
             if (
                 not row
                 or row["owner"] != lease.owner
