@@ -199,6 +199,15 @@ def render(
     segments = _variant(variant_id)
     if type(model_requests) is not int or model_requests < 1:
         raise ValueError("model_requests must be a positive integer")
+    # final-report 变体没有预算槽位，开场文字硬编码「one model request」。
+    # 不挡的话 model_requests=2/99 都会被接受，渲染字节与 1 逐字节相同——
+    # 调用方以为记录了一个更大的预算，face hash 却和 1 完全一样（机器人审查发现）。
+    if model_requests != 1 and not any(
+        s.key == "model_request_budget" for s in segments
+    ):
+        raise ValueError(
+            f"variant {variant_id!r} has no budget slot; model_requests must be 1"
+        )
     # ``str`` 也是可迭代的：``", ".join("cartservice")`` 逐字符展开成
     # ``c, a, r, t, …``——不报错，但送进模型的授权清单已经烂了。
     # 空服务名同理：渲染出前缀后空无一物，读起来像「没授权任何服务」。

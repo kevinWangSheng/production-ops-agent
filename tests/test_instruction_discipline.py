@@ -135,6 +135,18 @@ def scoped_services(variant_id: str, services: tuple[str, ...]) -> tuple[str, ..
     return ()
 
 
+def budget_for(variant_id: str, requested: int) -> int:
+    """只给带预算槽位的变体传非 1 的预算。
+
+    final-report 没有 ``model_request_budget`` 槽位，开场文字硬编码
+    「one model request」；对它传非 1 现在是 ``ValueError``（fail-closed）。
+    这个 helper 让参数化测试覆盖全部变体而不触发那条拒绝。
+    """
+    if any(s.key == "model_request_budget" for s in d.VARIANTS[variant_id]):
+        return requested
+    return 1
+
+
 # --- 硬约束：冻结的 prompt_sha256 -------------------------------------------
 
 
@@ -272,13 +284,13 @@ def test_instance_values_do_not_move_the_revision(variant_id: str) -> None:
     # 保证（它根本不收实例值）；这条测试真正承重的是下面「实例值确实改变了字节」。
     cheap = d.render(
         variant_id,
-        model_requests=2,
+        model_requests=budget_for(variant_id, 2),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, ("checkoutservice",)),
     )
     rich = d.render(
         variant_id,
-        model_requests=9,
+        model_requests=budget_for(variant_id, 9),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, SERVICES),
     )
@@ -447,7 +459,7 @@ def test_no_credential_shaped_text_reaches_the_prompt(variant_id: str) -> None:
     """
     rendered = d.render(
         variant_id,
-        model_requests=4,
+        model_requests=budget_for(variant_id, 4),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, SERVICES),
     )
@@ -474,6 +486,26 @@ def test_non_positive_budget_is_refused(value: object) -> None:
         d.render(
             "replay-candidate",
             model_requests=value,  # type: ignore[arg-type]
+            report_contract=LEGACY_REPORT_CONTRACT,
+        )
+
+
+@pytest.mark.parametrize("model_requests", [2, 99])
+def test_budgets_for_a_variant_without_the_slot_are_refused_not_dropped(
+    model_requests: int,
+) -> None:
+    """机器人审查：final-report 没有预算槽位，非 1 的预算 → 拒绝，不是静默忽略。
+
+    ``baseline-final-report`` 的开场硬编码「one model request」，没有
+    ``model_request_budget`` 槽位可以回填。放行前，传 ``model_requests=2`` 与
+    ``model_requests=1`` 渲染出逐字节相同的结果，``prompt_face_sha256`` 也相同——
+    调用方以为记录了一个更大的预算，实际送进模型（和记录下来）的字节里根本没有
+    这个数字，是本 PR 一直在关的那类静默丢失实例值。
+    """
+    with pytest.raises(ValueError, match="model_requests must be 1"):
+        d.render(
+            "baseline-final-report",
+            model_requests=model_requests,
             report_contract=LEGACY_REPORT_CONTRACT,
         )
 
