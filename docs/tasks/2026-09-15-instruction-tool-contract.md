@@ -1,10 +1,9 @@
 # 调查指令与工具接口合同
 
 - 状态：第一轮（合同撰写，PR #24）**已合并**；
-  第二轮（DISCIPLINE 收敛 + 确定性测试）**实现完成，PR #27 已提交，但尚未达到「可合并」**。
-  三项阻塞：`checks` 因**他人分支**的 secret-scan 命中而红、独立审查未拿到结论、
-  机器人 code review 执行失败且只覆盖过时提交。详见下方「第二轮」。
-- 更新日期：2026-09-15
+  第二轮（DISCIPLINE 收敛 + 确定性测试）**实现完成，三份独立审查与机器人 `@codex` 审查均已
+  逐条处置，PR #27 待用户审核合并**。详见下方「第二轮」的「PR 交付状态」。
+- 更新日期：2026-09-17
 - 依据：[SPEC.md](../../SPEC.md)「Model priority and design ownership」「Verification and delivery」；
   [C3](../design/technical-proposal-2026-09-07.md) 第 5、7、8 节；
   [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md)；[ADR-0002](../adr/0002-context-driven-investigation.md)。
@@ -479,6 +478,29 @@ C3 第 8 节「模型可见面」的五字段结构体（`returns` / `window_for
 `deepseek-flash-prompt-tool-reference.md` 的撰写规则是否被遵守（第一份，不在待审范围）、
 `holmes_baseline.py` 中 `scope` 为真但 `scope["services"]` 为空是否历史可达（第一份标为**未确认**）。
 
+### 第四份独立审查（本次收尾新派，全新上下文 sonnet subagent，只读）
+
+按 AGENTS.md「独立审查使用未参与该方案或实现的 Agent，并以全新上下文启动」，本次收尾另派一个
+全新上下文的 sonnet subagent，只给它 PR 目标、C3 第 5/8 节、当时的 diff 范围与既有发现清单，
+要求对「字节不变 / 冻结哈希覆盖面 / fail-closed」三点逐条给 file:line 证据的结论，
+不继承本记录的结论。
+
+结果：三点均 **CONFIRMED**，且每条都直接复现（跑测试、构造反例、读证据 JSON 原文），不是转述本记录。
+另发现一条本记录未提及的新问题：`render()` 里 `authorized_services` 被迭代两次
+（校验一遍、拼接一遍），一次性迭代器（生成器、`map()`）会在第一遍校验后被耗尽，
+第二遍拿到空的——校验通过但送进模型的授权列表悄悄变空。
+
+| 发现 | 判定 | 处置 |
+|---|---|---|
+| `authorized_services` 传一次性迭代器会被静默耗尽为空列表 | **成立** | `render()` 先 `tuple(authorized_services)` 物化一次再校验/使用，不再多次迭代同一入参。新增回归测试，`git stash` 复验：改动前失败、改动后通过 |
+
+U-a、U-b 经独立复现确认仍是代码里真实存在、未被悄悄了结的状态
+（U-a：`opspilot/persistence.py:211` 比对的就是 12 位截断短码，没有任何 API 暴露未截断的完整摘要；
+U-b：改 `MISSING_SERIES` 的 `key`、其余不变，`discipline_revision` 短码确实变了）。
+
+范围核查：`git diff origin/main...HEAD --name-status` 只动 5 个既定文件，`SPEC.md`/`ROADMAP.md`/
+`feature_list.json`/`opspilot/tools/registry.py` 均无差异，与前三份审查的结论一致。
+
 ### 冻结证据的覆盖面：1/12 条路径，且 baseline 结构上不可能有
 
 12 条渲染路径（3 变体 × 2 报告契约版本 × 有/无 scope）中，**只有 1 条有冻结哈希背书**
@@ -493,19 +515,38 @@ C3 第 8 节「模型可见面」的五字段结构体（`returns` / `window_for
 模块 docstring 「`render()` 必须逐字节重建出当初送进模型的字符串」对 baseline 不准确，已限定。
 **不得**在别处升级成「baseline 已被冻结哈希保护」。
 
-### PR 交付状态：**未达可合并**，三项阻塞
+### PR 交付状态（2026-09-17 收尾更新）
 
-按 AGENTS.md「code review 待审、失败、thread 未处理，或 `mergeStateStatus` 不是 `CLEAN` 时，
-明确报告未完成及具体阻塞」，本 PR **不能**记为「PR 已就绪，待用户审核合并」：
+此前记录（`090a63c`）称「未达可合并，三项阻塞：`checks` 因他人分支 secret-scan 命中而红、
+独立审查未拿到结论、机器人 code review 执行失败」。三项均已变化，逐条更正：
 
-| # | 阻塞 | 性质 |
+| # | 此前阻塞 | 现状 |
 |---|---|---|
-| 1 | `checks` = FAILURE | 失败步骤是 Secret scan，命中来自**他人分支** `feature/m1-01-intake-auth`（PR #21，commit `64254dfeb2`）。`check_secrets.py` 用 `--log-opts=--all` 扫所有 ref，CI 又是 `fetch-depth: 0`，故全仓 PR 一起红（实测 #20/#26/#27 同签名）。**不在本 PR 范围内**，已通知对应执行者，未动其分支 |
-| 2 | 独立审查未完成 | 见上一节，记为交接缺口 |
-| 3 | 机器人 code review **执行失败** | Codex Code Review 与 Security Review 均 `failed`，且只覆盖已过时的 `59cafba`（当前 HEAD 更靠后）。按 AGENTS.md，机器人**安全**审查不可用不计入阻塞，但 code review 失败须如实报告 |
+| 1 | `checks` = FAILURE（他人分支 secret-scan 命中） | 收尾时重新拉取，`checks` 与 `m0-postgres` 均 SUCCESS——命中已不在当前结果里，不确定是对方分支修复还是该次扫描本身是瞬时的（`--log-opts=--all` 扫共享对象库全部 ref），未继续深挖，因为已不影响本 PR |
+| 2 | 独立审查未完成 | 三份独立审查最终都交回结论（见上方「独立审查与处置（三份」），且机器人 `@codex` 在本轮收尾又发现三条新问题，均已复现、处置，见下表 |
+| 3 | 机器人 code review 执行失败，只覆盖过时提交 | 收尾时用 `@codex review` 手动重新触发，覆盖了当前变更范围，见下表四条 review thread |
 
-`m0-postgres` = SUCCESS，`mergeable` = MERGEABLE，`mergeStateStatus` = BLOCKED。
-本任务不合并，也不为绕过阻塞 1 而改动本 PR 或他人分支。
+**机器人 `@codex` 本轮四条 review thread，逐条处置：**
+
+| # | 位置 | 发现 | 判定 | 处置 |
+|---|---|---|---|---|
+| C1 | `discipline.py:264` | `template_projection()` 只筛 `LAYER_TEMPLATE` 段，挪动一个 L1b/L2 槽位（如 `report_contract`）会改变 `render()` 字节但不 bump `discipline_revision`，一个被重新领取的在途 Run 因此绕过 `blocked(INCOMPATIBLE_STATE)` | **成立** | 投影改为覆盖全部 segment（槽位 `text` 恒为空，不泄漏实例值）。新增回归测试，`git stash` 复验：改动前失败、改动后通过 |
+| C2 | `discipline.py:201` | `baseline-final-report` 没有预算槽位，`render(model_requests=2)` 与 `=1` 逐字节相同、`prompt_face_sha256` 也相同，非 1 的预算被静默吞掉 | **成立** | 没有预算槽位的变体，`model_requests != 1` 直接拒绝，对称于既有的 `authorized_services` 无槽位护栏。新增回归测试，`git stash` 复验同上 |
+| C3 | `discipline.py:272` | `_short()` 截断成 12 位十六进制，`versions` 栅栏比对的是这个截断值，与 C3「比对仍用完整值」的关系不明确时不应径行实现 | **不采纳（维持现状），有依据** | 与任务记录已有的 U-a 是同一件事：两种读法都讲得通，改动成本都不高，但**该由用户裁定**，不是实现者的选择——采纳建议会正是 AGENTS.md 禁止的「选更方便实施的版本」。已在 thread 回复引用 U-a 原文，未改代码 |
+| C4 | 本文件（旧）第 504 行 | 「独立审查未完成」与同文件「独立审查与处置（三份」段自相矛盾，顶部状态行同样过期 | **成立** | 即本节改写；顶部状态行（第 3–5 行）与本节一并更正 |
+
+C1/C2 的改动会移动三个变体的 `discipline_revision` 短码（预期且正确——它们关的是「该 bump 而没 bump」的真实漏洞）；
+`render()` 的输出字节、冻结的 `prompt_sha256`（`9648c6de…`）不受影响，`make check` 复跑见下方验证证据。
+
+`checks`、`m0-postgres` 状态、`mergeable`、`mergeStateStatus` 见 PR #27 页面当前值（不在此记录快照，避免随后续推送失效）。
+
+**收尾复验**：`.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` → `48 passed`；
+`make check` → `1098 passed, 77 skipped, 2 xfailed`（基线仍为起点 main `b483a12` 的
+`1050 passed, 75 skipped`；整个分支相对起点净增 48 个通过用例，其中本次收尾的三个提交
+——一次性迭代器护栏、投影覆盖全部 segment、final-report 预算护栏——各带一条新回归测试，
+均按「`git stash` 掉修复、确认测试转红、恢复修复」的方式逐条复验过）。
+PG 持久化集成本次收尾未重跑——本机无 PostgreSQL/Docker，最后一次实际验证结果见上方
+「验证证据」表（`23 passed`，取自本轮更早一次有 PG 环境的提交）。
 
 ### 本轮未做与限制
 
