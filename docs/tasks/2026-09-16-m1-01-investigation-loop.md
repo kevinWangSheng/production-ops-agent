@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：PR 已就绪，待用户审核合并；上一轮 4 条机器人发现已获授权修复，3 条完全修复、1 条部分修复（另一半需 PR #20 先补 `opspilot/tools/` 的 source 区间字段）（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：PR 已就绪，待用户审核合并；已合并 base 分支 PR #20 的最新提交解决 DIRTY/CONFLICTING，`mergeStateStatus=CLEAN`；上一轮 4 条机器人发现已获授权修复，3 条完全修复、1 条部分修复（另一半所需的 `opspilot/tools/` source 区间字段已随本次 base 合并到位，但补判定逻辑本身仍未做，留给下一次任务）（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-17
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -466,3 +466,58 @@
   期间也独立跑过一次 `test_m1_durable_state_postgres.py` 全量 26 passed）；
   完成后 `postgres_lab stop`；未用 `M0_ENV_FILE`（不涉及真实 DeepSeek
   调用）。
+
+## 追加（2026-09-17 三续）：合并 base 分支 PR #20 的新提交（解决 DIRTY/CONFLICTING）
+
+调度者发现 PR #29 的 `mergeStateStatus` 变成 `DIRTY/CONFLICTING`——base 分支
+`feature/m1-01-tool-executor`（PR #20）当天又追加了 9 个提交（工具预算
+`charge_tool` 原子上限、执行顺序复查、`ToolDescription` 五字段结构化、
+`source_start_at`/`source_end_at` 区间保留等，`f4f30fe`→`fb28026`）。
+授权做法：`git fetch` 后 `git merge origin/feature/m1-01-tool-executor`
+（普通 merge 提交，禁止 rebase/force），语义解冲突，保留双方测试。
+
+- **唯一真实冲突**：`opspilot/persistence.py`。本分支在 `reserve_budget`
+  之后插入了新方法 `settle_budget`（模型请求预算结算，#20 无这个概念）；
+  同时 #20 把相邻的 `charge_tool`（工具预算，#29 不碰这个方法体）签名
+  从 `(lease, operation_id, seconds)` 改成新增必填关键字
+  `max_operations`（原子执行上限修复）。三路合并把两处改动都锚定在同一
+  个 `def` 行邻近位置，误判为互斥。**解法**：保留 HEAD 完整的
+  `settle_budget` 方法体，紧接着换用 origin 的新 `charge_tool` 签名，
+  函数体其余部分本就已正确自动合并（未改动）。核对过 `charge_tool` 的
+  全部调用方（`opspilot/tools/ledger.py`、
+  `tests/integration/test_m1_tool_budget_postgres.py`）均已在 #20 侧带上
+  `max_operations=`；`settle_budget` 的调用方（`opspilot/investigation/`
+  全部文件）不受 #20 影响。
+- **`tests/m1_tool_support.py` 未产生冲突**：#29 从未修改这个文件，#20
+  给 `build()` 新增的 `ledger=None` 关键字参数是纯新增、向后兼容，
+  `tests/m1_investigation_support.py` 里 `assemble()` 对它的调用
+  （`build(clock=clock)`）与返回值解包（`executor, transport, sink, clock`）
+  未受影响；已核对 `scripts/m1_live_flash_loop.py` 的 `build(...)` 调用同样
+  兼容。
+- **其余 11 个标记为冲突候选但实际无冲突的文件**（`opspilot/tools/*`、
+  `tests/test_m1_tool_*`、`docs/tasks/2026-09-14-...md` 等）：均是 #20
+  单方面新增/修改、#29 从未碰过，三路合并直接采纳无需人工介入。
+- **意外发现（记录不处理）**：#20 的 `472a4e1` 已经给
+  `opspilot/tools/executor.py` 的 `TransportResponse`/view 补上了
+  `source_start_at`/`source_end_at` 字段——这正是上一轮任务里判定
+  「发现 #3 另一半无数据基础、需 PR #20 先补字段」时缺的那份数据。
+  merge 后这个前提已经成立，但**本任务范围是合并本身，不包含借机去
+  `reports.py` 补那部分判定**，按范围口径未做，留给下一次任务决定是否
+  接着做。
+
+### 验证证据
+
+- `make check`（merge 后）→ `uv lock --check` 通过；`ruff check` All
+  checks passed；`ruff format --check` 无需改动；`mypy` Success: no
+  issues found in 27 source files；`pytest` **1354 passed, 86 skipped,
+  2 xfailed**（较合并前 1314/84 各自新增 40/2，均来自 #20 一侧新增的
+  工具执行器测试，非本分支代码回归）。
+- PG 定向：`.venv/bin/python -m scripts.m0.postgres_lab start` →
+  `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`
+  → **32 passed, 54 skipped**（较合并前 30 passed 新增 2，为 #20 一侧
+  工具预算原子上限的新 PG 用例）；完成后 `postgres_lab stop`。
+- 推送与 CI：`10f32b6`（merge 提交，双亲 `26d0c70`/`fb28026`）已推送；
+  对该 HEAD `workflow_dispatch` 触发，`checks`/`m0-postgres` 均通过
+  （run 35284885782）。GraphQL 核查 reviewThreads 共 23 条，全部
+  resolve，合并后未产生新 thread；`mergeStateStatus=CLEAN`，
+  `mergeable=MERGEABLE`——DIRTY/CONFLICTING 已解决。
