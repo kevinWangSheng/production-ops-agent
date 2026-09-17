@@ -50,6 +50,9 @@ _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
 #: in flight: the lease must outlast the longest request plus a margin.
 #: Takeover after a hard kill therefore waits at most this long, not the Run
 #: wall. The frozen Run ceilings are untouched (deadline still caps it).
+#: The margin assumes the client's request timeout is a wall bound; it is a
+#: per-socket-operation timeout today, so a source dripping bytes could
+#: still outlast the lease (pre-existing client property, recorded here).
 LEASE_SECONDS = int(MODEL_REQUEST_TIMEOUT_SECONDS) + 60
 _MAX_TEXT = 16_384
 _EVENT_PAGE = 1000
@@ -581,9 +584,10 @@ class Workbench:
         ``run_handoff`` event. The lease is short (``LEASE_SECONDS``) and is
         renewed before every committer call when the store offers
         ``renew_lease`` (PR #35); it must outlast one maximal model request
-        because the loop cannot renew while a request blocks. Without the
-        capability the lease keeps the granted length, so on such a store
-        the caller must pass a ``lease_seconds`` that covers the attempt.
+        because the loop cannot renew while a request blocks. A store
+        without the capability (pre-#35) keeps the previous behaviour: one
+        lease for the whole Run wall, so an attempt is never fenced by its
+        own unrenewable lease.
         """
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
@@ -595,7 +599,12 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
-        seconds = LEASE_SECONDS if lease_seconds is None else lease_seconds
+        if lease_seconds is not None:
+            seconds = lease_seconds
+        elif self.incidents.renewal_supported:
+            seconds = LEASE_SECONDS
+        else:
+            seconds = int(self.run_seconds)
         try:
             lease = self.incidents.claim(
                 incident_id, run_id, self._owner, dict(self.run_versions), seconds

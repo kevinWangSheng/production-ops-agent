@@ -106,6 +106,11 @@ class IncidentStore(Protocol):
         """
         ...
 
+    @property
+    def renewal_supported(self) -> bool:
+        """Whether ``renew_lease`` actually extends (PR #35) or is a no-op."""
+        ...
+
     def committer(self, lease: Lease) -> StepCommitter: ...
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]: ...
@@ -359,6 +364,10 @@ class DurableIncidentStore:
             return None
         renewed: datetime = renew(lease, extend_seconds)
         return renewed
+
+    @property
+    def renewal_supported(self) -> bool:
+        return getattr(self._store, "renew_lease", None) is not None
 
     def committer(self, lease: Lease) -> StepCommitter:
         return DurableStepStore(self._store, lease)

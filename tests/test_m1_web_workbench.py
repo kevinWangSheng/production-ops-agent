@@ -926,9 +926,6 @@ def test_a_held_lease_is_a_quiet_refusal_not_an_event_per_poll():
     assert last.payload["code"] == "INCOMPATIBLE_STATE"
 
 
-_renew_lease_impl = MemoryIncidentStore.renew_lease
-
-
 # -- lease renewal (PR #35 capability, optional on this base) ------------------
 
 
@@ -940,28 +937,26 @@ def test_default_lease_is_short_so_takeover_after_a_hard_kill_waits_lease_not_wa
     submit_incident(app, key="kill")
     subject = workbench.list_incidents()[0].incident_id
     run_id = workbench.list_incidents()[0].current_run_id
+    granted: list = []
 
     class Dies(ScriptedInvestigator):
         def investigate(self, context, committer, evidence):
-            raise KeyboardInterrupt  # hard kill: no handoff, lease left held
+            # Observe the lease exactly as claim() granted it, then die hard.
+            granted.append(workbench.incidents.runs[run_id]["lease_until"])
+            raise KeyboardInterrupt
 
     import pytest
 
     with pytest.raises(KeyboardInterrupt):
-        # BaseException path hands off; emulate a real kill by re-holding
-        # the lease afterwards exactly as claim() granted it.
         workbench.run_once(subject, Dies(clock))
+    assert granted == [clock.now() + timedelta(seconds=LEASE_SECONDS)]
+    # A real kill leaves the lease held: restore what claim() had granted
+    # (the BaseException path above released it in-process).
     run = workbench.incidents.runs[run_id]
-    run.update(
-        owner=uuid4(),
-        state="running",
-        lease_until=clock.now() + timedelta(seconds=LEASE_SECONDS),
-    )
-    # Inside the lease window a takeover is refused, quietly.
+    run.update(owner=uuid4(), state="running", lease_until=granted[0])
     before = workbench.events.latest(subject)
     assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
     assert workbench.events.latest(subject) == before
-    # After LEASE_SECONDS (well before the Run wall) the Run is claimed again.
     clock.advance(LEASE_SECONDS + 1)
     assert clock.now() < run["deadline"]
     outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
@@ -969,7 +964,28 @@ def test_default_lease_is_short_so_takeover_after_a_hard_kill_waits_lease_not_wa
     assert workbench.incidents.runs[run_id]["epoch"] == 2
 
 
-def test_renewal_before_each_commit_keeps_a_long_attempt_alive():
+def test_without_the_capability_the_lease_spans_the_run_wall_as_before():
+    app, workbench, clock = build_workbench()
+    MemoryIncidentStore.renewal_supported = False
+    try:
+        submit_incident(app, key="no-renew")
+        subject = workbench.list_incidents()[0].incident_id
+        run_id = workbench.list_incidents()[0].current_run_id
+        granted: list = []
+
+        class Observe(ScriptedInvestigator):
+            def investigate(self, context, committer, evidence):
+                granted.append(workbench.incidents.runs[run_id]["lease_until"])
+                return super().investigate(context, committer, evidence)
+
+        outcome = workbench.run_once(subject, Observe(clock))
+        assert outcome is not None and outcome.execution == "completed"
+        assert granted == [clock.now() + timedelta(seconds=workbench.run_seconds)]
+    finally:
+        MemoryIncidentStore.renewal_supported = True
+
+
+def test_renewal_before_each_commit_keeps_a_long_attempt_alive(monkeypatch):
     from opspilot.web.service import LEASE_SECONDS
 
     app, workbench, clock = build_workbench()
@@ -991,36 +1007,34 @@ def test_renewal_before_each_commit_keeps_a_long_attempt_alive():
     outcome = workbench.run_once(subject, investigator)
     assert outcome is not None and outcome.execution == "completed"
     assert workbench.incidents.renewals >= 3
-    # The same attempt without the capability is fenced by its own lease.
+    # A store that claims the capability but does not extend (a broken
+    # renew) fences the same attempt by its own lease.
     app2, workbench2, clock2 = build_workbench()
     workbench2.run_seconds = 4 * LEASE_SECONDS
-    # A store without PR #35 answers renewal with None (no capability).
-    MemoryIncidentStore.renew_lease = lambda self, lease, seconds: None
-    try:
-        submit_incident(app2, key="long-no-renew")
-        subject2 = workbench2.list_incidents()[0].incident_id
+    monkeypatch.setattr(MemoryIncidentStore, "renew_lease", lambda self, lease, s: None)
+    submit_incident(app2, key="long-no-renew")
+    subject2 = workbench2.list_incidents()[0].incident_id
 
-        def slow_round2(call_):
-            clock2.advance(LEASE_SECONDS - 30)
-            return reply(tool_calls=[tool_call()], finish="tool_calls")
+    def slow_round2(call_):
+        clock2.advance(LEASE_SECONDS - 30)
+        return reply(tool_calls=[tool_call()], finish="tool_calls")
 
-        def slow_final2(call_):
-            clock2.advance(LEASE_SECONDS - 30)
-            return report_from_transcript(call_)
+    def slow_final2(call_):
+        clock2.advance(LEASE_SECONDS - 30)
+        return report_from_transcript(call_)
 
-        outcome2 = workbench2.run_once(
-            subject2, ScriptedInvestigator(clock2, replies=[slow_round2, slow_final2])
-        )
-        assert outcome2 is not None and outcome2.execution == "failed"
-        assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
-    finally:
-        MemoryIncidentStore.renew_lease = _renew_lease_impl
+    outcome2 = workbench2.run_once(
+        subject2, ScriptedInvestigator(clock2, replies=[slow_round2, slow_final2])
+    )
+    assert outcome2 is not None and outcome2.execution == "failed"
+    assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
 
 
 def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
     app, workbench, clock = build_workbench()
     submit_incident(app, key="refused")
     subject = workbench.list_incidents()[0].incident_id
+    renewals_at_pause: list = []
 
     def pause_then_answer(call_):
         workbench.control(
@@ -1030,6 +1044,7 @@ def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
             expected_generation=0,
             idempotency_key="mid-run",
         )
+        renewals_at_pause.append(workbench.incidents.renewals)
         return report_from_transcript(call_)
 
     investigator = ScriptedInvestigator(
@@ -1044,6 +1059,11 @@ def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
     assert outcome.execution == "failed" and outcome.handoff_reasons == (
         "CONTROL_DENIED",
     )
+    # Renewals happened before the pause and none succeeded after it: the
+    # refused renewal fell through to the store's fence, which recorded
+    # the late final step as history.
+    assert renewals_at_pause[0] >= 2
+    assert workbench.incidents.renewals == renewals_at_pause[0]
     snapshot = workbench.snapshot(subject)
     assert snapshot["report"] is None and snapshot["incident"].state == "paused"
     assert [s["status"] for s in snapshot["steps"]] == [

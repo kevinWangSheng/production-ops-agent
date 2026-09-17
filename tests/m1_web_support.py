@@ -89,6 +89,7 @@ class MemoryIncidentStore:
     # -- helpers ------------------------------------------------------------
 
     payload_supported = True
+    renewal_supported = True
 
     def now(self):
         return self.clock.now()
