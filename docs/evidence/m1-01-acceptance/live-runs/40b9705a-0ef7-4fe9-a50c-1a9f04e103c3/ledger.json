@@ -1,0 +1,67 @@
+{
+  "experiment": "m1-01-flash-loop",
+  "run_id": "40b9705a-0ef7-4fe9-a50c-1a9f04e103c3",
+  "ledger_id": "7a4fd5fa-2a55-4730-b35c-a67d1fdb7847",
+  "started": "2026-09-17T15:05:15.155436+00:00",
+  "ended": "2026-09-17T15:05:26.414477+00:00",
+  "model": "deepseek-flash",
+  "http_count": 2,
+  "attempts": [
+    {
+      "elapsed_seconds": 1.35,
+      "finish_reason": "tool_calls",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1082,
+        "completion_tokens": 209,
+        "total_tokens": 1291,
+        "prompt_tokens_details": {
+          "cached_tokens": 768
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 153
+        },
+        "prompt_cache_hit_tokens": 768,
+        "prompt_cache_miss_tokens": 314
+      },
+      "tool_call_count": 1,
+      "json_mode": false
+    },
+    {
+      "elapsed_seconds": 9.902,
+      "finish_reason": "stop",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1245,
+        "completion_tokens": 2168,
+        "total_tokens": 3413,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1044
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 733
+      },
+      "tool_call_count": 0,
+      "json_mode": true
+    }
+  ],
+  "known_cost_cny_upper": 0.025918,
+  "prompt_tokens": 2327,
+  "completion_tokens": 2377,
+  "execution": "completed",
+  "handoff": true,
+  "handoff_reasons": [
+    "INCOMPLETE_INVESTIGATION"
+  ],
+  "report_schema_version": "m0-report-v2",
+  "report_content_sha256": "a39368aa17fc0f8d6f78ad1292300e0bb15d883096745a1ac8a4255c634a66ea",
+  "evidence_ids": [
+    "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+  ],
+  "steps_committed": 2,
+  "prompt_revision": "prompt-replay-candidate-017c81744c26",
+  "question_sha256": "f80e06ae3d43b9e57e3c7e82edc9006c86ca07d7f39c8b62872f362451e92bbe"
+}

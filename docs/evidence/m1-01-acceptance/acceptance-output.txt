@@ -1,0 +1,17 @@
+# make acceptance on clean tree (git status empty) at HEAD 295bd0a (feature/m1-01-acceptance), 2026-09-17T15:19Z
+.venv/bin/python scripts/m1_acceptance.py
+| scenario | feature | evidence level | result |
+|---|---|---|---|
+| normal-report | F3 | deterministic loop + read-only evidence | PASS |
+| fault-report | F3 | deterministic provider failure handoff | PASS |
+| budget-refusal | F2 | deterministic budget refusal | PASS |
+| deadline-refusal | F2 | deterministic deadline refusal | PASS |
+| pause-cancel | F2/F12 | durable human control projection | PASS |
+| late-result | F2/F12 | stale completion rejection | PASS |
+| worker-restart | F2/F8 | committed evidence survives worker restart | PASS |
+| incompatible-state | F2/F8 | incompatible state blocked handoff | PASS |
+| real-deepseek-records | F3 | recorded real Runs: projection equals ledger | PASS |
+| real-deepseek-report | F3 | one recorded real Run: bound report, no handoff | PASS |
+test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
+python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
+SECRET_SCAN_PASSED

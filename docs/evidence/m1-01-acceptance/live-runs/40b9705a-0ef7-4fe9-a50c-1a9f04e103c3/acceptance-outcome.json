@@ -1,0 +1,19 @@
+{
+  "scenario_id": "m1-01-real-40b9705a-0ef7-4fe9-a50c-1a9f04e103c3",
+  "final_state": "completed",
+  "evidence_ids": [
+    "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+  ],
+  "decision": "handoff",
+  "actions": [
+    "read_only_query"
+  ],
+  "permissions": [
+    "read_only"
+  ],
+  "human_interaction": "handoff",
+  "handoff_reasons": [
+    "INCOMPLETE_INVESTIGATION"
+  ],
+  "report_available": true
+}

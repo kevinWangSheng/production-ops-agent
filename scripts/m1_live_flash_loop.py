@@ -1,7 +1,9 @@
 """Bounded live Flash investigation: product loop + fixture tools + usage ledger.
 
 Reads DEEPSEEK_API_KEY from a private env file, never prints it, and writes a
-business ledger under docs/evidence/. This is not product intake wiring.
+business ledger under docs/evidence/m1-01-acceptance/live-runs/<run_id>/ (or
+M1_ACCEPTANCE_OUT). Each Run gets its own directory so earlier evidence is
+never overwritten. This is not product intake wiring.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from opspilot.acceptance import IncidentScenario, outcome_from_loop
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import (
     InvestigationLoop,
@@ -23,7 +26,13 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import WINDOW_START, body, build, registration
+from tests.m1_tool_support import (
+    WINDOW_START,
+    body,
+    build,
+    historical_window_context,
+    registration,
+)
 
 LIVE_TOOL = "metrics_range_query"
 TOOL_SCHEMAS = (
@@ -53,9 +62,19 @@ TOOL_SCHEMAS = (
     },
 )
 
+# The loop binds each delivered view to the time policies it is eligible for
+# (``eligible_time_policies``) and fails closed: a policy without ``mode`` and
+# ``window`` is never worn by a view, so every fact citing it is REPORT_INVALID
+# even when the model followed the report contract. Share the fixture builder
+# with the loop doubles instead of hand-writing the context here.
+EVIDENCE_CONTEXT = historical_window_context()
+QUESTION = (
+    "Checkout appears to show elevated HTTP errors. Query the authorized "
+    "metrics and return a json investigation report for the authorized window."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
-MAIN_ENV = Path("/Users/shenghuikevin/dev/AI/production-ops-agent/.env")
-OUT = ROOT / "docs/evidence/m1-01-investigation-loop"
+OUT_ROOT = ROOT / "docs/evidence/m1-01-acceptance/live-runs"
 CNY_PER_USD = 7.3
 INPUT_USD_PER_M = 0.3
 OUTPUT_USD_PER_M = 1.2
@@ -113,15 +132,20 @@ def read_key(path: Path) -> str:
 
 
 def resolve_env_file() -> Path:
+    """Only M0_ENV_FILE is trusted; no cross-worktree fallback paths."""
     explicit = os.environ.get("M0_ENV_FILE")
-    candidates = []
     if explicit:
-        candidates.append(Path(explicit).expanduser())
-    candidates.extend([ROOT / ".env", MAIN_ENV])
-    for path in candidates:
+        path = Path(explicit).expanduser()
         if path.is_file():
             return path.resolve()
-    raise SystemExit("credential file unavailable")
+    raise SystemExit("credential file unavailable: set M0_ENV_FILE")
+
+
+def resolve_out_dir(run_id: str) -> Path:
+    explicit = os.environ.get("M1_ACCEPTANCE_OUT")
+    if explicit:
+        return Path(explicit).expanduser() / run_id
+    return OUT_ROOT / run_id
 
 
 def cost_cny(usage: dict) -> float:
@@ -133,19 +157,12 @@ def cost_cny(usage: dict) -> float:
     return round(usd * CNY_PER_USD, 6)
 
 
-def main() -> int:
-    env_file = resolve_env_file()
-    key = read_key(env_file)
-    if not key:
-        print(
-            json.dumps(
-                {"status": "failed", "failure": "trusted credential unavailable"}
-            )
-        )
-        return 2
-    clock = SystemClock()
-    deadline = clock.now() + timedelta(minutes=12)
-    run_id = str(uuid4())
+def build_run(model, *, clock, deadline, run_id, evidence_context=None):
+    """The product loop over the fixture Prometheus tool, exactly as a live Run.
+
+    Shared with the offline replay tests so the evidence context the model is
+    asked to cite is the same one the loop binds reports against.
+    """
     executor, transport, _sink, _ = build(
         clock=clock,
         registrations=[registration(name=LIVE_TOOL)],
@@ -162,27 +179,48 @@ def main() -> int:
     store = MemoryStepStore(
         budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
     )
-    recorder = RecordingClient(DeepSeekClient(key))
-    del key
-    loop = InvestigationLoop(
-        model=recorder, executor=executor, store=store, clock=clock
-    )
+    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
     request = InvestigationRequest(
         run_id=executor.scope.run_id,
-        question=(
-            "Checkout appears to show elevated HTTP errors. Query the authorized "
-            "metrics and return a json investigation report for the authorized window."
-        ),
+        question=QUESTION,
         scope=executor.scope,
         tool_schemas=TOOL_SCHEMAS,
         model_requests=2,
-        evidence_context={
-            "type": "opspilot-evidence-context-v4",
-            "time_policies": [{"id": "policy-window-1"}],
-        },
+        evidence_context=(
+            EVIDENCE_CONTEXT if evidence_context is None else evidence_context
+        ),
     )
+    return loop, request
+
+
+def main() -> int:
+    env_file = resolve_env_file()
+    key = read_key(env_file)
+    if not key:
+        print(
+            json.dumps(
+                {"status": "failed", "failure": "trusted credential unavailable"}
+            )
+        )
+        return 2
+    clock = SystemClock()
+    deadline = clock.now() + timedelta(minutes=12)
+    run_id = str(uuid4())
+    recorder = RecordingClient(DeepSeekClient(key))
+    del key
+    loop, request = build_run(recorder, clock=clock, deadline=deadline, run_id=run_id)
     started = clock.now()
     outcome = loop.run(request)
+    acceptance_outcome = outcome_from_loop(
+        IncidentScenario(
+            scenario_id=f"m1-01-real-{run_id}",
+            feature_id="F3",
+            acceptance_step="external IncidentScenario -> IncidentOutcome",
+            kind="real-deepseek",
+            subject_id="incident-acceptance",
+        ),
+        outcome,
+    )
     ended = clock.now()
     usages = [
         item["usage"]
@@ -213,7 +251,8 @@ def main() -> int:
         "prompt_revision": outcome.prompt_revision,
         "question_sha256": outcome.question_sha256,
     }
-    OUT.mkdir(parents=True, exist_ok=True)
+    OUT = resolve_out_dir(run_id)
+    OUT.mkdir(parents=True, exist_ok=False)
     (OUT / "ledger.json").write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
     if outcome.report_content is not None:
         (OUT / "report.json").write_text(outcome.report_content)
@@ -221,6 +260,23 @@ def main() -> int:
         (OUT / "report-parsed.json").write_text(
             outcome.report.model_dump_json(indent=2)
         )
+    (OUT / "acceptance-outcome.json").write_text(
+        json.dumps(
+            {
+                "scenario_id": acceptance_outcome.scenario_id,
+                "final_state": acceptance_outcome.final_state,
+                "evidence_ids": list(acceptance_outcome.evidence_ids),
+                "decision": acceptance_outcome.decision,
+                "actions": list(acceptance_outcome.actions),
+                "permissions": list(acceptance_outcome.permissions),
+                "human_interaction": acceptance_outcome.human_interaction,
+                "handoff_reasons": list(acceptance_outcome.handoff_reasons),
+                "report_available": acceptance_outcome.report_available,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     summary = {
         "status": outcome.execution,
         "handoff": outcome.handoff,
@@ -228,6 +284,7 @@ def main() -> int:
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
         "report_schema_version": ledger["report_schema_version"],
         "handoff_reasons": ledger["handoff_reasons"],
+        "out_dir": str(OUT.relative_to(ROOT)) if OUT.is_relative_to(ROOT) else str(OUT),
     }
     print(json.dumps(summary))
     return 0 if outcome.execution == "completed" and outcome.report is not None else 1
