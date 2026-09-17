@@ -124,3 +124,68 @@
   `_call_model` 手工核对/合并出上述形态（若自动合并/rebase 丢弃了 `reservation` 变量或两处 `_settle` 调用，
   需要手工补回）；rebase 后重跑 `tests/test_m1_investigation_loop.py` 及本任务的 PG 定向测试确认预算结算未回退。
   本任务（#31）当前分支未做这处改动，因为它依赖 #29 的 `_settle`/`settle_budget`，不在本 PR 范围内。
+
+## 追加修复（2026-09-17 第二轮）：输入白名单投影 + `new_run` 状态一致性
+
+来源：`digest3.md`「PR #31」§5 第 1 条 + PR #31 上一条未 resolve 的机器人 review thread。
+
+### 1. `begin_round` 送入模型的追问/事件内容改为白名单投影
+
+- 问题：`opspilot/investigation/loop.py::_round` 把 `opspilot_inputs.content`（追问/纠正原文、事件，调用方
+  自由传入、无 schema 约束）注入模型 prompt 前，原过滤逻辑是黑名单——只按 4 个固定顶层键
+  （`password`/`secret`/`token`/`authorization`）做大小写不敏感精确匹配，既不过滤嵌套字段，也不认识
+  `api_key`/`Api-Key` 这类常见凭据键名变体，构造 `{"nested": {"api_key": "sk-..."}}` 或
+  `{"Api-Key": "..."}` 即可绕过，原样进入 `canonical(...)` 序列化后的 prompt。
+- 修复：新增 `_INPUT_CONTENT_FIELDS = frozenset({"text", "channel"})` 与 `_project_input_content()`
+  （`opspilot/investigation/loop.py`，紧邻 `_halt_from_store` 之后），只放行这两个顶层字段，且若其值本身是
+  `Mapping`/`list`/`tuple` 也整体丢弃（不做递归剥离，直接丢该键）。`read_inputs()`（人工回读追问/纠正原文）
+  与 `begin_round()` 本身均保持不过滤——这条投影只影响送进模型的路径。
+- 已知边界（非本次遗漏）：`text` 是允许自由文本的字段，若调用方把凭据字符串直接写进 `text` 的文本内容本身
+  （而非塞进结构化子字段/其它顶层键），这段文本仍会原样送入模型——白名单堵的是「结构化字段名绕过」，不做
+  文本内容级别的凭据检测，已在 `loop.py` 该常量上方注释与 PR 描述中注明。
+- 测试基础设施：`opspilot/investigation/store.py::MemoryStepStore` 新增可选 `inputs=` 构造参数（默认
+  `()`，不影响既有调用），使 `begin_round()` 能在不起 PG 的情况下返回预置的 `opspilot_inputs` 行，从而对
+  loop 的投影逻辑做纯单测覆盖。
+- 新增测试 `tests/test_m1_investigation_loop.py::test_investigation_inputs_only_send_the_allowlisted_text_and_channel_fields`：
+  follow_up content 同时携带 `text`/`channel`（应放行）与 `api_key`/`Api-Key`/`AUTHORIZATION`/嵌套
+  `{"nested":{"api_key":...}}`（均应丢弃），断言 outbound 消息精确等于只含 `text`/`channel` 的投影结果。
+  修复前（`git diff`补丁临时回退验证）该测试确认为红：旧黑名单逻辑下 `api_key`/`Api-Key`/嵌套值原样泄漏进
+  outbound（只有 `AUTHORIZATION` 因命中旧黑名单被挡）；修复后绿。
+
+### 2. `new_run()` 挂起期间创建的后继 Run，Run 行本身也要落 `paused`
+
+- 问题（机器人 review thread，`chatgpt-codex-connector`，P2，PR #31）：`new_run()` 在全局/目标暂停生效时把
+  `opspilot_incidents.state` 正确置为 `'paused'`，但插入 `opspilot_runs` 的 INSERT 硬编码 `state='queued'`
+  （`opspilot/persistence.py`，`new_run()`），Run 行状态与其所属 Incident 不一致。`opspilot/recovery.py::
+  rebuild_plan()` 的 `RecoveryPlan.candidate` 只读 `run["state"]`，因此会把这个应保持暂停的后继 Run 误判为
+  可恢复候选，`Worker.resume()` 会据此反复发起一次必然被 scope fence 拒绝的 `claim()`。
+- 判定：这是业务记录一致性缺陷，不是控制绕过——`claim()` 本身通过 Incident 级 `state in
+  {"completed","cancelled","paused"}` 分支独立、正确地拒绝了这个 Run（scope 暂停语义未被绕过），但 Run 行
+  本身记录的状态是错的，且会导致恢复模块做无意义的重试尝试。
+- 修复：把 `next_state`（`paused`/`queued`）的计算挪到 INSERT 之前，INSERT 语句里也用 `next_state` 替代
+  硬编码 `'queued'`，与紧接着对 `opspilot_incidents.state` 的 UPDATE 使用同一个值，两行状态不再可能分叉。
+  未触及 `existing_run`/replay 幂等分支（`row["state"] != "cancelled"` 时提前返回/抛错的路径），无副作用。
+- 新增 PG 测试 `tests/integration/test_m1_control_completion_postgres.py::
+  test_new_run_created_while_suspended_persists_paused_on_the_run_row_too`：取消 Incident、挂起目标、
+  `new_run()`，断言 `rebuild()["run"]["state"] == "paused"` 且 `opspilot.recovery.rebuild_plan(...).candidate
+  is False`，并确认此时 `claim()` 仍独立因 `CONTROL_DENIED` 拒绝（纵深防御第二层不受影响）。修复前该测试在
+  `assert rebuilt["run"]["state"] == "paused"` 处红（`AssertionError: assert 'queued' == 'paused'`）；修复后绿。
+- 已在 PR #31 上对应的机器人 review thread 回复采纳并 resolve。
+
+### 验证与独立审查
+
+- `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_control_completion_postgres.py -v`：**5 passed**
+  （含两个新测试）。
+- `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py -q`：**41 passed**（无回归）。
+- `pytest tests/test_m1_investigation_loop.py tests/test_m1_investigation_pairing.py -q`：**47 passed**
+  （原 46 + 新增 1）。
+- `make check`：**1445 passed, 100 skipped, 2 xfailed**，ruff check/format、mypy 均通过。
+- 独立审查（全新上下文子代理，未参与改动讨论）：自行构造 16 组边界用例直接调用 `_project_input_content`
+  验证白名单无绕过；自行用 diff+apply -R（未用 stash，协调者中途提醒后切换）把两处改动分别临时回退，确认两个
+  新测试在旧代码上确实转红；核对 `read_inputs()`/`begin_round()` 未受影响；核对 `new_run()` 幂等分支与
+  `rebuild_plan()`/`claim()` 因果链；全量回归复核一致。结论：两处修复均安全、依据充分、测试有效，可以合并；
+  建议在 PR 描述注明「白名单不检测 `text` 自由文本内容本身携带的凭据」为已知设计边界。
+- 审查过程中子代理曾用 `git stash push -u` 隔离 `persistence.py` 做红绿对照，`git stash apply` 复原后内容与
+  当前改动逐字一致（已本地 diff 核对），但 `git stash drop` 被权限规则拒绝，遗留 stash 条目
+  `review-verify-persistence-only-1789683798` 在共享 stash 栈里，不影响本仓库工作区内容，需要有权限的会话
+  手动清理。
