@@ -430,6 +430,8 @@ class DurableStore:
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
+        fenced = False
+        step_id: UUID | None = None
         with self.transaction() as conn:
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
@@ -453,32 +455,62 @@ class DurableStore:
                 )
                 or row["deadline"] <= self._db_now(conn)
             ):
-                raise PersistenceError("CONTROL_DENIED")
-            existing = conn.execute(
-                "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
-                (lease.run_id, logical_key),
-            ).fetchone()
-            if existing:
-                return cast(UUID, existing["step_id"])
-            step_id = uuid4()
-            sequence = self._require_row(
+                # Fenced: this reply is no longer authorized to become the
+                # current step, but it must not vanish -- it becomes
+                # non-adopted history, the same way publish() below retains
+                # a late conclusion instead of discarding it (bot review
+                # finding, PR #29). ``pending_tools`` in rebuild() only reads
+                # ``tool_calls`` from a top-level key this payload never
+                # carries, so a late-recorded reply can never be scheduled
+                # for tool execution.
+                #
+                # Raising here instead of after the ``with`` block would
+                # roll this insert back along with it -- the transaction
+                # context commits on a normal return, not on an exception --
+                # so ``fenced`` is set and the raise happens once the
+                # transaction has already committed, exactly as publish()
+                # returns ``False`` instead of raising for the same reason.
                 conn.execute(
-                    "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
-                    (lease.run_id,),
+                    "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
+                    (
+                        uuid4(),
+                        lease.run_id,
+                        f"late:{logical_key}:{uuid4()}",
+                        Jsonb(response),
+                        lease.control_generation,
+                    ),
                 )
-            )["next_sequence"]
-            conn.execute(
-                "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
-                (
-                    step_id,
-                    lease.run_id,
-                    sequence,
-                    logical_key,
-                    Jsonb(response),
-                    lease.control_generation,
-                ),
-            )
-            return step_id
+                fenced = True
+            else:
+                existing = conn.execute(
+                    "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
+                    (lease.run_id, logical_key),
+                ).fetchone()
+                if existing:
+                    step_id = cast(UUID, existing["step_id"])
+                else:
+                    step_id = uuid4()
+                    sequence = self._require_row(
+                        conn.execute(
+                            "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                            (lease.run_id,),
+                        )
+                    )["next_sequence"]
+                    conn.execute(
+                        "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
+                        (
+                            step_id,
+                            lease.run_id,
+                            sequence,
+                            logical_key,
+                            Jsonb(response),
+                            lease.control_generation,
+                        ),
+                    )
+        if fenced:
+            raise PersistenceError("CONTROL_DENIED")
+        assert step_id is not None
+        return step_id
 
     def commit_tool(
         self, lease: Lease, step_id: UUID, ordinal: int, result: dict[str, Any]

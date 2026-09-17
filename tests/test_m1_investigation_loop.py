@@ -525,6 +525,34 @@ def test_retry_re_reserves_and_rechecks_control():
     assert outcome.execution == "failed"
 
 
+def test_a_fenced_reply_after_settlement_is_retained_as_late_history():
+    """Bot review finding #4: a pause/cancel/lease-expiry that fences the
+    lease between settling a physical request and committing its step must
+    not silently drop the model's reply. It becomes non-adopted history,
+    the same way ``DurableStore.publish()`` already retains a late
+    conclusion instead of discarding it."""
+    box: dict[str, MemoryStepStore] = {}
+
+    def deny_then_reply(call):
+        box["store"].deny_control()
+        return reply(content=report_json(evidence_id="ev-fenced"), finish="stop")
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[deny_then_reply],
+        model_requests=1,
+    )
+    box["store"] = store
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    # settle_budget() was fenced too: the reservation stays occupied rather
+    # than being recorded as spent (C3 §13, "unknown cost stays occupied").
+    assert store.budget_reserved == 1
+    assert store.budget_spent == 0
+    assert len(store.late_results) == 1
+    assert store.late_results[0]["response"]["finish_reason"] == "stop"
+
+
 def test_exploration_retry_does_not_consume_the_final_slot():
     payload = json.dumps(
         {

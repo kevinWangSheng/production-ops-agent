@@ -88,6 +88,7 @@ class MemoryStepStore:
         self.steps: dict[str, dict[str, Any]] = {}
         self.step_ids: dict[str, UUID] = {}
         self.tool_results: dict[UUID, list[dict[str, Any]]] = {}
+        self.late_results: list[dict[str, Any]] = []
 
     def deny_control(self) -> None:
         self._control_denied = True
@@ -135,7 +136,16 @@ class MemoryStepStore:
             self.budget_unknown += amount
 
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID:
-        self._guard()
+        if self._control_denied or self._clock.now() >= self.deadline:
+            # Fenced: this reply is no longer authorized to become the
+            # current step, but it must not vanish -- it becomes
+            # non-adopted history, the same way a late ``publish()``
+            # conclusion is retained rather than discarded (bot review
+            # finding, PR #29).
+            self.late_results.append(
+                {"logical_key": logical_key, "response": dict(response)}
+            )
+            raise StepStoreError("CONTROL_DENIED")
         if logical_key in self.step_ids:
             return self.step_ids[logical_key]
         step_id = uuid4()

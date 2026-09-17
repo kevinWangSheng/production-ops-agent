@@ -159,6 +159,34 @@ def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
     assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
 
 
+def test_a_fenced_model_reply_is_retained_as_late_result_history():
+    """Bot review finding #4: commit_step() must not silently drop a fenced
+    reply. A pause between claim and commit_step fences the lease the same
+    way it fences publish() above; the reply becomes ``late_result`` history
+    instead of vanishing."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-step-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    store.control(incident, 0, "pause", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(
+            lease, "round-1", {"finish_reason": "stop", "response_id": "resp-late"}
+        )
+    rebuilt = store.rebuild(incident)
+    late_steps = [s for s in rebuilt["steps"] if s["status"] == "late_result"]
+    assert len(late_steps) == 1
+    assert late_steps[0]["response"]["response_id"] == "resp-late"
+    assert rebuilt["pending_tools"] == []
+
+
 def test_expired_lease_cannot_publish_or_reserve():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
