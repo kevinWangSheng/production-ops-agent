@@ -417,6 +417,13 @@ class _MemoryCommitter:
             raise StepStoreError("CONTROL_DENIED")
         return run
 
+    def begin_round(self, logical_key):
+        self._run()
+        return logical_key, []
+
+    def assert_current(self) -> None:
+        self._run()
+
     def reserve_budget(self, reservation_id, amount):
         if amount <= 0:
             raise StepStoreError("INVALID_INPUT")
