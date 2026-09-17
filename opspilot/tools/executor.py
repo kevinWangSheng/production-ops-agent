@@ -65,6 +65,8 @@ __all__ = [
     "ReadOnlyToolExecutor",
     "ReadOnlyTransport",
     "ToolRequest",
+    "ToolUsage",
+    "ToolUsageLedger",
     "TransportError",
     "TransportRequest",
     "TransportResponse",
@@ -260,6 +262,44 @@ class ControlAuthority(Protocol):
 
 
 @dataclass(frozen=True)
+class ToolUsage:
+    """Tool budget already consumed by a Run, across every execution attempt."""
+
+    operations_used: int = 0
+    tool_seconds_used: float = 0.0
+
+    def __post_init__(self) -> None:
+        if type(self.operations_used) is not int or self.operations_used < 0:
+            raise ToolContractError("INVALID_USAGE")
+        seconds = self.tool_seconds_used
+        if (
+            type(seconds) not in (int, float)
+            or seconds != seconds
+            or seconds in (float("inf"), float("-inf"))
+            or seconds < 0
+        ):
+            raise ToolContractError("INVALID_USAGE")
+
+
+@runtime_checkable
+class ToolUsageLedger(Protocol):
+    """Durable per-Run tool budget authority (technical plan section 13).
+
+    The frozen per-Run ceilings are per *Run*, not per execution attempt, and
+    a worker restart must not reset them. The executor therefore starts from
+    ``usage()`` instead of zero and charges every dispatched operation back
+    through ``charge``: once before the transport call, so the operation is
+    counted even if the process dies mid-flight, and once after it with the
+    measured wall time. Both calls carry the same ``operation_id``, so a
+    repeated charge settles seconds instead of counting the operation twice.
+    """
+
+    def usage(self) -> ToolUsage: ...
+
+    def charge(self, operation_id: str, seconds: float) -> None: ...
+
+
+@dataclass(frozen=True)
 class _Plan:
     registration: ToolRegistration
     target: RegisteredTarget
@@ -280,6 +320,7 @@ class ReadOnlyToolExecutor:
         evidence: EvidenceSink,
         control: ControlAuthority,
         clock: Clock,
+        ledger: ToolUsageLedger,
     ) -> None:
         if not isinstance(scope, QueryScope):
             raise ToolContractError("INVALID_SCOPE")
@@ -296,8 +337,16 @@ class ReadOnlyToolExecutor:
         if not isinstance(clock, Clock):
             raise ToolContractError("INVALID_CLOCK")
         self._clock = clock
-        self._operations_used = 0
-        self._tool_seconds_used = 0.0
+        if not isinstance(ledger, ToolUsageLedger):
+            raise ToolContractError("INVALID_LEDGER")
+        self._ledger = ledger
+        usage = ledger.usage()
+        if not isinstance(usage, ToolUsage):
+            raise ToolContractError("INVALID_LEDGER")
+        # Earlier attempts of this Run already spent part of the budget; the
+        # ceilings in ``scope`` are per Run, so counting resumes from here.
+        self._operations_used = usage.operations_used
+        self._tool_seconds_used = float(usage.tool_seconds_used)
 
     @property
     def scope(self) -> QueryScope:
@@ -455,6 +504,12 @@ class ReadOnlyToolExecutor:
             credential_ref=plan.target.credential_ref,
         )
         self._operations_used += 1
+        # Count the operation durably *before* the read goes out: if the
+        # process dies while the request is in flight, the next attempt still
+        # sees it as spent (section 13: unknown cost stays occupied). A budget
+        # authority that cannot record it stops the call, as control does.
+        if not self._charge(operation.operation_id, 0.0):
+            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None
@@ -474,6 +529,11 @@ class ReadOnlyToolExecutor:
         operation = replace(
             operation, finished_at=self._clock.now(), elapsed_seconds=elapsed
         )
+        # Settle the measured wall time. A result whose cost could not be
+        # recorded is not adopted: the same fail-closed rule as an evidence
+        # store that cannot commit (``EVIDENCE_NOT_COMMITTED``).
+        if not self._charge(operation.operation_id, elapsed):
+            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", "confirmed")
         if failure is not None:
             return self._refuse(operation, *failure)
         if elapsed > timeout:
@@ -571,6 +631,14 @@ class ReadOnlyToolExecutor:
             model_view=record.view,
             evidence=record,
         )
+
+    def _charge(self, operation_id: str, seconds: float) -> bool:
+        try:
+            self._ledger.charge(operation_id, seconds)
+        except Exception:
+            # Ledger error text may carry storage detail; never re-raise it.
+            return False
+        return True
 
     def _register(self, record: EvidenceRecord) -> bool:
         try:

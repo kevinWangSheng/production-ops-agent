@@ -18,6 +18,7 @@ from opspilot.tools import (
     ToolRegistration,
     ToolRegistry,
     ToolRequest,
+    ToolUsage,
     Window,
 )
 
@@ -121,6 +122,23 @@ class SlowControl(FixedControl):
         return super().snapshot(scope)
 
 
+class RecordingLedger:
+    """In-memory tool budget ledger; ``usage`` seeds what earlier attempts spent."""
+
+    def __init__(self, usage=None, fail_on=None):
+        self.usage_value = usage if usage is not None else ToolUsage()
+        self.fail_on = fail_on  # 1-based charge call numbers that raise
+        self.charges = []
+
+    def usage(self):
+        return self.usage_value
+
+    def charge(self, operation_id, seconds):
+        self.charges.append((operation_id, seconds))
+        if self.fail_on is not None and len(self.charges) in self.fail_on:
+            raise RuntimeError("budget ledger unavailable")
+
+
 class UnavailableControl:
     def __init__(self):
         self.calls = 0
@@ -219,6 +237,7 @@ def build(
     control=None,
     clock=None,
     scope_overrides=None,
+    ledger=None,
 ):
     """Assemble an executor plus the doubles the test will assert on."""
 
@@ -228,6 +247,7 @@ def build(
     transport = transport if transport is not None else FakeTransport(clock=clock)
     sink = sink if sink is not None else RecordingSink()
     control = control if control is not None else FixedControl()
+    ledger = ledger if ledger is not None else RecordingLedger()
     executor = ReadOnlyToolExecutor(
         scope=scope(
             target_registry, tool_registry=tool_registry, **(scope_overrides or {})
@@ -238,5 +258,6 @@ def build(
         evidence=sink,
         control=control,
         clock=clock,
+        ledger=ledger,
     )
     return executor, transport, sink, clock

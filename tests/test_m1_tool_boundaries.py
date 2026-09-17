@@ -22,6 +22,7 @@ from opspilot.tools import (
     READ_ONLY_VERBS,
     ControlSnapshot,
     ToolContractError,
+    ToolUsage,
     TransportRequest,
     TransportResponse,
     TransportTimeout,
@@ -34,6 +35,7 @@ from tests.m1_tool_support import (
     FakeClock,
     FakeTransport,
     FixedControl,
+    RecordingLedger,
     RecordingSink,
     SlowControl,
     UnavailableControl,
@@ -686,3 +688,101 @@ def test_the_executor_is_never_handed_credential_material_to_begin_with():
             },
         }
     )
+
+
+# --- the per-Run tool budget survives a new attempt (section 13) -------------
+
+
+def test_the_executor_resumes_counting_from_the_ledger_not_from_zero():
+    """A restarted worker's executor inherits what the Run already spent."""
+    ledger = RecordingLedger(usage=ToolUsage(operations_used=19))
+    executor, transport, _, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([]))
+
+    assert executor.operations_used == 19
+    first = executor.execute(request(tool_index=0))
+    second = executor.execute(request(tool_index=1))
+
+    assert first.status == "no_data"
+    assert (second.status, second.reason) == ("denied", "OPERATION_BUDGET_EXHAUSTED")
+    assert len(transport.requests) == 1
+
+
+def test_the_time_budget_also_resumes_from_the_ledger():
+    ledger = RecordingLedger(usage=ToolUsage(tool_seconds_used=239.0))
+    executor, transport, _, clock = build(ledger=ledger)
+    transport.clock, transport.duration = clock, 1.0
+    transport.response = TransportResponse(body=body([]))
+
+    first = executor.execute(request(tool_index=0))
+    second = executor.execute(request(tool_index=1))
+
+    # Only one second of the frozen 240 s was left, so the timeout is bound to it.
+    assert first.operation.timeout_seconds == 1.0
+    assert first.status == "no_data"
+    assert executor.tool_seconds_used == 240.0
+    assert (second.status, second.reason) == ("denied", "TIME_BUDGET_EXHAUSTED")
+
+
+def test_each_dispatched_operation_is_charged_before_and_after_the_read():
+    ledger = RecordingLedger()
+    executor, transport, _, clock = build(ledger=ledger)
+    transport.clock, transport.duration = clock, 3.0
+    transport.response = TransportResponse(body=body([]))
+
+    refused = executor.execute(request(target_ref="nowhere"))
+    outcome = executor.execute(request())
+
+    assert refused.reason == "TARGET_NOT_REGISTERED"
+    # A refusal that never reached the transport costs nothing.
+    assert ledger.charges == [
+        (outcome.operation.operation_id, 0.0),
+        (outcome.operation.operation_id, 3.0),
+    ]
+
+
+def test_a_ledger_that_cannot_record_the_operation_stops_the_read():
+    ledger = RecordingLedger(fail_on={1})
+    executor, transport, _, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert outcome.source_contact == "none"
+    assert not transport.called
+
+
+def test_a_result_whose_cost_cannot_be_settled_is_not_adopted():
+    ledger = RecordingLedger(fail_on={2})
+    executor, transport, sink, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and outcome.model_view["content"] is None
+    assert sink.records == []
+    # Local accounting still advanced, so this attempt keeps enforcing the cap.
+    assert executor.operations_used == 1
+
+
+def test_a_ledger_that_is_not_a_ledger_is_a_contract_error():
+    class NotALedger:
+        pass
+
+    class BadUsage:
+        def usage(self):
+            return {"operations_used": 1}
+
+        def charge(self, operation_id, seconds):
+            pass
+
+    with pytest.raises(ToolContractError, match="INVALID_LEDGER"):
+        build(ledger=NotALedger())
+    with pytest.raises(ToolContractError, match="INVALID_LEDGER"):
+        build(ledger=BadUsage())
+    for bad in ({"operations_used": -1}, {"tool_seconds_used": float("nan")}):
+        with pytest.raises(ToolContractError, match="INVALID_USAGE"):
+            ToolUsage(**bad)
