@@ -1,0 +1,164 @@
+"""External M1-01 scenarios.  All model/tool cases use deterministic doubles."""
+
+import json
+from dataclasses import replace
+from datetime import timedelta
+from pathlib import Path
+
+from opspilot.acceptance import (
+    IncidentScenario,
+    outcome_from_durable,
+    outcome_from_live_record,
+    outcome_from_loop,
+)
+from opspilot.investigation.loop import ModelError
+from opspilot.investigation.store import MemoryStepStore
+from tests.m1_investigation_support import (
+    assemble,
+    reply,
+    report_from_transcript,
+    tool_call,
+)
+from tests.m1_tool_support import NOW
+
+
+def scenario(kind: str) -> IncidentScenario:
+    return IncidentScenario(
+        scenario_id=f"m1-01-{kind}",
+        feature_id="F3" if kind in {"normal", "fault"} else "F2",
+        acceptance_step="external IncidentScenario -> IncidentOutcome",
+        kind=kind,
+        subject_id="incident-acceptance",
+    )
+
+
+def test_normal_report_is_observable_through_external_seam():
+    loop, request, _model, transport, _store, _sink = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ]
+    )
+    outcome = outcome_from_loop(scenario("normal"), loop.run(request))
+    assert transport.called
+    assert outcome.final_state == "completed"
+    assert outcome.report_available and outcome.evidence_ids
+    assert outcome.permissions == ("read_only",)
+
+
+def test_provider_failure_is_a_visible_handoff_not_a_report():
+    loop, request, _model, _transport, _store, _sink = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE"), ModelError("MODEL_UNAVAILABLE")]
+    )
+    outcome = outcome_from_loop(scenario("fault"), loop.run(request))
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff"
+    assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
+    assert not outcome.report_available
+
+
+def test_budget_refusal_never_looks_completed():
+    loop, request, _model, _transport, store, _sink = assemble(
+        replies=[reply(content="unused")], model_requests=1
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=0, deadline=store.deadline, clock=loop.clock, run_id=request.run_id
+    )
+    outcome = outcome_from_loop(scenario("budget"), loop.run(request))
+    assert outcome.final_state == "budget_exhausted"
+    assert not outcome.report_available
+
+
+def test_deadline_refusal_never_dispatches_a_model_request():
+    loop, request, model, _transport, _store, _sink = assemble(
+        replies=[reply(content="unused")]
+    )
+    outcome = outcome_from_loop(
+        scenario("deadline"),
+        loop.run(
+            replace(
+                request,
+                scope=replace(request.scope, deadline=NOW - timedelta(seconds=1)),
+            )
+        ),
+    )
+    assert outcome.final_state == "failed"
+    assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
+    assert model.calls == []
+
+
+def test_human_pause_and_cancel_are_the_observable_final_authority():
+    paused = outcome_from_durable(
+        scenario("pause"),
+        {"run": {"state": "paused"}, "conclusion": None},
+        action="pause",
+    )
+    cancelled = outcome_from_durable(
+        scenario("cancel"),
+        {"run": {"state": "cancelled"}, "conclusion": None},
+        action="cancel",
+    )
+    assert paused.final_state == "paused" and paused.human_interaction == "pause"
+    assert (
+        cancelled.final_state == "cancelled" and cancelled.human_interaction == "cancel"
+    )
+
+
+def test_incompatible_state_is_a_blocked_handoff():
+    outcome = outcome_from_durable(
+        scenario("incompatible"), {"run": {"state": "blocked"}, "conclusion": None}
+    )
+    assert outcome.final_state == "blocked"
+    assert outcome.handoff_reasons == ("INCOMPATIBLE_STATE",)
+
+
+def test_late_result_is_rejected_after_newer_human_decision():
+    outcome = outcome_from_durable(
+        scenario("late-result"),
+        {
+            "run": {"state": "cancelled"},
+            "conclusion": None,
+            "late_result_rejected": True,
+            "evidence_ids": ["ev-before-cancel"],
+        },
+        action="cancel",
+    )
+    assert outcome.final_state == "cancelled"
+    assert outcome.evidence_ids == ("ev-before-cancel",)
+    assert "late_result_rejected" in outcome.actions
+    assert "STALE_CONTROL_GENERATION" in outcome.handoff_reasons
+    assert outcome.report_available is False
+
+
+def test_worker_restart_resumes_from_committed_evidence():
+    outcome = outcome_from_durable(
+        scenario("worker-restart"),
+        {
+            "run": {"state": "completed"},
+            "conclusion": {"summary": "ok"},
+            "worker_resumed": True,
+            "evidence_ids": ["ev-1", "ev-2"],
+        },
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.evidence_ids == ("ev-1", "ev-2")
+    assert "worker_resumed" in outcome.actions
+    assert outcome.report_available is True
+
+
+def test_recorded_real_deepseek_run_crosses_the_same_external_seam():
+    root = Path(__file__).parents[2]
+    evidence = root / "docs/evidence/m1-01-acceptance"
+    ledger = json.loads((evidence / "real-run-ledger-2.json").read_text())
+    report_path = evidence / "real-run-report-2.json"
+    report = (
+        json.loads(report_path.read_text())
+        if report_path.exists() and ledger.get("report_schema_version")
+        else None
+    )
+    outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
+    assert outcome.permissions == ("read_only",)
+    assert outcome.final_state in {"completed", "failed", "blocked", "budget_exhausted"}
+    assert outcome.human_interaction == "handoff"
+    assert outcome.handoff_reasons
+    assert outcome.report_available is False
