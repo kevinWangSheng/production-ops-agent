@@ -1,0 +1,66 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "incomplete",
+  "conclusion": "inconclusive",
+  "summary": "Only one authorized metric query completed for the fixed window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z against target checkout-prod, and it returned a single aggregate value (http_errors_rate = 0.042) with no baseline, threshold, or time series. The returned evidence also carries an observation timestamp of 2026-09-17T15:05:16Z and freshness_seconds ≈ 313,516 (~3.6 days), with data_as_of equal to the window start, so the returned point is not demonstrably a within-window description of checkout HTTP errors across the requested hour. On the available evidence the reported 'elevated HTTP errors' for checkout is neither confirmed nor excluded; the correct disposition is inconclusive with explicit gaps.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "A metrics_range_query for expression rate(http_errors[5m]) on target checkout-prod returned exactly one result, metric http_errors_rate with value 0.042, status ok, result_count 1, truncated false, for the delivered window 2026-09-14T00:00:00Z–2026-09-14T01:00:00Z.",
+      "evidence_ids": [
+        "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The same returned evidence has observed_at 2026-09-17T15:05:16.509158+00:00, data_as_of 2026-09-14T00:00:00+00:00 (equal to the window start, not the window end), and freshness_seconds 313516.509158; the payload therefore does not demonstrate per-interval coverage of the requested one-hour window.",
+      "evidence_ids": [
+        "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "Checkout HTTP error rate may be elevated in this window, but the retrieved payload supplies no baseline, SLO threshold, or comparison period, so the single value 0.042 cannot by itself establish elevation; the value's unit/denominator is also unspecified in the returned fields.",
+      "evidence_ids": [
+        "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Against a claim of elevated checkout errors, the only retrieved evidence is a single aggregate figure with no preceding baseline, no error-class breakdown, and no per-route or per-service labels; no ERROR-labelled series or threshold breach was returned, and absence of such series in the response is unknown rather than zero.",
+      "evidence_ids": [
+        "2733a186-7003-4390-a6fe-491add3c44a0-t0"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No comparable baseline window (e.g., prior day/hour or same-hour prior week) was supplied or retrieved, so no latency/error trend can be assessed and 'elevated' cannot be evaluated.",
+    "The single returned value is not accompanied by a time series, so intra-window variation in http_errors_rate over 2026-09-14T00:00:00Z–01:00:00Z is unknown.",
+    "No SLO/error-budget threshold or expected error-rate reference was provided, so 0.042 cannot be classified as normal or elevated.",
+    "No dimensional breakdown (route, endpoint, status class, region, pod/service) was retrieved, so the affected checkout surface and any causal concentration remain unknown.",
+    "Data currency is unresolved: returned freshness_seconds ≈ 313,516 with data_as_of at the window start and observed_at 2026-09-17T15:05:16Z; whether any samples exist for later minutes of the authorized window is unknown.",
+    "No log, trace, deployment, or saturation evidence was retrieved, so no error source, call edge, or cause can be attributed; omitted fields and parents remain unknown."
+  ],
+  "next_steps": [
+    "Obtain a comparable baseline (e.g., the same one-hour window on prior days) and the checkout error-rate SLO/threshold so 0.042 can be classified as normal or elevated.",
+    "Run the same error-rate query at a shorter step to retrieve a within-window time series rather than one aggregate point, and verify the data_as_of/freshness against the window end.",
+    "Retrieve labeled breakdowns (status class, route/endpoint, service/pod) to localize any error concentration before drawing conclusions about checkout.",
+    "Correlate with deployment/change records and, if permitted, traces/logs for the same window, since correlation alone would not establish causation."
+  ]
+}

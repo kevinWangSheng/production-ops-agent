@@ -1,0 +1,18 @@
+{
+  "scenario_id": "m1-01-real-bbf10e0e-0b0e-489c-9efd-98b80ef4aa3b",
+  "final_state": "completed",
+  "evidence_ids": [
+    "591a5c52-e3b9-417e-818a-514dd9cd11ba-t0",
+    "591a5c52-e3b9-417e-818a-514dd9cd11ba-t1"
+  ],
+  "decision": "report_available",
+  "actions": [
+    "read_only_query"
+  ],
+  "permissions": [
+    "read_only"
+  ],
+  "human_interaction": null,
+  "handoff_reasons": [],
+  "report_available": true
+}
