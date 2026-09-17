@@ -394,6 +394,58 @@ def test_unavailable_retry_is_a_second_physical_request():
     assert outcome.execution == "completed"
 
 
+def test_every_physical_request_is_settled_as_spent_or_unknown():
+    """C3 §13: reservations are settled in the store; unknown cost stays occupied."""
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["Retry recovered enough to close the run."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 2
+    assert (store.budget_reserved, store.budget_spent, store.budget_unknown) == (
+        0,
+        1,
+        1,
+    )
+    assert sorted(store.settled.values()) == ["spent", "unknown"]
+
+
+def test_a_fenced_settlement_leaves_the_reservation_occupied_and_records_history():
+    class FenceAfterAnswer(MemoryStepStore):
+        def settle_budget(self, reservation_id, outcome):
+            self.deny_control()
+            super().settle_budget(reservation_id, outcome)
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[reply(content="late", finish="stop")], model_requests=1
+    )
+    loop.store = FenceAfterAnswer(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    # Not settled, not released: still counted against the limit.
+    assert (loop.store.budget_reserved, loop.store.budget_spent) == (1, 0)
+
+
 def test_frozen_ceilings_match_the_v4_b2_values():
     assert MAX_MODEL_REQUESTS_PER_RUN == 4
     assert MAX_TOOL_OPERATIONS_PER_RUN == 20

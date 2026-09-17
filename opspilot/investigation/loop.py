@@ -432,6 +432,18 @@ class InvestigationLoop:
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
 
+    def _settle(self, run_id: str, logical_key: str, outcome: str) -> None:
+        try:
+            self.store.settle_budget(reservation_id_for(run_id, logical_key), outcome)
+        except StepStoreError as exc:
+            if exc.code == "CONTROL_DENIED":
+                # The lease was fenced while the request was in flight. The
+                # reservation stays occupied (still counted against the
+                # limit) and the next fenced write records the late response
+                # as history and halts; settlement must not pre-empt that.
+                return
+            raise _halt_from_store(exc) from exc
+
     def _commit_step(
         self,
         logical_key: str,
@@ -473,11 +485,15 @@ class InvestigationLoop:
             timed = replace(
                 call, timeout_seconds=self._remaining_timeout(request, started)
             )
-            self._reserve(request.run_id, f"{logical_key}#a{attempt}")
+            reservation = f"{logical_key}#a{attempt}"
+            self._reserve(request.run_id, reservation)
             self._physical_requests += 1
             try:
                 reply = self.model.complete(timed)
             except ModelError as exc:
+                # The request went out and its cost is not known: the
+                # reservation stays occupied as ``unknown`` (C3 §13).
+                self._settle(request.run_id, reservation, "unknown")
                 last_error = exc
                 slots_left = request.model_requests - self._physical_requests
                 preserve_final = not final and slots_left <= 1
@@ -495,6 +511,9 @@ class InvestigationLoop:
                     )
                     raise _LoopHalt(execution, (exc.code,)) from exc
                 continue
+            # The provider answered: settle the reservation as real usage
+            # before anything else can halt the round.
+            self._settle(request.run_id, reservation, "spent")
             if reply.response_model != self.accepted_response_model:
                 raise _LoopHalt("failed", ("MODEL_IDENTITY_MISMATCH",))
             return reply, timed

@@ -46,6 +46,10 @@ class Lease:
     control_generation: int
 
 
+# 预留结算的两种去向：列名由结算结果决定，不由调用方拼 SQL。
+_SETTLEMENTS: dict[str, str] = {"spent": "budget_spent", "unknown": "budget_unknown"}
+
+
 class DurableStore:
     """Small transactional store; callers only observe committed business rows."""
 
@@ -288,6 +292,60 @@ class DurableStore:
             conn.execute(
                 "UPDATE opspilot_runs SET budget_reserved=budget_reserved+%s WHERE run_id=%s",
                 (amount, lease.run_id),
+            )
+
+    def settle_budget(self, lease: Lease, reservation_id: UUID, outcome: str) -> None:
+        """Settle one reservation after the physical request finished (C3 §13).
+
+        ``spent``: the provider answered, the request is real usage.
+        ``unknown``: the outcome is not known (timeout, transport failure,
+        rejected request); the reserved amount stays occupied under
+        ``budget_unknown`` and is never released. Settling the same
+        reservation twice with the same outcome is a no-op; a different
+        outcome is an identity conflict. Fenced by the lease like every
+        other write path, so a revoked attempt leaves its reservation as
+        ``reserved`` -- still counted against the limit.
+        """
+        if outcome not in _SETTLEMENTS:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                (lease.run_id,),
+            ).fetchone()
+            if (
+                not row
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["control_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= self._db_now(conn)
+                or row["deadline"] <= self._db_now(conn)
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            reservation = conn.execute(
+                "SELECT amount,run_id,state FROM opspilot_budget_reservations WHERE reservation_id=%s FOR UPDATE",
+                (reservation_id,),
+            ).fetchone()
+            if not reservation or reservation["run_id"] != lease.run_id:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if reservation["state"] != "reserved":
+                if reservation["state"] == outcome:
+                    return
+                raise PersistenceError("IDENTITY_CONFLICT")
+            conn.execute(
+                "UPDATE opspilot_budget_reservations SET state=%s WHERE reservation_id=%s",
+                (outcome, reservation_id),
+            )
+            column = _SETTLEMENTS[outcome]
+            conn.execute(
+                f"UPDATE opspilot_runs SET budget_reserved=budget_reserved-%s,{column}={column}+%s WHERE run_id=%s",
+                (reservation["amount"], reservation["amount"], lease.run_id),
             )
 
     def commit_step(

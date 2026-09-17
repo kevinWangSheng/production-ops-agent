@@ -575,3 +575,46 @@ def test_snapshot_transactions_refuse_writes():
                 "UPDATE opspilot_incidents SET state='queued' WHERE incident_id=%s",
                 (incident,),
             )
+
+
+def test_budget_reservations_settle_to_spent_or_unknown_and_never_release():
+    """C3 §13：预算在 PostgreSQL 原子预留和结算，未知费用保持占用。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=3,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    answered, lost, fenced = uuid4(), uuid4(), uuid4()
+    for reservation in (answered, lost, fenced):
+        store.reserve_budget(lease, reservation, 1)
+
+    def totals():
+        row = store.rebuild(incident)["run"]
+        return (row["budget_reserved"], row["budget_spent"], row["budget_unknown"])
+
+    assert totals() == (3, 0, 0)
+    store.settle_budget(lease, answered, "spent")
+    store.settle_budget(lease, answered, "spent")  # replayed settlement
+    store.settle_budget(lease, lost, "unknown")
+    assert totals() == (1, 1, 1)
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.settle_budget(lease, lost, "spent")
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.settle_budget(lease, uuid4(), "spent")
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        store.settle_budget(lease, fenced, "released")
+    # Settlement never frees budget: the limit stays exhausted.
+    with pytest.raises(PersistenceError, match="BUDGET_EXHAUSTED"):
+        store.reserve_budget(lease, uuid4(), 1)
+
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.settle_budget(lease, fenced, "spent")
+    # A fenced attempt leaves its reservation occupied, not lost.
+    assert totals() == (1, 1, 1)

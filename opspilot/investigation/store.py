@@ -33,6 +33,8 @@ class StepCommitter(Protocol):
 
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None: ...
 
+    def settle_budget(self, reservation_id: UUID, outcome: str) -> None: ...
+
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID: ...
 
     def commit_tool(
@@ -80,7 +82,9 @@ class MemoryStepStore:
         self._control_denied = control_denied
         self.budget_reserved = 0
         self.budget_spent = 0
+        self.budget_unknown = 0
         self.reservations: dict[UUID, int] = {}
+        self.settled: dict[UUID, str] = {}
         self.steps: dict[str, dict[str, Any]] = {}
         self.step_ids: dict[str, UUID] = {}
         self.tool_results: dict[UUID, list[dict[str, Any]]] = {}
@@ -103,10 +107,32 @@ class MemoryStepStore:
             if existing != amount:
                 raise StepStoreError("IDENTITY_CONFLICT")
             return
-        if self.budget_reserved + self.budget_spent + amount > self.budget_limit:
+        if (
+            self.budget_reserved + self.budget_spent + self.budget_unknown + amount
+            > self.budget_limit
+        ):
             raise StepStoreError("BUDGET_EXHAUSTED")
         self.reservations[reservation_id] = amount
         self.budget_reserved += amount
+
+    def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
+        if outcome not in ("spent", "unknown"):
+            raise StepStoreError("INVALID_INPUT")
+        self._guard()
+        if reservation_id not in self.reservations:
+            raise StepStoreError("UNKNOWN_IDENTITY")
+        previous = self.settled.get(reservation_id)
+        if previous is not None:
+            if previous != outcome:
+                raise StepStoreError("IDENTITY_CONFLICT")
+            return
+        amount = self.reservations[reservation_id]
+        self.settled[reservation_id] = outcome
+        self.budget_reserved -= amount
+        if outcome == "spent":
+            self.budget_spent += amount
+        else:
+            self.budget_unknown += amount
 
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID:
         self._guard()
@@ -152,6 +178,12 @@ class DurableStepStore:
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         try:
             self._store.reserve_budget(self._lease, reservation_id, amount)
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
+
+    def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
+        try:
+            self._store.settle_budget(self._lease, reservation_id, outcome)
         except PersistenceError as exc:
             raise StepStoreError(str(exc)) from None
 
