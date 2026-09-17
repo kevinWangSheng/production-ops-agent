@@ -780,3 +780,40 @@ tests/integration/test_m1_durable_state_postgres.py -q` → `25 passed`；
   重构该分支时特别注意）。
 - 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
 - F3/F7 的 `passes` 保持 `false`。
+
+## 12. 机器人 code review 六条 thread 处置（2026-09-17 收尾）
+
+推送第 11 节的修复（`570240b`）后，`@codex review` 在当前 HEAD 上留下 6 条此前未处理的
+inline review thread（`required_conversation_resolution` 分支保护要求全部 resolve 才能
+`mergeStateStatus: CLEAN`），逐条核实、处置、回复并 resolve，明细如下：
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `executor.py:530` | P2 | 预记账失败等 `_run()` 内 fetch 前拒绝路径，`ToolOperation.sent` 从 `timeout_seconds is not None` 推断，会在从未派发时误报 `true` | 采纳 | 新增 `dispatched` 字段，`sent` 直接读取它，只在真正调用 `fetch()` 前置位 | `30f3a80` |
+| 2 | `executor.py:552`（本轮新增复查自身） | P2 | 复查只做二元判断，未按剩余时间收紧 `timeout_seconds`，账本+control 读取消耗的时间不会体现在实际超时里 | 采纳 | 复查内重算 `remaining` 并在小于原值时收紧 `request`/`operation` 的 `timeout_seconds` | `46cbf3e` |
+| 3 | `executor.py:865`（`_result_rows`） | P2 | 深嵌套/超长整数会让 `json.loads` 抛 `RecursionError`/`ValueError`，未被捕获，异常直接冒出 `execute()` | 采纳 | `except` 子句扩至 `(UnicodeDecodeError, ValueError, RecursionError)` | `46cbf3e` |
+| 4 | `executor.py:689`（成功路径） | P2 | `model_view` 与 `EvidenceRecord.view` 共享同一 dict，调用方原地修改会连带改到已提交证据 | 采纳 | `model_view=deepcopy(record.view)`，证据侧对象不再被模型侧修改影响 | `46cbf3e` |
+| 5 | `persistence.py:356`（`charge_tool`） | P1 | 计次新操作的 UPDATE 无条件执行，行锁只保证串行化不保证不超额；两个从同一过期快照起步的执行器可把持久计数推过冻结的 20 上限 | 采纳 | UPDATE 加 `AND tool_operations_used<%s`，`rowcount==0` 时抛 `OPERATION_BUDGET_EXHAUSTED`（同事务回滚，不留孤儿计费行）；结算分支不受影响 | `defecd1` |
+| 6 | `executor.py:578`（结算充值失败） | P1（机器人评级） | 结算充值失败时持久秒数停在预记账的 0，重启后新 attempt 会漏算这部分秒数，可重复花费同一段 240s 预算 | **不采纳，回复依据** | 与 2026-09-17 已完成的「P2-3 独立审查处置」表第 5 项是同一场景，当时评级 P3、裁定「记录不改」（理由：窗口窄、结果不采纳+次数已计两个维度仍保守）。机器人评级升到 P1 是严重度判断分歧，不是新技术事实；按 AGENTS.md 不由审查意见自行改写已记录决策，原样上报，是否升级处置交用户裁定 | 不适用（未改代码） |
+
+全部 6 条已在 GitHub 上逐条回复（引用具体提交与测试）并 `resolveReviewThread`；`gh api graphql` 复核
+`reviewThreads` 当前 `isResolved` 全部为 `true`。
+
+第 1、2、3、4、5 项均先复现（红：构造场景证明缺陷存在或让测试在旧代码下失败）再修复（绿），
+并逐项做了变异验证（改回旧逻辑，确认对应新测试转红，随后精确还原并与保存的 `git diff` 补丁
+逐字节核对一致）。第 5 项另外过了真实 PostgreSQL（`M1_DURABLE_POSTGRES=1`）：
+`test_charge_tool_refuses_a_new_operation_once_the_cap_is_reached`、
+`test_charge_tool_settlement_is_not_subject_to_the_cap` 两条新用例 + 原有 25 条共 27 passed；
+变异（还原成无条件 UPDATE）后前一条正确转红（`DID NOT RAISE`），其余不受影响。
+
+独立审查（全新上下文只读子代理，未参与实现，只给目标/6 条机器人原文/`git diff 570240b..HEAD`）
+逐项复核第 1–5 项修复：结论「可以按现状推送，无阻塞发现」，另指出一处不在本轮范围内、当前不可达
+的结构性缺口——`DurableToolLedger` 的 `max_operations` 目前固定为全局冻结上限
+`MAX_OPERATIONS_PER_RUN`（20），与 `QueryScope.max_operations`（允许 `(0, 20]` 内更窄的
+per-Run 值）脱钩；若某个 Run 被授权的上限低于 20，两个执行器仍可能在真正的、per-Run 的上限上
+重演同一竞态。审查确认目前不可利用——`ReadOnlyToolExecutor`/`DurableToolLedger` 均只在测试里
+构造，组合层尚未接入（本文件第 7 节已记录同一落差）——列为交接给未来接线任务的已知项，
+不阻塞本次推送。
+
+第 6 项遗留：是否把「结算失败丢秒数」的处置从「记录不改」升级为需要持久化保守预留，
+以及上述 `max_operations` 脱钩的交接项优先级，均待用户或后续任务决定，本轮不自行选择。
