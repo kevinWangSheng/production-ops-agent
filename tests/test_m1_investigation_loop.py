@@ -164,6 +164,7 @@ def test_v4_opaque_target_refs_are_validated_via_catalog():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "target_catalog": {opaque: {"target_id": "checkout-prod"}},
             "view_bindings": {
@@ -199,6 +200,7 @@ def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "target_catalog": {opaque: {"target_id": "checkout-prod"}},
             "view_bindings": {
@@ -232,6 +234,7 @@ def test_fact_time_scope_must_match_the_cited_view():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}, {"id": "policy-other"}],
             "view_bindings": {
                 evidence_id: {
@@ -257,6 +260,7 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "view_bindings": {
                 evidence_id: {
@@ -272,6 +276,62 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
     assert outcome.handoff is False
     assert transport.called is False
     assert evidence_id in outcome.evidence_ids
+
+
+def test_evidence_context_from_a_different_run_is_not_trusted():
+    """Bot review finding #1: ``delivered_from_context`` must bind the
+    supplied context to this Run's own identity. Without it, a context
+    copied from another Run -- or a fabricated mapping with no run identity
+    at all -- would seed delivered citations as if this Run had produced
+    them, letting a report claim ``supported`` from unbound provenance."""
+    evidence_id = "ev-foreign"
+    loop, request, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    foreign = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": "some-other-run",
+            "time_policies": [{"id": "policy-window-1"}],
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(foreign)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_evidence_context_missing_run_id_entirely_is_not_trusted():
+    """The same gap for a fabricated mapping with no run identity at all."""
+    evidence_id = "ev-no-identity"
+    loop, request, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    no_identity = replace(
+        request,
+        evidence_context={
+            "time_policies": [{"id": "policy-window-1"}],
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(no_identity)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
 
 def test_retry_re_reserves_and_rechecks_control():
@@ -793,6 +853,7 @@ def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
             request,
             evidence_context={
                 **request.evidence_context,
+                "run_id": request.run_id,
                 "view_bindings": {
                     evidence_id: {
                         "status": "ok",
@@ -988,8 +1049,13 @@ def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
     with a poisoned ``evidence_context`` and inspect every byte actually
     handed to the ``ModelClient`` double."""
     evidence_id = "ev-nested-loop"
+    loop, request, model, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
     context = {
         "type": "opspilot-evidence-context-v4",
+        "run_id": request.run_id,
         "time_policies": [
             {
                 "id": "policy-window-1",
@@ -1010,10 +1076,6 @@ def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
             },
         },
     }
-    loop, request, model, _, _, _ = assemble(
-        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
-        model_requests=1,
-    )
     request = replace(request, evidence_context=context)
     outcome = loop.run(request)
     assert outcome.execution == "completed"

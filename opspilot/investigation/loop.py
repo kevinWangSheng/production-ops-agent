@@ -249,7 +249,7 @@ class InvestigationLoop:
             )
         evidence_ids: list[str] = []
         delivered: list[DeliveredView] = delivered_from_context(
-            request.evidence_context
+            request.evidence_context, run_id=request.run_id
         )
         evidence_ids.extend(view.evidence_id for view in delivered)
         self._physical_requests = 0

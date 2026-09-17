@@ -23,6 +23,7 @@ from pydantic import Field, ValidationError, model_validator
 from opspilot.domain.base import DTO, Text
 
 REPORT_SCHEMA_VERSION = "m0-report-v2"
+EVIDENCE_CONTEXT_TYPE = "opspilot-evidence-context-v4"
 CLAIM_KINDS = (
     "fact",
     "hypothesis",
@@ -480,9 +481,21 @@ def unsupported_citations(
     return False
 
 
-def delivered_from_context(context: object) -> list[DeliveredView]:
-    """Seed trusted views from a v4 evidence context's view_bindings."""
+def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredView]:
+    """Seed trusted views from a v4 evidence context's view_bindings.
+
+    The context is caller-supplied and not yet authenticated to this Run.
+    Without binding it to the Run's own identity, a context copied from
+    another Run -- or a fabricated mapping with no run identity at all --
+    would seed citations as if this Run had produced them, letting a report
+    claim ``supported`` from provenance that was never bound to this Run
+    (bot review finding, PR #29). A mismatch or missing identity discards
+    the whole context rather than any single binding: an unbound context is
+    not partially trustworthy.
+    """
     if not isinstance(context, Mapping):
+        return []
+    if context.get("type") != EVIDENCE_CONTEXT_TYPE or context.get("run_id") != run_id:
         return []
     bindings = context.get("view_bindings")
     if not isinstance(bindings, Mapping):
