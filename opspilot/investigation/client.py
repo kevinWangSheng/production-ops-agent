@@ -9,8 +9,9 @@ and re-check the deadline before any retry.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -32,6 +33,33 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+class _Opener(Protocol):
+    """The one method this client uses from ``urllib``'s ``OpenerDirector``."""
+
+    def open(self, request: Request, timeout: float) -> Any: ...
+
+
+class MonotonicClock(Protocol):
+    """Wall-clock elapsed time only -- never wall-clock-of-day.
+
+    Deliberately narrower than ``opspilot.tools.executor.Clock``: this
+    client never makes a lease/deadline decision (that is the loop's job,
+    against ``request.scope.deadline``), so it has no business reading
+    calendar time at all, and ``opspilot``'s product code is not allowed to
+    call ``datetime.now()`` outside the database clock
+    (``DurableStore._db_now``) regardless. Any object with ``.monotonic()``
+    -- including a real ``Clock`` or a ``FakeClock`` -- already satisfies
+    this.
+    """
+
+    def monotonic(self) -> float: ...
+
+
+class _SystemClock:
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
 class DeepSeekClient:
     """Stdlib HTTPS client. One complete response per ``complete`` call."""
 
@@ -41,6 +69,8 @@ class DeepSeekClient:
         *,
         endpoint: str = _ENDPOINT,
         model: str = ACCEPTED_RESPONSE_MODEL,
+        clock: MonotonicClock | None = None,
+        opener: _Opener | None = None,
     ) -> None:
         if not isinstance(api_key, str) or not api_key:
             raise ModelError("MODEL_REJECTED")
@@ -49,7 +79,12 @@ class DeepSeekClient:
         self._api_key = api_key
         self._endpoint = endpoint
         self._model = model
-        self._opener = build_opener(ProxyHandler({}), _NoRedirect())
+        self._clock = clock if clock is not None else _SystemClock()
+        self._opener = (
+            opener
+            if opener is not None
+            else build_opener(ProxyHandler({}), _NoRedirect())
+        )
 
     def complete(self, call: ModelCall) -> ModelReply:
         """One physical HTTPS request. Retries are the loop's budget decision."""
@@ -75,9 +110,17 @@ class DeepSeekClient:
                 "Content-Type": "application/json",
             },
         )
+        # ``timeout`` here already is ``min(360s frozen limit, remaining
+        # deadline, remaining wall)`` (the loop's ``_remaining_timeout``).
+        # ``urlopen``'s ``timeout`` only bounds each individual socket
+        # operation, not the whole response: a slow trickle -- many small
+        # chunks, each arriving just under that per-read timeout -- could
+        # keep ``_read_capped`` looping far past this budget. ``deadline``
+        # below is what actually enforces the wall-clock total.
+        deadline = self._clock.monotonic() + max(timeout, 0.1)
         try:
             with self._opener.open(request, timeout=max(timeout, 0.1)) as response:
-                raw = _read_capped(response)
+                raw = _read_capped(response, self._clock, deadline)
                 return raw, int(response.status)
         except HTTPError as exc:
             try:
@@ -89,9 +132,11 @@ class DeepSeekClient:
             raise ModelError("MODEL_UNAVAILABLE") from exc
 
 
-def _read_capped(response: Any) -> bytes:
+def _read_capped(response: Any, clock: MonotonicClock, deadline: float) -> bytes:
     chunks = bytearray()
     while True:
+        if clock.monotonic() >= deadline:
+            raise ModelError("MODEL_UNAVAILABLE")
         piece = response.read(65536)
         if not piece:
             break

@@ -553,6 +553,28 @@ def test_a_fenced_reply_after_settlement_is_retained_as_late_history():
     assert store.late_results[0]["response"]["finish_reason"] == "stop"
 
 
+def test_a_slow_trickling_model_response_settles_as_unknown_through_the_loop():
+    """Model-request wall clamp (lease-wire-33 report §6), end to end: a
+    real ``DeepSeekClient`` whose transport trickles data forever must not
+    hang the loop or look like a free retry -- every physical attempt it
+    burns is settled as ``unknown`` cost, the same as any other
+    ``MODEL_UNAVAILABLE``."""
+    from opspilot.investigation.client import DeepSeekClient
+    from tests.test_m1_investigation_client import _SlowOpener
+
+    clock = FakeClock()
+    loop, request, _, _, store, _ = assemble(replies=[], model_requests=1, clock=clock)
+    loop.model = DeepSeekClient(
+        "test-key", clock=clock, opener=_SlowOpener(clock, advance_per_read=100)
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
+    assert store.budget_spent == 0
+    assert store.budget_unknown > 0
+    assert set(store.settled.values()) == {"unknown"}
+
+
 def test_exploration_retry_does_not_consume_the_final_slot():
     payload = json.dumps(
         {

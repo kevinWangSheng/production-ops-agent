@@ -162,7 +162,7 @@ def main() -> int:
     store = MemoryStepStore(
         budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
     )
-    recorder = RecordingClient(DeepSeekClient(key))
+    recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     del key
     loop = InvestigationLoop(
         model=recorder, executor=executor, store=store, clock=clock
