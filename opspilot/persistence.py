@@ -208,15 +208,23 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= self._db_now(conn):
                 raise PersistenceError("DEADLINE_EXCEEDED")
+            # 人工决定先于版本判定（C3 第 5 节：版本事故与权限操作是两套语义，
+            # 不得互相顶替）。paused/cancelled/completed 的 Run 行是人工或发布
+            # 落下的记录（ADR-0003），部署换版本后的一次 claim 不得把它改写成
+            # blocked：那会让人工 resume 得到 ILLEGAL_TRANSITION，把人工取消
+            # 投影成 INCOMPATIBLE_STATE。只有本来可领取的 Run 才进版本事故。
+            if row["incident_state"] in {"completed", "cancelled", "paused"}:
+                raise PersistenceError("CONTROL_DENIED")
+            if row["state"] not in ("queued", "running", "blocked"):
+                raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s AND state IN ('queued','running')",
                     (run_id,),
                 )
                 incompatible = True
-            elif row["incident_state"] in {"completed", "cancelled", "paused"}:
-                raise PersistenceError("CONTROL_DENIED")
-            elif row["state"] not in ("queued", "running"):
+            elif row["state"] == "blocked":
+                # 版本已对上但 Run 仍是 blocked：不静默恢复，走显式迁移或新 Run。
                 raise PersistenceError("CONTROL_DENIED")
             elif (
                 row["state"] == "running"
