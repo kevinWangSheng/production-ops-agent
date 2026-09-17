@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：PR 已就绪，待用户审核合并；另有 4 条范围外机器人审查发现已回复/resolve，需要新任务跟进（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：PR 已就绪，待用户审核合并；上一轮 4 条机器人发现已获授权修复，3 条完全修复、1 条部分修复（另一半需 PR #20 先补 `opspilot/tools/` 的 source 区间字段）（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-17
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
