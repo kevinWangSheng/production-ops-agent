@@ -44,6 +44,9 @@ class ControlAudit:
     expected_generation: int
     resulting_generation: int
     actor: str
+    #: ``opspilot_controls.payload`` (PR #31); ``None`` when the column is
+    #: absent or the row carried no content.
+    payload: Mapping[str, Any] | None = None
 
 
 class IncidentStore(Protocol):
@@ -396,9 +399,12 @@ class DurableIncidentStore:
         return frozenset(str(row["run_id"]) for row in rows)
 
     def control_audit(self, incident_id: UUID) -> tuple[ControlAudit, ...]:
+        columns = "action,expected_generation,resulting_generation,actor"
+        if self._payload_supported:
+            columns += ",payload"
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT action,expected_generation,resulting_generation,actor FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation",
+                f"SELECT {columns} FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation",
                 (incident_id,),
             ).fetchall()
         return tuple(
@@ -407,6 +413,7 @@ class DurableIncidentStore:
                 int(row["expected_generation"]),
                 int(row["resulting_generation"]),
                 row["actor"],
+                row.get("payload"),
             )
             for row in rows
         )

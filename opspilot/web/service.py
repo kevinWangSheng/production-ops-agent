@@ -428,18 +428,25 @@ class Workbench:
     ) -> ControlResult | None:
         """Close the window where the store applied a decision we never confirmed.
 
-        The store's own audit row is the authority: if one matches this
-        intent on action, expected generation and actor, write the confirm
-        row now so the note reaches the next Run, and report the decision
-        as replayed. Best effort until the audit carries text/key (PR #31):
-        two crashed attempts by one actor with different texts could still
-        cross-confirm.
+        The store's own audit row is the authority. A row confirms this
+        intent only when action, expected generation and actor match AND
+        the decision's content is provably this intent's: for a text action
+        the audit row must carry the payload (PR #31) with the same text.
+        Without a payload column a text decision is never reconciled, so
+        two crashed attempts by one actor with different texts can no
+        longer cross-confirm; a content-free action (pause/resume/cancel)
+        is the same decision whichever key carried it.
         """
+        text = intent.get("text")
         for audit in self.incidents.control_audit(incident_id):
             if (
                 audit.action == intent["action"]
                 and audit.expected_generation == intent["expected_generation"]
                 and audit.actor == intent["actor_id"]
+                and (
+                    text is None
+                    or (audit.payload is not None and audit.payload.get("text") == text)
+                )
             ):
                 sequence = self.events.append(
                     incident_id,
@@ -491,9 +498,35 @@ class Workbench:
     def list_incidents(self) -> tuple[IncidentSummary, ...]:
         return self.incidents.list_incidents()
 
-    def _events_from_floor(self, incident_id: UUID) -> tuple[SubjectEvent, ...]:
+    def _newest_events(self, incident_id: UUID) -> tuple[SubjectEvent, ...]:
+        """The newest retained page, so its last item is the true watermark.
+
+        An ascending read from the floor would stop at the page limit and
+        leave a gap between the page and ``latest_sequence`` that the SSE
+        resume could never fill.
+        """
         floor = self.events.floor(incident_id)
-        return self.events.read_after(incident_id, max(floor - 1, 0), limit=_EVENT_PAGE)
+        latest = self.events.latest(incident_id)
+        cursor = max(floor - 1, latest - _EVENT_PAGE, 0)
+        return self.events.read_after(incident_id, cursor, limit=_EVENT_PAGE)
+
+    def _controls(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Every confirmed decision from the ledger rows, in generation order."""
+        intents = dict(self.ledger.list_prefix("control_intent", f"{incident_id}:"))
+        rows = []
+        for key, result in self.ledger.list_prefix("control", f"{incident_id}:"):
+            intent = intents.get(key)
+            if intent is None:
+                continue
+            rows.append(
+                dict(
+                    intent,
+                    generation=int(result["generation"]),
+                    sequence=int(result["sequence"]),
+                )
+            )
+        rows.sort(key=lambda item: item["generation"])
+        return rows
 
     def snapshot(self, incident_id: UUID) -> dict[str, Any]:
         """Everything the incident page renders, read from committed rows."""
@@ -508,7 +541,7 @@ class Workbench:
         request = (
             None if intake is None else _envelope_from_json(intake["envelope"]).request
         )
-        events = self._events_from_floor(incident_id)
+        events = self._newest_events(incident_id)
         run = rebuilt["run"]
         steps = [_step_view(step) for step in rebuilt["steps"]]
         outcome = next(
@@ -544,17 +577,11 @@ class Workbench:
             "report": report,
             "handoff_report": handoff_report,
             "outcome": None if outcome is None else dict(outcome.payload),
-            "controls": sorted(
-                self._notes(incident_id)
-                + [
-                    dict(e.payload)
-                    for e in events
-                    if e.kind == "control_applied" and "text" not in e.payload
-                ],
-                key=lambda item: int(item["generation"]),
-            ),
+            "controls": self._controls(incident_id),
             "events": [_event_view(e) for e in events[-50:]],
-            "latest_sequence": self.events.latest(incident_id),
+            "latest_sequence": events[-1].sequence
+            if events
+            else self.events.latest(incident_id),
         }
 
     def evidence_for(

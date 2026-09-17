@@ -73,6 +73,20 @@ def _stored(record: EvidenceRecord) -> StoredEvidence:
     )
 
 
+def _require_same_bytes(existing_raw_sha256: str, raw_sha256: str) -> None:
+    """Idempotent re-registration keeps the first committed observation.
+
+    A worker that stopped between ``register()`` and ``commit_tool()`` is
+    replayed with the same stable ``evidence_id``; the re-executed query
+    returns the same source bytes but a later ``observed_at``, so the view
+    digest differs. C3 section 7 says a committed tool result is reused as
+    the historical observation with its original time, so identity is the
+    raw bytes: same bytes reuse the stored record, different bytes conflict.
+    """
+    if existing_raw_sha256 != raw_sha256:
+        raise PersistenceError("IDENTITY_CONFLICT")
+
+
 class MemoryEvidenceStore:
     def __init__(self) -> None:
         self._records: dict[str, StoredEvidence] = {}
@@ -81,11 +95,7 @@ class MemoryEvidenceStore:
         stored = _stored(record)
         existing = self._records.get(stored.evidence_id)
         if existing is not None:
-            if (
-                existing.raw_sha256 != stored.raw_sha256
-                or existing.view_sha256 != stored.view_sha256
-            ):
-                raise PersistenceError("IDENTITY_CONFLICT")
+            _require_same_bytes(existing.raw_sha256, stored.raw_sha256)
             return existing.evidence_id
         self._records[stored.evidence_id] = stored
         return stored.evidence_id
@@ -137,11 +147,7 @@ class DurableEvidenceStore:
             ).fetchone()
             if row is None:
                 raise PersistenceError("INCONSISTENT_STATE")
-            if (
-                row["raw_sha256"] != stored.raw_sha256
-                or row["view_sha256"] != stored.view_sha256
-            ):
-                raise PersistenceError("IDENTITY_CONFLICT")
+            _require_same_bytes(row["raw_sha256"], stored.raw_sha256)
         return stored.evidence_id
 
     def get(self, evidence_id: str) -> StoredEvidence | None:

@@ -1070,3 +1070,157 @@ def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
     assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"
     run = workbench.incidents.runs[workbench.list_incidents()[0].current_run_id]
     assert run["owner"] is None and run["lease_until"] is None
+
+
+# -- review threads on PR #33 -----------------------------------------------------
+
+
+def test_reconciliation_never_binds_a_different_key_to_a_crashed_decision():
+    """Thread 1 (P1): k1 applied then crashed before confirm; k2 (other text)
+    crashed after recording its intent. k2's retry must not be confirmed as
+    k1's decision."""
+    app, workbench, _ = build_workbench()
+    submit_incident(app, key="xkey")
+    subject = workbench.list_incidents()[0].incident_id
+    real_put = workbench.ledger.put
+
+    def crash_before_confirm(namespace, key, value):
+        if namespace == "control" and key.endswith(":k1"):
+            from opspilot.persistence import PersistenceError
+
+            raise PersistenceError("STORAGE_UNAVAILABLE")
+        return real_put(namespace, key, value)
+
+    workbench.ledger.put = crash_before_confirm
+    try:
+        with __import__("pytest").raises(Exception):
+            workbench.control(
+                subject,
+                actor_id="alice",
+                action="follow_up",
+                expected_generation=0,
+                idempotency_key="k1",
+                text="X",
+            )
+    finally:
+        workbench.ledger.put = real_put
+    assert workbench.list_incidents()[0].control_generation == 1
+    # k2 recorded its intent earlier and crashed before applying.
+    workbench.ledger.put(
+        "control_intent",
+        f"{subject}:k2",
+        {
+            "action": "follow_up",
+            "actor_id": "alice",
+            "expected_generation": 0,
+            "text": "Y",
+        },
+    )
+    import pytest
+
+    from opspilot.web import WorkbenchError
+
+    with pytest.raises(WorkbenchError) as refused:
+        workbench.control(
+            subject,
+            actor_id="alice",
+            action="follow_up",
+            expected_generation=0,
+            idempotency_key="k2",
+            text="Y",
+        )
+    assert refused.value.code == "CONTROL_CONFLICT"
+    assert workbench.ledger.get("control", f"{subject}:k2") is None
+    # k1's own retry is the one that reconciles, with its own text.
+    result = workbench.control(
+        subject,
+        actor_id="alice",
+        action="follow_up",
+        expected_generation=0,
+        idempotency_key="k1",
+        text="X",
+    )
+    assert result.replayed is True and result.generation == 1
+    assert [n["text"] for n in workbench.snapshot(subject)["controls"]] == ["X"]
+
+
+def test_reregistering_committed_evidence_after_a_restart_reuses_it():
+    """Thread 2 (P1): same evidence_id, same raw bytes, later observed_at."""
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.web import MemoryEvidenceStore
+    from tests.m1_tool_support import build, request
+
+    executor, transport, sink, clock = build()
+    from opspilot.tools import TransportResponse
+    from tests.m1_tool_support import WINDOW_START, body
+
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]), data_as_of=WINDOW_START
+    )
+    outcome = executor.execute(request())
+    record = outcome.evidence
+    assert record is not None
+    store = MemoryEvidenceStore()
+    assert store.register(record) == record.evidence_id
+    later_view = dict(record.view, observed_at="2026-09-14T01:06:00+00:00")
+    from opspilot.tools.registry import canonical_hash
+
+    again = replace(
+        record,
+        observed_at=record.observed_at + timedelta(seconds=60),
+        view=later_view,
+        view_sha256=canonical_hash(later_view),
+    )
+    assert store.register(again) == record.evidence_id
+    kept = store.get(record.evidence_id)
+    assert kept is not None and kept.observed_at == record.observed_at
+    assert kept.view_sha256 == record.view_sha256
+    different = replace(
+        record,
+        raw=b'{"data":{"result":[]}}',
+        raw_sha256=__import__("hashlib").sha256(b'{"data":{"result":[]}}').hexdigest(),
+    )
+    import pytest
+
+    from opspilot.persistence import PersistenceError
+
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.register(different)
+
+
+def test_snapshot_shows_the_newest_events_so_sse_resumes_without_a_gap():
+    """Thread 3 (P2): more retained events than one page."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="many")
+    subject = workbench.list_incidents()[0].incident_id
+    workbench.control(
+        subject,
+        actor_id="alice",
+        action="pause",
+        expected_generation=0,
+        idempotency_key="p",
+    )
+    for i in range(1200):
+        workbench.events.append(subject, "filler", {"i": i})
+    workbench.control(
+        subject,
+        actor_id="alice",
+        action="resume",
+        expected_generation=1,
+        idempotency_key="r",
+    )
+    snapshot = workbench.snapshot(subject)
+    latest = workbench.events.latest(subject)
+    assert snapshot["latest_sequence"] == latest
+    assert snapshot["events"][-1]["sequence"] == latest
+    # Controls come from the authoritative rows, not the event page.
+    assert [c["action"] for c in snapshot["controls"]] == ["pause", "resume"]
+    # The outcome of the current run is located even when it lies beyond
+    # the first page: run it now and check again.
+    outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert outcome is not None and outcome.execution == "completed"
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["outcome"] is not None and snapshot["outcome"]["published"] is True
+    assert snapshot["events"][-1]["sequence"] == workbench.events.latest(subject)

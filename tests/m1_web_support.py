@@ -418,7 +418,9 @@ class MemoryIncidentStore:
 
     def control_audit(self, incident_id):
         return tuple(
-            ControlAudit(a["action"], a["expected"], a["resulting"], a["actor"])
+            ControlAudit(
+                a["action"], a["expected"], a["resulting"], a["actor"], a.get("payload")
+            )
             for a in self.controls
             if a["incident_id"] == incident_id
         )

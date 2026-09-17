@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 
-from opspilot.persistence import DurableStore
+from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.web import (
     AuthConfig,
     Authenticator,
@@ -461,3 +461,41 @@ def test_a_refused_renewal_on_postgres_hands_off_with_history():
         "late_result",
     ]
     assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"
+
+
+def test_durable_evidence_reregistration_reuses_the_first_observation():
+    """Review thread (PR #33): replay after a restart must not conflict."""
+    import hashlib
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.tools import TransportResponse
+    from opspilot.tools.registry import canonical_hash
+    from opspilot.web import DurableEvidenceStore
+    from tests.m1_tool_support import WINDOW_START, body, build, request
+
+    executor, transport, _, _ = build(scope_overrides={"run_id": f"run-{uuid4()}"})
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]), data_as_of=WINDOW_START
+    )
+    record = executor.execute(request(step_id=f"step-{uuid4()}")).evidence
+    assert record is not None
+    store = DurableStore(DSN)
+    evidence = DurableEvidenceStore(store)
+    evidence.install()
+    assert evidence.register(record) == record.evidence_id
+    later_view = dict(record.view, observed_at="2026-09-14T01:06:00+00:00")
+    again = replace(
+        record,
+        observed_at=record.observed_at + timedelta(seconds=60),
+        view=later_view,
+        view_sha256=canonical_hash(later_view),
+    )
+    assert evidence.register(again) == record.evidence_id
+    kept = evidence.get(record.evidence_id)
+    assert kept is not None and kept.view_sha256 == record.view_sha256
+    other = b'{"data":{"result":[]}}'
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        evidence.register(
+            replace(record, raw=other, raw_sha256=hashlib.sha256(other).hexdigest())
+        )
