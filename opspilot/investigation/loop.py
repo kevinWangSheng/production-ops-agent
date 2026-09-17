@@ -290,17 +290,7 @@ class InvestigationLoop:
                                 {
                                     "sequence": i["sequence"],
                                     "kind": i["kind"],
-                                    "content": {
-                                        k: v
-                                        for k, v in i["content"].items()
-                                        if k.lower()
-                                        not in {
-                                            "password",
-                                            "secret",
-                                            "token",
-                                            "authorization",
-                                        }
-                                    },
+                                    "content": _project_input_content(i["content"]),
                                 }
                                 for i in inputs
                             ]
@@ -609,6 +599,34 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
     if mapped is None:
         return _LoopHalt("failed", (exc.code,))
     return _LoopHalt(mapped[0], (mapped[1],))
+
+
+# Field allowlist for ``opspilot_inputs.content`` (human follow-up/correction
+# text and intake events) before it reaches the model prompt in ``_round``.
+# ``opspilot_inputs.content`` has no reviewed schema -- it is whatever a
+# caller (e.g. the web control layer) passed to ``DurableStore.control``/
+# ``append_input`` -- so a key-name blocklist only catches names someone
+# thought of in advance and never protects a nested value or an unlisted
+# credential-shaped key (redline P3-4/P3-5 analog for the input channel, not
+# just ``evidence_context``). An allowlist drops everything else, including
+# a dict/list value smuggled under an allowed key, before it can reach the
+# outbound prompt. ``read_inputs()`` (human playback, not the model path)
+# intentionally stays unfiltered -- this projection only guards what the loop
+# sends to the model. Known limit, not a gap this projection can close: a
+# credential pasted directly into the ``text`` free-text string itself still
+# reaches the model -- only structured-field smuggling is in scope here.
+_INPUT_CONTENT_FIELDS = frozenset({"text", "channel"})
+
+
+def _project_input_content(content: object) -> dict[str, Any]:
+    if not isinstance(content, Mapping):
+        return {}
+    return {
+        key: value
+        for key, value in content.items()
+        if key in _INPUT_CONTENT_FIELDS
+        and not isinstance(value, (Mapping, list, tuple))
+    }
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:

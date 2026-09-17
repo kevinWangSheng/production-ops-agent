@@ -8,7 +8,7 @@ asserted without PostgreSQL.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4, uuid5
@@ -72,6 +72,7 @@ class MemoryStepStore:
         clock: Clock,
         run_id: str,
         control_denied: bool = False,
+        inputs: Sequence[dict[str, Any]] = (),
     ) -> None:
         if type(budget_limit) is not int or budget_limit < 0:
             raise StepStoreError("INVALID_INPUT")
@@ -82,6 +83,7 @@ class MemoryStepStore:
         self.deadline = deadline
         self._clock = clock
         self._control_denied = control_denied
+        self._inputs = list(inputs)
         self.budget_reserved = 0
         self.budget_spent = 0
         self.reservations: dict[UUID, int] = {}
@@ -91,7 +93,7 @@ class MemoryStepStore:
 
     def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
         self._guard()
-        return logical_key, []
+        return logical_key, list(self._inputs)
 
     def assert_current(self) -> None:
         self._guard()
