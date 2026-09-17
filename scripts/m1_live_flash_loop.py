@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from opspilot.acceptance import IncidentScenario, outcome_from_loop
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import (
     InvestigationLoop,
@@ -183,6 +184,16 @@ def main() -> int:
     )
     started = clock.now()
     outcome = loop.run(request)
+    acceptance_outcome = outcome_from_loop(
+        IncidentScenario(
+            scenario_id=f"m1-01-real-{run_id}",
+            feature_id="F3",
+            acceptance_step="external IncidentScenario -> IncidentOutcome",
+            kind="real-deepseek",
+            subject_id="incident-acceptance",
+        ),
+        outcome,
+    )
     ended = clock.now()
     usages = [
         item["usage"]
@@ -221,6 +232,23 @@ def main() -> int:
         (OUT / "report-parsed.json").write_text(
             outcome.report.model_dump_json(indent=2)
         )
+    (OUT / "acceptance-outcome.json").write_text(
+        json.dumps(
+            {
+                "scenario_id": acceptance_outcome.scenario_id,
+                "final_state": acceptance_outcome.final_state,
+                "evidence_ids": list(acceptance_outcome.evidence_ids),
+                "decision": acceptance_outcome.decision,
+                "actions": list(acceptance_outcome.actions),
+                "permissions": list(acceptance_outcome.permissions),
+                "human_interaction": acceptance_outcome.human_interaction,
+                "handoff_reasons": list(acceptance_outcome.handoff_reasons),
+                "report_available": acceptance_outcome.report_available,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     summary = {
         "status": outcome.execution,
         "handoff": outcome.handoff,
