@@ -154,9 +154,10 @@ def outcome_from_live_record(
     )
 
 
-# Each PRODUCT-CONSTRAINTS paragraph has a deterministic acceptance owner.
-# It is a checklist, not a claim that the entire product feature has passed.
-PRODUCT_CONSTRAINT_ASSERTIONS: dict[str, tuple[str, ...]] = {
+# Index from each PRODUCT-CONSTRAINTS section to the scenario ids that carry
+# its observable assertions. This is a coverage map, not a behavioural
+# assertion itself and not a claim that the product feature has passed.
+PRODUCT_CONSTRAINT_SCENARIO_INDEX: dict[str, tuple[str, ...]] = {
     "explicit_exclusions": ("F7:readonly",),
     "workflow_uncertainty_visible": ("F3:fault",),
     "evidence_context": ("F3:normal", "F7:hostile-input"),
