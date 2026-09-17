@@ -64,7 +64,16 @@ def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
     s = _store()
     i, r = _accept(s)
     lease = s.claim(i, r, uuid4(), {"v": "1"})
-    assert s.set_global_suspension(True, expected_generation=0) == 1
+    with s.transaction() as conn:
+        generation = conn.execute(
+            "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+        ).fetchone()["global_generation"]
+    assert (
+        s.set_global_suspension(True, expected_generation=generation) == generation + 1
+    )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.reserve_budget(lease, uuid4(), 1)
-    assert s.set_global_suspension(False, expected_generation=1) == 2
+    assert (
+        s.set_global_suspension(False, expected_generation=generation + 1)
+        == generation + 2
+    )
