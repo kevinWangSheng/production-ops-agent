@@ -5,6 +5,8 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from opspilot.acceptance import (
     IncidentScenario,
     outcome_from_durable,
@@ -146,19 +148,70 @@ def test_worker_restart_resumes_from_committed_evidence():
     assert outcome.report_available is True
 
 
-def test_recorded_real_deepseek_run_crosses_the_same_external_seam():
-    root = Path(__file__).parents[2]
-    evidence = root / "docs/evidence/m1-01-acceptance"
-    ledger = json.loads((evidence / "real-run-ledger-2.json").read_text())
-    report_path = evidence / "real-run-report-2.json"
+EVIDENCE_DIR = Path(__file__).parents[2] / "docs/evidence/m1-01-acceptance"
+# The two 2026-09-17 Runs from the harness before its time policy was fixed
+# (REPORT_INVALID), plus every per-Run directory written since.
+REAL_RUN_RECORDS = sorted(
+    [
+        (EVIDENCE_DIR / "real-run-ledger.json", EVIDENCE_DIR / "real-run-report.json"),
+        (
+            EVIDENCE_DIR / "real-run-ledger-2.json",
+            EVIDENCE_DIR / "real-run-report-2.json",
+        ),
+    ]
+    + [
+        (path, path.with_name("report-parsed.json"))
+        for path in (EVIDENCE_DIR / "live-runs").glob("*/ledger.json")
+    ],
+    key=lambda pair: str(pair[0]),
+)
+# The first Run whose model report passed the loop's v4 bind end to end.
+POSITIVE_LIVE_RUN = "bbf10e0e-0b0e-489c-9efd-98b80ef4aa3b"
+
+
+def _live_record(ledger_path: Path, report_path: Path):
+    ledger = json.loads(ledger_path.read_text())
     report = (
         json.loads(report_path.read_text())
-        if report_path.exists() and ledger.get("report_schema_version")
+        if ledger.get("report_schema_version") and report_path.exists()
         else None
     )
+    return ledger, report
+
+
+@pytest.mark.parametrize(
+    "ledger_path, report_path", REAL_RUN_RECORDS, ids=lambda p: p.parent.name
+)
+def test_recorded_real_deepseek_runs_project_exactly_what_their_ledger_says(
+    ledger_path, report_path
+):
+    """The seam mirrors the ledger; it neither upgrades nor hides a Run."""
+    ledger, report = _live_record(ledger_path, report_path)
     outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
     assert outcome.permissions == ("read_only",)
-    assert outcome.final_state in {"completed", "failed", "blocked", "budget_exhausted"}
-    assert outcome.human_interaction == "handoff"
-    assert outcome.handoff_reasons
-    assert outcome.report_available is False
+    assert outcome.final_state == ledger["execution"]
+    assert outcome.handoff_reasons == tuple(ledger["handoff_reasons"])
+    assert outcome.evidence_ids == tuple(ledger["evidence_ids"])
+    if ledger["handoff"]:
+        assert outcome.decision == "handoff"
+        assert outcome.human_interaction == "handoff"
+    else:
+        assert outcome.decision == "report_available"
+        assert outcome.human_interaction is None
+    # A validated report is visible exactly when the ledger recorded one.
+    assert outcome.report_available is (ledger["report_schema_version"] is not None)
+
+
+def test_a_real_deepseek_run_has_produced_a_bound_report_without_handoff():
+    ledger_path = EVIDENCE_DIR / "live-runs" / POSITIVE_LIVE_RUN / "ledger.json"
+    ledger, report = _live_record(
+        ledger_path, ledger_path.with_name("report-parsed.json")
+    )
+    assert ledger["prompt_revision"] == "prompt-replay-candidate-017c81744c26"
+    outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
+    assert outcome.final_state == "completed"
+    assert outcome.decision == "report_available"
+    assert outcome.handoff_reasons == ()
+    assert outcome.report_available is True
+    assert report is not None and report["schema_version"] == "m0-report-v2"
+    assert report["assessment_status"] == "completed"

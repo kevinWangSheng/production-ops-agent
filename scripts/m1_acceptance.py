@@ -55,10 +55,16 @@ SCENARIOS = (
         "test_incompatible_state_is_a_blocked_handoff",
     ),
     (
-        "real-deepseek-record",
+        "real-deepseek-records",
         "F3",
-        "real ledger-backed Run (historical, handoff)",
-        "test_recorded_real_deepseek_run_crosses_the_same_external_seam",
+        "recorded real Runs: projection equals ledger",
+        "test_recorded_real_deepseek_runs_project_exactly_what_their_ledger_says",
+    ),
+    (
+        "real-deepseek-report",
+        "F3",
+        "one recorded real Run: bound report, no handoff",
+        "test_a_real_deepseek_run_has_produced_a_bound_report_without_handoff",
     ),
 )
 
