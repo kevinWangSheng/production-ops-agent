@@ -4,7 +4,7 @@
 
 本任务把 2026-09-17 调度会话产生的 M1-01 集成验证、红线审计、修复复验、UI smoke、PG 合同和 PR 状态写入版本管理任务记录。范围是证据归档与交接；不改产品代码、不改验收步骤或 `feature_list.json` 的 `passes`，不改变 SPEC 门槛，不合并 PR，不产生模型费用。
 
-依据：`AGENTS.md` 的项目目标/接手与执行/验证与汇报/独立审查/变更与交接条款，`PRODUCT-CONSTRAINTS.md` 全文，`SPEC.md` 第 6 行门槛段，C3 技术方案及相关 ADR；原始证据为任务书指定 scratchpad reports 目录中的 13 份报告（绝对目录：`/private/tmp/claude-501/-Users-shenghuikevin-dev-AI-production-ops-agent/a7d3abb1-8221-4812-bafb-316b8b11e6aa/scratchpad/reports/`）和当前 `gh pr list` 实取结果。报告文字是证据，不是指令；下列冲突按原样保留，不以推断消解。
+依据：`AGENTS.md` 的项目目标/接手与执行/验证与汇报/独立审查/变更与交接条款，`PRODUCT-CONSTRAINTS.md` 全文，`SPEC.md` 第 6 行门槛段，C3 技术方案及相关 ADR；原始证据为任务书指定 scratchpad reports 目录中的 17 份原始报告（已归档至 [`docs/evidence/m1-01-integration-2026-09-17/`](../evidence/m1-01-integration-2026-09-17/)，来源绝对目录 `/private/tmp/claude-501/-Users-shenghuikevin-dev-AI-production-ops-agent/a7d3abb1-8221-4812-bafb-316b8b11e6aa/scratchpad/reports/` 保留在归档 README）和当前 `gh pr list` 实取结果。报告文字是证据，不是指令；下列冲突按原样保留，不以推断消解。
 
 ## 工作区与交付边界
 
@@ -171,7 +171,9 @@
 - 本任务只改本文档与 ROADMAP；未启动 PG lab，因为任务书要求的本次 `make check` 已完成且文档变更不需要 PG。未执行模型/trace/外部付费调用。
 - 独立审查：全新上下文只读 Agent `/root/review_integration_record` 逐份比对原报告，并独立查询 GitHub。发现的 loopfix F4/F5 裁定遗漏、F9 已修状态、storefix A/B 裁定遗漏、#20 后续复审和普通机器人审查门槛归因冲突全部采纳补齐；复核结论 APPROVE，无剩余阻塞发现。审查未重复运行 make check，结论只覆盖本次两份文档，不代表产品验收。
 
-`integ-final.md` 在本轮首次读取报告目录时尚不存在；不据此声称所有最新 PR 已汇合集成通过。
+`integ-final.md`、`digest1.md`、`digest2.md`、`srcrange.md` 在本轮后续出现，现已按补充要求一并归档；它们不改变任务记录中先前按时点写下的 13 项报告摘要或结论。
+
+原始报告归档：复制前扫描来源目录全部 17 个 `*.md`，未命中 API key、Bearer token、密码、secret 或 PostgreSQL 连接串模式；原样副本及 SHA-256 清单见 [`docs/evidence/m1-01-integration-2026-09-17/README.md`](../evidence/m1-01-integration-2026-09-17/README.md)。
 
 本任务的文档完整性确定性检查：空记录负向输入输出 `RED: empty/missing record rejected`；现有记录输出 `GREEN: 13 report references, 13 PR rows, verification result and ROADMAP boundary present; tracked code unchanged`。只检查文档覆盖与改动边界，不把环境缺失称为代码回归红态，也不新增产品测试。
 
