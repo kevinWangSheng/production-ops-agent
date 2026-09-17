@@ -148,7 +148,7 @@ def test_worker_restart_resumes_from_committed_evidence():
 
 def test_recorded_real_deepseek_run_crosses_the_same_external_seam():
     root = Path(__file__).parents[2]
-    evidence = root / "docs/evidence/m1-01-investigation-loop"
+    evidence = root / "docs/evidence/m1-01-acceptance"
     ledger = json.loads((evidence / "real-run-ledger-2.json").read_text())
     report_path = evidence / "real-run-report-2.json"
     report = (
