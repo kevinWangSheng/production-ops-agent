@@ -357,7 +357,7 @@ class DurableStore:
                     "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human')"
                 )
             conn.execute(
-                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(NULL,%s,%s,%s)",
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(NULL,%s,%s,%s)",
                 (suspended, nxt, actor),
             )
             return nxt
@@ -414,7 +414,7 @@ class DurableStore:
                     (target_id,),
                 )
             conn.execute(
-                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(%s,%s,%s,%s)",
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(%s,%s,%s,%s)",
                 (target_id, suspended, nxt, actor),
             )
             return nxt
