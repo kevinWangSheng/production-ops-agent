@@ -1,3 +1,4 @@
+# make acceptance on clean tree (git status empty) at HEAD 295bd0a (feature/m1-01-acceptance), 2026-09-17T15:19Z
 .venv/bin/python scripts/m1_acceptance.py
 | scenario | feature | evidence level | result |
 |---|---|---|---|
