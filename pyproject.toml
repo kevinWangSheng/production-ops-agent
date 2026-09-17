@@ -13,10 +13,15 @@ m0 = [
     "psycopg[binary]==3.3.3",
     "pydantic==2.13.5",
 ]
+web = [
+    "fastapi==0.141.1",
+    "jinja2==3.1.6",
+    "uvicorn==0.53.0",
+]
 
 [tool.uv]
 package = false
-default-groups = ["dev", "m0"]
+default-groups = ["dev", "m0", "web"]
 
 [tool.ruff]
 target-version = "py312"
