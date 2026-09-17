@@ -16,6 +16,7 @@ class RecoverySession:
     plan: RecoveryPlan
     lease: Lease
     store: DurableStore
+    renew_seconds: int = 420
 
     def _assert_current(self) -> None:
         if not self.store.lease_current(self.lease):
@@ -27,6 +28,17 @@ class RecoverySession:
         ):
             raise PersistenceError("CONTROL_DENIED")
 
+    def _renew(self) -> None:
+        # Optional capability: DurableStore.renew_lease ships with #35, not yet
+        # merged into this branch. Absent, this is a no-op and behavior is
+        # unchanged; once present it keeps the lease alive across a tool call
+        # (which can run as long as the tool timeout) before the commit that
+        # depends on it, under the same fence and rejection semantics
+        # (PersistenceError) as the rest of this module.
+        renew = getattr(self.store, "renew_lease", None)
+        if renew is not None:
+            renew(self.lease, self.renew_seconds)
+
     def execute_pending(
         self, execute: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     ) -> int:
@@ -34,6 +46,7 @@ class RecoverySession:
         for item in self.plan.pending_tools:
             self._assert_current()
             result = execute(item)
+            self._renew()
             self.store.commit_tool(
                 self.lease, item["step_id"], int(item["ordinal"]), dict(result)
             )
@@ -64,7 +77,13 @@ class Worker:
             incident_id, run_id, self.owner, self.versions, lease_seconds
         )
 
-    def resume(self, incident_id: UUID, *, lease_seconds: int = 30) -> RecoverySession:
+    def resume(
+        self,
+        incident_id: UUID,
+        *,
+        lease_seconds: int = 30,
+        renew_seconds: int = 420,
+    ) -> RecoverySession:
         plan = self.recover(incident_id)
         if not plan.candidate:
             raise PersistenceError("CONTROL_DENIED")
@@ -72,4 +91,4 @@ class Worker:
         if plan.control_generation != lease.control_generation:
             self.store.abandon(lease)
             raise PersistenceError("CONTROL_DENIED")
-        return RecoverySession(plan, lease, self.store)
+        return RecoverySession(plan, lease, self.store, renew_seconds)
