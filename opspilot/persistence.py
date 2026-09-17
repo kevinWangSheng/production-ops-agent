@@ -339,7 +339,11 @@ class DurableStore:
                 )
             )
             current = int(row["global_generation"])
-            if expected_generation is not None and expected_generation != current:
+            if (
+                type(expected_generation) is not int
+                or expected_generation < 0
+                or expected_generation != current
+            ):
                 raise PersistenceError("CONTROL_CONFLICT")
             nxt = current + 1
             conn.execute(
@@ -393,7 +397,11 @@ class DurableStore:
                 )
             )
             current = int(row["generation"])
-            if expected_generation is not None and expected_generation != current:
+            if (
+                type(expected_generation) is not int
+                or expected_generation < 0
+                or expected_generation != current
+            ):
                 raise PersistenceError("CONTROL_CONFLICT")
             nxt = current + 1
             conn.execute(
@@ -481,7 +489,7 @@ class DurableStore:
                 ).fetchone()
                 if (
                     replay is not None
-                    and row["state"] == "queued"
+                    and row["state"] in {"queued", "paused"}
                     and row["current_run_id"] == run_id
                     and int(row["control_generation"]) == generation
                 ):

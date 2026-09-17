@@ -22,7 +22,9 @@ def _store():
             "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1"
         ).fetchone()
     if row["global_suspended"]:
-        s.set_global_suspension(False, expected_generation=row["global_generation"])
+        s.set_global_suspension(
+            False, expected_generation=row["global_generation"], actor="operator"
+        )
     return s
 
 
@@ -47,7 +49,9 @@ def test_scope_suspension_fences_claim_and_release_does_not_resume_old_run():
     assert s.set_target_suspension(t, True, expected_generation=0) == 1
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.claim(i, r, uuid4(), {"v": "1"})
-    assert s.set_target_suspension(t, False, expected_generation=1) == 2
+    assert (
+        s.set_target_suspension(t, False, expected_generation=1, actor="operator") == 2
+    )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.claim(i, r, uuid4(), {"v": "1"})
 
@@ -74,6 +78,8 @@ def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.reserve_budget(lease, uuid4(), 1)
     assert (
-        s.set_global_suspension(False, expected_generation=generation + 1)
+        s.set_global_suspension(
+            False, expected_generation=generation + 1, actor="operator"
+        )
         == generation + 2
     )
