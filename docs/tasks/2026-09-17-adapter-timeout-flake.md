@@ -143,9 +143,15 @@
 - 提交 `23ea89c`（单一改动：`tests/test_m0_adapters.py` + 本任务记录），已推送
   任务分支 `fix/adapter-timeout-flake`，已开 PR
   [#38](https://github.com/kevinWangSheng/production-ops-agent/pull/38)。
-- CI 两项 checks（`checks`、`m0-postgres`）均 `SUCCESS`；`mergeStateStatus:
-  CLEAN`、`mergeable: MERGEABLE`；无 inline review thread、无 issue 级评论需
-  处置（PR 开启后 Codex 机器人审查评论未出现，非交付门槛，未等待、未阻塞）。
+- CI 两项 checks（`checks`、`m0-postgres`）均 `SUCCESS`。
+- Codex 机器人 code review 在提交 `23ea89c` 上留了 1 条 inline thread（P2）：
+  指出当时任务记录的「下一步与交接」还写着"待独立审查结论补充/待开 PR"，与
+  文件头部已标「已完成」矛盾。**采纳**——该问题在后续提交 `bcf0b47`
+  （更新独立审查结论、PR 号、CI 状态）里已经修复，已在线程回复具体修复提交号
+  并 `resolveReviewThread`。分支保护要求 `required_conversation_resolution`，
+  解决前 `mergeStateStatus` 为 `BLOCKED`，解决后恢复 `CLEAN`。
+- 当前：`mergeStateStatus: CLEAN`、`mergeable: MERGEABLE`，CI 全绿，无未处理
+  review thread。
 - 状态：**PR 已就绪，待用户审核合并**。合并授权、合并动作及合并后清理留给
   用户按默认流程处理，本任务未合并、未删除分支。
 - ROADMAP 无需更新（工程维护，不改变任何功能门槛/验收状态）。
