@@ -964,25 +964,22 @@ def test_default_lease_is_short_so_takeover_after_a_hard_kill_waits_lease_not_wa
     assert workbench.incidents.runs[run_id]["epoch"] == 2
 
 
-def test_without_the_capability_the_lease_spans_the_run_wall_as_before():
+def test_without_the_capability_the_lease_spans_the_run_wall_as_before(monkeypatch):
     app, workbench, clock = build_workbench()
-    MemoryIncidentStore.renewal_supported = False
-    try:
-        submit_incident(app, key="no-renew")
-        subject = workbench.list_incidents()[0].incident_id
-        run_id = workbench.list_incidents()[0].current_run_id
-        granted: list = []
+    monkeypatch.setattr(MemoryIncidentStore, "renewal_supported", False)
+    submit_incident(app, key="no-renew")
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    granted: list = []
 
-        class Observe(ScriptedInvestigator):
-            def investigate(self, context, committer, evidence):
-                granted.append(workbench.incidents.runs[run_id]["lease_until"])
-                return super().investigate(context, committer, evidence)
+    class Observe(ScriptedInvestigator):
+        def investigate(self, context, committer, evidence):
+            granted.append(workbench.incidents.runs[run_id]["lease_until"])
+            return super().investigate(context, committer, evidence)
 
-        outcome = workbench.run_once(subject, Observe(clock))
-        assert outcome is not None and outcome.execution == "completed"
-        assert granted == [clock.now() + timedelta(seconds=workbench.run_seconds)]
-    finally:
-        MemoryIncidentStore.renewal_supported = True
+    outcome = workbench.run_once(subject, Observe(clock))
+    assert outcome is not None and outcome.execution == "completed"
+    assert granted == [clock.now() + timedelta(seconds=workbench.run_seconds)]
 
 
 def test_renewal_before_each_commit_keeps_a_long_attempt_alive(monkeypatch):
