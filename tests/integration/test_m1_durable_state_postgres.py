@@ -618,3 +618,43 @@ def test_budget_reservations_settle_to_spent_or_unknown_and_never_release():
         store.settle_budget(lease, fenced, "spent")
     # A fenced attempt leaves its reservation occupied, not lost.
     assert totals() == (1, 1, 1)
+
+
+def test_a_reclaimed_run_settles_its_own_reservations_without_conflict():
+    """C3 §7 first row: a bounded retry by a new attempt must be able to succeed.
+
+    ``DurableStepStore.begin_round`` namespaces the round key by generation and
+    epoch, so the new attempt's reservation never collides with the dead
+    attempt's ``unknown`` one; that one stays occupied.
+    """
+    from opspilot.investigation.store import DurableStepStore, reservation_id_for
+
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-reclaim-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=4,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    dead_store = DurableStepStore(store, dead)
+    key, _ = dead_store.begin_round("round-1")
+    dead_store.reserve_budget(reservation_id_for(str(run), f"{key}#a1"), 1)
+    dead_store.settle_budget(reservation_id_for(str(run), f"{key}#a1"), "unknown")
+    time.sleep(1.2)
+
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    fresh_store = DurableStepStore(store, fresh)
+    new_key, _ = fresh_store.begin_round("round-1")
+    assert new_key != key
+    fresh_store.reserve_budget(reservation_id_for(str(run), f"{new_key}#a1"), 1)
+    fresh_store.settle_budget(reservation_id_for(str(run), f"{new_key}#a1"), "spent")
+    row = store.rebuild(incident)["run"]
+    assert (row["budget_reserved"], row["budget_spent"], row["budget_unknown"]) == (
+        0,
+        1,
+        1,
+    )
