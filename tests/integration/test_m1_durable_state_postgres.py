@@ -613,6 +613,10 @@ def test_version_change_cannot_override_a_paused_cancelled_or_completed_run():
     with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
         store.claim(incident, run, uuid4(), {"state": "v2"})
     assert store.rebuild(incident)["run"]["state"] == "blocked"
+    # 已 blocked 的 Run 即使版本对回来也不静默恢复：显式迁移或新 Run。
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
 
     # cancelled：人工取消的终态不得被投影成 blocked/INCOMPATIBLE_STATE。
     incident, run = accepted("cancelled")
