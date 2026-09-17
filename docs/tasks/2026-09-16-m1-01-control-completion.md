@@ -56,3 +56,67 @@
 - 最终 workflow_dispatch：[35175606617](https://github.com/kevinWangSheng/production-ops-agent/actions/runs/35175606617)：`checks` 与 `m0-postgres` 均 success。
 - 最新机器人审查覆盖最终 HEAD；6 条及后续 4/3 条 inline thread 均已逐条回复并 resolve，当前未解决 thread 数为 0。采纳项包含 mandatory expected generation、actor 审计、输入 allowlist、暂停优先级与 new_run 重放。
 - 用户审核/合并仍是最后一道门；本任务不自动合并。close/reopen、目标重绑定、合并/拆分仍待决。
+
+## 后续复核（2026-09-17）：`claim()` suspension 恒假子句
+
+- 来源：`integration/m1-01-full-r2` 集成报告（integ-final.md §7 第 1 条）标出 `persistence.py::claim()`
+  suspension 判断第三个子句 `row.get("target_generation", 0) == 0 and row.get("target_suspended", False)`
+  在其前一子句 `row["target_suspended"]` 同处一个 `or` 时恒为假，怀疑笔误。
+- 判定依据：
+  1. `DurableStore._connect` 用 `psycopg.rows.dict_row`（persistence.py:14,123），`row` 是普通 `dict`；
+     `row["target_suspended"]` 与 `row.get("target_suspended", False)` 读的是同一个已存在的键，值必然相同。
+     `or` 短路意味着只有前一子句为 `False` 时才会求值第三子句，而此时它的第二个合取项已经等于 `False`——
+     无论 `target_generation` 取何值，第三子句都不可能为真，这是纯逻辑上不可达的死代码，不依赖任何具体状态。
+  2. 即便忽略短路论证，`set_target_suspension`（persistence.py:372-428）在应用层也从不产生
+     `target_generation == 0 且 target_suspended == True` 同时成立的状态：首次挂起总是把 generation 从
+     0 跳到 1，与 `suspended=True` 在同一条 UPDATE 里一起提交（persistence.py:406-410）。
+  3. 对照 C3 第 4 节「全局与目标级暂停」与 `SuspensionState.blocks()`（domain/control.py:66-71）：暂停判定
+     的权威定义只有 `global_suspended or target in suspended_uids`，没有代际项；`claim()` 也没有为「本次
+     claim 之前的某次尝试」保存过 target_generation 基线可供比较（`opspilot_runs` 建表 persistence.py:174-188
+     未存这类列），因此第三子句不可能是「代际不匹配」检查的正确实现——没有可比较的第二个值。
+  4. C3 要求的「解除暂停不自动恢复旧任务，需显式恢复」语义，已经由另一条独立、已生效的路径落实：
+     `set_global_suspension`/`set_target_suspension` 挂起时把受影响的 `opspilot_incidents.state`/
+     `opspilot_runs.state` 直接批量置为 `'paused'`（persistence.py:353-362, 411-423），`claim()`
+     既有的 `incident_state in {"completed","cancelled","paused"}` 分支（persistence.py 原 593 行）据此拒绝
+     领取，解除暂停不会把这个 `'paused'` 状态改回来。`tests/integration/test_m1_control_completion_postgres.py::
+     test_scope_suspension_fences_claim_and_release_does_not_resume_old_run` 的第二个断言（release 后 claim 仍
+     CONTROL_DENIED）验证的正是这条路径，与被删的第三子句无关（已用调试脚本逐行核对 row 状态确认）。
+  5. 该子句由 `2c67910 fix: tighten control boundaries` 引入，提交信息无正文说明意图；同一提交里另一处改动
+     （`new_run` 从「暂停即拒绝」改为「暂停即创建 paused 状态的新 Run」）是合理的语义演进，但 `claim()` 这处
+     的第三子句与该改动无关联，也没有配套测试覆盖它的独有分支。
+  - 结论：**冗余，非缺陷**——不是笔误漏写了别的字段，是死代码。已删除
+    （`opspilot/persistence.py::claim()`，恢复为 `if row["global_suspended"] or row["target_suspended"]:`）。
+- 验证：删除后 `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_control_completion_postgres.py -v`
+  4 passed（含新增 `test_claim_allows_a_fresh_never_suspended_target_at_generation_zero`，证明
+  `target_generation==0` 不单独触发拒绝）；`test_m1_durable_state_postgres.py` 41 passed（与修复前一致）；
+  `make check`：1444 passed, 99 skipped, 2 xfailed，ruff check/format、mypy 通过（skipped 从 98→99 是新增
+  PG 测试在非 PG 模式下多跳过 1 条，预期内）。PG lab 已 stop。
+
+## 合并顺序提醒：`_call_model` 需要 #29 的 `reservation` 结算变量（rebase 待办）
+
+- 来源：integ-final.md §8 第 4 条——**#31 应晚于 #29 合并**；#31 自己的 PR 分支（当前 HEAD，未 rebase）在
+  `opspilot/investigation/loop.py::_call_model` 里没有 #29 引入的「按结算结果 settle 预算」机制：本分支只有
+  具名内联的 `self._reserve(request.run_id, f"{logical_key}#a{attempt}")`，既没有 `reservation` 具名变量，
+  也没有 `_settle` 方法（本仓库确认：`grep -n '_settle' opspilot/investigation/loop.py` 无命中）。
+- 具体位置：`opspilot/investigation/loop.py` 的 `_call_model`（本分支约第 495-541 行，紧跟在
+  `self._reserve(...)` 之后新增了本 PR 自己的 `self.store.assert_current()` 复核）。#29 分支
+  （`origin/feature/m1-01-investigation-loop`）在同一函数里是：
+  ```python
+  reservation = f"{logical_key}#a{attempt}"
+  self._reserve(request.run_id, reservation)
+  ...
+  except ModelError as exc:
+      self._settle(request.run_id, reservation, "unknown")
+      ...
+  ...
+  self._settle(request.run_id, reservation, "spent")
+  if reply.response_model != self.accepted_response_model:
+  ```
+  正确的合并结果（已在 `integration/m1-01-full-r2` 的 `_call_model` 中手工核实，
+  `git show origin/integration/m1-01-full-r2:opspilot/investigation/loop.py`）是**两者都要**：保留 #29 的具名
+  `reservation` 变量与两处 `self._settle(...)` 调用，在 `self._reserve(...)` 之后追加本 PR 的
+  `try: self.store.assert_current() except StepStoreError as exc: raise _halt_from_store(exc) from exc`。
+- 待办：**#29 合并到 main 之后、#31 合并之前**，#31 owner 需要 `git rebase` 到已含 #29 的 main，并在
+  `_call_model` 手工核对/合并出上述形态（若自动合并/rebase 丢弃了 `reservation` 变量或两处 `_settle` 调用，
+  需要手工补回）；rebase 后重跑 `tests/test_m1_investigation_loop.py` 及本任务的 PG 定向测试确认预算结算未回退。
+  本任务（#31）当前分支未做这处改动，因为它依赖 #29 的 `_settle`/`settle_budget`，不在本 PR 范围内。
