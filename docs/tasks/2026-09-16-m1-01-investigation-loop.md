@@ -126,3 +126,20 @@
 ## 接手记录（2026-09-16，Codex）
 
 执行者更换为 Codex。接手时工作区为 `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-investigation-loop`，分支 `feature/m1-01-investigation-loop`，当前 HEAD `4551378c8f6655b897e39588fe2b7226c91b2a94`。PR #29 base 仍为 `feature/m1-01-tool-executor`，状态为开放；GraphQL 核查 reviewThreads 共 19 条，全部已 resolve，未发现最后一次推送后新增的机器人 thread。保持现有范围，等待用户审核合并；若基分支先合并 main，后续按约定 rebase、retarget base、复核 CI 与新 review threads。
+
+## 追加（2026-09-17）：模型请求预留的结算（ui-e2e 交接项 1 → storefix2 B）
+
+- 判定：C3 §13「预算在 PostgreSQL 原子预留和结算，未知费用保持占用」；M0 lab `scripts/m0/budget.py` 已有 reserved/settled/unknown 三态先例；
+  产品表 `opspilot_runs` 建了 `budget_reserved/spent/unknown` 三列但无任何结算路径（完成的 Run 停在 reserved=N/spent=0）。
+  结论：合同要求结算但未实现。执行语义原本正确（上限判断求和三列，每请求预留 1），缺的是真实记账。未引入费用换算，只记次数；token 用量已在 step 载荷 `usage`。
+- 修复（`b133cc0`，自集成分支 `c92feca` 移植，`settle_budget` 按 main 的内联租约栅栏写法）：
+  `DurableStore.settle_budget(lease, reservation_id, outcome)`（spent/unknown；不释放；同结果重放 no-op、异结果 `IDENTITY_CONFLICT`；租约栅栏）；
+  `StepCommitter.settle_budget`、`MemoryStepStore`（含 `budget_unknown`）、`DurableStepStore`；loop 每个物理请求在返回后 settle `spent`、抛 `ModelError` 后 settle `unknown`，
+  `_settle` 只吞 `CONTROL_DENIED`（预留保持占用，由下一次被栅栏的写入记录迟到历史并停机）。
+- 审查 P1（`4f0648a`）：本分支没有 PR #31 的 `g{gen}:e{epoch}:` 轮次键前缀，新 attempt 重新领取同一 Run 时 `round-1#a1` 的预留 id 与死掉的 attempt 相同，
+  `unknown` 后再 settle `spent` 会被判 `IDENTITY_CONFLICT`，使 C3 §7「有界重试」失败。修复：`DurableStepStore` 按租约 epoch 派生预留 id；
+  死掉 attempt 的 `unknown` 预留保持占用。PG 用例 `test_a_reclaimed_run_settles_its_own_reservations_without_conflict`。
+- 测试：PG `test_budget_reservations_settle_to_spent_or_unknown_and_never_release`；loop 单元 `test_every_physical_request_is_settled_as_spent_or_unknown`、
+  `test_a_fenced_settlement_leaves_the_reservation_occupied_and_records_history`。
+- 验证：`make check` → `All checks passed!` / `Success: no issues found in 26 source files` / `1288 passed, 77 skipped, 2 xfailed`；PG durable_state → `23 passed`。
+- web 侧 `_EmittingCommitter` 的转发在 PR #33（`eec8dca`）。
