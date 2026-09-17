@@ -42,7 +42,12 @@ from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
-from opspilot.web.store import IncidentStore, IncidentSummary, WebLedger
+from opspilot.web.store import (
+    ControlAudit,
+    IncidentStore,
+    IncidentSummary,
+    WebLedger,
+)
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
 #: Lease granted per attempt and re-extended before every committer call.
@@ -423,46 +428,118 @@ class Workbench:
         )
         return generation, run_id
 
+    def _audit_matches(
+        self,
+        intent: Mapping[str, Any],
+        audit: ControlAudit,
+        *,
+        unconfirmed_peers: int,
+    ) -> bool:
+        """Whether ``audit`` provably is the decision ``intent`` asked for.
+
+        Action, expected generation and actor must match. A text action
+        additionally needs the audit payload (PR #31) to carry the same
+        text; on a store without payloads the audit is accepted only when
+        this is the single unconfirmed intent that could have produced it.
+        """
+        if (
+            audit.action != intent["action"]
+            or audit.expected_generation != intent["expected_generation"]
+            or audit.actor != intent["actor_id"]
+        ):
+            return False
+        text = intent.get("text")
+        if text is None:
+            return True
+        if audit.payload is not None:
+            return bool(audit.payload.get("text") == text)
+        return not self.incidents.payload_supported and unconfirmed_peers == 1
+
+    def _confirm(
+        self,
+        incident_id: UUID,
+        key: str,
+        intent: Mapping[str, Any],
+        audit: ControlAudit,
+    ) -> ControlResult:
+        sequence = self.events.append(
+            incident_id,
+            "control_applied",
+            dict(intent, generation=audit.resulting_generation, reconciled=True),
+        )
+        row, _ = self.ledger.put(
+            "control",
+            key,
+            {
+                "action": audit.action,
+                "generation": audit.resulting_generation,
+                "sequence": sequence,
+            },
+        )
+        return self._control_replay(incident_id, row)
+
+    def _reconcile_pending_notes(self, incident_id: UUID) -> None:
+        """Confirm every intent whose decision the store already applied.
+
+        A worker that claims a generation produced by another worker's note
+        must see that note even though the other worker crashed before its
+        confirm row; the store's audit row is the proof.
+        """
+        prefix = f"{incident_id}:"
+        confirmed = dict(self.ledger.list_prefix("control", prefix))
+        taken = {int(row["generation"]) for row in confirmed.values()}
+        pending = [
+            (key, intent)
+            for key, intent in self.ledger.list_prefix("control_intent", prefix)
+            if key not in confirmed
+        ]
+        for audit in self.incidents.control_audit(incident_id):
+            if audit.resulting_generation in taken:
+                continue
+            peers = [
+                (key, intent)
+                for key, intent in pending
+                if audit.action == intent["action"]
+                and audit.expected_generation == intent["expected_generation"]
+                and audit.actor == intent["actor_id"]
+            ]
+            matches = [
+                (key, intent)
+                for key, intent in peers
+                if self._audit_matches(intent, audit, unconfirmed_peers=len(peers))
+            ]
+            if len(matches) != 1:
+                continue
+            key, intent = matches[0]
+            self._confirm(incident_id, key, intent, audit)
+            taken.add(audit.resulting_generation)
+            pending = [item for item in pending if item[0] != key]
+
     def _confirm_from_audit(
         self, incident_id: UUID, key: str, intent: Mapping[str, Any]
     ) -> ControlResult | None:
         """Close the window where the store applied a decision we never confirmed.
 
-        The store's own audit row is the authority. A row confirms this
-        intent only when action, expected generation and actor match AND
-        the decision's content is provably this intent's: for a text action
-        the audit row must carry the payload (PR #31) with the same text.
-        Without a payload column a text decision is never reconciled, so
-        two crashed attempts by one actor with different texts can no
-        longer cross-confirm; a content-free action (pause/resume/cancel)
-        is the same decision whichever key carried it.
+        Same proof rule as ``_reconcile_pending_notes``; the store's audit
+        row is the authority and a different key can never be confirmed as
+        another intent's decision.
         """
-        text = intent.get("text")
+        prefix = f"{incident_id}:"
+        confirmed = dict(self.ledger.list_prefix("control", prefix))
+        taken = {int(row["generation"]) for row in confirmed.values()}
+        peers = [
+            other
+            for other_key, other in self.ledger.list_prefix("control_intent", prefix)
+            if other_key not in confirmed
+            and other["action"] == intent["action"]
+            and other["expected_generation"] == intent["expected_generation"]
+            and other["actor_id"] == intent["actor_id"]
+        ]
         for audit in self.incidents.control_audit(incident_id):
-            if (
-                audit.action == intent["action"]
-                and audit.expected_generation == intent["expected_generation"]
-                and audit.actor == intent["actor_id"]
-                and (
-                    text is None
-                    or (audit.payload is not None and audit.payload.get("text") == text)
-                )
-            ):
-                sequence = self.events.append(
-                    incident_id,
-                    "control_applied",
-                    dict(intent, generation=audit.resulting_generation),
-                )
-                row, _ = self.ledger.put(
-                    "control",
-                    key,
-                    {
-                        "action": audit.action,
-                        "generation": audit.resulting_generation,
-                        "sequence": sequence,
-                    },
-                )
-                return self._control_replay(incident_id, row)
+            if audit.resulting_generation in taken:
+                continue
+            if self._audit_matches(intent, audit, unconfirmed_peers=len(peers)):
+                return self._confirm(incident_id, key, intent, audit)
         return None
 
     @staticmethod
@@ -497,6 +574,42 @@ class Workbench:
 
     def list_incidents(self) -> tuple[IncidentSummary, ...]:
         return self.incidents.list_incidents()
+
+    def reconcile(self, incident_id: UUID) -> None:
+        """Repair projections from the authoritative rows (idempotent).
+
+        Confirms notes the store already applied and emits a missing
+        ``run_completed`` for a Run that published its conclusion but whose
+        worker died before appending the event; the ledger remembers which
+        runs were announced so the event is emitted exactly once.
+        """
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            return
+        self._reconcile_pending_notes(incident_id)
+        run_id = summary.current_run_id
+        if not summary.concluded or run_id is None:
+            return
+        if self.ledger.get("completion", str(run_id)) is not None:
+            return
+        rebuilt = self.incidents.rebuild(incident_id)
+        if rebuilt["run"]["state"] != "completed":
+            return
+        sequence = self.events.append(
+            incident_id,
+            "run_completed",
+            {
+                "run_id": str(run_id),
+                "published": True,
+                "execution": "completed",
+                "handoff": False,
+                "handoff_reasons": [],
+                "reconciled": True,
+                "report_sha256": _content_sha256(rebuilt.get("conclusion")),
+                "evidence_ids": [],
+            },
+        )
+        self.ledger.put("completion", str(run_id), {"sequence": sequence})
 
     def _newest_events(self, incident_id: UUID) -> tuple[SubjectEvent, ...]:
         """The newest retained page, so its last item is the true watermark.
@@ -533,6 +646,7 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             raise WorkbenchError("UNKNOWN_INCIDENT")
+        self.reconcile(incident_id)
         try:
             rebuilt = self.incidents.rebuild(incident_id)
         except PersistenceError as exc:
@@ -626,6 +740,9 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
+        # Notes applied by another worker but not yet confirmed must be
+        # visible to this attempt (pre-#31 fallback composes them).
+        self.reconcile(incident_id)
         if lease_seconds is not None:
             seconds = lease_seconds
         elif self.incidents.renewal_supported:
@@ -729,7 +846,7 @@ class Workbench:
                 evidence_ids=outcome.evidence_ids,
             )
             return outcome
-        self.events.append(
+        sequence = self.events.append(
             incident_id,
             "run_completed",
             {
@@ -744,6 +861,7 @@ class Workbench:
                 "prompt_revision": outcome.prompt_revision,
             },
         )
+        self.ledger.put("completion", str(run_id), {"sequence": sequence})
         return outcome
 
     def _handoff(
@@ -867,6 +985,16 @@ def _event_view(event: SubjectEvent) -> dict[str, Any]:
             None if event.recorded_at is None else event.recorded_at.isoformat()
         ),
     }
+
+
+def _content_sha256(conclusion: object) -> str | None:
+    if not isinstance(conclusion, Mapping):
+        return None
+    assistant = conclusion.get("assistant")
+    content = assistant.get("content") if isinstance(assistant, Mapping) else None
+    if not isinstance(content, str):
+        return None
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _report_view(conclusion: Mapping[str, Any] | None) -> dict[str, Any] | None:

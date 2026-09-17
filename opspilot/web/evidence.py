@@ -74,14 +74,14 @@ def _stored(record: EvidenceRecord) -> StoredEvidence:
 
 
 def _require_same_bytes(existing_raw_sha256: str, raw_sha256: str) -> None:
-    """Idempotent re-registration keeps the first committed observation.
+    """Re-registration is allowed only for the same source bytes.
 
     A worker that stopped between ``register()`` and ``commit_tool()`` is
     replayed with the same stable ``evidence_id``; the re-executed query
-    returns the same source bytes but a later ``observed_at``, so the view
-    digest differs. C3 section 7 says a committed tool result is reused as
-    the historical observation with its original time, so identity is the
-    raw bytes: same bytes reuse the stored record, different bytes conflict.
+    returns the same source bytes but a later ``observed_at``. The earlier
+    observation was never committed as a tool result, so the replayed one
+    is what the loop consumes and what the store must hold: same bytes
+    replace the projection (view, time, status), different bytes conflict.
     """
     if existing_raw_sha256 != raw_sha256:
         raise PersistenceError("IDENTITY_CONFLICT")
@@ -96,7 +96,6 @@ class MemoryEvidenceStore:
         existing = self._records.get(stored.evidence_id)
         if existing is not None:
             _require_same_bytes(existing.raw_sha256, stored.raw_sha256)
-            return existing.evidence_id
         self._records[stored.evidence_id] = stored
         return stored.evidence_id
 
@@ -125,7 +124,10 @@ class DurableEvidenceStore:
         stored = _stored(record)
         with self._store.transaction() as conn:
             conn.execute(
-                "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO NOTHING",
+                # Same bytes: the replayed projection replaces the earlier,
+                # never-committed one. Different bytes: leave the row and let
+                # the check below raise IDENTITY_CONFLICT.
+                "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO UPDATE SET status=EXCLUDED.status,adopted=EXCLUDED.adopted,view=EXCLUDED.view,view_sha256=EXCLUDED.view_sha256,projection_revision=EXCLUDED.projection_revision,observed_at=EXCLUDED.observed_at,data_as_of=EXCLUDED.data_as_of WHERE opspilot_evidence.raw_sha256=EXCLUDED.raw_sha256",
                 (
                     stored.evidence_id,
                     stored.run_id,

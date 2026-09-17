@@ -1175,8 +1175,10 @@ def test_reregistering_committed_evidence_after_a_restart_reuses_it():
     )
     assert store.register(again) == record.evidence_id
     kept = store.get(record.evidence_id)
-    assert kept is not None and kept.observed_at == record.observed_at
-    assert kept.view_sha256 == record.view_sha256
+    # The replayed observation is the one the loop consumes; the stored
+    # view must be that one, not the never-committed earlier attempt.
+    assert kept is not None and kept.observed_at == again.observed_at
+    assert kept.view_sha256 == again.view_sha256
     different = replace(
         record,
         raw=b'{"data":{"result":[]}}',
@@ -1224,3 +1226,80 @@ def test_snapshot_shows_the_newest_events_so_sse_resumes_without_a_gap():
     snapshot = workbench.snapshot(subject)
     assert snapshot["outcome"] is not None and snapshot["outcome"]["published"] is True
     assert snapshot["events"][-1]["sequence"] == workbench.events.latest(subject)
+
+
+# -- review threads on PR #33, round 2 -------------------------------------------
+
+
+def test_an_applied_but_unconfirmed_note_reaches_the_attempt_on_a_pre_31_store(
+    monkeypatch,
+):
+    """Round 2 thread 1 (P1): worker B claims the generation that A's note
+    produced while A's confirm row is still missing; B must still see it."""
+    app, workbench, clock = build_workbench()
+    monkeypatch.setattr(MemoryIncidentStore, "payload_supported", False)
+    submit_incident(app, key="pre31")
+    subject = workbench.list_incidents()[0].incident_id
+    # A: intent durable, store applied the decision, crash before confirm.
+    workbench.ledger.put(
+        "control_intent",
+        f"{subject}:a1",
+        {
+            "action": "correct",
+            "actor_id": "alice",
+            "expected_generation": 0,
+            "text": "Target is checkout-canary.",
+        },
+    )
+    assert workbench.incidents.control(subject, 0, "correct", "alice") == 1
+    # B: claims and runs on generation 1.
+    investigator = ScriptedInvestigator(clock)
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None and outcome.execution == "completed"
+    assert "Target is checkout-canary." in investigator.contexts[0].question
+    assert [c["text"] for c in workbench.snapshot(subject)["controls"]] == [
+        "Target is checkout-canary."
+    ]
+
+
+def test_a_completion_event_lost_after_publish_is_reconciled_from_the_run():
+    """Round 2 thread 3 (P2): publish committed, event append crashed."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="lost-event")
+    subject = workbench.list_incidents()[0].incident_id
+    real_append = workbench.events.append
+
+    def crash_on_completion(incident_id, kind, payload):
+        if kind == "run_completed":
+            raise RuntimeError("process died after publish")
+        return real_append(incident_id, kind, payload)
+
+    workbench.events.append = crash_on_completion
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        workbench.run_once(subject, ScriptedInvestigator(clock))
+    workbench.events.append = real_append
+    assert workbench.list_incidents()[0].concluded is True
+    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
+    assert "run_completed" not in kinds
+    before = workbench.events.latest(subject)
+    # The page reconciles from the authoritative completed Run.
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["outcome"] is not None and snapshot["outcome"]["published"] is True
+    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
+    assert kinds.count("run_completed") == 1
+    # Idempotent: a second look does not duplicate the event.
+    workbench.snapshot(subject)
+    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
+        "run_completed"
+    ) == 1
+    # And a stream opened at the old cursor now receives it.
+    incident = str(subject)
+    resumed = stream(
+        app,
+        f"/incidents/{incident}/events?cursor={before}",
+        headers=basic(),
+        until_events=1,
+    )
+    assert [k for _, k, _ in resumed.sse_events()] == ["run_completed"]

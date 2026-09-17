@@ -345,6 +345,9 @@ def create_app(
             raise _Refusal(400, "INVALID_CURSOR")
         if await in_thread(workbench.incidents.find_incident, subject) is None:
             raise _Refusal(404, "UNKNOWN_INCIDENT")
+        # A completion whose event was lost is announced before the stream
+        # replays, so a reconnecting page sees it.
+        await in_thread(workbench.reconcile, subject)
         return StreamingResponse(
             _stream(
                 workbench, subject, int(raw_cursor), sse_poll_seconds, sse_idle_seconds

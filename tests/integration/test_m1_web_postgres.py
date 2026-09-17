@@ -493,7 +493,8 @@ def test_durable_evidence_reregistration_reuses_the_first_observation():
     )
     assert evidence.register(again) == record.evidence_id
     kept = evidence.get(record.evidence_id)
-    assert kept is not None and kept.view_sha256 == record.view_sha256
+    assert kept is not None and kept.view_sha256 == again.view_sha256
+    assert kept.observed_at == again.observed_at
     other = b'{"data":{"result":[]}}'
     with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
         evidence.register(
