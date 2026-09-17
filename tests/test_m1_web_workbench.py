@@ -8,6 +8,7 @@ the end-to-end flow on PostgreSQL. No model HTTP, no network.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from uuid import uuid4
 
 from opspilot.web import MemoryEventLog
@@ -20,6 +21,7 @@ from tests.m1_investigation_support import (
 from tests.m1_web_support import (
     EVENT_TOKEN,
     UI_PASSWORD,
+    MemoryIncidentStore,
     ScriptedInvestigator,
     basic,
     bearer,
@@ -922,3 +924,132 @@ def test_a_held_lease_is_a_quiet_refusal_not_an_event_per_poll():
     last = workbench.events.read_after(subject, 0)[-1]
     assert last.kind == "run_claim_refused"
     assert last.payload["code"] == "INCOMPATIBLE_STATE"
+
+
+_renew_lease_impl = MemoryIncidentStore.renew_lease
+
+
+# -- lease renewal (PR #35 capability, optional on this base) ------------------
+
+
+def test_default_lease_is_short_so_takeover_after_a_hard_kill_waits_lease_not_wall():
+    from opspilot.web.service import LEASE_SECONDS
+
+    app, workbench, clock = build_workbench()
+    assert LEASE_SECONDS < workbench.run_seconds
+    submit_incident(app, key="kill")
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+
+    class Dies(ScriptedInvestigator):
+        def investigate(self, context, committer, evidence):
+            raise KeyboardInterrupt  # hard kill: no handoff, lease left held
+
+    import pytest
+
+    with pytest.raises(KeyboardInterrupt):
+        # BaseException path hands off; emulate a real kill by re-holding
+        # the lease afterwards exactly as claim() granted it.
+        workbench.run_once(subject, Dies(clock))
+    run = workbench.incidents.runs[run_id]
+    run.update(
+        owner=uuid4(),
+        state="running",
+        lease_until=clock.now() + timedelta(seconds=LEASE_SECONDS),
+    )
+    # Inside the lease window a takeover is refused, quietly.
+    before = workbench.events.latest(subject)
+    assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
+    assert workbench.events.latest(subject) == before
+    # After LEASE_SECONDS (well before the Run wall) the Run is claimed again.
+    clock.advance(LEASE_SECONDS + 1)
+    assert clock.now() < run["deadline"]
+    outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert outcome is not None and outcome.execution == "completed"
+    assert workbench.incidents.runs[run_id]["epoch"] == 2
+
+
+def test_renewal_before_each_commit_keeps_a_long_attempt_alive():
+    from opspilot.web.service import LEASE_SECONDS
+
+    app, workbench, clock = build_workbench()
+    workbench.run_seconds = 4 * LEASE_SECONDS
+    submit_incident(app, key="long")
+    subject = workbench.list_incidents()[0].incident_id
+
+    def slow_round(call_):
+        # One maximal model request: longer than half the lease, shorter
+        # than the lease itself, twice over the attempt.
+        clock.advance(LEASE_SECONDS - 30)
+        return reply(tool_calls=[tool_call()], finish="tool_calls")
+
+    def slow_final(call_):
+        clock.advance(LEASE_SECONDS - 30)
+        return report_from_transcript(call_)
+
+    investigator = ScriptedInvestigator(clock, replies=[slow_round, slow_final])
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None and outcome.execution == "completed"
+    assert workbench.incidents.renewals >= 3
+    # The same attempt without the capability is fenced by its own lease.
+    app2, workbench2, clock2 = build_workbench()
+    workbench2.run_seconds = 4 * LEASE_SECONDS
+    # A store without PR #35 answers renewal with None (no capability).
+    MemoryIncidentStore.renew_lease = lambda self, lease, seconds: None
+    try:
+        submit_incident(app2, key="long-no-renew")
+        subject2 = workbench2.list_incidents()[0].incident_id
+
+        def slow_round2(call_):
+            clock2.advance(LEASE_SECONDS - 30)
+            return reply(tool_calls=[tool_call()], finish="tool_calls")
+
+        def slow_final2(call_):
+            clock2.advance(LEASE_SECONDS - 30)
+            return report_from_transcript(call_)
+
+        outcome2 = workbench2.run_once(
+            subject2, ScriptedInvestigator(clock2, replies=[slow_round2, slow_final2])
+        )
+        assert outcome2 is not None and outcome2.execution == "failed"
+        assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
+    finally:
+        MemoryIncidentStore.renew_lease = _renew_lease_impl
+
+
+def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="refused")
+    subject = workbench.list_incidents()[0].incident_id
+
+    def pause_then_answer(call_):
+        workbench.control(
+            subject,
+            actor_id="alice",
+            action="pause",
+            expected_generation=0,
+            idempotency_key="mid-run",
+        )
+        return report_from_transcript(call_)
+
+    investigator = ScriptedInvestigator(
+        clock,
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            pause_then_answer,
+        ],
+    )
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None
+    assert outcome.execution == "failed" and outcome.handoff_reasons == (
+        "CONTROL_DENIED",
+    )
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["report"] is None and snapshot["incident"].state == "paused"
+    assert [s["status"] for s in snapshot["steps"]] == [
+        "tool_result_committed",
+        "late_result",
+    ]
+    assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"
+    run = workbench.incidents.runs[workbench.list_incidents()[0].current_run_id]
+    assert run["owner"] is None and run["lease_until"] is None

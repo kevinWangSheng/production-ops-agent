@@ -16,7 +16,7 @@ projection.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -30,7 +30,11 @@ from opspilot.intake import (
     _reject_ambiguous_text,
     classify_intake_delivery,
 )
-from opspilot.investigation.limits import MAX_MODEL_REQUESTS_PER_RUN, RUN_WALL_SECONDS
+from opspilot.investigation.limits import (
+    MAX_MODEL_REQUESTS_PER_RUN,
+    MODEL_REQUEST_TIMEOUT_SECONDS,
+    RUN_WALL_SECONDS,
+)
 from opspilot.investigation.loop import LoopOutcome
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
@@ -41,6 +45,12 @@ from opspilot.web.evidence import EvidenceStore, StoredEvidence
 from opspilot.web.store import IncidentStore, IncidentSummary, WebLedger
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+#: Lease granted per attempt and re-extended before every committer call.
+#: The loop is synchronous, so nothing can renew while one model request is
+#: in flight: the lease must outlast the longest request plus a margin.
+#: Takeover after a hard kill therefore waits at most this long, not the Run
+#: wall. The frozen Run ceilings are untouched (deadline still caps it).
+LEASE_SECONDS = int(MODEL_REQUEST_TIMEOUT_SECONDS) + 60
 _MAX_TEXT = 16_384
 _EVENT_PAGE = 1000
 
@@ -105,37 +115,73 @@ class _EmittingCommitter:
     """
 
     def __init__(
-        self, base: StepCommitter, events: EventLog, subject_id: UUID, run_id: UUID
+        self,
+        base: StepCommitter,
+        events: EventLog,
+        subject_id: UUID,
+        run_id: UUID,
+        *,
+        renew: Callable[[], object] | None = None,
     ) -> None:
         self._base = base
         self._events = events
         self._subject_id = subject_id
         self._run_id = run_id
+        self._renew_lease = renew
         self.last_step: tuple[UUID, dict[str, Any]] | None = None
         self.steps_seen = 0
+        self.renewals = 0
+        self.renewal_refused = False
 
     @property
     def authorized_run_id(self) -> str:
         return self._base.authorized_run_id
 
+    def _renew(self) -> None:
+        """Extend the lease before touching the store (C3 section 6).
+
+        A refused renewal (``CONTROL_DENIED``) means this attempt no longer
+        owns the Run. The call is still forwarded: the store re-checks the
+        identical fence, refuses the same way, and, for a step or tool
+        result, records the late result as history exactly as an expired
+        lease would. Any other storage failure stops the attempt here.
+        """
+        if self._renew_lease is None:
+            return
+        try:
+            self._renew_lease()
+        except PersistenceError as exc:
+            if str(exc) == "CONTROL_DENIED":
+                self.renewal_refused = True
+                return
+            raise StepStoreError(str(exc)) from None
+        self.renewals += 1
+
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
+        self._renew()
         self._base.reserve_budget(reservation_id, amount)
 
     # PR #29 adds ``settle_budget`` to the committer seam; forwarded the same
     # way as the PR #31 methods above until that protocol lands on this base.
     def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
+        self._renew()
         getattr(self._base, "settle_budget")(reservation_id, outcome)
 
     # PR #31 extends the committer seam with ``begin_round``/``assert_current``.
     # Forward them when the base has them so this wrapper stays transparent
     # after that merge; on this branch the loop never calls them.
     def begin_round(self, logical_key: str) -> Any:
+        # The renewal before a model round is the one that matters most: it
+        # guarantees the lease covers the whole request that follows.
+        self._renew()
         return getattr(self._base, "begin_round")(logical_key)
 
     def assert_current(self) -> None:
+        self._renew()
         getattr(self._base, "assert_current")()
 
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID:
+        self._renew()
         step_id = self._base.commit_step(logical_key, response)
         self.last_step = (step_id, dict(response))
         self.steps_seen += 1
@@ -157,6 +203,7 @@ class _EmittingCommitter:
     def commit_tool(
         self, step_id: UUID, ordinal: int, result: Mapping[str, Any]
     ) -> None:
+        self._renew()
         self._base.commit_tool(step_id, ordinal, result)
         self._events.append(
             self._subject_id,
@@ -531,9 +578,12 @@ class Workbench:
         Returns the loop outcome, or ``None`` when the store refused the
         claim or the attempt raised. Once a lease was granted every path
         ends with the lease released and a ``run_completed`` or
-        ``run_handoff`` event. ``DurableStore`` has no lease renewal, so the
-        lease defaults to the Run wall (``run_seconds``): a lease shorter
-        than the attempt would fence the attempt's own commits.
+        ``run_handoff`` event. The lease is short (``LEASE_SECONDS``) and is
+        renewed before every committer call when the store offers
+        ``renew_lease`` (PR #35); it must outlast one maximal model request
+        because the loop cannot renew while a request blocks. Without the
+        capability the lease keeps the granted length, so on such a store
+        the caller must pass a ``lease_seconds`` that covers the attempt.
         """
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
@@ -545,7 +595,7 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
-        seconds = int(self.run_seconds) if lease_seconds is None else lease_seconds
+        seconds = LEASE_SECONDS if lease_seconds is None else lease_seconds
         try:
             lease = self.incidents.claim(
                 incident_id, run_id, self._owner, dict(self.run_versions), seconds
@@ -562,7 +612,9 @@ class Workbench:
                 )
             return None
         try:
-            return self._attempt(incident_id, run_id, lease, investigator, request)
+            return self._attempt(
+                incident_id, run_id, lease, investigator, request, seconds
+            )
         except (StepStoreError, PersistenceError) as exc:
             self._handoff(incident_id, lease, run_id, "failed", (str(exc),))
             return None
@@ -577,6 +629,7 @@ class Workbench:
         lease: Lease,
         investigator: Investigator,
         request: IntakeRequest,
+        seconds: int,
     ) -> LoopOutcome:
         rebuilt = self.incidents.rebuild(incident_id)
         # Human notes are read only once the lease is held: a note applied
@@ -596,7 +649,11 @@ class Workbench:
             },
         )
         committer = _EmittingCommitter(
-            self.incidents.committer(lease), self.events, incident_id, run_id
+            self.incidents.committer(lease),
+            self.events,
+            incident_id,
+            run_id,
+            renew=lambda: self.incidents.renew_lease(lease, seconds),
         )
         context = RunContext(
             incident_id=incident_id,

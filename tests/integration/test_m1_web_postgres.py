@@ -362,3 +362,102 @@ def test_control_generations_and_late_results_on_postgres():
     else:
         # Pre-#31 base: the ledger note is composed into the question.
         assert "Check the canary too." in fresh.contexts[0].question
+
+
+@pytest.mark.skipif(
+    not hasattr(DurableStore, "renew_lease"), reason="needs PR #35 renew_lease"
+)
+def test_run_once_renews_a_short_lease_before_each_commit_on_postgres():
+    """Two model rounds each longer than half the lease; renewals keep the
+    attempt alive, and the lease is released at the end."""
+    import time
+
+    app, workbench, store = _build()
+    key = f"pg-lease-{uuid4()}"
+    accepted = post_form(
+        app,
+        "/intake/ui",
+        {"target_id": "checkout-prod", "question": "lease", "idempotency_key": key},
+        headers={**basic(), **same_origin()},
+    )
+    assert accepted.status == 201
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    seen: list = []
+
+    def slow_round(call_):
+        time.sleep(2.5)
+        with store.transaction(snapshot=True) as conn:
+            seen.append(
+                conn.execute(
+                    "SELECT lease_until FROM opspilot_runs WHERE run_id=%s", (run_id,)
+                ).fetchone()["lease_until"]
+            )
+        return reply(tool_calls=[tool_call()], finish="tool_calls")
+
+    def slow_final(call_):
+        time.sleep(2.5)
+        with store.transaction(snapshot=True) as conn:
+            seen.append(
+                conn.execute(
+                    "SELECT lease_until FROM opspilot_runs WHERE run_id=%s", (run_id,)
+                ).fetchone()["lease_until"]
+            )
+        return report_from_transcript(call_)
+
+    investigator = ScriptedInvestigator(
+        _DbClock(store), replies=[slow_round, slow_final]
+    )
+    outcome = workbench.run_once(subject, investigator, lease_seconds=4)
+    assert outcome is not None and outcome.execution == "completed"
+    # The lease observed during round 2 is later than the one granted at
+    # claim time by more than the elapsed sleep would allow without renewal.
+    assert seen[1] > seen[0]
+    with store.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT state,owner,lease_until FROM opspilot_runs WHERE run_id=%s",
+            (run_id,),
+        ).fetchone()
+    assert row["state"] == "completed" and row["owner"] is None
+
+
+@pytest.mark.skipif(
+    not hasattr(DurableStore, "renew_lease"), reason="needs PR #35 renew_lease"
+)
+def test_a_refused_renewal_on_postgres_hands_off_with_history():
+    app, workbench, store = _build()
+    key = f"pg-lease-refused-{uuid4()}"
+    post_form(
+        app,
+        "/intake/ui",
+        {"target_id": "checkout-prod", "question": "lease", "idempotency_key": key},
+        headers={**basic(), **same_origin()},
+    )
+    subject = workbench.list_incidents()[0].incident_id
+
+    def pause_then_answer(call_):
+        workbench.control(
+            subject,
+            actor_id=UI_USER,
+            action="pause",
+            expected_generation=0,
+            idempotency_key="mid",
+        )
+        return report_from_transcript(call_)
+
+    investigator = ScriptedInvestigator(
+        _DbClock(store),
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            pause_then_answer,
+        ],
+    )
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None and outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    snapshot = workbench.snapshot(subject)
+    assert [s["status"] for s in snapshot["steps"]] == [
+        "tool_result_committed",
+        "late_result",
+    ]
+    assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"

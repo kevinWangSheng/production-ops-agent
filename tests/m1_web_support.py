@@ -378,6 +378,21 @@ class MemoryIncidentStore:
         run.update(state="completed", owner=None, lease_until=None)
         return True
 
+    def renew_lease(self, lease, extend_seconds):
+        """Mirror DurableStore.renew_lease (PR #35): same fence, capped at deadline."""
+        if extend_seconds <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        run = self.runs.get(lease.run_id)
+        if run is None or run["state"] != "running" or self._revoked(run, lease):
+            raise PersistenceError("CONTROL_DENIED")
+        now = self.now()
+        run["lease_until"] = min(
+            max(run["lease_until"], now + timedelta(seconds=extend_seconds)),
+            run["deadline"],
+        )
+        self.renewals = getattr(self, "renewals", 0) + 1
+        return run["lease_until"]
+
     def abandon(self, lease):
         run = self.runs[lease.run_id]
         if (

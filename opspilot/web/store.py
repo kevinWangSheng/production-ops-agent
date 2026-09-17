@@ -97,6 +97,15 @@ class IncidentStore(Protocol):
 
     def abandon(self, lease: Lease) -> None: ...
 
+    def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
+        """Extend a held lease under the write-path fence (PR #35).
+
+        Returns the new ``lease_until``, or ``None`` when the underlying store
+        has no renewal capability yet; refusal is ``PersistenceError``
+        ``CONTROL_DENIED`` exactly like a fenced commit.
+        """
+        ...
+
     def committer(self, lease: Lease) -> StepCommitter: ...
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]: ...
@@ -341,6 +350,15 @@ class DurableIncidentStore:
 
     def abandon(self, lease: Lease) -> None:
         self._store.abandon(lease)
+
+    def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
+        # PR #35 adds DurableStore.renew_lease; without it the lease simply
+        # keeps the length claim() granted, exactly as before.
+        renew = getattr(self._store, "renew_lease", None)
+        if renew is None:
+            return None
+        renewed: datetime = renew(lease, extend_seconds)
+        return renewed
 
     def committer(self, lease: Lease) -> StepCommitter:
         return DurableStepStore(self._store, lease)
