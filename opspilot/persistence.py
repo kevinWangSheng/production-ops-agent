@@ -344,7 +344,7 @@ class DurableStore:
             nxt = current + 1
             conn.execute(
                 "UPDATE opspilot_scope_controls SET global_suspended=%s,global_generation=%s WHERE scope_id=1",
-                (suspended, nxt, actor),
+                (suspended, nxt),
             )
             if suspended:
                 conn.execute(
