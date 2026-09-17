@@ -300,7 +300,9 @@ class DurableStore:
                 (amount, lease.run_id),
             )
 
-    def charge_tool(self, lease: Lease, operation_id: str, seconds: float) -> None:
+    def charge_tool(
+        self, lease: Lease, operation_id: str, seconds: float, *, max_operations: int
+    ) -> None:
         """Charge one tool operation to the Run's durable tool budget.
 
         The first charge for ``(run, epoch, operation_id)`` counts the operation;
@@ -310,6 +312,21 @@ class DurableStore:
         that re-dispatches an uncommitted operation issues a real second query
         (technical plan section 7), so it is counted again; the per-Run total
         only ever grows. Fenced by the lease like every other write path.
+
+        ``max_operations`` is required, not defaulted: this module does not
+        import the frozen ceiling from ``opspilot.tools.executor`` (that
+        would invert the existing one-way dependency, ``opspilot.tools``
+        already imports from here), so every caller must supply the same
+        value the executor is enforcing. Counting a *new* operation is
+        refused, atomically under the same row lock as everything else in
+        this transaction, once the Run is already at the cap -- two
+        executors racing from the same stale ``operations_used`` snapshot
+        serialize on this lock, and only the one that arrives first may
+        still increment (bot review finding: the increment used to be
+        unconditional once past application-level checks, so both could
+        succeed and the durable count could exceed the frozen cap).
+        Settling an *already-counted* operation's seconds is never subject
+        to this check -- it does not add a new operation.
         """
         if not isinstance(operation_id, str) or not operation_id:
             raise PersistenceError("INVALID_INPUT")
@@ -319,6 +336,8 @@ class DurableStore:
             or seconds in (float("inf"), float("-inf"))
             or seconds < 0
         ):
+            raise PersistenceError("INVALID_INPUT")
+        if type(max_operations) is not int or max_operations <= 0:
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run，与其余写路径同一顺序。
@@ -352,10 +371,17 @@ class DurableStore:
                     "INSERT INTO opspilot_tool_charges(run_id,epoch,operation_id,seconds) VALUES(%s,%s,%s,%s)",
                     (lease.run_id, lease.epoch, operation_id, float(seconds)),
                 )
-                conn.execute(
-                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
-                    (float(seconds), lease.run_id),
+                cursor = conn.execute(
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s",
+                    (float(seconds), lease.run_id, max_operations),
                 )
+                if cursor.rowcount == 0:
+                    # The row is already locked (``FOR UPDATE`` above), so this
+                    # is not a lost-update race with another writer -- the cap
+                    # was already reached when we got here. Raising rolls back
+                    # the INSERT above too, so no orphaned charge row survives
+                    # for an operation that was never actually counted.
+                    raise PersistenceError("OPERATION_BUDGET_EXHAUSTED")
                 return
             delta = max(0.0, float(seconds) - float(existing["seconds"]))
             if delta == 0.0:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from opspilot.persistence import DurableStore, Lease
 
-from .executor import ToolUsage
+from .executor import MAX_OPERATIONS_PER_RUN, ToolUsage
 
 __all__ = ["DurableToolLedger"]
 
@@ -20,9 +20,16 @@ __all__ = ["DurableToolLedger"]
 class DurableToolLedger:
     """``ToolUsageLedger`` over committed PostgreSQL rows for one lease."""
 
-    def __init__(self, store: DurableStore, lease: Lease) -> None:
+    def __init__(
+        self,
+        store: DurableStore,
+        lease: Lease,
+        *,
+        max_operations: int = MAX_OPERATIONS_PER_RUN,
+    ) -> None:
         self._store = store
         self._lease = lease
+        self._max_operations = max_operations
 
     def usage(self) -> ToolUsage:
         run = self._store.rebuild(self._lease.incident_id)["run"]
@@ -34,4 +41,6 @@ class DurableToolLedger:
         )
 
     def charge(self, operation_id: str, seconds: float) -> None:
-        self._store.charge_tool(self._lease, operation_id, seconds)
+        self._store.charge_tool(
+            self._lease, operation_id, seconds, max_operations=self._max_operations
+        )
