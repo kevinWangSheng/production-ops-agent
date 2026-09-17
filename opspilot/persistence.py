@@ -32,6 +32,9 @@ _ERROR_CODES: tuple[tuple[type[psycopg.Error], str], ...] = (
     (errors.QueryCanceled, "TIMEOUT"),
 )
 
+# 非 cancel 的人工动作只对这些 run 状态开放；其余一律拒绝（fail closed）。
+_CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_human"})
+
 
 class PersistenceError(RuntimeError):
     pass
@@ -69,6 +72,29 @@ class DurableStore:
         """唯一的当前时间来源：数据库时钟，避免应用与存储时钟不一致。"""
         row = DurableStore._require_row(conn.execute("SELECT clock_timestamp() AS now"))
         return cast(datetime, row["now"])
+
+    @staticmethod
+    def _lease_revoked(row: dict[str, Any], lease: Lease, now: datetime) -> bool:
+        """租约栅栏的唯一实现：四条写路径共用，语义不再逐份分叉。
+
+        `row` 必须带 `incident_generation` —— 人工决定只递增
+        `opspilot_incidents.control_generation`，`opspilot_runs` 上的同名列是
+        `claim()`/`control()` 盖下的副本。栅栏要拦的是「租约早于一个更新的人工
+        决定」，因此权威是事故代际，不是 run 行里的副本。
+
+        `lease_until IS NULL` 判为撤销：`Lease` 是持有租约的凭据，而 run 行说
+        它没有租约。`control()` 清空 `lease_until` 正是收回 worker 权限的动作，
+        把 NULL 读成通过，等于让被收回权限的 worker 依赖 owner 一项守住。
+        `publish()` 原本就是这个语义，另三条取它。
+        """
+        return (
+            row["owner"] != lease.owner
+            or row["epoch"] != lease.epoch
+            or row["incident_generation"] != lease.control_generation
+            or row["lease_until"] is None
+            or row["lease_until"] <= now
+            or row["deadline"] <= now
+        )
 
     @contextmanager
     def transaction(self, *, snapshot: bool = False) -> Iterator[Connection]:
@@ -118,6 +144,10 @@ class DurableStore:
               budget_spent bigint NOT NULL DEFAULT 0, budget_unknown bigint NOT NULL DEFAULT 0,
               deadline timestamptz NOT NULL, versions jsonb NOT NULL, input_watermark integer NOT NULL DEFAULT 0
             );
+            -- PostgreSQL 不为外键列自动建索引。control() 按 incident_id 推进 run
+            -- 状态，前置的 incident 行锁把 worker 写路径排在这条 UPDATE 之后，
+            -- 全表扫描会随表增长直接变成写路径的排队时间。
+            CREATE INDEX IF NOT EXISTS opspilot_runs_incident_id_idx ON opspilot_runs(incident_id);
             CREATE TABLE IF NOT EXISTS opspilot_steps (
               step_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL, status text NOT NULL, response jsonb,
@@ -130,6 +160,8 @@ class DurableStore:
               action text NOT NULL, expected_generation integer NOT NULL,
               resulting_generation integer NOT NULL, actor text NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
             );
+            -- 同上：审计行按 incident 读取，且外键列无索引时父行的键变更要扫全表。
+            CREATE INDEX IF NOT EXISTS opspilot_controls_incident_id_idx ON opspilot_controls(incident_id);
             CREATE TABLE IF NOT EXISTS opspilot_budget_reservations (
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
@@ -194,19 +226,20 @@ class DurableStore:
         lease = None
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.* FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
+                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            now = self._db_now(conn)
             active_lease = (
-                row["state"] == "running"
+                row["run_state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > self._db_now(conn)
+                and row["lease_until"] > now
             )
             if active_lease:
                 raise PersistenceError("LEASE_ACTIVE")
-            if row["deadline"] <= self._db_now(conn):
+            if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
             # 人工决定先于版本判定（C3 第 5 节：版本事故与权限操作是两套语义，
             # 不得互相顶替）。paused/cancelled/completed 的 Run 行是人工或发布
@@ -215,7 +248,7 @@ class DurableStore:
             # 投影成 INCOMPATIBLE_STATE。只有本来可领取的 Run 才进版本事故。
             if row["incident_state"] in {"completed", "cancelled", "paused"}:
                 raise PersistenceError("CONTROL_DENIED")
-            if row["state"] not in ("queued", "running", "blocked"):
+            if row["run_state"] not in ("queued", "running", "blocked"):
                 raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
@@ -223,13 +256,13 @@ class DurableStore:
                     (run_id,),
                 )
                 incompatible = True
-            elif row["state"] == "blocked":
+            elif row["run_state"] == "blocked":
                 # 版本已对上但 Run 仍是 blocked：不静默恢复，走显式迁移或新 Run。
                 raise PersistenceError("CONTROL_DENIED")
             elif (
-                row["state"] == "running"
+                row["run_state"] == "running"
                 and row["lease_until"] is not None
-                and row["lease_until"] > self._db_now(conn)
+                and row["lease_until"] > now
             ):
                 raise PersistenceError("LEASE_ACTIVE")
             else:
@@ -308,20 +341,10 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
             ).fetchone()
-            if (
-                not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
-            ):
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT amount,run_id FROM opspilot_budget_reservations WHERE reservation_id=%s",
@@ -360,20 +383,10 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
                 (lease.run_id,),
             ).fetchone()
-            if (
-                not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
-            ):
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
@@ -414,20 +427,13 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.*,i.control_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
             if (
                 not row
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
                 or row["step_generation"] != lease.control_generation
-                or (
-                    row["lease_until"] is not None
-                    and row["lease_until"] <= self._db_now(conn)
-                )
-                or row["deadline"] <= self._db_now(conn)
+                or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
@@ -443,14 +449,35 @@ class DurableStore:
         self, incident_id: UUID, expected_generation: int, action: str, actor: str
     ) -> int:
         with self.transaction() as conn:
+            # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」
+            # 与「事故存在但 run 行缺失」，两者都会落到 CONTROL_CONFLICT，
+            # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
+            # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT i.control_generation,i.state,i.conclusion,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
-            if not row or row["control_generation"] != expected_generation:
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if row["control_generation"] != expected_generation:
                 raise PersistenceError("CONTROL_CONFLICT")
             if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
                 raise PersistenceError("INVALID_INPUT")
+            # 连 incident_id 一起查：状态判定读的是这一行，而下面的状态推进按
+            # incident_id 作用于本 incident 真正的 run。两者指向不同的行时，一个
+            # 外来的 running run 会把 blocked run 的保护顶开——实测 incident 停在
+            # paused 而它自己的 run 仍是 blocked。只按 run_id 查会让守卫读到不属于
+            # 这个 incident 的状态，因此先判为不一致，不推进任何状态。
+            run = (
+                conn.execute(
+                    "SELECT state AS run_state FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
+                    (row["current_run_id"], incident_id),
+                ).fetchone()
+                if row["current_run_id"] is not None
+                else None
+            )
+            if not run:
+                raise PersistenceError("INCONSISTENT_STATE")
             if (
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None
@@ -461,7 +488,10 @@ class DurableStore:
             # 追问与纠正不得静默解除人工暂停。
             if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if row["run_state"] == "blocked" and action != "cancel":
+            # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个
+            # 状态，`failed`/`budget_exhausted` 这类终态一旦开始被写入就会静默
+            # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
+            if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
@@ -504,7 +534,7 @@ class DurableStore:
     ) -> bool:
         with self.transaction() as conn:
             row = conn.execute(
-                "SELECT i.*,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,r.control_generation AS run_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
+                "SELECT i.current_run_id,i.conclusion,i.state AS incident_state,i.control_generation AS incident_generation,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s FOR UPDATE",
                 (lease.incident_id,),
             ).fetchone()
             if (
@@ -516,18 +546,14 @@ class DurableStore:
             if (
                 not row
                 or row["current_run_id"] != lease.run_id
-                or row["owner"] != lease.owner
-                or row["epoch"] != lease.epoch
-                or row["control_generation"] != lease.control_generation
                 or row["run_state"] != "running"
                 # `paused` 在当前实现下是纵深防御而非承重判定：暂停必然递增
                 # control_generation，且 claim() 已拒绝在暂停期间发放租约，
-                # 因此上面的 generation 栅栏先行拦截。变异测试确认去掉本项
-                # 不会导致任何用例失败。保留它是为了在栅栏被削弱时仍然兜底。
-                or row["state"] in {"completed", "cancelled", "paused"}
-                or row["lease_until"] is None
-                or row["lease_until"] <= self._db_now(conn)
-                or row["deadline"] <= self._db_now(conn)
+                # 因此 _lease_revoked() 的 generation 栅栏已经拦下同一批调用。
+                # 变异测试确认去掉本项不会导致任何用例失败。保留它是为了在
+                # 栅栏被削弱时仍然兜底。
+                or row["incident_state"] in {"completed", "cancelled", "paused"}
+                or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 conn.execute(
                     "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
@@ -570,6 +596,10 @@ class DurableStore:
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            # 与写路径的栅栏同一条规则：人工决定的权威是事故代际，`run` 行上的
+            # 同名列只是 claim()/control() 盖下的副本。这里绑成具名变量，是为了
+            # 让「读的是哪一份」在读点上就可见，而不是靠 `row` 指向谁来推断。
+            incident_generation = row["control_generation"]
             run = conn.execute(
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
@@ -580,12 +610,17 @@ class DurableStore:
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],
-                "control_generation": row["control_generation"],
+                "control_generation": incident_generation,
                 "run": run,
                 "steps": steps,
+                # 只列出当前代际的待办工具调用。旧代际的步骤仍留在 steps 里作为
+                # 记录，但人工决定之后它们已经不该再被执行；照旧列出会让调用方
+                # 把过期证据重新提交成「当前已提交的证据」，而 commit_tool 在
+                # 写入处拒绝它们——断点会因此永远重建出做不完的待办。
                 "pending_tools": [
                     {"step_id": step["step_id"], "ordinal": ordinal}
                     for step in steps
+                    if step["control_generation"] == incident_generation
                     for ordinal in range(
                         len((step["response"] or {}).get("tool_calls", []))
                     )
