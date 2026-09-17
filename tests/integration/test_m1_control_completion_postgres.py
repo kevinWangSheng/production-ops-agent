@@ -46,7 +46,9 @@ def test_scope_suspension_fences_claim_and_release_does_not_resume_old_run():
     s = _store()
     t = s.register_target("target-" + str(uuid4()))
     i, r = _accept(s, target=t)
-    assert s.set_target_suspension(t, True, expected_generation=0) == 1
+    assert (
+        s.set_target_suspension(t, True, expected_generation=0, actor="operator") == 1
+    )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.claim(i, r, uuid4(), {"v": "1"})
     assert (
@@ -73,7 +75,8 @@ def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
             "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
         ).fetchone()["global_generation"]
     assert (
-        s.set_global_suspension(True, expected_generation=generation) == generation + 1
+        s.set_global_suspension(True, expected_generation=generation, actor="operator")
+        == generation + 1
     )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.reserve_budget(lease, uuid4(), 1)
