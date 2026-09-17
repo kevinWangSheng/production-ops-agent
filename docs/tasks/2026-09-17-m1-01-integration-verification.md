@@ -180,3 +180,8 @@
 - 提交：`7c99f60`，分支 `chore/m1-01-integration-record`，已普通 push；PR #37（`docs: record M1-01 integration verification evidence`）已创建，目标 `main`，未合并。
 - PR #37 初始 HEAD 的 GitHub Actions run `35268318674`：`checks` pass（53s），`m0-postgres` pass（41s）。这些检查覆盖记录类变更；不改变前述专项报告的产品状态。
 - PR #37 当前仍需用户审核/合并；本任务不执行合并。后续实质变更若发生，需重新核对当前 HEAD 的 CI 和审查覆盖。
+
+### PR #37 最终 HEAD 补记
+
+- 为把 PR 检查结果写入仓库记录，追加文档提交 `d0e7d13` 并普通 push；因此 PR #37 当前 HEAD 已从 `7c99f60` 更新为 `d0e7d13`。
+- 当前 HEAD 对应的 GitHub Actions run `35268443863`：`checks` pass（52s），`m0-postgres` pass（34s）。PR 仍 OPEN，未合并，等待用户审核。
