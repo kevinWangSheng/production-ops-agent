@@ -20,10 +20,17 @@ from opspilot.tools import (
     QueryScope,
     TargetRegistry,
     ToolContractError,
+    ToolDescription,
     ToolRegistry,
     Window,
 )
-from tests.m1_tool_support import WINDOW_END, WINDOW_START, registration, target
+from tests.m1_tool_support import (
+    WINDOW_END,
+    WINDOW_START,
+    description,
+    registration,
+    target,
+)
 
 
 def test_every_forbidden_verb_is_refused_at_registration():
@@ -77,6 +84,89 @@ def test_result_path_and_incomplete_marker_must_be_usable():
         registration(result_path=["data"])
     with pytest.raises(ToolContractError, match="INVALID_INCOMPLETE_MARKER"):
         registration(incomplete_marker="")
+
+
+# --- C3 section 7 check 3: ToolDescription five-field structural completeness
+# ---------------------------------------------------------------------------
+# Only structure is asserted here (a value is present / a placeholder is
+# present), never prose quality — see ToolDescription's docstring and the
+# independent review disposition F10 it cites.
+
+
+@pytest.mark.parametrize("field_name", ["returns", "limits", "cannot_prove"])
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_tool_description_required_fields_reject_blank_text(field_name, blank):
+    with pytest.raises(ToolContractError, match="EMPTY_TOOL_DESCRIPTION_FIELD"):
+        description(**{field_name: blank})
+
+
+@pytest.mark.parametrize("field_name", ["window_format", "values_format"])
+def test_tool_description_format_fields_require_their_placeholder(field_name):
+    with pytest.raises(ToolContractError, match="MISSING_DESCRIPTION_PLACEHOLDER"):
+        description(**{field_name: "no placeholder token in this sentence"})
+
+
+def test_tool_description_placeholder_check_requires_the_exact_token():
+    # A near-miss (wrong bracket, wrong/singular name) must not satisfy the
+    # check: it is a literal substring match on the exact token, not "looks
+    # like some placeholder".
+    with pytest.raises(ToolContractError, match="MISSING_DESCRIPTION_PLACEHOLDER"):
+        description(window_format="the window goes at (window)")
+    with pytest.raises(ToolContractError, match="MISSING_DESCRIPTION_PLACEHOLDER"):
+        description(values_format="the values go at {value}")
+
+
+def test_tool_description_accepts_well_formed_fields():
+    described = description()
+    assert described.returns and described.limits and described.cannot_prove
+    assert "{window}" in described.window_format
+    assert "{values}" in described.values_format
+
+
+def test_tool_description_field_names_and_order_match_c3_table():
+    # Field names and declaration order must match the C3 section 8 table
+    # verbatim (returns / window_format / values_format / limits /
+    # cannot_prove), so a future renderer can rely on it without a separate
+    # ordering rule.
+    described = ToolDescription(
+        returns="r",
+        window_format="w {window}",
+        values_format="v {values}",
+        limits="l",
+        cannot_prove="c",
+    )
+    assert [f.name for f in dataclasses.fields(described)] == [
+        "returns",
+        "window_format",
+        "values_format",
+        "limits",
+        "cannot_prove",
+    ]
+
+
+def test_tool_description_is_immutable():
+    described = description()
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        described.returns = "different"
+
+
+def test_registration_requires_a_structurally_complete_tool_description():
+    # A blank required field never reaches ToolRegistration at all: building
+    # `description(returns="")` itself raises inside ToolDescription's own
+    # __post_init__ (see test_tool_description_required_fields_reject_blank_text),
+    # before `registration(...)` is ever called. What ToolRegistration must
+    # guard on its own is a caller skipping ToolDescription entirely.
+    with pytest.raises(ToolContractError, match="INVALID_TOOL_DESCRIPTION"):
+        registration(description=None)
+    with pytest.raises(ToolContractError, match="INVALID_TOOL_DESCRIPTION"):
+        registration(description={"returns": "not a ToolDescription instance"})
+
+
+# C3 section 7 check 2 (fingerprint covers the tool-layer and parameter-layer
+# description) is exercised end to end in
+# tests/test_m1_tool_registry_binding.py::CONTRACT_CHANGES — both that the
+# revision changes and that an old scope built on the pre-change registry is
+# denied before any transport call.
 
 
 def test_registration_and_its_parameter_map_are_immutable():

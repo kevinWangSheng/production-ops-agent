@@ -15,6 +15,7 @@ from opspilot.tools import (
     ReadOnlyToolExecutor,
     RegisteredTarget,
     TargetRegistry,
+    ToolDescription,
     ToolRegistration,
     ToolRegistry,
     ToolRequest,
@@ -148,15 +149,48 @@ class UnavailableControl:
         raise RuntimeError("control database unreachable")
 
 
+def description(**overrides):
+    fields = {
+        "returns": (
+            "The evaluated Prometheus range-query series: one point series per "
+            "returned label set, from the range_query source."
+        ),
+        "window_format": "The authorized absolute query window, appended as {window}.",
+        "values_format": (
+            "The authorized target label enumeration for this Run, appended as "
+            "{values}; any other label value is refused."
+        ),
+        "limits": (
+            "Truncated at the registered max_view_bytes; excess points are "
+            "dropped, not summarized or averaged."
+        ),
+        "cannot_prove": (
+            "A non-zero rate over this window does not by itself prove a "
+            "user-visible error; it must be compared against the alert "
+            "threshold and the service's normal baseline separately."
+        ),
+    }
+    fields.update(overrides)
+    return ToolDescription(**fields)
+
+
 def registration(**overrides):
     fields = {
         "name": "metrics.range_query",
         "version": "v1",
         "source": "prometheus",
         "verb": "query",
+        "description": description(),
         "parameters": {
-            "expr": ParameterSpec("string", required=True),
-            "step_seconds": ParameterSpec("integer"),
+            "expr": ParameterSpec(
+                "string",
+                required=True,
+                description="The PromQL expression to evaluate.",
+            ),
+            "step_seconds": ParameterSpec(
+                "integer",
+                description="The resolution step, in seconds, between returned points.",
+            ),
         },
         "result_path": ("data", "result"),
         "request_timeout_seconds": 10.0,
