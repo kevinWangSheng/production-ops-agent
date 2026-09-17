@@ -102,3 +102,45 @@ def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
         )
         == generation + 2
     )
+
+
+def test_new_run_created_while_suspended_persists_paused_on_the_run_row_too():
+    """new_run() puts a suspended successor's Incident in 'paused', but used to
+    leave the Run row itself at the hardcoded 'queued' it always inserted with
+    -- so rebuild_plan() (opspilot/recovery.py) treated it as a live recovery
+    candidate and Worker.resume() kept trying a claim the scope fence rejects.
+    The Run row must agree with the Incident it belongs to."""
+    from opspilot.recovery import rebuild_plan
+
+    s = _store()
+    t = s.register_target("target-" + str(uuid4()))
+    i, r, next_run = uuid4(), uuid4(), uuid4()
+    s.accept(
+        i,
+        r,
+        "new-run-suspended-" + str(i),
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=5,
+        versions={"v": "1"},
+        target_id=t,
+    )
+    assert s.control(i, 0, "cancel", "operator") == 1
+    assert (
+        s.set_target_suspension(t, True, expected_generation=0, actor="operator") == 1
+    )
+    generation = s.new_run(
+        i,
+        next_run,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=5,
+        versions={"v": "1"},
+        actor="operator",
+    )
+    assert generation == 2
+    rebuilt = s.rebuild(i)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["run"]["run_id"] == next_run
+    assert rebuilt["run"]["state"] == "paused"
+    assert rebuild_plan(rebuilt).candidate is False
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.claim(i, next_run, uuid4(), {"v": "1"})

@@ -500,14 +500,22 @@ class DurableStore:
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = int(row["control_generation"]) + 1
-            conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
-                (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
-            )
             next_state = (
                 "paused"
                 if scope["global_suspended"] or scope["target_suspended"]
                 else "queued"
+            )
+            conn.execute(
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    next_state,
+                    nxt,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                ),
             )
             conn.execute(
                 "UPDATE opspilot_incidents SET state=%s,lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
