@@ -380,10 +380,19 @@ def eligible_time_policies(
             allowed = {item for item in interfaces if isinstance(item, str)}
             if source not in allowed and tool not in allowed:
                 continue
-        refs = policy.get("target_refs")
-        if policy.get("all_authorized_targets") is not True and isinstance(refs, list):
-            named = {item for item in refs if isinstance(item, str) and item}
-            if named and named.isdisjoint(target_ids):
+        if policy.get("all_authorized_targets") is not True:
+            # An explicit, intersecting target ref is required here. The old
+            # ``named and named.isdisjoint(...)`` guard was vacuously false
+            # for an empty/absent ``target_refs`` -- meaning a policy scoped
+            # to no targets was silently attached to every target instead
+            # (bot review finding, PR #29).
+            refs = policy.get("target_refs")
+            named = (
+                {item for item in refs if isinstance(item, str) and item}
+                if isinstance(refs, list)
+                else set()
+            )
+            if named.isdisjoint(target_ids):
                 continue
         if mode == "historical_window":
             bounds = policy.get("window")

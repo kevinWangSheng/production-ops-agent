@@ -28,7 +28,11 @@ from opspilot.investigation.loop import (
     ModelError,
     serialized_request,
 )
-from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION, parse_report
+from opspilot.investigation.reports import (
+    FINAL_REPORT_INSTRUCTION,
+    eligible_time_policies,
+    parse_report,
+)
 from opspilot.investigation.store import (
     MemoryStepStore,
     StepStoreError,
@@ -91,6 +95,7 @@ def test_canonical_catalog_target_maps_onto_the_sole_authorized_target():
                 {
                     "id": "policy-window-1",
                     "mode": "historical_window",
+                    "all_authorized_targets": True,
                     "window": {
                         "start": WINDOW_START.isoformat(),
                         "end": WINDOW_END.isoformat(),
@@ -248,6 +253,120 @@ def test_fact_time_scope_must_match_the_cited_view():
     outcome = loop.run(request)
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_current_policy_with_empty_target_refs_covers_no_target():
+    """Bot review finding #2: a valid v4 policy with ``target_refs: []`` and
+    ``all_authorized_targets: false`` covers no targets. The old check only
+    rejected a *nonempty* disjoint list -- ``named and named.isdisjoint(...)``
+    is vacuously false for an empty ``named`` -- so an explicitly-scoped-to-
+    nothing policy was silently attached to every target instead."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "target_refs": [],
+                "all_authorized_targets": False,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_with_no_target_refs_key_covers_no_target():
+    """Same gap, ``target_refs`` absent entirely rather than an empty list."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": False,
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_with_disjoint_target_refs_is_still_rejected():
+    """Regression: a nonempty but disjoint ``target_refs`` was already
+    rejected before the fix and must stay rejected."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "target_refs": ["other-service"],
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert eligible == frozenset()
+
+
+def test_policy_with_all_authorized_targets_still_covers_everything():
+    """Regression: an explicit ``all_authorized_targets: true`` is unaffected
+    by the empty-``target_refs`` fix."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-any",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset({"policy-any"})
+
+
+def test_policy_with_an_intersecting_target_ref_is_still_eligible():
+    """Regression: an explicit, intersecting ``target_refs`` entry is
+    unaffected by the fix."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-named",
+                "mode": "current",
+                "target_refs": ["checkout-prod"],
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset({"policy-named"})
 
 
 def test_supplied_context_views_can_be_cited_without_new_tools():

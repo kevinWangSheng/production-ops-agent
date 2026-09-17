@@ -162,6 +162,7 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
                 {
                     "id": "policy-window-1",
                     "mode": "historical_window",
+                    "all_authorized_targets": True,
                     "window": {
                         "start": WINDOW_START.isoformat(),
                         "end": WINDOW_END.isoformat(),
