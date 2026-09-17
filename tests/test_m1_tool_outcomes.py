@@ -9,7 +9,7 @@ directly: no assertion accepts "not ok" as a substitute for the exact class.
 
 import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -55,6 +55,50 @@ def test_ok_outcome_registers_raw_bytes_view_and_both_hashes():
     assert record.freshness_seconds == 30.0
     assert record.view["freshness_seconds"] == 30.0
     assert record.evidence_id == record.operation.operation_id == "step-1-t0"
+
+
+def test_ok_outcome_registers_the_source_coverage_interval():
+    payload = body([{"metric": "checkout", "value": 3}])
+    source_start = datetime(2026, 9, 14, 0, 10, tzinfo=timezone.utc)
+    source_end = datetime(2026, 9, 14, 0, 55, tzinfo=timezone.utc)
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=payload, source_start_at=source_start, source_end_at=source_end
+    )
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    assert outcome.evidence.source_start_at == source_start
+    assert outcome.evidence.source_end_at == source_end
+    assert outcome.model_view["source_start_at"] == source_start.isoformat()
+    assert outcome.model_view["source_end_at"] == source_end.isoformat()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"source_start_at": datetime(2026, 9, 14, 0, 1)},
+        {"source_start_at": NOW.replace(tzinfo=None), "source_end_at": NOW},
+        {"source_start_at": NOW, "source_end_at": NOW.replace(tzinfo=None)},
+        {"source_start_at": "invalid", "source_end_at": NOW},
+        {"source_start_at": NOW, "source_end_at": "invalid"},
+        {"source_end_at": datetime(2026, 9, 14, 0, 1, tzinfo=timezone.utc)},
+        {
+            "source_start_at": datetime(2026, 9, 14, 1, tzinfo=timezone.utc),
+            "source_end_at": datetime(2026, 9, 14, 0, tzinfo=timezone.utc),
+        },
+    ],
+)
+def test_malformed_source_coverage_is_fail_closed(kwargs):
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([]), **kwargs)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.evidence is None
+    assert sink.records == []
 
 
 def test_no_data_is_a_completed_query_not_an_error():
@@ -351,3 +395,27 @@ def test_operation_identity_is_stable_per_step_and_tool_index():
     assert first.operation.operation_id == "step-1-t0"
     assert second.operation.operation_id == "step-1-t1"
     assert first.evidence.evidence_id != second.evidence.evidence_id
+
+
+def test_unknown_source_interval_is_not_filled_from_query_or_freshness():
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(body=body([]), data_as_of=NOW)
+    outcome = executor.execute(request())
+    assert outcome.status == "no_data"
+    assert outcome.evidence.source_start_at is None
+    assert outcome.evidence.source_end_at is None
+    assert outcome.model_view["source_start_at"] is None
+    assert outcome.model_view["source_end_at"] is None
+
+
+def test_single_source_instant_and_offset_are_preserved():
+    instant = NOW.astimezone(timezone(timedelta(hours=8)))
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]), source_start_at=instant, source_end_at=instant
+    )
+    outcome = executor.execute(request())
+    assert outcome.status == "ok"
+    assert outcome.model_view["source_start_at"] == instant.isoformat()
+    assert outcome.model_view["source_end_at"] == instant.isoformat()
+    assert outcome.evidence.view_sha256 == canonical_hash(outcome.model_view)

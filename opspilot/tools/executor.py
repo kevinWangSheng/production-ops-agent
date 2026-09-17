@@ -229,11 +229,23 @@ class TransportRequest:
 
 @dataclass(frozen=True)
 class TransportResponse:
-    """A completed read: the exact bytes plus what only the adapter can know."""
+    """Exact source bytes plus adapter-verified metadata.
+
+    ``source_start_at``/``source_end_at`` bound the actual source timestamps
+    represented by this response (a single instant is allowed). They are not
+    the requested window, collection times, or a claim of gap-free coverage.
+    Both default to None when unknown; one missing, naive, non-datetime or
+    reversed bounds cause MALFORMED_RESULT before evidence registration.
+    Consumers must not infer time-policy eligibility from unknown bounds or
+    substitute the requested window/data_as_of. The adapter must derive these
+    timestamps from source semantics, never model-supplied parameters.
+    """
 
     body: bytes
     source_status: str | None = None
     data_as_of: datetime | None = None
+    source_start_at: datetime | None = None
+    source_end_at: datetime | None = None
 
 
 @runtime_checkable
@@ -570,6 +582,21 @@ class ReadOnlyToolExecutor:
             or response.data_as_of.utcoffset() is None
         ):
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+        source_start_at = response.source_start_at
+        source_end_at = response.source_end_at
+        if (source_start_at is None) != (source_end_at is None) or (
+            source_start_at is not None
+            and (
+                not isinstance(source_start_at, datetime)
+                or source_start_at.tzinfo is None
+                or source_start_at.utcoffset() is None
+                or not isinstance(source_end_at, datetime)
+                or source_end_at.tzinfo is None
+                or source_end_at.utcoffset() is None
+                or source_start_at > source_end_at
+            )
+        ):
+            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
@@ -682,6 +709,8 @@ class ReadOnlyToolExecutor:
             # are handed to the model, and the view says so.
             kept, omitted_rows, omitted_bytes = _fit_rows(rows, 0)
         data_as_of = response.data_as_of
+        source_start_at = response.source_start_at
+        source_end_at = response.source_end_at
         freshness = (
             None if data_as_of is None else (observed_at - data_as_of).total_seconds()
         )
@@ -702,6 +731,12 @@ class ReadOnlyToolExecutor:
             "window": plan.window.as_json(),
             "observed_at": observed_at.isoformat(),
             "data_as_of": None if data_as_of is None else data_as_of.isoformat(),
+            "source_start_at": None
+            if source_start_at is None
+            else source_start_at.isoformat(),
+            "source_end_at": None
+            if source_end_at is None
+            else source_end_at.isoformat(),
             "freshness_seconds": freshness,
             "result_count": len(rows),
             "returned_count": len(kept),
@@ -722,6 +757,8 @@ class ReadOnlyToolExecutor:
             projection_revision=PROJECTION_REVISION,
             observed_at=observed_at,
             data_as_of=data_as_of,
+            source_start_at=source_start_at,
+            source_end_at=source_end_at,
             result_count=len(rows),
             incomplete=incomplete,
             truncated=bool(omitted_rows),

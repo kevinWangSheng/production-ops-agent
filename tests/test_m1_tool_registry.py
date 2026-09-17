@@ -44,6 +44,16 @@ def test_read_only_flag_cannot_be_turned_off():
         registration(read_only=False)
 
 
+def test_sources_that_may_return_secrets_are_refused_at_registration():
+    with pytest.raises(ToolContractError, match="SECRET_BEARING_SOURCE_FORBIDDEN"):
+        registration(may_contain_secrets=True)
+
+
+def test_secret_bearing_declaration_is_boolean():
+    with pytest.raises(ToolContractError, match="INVALID_SECRET_DECLARATION"):
+        registration(may_contain_secrets="unknown")
+
+
 @pytest.mark.parametrize("verb", ["", "GET", "mutate", "anything"])
 def test_verb_must_come_from_the_read_only_allowlist(verb):
     with pytest.raises(ToolContractError, match="VERB_NOT_ALLOWED"):
@@ -347,3 +357,15 @@ def test_registered_target_identity_is_validated():
         target(endpoint="ftp://metrics.internal")
     with pytest.raises(ToolContractError, match="INVALID_SELECTOR"):
         target(selector={"namespace": 1})
+
+
+def test_missing_secret_declaration_cannot_register_a_source():
+    from opspilot.tools import ToolRegistration
+
+    fields = {
+        f.name: getattr(registration(), f.name)
+        for f in dataclasses.fields(registration())
+    }
+    fields.pop("may_contain_secrets")
+    with pytest.raises(TypeError, match="may_contain_secrets"):
+        ToolRegistration(**fields)

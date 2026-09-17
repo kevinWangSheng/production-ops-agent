@@ -607,3 +607,32 @@ tests/test_m1_tool_registry_binding.py -q` → `98 passed`；`make check` →
   落差，本轮未解决，接线属后续 M1-01 组合层任务）。
 - F3/F7 的 `passes` 保持 `false`：本轮是注册合同的结构化与确定性检查，不构成产品
   验收证据。
+
+## 10. source 区间与秘密来源注册约束（2026-09-17）
+
+本轮目标：为 PR #29 时间策略校验提供数据源实际区间；把执行器已有的秘密来源禁入约束变成注册期校验。工作区/分支沿用本任务，起点 `aff4586`，开始时干净。依据 C3 §8、PRODUCT-CONSTRAINTS 的证据来源与秘密不出站约束；不修改 #29、验收、冻结值或门槛。
+
+字段合同：
+
+- `TransportResponse.source_start_at/source_end_at` 可选，默认均 `None`，表示实际响应所代表的来源时间范围未知。不能由请求窗口、采集时间或 `data_as_of` 补出；适配器负责从来源语义确定。区间允许相等端点（单时刻），不承诺连续采样或无缺口。数据新鲜度仍单独使用 `data_as_of`。
+- 两端必须同时存在且为带时区 datetime，start <= end；否则执行器返回 `error/MALFORMED_RESULT`，不登记证据、不向模型暴露内容。两端均缺失仍允许未知时间的调查证据，消费方不得据此赋予时间策略资格。保留来源偏移量，比较采用绝对时间。
+- 区间进入 `EvidenceRecord` 和经过哈希的模型 view；未知为 JSON null。投影字节发生变化，`PROJECTION_REVISION` 从 v2 升至 v3，旧证据不可重新标为 v3。未修改冻结哈希/历史工件。
+- `ToolRegistration.may_contain_secrets` 必填，无默认值；只有严格 bool False 接受。True 返回固定错误 `SECRET_BEARING_SOURCE_FORBIDDEN`，非 bool 返回 `INVALID_SECRET_DECLARATION`；省略由构造器拒绝。声明覆盖原始 payload，不只投影行；进入 registry revision。这是受审配置声明，不是扫描器或脱敏保证，不允许从模型输入决定。
+- 真实注册仍不存在（产品代码仅声明类型；构造在共享测试夹具）；夹具显式声明 False。未来真实注册必须审查来源内容，不能机械填 False。真实适配器、#29 消费方和持久化版本接线仍属后续。
+
+测试证据：首轮新增测试在旧实现 `5 failed in 0.19s`（新字段不存在）；实现后 `6 passed in 0.03s`。补未知区间、单时刻/非 UTC、缺失秘密声明和双端点 malformed 测试后，定向 `116 passed in 0.08s`。独立全新上下文只读审查指出 naive 单端点用例遮蔽时区分支，已采纳补双端点 naive/non-datetime 的 start/end 四项。
+
+本轮未改 PG/ledger 路径；本地不启动共享 PG 实验环境，PG 集成检查交由 PR CI 的隔离实例，单元检查不声称 PG 证明。未发起模型调用/新增费用/依赖。项目阶段未变，ROADMAP 保留原状态；本节接续任务的具体进展。
+
+独立复验：全新上下文只读 Agent `/root/srcrange_review` 复核最终代码与补测，独立运行 `116 passed`，无剩余阻塞发现；仅覆盖本补丁/合同测试，不代表真实适配器或产品验收。
+
+最终 `make check` exit 0，结论行原样：
+
+```text
+All checks passed!
+422 files already formatted
+Success: no issues found in 18 source files
+================= 1246 passed, 79 skipped, 2 xfailed in 27.91s =================
+```
+
+79 skips 为 PG opt-in，2 xfails 为既有架构标记。下一步：普通推送到 PR #20、等待当前 HEAD CI；机器人审查按本轮任务书不是门槛，不合并。#29 应传入 source 两端与可信交付参考时刻，按最老来源时间判断 current（不是最新数据的 freshness），缺失必须 fail-closed；详细建议交接至 srcrange 报告。

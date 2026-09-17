@@ -246,6 +246,12 @@ class ToolRegistration:
     contract above and the model-visible face are both part of "the
     registration contract" per section 8, and both are covered by
     :attr:`ToolRegistry.revision`.
+
+    ``may_contain_secrets`` is a required operator declaration about the raw
+    source payload, not just the selected rows. Only literal ``False`` is
+    accepted; missing declarations fail construction and unknown/true values
+    are refused. This is a reviewed configuration assertion, not a scanner
+    or a runtime redaction guarantee.
     """
 
     name: str
@@ -259,6 +265,7 @@ class ToolRegistration:
     max_view_bytes: int
     max_window_seconds: int
     description: ToolDescription
+    may_contain_secrets: bool
     error_classes: Mapping[str, str] = field(default_factory=dict)
     incomplete_marker: str | None = None
     read_only: bool = True
@@ -275,6 +282,10 @@ class ToolRegistration:
             raise ToolContractError("INVALID_TOOL_IDENTITY")
         if self.read_only is not True or self.verb in FORBIDDEN_VERBS:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
+        if type(self.may_contain_secrets) is not bool:
+            raise ToolContractError("INVALID_SECRET_DECLARATION")
+        if self.may_contain_secrets:
+            raise ToolContractError("SECRET_BEARING_SOURCE_FORBIDDEN")
         if self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("VERB_NOT_ALLOWED")
         if not isinstance(self.parameters, Mapping) or any(
@@ -441,6 +452,7 @@ class ToolRegistry(_FrozenIndex):
                     "error_classes": dict(entries[name].error_classes),
                     "incomplete_marker": entries[name].incomplete_marker,
                     "read_only": entries[name].read_only,
+                    "may_contain_secrets": entries[name].may_contain_secrets,
                 }
                 for name in sorted(entries)
             ],

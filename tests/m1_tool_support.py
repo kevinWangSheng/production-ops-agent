@@ -181,6 +181,7 @@ def registration(**overrides):
         "source": "prometheus",
         "verb": "query",
         "description": description(),
+        "may_contain_secrets": False,
         "parameters": {
             "expr": ParameterSpec(
                 "string",

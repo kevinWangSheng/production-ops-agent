@@ -50,7 +50,7 @@ __all__ = [
 
 # Version of the raw -> view projection. Stored with every evidence record so a
 # later reader can tell which projection produced the view it is reading.
-PROJECTION_REVISION = "m1-01-tool-view-v2"
+PROJECTION_REVISION = "m1-01-tool-view-v3"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -257,6 +257,8 @@ class EvidenceRecord:
     projection_revision: str
     observed_at: datetime
     data_as_of: datetime | None
+    source_start_at: datetime | None
+    source_end_at: datetime | None
     result_count: int
     incomplete: bool
     truncated: bool
