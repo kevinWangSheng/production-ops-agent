@@ -529,6 +529,27 @@ class ReadOnlyToolExecutor:
         if not self._charge(operation.operation_id, 0.0):
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         self._operations_used += 1
+        # The charge above is itself a ledger round trip of unbounded
+        # duration, exactly like the Controller lookup ``_reserve()`` already
+        # accounts for (see its comment). A slow ledger write can let the
+        # authorization deadline pass, or a human suspend the investigation,
+        # in the gap between the decision ``_reserve()`` made and the read
+        # actually leaving this process. Re-check both -- control first, then
+        # the deadline, the same order and priority the post-fetch re-check
+        # below uses -- before dispatch: a query must never go out once its
+        # authorization has lapsed. The charge already recorded above is not
+        # refunded on a denial here; once billed it stays spent, the same
+        # "unknown cost stays occupied" rule that justifies charging before
+        # the read goes out at all.
+        control = self._read_control()
+        if control is None:
+            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
+        if control.suspended:
+            return self._refuse(operation, "denied", "SUSPENDED")
+        if control.control_generation != self._scope.control_generation:
+            return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
+        if self._clock.now() >= self._scope.deadline:
+            return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None
