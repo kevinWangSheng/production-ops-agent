@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：新增提交待推送 + CI/机器人审查，之后回到「PR 已就绪，待用户审核合并」（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：PR 已就绪，待用户审核合并；另有 4 条范围外机器人审查发现已回复/resolve，需要新任务跟进（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-17
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -315,7 +315,21 @@
      （worker/service 层尚未实现，此前任务记录已声明范围外）；
   3. `evidence_context_projection` 的白名单已扩到匹配冻结 v4 schema 的
      每个必填字段，但 schema 本身未来若再演进，需要人工同步更新。
-- 提交计划：两个逻辑变更分两次提交（`feat: ... prompt_revision`、
-  `fix: ... P3-4`），推送后按 stacked PR 规则更新 PR #29 描述、
-  对当前 HEAD 触发 `workflow_dispatch`（CI 不自动挂非 main-base PR）、
-  等待 CI 与已有机器人审查通道；不自行合并。
+- 提交：三个逻辑变更分三次提交——`519c108`（`feat: ... prompt_revision`）、
+  `4ed021f`（`fix: ... P3-4`）、`692cf3e`（`docs: ...`），已推送。对当前
+  HEAD `workflow_dispatch` 触发 CI（非 main-base PR 不自动挂 checks），
+  `checks`/`m0-postgres` 均通过（run 35255856858）。
+- **机器人审查（第五轮，`chatgpt-codex-connector`，2026-09-17T16:47:31Z，
+  锚定在改动前的 `814dd2d`）**：GraphQL 核查 reviewThreads 共 23 条，
+  接手时 4 条未 resolve，均与本任务两项范围（`prompt_revision` 接线 /
+  P3-4 白名单）无关，是本 PR 更早既有代码（`delivered_from_context` 的
+  run_id/v4 类型绑定、`eligible_time_policies` 的目标覆盖与新鲜度区间
+  判定、`_settle`/`_commit_step` 对 `CONTROL_DENIED` 的历史记录丢失）
+  的独立发现。逐条判断为「看起来成立，但超出本次任务范围」，在 PR 上
+  逐条回复拒绝理由并 resolve（4 条 comment id：4039957732、4039960100、
+  4039962359、4039963491）；不在本任务里修——同时修 4 条无关且未经独立
+  审查的逻辑改动会明显扩大本次变更的风险面。resolve 后 23 条全部
+  已处理，`mergeStateStatus=CLEAN`、`mergeable=MERGEABLE`。
+  **这 4 条对本 PR 仍是真实、未修的发现，需要一个新任务接手**（不是本
+  任务的遗留，而是本 PR 累积的既有缺口，本次只是碰上并处置了流程）。
+- 不自行合并；等待用户审核。
