@@ -1,3 +1,4 @@
+# make acceptance on clean tree (git status empty) at HEAD 3f88b39, 2026-09-16 PDT
 | scenario | feature | evidence level | result |
 |---|---|---|---|
 | normal-report | F3 | deterministic loop + read-only evidence | PASS |
