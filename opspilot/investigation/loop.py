@@ -40,6 +40,7 @@ from opspilot.investigation.reports import (
     context_time_policy_ids,
     delivered_from_context,
     eligible_time_policies,
+    evidence_context_projection,
     parse_report,
     unsupported_citations,
 )
@@ -218,6 +219,14 @@ class InvestigationLoop:
             or request.run_id != self.store.authorized_run_id
         ):
             raise ValueError("INVALID_INPUT")
+        # Project once, here, before anything else reads it: every later use
+        # of ``evidence_context`` (the prompt message and every citation
+        # check below) sees only the allowlisted v4 fields, never a nested
+        # key that should not have reached the model (redline P3-4).
+        request = replace(
+            request,
+            evidence_context=evidence_context_projection(request.evidence_context),
+        )
         started = self.clock.monotonic()
         system = render(
             request.variant_id,

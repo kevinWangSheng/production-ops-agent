@@ -835,3 +835,188 @@ def test_prompt_revision_versions_moves_with_the_l2_report_contract_text():
     assert original != edited
 
 
+def test_evidence_context_projection_strips_nested_unlisted_keys():
+    """Redline P3-4: the old top-level ``password``/``secret``/``token``
+    blocklist misses nested values entirely. An allowlist projection must
+    drop an unexpected key at any depth -- inside ``view_bindings``,
+    ``target_catalog`` and a ``time_policies`` entry, including its own
+    nested ``window`` -- before the context reaches the model prompt."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    evidence_id = "ev-nested"
+    opaque = "target:deadbeef"
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "followup_text": {"password": "leak-top-level"},
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                    "authorization": "leak-window",
+                },
+                "secret": "leak-policy",
+            }
+        ],
+        "target_catalog": {
+            opaque: {
+                "namespace": "checkout",
+                "resource_uid": "svc-checkout",
+                "cluster_uid": "cluster-a",
+                "token": "leak-catalog",
+            }
+        },
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                "target_refs": [opaque],
+                "time_scope_refs": ["policy-window-1"],
+                "authorization": "leak-view",
+            },
+        },
+    }
+    projected = evidence_context_projection(context)
+    serialized = json.dumps(projected)
+    for leaked in (
+        "leak-top-level",
+        "leak-window",
+        "leak-policy",
+        "leak-catalog",
+        "leak-view",
+    ):
+        assert leaked not in serialized
+    assert "followup_text" not in projected
+    assert "secret" not in projected["time_policies"][0]
+    assert "authorization" not in projected["time_policies"][0]["window"]
+    assert "token" not in projected["target_catalog"][opaque]
+    assert "authorization" not in projected["view_bindings"][evidence_id]
+    # The legitimate fields the loop and the citation checks actually use
+    # must survive the projection unchanged.
+    assert projected["time_policies"][0]["window"]["start"] == WINDOW_START.isoformat()
+    assert projected["target_catalog"][opaque]["namespace"] == "checkout"
+    assert projected["view_bindings"][evidence_id]["status"] == "ok"
+
+
+def test_evidence_context_projection_preserves_every_schema_required_field():
+    """An allowlist that is narrower than the frozen v4 contract silently
+    truncates a fully-compliant caller's context instead of only stripping
+    what should not be there (an independent review of this change caught
+    exactly that: ``run_id``, ``ViewBinding.view_hash``/``timing`` and
+    ``TimePolicy.revision``/``integration_id``/``reference_rule`` were
+    missing, and ``target_catalog`` only matched
+    ``opspilot.domain.intake.Target``'s Kubernetes shape, not the schema's
+    Compose/Integration variants). This test is a full round-trip against
+    the actual frozen schema
+    (``docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json``,
+    ``$defs.EvidenceContext``), every required field of every referenced
+    ``$def``, populated once per discriminated ``target_catalog`` kind."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": "run-schema-check",
+        "target_catalog": {
+            "target:kube": {
+                "kind": "kubernetes",
+                "integration_id": "int-1",
+                "cluster_uid": "cluster-a",
+                "namespace": "checkout",
+                "resource_uid": "svc-checkout",
+                "revision": "rev-1",
+            },
+            "target:compose": {
+                "kind": "compose",
+                "integration_id": "int-2",
+                "deployment_instance": "host-1",
+                "service": "checkout",
+                "container_id": "c-1",
+                "image_digest": "sha256:deadbeef",
+                "telemetry_instance": "otel-1",
+                "mapping_revision": "map-1",
+                "config_revision": "cfg-1",
+            },
+            "target:integration": {
+                "kind": "integration",
+                "integration_id": "int-3",
+                "deployment_instance": "host-2",
+                "mapping_revision": "map-2",
+                "service_identity": "unknown",
+                "observed_services": ["checkout"],
+            },
+        },
+        "view_bindings": {
+            "ev-schema": {
+                "view_hash": "a" * 64,
+                "target_refs": ["target:kube"],
+                "time_scope_refs": ["policy-1"],
+                "timing": {
+                    "operation_started_at": WINDOW_START.isoformat(),
+                    "collection_completed_at": WINDOW_END.isoformat(),
+                    "source_start_at": WINDOW_START.isoformat(),
+                    "source_end_at": WINDOW_END.isoformat(),
+                    "source_time_basis": "event_time",
+                },
+                "status": "ok",
+            },
+        },
+        "time_policies": [
+            {
+                "id": "policy-1",
+                "revision": "policy-rev-1",
+                "integration_id": "int-1",
+                "interfaces": ["metrics.range_query"],
+                "mode": "historical_window",
+                "reference_rule": "dispatch_started_at",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+                "max_source_age_seconds": None,
+                "target_refs": [],
+                "all_authorized_targets": False,
+                "scope_revision": None,
+            }
+        ],
+    }
+    assert evidence_context_projection(context) == context
+
+
+def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
+    """End-to-end version of the projection test above: run the real loop
+    with a poisoned ``evidence_context`` and inspect every byte actually
+    handed to the ``ModelClient`` double."""
+    evidence_id = "ev-nested-loop"
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+                "authorization": "leak-policy",
+            }
+        ],
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                "target_refs": ["checkout-prod"],
+                "time_scope_refs": ["policy-window-1"],
+                "token": "leak-view",
+            },
+        },
+    }
+    loop, request, model, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    request = replace(request, evidence_context=context)
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    sent = json.dumps([dict(message) for message in model.calls[0].messages])
+    assert "leak-policy" not in sent
+    assert "leak-view" not in sent

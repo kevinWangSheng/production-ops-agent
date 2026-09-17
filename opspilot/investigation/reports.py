@@ -180,6 +180,135 @@ class DeliveredView:
     time_scope_refs: frozenset[str] = frozenset()
 
 
+# Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
+# set is exactly the keys the frozen v4 contract
+# (``docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json``,
+# ``$defs.EvidenceContext`` and everything it reaches) declares for that
+# position -- not just the subset today's readers below happen to touch --
+# so a schema-compliant caller's real, legitimate context is never truncated.
+# Every other key, at any depth, is dropped rather than reaching the model or
+# the citation checks. A key-name blocklist such as ``password``/``secret``/
+# ``token`` only catches names someone thought of in advance; an allowlist
+# also catches an unexpected field routed in later (e.g. an operator's
+# follow-up text via a future ``append_input`` path).
+_CONTEXT_FIELDS = frozenset(
+    {"type", "run_id", "view_bindings", "target_catalog", "time_policies"}
+)
+# ``target_id`` is not part of the schema's ``ViewBinding``; it is a fallback
+# ``delivered_from_context`` below also accepts and existing tests rely on.
+_VIEW_BINDING_FIELDS = frozenset(
+    {"view_hash", "target_refs", "time_scope_refs", "timing", "status", "target_id"}
+)
+_TIMING_FIELDS = frozenset(
+    {
+        "operation_started_at",
+        "collection_completed_at",
+        "source_start_at",
+        "source_end_at",
+        "source_time_basis",
+    }
+)
+# Union of ``KubernetesTarget`` / ``ComposeTarget`` / ``IntegrationTarget``
+# (the schema's ``target_catalog`` discriminated union) plus the registry
+# ``target_id`` wrapper that ``context_target_catalog`` below also accepts
+# and existing tests rely on -- not schema-defined, kept for compatibility.
+_TARGET_CATALOG_ENTRY_FIELDS = frozenset(
+    {
+        "target_id",
+        "kind",
+        "integration_id",
+        "cluster_uid",
+        "namespace",
+        "resource_uid",
+        "revision",
+        "deployment_instance",
+        "service",
+        "container_id",
+        "image_digest",
+        "telemetry_instance",
+        "mapping_revision",
+        "config_revision",
+        "service_identity",
+        "observed_services",
+    }
+)
+_TIME_POLICY_FIELDS = frozenset(
+    {
+        "id",
+        "revision",
+        "integration_id",
+        "interfaces",
+        "mode",
+        "reference_rule",
+        "window",
+        "max_source_age_seconds",
+        "target_refs",
+        "all_authorized_targets",
+        "scope_revision",
+    }
+)
+_TIME_WINDOW_FIELDS = frozenset({"start", "end"})
+
+
+def _project_fields(mapping: object, fields: frozenset[str]) -> dict[str, Any]:
+    if not isinstance(mapping, Mapping):
+        return {}
+    return {key: value for key, value in mapping.items() if key in fields}
+
+
+def _project_view_binding(binding: object) -> dict[str, Any]:
+    if not isinstance(binding, Mapping):
+        return {}
+    projected = _project_fields(binding, _VIEW_BINDING_FIELDS)
+    if isinstance(binding.get("timing"), Mapping):
+        projected["timing"] = _project_fields(binding["timing"], _TIMING_FIELDS)
+    return projected
+
+
+def _project_time_policy(policy: object) -> dict[str, Any]:
+    if not isinstance(policy, Mapping):
+        return {}
+    projected = _project_fields(policy, _TIME_POLICY_FIELDS)
+    if isinstance(policy.get("window"), Mapping):
+        projected["window"] = _project_fields(policy["window"], _TIME_WINDOW_FIELDS)
+    return projected
+
+
+def evidence_context_projection(context: object) -> dict[str, Any] | None:
+    """Field-allowlist projection of a caller-supplied v4 evidence context.
+
+    Every key the readers in this module (and the loop's prompt message)
+    actually consume is listed above; anything else is dropped, including
+    inside ``view_bindings``/``target_catalog``/``time_policies`` entries.
+    The loop calls this once, at context-assembly time, and uses only the
+    projected result -- for the model prompt and for every citation check --
+    so an unexpected nested key can never reach either (redline P3-4).
+    """
+    if not isinstance(context, Mapping):
+        return None
+    projected = _project_fields(context, _CONTEXT_FIELDS)
+    bindings = context.get("view_bindings")
+    if isinstance(bindings, Mapping):
+        projected["view_bindings"] = {
+            eid: _project_view_binding(binding)
+            for eid, binding in bindings.items()
+            if isinstance(eid, str)
+        }
+    catalog = context.get("target_catalog")
+    if isinstance(catalog, Mapping):
+        projected["target_catalog"] = {
+            key: _project_fields(entry, _TARGET_CATALOG_ENTRY_FIELDS)
+            for key, entry in catalog.items()
+            if isinstance(key, str)
+        }
+    policies = context.get("time_policies")
+    if isinstance(policies, list):
+        projected["time_policies"] = [
+            _project_time_policy(policy) for policy in policies
+        ]
+    return projected
+
+
 def context_target_catalog(
     context: object, *, authorized_targets: frozenset[str] = frozenset()
 ) -> dict[str, str | None]:
