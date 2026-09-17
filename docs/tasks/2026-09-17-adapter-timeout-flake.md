@@ -140,6 +140,12 @@
 
 ## 下一步与交接
 
-- 待独立审查结论补充后，按 AGENTS.md「变更、Git 与交接」推送任务分支、开 PR，
-  等待 CI，逐条处置 review 意见后报告 PR 就绪。
+- 提交 `23ea89c`（单一改动：`tests/test_m0_adapters.py` + 本任务记录），已推送
+  任务分支 `fix/adapter-timeout-flake`，已开 PR
+  [#38](https://github.com/kevinWangSheng/production-ops-agent/pull/38)。
+- CI 两项 checks（`checks`、`m0-postgres`）均 `SUCCESS`；`mergeStateStatus:
+  CLEAN`、`mergeable: MERGEABLE`；无 inline review thread、无 issue 级评论需
+  处置（PR 开启后 Codex 机器人审查评论未出现，非交付门槛，未等待、未阻塞）。
+- 状态：**PR 已就绪，待用户审核合并**。合并授权、合并动作及合并后清理留给
+  用户按默认流程处理，本任务未合并、未删除分支。
 - ROADMAP 无需更新（工程维护，不改变任何功能门槛/验收状态）。
