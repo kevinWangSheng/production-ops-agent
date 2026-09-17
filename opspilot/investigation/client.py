@@ -116,7 +116,14 @@ class DeepSeekClient:
         # operation, not the whole response: a slow trickle -- many small
         # chunks, each arriving just under that per-read timeout -- could
         # keep ``_read_capped`` looping far past this budget. ``deadline``
-        # below is what actually enforces the wall-clock total.
+        # below bounds the number of *further* top-level reads once it
+        # passes. That alone is not sufficient: ``io.BufferedReader.read(n)``
+        # (what ``response.fp.read`` -- and so ``response.read`` -- actually
+        # calls) loops internally over the raw socket until it collects the
+        # full ``n`` bytes, so one single call can itself run long past
+        # ``deadline`` the same way, independent of the per-iteration check.
+        # ``_tighten_socket_deadline`` closes that inner gap by shrinking the
+        # socket's own timeout before every read, top-level or internal.
         deadline = self._clock.monotonic() + max(timeout, 0.1)
         try:
             with self._opener.open(request, timeout=max(timeout, 0.1)) as response:
@@ -132,11 +139,32 @@ class DeepSeekClient:
             raise ModelError("MODEL_UNAVAILABLE") from exc
 
 
+def _tighten_socket_deadline(response: Any, remaining: float) -> None:
+    """Best-effort: shrink the underlying socket's own timeout to what is
+    actually left of the wall budget.
+
+    Reaches into ``http.client``/``io``/``socket`` internals
+    (``response.fp.raw._sock``) that are not a documented contract, so any
+    failure to reach them -- a fake test double, a future stdlib change, a
+    transport that isn't socket-backed at all -- is silently ignored. The
+    per-iteration check in ``_read_capped`` still bounds the number of
+    *further* reads either way; this only tightens the one already-slow
+    read in flight, which is the gap that check alone cannot close
+    (independent review finding, PR #29).
+    """
+    try:
+        response.fp.raw._sock.settimeout(max(remaining, 0.001))
+    except AttributeError:
+        pass
+
+
 def _read_capped(response: Any, clock: MonotonicClock, deadline: float) -> bytes:
     chunks = bytearray()
     while True:
-        if clock.monotonic() >= deadline:
+        remaining = deadline - clock.monotonic()
+        if remaining <= 0:
             raise ModelError("MODEL_UNAVAILABLE")
+        _tighten_socket_deadline(response, remaining)
         piece = response.read(65536)
         if not piece:
             break

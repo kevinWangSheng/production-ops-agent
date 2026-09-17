@@ -72,6 +72,53 @@ class _FixedOpener:
         return _FixedResponse(self._body, status=self._status)
 
 
+class _RecordingSocket:
+    """Stands in for the ``socket.socket`` at the end of
+    ``response.fp.raw._sock``. Records every ``settimeout`` call instead of
+    actually bounding anything -- the fake transport never blocks for real,
+    so what matters here is only that the client *tries* to shrink it."""
+
+    def __init__(self) -> None:
+        self.timeouts: list[float] = []
+
+    def settimeout(self, value: float) -> None:
+        self.timeouts.append(value)
+
+
+class _Raw:
+    def __init__(self, sock: _RecordingSocket) -> None:
+        self._sock = sock
+
+
+class _Fp:
+    def __init__(self, sock: _RecordingSocket) -> None:
+        self.raw = _Raw(sock)
+
+
+class _SlowResponseWithSocketShape(_SlowResponse):
+    """Same infinite trickle as ``_SlowResponse``, plus the
+    ``fp.raw._sock`` attribute chain a real ``http.client.HTTPResponse``
+    exposes, so ``_tighten_socket_deadline`` has something to reach."""
+
+    def __init__(
+        self, clock: FakeClock, advance_per_read: float, sock: _RecordingSocket
+    ) -> None:
+        super().__init__(clock, advance_per_read)
+        self.fp = _Fp(sock)
+
+
+class _SlowOpenerWithSocketShape:
+    def __init__(
+        self, clock: FakeClock, advance_per_read: float, sock: _RecordingSocket
+    ) -> None:
+        self._clock = clock
+        self._advance = advance_per_read
+        self._sock = sock
+
+    def open(self, request: object, timeout: float) -> _SlowResponseWithSocketShape:
+        return _SlowResponseWithSocketShape(self._clock, self._advance, self._sock)
+
+
 def _call(timeout_seconds: float) -> ModelCall:
     return ModelCall(
         messages=({"role": "user", "content": "hi"},),
@@ -111,3 +158,41 @@ def test_a_response_finishing_inside_the_wall_budget_still_completes():
     reply = client.complete(_call(200))
     assert reply.content == "ok"
     assert reply.finish_reason == "stop"
+
+
+def test_wall_clamp_also_shrinks_the_underlying_socket_timeout_per_read():
+    """Independent review finding: the per-iteration deadline check alone
+    cannot stop a *single* already-in-flight ``read()`` call from outlasting
+    the deadline, because ``io.BufferedReader.read(n)`` -- what
+    ``http.client.HTTPResponse.read`` actually calls -- loops internally
+    over the raw socket until it collects the full ``n`` bytes, with no
+    chance for our check to run in between. ``_tighten_socket_deadline``
+    must reach ``response.fp.raw._sock`` and shrink its timeout before every
+    top-level read, so even that inner loop is bounded by the shrinking
+    remainder instead of the original, larger per-call timeout."""
+    clock = FakeClock()
+    sock = _RecordingSocket()
+    client = DeepSeekClient(
+        "test-key",
+        clock=clock,
+        opener=_SlowOpenerWithSocketShape(clock, advance_per_read=50, sock=sock),
+    )
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(200))
+    assert len(sock.timeouts) >= 2
+    assert sock.timeouts[0] <= 200
+    # Each shrink is strictly smaller than the last: the remaining budget
+    # keeps shrinking as fake time advances between reads.
+    assert all(a > b for a, b in zip(sock.timeouts, sock.timeouts[1:]))
+
+
+def test_missing_socket_shape_is_ignored_without_breaking_the_wall_clamp():
+    """Regression: a transport double (or a future non-socket transport)
+    with no ``fp.raw._sock`` chain at all must not crash -- the outer
+    per-iteration check (proven above) still applies on its own."""
+    clock = FakeClock()
+    client = DeepSeekClient(
+        "test-key", clock=clock, opener=_SlowOpener(clock, advance_per_read=50)
+    )
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(200))
