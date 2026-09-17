@@ -333,3 +333,136 @@
   **这 4 条对本 PR 仍是真实、未修的发现，需要一个新任务接手**（不是本
   任务的遗留，而是本 PR 累积的既有缺口，本次只是碰上并处置了流程）。
 - 不自行合并；等待用户审核。
+
+## 追加（2026-09-17 续）：处置上一轮 4 条机器人发现 + 模型请求 wall clamp
+
+调度者用 `.../scratchpad/briefs/loop-followup.md` 明确授权修复上一轮判定为
+「看起来成立但超范围」并 resolve 的 4 条机器人发现（comment id
+4039957732、4039960100、4039962359、4039963491），并追加
+`.../scratchpad/reports/lease-wire-33.md` 第 6 节指出的模型请求 wall clamp
+缺口。要求：逐条先写确定性红测试、最小修复、方向只能更严不得放宽已有拒绝、
+一条发现一个独立提交；若复现后判定不成立，写证据不修并在 PR thread 补说明。
+
+### 逐条处置
+
+1. **`delivered_from_context` 缺 run_id/v4 类型绑定（`82218ae`）**：复现确认——
+   伪造/跨 Run 的 context 会被当作已交付证据接受。`delivered_from_context`
+   新增 `run_id` 必填参数，`type`/`run_id` 任一不匹配即整体丢弃该 context
+   （不做部分信任）。`loop.py` 调用点传入 `request.run_id`。受影响的既有
+   测试夹具（`test_v4_opaque_target_refs_are_validated_via_catalog` 等 6 处）
+   补齐 `run_id` 字段——这是让夹具符合它们本就隐含的契约，不是放宽任何断言。
+2. **`eligible_time_policies` 对空 `target_refs` 判定过宽（`23c7158`）**：
+   复现确认——`named and named.isdisjoint(...)` 对空/缺失 `target_refs`
+   恒假，导致「显式不覆盖任何目标」的策略被当成「覆盖所有目标」。改为
+   `all_authorized_targets` 非 True 时一律要求非空且相交的 `target_refs`。
+   触发级联：`assemble()` 共享夹具与一处显式夹具的默认 time_policy 均缺
+   `target_refs`/`all_authorized_targets`，靠旧 bug 覆盖到测试用的单一
+   授权目标；两处均按其真实意图补 `all_authorized_targets: true`（这些
+   测试从未打算测目标范围收窄，是关于 catalog 映射/工具执行流程的）。
+3. **`current` 策略新鲜度判定未拒绝负值/未来时间戳（`faf80bc`，部分修复，
+   已如实标注）**：复现确认负值子问题——`float(freshness_seconds) > max_age`
+   对负值恒假，未来时间戳（负 age）被当成最新鲜。已修：改为
+   `0 <= freshness_seconds <= max_age`。**未修并有证据**：发现另一半
+   「应校验完整 source 区间」缺数据基础——`opspilot/tools/executor.py`
+   的 `TransportResponse`/view 目前只有单点 `data_as_of`
+   （`freshness_seconds = observed_at - data_as_of`），全仓搜不到任何
+   `source_start_at`/`source_end_at` 字段。补这类字段是跨 PR 的 schema
+   变更（`opspilot/tools/` 属 PR #20，需要它自己的设计评审），不是本任务
+   能在 `reports.py` 内做的「最小修复」。已在提交信息与本记录写明，PR
+   thread 需补一条对应说明（见下「后续动作」）。
+4. **`_settle`/`commit_step` 丢弃围栏期回复（`871e628`）**：复现确认——
+   `commit_step` 对 CONTROL_DENIED 直接 raise，模型回复的
+   content/usage/response_id 完全不落盘，不同于 `publish()` 已有的
+   late_result 语义。修复：`DurableStore.commit_step()`
+   和 `MemoryStepStore.commit_step()` 在围栏时都先记 late_result
+   （`MemoryStepStore.late_results` 列表 / PG `status='late_result'` 行）
+   再报 `CONTROL_DENIED`。PG 侧关键坑：若在 `with self.transaction()` 块
+   内部直接 raise，插入会随异常一起被回滚（这也是 `publish()` 用 `return
+   False` 而不是 raise 的原因）——改为块内只置 `fenced=True`，块外再 raise，
+   插入才能真正提交。用真实 PG 测试
+   （`test_a_fenced_model_reply_is_retained_as_late_result_history`）
+   验证过这个坑：先按「块内直接 raise」的写法跑，late_result 行数为 0，
+   改成块外 raise 后变 1。
+5. **模型请求 wall clamp（`ff8e17b`）**：`opspilot/investigation/client.py`
+   的 `DeepSeekClient` 增加可注入 `clock`/`opener`（均可选，默认真实实现，
+   现有唯一调用点 `scripts/m1_live_flash_loop.py` 不受影响，顺手接上已有
+   `clock` 保持一致），`_read_capped` 按累计 wall-clock 时间（而非每次
+   `read()` 各自的 socket 超时）在发起下一次 `read()` 前判定是否超出
+   `call.timeout_seconds`（该值已是
+   `min(360s 冻结上限, 剩余 deadline, 剩余 wall)`）。新增 `MonotonicClock`
+   协议（只要求 `monotonic()`），比复用 `opspilot.tools.executor.Clock`
+   窄——这个客户端不做任何 lease/deadline 判定，没有理由需要
+   `now()`，而 `opspilot/` 产品代码的 `datetime.now()` 被 ruff `TID251`
+   规则禁用（须用数据库时钟）。
+
+### 独立审查发现并已修的残余缺口（`8b65c13`）
+
+首次实现（`ff8e17b`）的 wall 检查只在发起下一次 `read()` 前拦截，独立审查
+（全新上下文子代理）指出：单次已在飞行中的 `response.read(65536)` 调用
+本身仍可能远超 `deadline`——`http.client.HTTPResponse.read()` 实际调用
+`self.fp.read(amt)`，而 `io.BufferedReader.read(n)` 会在**内部**反复读
+底层 socket 直到凑满 `n` 字节才返回，中途没有机会跑到我的判断分支。
+审查用一个每次内部读只吐 1 字节、带 0.05s 延迟的合成 `BufferedReader`
+实测：单次 `.read(65536)` 跨 201 次内部读耗时 11.3s，全程零次外层判断
+机会——代码注释「deadline 下面的判断真正约束了总时长」原话确认属过度
+声称。已核实并采纳：新增 `_tighten_socket_deadline`，在每次 `read()`
+前（不管外层第几次迭代）把 `response.fp.raw._sock`（真实
+`http.client.HTTPResponse.__init__` 里 `self.fp = sock.makefile("rb")`
+的这条链路，已用 `socket.socketpair()` 实测核对属实）的 socket 超时收紧
+到剩余预算，直接约束内层循环而不只是外层。够不到这条属性链（测试替身、
+未来 stdlib 变化、非 socket 传输）时静默忽略，退化到仍然存在的外层
+每次迭代判断，不崩溃。新增测试用带 `fp.raw._sock` 形状的假响应验证
+`settimeout()` 调用序列严格递减；另加一条无该属性链的假响应回归测试，
+确认退化路径仍能触发 wall clamp。
+
+### 测试（均先红后绿，红态已用受控方式复现，非凭推断）
+
+- 1/2/3：`tests/test_m1_investigation_loop.py` 新增/扩展的
+  `eligible_time_policies`/`delivered_from_context` 直接单测（此前
+  `eligible_time_policies` 全仓无任何直接测试，只被 loop 间接覆盖）。
+- 4：内存态 `test_a_fenced_reply_after_settlement_is_retained_as_late_history`；
+  PG 态 `test_a_fenced_model_reply_is_retained_as_late_result_history`
+  （`tests/integration/test_m1_durable_state_postgres.py`）。
+- 5：新文件 `tests/test_m1_investigation_client.py`，用「每次 `read()`
+  推进一个 `FakeClock` 而不真的 sleep」的假传输验证 wall clamp；红态
+  验证方式：临时删掉 `_read_capped` 里的时钟判断分支重跑该测试——0.69s
+  内失败（`RESPONSE_TOO_LARGE` 而非预期的 `MODEL_UNAVAILABLE`，证实不是
+  死循环, 只是判定错误)，随后从备份恢复原文件；loop 级端到端测试
+  `test_a_slow_trickling_model_response_settles_as_unknown_through_the_loop`
+  证明该失败最终走 `settle unknown` 路径。
+
+### 独立审查结果与处置
+
+全新上下文 general-purpose 子代理审查（未继承本会话讨论，给定五个提交、
+待审 diff、原始证据 `loop-followup.md`/`lease-wire-33.md`，未以实现者
+结论引导）。核实方式含逐条 `git show`/读码、自跑 `make check`、
+在真实 PostgreSQL 上把第 4 条的 `persistence.py` hunk 临时还原重跑确认
+真红后再复原、grep 全仓核对第 3 条「无 source 区间字段」与第 1 条
+「其它 `view_bindings` 用例不受影响」的事实陈述、用合成 `BufferedReader`
+实测第 5 条的内层阻塞问题。结论：
+
+1–4 判定「正确」，无发现；5 判定「有效但存在遗漏」——已采纳并修复
+（见上「独立审查发现并已修的残余缺口」）。审查明确指出 5 的修复方向
+不违反 fail-closed 收紧原则（不放宽任何既有拒绝），只是完整性声称
+过头；已采纳的修复同时更正了代码注释里的过度声称。
+
+审查也确认：本次 4 条既有机器人发现的修复彼此独立、未互相依赖对方的
+判定；`docs/tasks/...md` 的同步编辑（本记录）是审查开始前已存在的
+未提交修改，审查未触碰。
+
+### 验证证据
+
+- 每条发现修复后单独跑过 `tests/test_m1_investigation_loop.py`（或对应
+  文件）确认绿，再跑一次 `make check` 确认无级联破坏，逐条独立提交；
+  独立审查处置后（`8b65c13`）复跑一遍确认仍全绿。
+- 最终 `make check`（全部 6 个提交后）→ `uv lock --check` 通过；
+  `ruff check` All checks passed；`ruff format --check` 无需改动；
+  `mypy` Success: no issues found in 27 source files；`pytest`
+  **1314 passed, 84 skipped, 2 xfailed**。
+- PG 定向：本 worktree 专属 55431 端口本次全程空闲，
+  `.venv/bin/python -m scripts.m0.postgres_lab start` →
+  `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`
+  → **30 passed, 54 skipped**（含新增 `late_result` PG 测试；独立审查
+  期间也独立跑过一次 `test_m1_durable_state_postgres.py` 全量 26 passed）；
+  完成后 `postgres_lab stop`；未用 `M0_ENV_FILE`（不涉及真实 DeepSeek
+  调用）。
