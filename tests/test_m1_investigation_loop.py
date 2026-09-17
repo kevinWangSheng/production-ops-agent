@@ -369,6 +369,52 @@ def test_policy_with_an_intersecting_target_ref_is_still_eligible():
     assert eligible == frozenset({"policy-named"})
 
 
+def test_current_policy_rejects_a_future_dated_freshness():
+    """Bot review finding #3 (partial -- see task record for the part not
+    fixed here): ``float(freshness_seconds) > max_age`` is false for a
+    negative ``freshness_seconds``, so a future-dated ``data_as_of`` (which
+    produces a negative age) passed the staleness check as if it were
+    perfectly fresh. Only the executor can ever report a negative age, so
+    this can only be reached by an already-untrustworthy source; it must be
+    rejected, not accepted as the freshest possible reading."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=-30,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_still_accepts_a_fresh_nonnegative_reading():
+    """Regression: an ordinary, nonnegative fresh reading is unaffected."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+    )
+    assert eligible == frozenset({"policy-current"})
+
+
 def test_supplied_context_views_can_be_cited_without_new_tools():
     evidence_id = "ev-supplied"
     loop, request, _, transport, _, _ = assemble(

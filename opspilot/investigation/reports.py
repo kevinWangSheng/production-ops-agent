@@ -418,7 +418,10 @@ def eligible_time_policies(
                 continue
             if not isinstance(freshness_seconds, (int, float)):
                 continue
-            if float(freshness_seconds) > max_age:
+            # A negative age can only mean a future-dated ``data_as_of``
+            # (bot review finding, PR #29): ``> max_age`` alone let it pass
+            # as though it were the freshest possible reading.
+            if not (0 <= float(freshness_seconds) <= max_age):
                 continue
         eligible.add(ident)
     return frozenset(eligible)
