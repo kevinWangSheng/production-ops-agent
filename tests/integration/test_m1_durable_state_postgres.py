@@ -10,8 +10,11 @@ import pytest
 from psycopg import errors
 from psycopg.rows import dict_row
 
+from opspilot.instructions import prompt_revision
+from opspilot.instructions import render as d_render
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
+from scripts.m0_environment.report_contract import REPORT_VERSION, report_instruction
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -575,3 +578,76 @@ def test_snapshot_transactions_refuse_writes():
                 "UPDATE opspilot_incidents SET state='queued' WHERE incident_id=%s",
                 (incident,),
             )
+
+
+def _prompt_versions(variant_id: str) -> dict[str, str]:
+    """按 C3 第 5 节构造 ``versions`` 的 prompt 维度。
+
+    只有 prompt 维度：``tool_schema_revision`` 的来源是 ``opspilot/tools/registry.py``，
+    该文件仍在 PR #20 的分支上、未进 main，所以这里不造一个竞争实现来凑维度。
+    """
+    return {
+        "state": "v1",
+        "prompt": prompt_revision(
+            variant_id, report_contract=report_instruction(version=REPORT_VERSION)
+        ),
+    }
+
+
+def test_prompt_revision_change_blocks_resume_without_silent_version_swap():
+    """L1a 模板换了版本的在途 Run，被重新领取时进 ``blocked(INCOMPATIBLE_STATE)``。
+
+    ``test_incompatible_versions_block_without_silent_resume`` 用的是占位版本号
+    ``v1``/``v2``；这条补的是 C3 要求的 prompt 维度，版本号由真实的 L1a 模板哈希产生。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-bump-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=_prompt_versions("replay-candidate"),
+    )
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), _prompt_versions("baseline-multi-step"))
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_instance_values_alone_do_not_block_resume():
+    """预算轮次与授权服务列表变了，但 ``versions`` 不变，Run 照常被领取。
+
+    这是 C3 第 5 节「实例变化：每 Run face hash，记录不比对，在途 Run 继续」那一行。
+    断言同时检查送进模型的字节**确实**变了，否则这条测试是空的。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    contract = report_instruction(version=REPORT_VERSION)
+
+    def face(*, model_requests: int, services: tuple[str, ...]) -> str:
+        return d_render(
+            "baseline-multi-step",
+            model_requests=model_requests,
+            report_contract=contract,
+            authorized_services=services,
+        )
+
+    narrow = face(model_requests=2, services=("checkoutservice",))
+    wider = face(model_requests=2, services=("checkoutservice", "cartservice"))
+    richer = face(model_requests=9, services=("checkoutservice",))
+    # 两类实例值分别断言，避免一个差异掩盖另一个丢失。
+    assert narrow != wider, "授权服务列表必须真的改变 prompt 字节"
+    assert narrow != richer, "预算轮次必须真的改变 prompt 字节"
+
+    store.accept(
+        incident,
+        run,
+        f"m1-instance-only-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=_prompt_versions("baseline-multi-step"),
+    )
+    lease = store.claim(incident, run, uuid4(), _prompt_versions("baseline-multi-step"))
+    assert lease is not None
+    assert store.rebuild(incident)["run"]["state"] == "running"
