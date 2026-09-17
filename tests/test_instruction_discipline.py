@@ -347,11 +347,45 @@ def test_revision_projection_covers_every_template_field() -> None:
     """新增 ``Segment`` 字段必须同步进哈希投影，否则模板变了而 revision 不变。
 
     与 C3 第 8 节对工具注册表哈希的要求同理：静默丢弃新字段是已经发生过的缺陷类型。
+    ``layer`` 不再排除在外：投影现在覆盖全部 segment（含 L1b/L2 槽位），
+    ``layer`` 在这份列表里不是常量了，同样必须能查出改动。
     """
     projected = set(d.template_projection("baseline-multi-step")[0])
-    declared = set(d.Segment._fields) - {"layer"}
+    declared = set(d.Segment._fields)
     assert declared <= projected, (
         f"这些 Segment 字段没进哈希投影：{sorted(declared - projected)}"
+    )
+
+
+def test_reordering_a_report_or_instance_slot_bumps_the_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """机器人审查（P2）：挪动一个 L1b/L2 槽位的位置必须 bump revision。
+
+    早先的投影只筛 ``LAYER_TEMPLATE`` 段，槽位（自身 ``text`` 恒为空）挪到哪里
+    都不影响筛出来的模板段相对顺序，``discipline_revision`` 因此原地不动——
+    但 ``render()`` 拼出的字节顺序**确实变了**（``report_contract`` 挪到末尾后，
+    "Missing metric series…" 与报告契约文本的相对位置互换）。被重新领取的在途
+    Run 本该因此触发 ``blocked(INCOMPATIBLE_STATE)``，原实现会静默放行。
+    """
+    before_revision = d.discipline_revision("baseline-multi-step")
+    original = d.VARIANTS["baseline-multi-step"]
+    report_slot = next(s for s in original if s.key == "report_contract")
+    reordered = tuple(s for s in original if s.key != "report_contract") + (
+        report_slot,
+    )
+    monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "baseline-multi-step": reordered})
+
+    assert d.discipline_revision("baseline-multi-step") != before_revision
+
+    rendered = d.render(
+        "baseline-multi-step",
+        model_requests=2,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=("checkoutservice",),
+    )
+    assert rendered.endswith(LEGACY_REPORT_CONTRACT), (
+        "确认这次挪动确实改变了 render() 输出的字节顺序，不是个没有效果的变异"
     )
 
 

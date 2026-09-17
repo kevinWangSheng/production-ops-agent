@@ -248,7 +248,18 @@ def render(
 
 
 def template_projection(variant_id: str) -> list[dict[str, object]]:
-    """revision 的哈希投影：只含 L1a 模板字节与变体顺序，不含任何实例值。
+    """revision 的哈希投影：完整序列的结构标识，不含任何实例值。
+
+    覆盖**全部** segment，包括 L1b/L2 槽位，不只是 ``LAYER_TEMPLATE`` 那些。
+    槽位在序列里的位置是模板结构的一部分——``render()`` 按这个顺序拼字节，
+    挪动一个槽位（哪怕它自己的 ``text`` 是空的）就会改变送进模型的字节顺序。
+    早先只投影 ``LAYER_TEMPLATE`` 段会漏掉这一类改动：把 ``report_contract``
+    槽位挪到序列末尾，`render()` 输出的字节顺序变了，但投影里所有模板段的
+    相对顺序不变，`discipline_revision` 会原地不动——一个被重新领取的在途
+    Run 因此绕过本该触发的 `blocked(INCOMPATIBLE_STATE)`（机器人审查发现）。
+    L1b/L2 槽位在这里的 ``text`` 恒为空字符串（真实实例值只在 ``render()``
+    时填入，从不写回 ``VARIANTS`` 常量），所以覆盖它们不会让任何实例值
+    漏进这份该只含模板事实的投影。
 
     新增字段必须同步进这个投影，否则模板变了而 revision 不变
     ——与 C3 第 8 节对工具注册表哈希的要求同理。
@@ -256,12 +267,12 @@ def template_projection(variant_id: str) -> list[dict[str, object]]:
     return [
         {
             "key": s.key,
+            "layer": s.layer,
             "text": s.text,
             "tool_specific": s.tool_specific,
             "scoped": s.scoped,
         }
         for s in _variant(variant_id)
-        if s.layer == LAYER_TEMPLATE
     ]
 
 
