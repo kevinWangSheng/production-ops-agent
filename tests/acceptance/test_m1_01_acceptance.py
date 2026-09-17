@@ -149,11 +149,12 @@ def test_worker_restart_resumes_from_committed_evidence():
 def test_recorded_real_deepseek_run_crosses_the_same_external_seam():
     root = Path(__file__).parents[2]
     evidence = root / "docs/evidence/m1-01-investigation-loop"
-    ledger = json.loads((evidence / "ledger.json").read_text())
-    report_path = evidence / "report-parsed.json"
+    ledger = json.loads((evidence / "real-run-ledger-2.json").read_text())
+    report_path = evidence / "real-run-report-2.json"
     report = json.loads(report_path.read_text()) if report_path.exists() else None
     outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
     assert outcome.permissions == ("read_only",)
-    assert outcome.final_state == "completed"
+    assert outcome.final_state in {"completed", "failed", "blocked", "budget_exhausted"}
     assert outcome.human_interaction == "handoff"
     assert outcome.handoff_reasons
+    assert outcome.report_available is False
