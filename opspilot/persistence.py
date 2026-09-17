@@ -49,6 +49,24 @@ class Lease:
     control_generation: int
 
 
+def _tool_plan(response: Any) -> Any:
+    """The tool plan a committed ModelStep carries (C3 §4/§7).
+
+    The investigation loop commits the complete model response as
+    ``{"assistant": {..., "tool_calls": [...]}, "finish_reason": ..., ...}``;
+    the M0 harness and older tests commit the assistant message itself, with
+    ``tool_calls`` at the top level. Recovery must see the plan in both
+    shapes, otherwise ``pending_tools`` is empty and a new attempt re-runs
+    the round instead of finishing the committed tools.
+    """
+    if not isinstance(response, dict):
+        return []
+    assistant = response.get("assistant")
+    if isinstance(assistant, dict) and "tool_calls" in assistant:
+        return assistant.get("tool_calls") or []
+    return response.get("tool_calls") or []
+
+
 class DurableStore:
     """Small transactional store; callers only observe committed business rows."""
 
@@ -569,7 +587,7 @@ class DurableStore:
                 (row["current_run_id"],),
             ).fetchall()
             for step in steps:
-                calls = (step["response"] or {}).get("tool_calls", [])
+                calls = _tool_plan(step["response"])
                 if not isinstance(calls, list) or any(
                     not isinstance(call, dict) for call in calls
                 ):
@@ -589,15 +607,11 @@ class DurableStore:
                         "step_id": step["step_id"],
                         "ordinal": ordinal,
                         "operation_id": f"{step['step_id']}:{ordinal}",
-                        "tool_call": (step["response"] or {}).get("tool_calls", [])[
-                            ordinal
-                        ],
+                        "tool_call": _tool_plan(step["response"])[ordinal],
                     }
                     for step in steps
                     if step["control_generation"] == incident_generation
-                    for ordinal in range(
-                        len((step["response"] or {}).get("tool_calls", []))
-                    )
+                    for ordinal in range(len(_tool_plan(step["response"])))
                     if ordinal
                     not in {
                         item.get("ordinal") for item in (step["tool_results"] or [])

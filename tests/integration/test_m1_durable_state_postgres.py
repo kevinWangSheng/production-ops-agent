@@ -1111,3 +1111,107 @@ def test_control_refuses_a_current_run_pointer_into_another_incident():
     assert audits == 0
     assert own == {"state": "blocked", "control_generation": 0}
     assert foreign == {"state": "running", "control_generation": 0}
+
+
+def _loop_step(*calls):
+    """A step exactly as the investigation loop commits it (``_commit_step``)."""
+    return {
+        "assistant": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": f"call-{index}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": "{}"},
+                }
+                for index, name in enumerate(calls)
+            ],
+        },
+        "finish_reason": "tool_calls",
+        "response_model": "deepseek-flash",
+        "usage": {"total_tokens": 10},
+        "request_sha256": "0" * 64,
+        "response_id": "resp-1",
+    }
+
+
+def test_rebuild_lists_pending_tools_from_a_loop_shaped_step():
+    """C3 §7「响应已提交，部分工具未完成 → 只处理尚未完成的工具操作」。
+
+    The loop commits the complete model response with the tool plan under
+    ``assistant`` (C3 §4: ModelStep = 完整模型响应及工具计划); ``rebuild()``
+    must read the plan from there, or recovery never sees any pending tool.
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-pending-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(
+        lease, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(lease, step, 0, {"ok": True})
+
+    pending = store.rebuild(incident)["pending_tools"]
+    assert [(item["step_id"], item["ordinal"]) for item in pending] == [(step, 1)]
+    assert pending[0]["operation_id"] == f"{step}:1"
+    assert pending[0]["tool_call"]["function"]["name"] == "logs.search"
+    # The legacy top-level shape used by the M0 harness keeps working.
+    legacy = store.commit_step(lease, "round-2", {"tool_calls": [{"id": "x"}]})
+    assert [item["step_id"] for item in store.rebuild(incident)["pending_tools"]] == [
+        step,
+        legacy,
+    ]
+
+
+def test_worker_resume_executes_only_the_pending_tools_of_a_loop_step():
+    """After a dead attempt, ``Worker.resume`` continues the committed plan."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-resume-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(dead, step, 0, {"ok": True, "evidence_id": "e0"})
+    time.sleep(1.2)
+
+    executed = []
+
+    def execute(item):
+        executed.append(
+            (item["step_id"], item["ordinal"], item["tool_call"]["function"]["name"])
+        )
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=5)
+    assert session.lease.epoch == dead.epoch + 1
+    assert session.execute_pending(execute) == 1
+    assert executed == [(step, 1, "logs.search")]
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    results = {
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
+    }
+    assert results == {
+        0: {"ok": True, "evidence_id": "e0"},
+        1: {"ok": True, "evidence_id": "e1"},
+    }
+    # The first attempt's lease cannot write into the plan any more.
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(dead, step, 1, {"late": True})
