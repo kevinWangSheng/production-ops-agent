@@ -22,7 +22,8 @@ from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("M1_DURABLE_POSTGRES") != "1" or not hasattr(DurableStore, "renew_lease"),
+    os.environ.get("M1_DURABLE_POSTGRES") != "1"
+    or not hasattr(DurableStore, "renew_lease"),
     reason="explicit PG opt-in + DurableStore.renew_lease (#35, not merged here) required",
 )
 
@@ -66,9 +67,7 @@ def test_resume_renews_the_lease_between_executing_and_committing_each_tool():
         versions={"state": "v1"},
     )
     dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
-    step = store.commit_step(
-        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
-    )
+    store.commit_step(dead, "round-1", _loop_step("metrics.range_query", "logs.search"))
     time.sleep(1.2)
 
     executed = []
@@ -90,8 +89,7 @@ def test_resume_renews_the_lease_between_executing_and_committing_each_tool():
     rebuilt = store.rebuild(incident)
     assert rebuilt["pending_tools"] == []
     results = {
-        item["ordinal"]: item["result"]
-        for item in rebuilt["steps"][0]["tool_results"]
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
     }
     assert results == {
         0: {"ok": True, "evidence_id": "e0"},
