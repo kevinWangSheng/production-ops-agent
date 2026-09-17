@@ -19,5 +19,5 @@ test: doctor
 
 acceptance:
 	.venv/bin/python scripts/m1_acceptance.py
-	python3 scripts/install_gitleaks.py --directory tmp/gitleaks
+	test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
 	python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
