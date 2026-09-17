@@ -144,10 +144,19 @@ import（`httpx2`、`datetime`/`pathlib`/`uuid`、
 
 ## 下一步与交接
 
-- 本任务范围内改动已完成、已验证，`docs/tasks/` 记录已建；ROADMAP 无需更新（本任务
-  为工程维护，不改变任何功能门槛/验收状态）。
-- 待独立审查结论补充后，按 AGENTS.md「变更、Git 与交接」推送任务分支、开/更新 PR，
-  等待最新提交的 CI 与已触发的 code review 结果，逐条处置后再报告 PR 就绪。
+- 提交 `369c272`（单一改动：`scripts/m0_pg_private_transport.py` + 本任务记录），
+  已推送任务分支 `fix/pg-live-probe-flake`，已开 PR
+  [#36](https://github.com/kevinWangSheng/production-ops-agent/pull/36)。
+- CI 两项 checks（`checks`、`m0-postgres`）均 `SUCCESS`；`mergeStateStatus:
+  CLEAN`、`mergeable: MERGEABLE`；无 inline review thread 需处置
+  （`gh api .../pulls/36/comments` 长度为 0）。
+- 机器人安全审查（Codex）在 PR 开启时自动触发，`Code Review`/`Security
+  Review` 两项状态均为 "Failed"（未产出任何 inline 发现，issue 级摘要评论也未
+  给出具体问题，与 AGENTS.md 记录的"当前额度不足以稳定执行"一致）——按项目规则
+  不是交付门槛，未等待、未阻塞，且因其未实际返回任何发现，无需逐项处置。
+- 状态：**PR 已就绪，待用户审核合并**。合并授权、合并动作及合并后 worktree/分支
+  清理均按 AGENTS.md 默认流程交由用户执行或另行明确授权；本任务未合并、未删除
+  分支。ROADMAP 无需更新（本任务为工程维护，不改变任何功能门槛/验收状态）。
 - 本地 PG lab 已在验证完毕后 `stop`，未遗留进程；`tmp/m0-b/` 为本 worktree 私有
   数据目录。后续如需在同一物理机重跑 PG 定向测试，需注意端口 55431 是
   `scripts/m0/postgres_lab.py` 的硬编码常量，其它并发 worktree 的 PG lab 会与之
