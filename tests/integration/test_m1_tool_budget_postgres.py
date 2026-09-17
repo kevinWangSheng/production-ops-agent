@@ -110,6 +110,20 @@ def test_charge_tool_counts_once_per_operation_and_settles_seconds_upward():
             store.charge_tool(lease, "step-1:1", bad)
 
 
+def test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again():
+    """Same operation_id, new attempt: the read really went out twice."""
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "re-dispatch")
+    first = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    store.charge_tool(first, "step-1:0", 0.0)  # reserved, then the worker died
+    time.sleep(1.2)
+    second = store.claim(incident, run, uuid4(), {"state": "v1"})
+    store.charge_tool(second, "step-1:0", 0.0)
+    store.charge_tool(second, "step-1:0", 4.0)
+    row = store.rebuild(incident)["run"]
+    assert (row["tool_operations_used"], row["tool_seconds_used"]) == (2, 4.0)
+
+
 def test_charge_tool_is_fenced_by_the_lease_like_every_write_path():
     store = DurableStore(DSN)
     incident, run = _accept(store, "fenced")

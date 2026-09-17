@@ -751,6 +751,8 @@ def test_a_ledger_that_cannot_record_the_operation_stops_the_read():
     assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert outcome.source_contact == "none"
     assert not transport.called
+    # Nothing was dispatched or recorded, so nothing is counted locally either.
+    assert executor.operations_used == 0
 
 
 def test_a_result_whose_cost_cannot_be_settled_is_not_adopted():
@@ -779,8 +781,17 @@ def test_a_ledger_that_is_not_a_ledger_is_a_contract_error():
         def charge(self, operation_id, seconds):
             pass
 
+    class Unreachable:
+        def usage(self):
+            raise RuntimeError("storage down")
+
+        def charge(self, operation_id, seconds):
+            pass
+
     with pytest.raises(ToolContractError, match="INVALID_LEDGER"):
         build(ledger=NotALedger())
+    with pytest.raises(ToolContractError, match="LEDGER_UNAVAILABLE"):
+        build(ledger=Unreachable())
     with pytest.raises(ToolContractError, match="INVALID_LEDGER"):
         build(ledger=BadUsage())
     for bad in ({"operations_used": -1}, {"tool_seconds_used": float("nan")}):

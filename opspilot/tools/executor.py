@@ -340,7 +340,13 @@ class ReadOnlyToolExecutor:
         if not isinstance(ledger, ToolUsageLedger):
             raise ToolContractError("INVALID_LEDGER")
         self._ledger = ledger
-        usage = ledger.usage()
+        try:
+            usage = ledger.usage()
+        except Exception:
+            # Without the durable starting point the cap cannot be enforced
+            # per Run; refuse to build rather than start from zero. Storage
+            # error text stays inside the ledger.
+            raise ToolContractError("LEDGER_UNAVAILABLE") from None
         if not isinstance(usage, ToolUsage):
             raise ToolContractError("INVALID_LEDGER")
         # Earlier attempts of this Run already spent part of the budget; the
@@ -503,13 +509,14 @@ class ReadOnlyToolExecutor:
             max_result_bytes=plan.registration.max_result_bytes,
             credential_ref=plan.target.credential_ref,
         )
-        self._operations_used += 1
         # Count the operation durably *before* the read goes out: if the
         # process dies while the request is in flight, the next attempt still
         # sees it as spent (section 13: unknown cost stays occupied). A budget
-        # authority that cannot record it stops the call, as control does.
+        # authority that cannot record it stops the call, as control does, and
+        # an operation that was never recorded is not counted locally either.
         if not self._charge(operation.operation_id, 0.0):
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
+        self._operations_used += 1
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None
@@ -531,7 +538,9 @@ class ReadOnlyToolExecutor:
         )
         # Settle the measured wall time. A result whose cost could not be
         # recorded is not adopted: the same fail-closed rule as an evidence
-        # store that cannot commit (``EVIDENCE_NOT_COMMITTED``).
+        # store that cannot commit (``EVIDENCE_NOT_COMMITTED``). The durable
+        # record then keeps this operation at its reserved 0 s (the count is
+        # kept); the attempt-local total still carries the measured time.
         if not self._charge(operation.operation_id, elapsed):
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", "confirmed")
         if failure is not None:

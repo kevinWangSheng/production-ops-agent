@@ -306,7 +306,10 @@ class DurableStore:
         The first charge for ``(run, epoch, operation_id)`` counts the operation;
         later charges with the same key only raise its recorded seconds, so an
         executor may charge once before dispatch and once after with the
-        measured wall time. Fenced by the lease like every other write path.
+        measured wall time. The key includes the epoch on purpose: a new attempt
+        that re-dispatches an uncommitted operation issues a real second query
+        (technical plan section 7), so it is counted again; the per-Run total
+        only ever grows. Fenced by the lease like every other write path.
         """
         if not isinstance(operation_id, str) or not operation_id:
             raise PersistenceError("INVALID_INPUT")
