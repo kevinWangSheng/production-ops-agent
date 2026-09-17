@@ -26,7 +26,7 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import WINDOW_START, body, build, registration
+from tests.m1_tool_support import WINDOW_END, WINDOW_START, body, build, registration
 
 LIVE_TOOL = "metrics_range_query"
 TOOL_SCHEMAS = (
@@ -54,6 +54,29 @@ TOOL_SCHEMAS = (
             },
         },
     },
+)
+
+# The loop binds each delivered view to the time policies it is eligible for
+# (``eligible_time_policies``) and fails closed: a policy without ``mode`` and
+# ``window`` is never worn by a view, so every fact citing it is REPORT_INVALID
+# even when the model followed the report contract. The fixture window equals
+# the authorized query window, so the historical policy covers every view.
+EVIDENCE_CONTEXT = {
+    "type": "opspilot-evidence-context-v4",
+    "time_policies": [
+        {
+            "id": "policy-window-1",
+            "mode": "historical_window",
+            "window": {
+                "start": WINDOW_START.isoformat(),
+                "end": WINDOW_END.isoformat(),
+            },
+        }
+    ],
+}
+QUESTION = (
+    "Checkout appears to show elevated HTTP errors. Query the authorized "
+    "metrics and return a json investigation report for the authorized window."
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,19 +163,12 @@ def cost_cny(usage: dict) -> float:
     return round(usd * CNY_PER_USD, 6)
 
 
-def main() -> int:
-    env_file = resolve_env_file()
-    key = read_key(env_file)
-    if not key:
-        print(
-            json.dumps(
-                {"status": "failed", "failure": "trusted credential unavailable"}
-            )
-        )
-        return 2
-    clock = SystemClock()
-    deadline = clock.now() + timedelta(minutes=12)
-    run_id = str(uuid4())
+def build_run(model, *, clock, deadline, run_id, evidence_context=None):
+    """The product loop over the fixture Prometheus tool, exactly as a live Run.
+
+    Shared with the offline replay tests so the evidence context the model is
+    asked to cite is the same one the loop binds reports against.
+    """
     executor, transport, _sink, _ = build(
         clock=clock,
         registrations=[registration(name=LIVE_TOOL)],
@@ -169,25 +185,36 @@ def main() -> int:
     store = MemoryStepStore(
         budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
     )
-    recorder = RecordingClient(DeepSeekClient(key))
-    del key
-    loop = InvestigationLoop(
-        model=recorder, executor=executor, store=store, clock=clock
-    )
+    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
     request = InvestigationRequest(
         run_id=executor.scope.run_id,
-        question=(
-            "Checkout appears to show elevated HTTP errors. Query the authorized "
-            "metrics and return a json investigation report for the authorized window."
-        ),
+        question=QUESTION,
         scope=executor.scope,
         tool_schemas=TOOL_SCHEMAS,
         model_requests=2,
-        evidence_context={
-            "type": "opspilot-evidence-context-v4",
-            "time_policies": [{"id": "policy-window-1"}],
-        },
+        evidence_context=(
+            EVIDENCE_CONTEXT if evidence_context is None else evidence_context
+        ),
     )
+    return loop, request
+
+
+def main() -> int:
+    env_file = resolve_env_file()
+    key = read_key(env_file)
+    if not key:
+        print(
+            json.dumps(
+                {"status": "failed", "failure": "trusted credential unavailable"}
+            )
+        )
+        return 2
+    clock = SystemClock()
+    deadline = clock.now() + timedelta(minutes=12)
+    run_id = str(uuid4())
+    recorder = RecordingClient(DeepSeekClient(key))
+    del key
+    loop, request = build_run(recorder, clock=clock, deadline=deadline, run_id=run_id)
     started = clock.now()
     outcome = loop.run(request)
     acceptance_outcome = outcome_from_loop(
