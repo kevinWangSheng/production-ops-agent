@@ -282,7 +282,31 @@ class InvestigationLoop:
         outbound = list(messages)
         if inputs:
             outbound.append(
-                {"role": "user", "content": canonical({"investigation_inputs": inputs})}
+                {
+                    "role": "user",
+                    "content": canonical(
+                        {
+                            "investigation_inputs": [
+                                {
+                                    "sequence": i["sequence"],
+                                    "kind": i["kind"],
+                                    "content": {
+                                        k: v
+                                        for k, v in i["content"].items()
+                                        if k.lower()
+                                        not in {
+                                            "password",
+                                            "secret",
+                                            "token",
+                                            "authorization",
+                                        }
+                                    },
+                                }
+                                for i in inputs
+                            ]
+                        }
+                    ),
+                }
             )
         if final:
             outbound.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})

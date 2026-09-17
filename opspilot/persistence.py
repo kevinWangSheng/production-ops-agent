@@ -168,7 +168,7 @@ class DurableStore:
             INSERT INTO opspilot_target_suspensions(target_id) SELECT target_id FROM opspilot_targets ON CONFLICT DO NOTHING;
             CREATE TABLE IF NOT EXISTS opspilot_suspension_audit (
               audit_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, target_id uuid,
-              suspended boolean NOT NULL, generation integer NOT NULL,
+              suspended boolean NOT NULL, generation integer NOT NULL, actor text NOT NULL,
               created_at timestamptz NOT NULL DEFAULT clock_timestamp()
             );
             CREATE TABLE IF NOT EXISTS opspilot_runs (
@@ -180,6 +180,7 @@ class DurableStore:
               deadline timestamptz NOT NULL, versions jsonb NOT NULL, input_watermark integer NOT NULL DEFAULT 0
             );
             ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS input_watermark integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_suspension_audit ADD COLUMN IF NOT EXISTS actor text NOT NULL DEFAULT 'unknown';
             -- PostgreSQL 不为外键列自动建索引。control() 按 incident_id 推进 run
             -- 状态，前置的 incident 行锁把 worker 写路径排在这条 UPDATE 之后，
             -- 全表扫描会随表增长直接变成写路径的排队时间。
@@ -326,7 +327,7 @@ class DurableStore:
         return identity
 
     def set_global_suspension(
-        self, suspended: bool, *, expected_generation: int | None = None
+        self, suspended: bool, *, expected_generation: int, actor: str = "operator"
     ) -> int:
         """Atomically change the global gate; suspension invalidates active leases."""
         if type(suspended) is not bool:
@@ -343,7 +344,7 @@ class DurableStore:
             nxt = current + 1
             conn.execute(
                 "UPDATE opspilot_scope_controls SET global_suspended=%s,global_generation=%s WHERE scope_id=1",
-                (suspended, nxt),
+                (suspended, nxt, actor),
             )
             if suspended:
                 conn.execute(
@@ -356,8 +357,8 @@ class DurableStore:
                     "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human')"
                 )
             conn.execute(
-                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(NULL,%s,%s)",
-                (suspended, nxt),
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(NULL,%s,%s,%s)",
+                (suspended, nxt, actor),
             )
             return nxt
 
@@ -369,7 +370,8 @@ class DurableStore:
         target_id: UUID,
         suspended: bool,
         *,
-        expected_generation: int | None = None,
+        expected_generation: int,
+        actor: str = "operator",
     ) -> int:
         """Change one registered immutable target's gate and invalidate its leases."""
         if not isinstance(target_id, UUID) or type(suspended) is not bool:
@@ -412,8 +414,8 @@ class DurableStore:
                     (target_id,),
                 )
             conn.execute(
-                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(%s,%s,%s)",
-                (target_id, suspended, nxt),
+                "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation) VALUES(%s,%s,%s,%s)",
+                (target_id, suspended, nxt, actor),
             )
             return nxt
 
@@ -562,14 +564,14 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
+            if row["global_suspended"] or row["target_suspended"]:
+                raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
                     (run_id,),
                 )
                 incompatible = True
-            elif row["global_suspended"] or row["target_suspended"]:
-                raise PersistenceError("CONTROL_DENIED")
             elif row["incident_state"] in {"completed", "cancelled", "paused"}:
                 raise PersistenceError("CONTROL_DENIED")
             elif row["run_state"] not in ("queued", "running"):
