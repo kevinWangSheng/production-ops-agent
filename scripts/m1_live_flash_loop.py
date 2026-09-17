@@ -1,7 +1,9 @@
 """Bounded live Flash investigation: product loop + fixture tools + usage ledger.
 
 Reads DEEPSEEK_API_KEY from a private env file, never prints it, and writes a
-business ledger under docs/evidence/. This is not product intake wiring.
+business ledger under docs/evidence/m1-01-acceptance/live-runs/<run_id>/ (or
+M1_ACCEPTANCE_OUT). Each Run gets its own directory so earlier evidence is
+never overwritten. This is not product intake wiring.
 """
 
 from __future__ import annotations
@@ -55,8 +57,7 @@ TOOL_SCHEMAS = (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN_ENV = Path("/Users/shenghuikevin/dev/AI/production-ops-agent/.env")
-OUT = ROOT / "docs/evidence/m1-01-investigation-loop"
+OUT_ROOT = ROOT / "docs/evidence/m1-01-acceptance/live-runs"
 CNY_PER_USD = 7.3
 INPUT_USD_PER_M = 0.3
 OUTPUT_USD_PER_M = 1.2
@@ -114,15 +115,20 @@ def read_key(path: Path) -> str:
 
 
 def resolve_env_file() -> Path:
+    """Only M0_ENV_FILE is trusted; no cross-worktree fallback paths."""
     explicit = os.environ.get("M0_ENV_FILE")
-    candidates = []
     if explicit:
-        candidates.append(Path(explicit).expanduser())
-    candidates.extend([ROOT / ".env", MAIN_ENV])
-    for path in candidates:
+        path = Path(explicit).expanduser()
         if path.is_file():
             return path.resolve()
-    raise SystemExit("credential file unavailable")
+    raise SystemExit("credential file unavailable: set M0_ENV_FILE")
+
+
+def resolve_out_dir(run_id: str) -> Path:
+    explicit = os.environ.get("M1_ACCEPTANCE_OUT")
+    if explicit:
+        return Path(explicit).expanduser() / run_id
+    return OUT_ROOT / run_id
 
 
 def cost_cny(usage: dict) -> float:
@@ -224,7 +230,8 @@ def main() -> int:
         "prompt_revision": outcome.prompt_revision,
         "question_sha256": outcome.question_sha256,
     }
-    OUT.mkdir(parents=True, exist_ok=True)
+    OUT = resolve_out_dir(run_id)
+    OUT.mkdir(parents=True, exist_ok=False)
     (OUT / "ledger.json").write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
     if outcome.report_content is not None:
         (OUT / "report.json").write_text(outcome.report_content)
@@ -256,6 +263,7 @@ def main() -> int:
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
         "report_schema_version": ledger["report_schema_version"],
         "handoff_reasons": ledger["handoff_reasons"],
+        "out_dir": str(OUT.relative_to(ROOT)) if OUT.is_relative_to(ROOT) else str(OUT),
     }
     print(json.dumps(summary))
     return 0 if outcome.execution == "completed" and outcome.report is not None else 1
