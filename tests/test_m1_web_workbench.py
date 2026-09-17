@@ -8,6 +8,7 @@ the end-to-end flow on PostgreSQL. No model HTTP, no network.
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 from opspilot.web import MemoryEventLog
 from tests.m1_investigation_support import (
@@ -899,3 +900,25 @@ def test_openapi_schema_is_not_served():
     for path in ("/openapi.json", "/docs", "/redoc"):
         assert call(app, "GET", path).status in (401, 404), path
         assert call(app, "GET", path, headers=basic()).status == 404, path
+
+
+def test_a_held_lease_is_a_quiet_refusal_not_an_event_per_poll():
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="held")
+    subject = workbench.list_incidents()[0].incident_id
+    summary = workbench.list_incidents()[0]
+    other = workbench.incidents.claim(
+        subject, summary.current_run_id, uuid4(), {"state": "v1"}, 30
+    )
+    assert other.epoch == 1
+    before = workbench.events.latest(subject)
+    for _ in range(3):
+        assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
+    assert workbench.events.latest(subject) == before
+    # A refusal that needs a human (version mismatch) is still recorded.
+    workbench.incidents.abandon(other)
+    workbench.run_versions = {"state": "v2"}
+    assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
+    last = workbench.events.read_after(subject, 0)[-1]
+    assert last.kind == "run_claim_refused"
+    assert last.payload["code"] == "INCOMPATIBLE_STATE"

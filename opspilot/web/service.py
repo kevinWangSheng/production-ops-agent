@@ -546,11 +546,15 @@ class Workbench:
                 incident_id, run_id, self._owner, dict(self.run_versions), seconds
             )
         except PersistenceError as exc:
-            self.events.append(
-                incident_id,
-                "run_claim_refused",
-                {"run_id": str(run_id), "code": str(exc)},
-            )
+            # A still-valid lease held elsewhere is the normal state while
+            # another worker runs (or a killed worker's lease runs down); a
+            # polling worker would otherwise append one event per poll.
+            if str(exc) != "LEASE_ACTIVE":
+                self.events.append(
+                    incident_id,
+                    "run_claim_refused",
+                    {"run_id": str(run_id), "code": str(exc)},
+                )
             return None
         try:
             return self._attempt(incident_id, run_id, lease, investigator, request)
