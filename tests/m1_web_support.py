@@ -612,6 +612,7 @@ class ScriptedInvestigator:
                     {
                         "id": "policy-window-1",
                         "mode": "historical_window",
+                        "all_authorized_targets": True,
                         "window": {
                             "start": WINDOW_START.isoformat(),
                             "end": WINDOW_END.isoformat(),
