@@ -61,8 +61,12 @@ def _tool_plan(response: Any) -> Any:
     """
     if not isinstance(response, dict):
         return []
-    assistant = response.get("assistant")
-    if isinstance(assistant, dict) and "tool_calls" in assistant:
+    if "assistant" in response:
+        assistant = response["assistant"]
+        if not isinstance(assistant, dict):
+            # A loop-shaped step whose assistant message is corrupt: hand back
+            # a non-list so the caller's validation fails closed.
+            return None
         return assistant.get("tool_calls") or []
     return response.get("tool_calls") or []
 

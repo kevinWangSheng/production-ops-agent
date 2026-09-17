@@ -1215,3 +1215,22 @@ def test_worker_resume_executes_only_the_pending_tools_of_a_loop_step():
     # The first attempt's lease cannot write into the plan any more.
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(dead, step, 1, {"late": True})
+
+
+def test_rebuild_rejects_a_malformed_loop_shaped_step():
+    """A corrupt ``assistant`` or plan in the loop shape fails closed too."""
+    store = DurableStore(DSN)
+    for broken in ({"assistant": "oops"}, {"assistant": {"tool_calls": "abc"}}):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-loop-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        store.commit_step(lease, "round-1", broken)
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
