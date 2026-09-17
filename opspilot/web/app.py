@@ -86,7 +86,10 @@ def create_app(
     sse_poll_seconds: float = 0.5,
     sse_idle_seconds: float | None = 30.0,
 ) -> FastAPI:
-    app = FastAPI(title="OpsPilot workbench", docs_url=None, redoc_url=None)
+    # No unauthenticated schema surface: /openapi.json would list every route.
+    app = FastAPI(
+        title="OpsPilot workbench", docs_url=None, redoc_url=None, openapi_url=None
+    )
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES)),
         autoescape=select_autoescape(default=True, default_for_string=True),
