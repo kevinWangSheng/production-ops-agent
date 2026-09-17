@@ -118,6 +118,32 @@ def test_rebuild_rejects_malformed_persisted_tool_calls():
         store.rebuild(incident)
 
 
+def test_rebuild_rejects_a_falsey_malformed_tool_calls_value():
+    """``{} or []`` would silently swallow a falsey malformed value into a
+    valid-looking empty plan; it must fail closed like any other bad shape.
+    """
+    store = DurableStore(DSN)
+    for broken in ({}, "", 0):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-falsey-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        step = store.commit_step(lease, "malformed", {"tool_calls": []})
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+                (Jsonb({"tool_calls": broken}), step),
+            )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
 def test_recovered_session_checks_epoch_before_dispatch():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -1726,7 +1752,15 @@ def test_worker_resume_executes_only_the_pending_tools_of_a_loop_step():
 def test_rebuild_rejects_a_malformed_loop_shaped_step():
     """A corrupt ``assistant`` or plan in the loop shape fails closed too."""
     store = DurableStore(DSN)
-    for broken in ({"assistant": "oops"}, {"assistant": {"tool_calls": "abc"}}):
+    for broken in (
+        {"assistant": "oops"},
+        {"assistant": {"tool_calls": "abc"}},
+        # Falsey malformed values must fail closed too: ``{} or []`` would
+        # otherwise swallow them into a valid-looking empty plan.
+        {"assistant": {"tool_calls": {}}},
+        {"assistant": {"tool_calls": ""}},
+        {"assistant": {"tool_calls": 0}},
+    ):
         incident, run = uuid4(), uuid4()
         store.accept(
             incident,

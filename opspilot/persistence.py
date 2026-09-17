@@ -72,8 +72,21 @@ def _tool_plan(response: Any) -> Any:
             # A loop-shaped step whose assistant message is corrupt: hand back
             # a non-list so the caller's validation fails closed.
             return None
-        return assistant.get("tool_calls") or []
-    return response.get("tool_calls") or []
+        return _tool_calls(assistant)
+    return _tool_calls(response)
+
+
+def _tool_calls(container: dict[str, Any]) -> Any:
+    """``tool_calls`` absent or ``None`` means no tools; any other non-list
+    value (``{}``, ``""``, ``0``, ...) is corrupted business data, not an
+    empty plan -- ``value or []`` would silently swallow a falsey one of
+    those into a valid-looking empty list, so check the type explicitly and
+    hand back a non-list for the caller to fail closed on.
+    """
+    calls = container.get("tool_calls")
+    if calls is None:
+        return []
+    return calls if isinstance(calls, list) else None
 
 
 # 预留结算的两种去向：列名由结算结果决定，不由调用方拼 SQL。
