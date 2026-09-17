@@ -1,6 +1,6 @@
 # DurableStore.claim：人工控制状态先于版本判定（红线审计 P2-2）
 
-- 状态：进行中
+- 状态：进行中（PR 已开，待 CI/code review）
 - 更新日期：2026-09-17
 - 依据：对 `integration/m1-01-full`@e42d7b7 的跨 PR 只读红线审计第 2 节 P2-2；
   [C3 第 5 节](../design/technical-proposal-2026-09-07.md)「授权变化不得经由 versions 触发
@@ -45,7 +45,13 @@
 - 已知合并顺序影响：PR #26 也改写了 `claim()` 周边（`_lock_scope`、`run_state` 别名），
   本 PR 与 #26 后合并者会在该函数出现可手工解决的冲突；集成分支上两者已并存并通过测试。
 
+- 独立审查（全新上下文只读子代理，model sonnet，2026-09-17）：对本修复无 P1/P2；
+  P3-6「已 blocked 的 Run 版本对回来后再领取 → CONTROL_DENIED 无测试」→ 采纳，
+  提交 `08cf97b` 在同一用例补断言。审查另确认：新守卫顺序对 `waiting_human/failed/
+  budget_exhausted` 同样不再改写成 blocked（同一机制，非扩范围）；`WHERE state IN`
+  为冗余防御；两处移植语义一致。
+
 ## 下一步与交接
 
-- 独立审查结论与处置写入本记录；推送分支并创建 PR，等待 CI/code review。
+- 已推送并创建 PR，等待 CI 与 code review；结果与 thread 处置回写本记录。
 - PG lab 进程属集成 worktree 会话（`tmp/m0-b/postgres`，端口 55431），任务结束时停止。
