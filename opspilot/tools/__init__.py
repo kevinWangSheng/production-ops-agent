@@ -43,6 +43,7 @@ from .registry import (
     RegisteredTarget,
     TargetRegistry,
     ToolContractError,
+    ToolDescription,
     ToolRegistration,
     ToolRegistry,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "RegisteredTarget",
     "TargetRegistry",
     "ToolContractError",
+    "ToolDescription",
     "ToolOperation",
     "ToolOutcome",
     "ToolRegistration",

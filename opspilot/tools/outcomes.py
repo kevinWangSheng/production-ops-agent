@@ -50,7 +50,7 @@ __all__ = [
 
 # Version of the raw -> view projection. Stored with every evidence record so a
 # later reader can tell which projection produced the view it is reading.
-PROJECTION_REVISION = "m1-01-tool-view-v2"
+PROJECTION_REVISION = "m1-01-tool-view-v3"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -189,6 +189,14 @@ class ToolOperation:
     # when the expiry was observed, and nothing else in the record can be used
     # to derive it.
     authorized_at: datetime | None = None
+    # Set only immediately before ``transport.fetch()`` is actually called,
+    # never inferred from ``timeout_seconds`` being populated: ``_reserve()``
+    # computes ``timeout_seconds`` before the pre-dispatch ledger charge and
+    # the new pre-fetch control/deadline re-check run, so a denial from
+    # either of those (or the charge itself) would otherwise leave
+    # ``timeout_seconds`` set on an operation that never reached the
+    # transport, making ``sent`` claim dispatch that never happened.
+    dispatched: bool = False
     finished_at: datetime | None = None
     elapsed_seconds: float | None = None
     timeout_seconds: float | None = None
@@ -198,7 +206,7 @@ class ToolOperation:
     def sent(self) -> bool:
         """Whether the gateway handed this operation to the transport."""
 
-        return self.timeout_seconds is not None
+        return self.dispatched
 
     def audit_json(self) -> dict[str, object]:
         """Audit-facing record. Not the model-facing view."""
@@ -257,6 +265,8 @@ class EvidenceRecord:
     projection_revision: str
     observed_at: datetime
     data_as_of: datetime | None
+    source_start_at: datetime | None
+    source_end_at: datetime | None
     result_count: int
     incomplete: bool
     truncated: bool

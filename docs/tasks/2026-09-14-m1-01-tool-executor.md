@@ -1,7 +1,8 @@
 # M1-01 只读工具执行器（纯逻辑部分）
 
-- 状态：PR 已就绪，待用户审核合并（[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
-- 更新日期：2026-09-15
+- 状态：本轮新增提交待推送，推送后需等最新 CI 与已触发 code review 覆盖当前 HEAD
+  （[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
+- 更新日期：2026-09-17（执行器授权复查顺序 + 证据登记原子性一节）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md#m1-01-任务拆分与投入估算待-gate-决定)
   「只读工具执行器」子任务；[C3 技术方案](../design/technical-proposal-2026-09-07.md)
   第 3 节（Tool Gateway 角色）、第 8 节（工具注册合同）、第 4/7 节（控制版本、
@@ -375,13 +376,8 @@ M1 四个测试文件 **160 passed**。
 
 ### 7. 本轮新增的未完成项
 
-- **C3 第 8 节「工具模型可见面」尚未实现。** main 的 PR #24 把模型可见面
-  （`returns` / `window_format` / `values_format` / `limits` / `cannot_prove`）
-  写入 C3 第 8 节注册合同，并要求它纳入工具注册表的内容哈希。
-  当前 `ToolRegistration` 无这些字段，`ToolRegistry` 的 fingerprint 投影也未覆盖。
-  该实现被 PR #24 自身的完成条件明确排除（「不在完成条件内：合同的实现与实现后的
-  确定性测试」），因此是本任务之外的交接项，本 PR 不做。
-  接手时须同时更新 fingerprint 投影，否则描述变化不会 bump `tool_schema_revision`。
+- ~~C3 第 8 节「工具模型可见面」尚未实现~~ **已在本轮（2026-09-17）实现**，见下方
+  「9. C3 第 8 节工具模型可见面（`ToolDescription`）与第 7 节第 2、3 项确定性检查」。
 - 原有交接项（领域类型合并、真实传输/凭据/PG 证据存储、数据源 payload 脱敏、
   `TransportUnavailable` 未细分、并发/取消运行期实现）保持不变，均未在本轮解决。
 - F3/F7 的 `passes` 仍为 `false`；本轮是纯逻辑层的安全修复，不构成产品验收证据。
@@ -477,3 +473,347 @@ PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
 审查同时确认：双 charge 协议同 epoch 内幂等；fail-closed 路径不外泄异常文本、不登记证据；锁顺序与 `install()` 演进方式与本文件一致；`bool` 被类型校验拒绝；冻结上限未改；无范围外改动。
 
 复验（本分支 `ffd3161`）：`make check` → `All checks passed!` / `Success: no issues found in 18 source files` / `1216 passed, 79 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py tests/integration/test_m1_durable_state_postgres.py` → `25 passed`。
+
+## 9. C3 第 8 节工具模型可见面（`ToolDescription`）与第 7 节第 2、3 项确定性检查（2026-09-17）
+
+- 依据：调度者任务书 `scratchpad/briefs/registry.md`；
+  [C3 技术方案](../design/technical-proposal-2026-09-07.md) 第 8 节「模型可见面」段
+  （`returns`/`window_format`/`values_format`/`limits`/`cannot_prove` 五字段表）；
+  `docs/tasks/2026-09-15-instruction-tool-contract.md`（PR #27 分支，
+  `git show origin/chore/instruction-contract-impl:<path>` 读取）「C3 第 7 节七项确定性检查的
+  逐项状态」表（第 2、3 项标「未做：依赖 `opspilot/tools/registry.py`」）与
+  「交接：`ToolRegistration.description` 待 PR #20 合并后承接」节。
+- 范围：只做 C3 §7 七项确定性检查中的第 2、3 项。不做第 1/4/5/6/7 项的补全，
+  不做 §8「模型可见面」文本的实际渲染器，不迁移 PR #27
+  `opspilot/instructions/discipline.py` 里标 `tool_specific=True` 的 8 句投影语义
+  （该模块在本分支不存在，迁移是 PR #27 任务记录第 4 步，前置条件是 PR #27 先合并进
+  main；本轮不复制其实现，只把 `ToolDescription` 设计成能承接的形状）。
+
+### 做了什么
+
+`opspilot/tools/registry.py` 新增 `ToolDescription`（frozen dataclass，字段顺序与
+C3 表格顺序一致：`returns`/`window_format`/`values_format`/`limits`/`cannot_prove`）：
+
+- `returns`/`limits`/`cannot_prove` 注册期非空（`.strip()` 后非空），否则
+  `ToolContractError("EMPTY_TOOL_DESCRIPTION_FIELD")`。
+- `window_format`/`values_format` 注册期须含占位符，否则
+  `ToolContractError("MISSING_DESCRIPTION_PLACEHOLDER")`。
+  **占位符具体写法（`{window}`/`{values}`）是本轮自定，C3 原文只写「占位符」未给出
+  字面 token**——仿照 `docs/tasks/2026-09-15-instruction-tool-contract.md` 引用的
+  `discipline.py` 里 `{steps}` 的既有写法（`str.format` 风格），写入模块内注释说明这是
+  本模块自己的选择、非 C3 逐字要求，为将来的渲染器（L3a 模板/L3b 实例，尚未建）预留
+  钩子。
+- 只做结构完整性检查，不判断文字质量——依据 PR #27 任务记录独立审查处置 F10：
+  「D1/D5 是语义属性，自由文本无注册期判据…注册期只断言结构完整性，文字质量交人工审查」。
+
+`ToolRegistration` 新增必填字段 `description: ToolDescription`（`__post_init__` 用
+`isinstance` 校验，非法值 → `ToolContractError("INVALID_TOOL_DESCRIPTION")`）。
+`ParameterSpec` 新增 `description: str = ""`（默认空字符串，向后兼容——C3 §8 的五字段
+结构完整性检查只列在 `ToolDescription` 上，不要求每个参数描述本轮也做结构校验；
+默认值使原本只测 `kind`/`required`/`.accepts()` 行为的既有用例不必改动）。
+
+`ToolRegistry` 的 fingerprint 投影（`__init__` 内的工具层字典）新增两处（对应
+七项检查第 2 项）：工具层的 `description` 五字段整体、以及参数层每个
+`ParameterSpec.description`。任一处改动都会改变 `ToolRegistry.revision`。
+
+### 模型可见字节是否变化
+
+**本分支此前没有任何真实注册的工具**（`grep -rln "ToolRegistration("` 排除
+`.venv/` 只命中 3 个测试文件；产品代码尚未把执行器接进
+`Workbench.run_once`/`Worker` 组合，`ToolRegistration` 只在测试夹具
+`tests/m1_tool_support.py::registration()` 里构造），因此**没有已冻结/已记录的
+模型可见字节需要保持不变**——`description` 是本轮新增的必填字段，不存在“改变现有
+字节”的兼容性问题；`tool_schema_revision` 目前也未接线到任何持久化比对
+（同一落差此前已记于本文件第 7 节，未在本轮解决，接线仍属 M1-01「Flash 调查
+loop」子任务）。`git grep -n "tool_schema_revision\|\.revision =="` 未发现任何写死
+比对的历史哈希字面量，故本轮改动不破坏任何已记录证据。
+
+### 与 PR #27 的接口对齐
+
+未从 PR #27 的 `opspilot/instructions/discipline.py` 复制任何符号或字节——该文件
+`find opspilot -iname "*discipline*"` 在本分支为空，只存在于
+`origin/chore/instruction-contract-impl`。第 7 节第 2、3 项本身不需要它的任何符号
+（`prompt_revision`/`Segment` 等只在做第 1/4/5/7 项的补全或第 4 步迁移时才用得上，
+均不在本轮范围）。`ToolDescription` 五个字段是纯字符串，未来迁移
+`PROJECTION_DISCIPLINE` 的 8 句时可以直接把文本填进对应字段，不需要改动本轮的类型
+或校验逻辑。
+
+C3 §7 七项检查里，第 1（部分完成）、4（部分完成）、5（部分完成）、6（暂停，等用户
+裁定与归位决定的冲突）、7（部分完成）项按 PR #27 任务记录的既有结论保持原状，
+本轮不动；只有第 2、3 项从「未做」变为「完成」。
+
+### 测试与变异验证
+
+新增/修改：`tests/m1_tool_support.py`（`description()` 构建器 + `registration()`
+默认值 + 两个 `ParameterSpec` 补 `description`）、
+`tests/test_m1_tool_registry.py`（`ToolDescription` 结构完整性用例，覆盖非空、
+占位符存在、占位符精确匹配非子串误判、字段顺序、不可变性、`ToolRegistration`
+拒绝非 `ToolDescription` 值）、`tests/test_m1_tool_registry_binding.py`
+（`CONTRACT_CHANGES` 新增两项：仅工具层 `description` 不同、仅参数层
+`description` 不同且刻意保留 `step_seconds` 不变以隔离维度，避免与「参数被删除」
+混淆——这一点是独立审查用变异实测揪出的真实测试缺陷，见下）。
+
+PR #20 现有测试**全部保留**，无一条被删除或弱化；本轮净增测试通过数：
+`1233 - 1216 = 17`（含独立审查后删掉 1 条误导性用例，详见下方「独立审查」）。
+
+变异验证（每条新断言手工验证能转红，验证后与保存的 `git diff` 补丁逐字节比对
+确认已还原）：
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | 移除工具层 `description` 投影 | `CONTRACT_CHANGES[3]`（工具描述变化）2 条测试转红，其余 23 条不受影响 |
+| M2（第一次，暴露测试自身缺陷） | 移除参数层 `description` 投影，初版测试条目省略了 `step_seconds` | **未转红**——因为省略 `step_seconds` 本身已改变参数集合，掩盖了 description 投影是否生效 |
+| M2（修复测试后重跑同一变异） | 同上，测试条目改为显式保留 `step_seconds` 不变 | `CONTRACT_CHANGES[2]`（参数描述变化）2 条测试正确转红，其余 23 条不受影响 |
+| M3 | 移除 `ToolDescription` 全部结构校验（`__post_init__` 置空） | 10 条断言转红（6 条非空校验 + 2 条占位符校验 + 1 条精确匹配 + 1 条 `ToolRegistration` 转发） |
+| M4 | 移除 `ToolRegistration.__post_init__` 的 `isinstance(description, ToolDescription)` 检查 | `test_registration_requires_a_structurally_complete_tool_description` 转红 |
+
+M2 的第一次尝试本身就是一次有效的变异验证发现：独立审查在后续复核里独立复现了
+同一类问题（见下），确认这不是巧合。
+
+### 独立审查（全新上下文只读子代理，未参与实现）
+
+按 AGENTS.md「独立审查使用未参与该方案或实现的 Agent，并以全新上下文启动」，
+派发时只给目标、C3 §7/§8 原文、`docs/tasks/2026-09-15-instruction-tool-contract.md`
+背景、本轮 diff 补丁与待审工件，不继承实现过程的结论。
+
+结论：**可以按当前状态交回实现者**——未发现阻塞级问题，fingerprint 覆盖经审查自行
+变异验证为非空转（在参数层与工具层各自移除投影并复跑，仅对应
+`CONTRACT_CHANGES` 条目转红，其余不受影响，随后精确还原并用 `diff` 核对回原
+补丁），向后兼容选择（`ParameterSpec.description` 默认空串）合理，边界纪律干净
+（`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件均无
+改动，未从 PR #27 复制任何代码），`ToolRegistry` 公共面（`{lookup, revision,
+tool_names}`）未扩大，三个新错误码均为固定字符串、不拼接字段实际文本。
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | should-fix | `test_registration_rejects_a_description_with_a_blank_required_field` 的注释声称验证 `ToolRegistration` 转发 `ToolDescription` 的错误码，但审查用 traceback 证实 `description(returns="")` 在传入 `registration()` 之前、Python 参数求值阶段就已在 `ToolDescription.__post_init__` 内抛出，`ToolRegistration.__post_init__` 从未被进入——该用例与 `test_tool_description_required_fields_reject_blank_text[returns-...]` 完全重复，且其注释描述的场景在当前实现里没有对应代码路径（没有 try/except 转发） | **采纳，已删除该用例**，改在保留的 `test_registration_requires_a_structurally_complete_tool_description` 上补充注释说明为何「空必填字段」不会走到 `ToolRegistration` 一侧 |
+| 2 | nit，不阻塞 | `window_format`/`values_format` 传非字符串（如 `None`）时报的是 `MISSING_DESCRIPTION_PLACEHOLDER` 而非类型错误码，语义上「缺占位符」与「类型错」不完全对应 | **维持现状**：与 `returns`/`limits`/`cannot_prove` 传非字符串统一报 `EMPTY_TOOL_DESCRIPTION_FIELD` 是同一既有写法（单一代码覆盖「一类违规」，而非逐字段/逐原因细分），符合本文件既有 `ParameterSpec`/`ToolRegistration` 的错误码粒度惯例，不单独为此新增代码 |
+
+复验（处置后）：`.venv/bin/python -m pytest tests/test_m1_tool_registry.py
+tests/test_m1_tool_registry_binding.py -q` → `98 passed`；`make check` →
+`All checks passed!` / `422 files already formatted` /
+`Success: no issues found in 18 source files` /
+`1233 passed, 79 skipped, 2 xfailed`。
+
+### 未完成与交接
+
+- C3 §7 第 1/4/5/6/7 项仍是 PR #27 任务记录里记录的原状态（部分完成/暂停待裁定），
+  本轮未推进。
+- `PROJECTION_DISCIPLINE` 的 8 句 `tool_specific` 语义迁往 `ToolDescription` 字段：
+  待 PR #27 合并进 main 后才可行（依赖其 `opspilot/instructions/discipline.py`），
+  迁移会改变未来 Run 的 L1a 模板字节、须 bump `discipline_revision`
+  （PR #27 任务记录第 428-447 行「交接」节已写明步骤，本轮不重复）。
+- `tool_schema_revision` 仍未接线到任何持久化 `versions` 比对（第 7 节已记录的
+  落差，本轮未解决，接线属后续 M1-01 组合层任务）。
+- F3/F7 的 `passes` 保持 `false`：本轮是注册合同的结构化与确定性检查，不构成产品
+  验收证据。
+
+## 10. source 区间与秘密来源注册约束（2026-09-17）
+
+本轮目标：为 PR #29 时间策略校验提供数据源实际区间；把执行器已有的秘密来源禁入约束变成注册期校验。工作区/分支沿用本任务，起点 `aff4586`，开始时干净。依据 C3 §8、PRODUCT-CONSTRAINTS 的证据来源与秘密不出站约束；不修改 #29、验收、冻结值或门槛。
+
+字段合同：
+
+- `TransportResponse.source_start_at/source_end_at` 可选，默认均 `None`，表示实际响应所代表的来源时间范围未知。不能由请求窗口、采集时间或 `data_as_of` 补出；适配器负责从来源语义确定。区间允许相等端点（单时刻），不承诺连续采样或无缺口。数据新鲜度仍单独使用 `data_as_of`。
+- 两端必须同时存在且为带时区 datetime，start <= end；否则执行器返回 `error/MALFORMED_RESULT`，不登记证据、不向模型暴露内容。两端均缺失仍允许未知时间的调查证据，消费方不得据此赋予时间策略资格。保留来源偏移量，比较采用绝对时间。
+- 区间进入 `EvidenceRecord` 和经过哈希的模型 view；未知为 JSON null。投影字节发生变化，`PROJECTION_REVISION` 从 v2 升至 v3，旧证据不可重新标为 v3。未修改冻结哈希/历史工件。
+- `ToolRegistration.may_contain_secrets` 必填，无默认值；只有严格 bool False 接受。True 返回固定错误 `SECRET_BEARING_SOURCE_FORBIDDEN`，非 bool 返回 `INVALID_SECRET_DECLARATION`；省略由构造器拒绝。声明覆盖原始 payload，不只投影行；进入 registry revision。这是受审配置声明，不是扫描器或脱敏保证，不允许从模型输入决定。
+- 真实注册仍不存在（产品代码仅声明类型；构造在共享测试夹具）；夹具显式声明 False。未来真实注册必须审查来源内容，不能机械填 False。真实适配器、#29 消费方和持久化版本接线仍属后续。
+
+测试证据：首轮新增测试在旧实现 `5 failed in 0.19s`（新字段不存在）；实现后 `6 passed in 0.03s`。补未知区间、单时刻/非 UTC、缺失秘密声明和双端点 malformed 测试后，定向 `116 passed in 0.08s`。独立全新上下文只读审查指出 naive 单端点用例遮蔽时区分支，已采纳补双端点 naive/non-datetime 的 start/end 四项。
+
+本轮未改 PG/ledger 路径；本地不启动共享 PG 实验环境，PG 集成检查交由 PR CI 的隔离实例，单元检查不声称 PG 证明。未发起模型调用/新增费用/依赖。项目阶段未变，ROADMAP 保留原状态；本节接续任务的具体进展。
+
+独立复验：全新上下文只读 Agent `/root/srcrange_review` 复核最终代码与补测，独立运行 `116 passed`，无剩余阻塞发现；仅覆盖本补丁/合同测试，不代表真实适配器或产品验收。
+
+最终 `make check` exit 0，结论行原样：
+
+```text
+All checks passed!
+422 files already formatted
+Success: no issues found in 18 source files
+================= 1246 passed, 79 skipped, 2 xfailed in 27.91s =================
+```
+
+79 skips 为 PG opt-in，2 xfails 为既有架构标记。下一步：普通推送到 PR #20、等待当前 HEAD CI；机器人审查按本轮任务书不是门槛，不合并。#29 应传入 source 两端与可信交付参考时刻，按最老来源时间判断 current（不是最新数据的 freshness），缺失必须 fail-closed；详细建议交接至 srcrange 报告。
+
+## 11. 执行器授权复查顺序 + 证据登记原子性（2026-09-17）
+
+- 依据：`docs/evidence`（外部合并决策摘要）digest1.md「PR #20 §4/§5」的两条具体疑点；
+  PRODUCT-CONSTRAINTS「Runtime and human control requirements」；C3 第 7 节
+  （断点恢复表）与第 8 节（取消不能撤销已到达数据源的只读请求）。
+  工作区/分支沿用本任务，起点 `472a4e1`（srcrange 任务已合并的状态），开始时干净。
+
+### 疑点 1：慢账本可能让读取在授权过期后才发出
+
+`_run()` 在 `_reserve()` 已完成 control/deadline 检查、算好 `timeout` 之后，
+先执行**可能阻塞**的账本预记账 `charge(operation_id, 0.0)`，再 `fetch()`，
+中间没有重新检查 deadline/控制。账本预记账本身是一次无界往返（真实环境是一次
+PostgreSQL 写入）；如果它单独耗时超过剩余授权，`_reserve()` 算出的 `timeout`
+已经过期，`fetch()` 仍会照常发出，读取因此可能在授权过期后才离开进程。
+
+**复现（先红）**：新增 `SlowLedger`（`tests/m1_tool_support.py`，仿照既有
+`SlowControl` 的写法，`charge()` 消耗假时钟时间，`charge_on` 限定第几次 charge
+调用变慢）。构造预记账耗时 5s、deadline 只剩 2s 的场景，修复前
+`transport.called` 为真——读取确实被发出。
+
+**修复**（`opspilot/tools/executor.py`，`_run()`）：在预记账成功、
+`_operations_used += 1` 之后、`fetch()` 之前，插入一次复查：先读 control
+（unavailable/suspended/generation 改变均拒绝），再查 deadline（`clock.now()
+>= scope.deadline` 则 `DEADLINE_EXCEEDED`）。顺序与已有的 fetch 后复查一致
+（control 优先于 deadline，保证暂停即使与 deadline 同时发生也不会被吞掉，
+依据 PRODUCT-CONSTRAINTS「late completion 不得抹去更新的人工决定」）。
+复查失败时**不退还已记的账**——已花费的记账保持占用，与既有「未知费用保持占用」
+的既定方向一致，不新增退款语义。
+
+复查后：`transport.called` 为假、`evidence is None`、`sink.records == []`、
+预记账仍然只被计入一次（`len(ledger.charges) == 1`）。
+
+新增测试（`tests/test_m1_tool_boundaries.py`）：
+
+| 测试 | 场景 |
+|---|---|
+| `test_a_slow_pre_dispatch_ledger_charge_that_crosses_the_deadline_is_denied` | 慢账本把 clock 推过 deadline |
+| `test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied` | 慢账本期间控制状态变为已暂停 |
+| `test_the_pre_fetch_re_check_denies_when_control_becomes_unavailable` | 新复查自身的 CONTROL_UNAVAILABLE 分支（独立审查建议补的分支覆盖） |
+| `test_the_pre_fetch_re_check_denies_when_the_control_generation_changed` | 新复查自身的 CONTROL_GENERATION_CHANGED 分支（同上） |
+
+**受影响的既有测试**：新插入的复查会在 `_reserve()` 与 fetch 之间多做一次
+control 读取，3 个依赖精确调用次数的既有测试因此需要同步更新
+（不是弱化，是让测试继续钉住原意图，逐条见提交说明与独立审查处置）：
+
+- `test_a_suspension_during_flight_keeps_the_result_as_history_only`、
+  `test_an_uncommitted_in_flight_history_never_reaches_the_outcome`：
+  `FixedControl` 新增 `later_after` 参数（默认 1，不影响其它未传参调用方），
+  这两条改传 `later_after=2`，让「飞行中才暂停」继续发生在 fetch 之后
+  （第 3 次调用），而不是被新插入的第 2 次调用提前捕获。
+- `test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed`：
+  同上改 `later_after=2`，并把 `control.calls == 2` 改为 `== 3`。
+- `test_a_read_completed_inside_the_window_survives_a_late_control_re_read`：
+  `SlowControl(..., slow_on={2})` 改为 `slow_on={3}`，让「变慢的是飞行中复查」
+  仍指向 fetch 之后的那次调用（现在是第 3 次），而不是新插入的第 2 次。
+
+### 疑点 2：snapshot 与 register 之间的失败是否已由 EVIDENCE_NOT_COMMITTED 覆盖
+
+结论：**已覆盖，不需要代码修复**，仅补一条测试证明覆盖面不局限于 `SUSPENDED`
+一种原因。
+
+`_run()` 里 `invalid` 分支（读 control → 判 suspended/generation/deadline →
+建历史记录 → `_register()`）本就是：`registered = self._register(record)`；
+`return self._refuse(..., evidence=record if registered else None)`。即无论
+`invalid` 具体是哪个原因，只要 `_register()` 未成功提交，`evidence` 就是
+`None`，`ToolOutcome.adopted`（= `evidence is not None and evidence.adopted`）
+必为 `False`。既有测试
+`test_an_uncommitted_in_flight_history_never_reaches_the_outcome` 已经用
+`SUSPENDED` 原因验证过这一点；本轮新增
+`test_an_uncommitted_deadline_denial_also_never_reaches_the_outcome`，
+用 `DEADLINE_EXCEEDED` 原因重复同一断言，证明该保证不局限于某一个具体的
+`invalid` 原因，而是分支结构本身的性质。
+
+变异验证：把 `evidence=record if registered else None` 改成恒为
+`evidence=record`（忽略 `registered`），两条测试（既有的 SUSPENDED 版本与
+新增的 DEADLINE_EXCEEDED 版本）同时转红（`assert outcome.evidence is None`
+失败），证明新测试确实在验证这条保证，不是恒真断言。
+
+### 变异验证汇总（均先红后绿，还原后与保存补丁逐字节比对确认无残留）
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | 整段删除新插入的 fetch 前复查 | 6 条测试转红（2 条新慢账本测试 + 3 条已同步更新调用次数的既有测试 + 1 条 `slow_on` 已改的既有测试） |
+| M2 | `evidence=record if registered else None` → 恒为 `evidence=record` | 既有 SUSPENDED 测试与新增 DEADLINE_EXCEEDED 测试同时转红 |
+| M3 | 新复查删去 control 三个分支（unavailable/suspended/generation），只留 deadline | 3 条测试转红（1 条慢账本-暂停测试 + 2 条本节新增的分支覆盖测试） |
+
+### 独立审查（全新上下文只读子代理，未参与实现）
+
+按 AGENTS.md 派发全新上下文只读审查，只给目标、约束、C3 原文与本轮 diff，不继承
+实现过程结论。审查自行对 M1、M2 做了独立复现（临时删除代码、确认对应测试转红、
+逐字节还原并与补丁核对一致），并额外核对了：4 处因新插入调用而调整的既有测试是否
+仍在钉住原意图而非只是凑数字（结论：是，逐条给出证据）；`SlowLedger.charge_on`
+的 1-based 计数是否有 off-by-one（结论：无，与既有 `SlowControl.slow_on` 同一写法）；
+范围纪律（`feature_list.json`/`SPEC.md`/`ROADMAP.md`/依赖锁文件均无改动）。
+
+**过程插曲**：审查子代理在做 M2 变异验证时尝试用 `git checkout -- <file>` 还原，
+被本会话权限规则拦下（该命令属禁止的破坏性操作，见 AGENTS.md「不 force-push/
+rebase/amend/reset/stash」精神的同类禁止项）。调度者发现后指示改用无损方式
+（`git diff > patch` + `git apply -R` 对照），本执行者据此直接把文件手工改回原文本
+并用 `diff <(git diff) <保存的最终补丁>` 确认逐字节一致，随后审查子代理自行完成
+剩余工作并回传报告；过程中未使用 `git checkout`/`stash`/`reset` 等破坏性命令，
+未丢失任何已有改动。
+
+**结论：可以按当前状态交回实现者，无阻塞发现。** 唯一意见是一条覆盖面 nit——
+新插入复查自身的 `CONTROL_UNAVAILABLE`/`CONTROL_GENERATION_CHANGED` 分支当时
+未被专门测试直接命中（逻辑是从 `_reserve()`/fetch 后复查原样复制，风险低，但
+建议补分支覆盖）。**已采纳**：新增
+`test_the_pre_fetch_re_check_denies_when_control_becomes_unavailable`、
+`test_the_pre_fetch_re_check_denies_when_the_control_generation_changed`
+两条，并扩展 `UnavailableControl` 支持 `fail_from`（默认 1，不影响唯一既有调用点）。
+采纳后复验：`pytest tests/test_m1_tool_boundaries.py -q` → `60 passed`；
+变异 M3 证明两条新测试确实转红。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 422 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1251 passed, 79 skipped, 2 xfailed
+```
+
+`exit=0`。较本节起点（`1246 passed`）净增 5 个通过用例（2 条慢账本测试 + 1 条
+deadline-register-fail 测试 + 2 条分支覆盖测试）。
+
+PG 定向（本轮改动的账本/控制路径由真实 `DurableToolLedger`/`DurableStore` 消费，
+不止内存替身）：`M0_ENV_FILE=/Users/shenghuikevin/dev/AI/production-ops-agent/.env
+python -m scripts.m0.postgres_lab start`，
+`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py
+tests/integration/test_m1_durable_state_postgres.py -q` → `25 passed`；
+`postgres_lab stop`。该次 PG 验证覆盖的 `_run()` 逻辑此后未再变化
+（第二轮补测只新增内存替身用例，未改产品代码），故未重跑。
+
+### 未完成/限制
+
+- 新插入复查仍无法完全消除竞态窗口：`_read_control()` 本身与 `fetch()` 之间
+  仍有极短的间隙（纯本地计算，无 I/O），但 fetch 之后已有既有复查兜底，
+  与本轮改动前的既有设计一致，不是新引入的缺口。
+- 疑点 2 的「结构性保证」依赖 `invalid` 分支的 if/return 形状本身；若未来重构
+  该分支为其它写法，需要重新核对该保证是否仍然成立（测试会捕捉，但值得在
+  重构该分支时特别注意）。
+- 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
+- F3/F7 的 `passes` 保持 `false`。
+
+## 12. 机器人 code review 六条 thread 处置（2026-09-17 收尾）
+
+推送第 11 节的修复（`570240b`）后，`@codex review` 在当前 HEAD 上留下 6 条此前未处理的
+inline review thread（`required_conversation_resolution` 分支保护要求全部 resolve 才能
+`mergeStateStatus: CLEAN`），逐条核实、处置、回复并 resolve，明细如下：
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `executor.py:530` | P2 | 预记账失败等 `_run()` 内 fetch 前拒绝路径，`ToolOperation.sent` 从 `timeout_seconds is not None` 推断，会在从未派发时误报 `true` | 采纳 | 新增 `dispatched` 字段，`sent` 直接读取它，只在真正调用 `fetch()` 前置位 | `30f3a80` |
+| 2 | `executor.py:552`（本轮新增复查自身） | P2 | 复查只做二元判断，未按剩余时间收紧 `timeout_seconds`，账本+control 读取消耗的时间不会体现在实际超时里 | 采纳 | 复查内重算 `remaining` 并在小于原值时收紧 `request`/`operation` 的 `timeout_seconds` | `46cbf3e` |
+| 3 | `executor.py:865`（`_result_rows`） | P2 | 深嵌套/超长整数会让 `json.loads` 抛 `RecursionError`/`ValueError`，未被捕获，异常直接冒出 `execute()` | 采纳 | `except` 子句扩至 `(UnicodeDecodeError, ValueError, RecursionError)` | `46cbf3e` |
+| 4 | `executor.py:689`（成功路径） | P2 | `model_view` 与 `EvidenceRecord.view` 共享同一 dict，调用方原地修改会连带改到已提交证据 | 采纳 | `model_view=deepcopy(record.view)`，证据侧对象不再被模型侧修改影响 | `46cbf3e` |
+| 5 | `persistence.py:356`（`charge_tool`） | P1 | 计次新操作的 UPDATE 无条件执行，行锁只保证串行化不保证不超额；两个从同一过期快照起步的执行器可把持久计数推过冻结的 20 上限 | 采纳 | UPDATE 加 `AND tool_operations_used<%s`，`rowcount==0` 时抛 `OPERATION_BUDGET_EXHAUSTED`（同事务回滚，不留孤儿计费行）；结算分支不受影响 | `defecd1` |
+| 6 | `executor.py:578`（结算充值失败） | P1（机器人评级） | 结算充值失败时持久秒数停在预记账的 0，重启后新 attempt 会漏算这部分秒数，可重复花费同一段 240s 预算 | **不采纳，回复依据** | 与 2026-09-17 已完成的「P2-3 独立审查处置」表第 5 项是同一场景，当时评级 P3、裁定「记录不改」（理由：窗口窄、结果不采纳+次数已计两个维度仍保守）。机器人评级升到 P1 是严重度判断分歧，不是新技术事实；按 AGENTS.md 不由审查意见自行改写已记录决策，原样上报，是否升级处置交用户裁定 | 不适用（未改代码） |
+
+全部 6 条已在 GitHub 上逐条回复（引用具体提交与测试）并 `resolveReviewThread`；`gh api graphql` 复核
+`reviewThreads` 当前 `isResolved` 全部为 `true`。
+
+第 1、2、3、4、5 项均先复现（红：构造场景证明缺陷存在或让测试在旧代码下失败）再修复（绿），
+并逐项做了变异验证（改回旧逻辑，确认对应新测试转红，随后精确还原并与保存的 `git diff` 补丁
+逐字节核对一致）。第 5 项另外过了真实 PostgreSQL（`M1_DURABLE_POSTGRES=1`）：
+`test_charge_tool_refuses_a_new_operation_once_the_cap_is_reached`、
+`test_charge_tool_settlement_is_not_subject_to_the_cap` 两条新用例 + 原有 25 条共 27 passed；
+变异（还原成无条件 UPDATE）后前一条正确转红（`DID NOT RAISE`），其余不受影响。
+
+独立审查（全新上下文只读子代理，未参与实现，只给目标/6 条机器人原文/`git diff 570240b..HEAD`）
+逐项复核第 1–5 项修复：结论「可以按现状推送，无阻塞发现」，另指出一处不在本轮范围内、当前不可达
+的结构性缺口——`DurableToolLedger` 的 `max_operations` 目前固定为全局冻结上限
+`MAX_OPERATIONS_PER_RUN`（20），与 `QueryScope.max_operations`（允许 `(0, 20]` 内更窄的
+per-Run 值）脱钩；若某个 Run 被授权的上限低于 20，两个执行器仍可能在真正的、per-Run 的上限上
+重演同一竞态。审查确认目前不可利用——`ReadOnlyToolExecutor`/`DurableToolLedger` 均只在测试里
+构造，组合层尚未接入（本文件第 7 节已记录同一落差）——列为交接给未来接线任务的已知项，
+不阻塞本次推送。
+
+第 6 项遗留：是否把「结算失败丢秒数」的处置从「记录不改」升级为需要持久化保守预留，
+以及上述 `max_operations` 脱钩的交接项优先级，均待用户或后续任务决定，本轮不自行选择。

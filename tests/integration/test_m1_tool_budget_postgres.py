@@ -95,19 +95,81 @@ def test_charge_tool_counts_once_per_operation_and_settles_seconds_upward():
     incident, run = _accept(store, "idempotent")
     lease = store.claim(incident, run, uuid4(), {"state": "v1"})
 
-    store.charge_tool(lease, "step-1:0", 0.0)
-    store.charge_tool(lease, "step-1:0", 2.5)
-    store.charge_tool(lease, "step-1:0", 2.5)  # a replayed settle changes nothing
-    store.charge_tool(lease, "step-1:0", 1.0)  # never charged downward
+    store.charge_tool(lease, "step-1:0", 0.0, max_operations=MAX_OPERATIONS_PER_RUN)
+    store.charge_tool(lease, "step-1:0", 2.5, max_operations=MAX_OPERATIONS_PER_RUN)
+    store.charge_tool(
+        lease, "step-1:0", 2.5, max_operations=MAX_OPERATIONS_PER_RUN
+    )  # a replayed settle changes nothing
+    store.charge_tool(
+        lease, "step-1:0", 1.0, max_operations=MAX_OPERATIONS_PER_RUN
+    )  # never charged downward
     row = store.rebuild(incident)["run"]
     assert (row["tool_operations_used"], row["tool_seconds_used"]) == (1, 2.5)
 
     for bad in ("", 7):
         with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-            store.charge_tool(lease, bad, 0.0)
+            store.charge_tool(lease, bad, 0.0, max_operations=MAX_OPERATIONS_PER_RUN)
     for bad in (-1.0, float("nan"), float("inf")):
         with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-            store.charge_tool(lease, "step-1:1", bad)
+            store.charge_tool(
+                lease, "step-1:1", bad, max_operations=MAX_OPERATIONS_PER_RUN
+            )
+
+
+def test_charge_tool_refuses_a_new_operation_once_the_cap_is_reached():
+    """Bot review finding: counting a new operation was unconditional once
+    past the lease/control checks, so two executors racing from the same
+    stale ``operations_used`` snapshot (e.g. both read 19, both pass their
+    local ``< 20`` check) could both increment after serializing on the row
+    lock, taking the durable count past the frozen cap of 20. The cap must
+    be enforced inside the same locked transaction that does the increment,
+    not only in the application code that decides whether to attempt it.
+    """
+
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "cap-enforced")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+
+    for index in range(MAX_OPERATIONS_PER_RUN):
+        store.charge_tool(
+            lease, f"step-1:{index}", 1.0, max_operations=MAX_OPERATIONS_PER_RUN
+        )
+    row = store.rebuild(incident)["run"]
+    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
+
+    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
+        store.charge_tool(
+            lease, "step-1:overflow", 1.0, max_operations=MAX_OPERATIONS_PER_RUN
+        )
+    row = store.rebuild(incident)["run"]
+    # Refused, not just rejected after already incrementing: the count stays
+    # exactly at the cap, and the charge row from the rolled-back attempt
+    # does not survive either.
+    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
+    assert row["tool_seconds_used"] == float(MAX_OPERATIONS_PER_RUN)
+
+
+def test_charge_tool_settlement_is_not_subject_to_the_cap():
+    """The cap only refuses counting a *new* operation. Settling the seconds
+    of one already counted must still succeed even once the Run is at the
+    cap -- it is not adding a new operation.
+    """
+
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "cap-settlement")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    for index in range(MAX_OPERATIONS_PER_RUN):
+        store.charge_tool(
+            lease, f"step-1:{index}", 0.0, max_operations=MAX_OPERATIONS_PER_RUN
+        )
+
+    store.charge_tool(
+        lease, "step-1:0", 3.0, max_operations=MAX_OPERATIONS_PER_RUN
+    )  # settling an already-counted operation, not counting a new one
+
+    row = store.rebuild(incident)["run"]
+    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
+    assert row["tool_seconds_used"] == 3.0
 
 
 def test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again():
@@ -115,11 +177,13 @@ def test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again():
     store = DurableStore(DSN)
     incident, run = _accept(store, "re-dispatch")
     first = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
-    store.charge_tool(first, "step-1:0", 0.0)  # reserved, then the worker died
+    store.charge_tool(
+        first, "step-1:0", 0.0, max_operations=MAX_OPERATIONS_PER_RUN
+    )  # reserved, then the worker died
     time.sleep(1.2)
     second = store.claim(incident, run, uuid4(), {"state": "v1"})
-    store.charge_tool(second, "step-1:0", 0.0)
-    store.charge_tool(second, "step-1:0", 4.0)
+    store.charge_tool(second, "step-1:0", 0.0, max_operations=MAX_OPERATIONS_PER_RUN)
+    store.charge_tool(second, "step-1:0", 4.0, max_operations=MAX_OPERATIONS_PER_RUN)
     row = store.rebuild(incident)["run"]
     assert (row["tool_operations_used"], row["tool_seconds_used"]) == (2, 4.0)
 
@@ -128,10 +192,10 @@ def test_charge_tool_is_fenced_by_the_lease_like_every_write_path():
     store = DurableStore(DSN)
     incident, run = _accept(store, "fenced")
     lease = store.claim(incident, run, uuid4(), {"state": "v1"})
-    store.charge_tool(lease, "step-1:0", 1.0)
+    store.charge_tool(lease, "step-1:0", 1.0, max_operations=MAX_OPERATIONS_PER_RUN)
     assert store.control(incident, 0, "cancel", "operator") == 1
 
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        store.charge_tool(lease, "step-1:1", 1.0)
+        store.charge_tool(lease, "step-1:1", 1.0, max_operations=MAX_OPERATIONS_PER_RUN)
     row = store.rebuild(incident)["run"]
     assert (row["tool_operations_used"], row["tool_seconds_used"]) == (1, 1.0)

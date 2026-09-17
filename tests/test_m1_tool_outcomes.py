@@ -9,7 +9,7 @@ directly: no assertion accepts "not ok" as a substitute for the exact class.
 
 import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -49,12 +49,59 @@ def test_ok_outcome_registers_raw_bytes_view_and_both_hashes():
     assert record.view_sha256 == canonical_hash(record.view)
     assert record.projection_revision == PROJECTION_REVISION
     assert sink.records == [record]
-    assert outcome.model_view is record.view
+    # A detached copy, not the same object -- see
+    # test_the_model_view_is_detached_from_the_committed_evidence.
+    assert outcome.model_view == record.view
+    assert outcome.model_view is not record.view
     assert record.view["content"] == [{"metric": "checkout", "value": 3}]
     assert record.view["trust"] == "untrusted-evidence"
     assert record.freshness_seconds == 30.0
     assert record.view["freshness_seconds"] == 30.0
     assert record.evidence_id == record.operation.operation_id == "step-1-t0"
+
+
+def test_ok_outcome_registers_the_source_coverage_interval():
+    payload = body([{"metric": "checkout", "value": 3}])
+    source_start = datetime(2026, 9, 14, 0, 10, tzinfo=timezone.utc)
+    source_end = datetime(2026, 9, 14, 0, 55, tzinfo=timezone.utc)
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=payload, source_start_at=source_start, source_end_at=source_end
+    )
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    assert outcome.evidence.source_start_at == source_start
+    assert outcome.evidence.source_end_at == source_end
+    assert outcome.model_view["source_start_at"] == source_start.isoformat()
+    assert outcome.model_view["source_end_at"] == source_end.isoformat()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"source_start_at": datetime(2026, 9, 14, 0, 1)},
+        {"source_start_at": NOW.replace(tzinfo=None), "source_end_at": NOW},
+        {"source_start_at": NOW, "source_end_at": NOW.replace(tzinfo=None)},
+        {"source_start_at": "invalid", "source_end_at": NOW},
+        {"source_start_at": NOW, "source_end_at": "invalid"},
+        {"source_end_at": datetime(2026, 9, 14, 0, 1, tzinfo=timezone.utc)},
+        {
+            "source_start_at": datetime(2026, 9, 14, 1, tzinfo=timezone.utc),
+            "source_end_at": datetime(2026, 9, 14, 0, tzinfo=timezone.utc),
+        },
+    ],
+)
+def test_malformed_source_coverage_is_fail_closed(kwargs):
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([]), **kwargs)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.evidence is None
+    assert sink.records == []
 
 
 def test_no_data_is_a_completed_query_not_an_error():
@@ -203,6 +250,36 @@ def test_unreadable_results_are_errors_not_empty_results(payload):
     assert outcome.evidence is None and sink.records == []
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"[" * 20_000 + b"]" * 20_000,  # RecursionError: too deeply nested
+        b'{"data":{"result":' + b"9" * 5000 + b"}}",  # ValueError: int too long
+    ],
+    ids=["deeply-nested-recursion-error", "oversized-integer-value-error"],
+)
+def test_a_json_decoder_limit_is_malformed_not_a_crash(payload):
+    """Bot review finding: an otherwise size-compliant but adversarial body
+    can make Python's ``json`` decoder raise ``RecursionError`` or a
+    digit-count ``ValueError`` instead of ``json.JSONDecodeError``. Neither
+    was caught, so an untrusted source's response could abort ``execute()``
+    outright instead of producing the promised ``MALFORMED_RESULT`` outcome.
+    ``max_result_bytes`` is raised only for this test so the size check
+    itself doesn't refuse the payload before the decoder ever runs.
+    """
+
+    executor, transport, sink, _ = build(
+        registrations=[registration(max_result_bytes=len(payload) + 1024)]
+    )
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
 def test_a_non_response_object_from_the_transport_is_an_error():
     executor, transport, _, _ = build()
     transport.response = {"data": {"result": []}}
@@ -294,6 +371,30 @@ def test_evidence_must_be_committed_before_it_may_be_consumed():
     assert len(sink.records) == 1  # it was offered, it was not committed
 
 
+def test_the_model_view_is_detached_from_the_committed_evidence():
+    """Bot review finding: ``model_view`` and ``evidence.view`` were the same
+    mutable dict object. A caller mutating the model-facing view (e.g.
+    context assembly appending to or normalizing content) would silently
+    mutate the "committed" evidence's view too, leaving it inconsistent with
+    ``view_sha256``, which was computed before any such mutation -- and any
+    sink that retained the record object would see its evidence change after
+    registration.
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    outcome.model_view["content"].append({"injected": "value"})
+    outcome.model_view["extra"] = "mutated"
+
+    assert outcome.evidence.view["content"] == [{"value": 1}]
+    assert "extra" not in outcome.evidence.view
+    assert sink.records[0].view["content"] == [{"value": 1}]
+    assert outcome.evidence.view_sha256 == canonical_hash(outcome.evidence.view)
+
+
 def test_a_mismatched_evidence_reference_is_not_a_commit():
     executor, transport, _, _ = build(sink=RecordingSink(reference="other-evidence"))
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -351,3 +452,27 @@ def test_operation_identity_is_stable_per_step_and_tool_index():
     assert first.operation.operation_id == "step-1-t0"
     assert second.operation.operation_id == "step-1-t1"
     assert first.evidence.evidence_id != second.evidence.evidence_id
+
+
+def test_unknown_source_interval_is_not_filled_from_query_or_freshness():
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(body=body([]), data_as_of=NOW)
+    outcome = executor.execute(request())
+    assert outcome.status == "no_data"
+    assert outcome.evidence.source_start_at is None
+    assert outcome.evidence.source_end_at is None
+    assert outcome.model_view["source_start_at"] is None
+    assert outcome.model_view["source_end_at"] is None
+
+
+def test_single_source_instant_and_offset_are_preserved():
+    instant = NOW.astimezone(timezone(timedelta(hours=8)))
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]), source_start_at=instant, source_end_at=instant
+    )
+    outcome = executor.execute(request())
+    assert outcome.status == "ok"
+    assert outcome.model_view["source_start_at"] == instant.isoformat()
+    assert outcome.model_view["source_end_at"] == instant.isoformat()
+    assert outcome.evidence.view_sha256 == canonical_hash(outcome.model_view)

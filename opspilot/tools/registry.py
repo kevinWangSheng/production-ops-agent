@@ -40,6 +40,7 @@ __all__ = [
     "RegisteredTarget",
     "TargetRegistry",
     "ToolContractError",
+    "ToolDescription",
     "ToolRegistration",
     "ToolRegistry",
     "canonical",
@@ -119,6 +120,15 @@ _HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{2,63}")
 _VERSION = re.compile(r"[a-z0-9][a-z0-9.+-]{0,31}")
 _ENDPOINT = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}")
 
+# C3 section 8 requires `window_format`/`values_format` to carry a placeholder
+# for the absolute window / value enumeration a future renderer fills in per
+# Run (the L3a template / L3b instance split of section 5). The placeholder
+# token itself is this module's choice, not quoted verbatim in C3; it mirrors
+# the existing `{steps}` convention in the instruction-layer prototype so a
+# later renderer can reuse the same `str.format`-style substitution.
+WINDOW_PLACEHOLDER = "{window}"
+VALUES_PLACEHOLDER = "{values}"
+
 ParameterKind = Literal["string", "integer", "number", "boolean"]
 
 _PYTHON_KINDS: Mapping[str, tuple[type, ...]] = MappingProxyType(
@@ -143,13 +153,26 @@ def canonical_hash(value: object) -> str:
 
 @dataclass(frozen=True)
 class ParameterSpec:
-    """One declared query parameter of a registered tool."""
+    """One declared query parameter of a registered tool.
+
+    ``description`` is the model-visible prose for this parameter (technical
+    plan section 8: "工具还有一个模型可见面，即送进模型的 description 与参数
+    描述"). It defaults to ``""`` so existing callers that only assert on
+    ``kind``/``required`` behaviour are unaffected; a real registration should
+    supply real text, but structural completeness of parameter prose is not
+    one of the two section 7 checks this module implements (only the tool
+    level :class:`ToolDescription` has a registration-time completeness
+    check — see its docstring).
+    """
 
     kind: ParameterKind
     required: bool = False
+    description: str = ""
 
     def __post_init__(self) -> None:
         if self.kind not in _PYTHON_KINDS or type(self.required) is not bool:
+            raise ToolContractError("INVALID_PARAMETER_SPEC")
+        if not isinstance(self.description, str):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
 
     def accepts(self, value: object) -> bool:
@@ -159,13 +182,76 @@ class ParameterSpec:
 
 
 @dataclass(frozen=True)
+class ToolDescription:
+    """The section 8 model-visible face of one tool: five structured fields.
+
+    C3 section 8 (2026-09-15 addition) requires the model-visible
+    ``description`` to be a structure, not free text, "以便注册期确定性校验":
+
+    ========================  =====================================  ========================
+    field                     content                                 registration check
+    ========================  =====================================  ========================
+    ``returns``               what comes back, its source, its shape  non-empty
+    ``window_format``         where/how the absolute window appears   placeholder present
+    ``values_format``         where/how the value enumeration appears placeholder present
+    ``limits``                the result cap and truncation semantics non-empty
+    ``cannot_prove``          what this result must not be read to    non-empty
+                              prove
+    ========================  =====================================  ========================
+
+    Field declaration order matches the C3 table order verbatim, so a future
+    renderer that concatenates these into the text sent to the model can walk
+    ``dataclasses.fields(description)`` in this order without a separate
+    ordering rule.
+
+    Only *structural* completeness is checked here — per the independent
+    review disposition F10 in the PR #27 task record
+    (``docs/tasks/2026-09-15-instruction-tool-contract.md``), free-text
+    *quality* (does ``cannot_prove`` actually name a real misreading?) has no
+    registration-time judge and is a human-review question, same as any other
+    prose in this codebase. Raising here is therefore always an operator
+    error, consistent with this module's fixed-code ``ToolContractError``
+    convention.
+    """
+
+    returns: str
+    window_format: str
+    values_format: str
+    limits: str
+    cannot_prove: str
+
+    def __post_init__(self) -> None:
+        for name in ("returns", "limits", "cannot_prove"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ToolContractError("EMPTY_TOOL_DESCRIPTION_FIELD")
+        for name, placeholder in (
+            ("window_format", WINDOW_PLACEHOLDER),
+            ("values_format", VALUES_PLACEHOLDER),
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or placeholder not in value:
+                raise ToolContractError("MISSING_DESCRIPTION_PLACEHOLDER")
+
+
+@dataclass(frozen=True)
 class ToolRegistration:
     """The section 8 registration contract for one read-only tool.
 
     Name, version, parameter schema, data source, absolute query window bound,
     request deadline, result-size ceiling, error classification and the
     incomplete-result marker are all declared here, so the executor never has
-    to infer them from a response.
+    to infer them from a response. ``description`` is the section 8
+    model-visible face (see :class:`ToolDescription`) — the execution-side
+    contract above and the model-visible face are both part of "the
+    registration contract" per section 8, and both are covered by
+    :attr:`ToolRegistry.revision`.
+
+    ``may_contain_secrets`` is a required operator declaration about the raw
+    source payload, not just the selected rows. Only literal ``False`` is
+    accepted; missing declarations fail construction and unknown/true values
+    are refused. This is a reviewed configuration assertion, not a scanner
+    or a runtime redaction guarantee.
     """
 
     name: str
@@ -178,6 +264,8 @@ class ToolRegistration:
     max_result_bytes: int
     max_view_bytes: int
     max_window_seconds: int
+    description: ToolDescription
+    may_contain_secrets: bool
     error_classes: Mapping[str, str] = field(default_factory=dict)
     incomplete_marker: str | None = None
     read_only: bool = True
@@ -194,6 +282,10 @@ class ToolRegistration:
             raise ToolContractError("INVALID_TOOL_IDENTITY")
         if self.read_only is not True or self.verb in FORBIDDEN_VERBS:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
+        if type(self.may_contain_secrets) is not bool:
+            raise ToolContractError("INVALID_SECRET_DECLARATION")
+        if self.may_contain_secrets:
+            raise ToolContractError("SECRET_BEARING_SOURCE_FORBIDDEN")
         if self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("VERB_NOT_ALLOWED")
         if not isinstance(self.parameters, Mapping) or any(
@@ -203,6 +295,11 @@ class ToolRegistration:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if RESERVED_PARAMETERS & set(self.parameters):
             raise ToolContractError("RESERVED_PARAMETER")
+        if not isinstance(self.description, ToolDescription):
+            # ToolDescription.__post_init__ already asserted the five-field
+            # structural completeness (section 7 check 3); this only refuses
+            # a caller that skipped constructing one at all.
+            raise ToolContractError("INVALID_TOOL_DESCRIPTION")
         if not isinstance(self.result_path, tuple) or any(
             not isinstance(step, str) or not step for step in self.result_path
         ):
@@ -328,8 +425,23 @@ class ToolRegistry(_FrozenIndex):
                     "version": entries[name].version,
                     "source": entries[name].source,
                     "verb": entries[name].verb,
+                    # Section 7 check 2: both the tool-layer face and each
+                    # parameter's own description must be in the fingerprint,
+                    # or a description edit would silently leave
+                    # `tool_schema_revision` unchanged for a resumed Run.
+                    "description": {
+                        "returns": entries[name].description.returns,
+                        "window_format": entries[name].description.window_format,
+                        "values_format": entries[name].description.values_format,
+                        "limits": entries[name].description.limits,
+                        "cannot_prove": entries[name].description.cannot_prove,
+                    },
                     "parameters": {
-                        key: {"kind": spec.kind, "required": spec.required}
+                        key: {
+                            "kind": spec.kind,
+                            "required": spec.required,
+                            "description": spec.description,
+                        }
                         for key, spec in entries[name].parameters.items()
                     },
                     "result_path": entries[name].result_path,
@@ -340,6 +452,7 @@ class ToolRegistry(_FrozenIndex):
                     "error_classes": dict(entries[name].error_classes),
                     "incomplete_marker": entries[name].incomplete_marker,
                     "read_only": entries[name].read_only,
+                    "may_contain_secrets": entries[name].may_contain_secrets,
                 }
                 for name in sorted(entries)
             ],

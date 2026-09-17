@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -229,11 +230,23 @@ class TransportRequest:
 
 @dataclass(frozen=True)
 class TransportResponse:
-    """A completed read: the exact bytes plus what only the adapter can know."""
+    """Exact source bytes plus adapter-verified metadata.
+
+    ``source_start_at``/``source_end_at`` bound the actual source timestamps
+    represented by this response (a single instant is allowed). They are not
+    the requested window, collection times, or a claim of gap-free coverage.
+    Both default to None when unknown; one missing, naive, non-datetime or
+    reversed bounds cause MALFORMED_RESULT before evidence registration.
+    Consumers must not infer time-policy eligibility from unknown bounds or
+    substitute the requested window/data_as_of. The adapter must derive these
+    timestamps from source semantics, never model-supplied parameters.
+    """
 
     body: bytes
     source_status: str | None = None
     data_as_of: datetime | None = None
+    source_start_at: datetime | None = None
+    source_end_at: datetime | None = None
 
 
 @runtime_checkable
@@ -517,6 +530,44 @@ class ReadOnlyToolExecutor:
         if not self._charge(operation.operation_id, 0.0):
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         self._operations_used += 1
+        # The charge above is itself a ledger round trip of unbounded
+        # duration, exactly like the Controller lookup ``_reserve()`` already
+        # accounts for (see its comment). A slow ledger write can let the
+        # authorization deadline pass, or a human suspend the investigation,
+        # in the gap between the decision ``_reserve()`` made and the read
+        # actually leaving this process. Re-check both -- control first, then
+        # the deadline, the same order and priority the post-fetch re-check
+        # below uses -- before dispatch: a query must never go out once its
+        # authorization has lapsed. The charge already recorded above is not
+        # refunded on a denial here; once billed it stays spent, the same
+        # "unknown cost stays occupied" rule that justifies charging before
+        # the read goes out at all.
+        control = self._read_control()
+        if control is None:
+            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
+        if control.suspended:
+            return self._refuse(operation, "denied", "SUSPENDED")
+        if control.control_generation != self._scope.control_generation:
+            return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
+        now = self._clock.now()
+        if now >= self._scope.deadline:
+            return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
+        # The control read and the charge above may themselves have consumed
+        # real time without crossing the deadline outright -- rejecting only
+        # when it has *fully* passed would still hand the transport the
+        # stale, larger timeout ``_reserve()`` computed, letting the read
+        # stay outstanding against the source well past the authorization
+        # window even though this very check passed. Shrink it to whatever
+        # authorization actually remains right now (bot review finding).
+        remaining = (self._scope.deadline - now).total_seconds()
+        if remaining < timeout:
+            timeout = remaining
+            request = replace(request, timeout_seconds=timeout)
+        # Mark dispatch only now, right before the transport is actually
+        # called -- not earlier, when ``_reserve()`` merely computed a
+        # timeout. Every ``_refuse()`` return above this line therefore
+        # correctly reports ``sent: false`` in the audit record.
+        operation = replace(operation, dispatched=True, timeout_seconds=timeout)
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None
@@ -568,6 +619,21 @@ class ReadOnlyToolExecutor:
             not isinstance(response.data_as_of, datetime)
             or response.data_as_of.tzinfo is None
             or response.data_as_of.utcoffset() is None
+        ):
+            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+        source_start_at = response.source_start_at
+        source_end_at = response.source_end_at
+        if (source_start_at is None) != (source_end_at is None) or (
+            source_start_at is not None
+            and (
+                not isinstance(source_start_at, datetime)
+                or source_start_at.tzinfo is None
+                or source_start_at.utcoffset() is None
+                or not isinstance(source_end_at, datetime)
+                or source_end_at.tzinfo is None
+                or source_end_at.utcoffset() is None
+                or source_start_at > source_end_at
+            )
         ):
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
         status: ToolStatus = "ok" if rows else "no_data"
@@ -637,7 +703,12 @@ class ReadOnlyToolExecutor:
             status=status,
             reason=reason,
             source_contact="confirmed",
-            model_view=record.view,
+            # A detached copy, not the same object as ``record.view``: a
+            # caller mutating the model-facing view must never be able to
+            # change the evidence already committed under ``view_sha256``,
+            # or a sink that retained the record would see its "committed"
+            # evidence drift out from under it (bot review finding).
+            model_view=deepcopy(record.view),
             evidence=record,
         )
 
@@ -682,6 +753,8 @@ class ReadOnlyToolExecutor:
             # are handed to the model, and the view says so.
             kept, omitted_rows, omitted_bytes = _fit_rows(rows, 0)
         data_as_of = response.data_as_of
+        source_start_at = response.source_start_at
+        source_end_at = response.source_end_at
         freshness = (
             None if data_as_of is None else (observed_at - data_as_of).total_seconds()
         )
@@ -702,6 +775,12 @@ class ReadOnlyToolExecutor:
             "window": plan.window.as_json(),
             "observed_at": observed_at.isoformat(),
             "data_as_of": None if data_as_of is None else data_as_of.isoformat(),
+            "source_start_at": None
+            if source_start_at is None
+            else source_start_at.isoformat(),
+            "source_end_at": None
+            if source_end_at is None
+            else source_end_at.isoformat(),
             "freshness_seconds": freshness,
             "result_count": len(rows),
             "returned_count": len(kept),
@@ -722,6 +801,8 @@ class ReadOnlyToolExecutor:
             projection_revision=PROJECTION_REVISION,
             observed_at=observed_at,
             data_as_of=data_as_of,
+            source_start_at=source_start_at,
+            source_end_at=source_end_at,
             result_count=len(rows),
             incomplete=incomplete,
             truncated=bool(omitted_rows),
@@ -803,7 +884,13 @@ def _result_rows(
 
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        # ValueError also covers json.JSONDecodeError (a subclass) and the
+        # decoder's own digit-count guard on an oversized integer literal;
+        # RecursionError covers a body nested deep enough to exceed the
+        # interpreter's recursion limit. An untrusted, otherwise
+        # size-compliant source body must not be able to crash execute()
+        # outright by tripping either one (bot review finding).
         return None, None
     cursor: object = payload
     for step in registration.result_path:

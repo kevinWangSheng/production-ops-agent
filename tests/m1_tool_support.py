@@ -15,6 +15,7 @@ from opspilot.tools import (
     ReadOnlyToolExecutor,
     RegisteredTarget,
     TargetRegistry,
+    ToolDescription,
     ToolRegistration,
     ToolRegistry,
     ToolRequest,
@@ -86,15 +87,16 @@ class RecordingSink:
 
 
 class FixedControl:
-    def __init__(self, generation=7, suspended=False, later=None):
+    def __init__(self, generation=7, suspended=False, later=None, later_after=1):
         self.generation = generation
         self.suspended = suspended
         self.later = later
+        self.later_after = later_after  # 1-based call count before `later` starts
         self.calls = 0
 
     def snapshot(self, scope):
         self.calls += 1
-        if self.later is not None and self.calls > 1:
+        if self.later is not None and self.calls > self.later_after:
             return self.later
         return ControlSnapshot(
             control_generation=self.generation, suspended=self.suspended
@@ -139,13 +141,69 @@ class RecordingLedger:
             raise RuntimeError("budget ledger unavailable")
 
 
+class SlowLedger(RecordingLedger):
+    """A tool-usage ledger whose ``charge`` burns fake wall time, as a slow
+    PostgreSQL write would (mirrors :class:`SlowControl`).
+
+    ``charge_on`` limits the cost to specific 1-based charge call numbers, so
+    a test can make only the pre-dispatch charge (call 1) slow without also
+    slowing the post-fetch settlement charge (call 2).
+    """
+
+    def __init__(self, clock, duration, charge_on=None, **overrides):
+        super().__init__(**overrides)
+        self.clock = clock
+        self.duration = duration
+        self.charge_on = charge_on
+
+    def charge(self, operation_id, seconds):
+        if self.charge_on is None or (len(self.charges) + 1) in self.charge_on:
+            self.clock.advance(self.duration)
+        super().charge(operation_id, seconds)
+
+
 class UnavailableControl:
-    def __init__(self):
+    """Raises from the ``fail_from``-th call onward; earlier calls succeed.
+
+    ``fail_from=1`` (the default) fails immediately, as every existing caller
+    of this class expects.
+    """
+
+    def __init__(self, fail_from=1, generation=7):
         self.calls = 0
+        self.fail_from = fail_from
+        self.generation = generation
 
     def snapshot(self, scope):
         self.calls += 1
-        raise RuntimeError("control database unreachable")
+        if self.calls >= self.fail_from:
+            raise RuntimeError("control database unreachable")
+        return ControlSnapshot(control_generation=self.generation, suspended=False)
+
+
+def description(**overrides):
+    fields = {
+        "returns": (
+            "The evaluated Prometheus range-query series: one point series per "
+            "returned label set, from the range_query source."
+        ),
+        "window_format": "The authorized absolute query window, appended as {window}.",
+        "values_format": (
+            "The authorized target label enumeration for this Run, appended as "
+            "{values}; any other label value is refused."
+        ),
+        "limits": (
+            "Truncated at the registered max_view_bytes; excess points are "
+            "dropped, not summarized or averaged."
+        ),
+        "cannot_prove": (
+            "A non-zero rate over this window does not by itself prove a "
+            "user-visible error; it must be compared against the alert "
+            "threshold and the service's normal baseline separately."
+        ),
+    }
+    fields.update(overrides)
+    return ToolDescription(**fields)
 
 
 def registration(**overrides):
@@ -154,9 +212,18 @@ def registration(**overrides):
         "version": "v1",
         "source": "prometheus",
         "verb": "query",
+        "description": description(),
+        "may_contain_secrets": False,
         "parameters": {
-            "expr": ParameterSpec("string", required=True),
-            "step_seconds": ParameterSpec("integer"),
+            "expr": ParameterSpec(
+                "string",
+                required=True,
+                description="The PromQL expression to evaluate.",
+            ),
+            "step_seconds": ParameterSpec(
+                "integer",
+                description="The resolution step, in seconds, between returned points.",
+            ),
         },
         "result_path": ("data", "result"),
         "request_timeout_seconds": 10.0,

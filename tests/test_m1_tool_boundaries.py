@@ -38,6 +38,7 @@ from tests.m1_tool_support import (
     RecordingLedger,
     RecordingSink,
     SlowControl,
+    SlowLedger,
     UnavailableControl,
     body,
     build,
@@ -201,7 +202,11 @@ def test_control_state_stops_a_query_before_it_is_sent(control):
 
 
 def test_a_suspension_during_flight_keeps_the_result_as_history_only():
-    control = FixedControl(later=ControlSnapshot(7, suspended=True))
+    # later_after=2: the pre-dispatch reserve (call 1) and the new pre-fetch
+    # re-check after the ledger charge (call 2) both still see "not
+    # suspended" -- the suspension only takes effect during the flight,
+    # observed by the post-fetch re-check (call 3).
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([{"value": 1}]))
 
@@ -220,7 +225,8 @@ def test_a_suspension_during_flight_keeps_the_result_as_history_only():
 
 
 def test_an_uncommitted_in_flight_history_never_reaches_the_outcome():
-    control = FixedControl(later=ControlSnapshot(7, suspended=True))
+    # later_after=2: see test_a_suspension_during_flight_keeps_the_result_as_history_only.
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
     sink = RecordingSink(fail=True)
     executor, transport, _, _ = build(control=control, sink=sink)
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -328,9 +334,12 @@ def test_a_deadline_that_expires_during_the_control_lookup_is_denied():
 
 def test_the_control_lookup_time_is_charged_against_the_request_timeout():
     clock = FakeClock()
+    # Only the pre-dispatch reserve's own lookup (call 1) is slow here; the
+    # pre-fetch re-check's own timeout-shrinking is pinned separately by
+    # test_the_pre_fetch_re_check_shrinks_a_stale_timeout_before_dispatch.
     executor, transport, _, _ = build(
         clock=clock,
-        control=SlowControl(clock, 3.0),
+        control=SlowControl(clock, 3.0, slow_on={1}),
         scope_overrides={"deadline": NOW + timedelta(seconds=10)},
     )
     transport.response = TransportResponse(body=body([]))
@@ -339,6 +348,150 @@ def test_the_control_lookup_time_is_charged_against_the_request_timeout():
 
     # 10 s of authorization minus the 3 s the control read consumed, not 10.
     assert transport.requests[0].timeout_seconds == 7.0
+
+
+def test_a_slow_pre_dispatch_ledger_charge_that_crosses_the_deadline_is_denied():
+    """A slow ledger write, not just a slow control read, must not let a read
+    go out after its authorization has expired.
+
+    ``_reserve()`` computes ``timeout`` from the deadline *before* the
+    pre-dispatch ``charge(operation_id, 0.0)`` call in ``_run()``. That charge
+    is its own unbounded round trip (a real PostgreSQL write); if it alone
+    outlives the remaining authorization, the stale ``timeout`` would still be
+    handed to the transport and the read would be sent after the deadline.
+    """
+
+    clock = FakeClock()
+    ledger = SlowLedger(clock, 5.0, charge_on={1})  # the pre-dispatch charge
+    executor, transport, sink, _ = build(
+        clock=clock,
+        ledger=ledger,
+        scope_overrides={"deadline": NOW + timedelta(seconds=2)},
+    )
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "DEADLINE_EXCEEDED")
+    assert not transport.called  # the read was never sent
+    assert outcome.source_contact == "none"
+    assert outcome.evidence is None and sink.records == []
+    assert outcome.model_view["content"] is None
+    # The pre-dispatch charge is not refunded: it already recorded the
+    # operation as spent before the deadline was found to have lapsed.
+    assert len(ledger.charges) == 1
+    # _reserve() already computed timeout_seconds before this denial; the
+    # audit record must not infer "sent" from that alone.
+    assert outcome.operation.audit_json()["sent"] is False
+
+
+def test_a_pre_dispatch_ledger_failure_is_not_reported_as_sent():
+    """The audit record must not claim dispatch for an operation that never
+    reached the transport, even though ``_reserve()`` already computed a
+    ``timeout_seconds`` for it (bot review finding: ``ToolOperation.sent`` was
+    previously inferred from ``timeout_seconds is not None``, which is set by
+    ``_reserve()`` before the pre-dispatch charge or transport call happen at
+    all).
+    """
+
+    ledger = RecordingLedger(fail_on={1})  # the pre-dispatch charge itself
+    executor, transport, sink, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert not transport.called
+    assert outcome.evidence is None and sink.records == []
+    assert outcome.operation.audit_json()["timeout_seconds"] is not None
+    assert outcome.operation.audit_json()["sent"] is False
+
+
+def test_the_pre_fetch_re_check_shrinks_a_stale_timeout_before_dispatch():
+    """Bot review finding: the pre-fetch re-check must not just reject once
+    the deadline has *fully* passed -- it must also recompute how much
+    authorization actually remains and shrink a stale, larger timeout before
+    handing it to the transport. Otherwise a read can still be dispatched
+    with a timeout bound that lets it run well past the deadline, even
+    though this very check passed.
+    """
+
+    clock = FakeClock()
+    # Eats into the 10 s authorization without crossing the deadline outright.
+    ledger = SlowLedger(clock, 9.0, charge_on={1})
+    executor, transport, _, _ = build(
+        clock=clock,
+        ledger=ledger,
+        scope_overrides={"deadline": NOW + timedelta(seconds=10)},
+    )
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert transport.called
+    # 10 s minus the 9 s the slow charge consumed, not the stale 10 s
+    # _reserve() computed before that charge ran.
+    assert transport.requests[0].timeout_seconds == 1.0
+    assert outcome.operation.audit_json()["timeout_seconds"] == 1.0
+
+
+def test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied():
+    """The same slow-ledger race, but discovered via control, not the clock."""
+
+    clock = FakeClock()
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    ledger = SlowLedger(clock, 0.1, charge_on={1})
+    executor, transport, sink, _ = build(clock=clock, control=control, ledger=ledger)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert not transport.called
+    assert outcome.evidence is None and sink.records == []
+    assert control.calls == 2  # the pre-dispatch reserve, then this re-check
+
+
+def test_the_pre_fetch_re_check_denies_when_control_becomes_unavailable():
+    """The new pre-fetch re-check's own CONTROL_UNAVAILABLE branch.
+
+    ``_reserve()``'s control read (call 1) must still succeed -- this pins
+    that the *second* read, the one this change adds, is what fails.
+    """
+
+    control = UnavailableControl(fail_from=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert not transport.called
+    assert outcome.evidence is None and sink.records == []
+    assert control.calls == 2
+
+
+def test_the_pre_fetch_re_check_denies_when_the_control_generation_changed():
+    """The new pre-fetch re-check's own CONTROL_GENERATION_CHANGED branch.
+
+    ``later_after=1``: the pre-dispatch reserve (call 1) still sees the
+    scope's own generation (7); only this re-check (call 2) sees the new one.
+    """
+
+    control = FixedControl(
+        generation=7,
+        later=ControlSnapshot(control_generation=8, suspended=False),
+        later_after=1,
+    )
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert not transport.called
+    assert outcome.evidence is None and sink.records == []
+    assert control.calls == 2
 
 
 def test_a_result_arriving_at_the_deadline_is_kept_as_history_only():
@@ -363,6 +516,35 @@ def test_a_result_arriving_at_the_deadline_is_kept_as_history_only():
     assert sink.records[0].view["content"] is None
 
 
+def test_an_uncommitted_deadline_denial_also_never_reaches_the_outcome():
+    """The same fail-closed guarantee as suspension, for the deadline reason.
+
+    ``_run()``'s post-fetch ``invalid`` branch handles ``SUSPENDED`` and
+    ``DEADLINE_EXCEEDED`` with the same code path (build the historical
+    record, offer it to the sink, attach ``evidence`` only if the sink
+    actually committed it). ``test_an_uncommitted_in_flight_history_never_reaches_the_outcome``
+    already pins this for ``SUSPENDED``; this pins the other reason that
+    branch can report, so a failure between the post-fetch control snapshot
+    and the evidence register is never adopted regardless of which "invalid"
+    reason triggered it -- not only the one reason a test happened to cover.
+    """
+
+    sink = RecordingSink(fail=True)
+    executor, transport, _, clock = build(
+        sink=sink, scope_overrides={"deadline": NOW + timedelta(seconds=2)}
+    )
+    transport.clock, transport.duration = clock, 2.0
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "DEADLINE_EXCEEDED")
+    assert outcome.evidence is None
+    assert not outcome.adopted
+    assert outcome.model_view["content"] is None
+    assert len(sink.records) == 1  # offered, not committed
+
+
 def test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed():
     """A human decision outranks the deadline, as it does before dispatch.
 
@@ -372,7 +554,10 @@ def test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed(
     suspension would leave no trace in the outcome or the audit record.
     """
 
-    control = FixedControl(later=ControlSnapshot(7, suspended=True))
+    # later_after=2: the pre-dispatch reserve (call 1) and the pre-fetch
+    # re-check after the ledger charge (call 2) both still see "not
+    # suspended" -- only the post-fetch in-flight re-check (call 3) does.
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
     executor, transport, sink, clock = build(
         control=control, scope_overrides={"deadline": NOW + timedelta(seconds=2)}
     )
@@ -383,7 +568,7 @@ def test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed(
 
     # Both conditions hold; the human decision is the one reported.
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
-    assert control.calls == 2, "the in-flight control re-check must still run"
+    assert control.calls == 3, "the in-flight control re-check must still run"
     assert not outcome.adopted
     assert outcome.model_view["content"] is None
     assert sink.records[0].adopted is False
@@ -405,8 +590,10 @@ def test_a_read_completed_inside_the_window_survives_a_late_control_re_read():
     """
 
     clock = FakeClock()
-    # Only the second lookup - the in-flight re-check - is slow.
-    control = SlowControl(clock, 20.0, slow_on={2})
+    # Three control lookups happen before this point: _reserve() (1), the
+    # pre-dispatch re-check after the ledger charge (2), and this in-flight
+    # re-check (3). Only the third -- the in-flight re-check -- is slow.
+    control = SlowControl(clock, 20.0, slow_on={3})
     executor, transport, sink, _ = build(
         clock=clock,
         control=control,
