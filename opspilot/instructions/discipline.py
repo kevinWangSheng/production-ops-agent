@@ -202,9 +202,16 @@ def render(
     # ``str`` 也是可迭代的：``", ".join("cartservice")`` 逐字符展开成
     # ``c, a, r, t, …``——不报错，但送进模型的授权清单已经烂了。
     # 空服务名同理：渲染出前缀后空无一物，读起来像「没授权任何服务」。
-    if isinstance(authorized_services, str) or not all(
-        isinstance(name, str) and name for name in authorized_services
-    ):
+    if isinstance(authorized_services, str):
+        raise ValueError(
+            "authorized_services must be a tuple of non-empty service names"
+        )
+    # 物化成 tuple 再校验：一次性迭代器（生成器、``map()`` 等）在校验时被
+    # ``all(...)`` 消耗一遍后，下面 join 那遍就迭代到空的——校验通过但送进
+    # 模型的授权清单悄悄变空，是同一类静默丢失，只是换了个不触发前两条护栏
+    # 的入参形状。
+    authorized_services = tuple(authorized_services)
+    if not all(isinstance(name, str) and name for name in authorized_services):
         raise ValueError(
             "authorized_services must be a tuple of non-empty service names"
         )

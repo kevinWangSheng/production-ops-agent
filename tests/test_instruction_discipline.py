@@ -588,6 +588,30 @@ def test_a_string_service_list_would_have_been_shredded_character_by_character()
     assert ", ".join("cartservice") == "c, a, r, t, s, e, r, v, i, c, e"
 
 
+def test_a_one_shot_iterator_does_not_get_silently_drained_to_nothing() -> None:
+    """独立审查发现：一次性迭代器会被校验那遍 ``all(...)`` 先耗尽。
+
+    ``authorized_services`` 的类型注解是 ``tuple[str, ...]``，但运行时不强制。
+    如果调用方传一个生成器，校验用 ``all(... for name in authorized_services)``
+    迭代一遍，渲染再用 ``", ".join(authorized_services)`` 迭代第二遍——生成器
+    只能走一遍，第二遍拿到的是空的。校验通过，但送进模型的授权清单悄悄变空，
+    和 F14/`authorized_services` 那批「静默丢失」是同一类失效，只是换了个不
+    触发字符串/空值护栏的入参形状。``render`` 现在先把入参物化成 tuple 再校验。
+    """
+
+    def services() -> object:
+        yield "checkoutservice"
+        yield "cartservice"
+
+    rendered = d.render(
+        "baseline-multi-step",
+        model_requests=2,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=services(),  # type: ignore[arg-type]
+    )
+    assert rendered.endswith("checkoutservice, cartservice")
+
+
 def test_unknown_slot_is_refused_not_silently_dropped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
