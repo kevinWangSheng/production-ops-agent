@@ -327,7 +327,7 @@ class DurableStore:
         return identity
 
     def set_global_suspension(
-        self, suspended: bool, *, expected_generation: int, actor: str = "operator"
+        self, suspended: bool, *, expected_generation: int, actor: str
     ) -> int:
         """Atomically change the global gate; suspension invalidates active leases."""
         if type(suspended) is not bool:
@@ -371,7 +371,7 @@ class DurableStore:
         suspended: bool,
         *,
         expected_generation: int,
-        actor: str = "operator",
+        actor: str,
     ) -> int:
         """Change one registered immutable target's gate and invalidate its leases."""
         if not isinstance(target_id, UUID) or type(suspended) is not bool:
@@ -461,8 +461,6 @@ class DurableStore:
         """Continue a cancelled incident with a fresh Run and control generation."""
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
-            if scope["global_suspended"] or scope["target_suspended"]:
-                raise PersistenceError("CONTROL_DENIED")
             row = conn.execute(
                 "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
@@ -498,9 +496,14 @@ class DurableStore:
                 "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
                 (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
             )
+            next_state = (
+                "paused"
+                if scope["global_suspended"] or scope["target_suspended"]
+                else "queued"
+            )
             conn.execute(
-                "UPDATE opspilot_incidents SET state='queued',lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
-                (nxt, run_id, incident_id),
+                "UPDATE opspilot_incidents SET state=%s,lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
+                (next_state, nxt, run_id, incident_id),
             )
             conn.execute(
                 "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,'new_run',%s,%s,%s)",
@@ -564,7 +567,14 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
-            if row["global_suspended"] or row["target_suspended"]:
+            if (
+                row["global_suspended"]
+                or row["target_suspended"]
+                or (
+                    row.get("target_generation", 0) == 0
+                    and row.get("target_suspended", False)
+                )
+            ):
                 raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
