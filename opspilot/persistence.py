@@ -575,14 +575,7 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
-            if (
-                row["global_suspended"]
-                or row["target_suspended"]
-                or (
-                    row.get("target_generation", 0) == 0
-                    and row.get("target_suspended", False)
-                )
-            ):
+            if row["global_suspended"] or row["target_suspended"]:
                 raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(

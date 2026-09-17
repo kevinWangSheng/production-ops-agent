@@ -58,6 +58,22 @@ def test_scope_suspension_fences_claim_and_release_does_not_resume_old_run():
         s.claim(i, r, uuid4(), {"v": "1"})
 
 
+def test_claim_allows_a_fresh_never_suspended_target_at_generation_zero():
+    """A registered target that was never suspended keeps target_generation
+    at 0 (see set_target_suspension: the first suspend call always bumps 0 to
+    1 in the same statement as flipping suspended to True). claim() must not
+    treat generation 0 by itself as a denial signal — only the live
+    global/target suspended flags do. This is the scenario the removed
+    ``target_generation == 0 and target_suspended`` clause in claim() would
+    have misread as meaningful; it never fires because target_suspended is
+    False here, and claim() must still succeed."""
+    s = _store()
+    t = s.register_target("target-" + str(uuid4()))
+    i, r = _accept(s, target=t)
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    assert lease.target_suspension_generation == 0
+
+
 def test_follow_up_payload_is_durable_and_readable():
     s = _store()
     i, r = _accept(s)
