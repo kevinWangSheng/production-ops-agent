@@ -8,10 +8,15 @@ L2 报告契约 / L3a 工具模板 / L3b 实例快照，并要求各层「各有
 同一句话最多存在两份拷贝，改一处不会带动另一处。
 
 本模块把那些句子按**复用边界**收敛成一组只声明一次的 segment，
-再把每个历史变体表述为 segment 的有序序列。收敛的硬约束是**字节不变**：
-``render()`` 必须逐字节重建出当初送进模型的字符串，
-已冻结在 M0 证据里的 ``prompt_sha256`` 因此保持不变
-（见 ``tests/test_instruction_discipline.py`` 的冻结断言）。
+再把每个历史变体表述为 segment 的有序序列。收敛的硬约束是**字节不变**。
+
+冻结证据的覆盖面要说准确：3 个变体里**只有 ``replay-candidate`` 有冻结哈希背书**
+（``9648c6de…``，M0 证据里两个 Run 记录的 ``prompt_sha256``），``render()`` 对它
+逐字节重建出当初送进模型的完整 system 消息。两个 baseline 变体**结构上不可能**有：
+``holmes_baseline.py:1206`` 哈希的是 ``build_system_prompt(...)`` 的返回值，即
+**HolmesGPT 模板包裹后**的完整 prompt，而本模块只产出传给它的 ``addition`` 参数片段。
+baseline 两变体靠的是漂移断言——逐字节锚定 ``holmes_baseline.py`` 里的源码字面量。
+见 ``tests/test_instruction_discipline.py``。
 
 三条由此成立的结构事实：
 
