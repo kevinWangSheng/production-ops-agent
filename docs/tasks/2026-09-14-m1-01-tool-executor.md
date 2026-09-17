@@ -2,7 +2,7 @@
 
 - 状态：本轮新增提交待推送，推送后需等最新 CI 与已触发 code review 覆盖当前 HEAD
   （[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
-- 更新日期：2026-09-17
+- 更新日期：2026-09-17（执行器授权复查顺序 + 证据登记原子性一节）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md#m1-01-任务拆分与投入估算待-gate-决定)
   「只读工具执行器」子任务；[C3 技术方案](../design/technical-proposal-2026-09-07.md)
   第 3 节（Tool Gateway 角色）、第 8 节（工具注册合同）、第 4/7 节（控制版本、
@@ -636,3 +636,147 @@ Success: no issues found in 18 source files
 ```
 
 79 skips 为 PG opt-in，2 xfails 为既有架构标记。下一步：普通推送到 PR #20、等待当前 HEAD CI；机器人审查按本轮任务书不是门槛，不合并。#29 应传入 source 两端与可信交付参考时刻，按最老来源时间判断 current（不是最新数据的 freshness），缺失必须 fail-closed；详细建议交接至 srcrange 报告。
+
+## 11. 执行器授权复查顺序 + 证据登记原子性（2026-09-17）
+
+- 依据：`docs/evidence`（外部合并决策摘要）digest1.md「PR #20 §4/§5」的两条具体疑点；
+  PRODUCT-CONSTRAINTS「Runtime and human control requirements」；C3 第 7 节
+  （断点恢复表）与第 8 节（取消不能撤销已到达数据源的只读请求）。
+  工作区/分支沿用本任务，起点 `472a4e1`（srcrange 任务已合并的状态），开始时干净。
+
+### 疑点 1：慢账本可能让读取在授权过期后才发出
+
+`_run()` 在 `_reserve()` 已完成 control/deadline 检查、算好 `timeout` 之后，
+先执行**可能阻塞**的账本预记账 `charge(operation_id, 0.0)`，再 `fetch()`，
+中间没有重新检查 deadline/控制。账本预记账本身是一次无界往返（真实环境是一次
+PostgreSQL 写入）；如果它单独耗时超过剩余授权，`_reserve()` 算出的 `timeout`
+已经过期，`fetch()` 仍会照常发出，读取因此可能在授权过期后才离开进程。
+
+**复现（先红）**：新增 `SlowLedger`（`tests/m1_tool_support.py`，仿照既有
+`SlowControl` 的写法，`charge()` 消耗假时钟时间，`charge_on` 限定第几次 charge
+调用变慢）。构造预记账耗时 5s、deadline 只剩 2s 的场景，修复前
+`transport.called` 为真——读取确实被发出。
+
+**修复**（`opspilot/tools/executor.py`，`_run()`）：在预记账成功、
+`_operations_used += 1` 之后、`fetch()` 之前，插入一次复查：先读 control
+（unavailable/suspended/generation 改变均拒绝），再查 deadline（`clock.now()
+>= scope.deadline` 则 `DEADLINE_EXCEEDED`）。顺序与已有的 fetch 后复查一致
+（control 优先于 deadline，保证暂停即使与 deadline 同时发生也不会被吞掉，
+依据 PRODUCT-CONSTRAINTS「late completion 不得抹去更新的人工决定」）。
+复查失败时**不退还已记的账**——已花费的记账保持占用，与既有「未知费用保持占用」
+的既定方向一致，不新增退款语义。
+
+复查后：`transport.called` 为假、`evidence is None`、`sink.records == []`、
+预记账仍然只被计入一次（`len(ledger.charges) == 1`）。
+
+新增测试（`tests/test_m1_tool_boundaries.py`）：
+
+| 测试 | 场景 |
+|---|---|
+| `test_a_slow_pre_dispatch_ledger_charge_that_crosses_the_deadline_is_denied` | 慢账本把 clock 推过 deadline |
+| `test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied` | 慢账本期间控制状态变为已暂停 |
+| `test_the_pre_fetch_re_check_denies_when_control_becomes_unavailable` | 新复查自身的 CONTROL_UNAVAILABLE 分支（独立审查建议补的分支覆盖） |
+| `test_the_pre_fetch_re_check_denies_when_the_control_generation_changed` | 新复查自身的 CONTROL_GENERATION_CHANGED 分支（同上） |
+
+**受影响的既有测试**：新插入的复查会在 `_reserve()` 与 fetch 之间多做一次
+control 读取，3 个依赖精确调用次数的既有测试因此需要同步更新
+（不是弱化，是让测试继续钉住原意图，逐条见提交说明与独立审查处置）：
+
+- `test_a_suspension_during_flight_keeps_the_result_as_history_only`、
+  `test_an_uncommitted_in_flight_history_never_reaches_the_outcome`：
+  `FixedControl` 新增 `later_after` 参数（默认 1，不影响其它未传参调用方），
+  这两条改传 `later_after=2`，让「飞行中才暂停」继续发生在 fetch 之后
+  （第 3 次调用），而不是被新插入的第 2 次调用提前捕获。
+- `test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed`：
+  同上改 `later_after=2`，并把 `control.calls == 2` 改为 `== 3`。
+- `test_a_read_completed_inside_the_window_survives_a_late_control_re_read`：
+  `SlowControl(..., slow_on={2})` 改为 `slow_on={3}`，让「变慢的是飞行中复查」
+  仍指向 fetch 之后的那次调用（现在是第 3 次），而不是新插入的第 2 次。
+
+### 疑点 2：snapshot 与 register 之间的失败是否已由 EVIDENCE_NOT_COMMITTED 覆盖
+
+结论：**已覆盖，不需要代码修复**，仅补一条测试证明覆盖面不局限于 `SUSPENDED`
+一种原因。
+
+`_run()` 里 `invalid` 分支（读 control → 判 suspended/generation/deadline →
+建历史记录 → `_register()`）本就是：`registered = self._register(record)`；
+`return self._refuse(..., evidence=record if registered else None)`。即无论
+`invalid` 具体是哪个原因，只要 `_register()` 未成功提交，`evidence` 就是
+`None`，`ToolOutcome.adopted`（= `evidence is not None and evidence.adopted`）
+必为 `False`。既有测试
+`test_an_uncommitted_in_flight_history_never_reaches_the_outcome` 已经用
+`SUSPENDED` 原因验证过这一点；本轮新增
+`test_an_uncommitted_deadline_denial_also_never_reaches_the_outcome`，
+用 `DEADLINE_EXCEEDED` 原因重复同一断言，证明该保证不局限于某一个具体的
+`invalid` 原因，而是分支结构本身的性质。
+
+变异验证：把 `evidence=record if registered else None` 改成恒为
+`evidence=record`（忽略 `registered`），两条测试（既有的 SUSPENDED 版本与
+新增的 DEADLINE_EXCEEDED 版本）同时转红（`assert outcome.evidence is None`
+失败），证明新测试确实在验证这条保证，不是恒真断言。
+
+### 变异验证汇总（均先红后绿，还原后与保存补丁逐字节比对确认无残留）
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | 整段删除新插入的 fetch 前复查 | 6 条测试转红（2 条新慢账本测试 + 3 条已同步更新调用次数的既有测试 + 1 条 `slow_on` 已改的既有测试） |
+| M2 | `evidence=record if registered else None` → 恒为 `evidence=record` | 既有 SUSPENDED 测试与新增 DEADLINE_EXCEEDED 测试同时转红 |
+| M3 | 新复查删去 control 三个分支（unavailable/suspended/generation），只留 deadline | 3 条测试转红（1 条慢账本-暂停测试 + 2 条本节新增的分支覆盖测试） |
+
+### 独立审查（全新上下文只读子代理，未参与实现）
+
+按 AGENTS.md 派发全新上下文只读审查，只给目标、约束、C3 原文与本轮 diff，不继承
+实现过程结论。审查自行对 M1、M2 做了独立复现（临时删除代码、确认对应测试转红、
+逐字节还原并与补丁核对一致），并额外核对了：4 处因新插入调用而调整的既有测试是否
+仍在钉住原意图而非只是凑数字（结论：是，逐条给出证据）；`SlowLedger.charge_on`
+的 1-based 计数是否有 off-by-one（结论：无，与既有 `SlowControl.slow_on` 同一写法）；
+范围纪律（`feature_list.json`/`SPEC.md`/`ROADMAP.md`/依赖锁文件均无改动）。
+
+**过程插曲**：审查子代理在做 M2 变异验证时尝试用 `git checkout -- <file>` 还原，
+被本会话权限规则拦下（该命令属禁止的破坏性操作，见 AGENTS.md「不 force-push/
+rebase/amend/reset/stash」精神的同类禁止项）。调度者发现后指示改用无损方式
+（`git diff > patch` + `git apply -R` 对照），本执行者据此直接把文件手工改回原文本
+并用 `diff <(git diff) <保存的最终补丁>` 确认逐字节一致，随后审查子代理自行完成
+剩余工作并回传报告；过程中未使用 `git checkout`/`stash`/`reset` 等破坏性命令，
+未丢失任何已有改动。
+
+**结论：可以按当前状态交回实现者，无阻塞发现。** 唯一意见是一条覆盖面 nit——
+新插入复查自身的 `CONTROL_UNAVAILABLE`/`CONTROL_GENERATION_CHANGED` 分支当时
+未被专门测试直接命中（逻辑是从 `_reserve()`/fetch 后复查原样复制，风险低，但
+建议补分支覆盖）。**已采纳**：新增
+`test_the_pre_fetch_re_check_denies_when_control_becomes_unavailable`、
+`test_the_pre_fetch_re_check_denies_when_the_control_generation_changed`
+两条，并扩展 `UnavailableControl` 支持 `fail_from`（默认 1，不影响唯一既有调用点）。
+采纳后复验：`pytest tests/test_m1_tool_boundaries.py -q` → `60 passed`；
+变异 M3 证明两条新测试确实转红。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 422 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1251 passed, 79 skipped, 2 xfailed
+```
+
+`exit=0`。较本节起点（`1246 passed`）净增 5 个通过用例（2 条慢账本测试 + 1 条
+deadline-register-fail 测试 + 2 条分支覆盖测试）。
+
+PG 定向（本轮改动的账本/控制路径由真实 `DurableToolLedger`/`DurableStore` 消费，
+不止内存替身）：`M0_ENV_FILE=/Users/shenghuikevin/dev/AI/production-ops-agent/.env
+python -m scripts.m0.postgres_lab start`，
+`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py
+tests/integration/test_m1_durable_state_postgres.py -q` → `25 passed`；
+`postgres_lab stop`。该次 PG 验证覆盖的 `_run()` 逻辑此后未再变化
+（第二轮补测只新增内存替身用例，未改产品代码），故未重跑。
+
+### 未完成/限制
+
+- 新插入复查仍无法完全消除竞态窗口：`_read_control()` 本身与 `fetch()` 之间
+  仍有极短的间隙（纯本地计算，无 I/O），但 fetch 之后已有既有复查兜底，
+  与本轮改动前的既有设计一致，不是新引入的缺口。
+- 疑点 2 的「结构性保证」依赖 `invalid` 分支的 if/return 形状本身；若未来重构
+  该分支为其它写法，需要重新核对该保证是否仍然成立（测试会捕捉，但值得在
+  重构该分支时特别注意）。
+- 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
+- F3/F7 的 `passes` 保持 `false`。
