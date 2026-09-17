@@ -174,3 +174,9 @@
 `integ-final.md` 在本轮首次读取报告目录时尚不存在；不据此声称所有最新 PR 已汇合集成通过。
 
 本任务的文档完整性确定性检查：空记录负向输入输出 `RED: empty/missing record rejected`；现有记录输出 `GREEN: 13 report references, 13 PR rows, verification result and ROADMAP boundary present; tracked code unchanged`。只检查文档覆盖与改动边界，不把环境缺失称为代码回归红态，也不新增产品测试。
+
+## 本任务 PR 交付状态
+
+- 提交：`7c99f60`，分支 `chore/m1-01-integration-record`，已普通 push；PR #37（`docs: record M1-01 integration verification evidence`）已创建，目标 `main`，未合并。
+- PR #37 初始 HEAD 的 GitHub Actions run `35268318674`：`checks` pass（53s），`m0-postgres` pass（41s）。这些检查覆盖记录类变更；不改变前述专项报告的产品状态。
+- PR #37 当前仍需用户审核/合并；本任务不执行合并。后续实质变更若发生，需重新核对当前 HEAD 的 CI 和审查覆盖。
