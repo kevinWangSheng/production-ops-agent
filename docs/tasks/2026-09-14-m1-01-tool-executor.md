@@ -1,7 +1,8 @@
 # M1-01 只读工具执行器（纯逻辑部分）
 
-- 状态：PR 已就绪，待用户审核合并（[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
-- 更新日期：2026-09-15
+- 状态：本轮新增提交待推送，推送后需等最新 CI 与已触发 code review 覆盖当前 HEAD
+  （[PR #20](https://github.com/kevinWangSheng/production-ops-agent/pull/20)）
+- 更新日期：2026-09-17
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md#m1-01-任务拆分与投入估算待-gate-决定)
   「只读工具执行器」子任务；[C3 技术方案](../design/technical-proposal-2026-09-07.md)
   第 3 节（Tool Gateway 角色）、第 8 节（工具注册合同）、第 4/7 节（控制版本、
@@ -375,13 +376,8 @@ M1 四个测试文件 **160 passed**。
 
 ### 7. 本轮新增的未完成项
 
-- **C3 第 8 节「工具模型可见面」尚未实现。** main 的 PR #24 把模型可见面
-  （`returns` / `window_format` / `values_format` / `limits` / `cannot_prove`）
-  写入 C3 第 8 节注册合同，并要求它纳入工具注册表的内容哈希。
-  当前 `ToolRegistration` 无这些字段，`ToolRegistry` 的 fingerprint 投影也未覆盖。
-  该实现被 PR #24 自身的完成条件明确排除（「不在完成条件内：合同的实现与实现后的
-  确定性测试」），因此是本任务之外的交接项，本 PR 不做。
-  接手时须同时更新 fingerprint 投影，否则描述变化不会 bump `tool_schema_revision`。
+- ~~C3 第 8 节「工具模型可见面」尚未实现~~ **已在本轮（2026-09-17）实现**，见下方
+  「9. C3 第 8 节工具模型可见面（`ToolDescription`）与第 7 节第 2、3 项确定性检查」。
 - 原有交接项（领域类型合并、真实传输/凭据/PG 证据存储、数据源 payload 脱敏、
   `TransportUnavailable` 未细分、并发/取消运行期实现）保持不变，均未在本轮解决。
 - F3/F7 的 `passes` 仍为 `false`；本轮是纯逻辑层的安全修复，不构成产品验收证据。
@@ -477,3 +473,137 @@ PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
 审查同时确认：双 charge 协议同 epoch 内幂等；fail-closed 路径不外泄异常文本、不登记证据；锁顺序与 `install()` 演进方式与本文件一致；`bool` 被类型校验拒绝；冻结上限未改；无范围外改动。
 
 复验（本分支 `ffd3161`）：`make check` → `All checks passed!` / `Success: no issues found in 18 source files` / `1216 passed, 79 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py tests/integration/test_m1_durable_state_postgres.py` → `25 passed`。
+
+## 9. C3 第 8 节工具模型可见面（`ToolDescription`）与第 7 节第 2、3 项确定性检查（2026-09-17）
+
+- 依据：调度者任务书 `scratchpad/briefs/registry.md`；
+  [C3 技术方案](../design/technical-proposal-2026-09-07.md) 第 8 节「模型可见面」段
+  （`returns`/`window_format`/`values_format`/`limits`/`cannot_prove` 五字段表）；
+  `docs/tasks/2026-09-15-instruction-tool-contract.md`（PR #27 分支，
+  `git show origin/chore/instruction-contract-impl:<path>` 读取）「C3 第 7 节七项确定性检查的
+  逐项状态」表（第 2、3 项标「未做：依赖 `opspilot/tools/registry.py`」）与
+  「交接：`ToolRegistration.description` 待 PR #20 合并后承接」节。
+- 范围：只做 C3 §7 七项确定性检查中的第 2、3 项。不做第 1/4/5/6/7 项的补全，
+  不做 §8「模型可见面」文本的实际渲染器，不迁移 PR #27
+  `opspilot/instructions/discipline.py` 里标 `tool_specific=True` 的 8 句投影语义
+  （该模块在本分支不存在，迁移是 PR #27 任务记录第 4 步，前置条件是 PR #27 先合并进
+  main；本轮不复制其实现，只把 `ToolDescription` 设计成能承接的形状）。
+
+### 做了什么
+
+`opspilot/tools/registry.py` 新增 `ToolDescription`（frozen dataclass，字段顺序与
+C3 表格顺序一致：`returns`/`window_format`/`values_format`/`limits`/`cannot_prove`）：
+
+- `returns`/`limits`/`cannot_prove` 注册期非空（`.strip()` 后非空），否则
+  `ToolContractError("EMPTY_TOOL_DESCRIPTION_FIELD")`。
+- `window_format`/`values_format` 注册期须含占位符，否则
+  `ToolContractError("MISSING_DESCRIPTION_PLACEHOLDER")`。
+  **占位符具体写法（`{window}`/`{values}`）是本轮自定，C3 原文只写「占位符」未给出
+  字面 token**——仿照 `docs/tasks/2026-09-15-instruction-tool-contract.md` 引用的
+  `discipline.py` 里 `{steps}` 的既有写法（`str.format` 风格），写入模块内注释说明这是
+  本模块自己的选择、非 C3 逐字要求，为将来的渲染器（L3a 模板/L3b 实例，尚未建）预留
+  钩子。
+- 只做结构完整性检查，不判断文字质量——依据 PR #27 任务记录独立审查处置 F10：
+  「D1/D5 是语义属性，自由文本无注册期判据…注册期只断言结构完整性，文字质量交人工审查」。
+
+`ToolRegistration` 新增必填字段 `description: ToolDescription`（`__post_init__` 用
+`isinstance` 校验，非法值 → `ToolContractError("INVALID_TOOL_DESCRIPTION")`）。
+`ParameterSpec` 新增 `description: str = ""`（默认空字符串，向后兼容——C3 §8 的五字段
+结构完整性检查只列在 `ToolDescription` 上，不要求每个参数描述本轮也做结构校验；
+默认值使原本只测 `kind`/`required`/`.accepts()` 行为的既有用例不必改动）。
+
+`ToolRegistry` 的 fingerprint 投影（`__init__` 内的工具层字典）新增两处（对应
+七项检查第 2 项）：工具层的 `description` 五字段整体、以及参数层每个
+`ParameterSpec.description`。任一处改动都会改变 `ToolRegistry.revision`。
+
+### 模型可见字节是否变化
+
+**本分支此前没有任何真实注册的工具**（`grep -rln "ToolRegistration("` 排除
+`.venv/` 只命中 3 个测试文件；产品代码尚未把执行器接进
+`Workbench.run_once`/`Worker` 组合，`ToolRegistration` 只在测试夹具
+`tests/m1_tool_support.py::registration()` 里构造），因此**没有已冻结/已记录的
+模型可见字节需要保持不变**——`description` 是本轮新增的必填字段，不存在“改变现有
+字节”的兼容性问题；`tool_schema_revision` 目前也未接线到任何持久化比对
+（同一落差此前已记于本文件第 7 节，未在本轮解决，接线仍属 M1-01「Flash 调查
+loop」子任务）。`git grep -n "tool_schema_revision\|\.revision =="` 未发现任何写死
+比对的历史哈希字面量，故本轮改动不破坏任何已记录证据。
+
+### 与 PR #27 的接口对齐
+
+未从 PR #27 的 `opspilot/instructions/discipline.py` 复制任何符号或字节——该文件
+`find opspilot -iname "*discipline*"` 在本分支为空，只存在于
+`origin/chore/instruction-contract-impl`。第 7 节第 2、3 项本身不需要它的任何符号
+（`prompt_revision`/`Segment` 等只在做第 1/4/5/7 项的补全或第 4 步迁移时才用得上，
+均不在本轮范围）。`ToolDescription` 五个字段是纯字符串，未来迁移
+`PROJECTION_DISCIPLINE` 的 8 句时可以直接把文本填进对应字段，不需要改动本轮的类型
+或校验逻辑。
+
+C3 §7 七项检查里，第 1（部分完成）、4（部分完成）、5（部分完成）、6（暂停，等用户
+裁定与归位决定的冲突）、7（部分完成）项按 PR #27 任务记录的既有结论保持原状，
+本轮不动；只有第 2、3 项从「未做」变为「完成」。
+
+### 测试与变异验证
+
+新增/修改：`tests/m1_tool_support.py`（`description()` 构建器 + `registration()`
+默认值 + 两个 `ParameterSpec` 补 `description`）、
+`tests/test_m1_tool_registry.py`（`ToolDescription` 结构完整性用例，覆盖非空、
+占位符存在、占位符精确匹配非子串误判、字段顺序、不可变性、`ToolRegistration`
+拒绝非 `ToolDescription` 值）、`tests/test_m1_tool_registry_binding.py`
+（`CONTRACT_CHANGES` 新增两项：仅工具层 `description` 不同、仅参数层
+`description` 不同且刻意保留 `step_seconds` 不变以隔离维度，避免与「参数被删除」
+混淆——这一点是独立审查用变异实测揪出的真实测试缺陷，见下）。
+
+PR #20 现有测试**全部保留**，无一条被删除或弱化；本轮净增测试通过数：
+`1233 - 1216 = 17`（含独立审查后删掉 1 条误导性用例，详见下方「独立审查」）。
+
+变异验证（每条新断言手工验证能转红，验证后与保存的 `git diff` 补丁逐字节比对
+确认已还原）：
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | 移除工具层 `description` 投影 | `CONTRACT_CHANGES[3]`（工具描述变化）2 条测试转红，其余 23 条不受影响 |
+| M2（第一次，暴露测试自身缺陷） | 移除参数层 `description` 投影，初版测试条目省略了 `step_seconds` | **未转红**——因为省略 `step_seconds` 本身已改变参数集合，掩盖了 description 投影是否生效 |
+| M2（修复测试后重跑同一变异） | 同上，测试条目改为显式保留 `step_seconds` 不变 | `CONTRACT_CHANGES[2]`（参数描述变化）2 条测试正确转红，其余 23 条不受影响 |
+| M3 | 移除 `ToolDescription` 全部结构校验（`__post_init__` 置空） | 10 条断言转红（6 条非空校验 + 2 条占位符校验 + 1 条精确匹配 + 1 条 `ToolRegistration` 转发） |
+| M4 | 移除 `ToolRegistration.__post_init__` 的 `isinstance(description, ToolDescription)` 检查 | `test_registration_requires_a_structurally_complete_tool_description` 转红 |
+
+M2 的第一次尝试本身就是一次有效的变异验证发现：独立审查在后续复核里独立复现了
+同一类问题（见下），确认这不是巧合。
+
+### 独立审查（全新上下文只读子代理，未参与实现）
+
+按 AGENTS.md「独立审查使用未参与该方案或实现的 Agent，并以全新上下文启动」，
+派发时只给目标、C3 §7/§8 原文、`docs/tasks/2026-09-15-instruction-tool-contract.md`
+背景、本轮 diff 补丁与待审工件，不继承实现过程的结论。
+
+结论：**可以按当前状态交回实现者**——未发现阻塞级问题，fingerprint 覆盖经审查自行
+变异验证为非空转（在参数层与工具层各自移除投影并复跑，仅对应
+`CONTRACT_CHANGES` 条目转红，其余不受影响，随后精确还原并用 `diff` 核对回原
+补丁），向后兼容选择（`ParameterSpec.description` 默认空串）合理，边界纪律干净
+（`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件均无
+改动，未从 PR #27 复制任何代码），`ToolRegistry` 公共面（`{lookup, revision,
+tool_names}`）未扩大，三个新错误码均为固定字符串、不拼接字段实际文本。
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | should-fix | `test_registration_rejects_a_description_with_a_blank_required_field` 的注释声称验证 `ToolRegistration` 转发 `ToolDescription` 的错误码，但审查用 traceback 证实 `description(returns="")` 在传入 `registration()` 之前、Python 参数求值阶段就已在 `ToolDescription.__post_init__` 内抛出，`ToolRegistration.__post_init__` 从未被进入——该用例与 `test_tool_description_required_fields_reject_blank_text[returns-...]` 完全重复，且其注释描述的场景在当前实现里没有对应代码路径（没有 try/except 转发） | **采纳，已删除该用例**，改在保留的 `test_registration_requires_a_structurally_complete_tool_description` 上补充注释说明为何「空必填字段」不会走到 `ToolRegistration` 一侧 |
+| 2 | nit，不阻塞 | `window_format`/`values_format` 传非字符串（如 `None`）时报的是 `MISSING_DESCRIPTION_PLACEHOLDER` 而非类型错误码，语义上「缺占位符」与「类型错」不完全对应 | **维持现状**：与 `returns`/`limits`/`cannot_prove` 传非字符串统一报 `EMPTY_TOOL_DESCRIPTION_FIELD` 是同一既有写法（单一代码覆盖「一类违规」，而非逐字段/逐原因细分），符合本文件既有 `ParameterSpec`/`ToolRegistration` 的错误码粒度惯例，不单独为此新增代码 |
+
+复验（处置后）：`.venv/bin/python -m pytest tests/test_m1_tool_registry.py
+tests/test_m1_tool_registry_binding.py -q` → `98 passed`；`make check` →
+`All checks passed!` / `422 files already formatted` /
+`Success: no issues found in 18 source files` /
+`1233 passed, 79 skipped, 2 xfailed`。
+
+### 未完成与交接
+
+- C3 §7 第 1/4/5/6/7 项仍是 PR #27 任务记录里记录的原状态（部分完成/暂停待裁定），
+  本轮未推进。
+- `PROJECTION_DISCIPLINE` 的 8 句 `tool_specific` 语义迁往 `ToolDescription` 字段：
+  待 PR #27 合并进 main 后才可行（依赖其 `opspilot/instructions/discipline.py`），
+  迁移会改变未来 Run 的 L1a 模板字节、须 bump `discipline_revision`
+  （PR #27 任务记录第 428-447 行「交接」节已写明步骤，本轮不重复）。
+- `tool_schema_revision` 仍未接线到任何持久化 `versions` 比对（第 7 节已记录的
+  落差，本轮未解决，接线属后续 M1-01 组合层任务）。
+- F3/F7 的 `passes` 保持 `false`：本轮是注册合同的结构化与确定性检查，不构成产品
+  验收证据。
