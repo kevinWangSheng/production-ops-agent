@@ -314,6 +314,16 @@ def test_empty_or_partial_results_cannot_enter_history():
 
 
 def test_physical_timeout_retains_unknown_and_no_tools():
+    # The AsyncOpenAI request/response models build their pydantic-core
+    # validator schema on first use per process (measured 190ms-700ms+ under
+    # system load), independent of the mock transport or this test's own
+    # timeout. Paying that one-time cost here, against a normal fast round
+    # trip, keeps it out of the tight budget below: without this, a cold
+    # process can fail to reach the mock handler within timeout=0.01 under
+    # load and record only ["reserve", "unknown"] (send missing), which is a
+    # process warm-up race, not the adapter sending after its own timeout.
+    execute(*setup()[:4])
+
     events = []
 
     async def handler(request):
@@ -328,7 +338,7 @@ def test_physical_timeout_retains_unknown_and_no_tools():
     )
     with pytest.raises(ProtocolError, match="MODEL_STREAM_FAILED"):
         execute(
-            adapter, run, History(run), json.loads(FIXTURE.read_text()), timeout=0.01
+            adapter, run, History(run), json.loads(FIXTURE.read_text()), timeout=0.1
         )
     assert [e[0] for e in events] == ["reserve", "send", "unknown"]
 
