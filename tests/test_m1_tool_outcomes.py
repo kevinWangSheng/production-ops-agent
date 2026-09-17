@@ -49,7 +49,10 @@ def test_ok_outcome_registers_raw_bytes_view_and_both_hashes():
     assert record.view_sha256 == canonical_hash(record.view)
     assert record.projection_revision == PROJECTION_REVISION
     assert sink.records == [record]
-    assert outcome.model_view is record.view
+    # A detached copy, not the same object -- see
+    # test_the_model_view_is_detached_from_the_committed_evidence.
+    assert outcome.model_view == record.view
+    assert outcome.model_view is not record.view
     assert record.view["content"] == [{"metric": "checkout", "value": 3}]
     assert record.view["trust"] == "untrusted-evidence"
     assert record.freshness_seconds == 30.0
@@ -247,6 +250,36 @@ def test_unreadable_results_are_errors_not_empty_results(payload):
     assert outcome.evidence is None and sink.records == []
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"[" * 20_000 + b"]" * 20_000,  # RecursionError: too deeply nested
+        b'{"data":{"result":' + b"9" * 5000 + b"}}",  # ValueError: int too long
+    ],
+    ids=["deeply-nested-recursion-error", "oversized-integer-value-error"],
+)
+def test_a_json_decoder_limit_is_malformed_not_a_crash(payload):
+    """Bot review finding: an otherwise size-compliant but adversarial body
+    can make Python's ``json`` decoder raise ``RecursionError`` or a
+    digit-count ``ValueError`` instead of ``json.JSONDecodeError``. Neither
+    was caught, so an untrusted source's response could abort ``execute()``
+    outright instead of producing the promised ``MALFORMED_RESULT`` outcome.
+    ``max_result_bytes`` is raised only for this test so the size check
+    itself doesn't refuse the payload before the decoder ever runs.
+    """
+
+    executor, transport, sink, _ = build(
+        registrations=[registration(max_result_bytes=len(payload) + 1024)]
+    )
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
 def test_a_non_response_object_from_the_transport_is_an_error():
     executor, transport, _, _ = build()
     transport.response = {"data": {"result": []}}
@@ -336,6 +369,30 @@ def test_evidence_must_be_committed_before_it_may_be_consumed():
     assert outcome.evidence is None
     assert outcome.model_view["content"] is None
     assert len(sink.records) == 1  # it was offered, it was not committed
+
+
+def test_the_model_view_is_detached_from_the_committed_evidence():
+    """Bot review finding: ``model_view`` and ``evidence.view`` were the same
+    mutable dict object. A caller mutating the model-facing view (e.g.
+    context assembly appending to or normalizing content) would silently
+    mutate the "committed" evidence's view too, leaving it inconsistent with
+    ``view_sha256``, which was computed before any such mutation -- and any
+    sink that retained the record object would see its evidence change after
+    registration.
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    outcome.model_view["content"].append({"injected": "value"})
+    outcome.model_view["extra"] = "mutated"
+
+    assert outcome.evidence.view["content"] == [{"value": 1}]
+    assert "extra" not in outcome.evidence.view
+    assert sink.records[0].view["content"] == [{"value": 1}]
+    assert outcome.evidence.view_sha256 == canonical_hash(outcome.evidence.view)
 
 
 def test_a_mismatched_evidence_reference_is_not_a_commit():

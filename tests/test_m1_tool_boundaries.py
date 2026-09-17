@@ -334,9 +334,12 @@ def test_a_deadline_that_expires_during_the_control_lookup_is_denied():
 
 def test_the_control_lookup_time_is_charged_against_the_request_timeout():
     clock = FakeClock()
+    # Only the pre-dispatch reserve's own lookup (call 1) is slow here; the
+    # pre-fetch re-check's own timeout-shrinking is pinned separately by
+    # test_the_pre_fetch_re_check_shrinks_a_stale_timeout_before_dispatch.
     executor, transport, _, _ = build(
         clock=clock,
-        control=SlowControl(clock, 3.0),
+        control=SlowControl(clock, 3.0, slow_on={1}),
         scope_overrides={"deadline": NOW + timedelta(seconds=10)},
     )
     transport.response = TransportResponse(body=body([]))
@@ -402,6 +405,34 @@ def test_a_pre_dispatch_ledger_failure_is_not_reported_as_sent():
     assert outcome.evidence is None and sink.records == []
     assert outcome.operation.audit_json()["timeout_seconds"] is not None
     assert outcome.operation.audit_json()["sent"] is False
+
+
+def test_the_pre_fetch_re_check_shrinks_a_stale_timeout_before_dispatch():
+    """Bot review finding: the pre-fetch re-check must not just reject once
+    the deadline has *fully* passed -- it must also recompute how much
+    authorization actually remains and shrink a stale, larger timeout before
+    handing it to the transport. Otherwise a read can still be dispatched
+    with a timeout bound that lets it run well past the deadline, even
+    though this very check passed.
+    """
+
+    clock = FakeClock()
+    # Eats into the 10 s authorization without crossing the deadline outright.
+    ledger = SlowLedger(clock, 9.0, charge_on={1})
+    executor, transport, _, _ = build(
+        clock=clock,
+        ledger=ledger,
+        scope_overrides={"deadline": NOW + timedelta(seconds=10)},
+    )
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert transport.called
+    # 10 s minus the 9 s the slow charge consumed, not the stale 10 s
+    # _reserve() computed before that charge ran.
+    assert transport.requests[0].timeout_seconds == 1.0
+    assert outcome.operation.audit_json()["timeout_seconds"] == 1.0
 
 
 def test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied():

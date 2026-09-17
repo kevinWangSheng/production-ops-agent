@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -548,13 +549,25 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "SUSPENDED")
         if control.control_generation != self._scope.control_generation:
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
-        if self._clock.now() >= self._scope.deadline:
+        now = self._clock.now()
+        if now >= self._scope.deadline:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
+        # The control read and the charge above may themselves have consumed
+        # real time without crossing the deadline outright -- rejecting only
+        # when it has *fully* passed would still hand the transport the
+        # stale, larger timeout ``_reserve()`` computed, letting the read
+        # stay outstanding against the source well past the authorization
+        # window even though this very check passed. Shrink it to whatever
+        # authorization actually remains right now (bot review finding).
+        remaining = (self._scope.deadline - now).total_seconds()
+        if remaining < timeout:
+            timeout = remaining
+            request = replace(request, timeout_seconds=timeout)
         # Mark dispatch only now, right before the transport is actually
         # called -- not earlier, when ``_reserve()`` merely computed a
         # timeout. Every ``_refuse()`` return above this line therefore
         # correctly reports ``sent: false`` in the audit record.
-        operation = replace(operation, dispatched=True)
+        operation = replace(operation, dispatched=True, timeout_seconds=timeout)
         started = self._clock.monotonic()
         failure: tuple[ToolStatus, str, SourceContact] | None = None
         response: object = None
@@ -690,7 +703,12 @@ class ReadOnlyToolExecutor:
             status=status,
             reason=reason,
             source_contact="confirmed",
-            model_view=record.view,
+            # A detached copy, not the same object as ``record.view``: a
+            # caller mutating the model-facing view must never be able to
+            # change the evidence already committed under ``view_sha256``,
+            # or a sink that retained the record would see its "committed"
+            # evidence drift out from under it (bot review finding).
+            model_view=deepcopy(record.view),
             evidence=record,
         )
 
@@ -866,7 +884,13 @@ def _result_rows(
 
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        # ValueError also covers json.JSONDecodeError (a subclass) and the
+        # decoder's own digit-count guard on an oversized integer literal;
+        # RecursionError covers a body nested deep enough to exceed the
+        # interpreter's recursion limit. An untrusted, otherwise
+        # size-compliant source body must not be able to crash execute()
+        # outright by tripping either one (bot review finding).
         return None, None
     cursor: object = payload
     for step in registration.result_path:
