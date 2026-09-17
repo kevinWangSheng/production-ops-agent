@@ -24,6 +24,7 @@ from tests.m1_web_support import (
     bearer,
     build_workbench,
     call,
+    note_reached_investigation,
     post_form,
     post_json,
     same_origin,
@@ -305,15 +306,21 @@ def test_control_increments_the_generation_once_per_accepted_action():
 def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
     app, workbench, _ = build_workbench()
     incident = submit_incident(app).json()["incident_id"]
-    assert (
-        _control(
-            app,
-            incident,
-            {"action": "pause", "expected_generation": "0", "idempotency_key": "p"},
-        ).json()["generation"]
-        == 1
+    paused = _control(
+        app,
+        incident,
+        {"action": "pause", "expected_generation": "0", "idempotency_key": "p"},
     )
+    assert paused.json()["generation"] == 1
+    # PR #31 semantics: a bare pause while paused is refused, but a note with
+    # content is recorded as an input without resuming the run.
     blocked = _control(
+        app,
+        incident,
+        {"action": "pause", "expected_generation": "1", "idempotency_key": "p2"},
+    )
+    assert blocked.status == 409 and blocked.json() == {"code": "ILLEGAL_TRANSITION"}
+    noted = _control(
         app,
         incident,
         {
@@ -323,32 +330,30 @@ def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
             "text": "still?",
         },
     )
-    assert blocked.status == 409 and blocked.json() == {"code": "ILLEGAL_TRANSITION"}
-    assert (
-        _control(
-            app,
-            incident,
-            {"action": "resume", "expected_generation": "1", "idempotency_key": "r"},
-        ).json()["generation"]
-        == 2
+    assert noted.status == 200 and noted.json()["generation"] == 2
+    assert workbench.list_incidents()[0].state == "paused"
+    assert workbench.incidents.inputs[-1]["content"]["text"] == "still?"
+    resumed = _control(
+        app,
+        incident,
+        {"action": "resume", "expected_generation": "2", "idempotency_key": "r"},
     )
-    assert (
-        _control(
-            app,
-            incident,
-            {"action": "cancel", "expected_generation": "2", "idempotency_key": "x"},
-        ).json()["generation"]
-        == 3
+    assert resumed.json()["generation"] == 3
+    cancelled = _control(
+        app,
+        incident,
+        {"action": "cancel", "expected_generation": "3", "idempotency_key": "x"},
     )
+    assert cancelled.json()["generation"] == 4
     summary = workbench.list_incidents()[0]
     old_run = summary.current_run_id
     assert summary.state == "cancelled"
     renewed = _control(
         app,
         incident,
-        {"action": "new_run", "expected_generation": "3", "idempotency_key": "n"},
+        {"action": "new_run", "expected_generation": "4", "idempotency_key": "n"},
     )
-    assert renewed.status == 200 and renewed.json()["generation"] == 4
+    assert renewed.status == 200 and renewed.json()["generation"] == 5
     summary = workbench.list_incidents()[0]
     assert summary.state == "queued" and summary.current_run_id != old_run
     assert workbench.incidents.runs[old_run]["state"] == "cancelled"
@@ -356,14 +361,14 @@ def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
     assert _control(
         app,
         incident,
-        {"action": "follow_up", "expected_generation": "4", "idempotency_key": "t1"},
+        {"action": "follow_up", "expected_generation": "5", "idempotency_key": "t1"},
     ).json() == {"code": "TEXT_REQUIRED"}
     assert _control(
         app,
         incident,
         {
             "action": "pause",
-            "expected_generation": "4",
+            "expected_generation": "5",
             "idempotency_key": "t2",
             "text": "x",
         },
@@ -372,11 +377,11 @@ def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
         _control(
             app,
             incident,
-            {"action": "takeover", "expected_generation": "4", "idempotency_key": "t3"},
+            {"action": "takeover", "expected_generation": "5", "idempotency_key": "t3"},
         ).status
         == 400
     )
-    assert workbench.list_incidents()[0].control_generation == 4
+    assert workbench.list_incidents()[0].control_generation == 5
 
 
 # -- SSE cursor resume -------------------------------------------------------------
@@ -580,7 +585,7 @@ def test_incomplete_report_is_a_handoff_not_a_conclusion_and_control_stays_open(
     again = ScriptedInvestigator(clock)
     outcome = workbench.run_once(subject, again)
     assert outcome is not None and outcome.execution == "completed"
-    assert "Also check the dependency." in again.contexts[0].question
+    assert note_reached_investigation(workbench, again, "Also check the dependency.")
     assert workbench.snapshot(subject)["report"]["facts"]
 
 
@@ -659,7 +664,7 @@ def test_snapshot_survives_event_retention_and_unmapped_storage_errors():
     fresh = ScriptedInvestigator(clock)
     outcome = workbench.run_once(subject, fresh)
     assert outcome is not None and outcome.execution == "completed"
-    assert "kept in the ledger" in fresh.contexts[0].question
+    assert note_reached_investigation(workbench, fresh, "kept in the ledger")
     # A storage refusal surfaces as a coded 503, not a bare 500.
     from opspilot.persistence import PersistenceError
 
@@ -790,7 +795,9 @@ def test_an_applied_but_unconfirmed_control_is_reconciled_from_the_audit():
     _renew(app, incident, generation=1)
     investigator = ScriptedInvestigator(clock)
     assert workbench.run_once(subject, investigator).execution == "completed"
-    assert "restarted at 09:00" in investigator.contexts[0].question
+    assert note_reached_investigation(
+        workbench, investigator, "The dependency was restarted at 09:00."
+    )
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert "restarted at 09:00" in page.text
 
@@ -844,3 +851,51 @@ def test_a_stale_form_with_a_fresh_key_is_refused_not_reconciled():
     kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
     assert kinds.count("control_applied") == 1
     assert workbench.ledger.get("control_intent", f"{subject}:k2") is None
+
+
+def test_a_note_applied_after_the_claim_fences_the_attempt_instead_of_being_ignored():
+    """P1 race: notes must be read under the lease, never before the claim.
+
+    A correction that lands after the claim advances the generation; the
+    attempt then must not publish. The renewed attempt sees the note.
+    """
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="race-1")
+    subject = workbench.list_incidents()[0].incident_id
+
+    class CorrectThenInvestigate(ScriptedInvestigator):
+        def investigate(self, context, committer, evidence):
+            # Lease is held here; the operator corrects the target now.
+            workbench.control(
+                subject,
+                actor_id="alice",
+                action="correct",
+                expected_generation=context.control_generation,
+                idempotency_key="race-correct",
+                text="The target is checkout-canary, not checkout-prod.",
+            )
+            return super().investigate(context, committer, evidence)
+
+    racing = CorrectThenInvestigate(clock)
+    outcome = workbench.run_once(subject, racing)
+    assert outcome is not None and outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["report"] is None and snapshot["incident"].concluded is False
+    assert [c["action"] for c in snapshot["controls"]] == ["correct"]
+    # The attempt that ran with the stale view never published; the next
+    # attempt (fresh Run) receives the correction.
+    _renew(app, str(subject), generation=1)
+    fresh = ScriptedInvestigator(clock)
+    outcome = workbench.run_once(subject, fresh)
+    assert outcome is not None and outcome.execution == "completed"
+    assert note_reached_investigation(
+        workbench, fresh, "The target is checkout-canary, not checkout-prod."
+    )
+
+
+def test_openapi_schema_is_not_served():
+    app, _, _ = build_workbench()
+    for path in ("/openapi.json", "/docs", "/redoc"):
+        assert call(app, "GET", path).status in (401, 404), path
+        assert call(app, "GET", path, headers=basic()).status == 404, path

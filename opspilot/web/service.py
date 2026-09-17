@@ -287,7 +287,7 @@ class Workbench:
             # Intent recorded, decision not confirmed: fall through and apply.
         try:
             generation, new_run_id = self._apply(
-                summary, action, expected_generation, actor_id
+                summary, action, expected_generation, actor_id, text
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -335,11 +335,21 @@ class Workbench:
         )
 
     def _apply(
-        self, summary: IncidentSummary, action: str, expected: int, actor_id: str
+        self,
+        summary: IncidentSummary,
+        action: str,
+        expected: int,
+        actor_id: str,
+        text: str | None,
     ) -> tuple[int, UUID | None]:
         if action != "new_run":
+            # The note travels with the decision: DurableStore.control (PR #31)
+            # writes it to opspilot_controls.payload and opspilot_inputs, from
+            # where begin_round() hands it to the next model round. The web
+            # ledger keeps a copy for idempotency and display only.
+            payload = None if text is None else {"text": text, "channel": "web"}
             return self.incidents.control(
-                summary.incident_id, expected, action, actor_id
+                summary.incident_id, expected, action, actor_id, payload
             ), None
         # DurableStore.new_run takes no expected version; the run id is
         # derived from ``expected + 1`` so a stale form either conflicts on
@@ -530,7 +540,6 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
-        notes = self._notes(incident_id)
         seconds = int(self.run_seconds) if lease_seconds is None else lease_seconds
         try:
             lease = self.incidents.claim(
@@ -544,9 +553,7 @@ class Workbench:
             )
             return None
         try:
-            return self._attempt(
-                incident_id, run_id, lease, investigator, request, notes
-            )
+            return self._attempt(incident_id, run_id, lease, investigator, request)
         except (StepStoreError, PersistenceError) as exc:
             self._handoff(incident_id, lease, run_id, "failed", (str(exc),))
             return None
@@ -561,9 +568,15 @@ class Workbench:
         lease: Lease,
         investigator: Investigator,
         request: IntakeRequest,
-        notes: list[dict[str, Any]],
     ) -> LoopOutcome:
         rebuilt = self.incidents.rebuild(incident_id)
+        # Human notes are read only once the lease is held: a note applied
+        # after this point advances the generation and fences this attempt's
+        # commits, so an attempt can never publish over a newer decision
+        # while carrying older notes. With PR #31 the notes reach the model
+        # through begin_round() inputs, frozen per round by the store; only
+        # the pre-#31 base composes them into the question here.
+        notes = [] if self.incidents.payload_supported else self._notes(incident_id)
         self.events.append(
             incident_id,
             "run_claimed",

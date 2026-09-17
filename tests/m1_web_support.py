@@ -22,7 +22,7 @@ from opspilot.investigation.loop import (
     InvestigationRequest,
     LoopOutcome,
 )
-from opspilot.investigation.store import StepStoreError
+from opspilot.investigation.store import MemoryStepStore, StepStoreError
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools import TransportResponse
 from opspilot.tools.outcomes import Window
@@ -83,9 +83,12 @@ class MemoryIncidentStore:
         self.incidents: dict[UUID, dict[str, Any]] = {}
         self.runs: dict[UUID, dict[str, Any]] = {}
         self.controls: list[dict[str, Any]] = []
+        self.inputs: list[dict[str, Any]] = []
         self._by_key: dict[str, UUID] = {}
 
     # -- helpers ------------------------------------------------------------
+
+    payload_supported = True
 
     def now(self):
         return self.clock.now()
@@ -166,7 +169,7 @@ class MemoryIncidentStore:
             "reservations": {},
         }
 
-    def control(self, incident_id, expected_generation, action, actor):
+    def control(self, incident_id, expected_generation, action, actor, payload=None):
         row = self.incidents.get(incident_id)
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
@@ -179,17 +182,26 @@ class MemoryIncidentStore:
             raise PersistenceError("INCONSISTENT_STATE")
         if row["state"] in {"cancelled", "completed"} or row["conclusion"] is not None:
             raise PersistenceError("ILLEGAL_TRANSITION")
-        if row["state"] == "paused" and action in {"pause", "follow_up", "correct"}:
+        # PR #31: a follow_up/correct that carries content is recorded while
+        # paused (input only; the run stays paused), a bare one is refused.
+        if (
+            row["state"] == "paused"
+            and action in {"pause", "follow_up", "correct"}
+            and payload is None
+        ):
             raise PersistenceError("ILLEGAL_TRANSITION")
         if action != "cancel" and run["state"] not in _CONTROL_OPEN:
             raise PersistenceError("ILLEGAL_TRANSITION")
         nxt = expected_generation + 1
         row["control_generation"] = nxt
+        # PR #31 keep_paused: a note recorded while paused keeps the incident
+        # paused and parks a running run; it never resumes anything.
+        keep_paused = row["state"] == "paused" and action in {"follow_up", "correct"}
         row["state"] = (
             "cancelled"
             if action == "cancel"
             else "paused"
-            if action == "pause"
+            if action == "pause" or keep_paused
             else "running"
         )
         transitions = {
@@ -203,6 +215,8 @@ class MemoryIncidentStore:
             "correct": ("queued", {"queued", "running", "waiting_human"}),
         }
         target, allowed = transitions[action]
+        if keep_paused:
+            target, allowed = "paused", {"running", "waiting_human"}
         for candidate in self.runs.values():
             if (
                 candidate["incident_id"] == incident_id
@@ -218,8 +232,20 @@ class MemoryIncidentStore:
                 "expected": expected_generation,
                 "resulting": nxt,
                 "actor": actor,
+                "payload": payload,
             }
         )
+        if action in {"follow_up", "correct"}:
+            self.inputs.append(
+                {
+                    "incident_id": incident_id,
+                    "sequence": len(self.inputs) + 1,
+                    "kind": action,
+                    "content": dict(payload or {}),
+                    "actor": actor,
+                    "control_generation": nxt,
+                }
+            )
         return nxt
 
     def new_run(self, incident_id, run_id, *, deadline, budget_limit, versions, actor):
@@ -418,8 +444,16 @@ class _MemoryCommitter:
         return run
 
     def begin_round(self, logical_key):
-        self._run()
-        return logical_key, []
+        run = self._run()
+        # Mirror DurableStore.begin_round (PR #31): hand the recorded human
+        # inputs of this incident to the round, keyed per attempt.
+        key = f"g{self._lease.control_generation}:e{run['epoch']}:{logical_key}"
+        inputs = [
+            {"sequence": i["sequence"], "kind": i["kind"], "content": i["content"]}
+            for i in self._store.inputs
+            if i["incident_id"] == self._lease.incident_id
+        ]
+        return key, inputs
 
     def assert_current(self) -> None:
         self._run()
@@ -506,6 +540,7 @@ class ScriptedInvestigator:
         self.replies = replies
         self.model_requests = model_requests
         self.contexts = []
+        self.models = []
 
     def investigate(self, context, committer, evidence):
         self.contexts.append(context)
@@ -531,6 +566,7 @@ class ScriptedInvestigator:
                 report_from_transcript,
             ]
         model = ScriptedModel(list(replies))
+        self.models.append(model)
         loop = InvestigationLoop(
             model=model, executor=executor, store=committer, clock=self.clock
         )
@@ -701,3 +737,21 @@ def submit_incident(app, *, key="demo-key-1", question="Why is checkout erroring
         {"target_id": "checkout-prod", "question": question, "idempotency_key": key},
         headers={**basic(), **same_origin()},
     )
+
+
+LOOP_HAS_INPUT_ROUNDS = hasattr(MemoryStepStore, "begin_round")
+
+
+def note_reached_investigation(workbench, investigator, text):
+    """The note is a recorded input and, where the loop has begin_round, was sent."""
+    recorded = any(i["content"].get("text") == text for i in workbench.incidents.inputs)
+    if not LOOP_HAS_INPUT_ROUNDS:
+        return recorded
+    sent = any(
+        "investigation_inputs" in str(m.get("content"))
+        and text in str(m.get("content"))
+        for model in investigator.models
+        for call in model.calls
+        for m in call.messages
+    )
+    return recorded and sent

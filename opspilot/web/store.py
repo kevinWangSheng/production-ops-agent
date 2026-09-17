@@ -10,6 +10,7 @@ state, generation or conclusion.
 
 from __future__ import annotations
 
+import inspect
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -58,8 +59,15 @@ class IncidentStore(Protocol):
     ) -> None: ...
 
     def control(
-        self, incident_id: UUID, expected_generation: int, action: str, actor: str
-    ) -> int: ...
+        self,
+        incident_id: UUID,
+        expected_generation: int,
+        action: str,
+        actor: str,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        """Apply one human decision; ``payload`` carries follow-up/correction content."""
+        ...
 
     def new_run(
         self,
@@ -98,6 +106,11 @@ class IncidentStore(Protocol):
     def run_ids(self, incident_id: UUID) -> frozenset[str]: ...
 
     def control_audit(self, incident_id: UUID) -> tuple[ControlAudit, ...]: ...
+
+    @property
+    def payload_supported(self) -> bool:
+        """Whether ``control()`` can carry follow-up/correction content (PR #31)."""
+        ...
 
     def now(self) -> datetime: ...
 
@@ -239,6 +252,15 @@ class DurableIncidentStore:
     def __init__(self, store: DurableStore) -> None:
         self._store = store
         self._clock = DurableClock(store)
+        # PR #31 adds ``payload`` to DurableStore.control (opspilot_controls.payload
+        # + opspilot_inputs). Detect it once so this adapter works on both bases.
+        self._payload_supported = (
+            "payload" in inspect.signature(store.control).parameters
+        )
+
+    @property
+    def payload_supported(self) -> bool:
+        return self._payload_supported
 
     def accept(
         self,
@@ -260,9 +282,25 @@ class DurableIncidentStore:
         )
 
     def control(
-        self, incident_id: UUID, expected_generation: int, action: str, actor: str
+        self,
+        incident_id: UUID,
+        expected_generation: int,
+        action: str,
+        actor: str,
+        payload: dict[str, Any] | None = None,
     ) -> int:
-        return self._store.control(incident_id, expected_generation, action, actor)
+        if payload is None:
+            return self._store.control(incident_id, expected_generation, action, actor)
+        if not self._payload_supported:
+            # Base without PR #31: the store has no payload column. The
+            # workbench then keeps the note in its ledger and composes it
+            # into the next attempt's question (read under the lease).
+            return self._store.control(incident_id, expected_generation, action, actor)
+        # mypy sees the pre-#31 signature on this branch; the guard above
+        # proves the parameter exists at runtime.
+        control: Any = self._store.control
+        result: int = control(incident_id, expected_generation, action, actor, payload)
+        return result
 
     def new_run(
         self,

@@ -276,40 +276,89 @@ def test_control_generations_and_late_results_on_postgres():
         "late_result",
     ]
     assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"
-    # Follow-up while paused is refused; resume then cancel then new Run.
+    # Pre-#31 base: a follow-up while paused is refused. With PR #31 the
+    # note is recorded as an input and the incident stays paused.
+    while_paused = ctl(
+        {
+            "action": "follow_up",
+            "expected_generation": "2",
+            "idempotency_key": "f2",
+            "text": "Noted while paused.",
+        }
+    )
+    if workbench.incidents.payload_supported:
+        assert while_paused.status == 200
+        assert workbench.list_incidents()[0].state == "paused"
+        generation = 3
+    else:
+        assert while_paused.status == 409
+        generation = 2
     assert (
         ctl(
             {
-                "action": "follow_up",
-                "expected_generation": "2",
-                "idempotency_key": "f2",
-                "text": "?",
+                "action": "resume",
+                "expected_generation": str(generation),
+                "idempotency_key": "r",
             }
-        ).status
-        == 409
+        ).json()["generation"]
+        == generation + 1
     )
     assert (
         ctl(
-            {"action": "resume", "expected_generation": "2", "idempotency_key": "r"}
+            {
+                "action": "cancel",
+                "expected_generation": str(generation + 1),
+                "idempotency_key": "c",
+            }
         ).json()["generation"]
-        == 3
-    )
-    assert (
-        ctl(
-            {"action": "cancel", "expected_generation": "3", "idempotency_key": "c"}
-        ).json()["generation"]
-        == 4
+        == generation + 2
     )
     renewed = ctl(
-        {"action": "new_run", "expected_generation": "4", "idempotency_key": "n"}
+        {
+            "action": "new_run",
+            "expected_generation": str(generation + 2),
+            "idempotency_key": "n",
+        }
     )
-    assert renewed.status == 200 and renewed.json()["generation"] == 5
+    assert renewed.status == 200 and renewed.json()["generation"] == generation + 3
     summary = workbench.list_incidents()[0]
-    assert summary.state == "queued" and summary.control_generation == 5
+    assert summary.state == "queued" and summary.control_generation == generation + 3
     assert len(workbench.incidents.run_ids(subject)) == 2
     # The renewed Run sees the follow-up text and completes.
     fresh = ScriptedInvestigator(_DbClock(store))
     outcome = workbench.run_once(subject, fresh)
     assert outcome is not None and outcome.execution == "completed"
-    assert "Check the canary too." in fresh.contexts[0].question
     assert workbench.snapshot(subject)["report"]["facts"]
+    if workbench.incidents.payload_supported:
+        # PR #31 path: the note is a durable input and reached the model as
+        # investigation_inputs; the composed question is untouched.
+        with store.transaction(snapshot=True) as conn:
+            inputs = conn.execute(
+                "SELECT kind,content FROM opspilot_inputs WHERE incident_id=%s ORDER BY sequence",
+                (subject,),
+            ).fetchall()
+        assert [(i["kind"], i["content"]["text"]) for i in inputs] == [
+            ("follow_up", "Check the canary too."),
+            ("follow_up", "Noted while paused."),
+        ]
+        with store.transaction(snapshot=True) as conn:
+            audit = conn.execute(
+                "SELECT payload FROM opspilot_controls WHERE incident_id=%s AND action='follow_up' ORDER BY resulting_generation",
+                (subject,),
+            ).fetchall()
+        assert [a["payload"]["text"] for a in audit] == [
+            "Check the canary too.",
+            "Noted while paused.",
+        ]
+        sent = [
+            m["content"]
+            for model in fresh.models
+            for c in model.calls
+            for m in c.messages
+            if "investigation_inputs" in str(m.get("content"))
+        ]
+        assert sent and "Check the canary too." in sent[0]
+        assert "Check the canary too." not in fresh.contexts[0].question
+    else:
+        # Pre-#31 base: the ledger note is composed into the question.
+        assert "Check the canary too." in fresh.contexts[0].question
