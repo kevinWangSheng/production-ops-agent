@@ -63,7 +63,7 @@
   suspension 判断第三个子句 `row.get("target_generation", 0) == 0 and row.get("target_suspended", False)`
   在其前一子句 `row["target_suspended"]` 同处一个 `or` 时恒为假，怀疑笔误。
 - 判定依据：
-  1. `DurableStore._connect` 用 `psycopg.rows.dict_row`（persistence.py:14,123），`row` 是普通 `dict`；
+  1. `DurableStore.transaction()` 用 `psycopg.connect(..., row_factory=dict_row)`（persistence.py:14,123），`row` 是普通 `dict`；
      `row["target_suspended"]` 与 `row.get("target_suspended", False)` 读的是同一个已存在的键，值必然相同。
      `or` 短路意味着只有前一子句为 `False` 时才会求值第三子句，而此时它的第二个合取项已经等于 `False`——
      无论 `target_generation` 取何值，第三子句都不可能为真，这是纯逻辑上不可达的死代码，不依赖任何具体状态。
@@ -91,6 +91,10 @@
   `target_generation==0` 不单独触发拒绝）；`test_m1_durable_state_postgres.py` 41 passed（与修复前一致）；
   `make check`：1444 passed, 99 skipped, 2 xfailed，ruff check/format、mypy 通过（skipped 从 98→99 是新增
   PG 测试在非 PG 模式下多跳过 1 条，预期内）。PG lab 已 stop。
+- 独立审查（全新上下文子代理，未参与本次改动讨论，自行重跑上述 PG/`make check` 并逐行核对代码与文档）：
+  确认删除安全、C3「解除暂停不自动恢复旧任务」语义由独立路径落实、测试数字与文档一致；指出文档一处笔误
+  （误写方法名 `DurableStore._connect`，实际是 `transaction()`），已按审查意见修正为
+  `DurableStore.transaction()`。审查未发现需要变更代码的问题。
 
 ## 合并顺序提醒：`_call_model` 需要 #29 的 `reservation` 结算变量（rebase 待办）
 
