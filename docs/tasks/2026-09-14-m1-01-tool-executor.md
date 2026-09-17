@@ -428,3 +428,37 @@ PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
 
 在此之前，PR #20 的 `mergeStateStatus` 为 `BLOCKED`（`mergeable` 为 `MERGEABLE`），
 **不能按「CI 全绿」交付**。
+
+## 跨 PR 红线审计 P2-3 处置（2026-09-17）：工具预算跨 attempt 持久化
+
+- 依据：对 `integration/m1-01-full`@e42d7b7 的只读审计第 6 节 P2-3；C3 第 13 节
+  「预算在 PostgreSQL 原子预留和结算，未知费用保持占用，重启不能重置预算」。
+- 归属判定：`_operations_used`/`_tool_seconds_used` 只存在本分支的
+  `opspilot/tools/executor.py`（`git diff origin/main...feature/m1-01-tool-executor`
+  只新增文件，main 无执行器）；持久化侧是新增代码，与执行器同一交付。产品当前没有把
+  执行器接进 `Workbench.run_once`/`Worker` 的组合代码（`grep ReadOnlyToolExecutor(`
+  仅命中测试夹具 `tests/m1_tool_support.py::build`），因此修在接口层。
+- 修复（提交 `28f0b2b`，从集成分支 `7c3ff53` cherry-pick，`charge_tool` 按 main 的
+  租约栅栏写法重写，语义一致）：
+  - 执行器新增 `ToolUsage`/`ToolUsageLedger`，构造必须传 `ledger`；起点取
+    `ledger.usage()`，每次派发前 `charge(op, 0.0)` 记次数、派发后 `charge(op, elapsed)`
+    结算秒数；ledger 不可用 → 派发前拒绝 `CONTROL_UNAVAILABLE`、派发后不采纳
+    （与 `EVIDENCE_NOT_COMMITTED` 同一 fail-closed 规则）。
+  - `DurableStore`：`opspilot_runs` 新列 `tool_operations_used`/`tool_seconds_used`
+    （沿用 `install()` 的 `ADD COLUMN IF NOT EXISTS`），新表 `opspilot_tool_charges`
+    按 `(run, epoch, operation)` 去重，`charge_tool()` 走租约栅栏。
+  - `opspilot/tools/ledger.py::DurableToolLedger(store, lease)` 从 `rebuild()` 读已用量。
+  - 冻结上限 20 次/240 s 未改；不改验收步骤。
+- 复现与验证：
+  - 修复前（旧执行器，脚本）：同一 Run 第二个执行器实例再次派发 20 次、累计 240 s。
+  - 修复后：`tests/integration/test_m1_tool_budget_postgres.py`
+    `::test_second_attempt_of_the_same_run_inherits_used_operations_and_seconds`
+    （第二 attempt 起点 3 次/18 s，全 Run 到 20 次即拒绝 `OPERATION_BUDGET_EXHAUSTED`），
+    以及 charge 幂等、租约栅栏两条；`tests/test_m1_tool_boundaries.py` 末尾 6 条单元测试。
+  - 本分支 `make check`：`1216 passed, 78 skipped, 2 xfailed`；
+    PG 定向：`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py
+    tests/integration/test_m1_durable_state_postgres.py` → `24 passed`。
+- 独立审查：见集成侧报告（scratchpad `reports/storefix.md`）的处置表；结论以本记录后续更新为准。
+- 未完成/交接：产品组合层（loop/worker/web 服务）尚未把 `DurableToolLedger` 接入，
+  接入属对应 PR 的范围；`#29` 的 `MemoryStepStore`/`#33` 的 `ScriptedInvestigator`
+  经 `build()` 默认取内存 ledger，行为不变。
