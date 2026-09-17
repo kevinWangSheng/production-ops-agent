@@ -428,3 +428,52 @@ PR #20 最新提交的 CI：`m0-postgres` **pass**，`checks` **fail**。
 
 在此之前，PR #20 的 `mergeStateStatus` 为 `BLOCKED`（`mergeable` 为 `MERGEABLE`），
 **不能按「CI 全绿」交付**。
+
+## 跨 PR 红线审计 P2-3 处置（2026-09-17）：工具预算跨 attempt 持久化
+
+- 依据：对 `integration/m1-01-full`@e42d7b7 的只读审计第 6 节 P2-3；C3 第 13 节
+  「预算在 PostgreSQL 原子预留和结算，未知费用保持占用，重启不能重置预算」。
+- 归属判定：`_operations_used`/`_tool_seconds_used` 只存在本分支的
+  `opspilot/tools/executor.py`（`git diff origin/main...feature/m1-01-tool-executor`
+  只新增文件，main 无执行器）；持久化侧是新增代码，与执行器同一交付。产品当前没有把
+  执行器接进 `Workbench.run_once`/`Worker` 的组合代码（`grep ReadOnlyToolExecutor(`
+  仅命中测试夹具 `tests/m1_tool_support.py::build`），因此修在接口层。
+- 修复（提交 `28f0b2b`，从集成分支 `7c3ff53` cherry-pick，`charge_tool` 按 main 的
+  租约栅栏写法重写，语义一致）：
+  - 执行器新增 `ToolUsage`/`ToolUsageLedger`，构造必须传 `ledger`；起点取
+    `ledger.usage()`，每次派发前 `charge(op, 0.0)` 记次数、派发后 `charge(op, elapsed)`
+    结算秒数；ledger 不可用 → 派发前拒绝 `CONTROL_UNAVAILABLE`、派发后不采纳
+    （与 `EVIDENCE_NOT_COMMITTED` 同一 fail-closed 规则）。
+  - `DurableStore`：`opspilot_runs` 新列 `tool_operations_used`/`tool_seconds_used`
+    （沿用 `install()` 的 `ADD COLUMN IF NOT EXISTS`），新表 `opspilot_tool_charges`
+    按 `(run, epoch, operation)` 去重，`charge_tool()` 走租约栅栏。
+  - `opspilot/tools/ledger.py::DurableToolLedger(store, lease)` 从 `rebuild()` 读已用量。
+  - 冻结上限 20 次/240 s 未改；不改验收步骤。
+- 复现与验证：
+  - 修复前（旧执行器，脚本）：同一 Run 第二个执行器实例再次派发 20 次、累计 240 s。
+  - 修复后：`tests/integration/test_m1_tool_budget_postgres.py`
+    `::test_second_attempt_of_the_same_run_inherits_used_operations_and_seconds`
+    （第二 attempt 起点 3 次/18 s，全 Run 到 20 次即拒绝 `OPERATION_BUDGET_EXHAUSTED`），
+    以及 charge 幂等、租约栅栏两条；`tests/test_m1_tool_boundaries.py` 末尾 6 条单元测试。
+  - 本分支 `make check`：`1216 passed, 78 skipped, 2 xfailed`；
+    PG 定向：`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py
+    tests/integration/test_m1_durable_state_postgres.py` → `24 passed`。
+- 独立审查：见集成侧报告（scratchpad `reports/storefix.md`）的处置表；结论以本记录后续更新为准。
+- 未完成/交接：产品组合层（loop/worker/web 服务）尚未把 `DurableToolLedger` 接入，
+  接入属对应 PR 的范围；`#29` 的 `MemoryStepStore`/`#33` 的 `ScriptedInvestigator`
+  经 `build()` 默认取内存 ledger，行为不变。
+
+### P2-3 独立审查处置（2026-09-17，全新上下文只读子代理，model sonnet）
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | P2 | 本分支 `charge_tool` 把 `lease_until IS NULL` 判为撤销，而同文件另三条写路径（main 旧写法）容忍 NULL | 采纳为记录：保留更严口径（与 PR #26 收敛后的 `_lease_revoked` 一致，方向只更严），加注释说明（`ffd3161`）；回改另三条属 #26 范围，不在本 PR 动 |
+| 2 | P2 | 「进程中途死掉仍计次」的同 operation_id 跨 epoch 情形无测试；键含 epoch 意味着重派发会再计一次 | 采纳：这是有意的设计（C3 §7 未提交结果可能需要有界重复，真实第二次查询；累计只增不减），`charge_tool` docstring 写明理由，新增 PG 用例 `test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again`（`988ec90`） |
+| 3 | P3 | `DurableToolLedger.usage()` 的异常在执行器构造时未被捕获 | 采纳：构造时 `ledger.usage()` 异常 → `ToolContractError("LEDGER_UNAVAILABLE")`，不从零开始（`988ec90`） |
+| 4 | P3 | 本地 `_operations_used` 在派发前 charge 确认之前就自增 | 采纳：自增移到 charge 成功之后，单元测试补断言（`988ec90`） |
+| 5 | P3 | 派发后结算失败时，持久秒数停留在 0 s（次数保留），本地总量含实测秒数 | 记录不改：窗口极窄、方向为保守（结果不采纳、次数已计），注释写明 |
+| 6 | P3 | （属 P2-2）blocked 后版本对回来再领取无测试 | 在 PR #34 补断言，本 PR 无关 |
+
+审查同时确认：双 charge 协议同 epoch 内幂等；fail-closed 路径不外泄异常文本、不登记证据；锁顺序与 `install()` 演进方式与本文件一致；`bool` 被类型校验拒绝；冻结上限未改；无范围外改动。
+
+复验（本分支 `ffd3161`）：`make check` → `All checks passed!` / `Success: no issues found in 18 source files` / `1216 passed, 79 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_tool_budget_postgres.py tests/integration/test_m1_durable_state_postgres.py` → `25 passed`。

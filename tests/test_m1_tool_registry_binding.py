@@ -13,6 +13,7 @@ from tests.m1_tool_support import (
     FakeClock,
     FakeTransport,
     FixedControl,
+    RecordingLedger,
     RecordingSink,
     body,
     build,
@@ -55,6 +56,7 @@ def test_old_scope_is_denied_before_transport_after_contract_change(change):
         evidence=sink,
         control=FixedControl(),
         clock=FakeClock(),
+        ledger=RecordingLedger(),
     )
 
     outcome = executor.execute(request())
