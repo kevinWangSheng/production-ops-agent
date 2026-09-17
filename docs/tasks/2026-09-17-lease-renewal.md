@@ -1,6 +1,6 @@
 # DurableStore 租约续期（renew_lease）
 
-- 状态：实现中（PR 待 CI）
+- 状态：PR #35 已就绪，待用户审核合并
 - 更新日期：2026-09-17
 - 依据：`docs/design/technical-proposal-2026-09-07.md` 第 6 节「续租和提交均校验执行身份与租约」与第 7 节提交一致性；`PRODUCT-CONSTRAINTS.md`「Runtime and human control requirements」（worker 重启/迟到完成不得抹掉更新的人工决定）；PR #33 描述与 UI 端到端 smoke 报告路径 6 指出的缺口。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-lease`，分支 `fix/lease-renewal`（自 `origin/main` `b483a12`）。
@@ -46,6 +46,13 @@
 ## 接线建议（不在本 PR 实施）
 
 见报告；摘要：`run_once` 用短租约（建议 420 s = 模型单请求上限 360 s + 60 s 余量）claim，并在 `_EmittingCommitter` 每次 `begin_round`/`commit_step`/`commit_tool`/`reserve_budget` 前 `renew_lease(lease, 420)`；`Worker.resume` 同样在 `execute_pending` 每个工具前续期。续期 `CONTROL_DENIED` 即按现有 handoff 路径停止。
+
+## PR 与 CI
+
+- PR #35 https://github.com/kevinWangSheng/production-ops-agent/pull/35，HEAD `96deefa`。
+- CI：`checks` pass（55 s）、`m0-postgres` pass（46 s，`M1_DURABLE_POSTGRES=1` 跑 `tests/integration`：`54 passed, 38 skipped`，含本任务新文件）；`mergeStateStatus=CLEAN`、`mergeable=MERGEABLE`。
+- 机器人审查：Codex Code Review 状态 Failed（未返回任何发现或 inline comment），Security Review 运行中；按 AGENTS.md 不作为交付门槛。无 review thread 需处置。
+- 合并由用户审核后自行执行；本任务未授权自动合并。
 
 ## 下一步
 
