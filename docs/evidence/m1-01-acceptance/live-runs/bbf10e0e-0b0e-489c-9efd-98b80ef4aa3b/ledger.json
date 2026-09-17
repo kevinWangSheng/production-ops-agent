@@ -1,0 +1,66 @@
+{
+  "experiment": "m1-01-flash-loop",
+  "run_id": "bbf10e0e-0b0e-489c-9efd-98b80ef4aa3b",
+  "ledger_id": "a78ed47b-ae95-4d89-ad0e-7251a1ab5db3",
+  "started": "2026-09-17T15:05:53.982168+00:00",
+  "ended": "2026-09-17T15:06:05.679199+00:00",
+  "model": "deepseek-flash",
+  "http_count": 2,
+  "attempts": [
+    {
+      "elapsed_seconds": 1.646,
+      "finish_reason": "tool_calls",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1082,
+        "completion_tokens": 257,
+        "total_tokens": 1339,
+        "prompt_tokens_details": {
+          "cached_tokens": 896
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 175
+        },
+        "prompt_cache_hit_tokens": 896,
+        "prompt_cache_miss_tokens": 186
+      },
+      "tool_call_count": 2,
+      "json_mode": false
+    },
+    {
+      "elapsed_seconds": 10.046,
+      "finish_reason": "stop",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1643,
+        "completion_tokens": 2096,
+        "total_tokens": 3739,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 646
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 1131
+      },
+      "tool_call_count": 0,
+      "json_mode": true
+    }
+  ],
+  "known_cost_cny_upper": 0.02658,
+  "prompt_tokens": 2725,
+  "completion_tokens": 2353,
+  "execution": "completed",
+  "handoff": false,
+  "handoff_reasons": [],
+  "report_schema_version": "m0-report-v2",
+  "report_content_sha256": "8925635e701b49a4a18e589e50930e9657a65c82c4e0ce038175e7366581b6c9",
+  "evidence_ids": [
+    "591a5c52-e3b9-417e-818a-514dd9cd11ba-t0",
+    "591a5c52-e3b9-417e-818a-514dd9cd11ba-t1"
+  ],
+  "steps_committed": 2,
+  "prompt_revision": "prompt-replay-candidate-017c81744c26",
+  "question_sha256": "f80e06ae3d43b9e57e3c7e82edc9006c86ca07d7f39c8b62872f362451e92bbe"
+}
