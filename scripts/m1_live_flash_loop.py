@@ -26,7 +26,13 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import WINDOW_END, WINDOW_START, body, build, registration
+from tests.m1_tool_support import (
+    WINDOW_START,
+    body,
+    build,
+    historical_window_context,
+    registration,
+)
 
 LIVE_TOOL = "metrics_range_query"
 TOOL_SCHEMAS = (
@@ -59,21 +65,9 @@ TOOL_SCHEMAS = (
 # The loop binds each delivered view to the time policies it is eligible for
 # (``eligible_time_policies``) and fails closed: a policy without ``mode`` and
 # ``window`` is never worn by a view, so every fact citing it is REPORT_INVALID
-# even when the model followed the report contract. The fixture window equals
-# the authorized query window, so the historical policy covers every view.
-EVIDENCE_CONTEXT = {
-    "type": "opspilot-evidence-context-v4",
-    "time_policies": [
-        {
-            "id": "policy-window-1",
-            "mode": "historical_window",
-            "window": {
-                "start": WINDOW_START.isoformat(),
-                "end": WINDOW_END.isoformat(),
-            },
-        }
-    ],
-}
+# even when the model followed the report contract. Share the fixture builder
+# with the loop doubles instead of hand-writing the context here.
+EVIDENCE_CONTEXT = historical_window_context()
 QUESTION = (
     "Checkout appears to show elevated HTTP errors. Query the authorized "
     "metrics and return a json investigation report for the authorized window."

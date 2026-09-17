@@ -31,6 +31,30 @@ NOW = datetime(2026, 9, 14, 1, 5, tzinfo=timezone.utc)
 TRANSPORT_ONLY_MARKER = "transport-only-marker-not-a-real-value"
 
 
+def historical_window_context():
+    """The v4 evidence context every fixture Run hands the loop.
+
+    One historical_window policy over the authorized fixture window, so a
+    delivered view can wear ``policy-window-1`` and the model's facts bind.
+    The loop fails closed on a policy without ``mode``/``window``; build the
+    context here instead of by hand so the live script, the loop doubles and
+    the web double cannot drift apart again.
+    """
+    return {
+        "type": "opspilot-evidence-context-v4",
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+    }
+
+
 class FakeClock:
     def __init__(self, start=NOW, monotonic=1_000.0):
         self._now = start
