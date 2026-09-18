@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：`facb64d` 推送后机器人先后共追加 6 条新发现（5 条 + 后续单条 `client.py` sub-100ms 预算下限），已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`），两轮独立审查均确认全部「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、29 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：`facb64d` 推送后机器人先后共追加 7 条新发现，已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`/`929ee54`），三轮独立审查均确认全部「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、30 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；不手动触发 `@codex review`；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-18
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -847,3 +847,74 @@ PG 定向测试在独立审查的沙箱环境里无本地 PostgreSQL，未能重
 - 机器人审查处置：GraphQL 核查 reviewThreads 共 29 条。本条新增发现
   已回复处置说明（引用修复提交、测试、独立审查结论）并
   `resolveReviewThread`；复查确认全部 29 条 resolve，无新增。
+
+## 追加（2026-09-18 三续：`929ee54` 处置第 7 条机器人发现，空 v4 catalog fail-closed）
+
+`1ba0e23` 推送后，`chatgpt-codex-connector` 又追加 1 条新 review thread
+（comment 4045327020，P1，`reports.py:601`，2026-09-18T09:04:08Z）。
+
+### 发现 7（P1，`reports.py:601`）—— 空 v4 catalog 未 fail-closed
+
+- **问题**：`context_target_catalog()` 无论「context 完全没有
+  `target_catalog`」还是「`target_catalog` 存在但为空字典 `{}`」都统一
+  返回 `{}`；`unsupported_citations()` 的 `catalog = dict(target_catalog)
+  if target_catalog else {}` + `if catalog:` 真值判断对两种情况都判定为
+  假，无法区分。一个合法提供了 `target_catalog: {}`（零个不透明 key）
+  的 v4 context 会被误当成「完全没有 catalog」，落回旧的「直接比对注册表
+  `target_id`」路径——而这正是不透明 v4 catalog 存在的目的所要防止的事。
+  新鲜工具调用产生的 `DeliveredView.target_ids` 仍会带上注册表原始
+  target_id，所以一个 supported fact 可以直接引用它，绕过空 catalog
+  本该造成的「零个合法 key、任何引用都不合法」的约束。
+- **修复**（`929ee54`）：`context_target_catalog()` 返回类型改为
+  `dict[str, str | None] | None`：`context` 不是 Mapping、或
+  `target_catalog` 键不是 Mapping（即「完全未提供」）时返回 `None`；只要
+  `target_catalog` 本身是 Mapping（哪怕过滤后为空）就返回实际的
+  （可能为空的）dict。`unsupported_citations()` 把真值判断
+  `if catalog:` 改为身份判断 `if target_catalog is not None:`，使
+  「显式提供空 catalog」正确落入 v4 分支并对任何 `target_refs` 判定失败
+  （因为空字典里不存在任何 key）。`loop.py` 里另一处不关心 None/空区分
+  的调用点（`DeliveredView.target_ids` 的别名查找，用 `catalog.items()`）
+  改用 `(context_target_catalog(...) or {})` 兼容，避免对 `None` 调用
+  `.items()`。
+- **测试**：`test_an_empty_v4_catalog_fails_closed_for_a_freshly_
+  collected_view` 新增：`target_catalog: {}` + 真实工具调用产生的新鲜
+  view，报告经 `report_from_transcript` 默认引用原始注册表 target_id
+  `"checkout-prod"`，断言 `execution == "failed"`、
+  `handoff_reasons == ("REPORT_INVALID",)`（旧代码会误判为
+  `"completed"`）。先红后绿。
+- **独立审查（全新上下文子代理）**：逐项核实：`None` 只在真正「未提供」
+  时返回，一个 key 形状全部非法（如 `{123: {...}}`）的 catalog 过滤后
+  仍正确返回 `{}` 而非 `None`；`unsupported_citations()` 新分支对「非
+  fact-like claim 的空 `target_refs`」（`any()` 对空可迭代对象恒假，不会
+  被误拒）与「fact-like claim 的非空 `target_refs`」（`ClaimV2.
+  explicit_fact_scope` 强制非空，任何 ref 在空字典里都找不到，正确拒绝）
+  两种情况分别验证；`loop.py` 调用点的 `or {}` 不改变该处既有行为；
+  grep 全仓确认只有这两处调用点。判定「正确、最小、可安全维持」，无
+  发现。
+
+### 验证证据
+
+- `make check`（`929ee54` 上）→ `ruff check`/`ruff format --check`/
+  `mypy` 全干净；`pytest` **1370 passed, 86 skipped, 2 xfailed**
+  （较上一节 1369 净增 1，即本条新用例）。
+- PG 定向：55431 端口本次全程空闲（`lsof` 确认），直接
+  `postgres_lab start` → `M1_DURABLE_POSTGRES=1 pytest tests/integration/
+  test_m1_durable_state_postgres.py tests/integration/
+  test_m1_tool_budget_postgres.py -q` → **32 passed**；用完立即
+  `postgres_lab stop`（确认端口转空）。
+- 推送与 CI：`929ee54` 已推送；`workflow_dispatch` 触发 run
+  `35329891182`，`completed`/`success`。
+- PR 状态：`gh pr view 29` → `mergeStateStatus=CLEAN`、
+  `mergeable=MERGEABLE`。
+- base 分支（PR #20）状态：推送前核实 `origin/feature/m1-01-tool-
+  executor` 又前进（最终 HEAD `e60fc75`），本地 `git merge-tree` dry-run
+  与 GitHub `mergeStateStatus` 均确认仍为 `CLEAN`，未执行合并。
+- 机器人审查处置：**踩坑记录**——首次用 `gh api ... -f body="..."`
+  （双引号内联字符串）回复该 thread 时，body 里的反引号被 shell 当作
+  命令替换执行，导致回复正文里 `` `loop.py` `` 一段被吞掉（shell 报
+  `command not found: loop.py`，但 API 调用仍返回了 200，正文已损坏且
+  已发布）；发现后改用 `gh api ... -X PATCH -F body=@<文件路径>`（`-F`
+  而非 `-f`，读取文件内容而非当字面量字符串）重新提交并核对正文完整，
+  已更正。GraphQL 复查 reviewThreads 共 30 条，本条已回复（更正后的
+  完整正文）并 `resolveReviewThread`；全部 30 条 resolve，无新增。用户
+  已明确指示本轮处置完毕后不再手动触发 `@codex review`，未触发。
