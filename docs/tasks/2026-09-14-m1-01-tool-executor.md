@@ -817,3 +817,75 @@ per-Run 值）脱钩；若某个 Run 被授权的上限低于 20，两个执行�
 
 第 6 项遗留：是否把「结算失败丢秒数」的处置从「记录不改」升级为需要持久化保守预留，
 以及上述 `max_operations` 脱钩的交接项优先级，均待用户或后续任务决定，本轮不自行选择。
+
+## 13. 机器人 code review 第二轮三条 thread 处置（2026-09-18）
+
+推送第 12 节的 6 条处置（`fb28026`）后，`@codex review` 在当前 HEAD 上又留下 3 条新的未处理
+inline review thread（`mergeStateStatus` 再次变为 `BLOCKED`），逐条核实、处置、回复并 resolve：
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `persistence.py` `charge_tool`（`executor.py:530` 触发点） | P1 | 预派发充值固定记 `seconds=0.0`，真实耗时只在 fetch 后结算时才写入；两个共享同一 Run 的执行器即使都在预记账处按行锁串行，彼此在预记账阶段都看不到对方"即将花掉的时间"，`tool_seconds_used` 250s 上限（冻结值 240s）可被超订 | 采纳（机制成立），**本轮不实现代码修复，作为已确认交接项记入** | 与既有「计次」竞态（第 12 节第 5 项）的关键区别：计次修复能生效是因为预记账**立即真实自增 1**，第二个事务能看到；秒数预记账**刻意**记 0，不产生可被下一个事务看到的变化——单纯在锁内重读判断关不上洞。验证过"预记账直接充满 timeout"的朴素写法：会撞上 `delta = max(0.0, 实际-已记录)` 这条已测试保护的"结算不向下修正"不变量，导致每次操作都按预留上限永久计费，方向相反的新错误。正确修复需要仿照已有 `reserve_budget()`/`opspilot_budget_reservations` 做真正的预留/结算两阶段协议（新增列区分"预留中"/"已结算"、覆盖崩溃恢复语义），是一次协议改造而非本轮量级的小修。已确认当前不可利用：`grep` 全仓库确认组合层（#29/#30/#33）未构造任何 `ReadOnlyToolExecutor`/`DurableToolLedger` 实例，不存在针对同一 Run 的并发执行器 | 不适用（未改代码） |
+| 2 | `executor.py:887`（`_result_rows`） | P2 | `{"data":{"result":["\ud800"]}}` 这类体积合规的响应，`json.loads` 正常解码成功（孤立代理项是合法 Python str），但 `_fit_rows()` 随后对该行 `canonical(row).encode("utf-8")` 抛 `UnicodeEncodeError`，未被此前的 JSON 解码器上限修复捕获——那次只包住 `json.loads()` 本身，这次失败发生在解码成功之后的规范化重编码阶段 | 采纳 | `_result_rows()` 确认 `cursor` 为列表后，新增对每一行的规范化可编码性校验，`except (ValueError, RecursionError)` 时按既有"结构不合法"口径返回 `(None, payload)`，与 result_path 缺失/游标非列表走同一条 `MALFORMED_RESULT` 路径 | `42bb69d` |
+| 3 | `registry.py:371`（`RegisteredTarget.__post_init__`） | P2 | 配置形如 `https://metrics.internal/api?token=secret` 的查询鉴权/预签名端点，既有正则接受、既有校验只挡 userinfo（`@` 前部分），密文原样存入 `RegisteredTarget.endpoint` 并流入每次 `TransportRequest.endpoint`，绕开 `credential_ref` 不透明句柄间接层 | 采纳 | 在既有 userinfo 检查之后新增：端点包含 `?` 或 `#` 一律拒绝（而非枚举"像凭据"的具体参数名——presigned URL 的签名参数名因厂商而异，枚举必然被绕过；请求期查询参数本就该走 `TransportRequest.params`） | `97785c4` |
+
+第 2、3 项均先复现（红：证明缺陷存在）再修复（绿），并做了变异验证（改回旧逻辑确认对应新测试
+转红，随后精确还原并与保存的 `git diff` 补丁逐字节核对一致）。
+
+**独立审查**（全新上下文只读子代理，未参与实现，只给目标、3 条机器人原文、`git diff fb28026..HEAD`；
+过程中两次误用 `git checkout --` 被本会话权限规则拦下，均已按无损方式——`git diff > patch` 与
+`git apply -R`/直接编辑还原、`diff` 核对——纠正后继续，未丢失任何工作）：
+
+- 第 3 项（credential query/fragment）：确认「整体拒绝」优于「凭据参数名黑名单」——预签名 URL 的
+  签名参数名因厂商而异（`X-Amz-Signature`/`X-Goog-Signature`/SAS `sv`/`se`/`sp` 等），黑名单必然
+  留有维护债务；`RegisteredTarget` 只由人工审阅过的运营配置构造，误伤成本接近零。判定「可以按现状
+  推送，无阻塞发现」。
+- 第 1 项（时间预算竞态）：独立复核了竞态机制、朴素修复为何破坏既有"结算不向下"不变量、
+  `reserve_budget()` precedent 的适用范围（指出该模式目前只有"准入"半边有真实实现，"结算"半边在
+  本仓库尚不存在，因此"参照现有模式"低估而非高估了本轮工作量）、以及当前不可触发的结论，均独立
+  验证通过。**同意本轮延后的工程判断**，但指出与第 12 节 `max_operations` 脱钩交接项的一个关键
+  差异：脱钩交接项失效方向是更保守的全局上限，而这条一旦可触发就是真正的预算超支，两者「当前都
+  安全可延后」但优先级不应被同等对待——建议组合层接入并发调度时优先处理这一项。
+- **第 2 项（JSON 规范化崩溃）：独立审查指出本轮修复不完整**，发现并用可执行复现证明了同一失败类型
+  的第二条、当前即可触发的路径：`_record()` 里 `view["query"] = dict(plan.params)`
+  （`executor.py:774`）把模型提供的工具调用参数原样存入 `view`，随后 `view_sha256=canonical_hash(view)`
+  （`executor.py:800`）对整个 `view` 调用 `.encode("utf-8")`；`ParameterSpec.accepts()` 对 `string`
+  类型参数只做 `isinstance` 检查，不做可编码性校验，因此模型传入 `{"expr": "\ud800"}` 这样的参数
+  会在 `_record()` 内触发同一 `UnicodeEncodeError`，且这条路径不需要任何尚未接线的组合层代码——
+  每次 `_run()`（包括被拒绝/失效的结果）都会执行到这里。已独立复现确认（构造
+  `ToolRequest(params={"expr": "\ud800"})` 直接调用 `executor.execute()`，复现出与报告一致的堆栈）。
+
+采纳复核意见，追加第 4 项修复（`9b38412`）：`_accept_params()` 对声明为 `string` 类型的参数值，
+通过既有 `isinstance` 校验后新增 `value.encode("utf-8")` 尝试，`except ValueError`
+（`UnicodeEncodeError` 的父类）时返回 `INVALID_PARAMS`，在证据构造之前、输入边界处就把这类值挡下，
+不必在 `_record()` 深处再包一层。新增测试
+`test_a_string_parameter_holding_a_lone_surrogate_is_an_input_error`：变异验证——删掉新增校验后
+测试转红，复现出与独立审查报告完全一致的 `canonical_hash(view)` 处 `UnicodeEncodeError` 堆栈；
+恢复后与保存补丁逐字节核对一致，测试转绿。
+
+全部 3 条已在 GitHub 上逐条回复（引用具体提交、测试与变异验证；第 2 项回复已更新，补充说明
+`_authorize()` 里 `operation.query = canonical(params)` 本身确实不会崩溃这一结论成立但不完整，
+并记录追加的第三条 `_accept_params()` 修复）并 `resolveReviewThread`；`gh api graphql` 复核
+`reviewThreads` 当前 12 条（含此前第 12 节 9 条）全部 `isResolved: true`。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 422 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1261 passed, 81 skipped, 2 xfailed
+```
+
+`exit=0`。本轮改动只涉及 `opspilot/tools/executor.py`（+24）、`opspilot/tools/registry.py`（+8）、
+`tests/test_m1_tool_outcomes.py`（+22）、`tests/test_m1_tool_registry.py`（+11），未触碰
+`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/`pyproject.toml`/`uv.lock`
+（`git diff --stat` 逐一确认为空）。第 1 项未改代码，不需要额外 PG 定向验证；第 2、4 项均为内存路径，
+不涉及持久层，沿用本节已跑的内存测试套件即可。
+
+### 未完成/限制
+
+- 时间预算竞态（本节第 1 项）：已确认机制成立、当前不可触发，作为交接给 #29/#30/#33 接线任务的
+  已知项，本轮不实现修复；独立审查建议接线并发调度时优先于 `max_operations` 脱钩项处理。
+- 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
+- F3/F7 的 `passes` 保持 `false`。
