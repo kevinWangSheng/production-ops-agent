@@ -615,7 +615,12 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
 # sends to the model. Known limit, not a gap this projection can close: a
 # credential pasted directly into the ``text`` free-text string itself still
 # reaches the model -- only structured-field smuggling is in scope here.
-_INPUT_CONTENT_FIELDS = frozenset({"text", "channel"})
+# ``question`` is included alongside ``text``/``channel`` because it is the
+# payload shape this PR's own follow_up test already persists and reads back
+# (tests/integration/test_m1_control_completion_postgres.py); dropping it
+# would silently empty out a real follow-up's content instead of blocking a
+# credential.
+_INPUT_CONTENT_FIELDS = frozenset({"text", "channel", "question"})
 
 
 def _project_input_content(content: object) -> dict[str, Any]:

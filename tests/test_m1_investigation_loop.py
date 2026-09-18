@@ -701,6 +701,42 @@ def test_investigation_inputs_only_send_the_allowlisted_text_and_channel_fields(
         assert dropped_key not in outbound
 
 
+def test_investigation_inputs_preserve_the_question_field_follow_up_payloads_use():
+    """The follow_up payload shape this PR's own PG test persists and reads
+    back (``{"question": "why"}``) must still reach the model -- the
+    allowlist must not silently empty a real follow-up's content just
+    because it used a field name other than ``text`` (chatgpt-codex-connector
+    review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"question": "why", "api_key": "sk-leak"},
+            }
+        ],
+    )
+    loop.run(request)
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert outbound == (
+        '{"investigation_inputs":[{"content":{"question":"why"},'
+        '"kind":"follow_up","sequence":1}]}'
+    )
+    assert "sk-leak" not in outbound
+
+
 def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     loop, request, model, _, store, _ = assemble(
         replies=[
