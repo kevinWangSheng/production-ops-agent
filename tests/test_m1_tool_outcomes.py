@@ -15,6 +15,7 @@ import pytest
 
 from opspilot.tools import (
     PROJECTION_REVISION,
+    ParameterSpec,
     TransportResponse,
     TransportResultTooLarge,
     TransportTimeout,
@@ -245,6 +246,33 @@ def test_a_string_parameter_holding_a_lone_surrogate_is_an_input_error():
     transport.response = TransportResponse(body=body(rows=[]))
 
     outcome = executor.execute(request(params={"expr": "\ud800"}))
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert outcome.source_contact == "none"
+    assert not transport.called and sink.records == []
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_numeric_parameter_is_an_input_error(bad):
+    """Bot review finding: ``NaN``/``Infinity`` are valid Python ``float``
+    values -- ``ParameterSpec.accepts()`` only ``isinstance`` checks a
+    ``number`` parameter -- but ``canonical()`` serializes them as the bare,
+    non-standard JSON tokens ``NaN``/``Infinity`` (``json.dumps``'s default),
+    which a strict transport-side deserializer may reject or a source may
+    interpret inconsistently, letting a model-supplied query value escape
+    the declared JSON contract.
+    """
+
+    custom = registration(
+        parameters={
+            "expr": ParameterSpec("string", required=True),
+            "magnitude": ParameterSpec("number"),
+        }
+    )
+    executor, transport, sink, _ = build(registrations=[custom])
+    transport.response = TransportResponse(body=body(rows=[]))
+
+    outcome = executor.execute(request(params={"expr": "ok", "magnitude": bad}))
 
     assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
     assert outcome.source_contact == "none"

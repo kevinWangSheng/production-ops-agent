@@ -28,6 +28,7 @@ source is returned as a :class:`~opspilot.tools.outcomes.ToolOutcome`.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
@@ -882,6 +883,15 @@ def _accept_params(
                 # but via the params input instead (independent review
                 # finding on top of that fix).
                 return None, "INVALID_PARAMS"
+        if isinstance(value, float) and not math.isfinite(value):
+            # NaN/Infinity are valid Python floats -- spec.accepts() only
+            # isinstance-checks a "number" parameter -- but canonical()
+            # serializes them as the bare, non-standard JSON tokens NaN/
+            # Infinity (Python's json.dumps default), which a strict
+            # transport-side deserializer may reject or a source may
+            # interpret inconsistently, letting a model-supplied query value
+            # escape the declared JSON contract (bot review finding).
+            return None, "INVALID_PARAMS"
         accepted[key] = value
     if any(
         spec.required and key not in accepted
