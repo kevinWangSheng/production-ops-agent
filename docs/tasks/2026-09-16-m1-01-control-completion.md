@@ -258,3 +258,62 @@
   额外佐证；独立走完 no-op 分支跳过批量 paused 副作用的安全性推理链；确认审计表无唯一性约束依赖
   `generation`；确认域层不一致属于既有已记录债务；用 diff+apply -R 独立复现两组红绿；全量回归复核一致；
   指出上述 C3 措辞冲突。结论：两处修复均安全、依据充分，可以合并。
+
+## 追加修复（2026-09-18 第四轮）：第三轮改动引出的 1 条新 bot thread（P1）
+
+### 白名单字段未做大小限制，单条超大输入会让事故永久卡死
+
+- **机器人原文**：调用方可以通过 `control()`/`append_input()` 持久化一个任意大的 `text`/`question` 值，
+  `_project_input_content()` 原样转发。一旦序列化后的 `investigation_inputs` 让整个请求超过
+  `MAX_HTTP_REQUEST_BYTES`，`_reject_oversized()` 会让每一轮都失败；因为该输入持续被持久化、
+  `begin_round()` 每次都会重新选中它，事故会永久卡住直到人工修数据库。
+- **核实**（含独立审查的额外交叉验证）：
+  1. `opspilot/persistence.py::begin_round()` 的水位是累积的（`sequence<=watermark`，非增量选取新行）。
+  2. `control()` 支持的动作集合 `{"cancel","pause","resume","follow_up","correct"}` 没有一个能删除/替换
+     已持久化的 `opspilot_inputs` 行；`append_input()` 撞同一 `input_id` 时返回既有 sequence，不覆盖内容。
+  3. 独立审查额外核查了 `opspilot/domain/control.py` 里定义的更大动作集合（`reopen`/`close`/`cancel_run`/
+     `takeover` 等），确认这些在 `persistence.py` 里零实现、零调用点——不是被漏掉的恢复路径，是尚未接线的
+     领域类型；`accept()` 能开一个全新 `incident_id`，但那是新事故，不能恢复原事故。
+  4. 结论：在当前 M1 代码下，一条超大输入一旦落库，原 incident 确实无法在不改库的情况下恢复到可继续调查
+     的状态——推理链成立。
+- **修复**：`_project_input_content()` 加入 `_INPUT_CONTENT_FIELD_MAX_CHARS = 8192`，对 `text`/`channel`/
+  `question` 三个白名单字段里「值是字符串且超长」的情况做截断（保留前 8192 字符，追加
+  `" …[truncated]"` 后缀），非字符串标量（bool/int/float/None）不受影响。**这个 8192 不是
+  `opspilot/investigation/limits.py` 那张「2026-09-13 冻结」资源上限表的一部分**（那张表管的是整个序列化
+  请求，不是单个字段）——是本次自选的防御性默认值，代码注释与本节均明确标注，不伪装成走了同样审批流程的
+  正式冻结数字，留给用户确认或替换成正式数值。
+- **新增测试** `tests/test_m1_investigation_loop.py::test_investigation_inputs_truncate_an_oversized_free_text_field`：
+  构造 `content={"text": "x" * (MAX_HTTP_REQUEST_BYTES + 1)}`，断言 `loop.run(request)` 的
+  `outcome.handoff_reasons != ("REQUEST_TOO_LARGE",)`（模型请求真的发出去了，不是在 `_reject_oversized()`
+  那一步就被拦下）。修复前（`git diff`+`git apply -R` 临时回退验证）该测试红——`handoff_reasons` 确实等于
+  `("REQUEST_TOO_LARGE",)`；修复后绿。
+- **独立审查额外发现、写入本节供后续参考（非本次需要处理的阻塞项）**：
+  1. **JSON 转义膨胀的字节界**：8192 字符截断按字符数而非字节数计算；若字段值恰好是大量控制字符，
+     `json.dumps` 会把每个字符转义成 `\u00XX`（膨胀 6 倍），单字段最坏情况可达约 49KB（512KB 的
+     ~9.4%），三个白名单字段同时拉满最坏情况约 28%——仍远不足以单独撑爆 512KB 预算，结论不变，但这是
+     「不是理论上的紧界」的已知余量，若未来要精确控制应改成按 UTF-8 字节数截断。
+  2. **未覆盖的更大范围问题**：本次修复只堵住「单条输入本身超大」这一种卡死方式；`begin_round()` 累积
+     选取的设计意味着「很多条正常大小的 follow_up/correct 长期累积」同样可能让总投影超过 512KB，且数量
+     本身无上限——这是同一类问题的更大范围版本，本次修复的措辞（代码注释与本节）都明确限定在
+     "single oversized value"，未声称已解决累积增长这个更广的开放风险，留待后续按需处理。
+  3. **UTF-8 多字节字符切割**：已核实 Python 字符串切片按 code point 操作，非 BMP 字符（如表情符号）
+     不会被切出残缺代理对，独立审查用脚本验证过编码/解码往返无损。
+  4. **截断读出 vs 写入时拒绝/截断的取舍**：独立审查认为「读出投影时截断」优于「写入时拒绝/截断」——
+     `opspilot_inputs` 是业务记录（PRODUCT-CONSTRAINTS 的「业务记录恢复权威」），写入时截断会不可逆丢失
+     原始值，未来放宽上限也拿不回全文；写入时拒绝会让合法但偏长的 `correct` 人工纠正被硬性拒绝，制造新的
+     可用性问题。当前「不动持久层、只影响投影给模型的内容」的方案权衡合理，未改动。
+- **处置**：GitHub reply（回复原评论），`resolveReviewThread` 标记对应 thread 为 resolved。提交
+  `786e720`。
+
+### 验证（第四轮）
+
+- `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_control_completion_postgres.py
+  tests/integration/test_m1_durable_state_postgres.py -q`：**48 passed**（无回归，本次改动不涉及持久层，
+  未新增 PG 测试）。
+- `pytest tests/test_m1_investigation_loop.py tests/test_m1_investigation_pairing.py -q`：**49 passed**
+  （原 48 + 新增 1）。
+- `make check`：**1447 passed, 102 skipped, 2 xfailed**，ruff check/format、mypy 均通过。
+- 独立审查（全新上下文子代理，未参与改动讨论）：独立核实「永久卡死」推理链（含额外核查
+  `opspilot/domain/control.py` 更大动作集合未接线这一潜在恢复路径，确认不存在）；独立验证截断不影响非
+  字符串标量、不切割多字节字符；独立发现 JSON 转义膨胀的字节界与「累积多条正常输入」的开放风险两点补充；
+  用 diff+apply -R 独立复现红绿；全量回归复核一致。结论：修复安全、依据充分，可以合并。
