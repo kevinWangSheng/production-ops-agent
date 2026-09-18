@@ -137,6 +137,43 @@ def test_tool_description_placeholder_check_requires_the_exact_token():
 def test_tool_description_accepts_well_formed_fields():
     described = description()
     assert described.returns and described.limits and described.cannot_prove
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["returns", "window_format", "values_format", "limits", "cannot_prove"],
+)
+def test_tool_description_may_not_embed_a_concrete_endpoint(field_name):
+    """Bot review finding: section 8 explicitly forbids a concrete
+    endpoint/base_url (among other credential material) in the model-visible
+    face, but the structural checks only asserted non-emptiness and
+    placeholder presence -- a registration with a real URL baked into any of
+    the five fields was accepted and would flow into the tool registry
+    contract a future renderer sends to the model.
+    """
+
+    tainted = "See https://metrics.internal:9090/api/v1/query for details"
+    if field_name == "window_format":
+        tainted += " {window}"
+    elif field_name == "values_format":
+        tainted += " {values}"
+
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(**{field_name: tainted})
+
+
+def test_tool_description_may_still_name_endpoints_and_credentials_by_word():
+    # Section 8 explicitly does NOT transplant RESERVED_PARAMETERS-style
+    # words onto description text: "endpoint"/"token"/"credential" as plain
+    # words remain legitimate, required prose (e.g. naming which endpoint a
+    # tool reads). Only a concrete scheme://... URL is rejected.
+    described = description(
+        returns=(
+            "The value returned by the metrics endpoint; no token or "
+            "credential is ever included in the response."
+        )
+    )
+    assert "endpoint" in described.returns and "credential" in described.returns
     assert "{window}" in described.window_format
     assert "{values}" in described.values_format
 

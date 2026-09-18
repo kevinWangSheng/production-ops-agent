@@ -219,6 +219,21 @@ class ToolDescription:
     prose in this codebase. Raising here is therefore always an operator
     error, consistent with this module's fixed-code ``ToolContractError``
     convention.
+
+    One narrow, deterministic exception (bot review finding): section 8
+    explicitly forbids "凭据、认证信息或具体 endpoint / base_url / 凭据句柄" in
+    this model-visible face. A concrete ``scheme://...`` URL is syntactically
+    detectable with the same pattern already used to reject one in
+    :class:`RegisteredTarget`'s endpoint, so it is checked here too. A
+    general credential/secret-*value* scanner is not added: unlike a URL,
+    "does this text contain a credential" is not decidable from syntax alone
+    (RESERVED_PARAMETERS' words like "endpoint"/"token"/"credential" are
+    explicitly *not* transplanted onto description text per section 8 --
+    they are often required prose, e.g. naming which endpoint a tool reads),
+    so any keyword-based attempt would either miss real secrets or reject
+    legitimate descriptions. That content judgment, like the rest of this
+    dataclass's prose quality, is a human-review question at registration
+    time, not a registration-time judge this class can make deterministically.
     """
 
     returns: str
@@ -239,6 +254,16 @@ class ToolDescription:
             value = getattr(self, name)
             if not isinstance(value, str) or placeholder not in value:
                 raise ToolContractError("MISSING_DESCRIPTION_PLACEHOLDER")
+        for name in (
+            "returns",
+            "window_format",
+            "values_format",
+            "limits",
+            "cannot_prove",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, str) and _ENDPOINT.search(value):
+                raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
 
 @dataclass(frozen=True)
