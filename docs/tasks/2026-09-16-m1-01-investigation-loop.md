@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：PR 已就绪，待用户审核合并；已合并 base 分支 PR #20 的最新提交解决 DIRTY/CONFLICTING，`mergeStateStatus=CLEAN`；上一轮 4 条机器人发现已获授权修复，3 条完全修复、1 条部分修复（另一半所需的 `opspilot/tools/` source 区间字段已随本次 base 合并到位，但补判定逻辑本身仍未做，留给下一次任务）（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：PR 已就绪，待用户审核合并；已合并 base 分支 PR #20 的最新提交解决 DIRTY/CONFLICTING，`mergeStateStatus=CLEAN`；上一轮 4 条机器人发现已全部处置——3 条完全修复，第 4 条（source 区间校验）此前受阻的另一半已随 `facb64d` 补齐，独立审查确认无发现（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-17
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -521,3 +521,76 @@
   （run 35284885782）。GraphQL 核查 reviewThreads 共 23 条，全部
   resolve，合并后未产生新 thread；`mergeStateStatus=CLEAN`，
   `mergeable=MERGEABLE`——DIRTY/CONFLICTING 已解决。
+
+## 追加（2026-09-17 四续）：完成发现 #3 的另一半（完整 source 区间校验）
+
+调度者在 `rebase-29.md` 里指出的前提（#20 已给 `TransportResponse`/view
+补上 `source_start_at`/`source_end_at`）已随 `10f32b6` 合并成立，`srcrange.md`
+的「#29 接线建议」给出了具体消费口径。任务书要求：字段缺失时的行为
+与 #20 的字段语义一致（可选字段则按现有行为处理，写明依据），不能让
+已保存的真实 Run 回放无故转红；复用 #20 的字段与 view 传播，不复制其
+校验实现。
+
+- **字段可选性核实**：`opspilot/tools/executor.py` 的 `TransportResponse`
+  docstring 原话——「Both default to None when unknown」——确认两端皆缺
+  是合法、常见的「覆盖范围未知」状态，不是错误。据此在
+  `eligible_time_policies` 里：两端都缺失 → 完全走此前（`faf80bc` 之前）
+  的既有逻辑，不新增任何限制；两端都存在且合法 → 在既有检查之上追加
+  区间校验（historical 要求
+  `policy.window.start <= source_start_at <= source_end_at <=
+  policy.window.end`；current 要求区间落在查询窗口内、且以区间**较早**
+  端相对 `reference_at`（取 view 的 `observed_at`，复用既有字段，非新引入
+  时钟依赖）计算年龄，同时全局拒绝 `source_end_at` 晚于 `reference_at`）；
+  只存在一端、无法解析、naive、倒置 → 判为「不一致」而非「未知」，直接
+  对该 view 的**全部**策略返回空集（比 `srcrange.md` 建议的「只跳过该
+  policy」更严格——因为当前仅有的两种模式都是区间相关的，一个自相矛盾的
+  区间声明不该被任何策略部分采信；已在提交信息注明这不是逐字照抄 #20
+  的建议）。
+- **复用而非复制**：新增参数解析全部复用本文件既有的 `_aware()`（tz-aware
+  校验、`ValueError` 兜底），没有重写 #20 在 `executor.py` 里已经做过的
+  日期校验；`loop.py` 调用点只是把 view 里已有的三个字段
+  （`source_start_at`/`source_end_at`/`observed_at`）透传进去，没有新建
+  数据结构。
+- **未破坏已保存的真实 Run**：`docs/evidence/m1-01-investigation-loop/`
+  的证据来自 `scripts/m1_live_flash_loop.py` 的 fixture 工具，grep 确认
+  该脚本构造的 `TransportResponse` 从未设置这两个新字段——回放这份证据
+  会走「两端皆缺→既有逻辑」的分支，结果不变。`tests/acceptance/
+  test_m1_live_flash_replay.py` 在本仓库/本 worktree 不存在（`find`
+  确认），任务书对它的引用是过期状态；已核实但未强行假设其存在。
+
+### 测试（先红后绿）
+
+`tests/test_m1_investigation_loop.py` 新增 8 条：`eligible_time_policies`
+直接单测覆盖「旧起点+新终点被拒」「未来终点使整条 view 的全部策略失效」
+「current 越出查询窗口」「historical 越出策略窗口」「区间缺失回退到既有
+行为（两种模式）」「单端区间被普遍拒绝」；另 2 条端到端跑真实
+`InvestigationLoop`（经 `_run_tools` 真实工具交付路径），验证 wiring 生效。
+两条端到端用例都需要显式 `all_authorized_targets: true`——若省略，会被
+`23c7158`（上一轮已修的目标范围收紧）先行拒绝，掩盖本次要验证的区间
+机制；已在调试中实际复现这个陷阱并修正。
+
+### 独立审查（全新上下文 general-purpose 子代理）
+
+未继承本会话讨论，给定待审提交 `facb64d`、`srcrange-29.md`/`srcrange.md`
+原始依据，未以实现者结论引导。逐条核实：字段可选性判断与 #20 docstring
+一致；不破坏已保存证据的结论经 grep 独立复核；「整条 view 全部策略失效」
+的严格化判定为「合理但确属超出 #20 建议的设计选择，已在提交信息坦白
+说明，不是掩盖」；historical 新增校验用具体场景验证非空操作（查询窗口
+在策略窗口内但真实 source 区间越界）；current 年龄计算确认取区间较早端；
+`view_start`/`view_end` 为 None 的分支在真实调用路径里是死代码（`QueryScope.
+window`/`Window.as_json()` 保证非空），只对直接单测调用方有意义，已如实
+指出但不算缺陷；`all_authorized_targets: true` 必要性通过移除后重跑实测
+确认。结论：6 项全部「正确」，无发现，未要求任何修复。
+
+### 验证证据
+
+- `make check`（`facb64d` 上）→ `uv lock --check` 通过；`ruff check`
+  All checks passed；`ruff format --check` 无需改动；`mypy` Success:
+  no issues found in 27 source files；`pytest` **1362 passed, 86
+  skipped, 2 xfailed**（较合并后 1354 passed 净增 8，即本次新测试）。
+- PG 定向：本 worktree 专属 55431 端口空闲，`.venv/bin/python -m
+  scripts.m0.postgres_lab start` → `M1_DURABLE_POSTGRES=1 .venv/bin/
+  python -m pytest tests/integration -q` → **32 passed, 54 skipped**
+  （与合并后持平，符合预期——本次改动不碰 `persistence.py`）；完成后
+  `postgres_lab stop`。独立审查期间也独立起停过一次 PG lab，同样
+  32 passed。
