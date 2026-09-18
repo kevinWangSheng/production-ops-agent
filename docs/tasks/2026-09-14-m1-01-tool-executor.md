@@ -953,3 +953,49 @@ pytest                → 1267 passed, 82 skipped, 2 xfailed
   这一种失败模式；真正把 `DurableToolLedger` 绑定到某个 Run 自己的 `QueryScope.max_operations`，
   仍要等接线任务里第一次出现真实 `QueryScope` 对象可读时才能完成。
 - F3/F7 的 `passes` 保持 `false`。
+
+## 15. 机器人 code review 第五轮一条 thread 处置（2026-09-18）
+
+推送第 14 节的修复（`4c6adce`）后，`@codex review` 又留下 1 条新的未处理 inline thread
+（`mergeStateStatus` 再次变为 `BLOCKED`）：第 14 节第 3 项（模型参数侧 NaN/Infinity 校验）的
+镜像发现——数据源响应侧同样可以携带 NaN/Infinity。
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `executor.py:910`（`_result_rows`） | P2 | 数据源响应体如 `{"data":{"result":[NaN]}}` 能正常解码（`json.loads` 默认 `parse_constant` 会把裸 `NaN`/`Infinity`/`-Infinity` token 解析成非有限 `float`，属 Python 扩展行为，非标准 JSON），既有的逐行 `canonical(row).encode("utf-8")` 校验对此不生效——`canonical()` 只是原样把同一个非标准 token 重新吐出来，不会报错，该行会被当作正常观测采纳，非标准 token 被写进已提交的证据视图 | 采纳 | 在 `_result_rows()` 既有的逐行校验 `try` 块里并列新增 `json.dumps(row, allow_nan=False)`，命中同一个 `except (ValueError, RecursionError)` 分支，走既有 `MALFORMED_RESULT` 路径；该调用会递归检查整个 `row` 结构（不论嵌套多深），不只是顶层。新增参数化测试 `test_a_row_holding_a_non_finite_number_is_malformed_not_a_crash`（`NaN`/`Infinity`/`-Infinity`） | `5f6cc44` |
+
+先复现（红：删掉新增校验，让新测试在旧逻辑下正确转红——不是崩溃，而是静默产出 `("ok", None)`
+结果）再修复（绿），随后精确还原并与保存的 `git diff` 补丁逐字节核对一致。
+
+**独立审查**（全新上下文只读子代理，未参与实现，派发提示明写禁止 `git checkout --`/`stash`/
+`reset`/`amend`，改用 `git diff > patch` 与 `git apply -R`/`apply` 对照）：独立复现了底层缺陷
+（`json.loads` 确实无错解码、`canonical()` 确实原样吐回非标准 token）；独立完成变异验证并确认
+`git status --short`/`git diff --stat` 在还原后为空；确认 `json.dumps(row, allow_nan=False)`
+对任意嵌套深度的非有限浮点数都会抛出（实测 `{"a": [1, {"b": float("nan")}]}` 与三层嵌套的元组
+场景均正确抛出）；核查 `_run()`/`_record()` 控制流，确认 `cursor` 里任意一行未通过校验都会让
+`_result_rows()` 整体返回 `(None, payload)`，`_record()` 根本不会被调用——包括结果被判定为
+`invalid`（`adopted=False`，走 `_fit_rows(rows, 0)`）的路径，因为它消费的 `rows` 本来就是已经
+通过这层校验之后的序列，不存在"零保留行绕过校验"的口子。未发现其它遗漏，结论「按现状可以
+接受，无阻塞发现」。
+
+已在 GitHub 上回复（引用具体提交、测试名、变异验证结果、独立审查确认的递归深度与控制流覆盖
+结论）并 `resolveReviewThread`；`gh api graphql` 复核 `reviewThreads` 当前 **16 条**（前几轮共
+15 条 + 本轮 1 条）全部 `isResolved: true`。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 423 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1270 passed, 82 skipped, 2 xfailed
+```
+
+`exit=0`。本轮改动只涉及 `opspilot/tools/executor.py`（+11）与 `tests/test_m1_tool_outcomes.py`
+（+22），不涉及持久层，未额外跑 PG 定向测试；未触碰
+`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件。
+
+### 未完成/限制
+
+- 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
+- F3/F7 的 `passes` 保持 `false`。
