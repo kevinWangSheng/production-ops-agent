@@ -1634,6 +1634,33 @@ def test_evidence_context_projection_preserves_every_schema_required_field():
     assert evidence_context_projection(context, run_id="run-schema-check") == context
 
 
+def test_a_deeply_nested_tool_call_argument_does_not_crash_the_loop():
+    """Bot review finding (comment 4042176058): ``json.loads()`` on
+    adversarial model-supplied JSON can raise ``RecursionError`` (a deeply
+    nested container) rather than ``ValueError``/``json.JSONDecodeError`` --
+    ``RecursionError`` is not a ``ValueError`` subclass, so the existing
+    ``except ValueError`` in ``_parse_arguments`` let it escape uncaught and
+    crash ``InvestigationLoop.run()`` entirely, after the assistant step was
+    already durably committed. PR #20's ``46cbf3e`` hit the identical gotcha
+    parsing tool *response* bodies and widened its own except clause the
+    same way; this is the model-supplied tool-call *arguments* side of the
+    same bug. ``params=None`` (the existing outcome for ordinary malformed
+    JSON) is already refused gracefully by the executor's
+    ``_accept_params``/``_refuse`` before any transport call, so widening
+    the except clause alone is a complete fix -- no new handling needed."""
+    poison = "[" * 20_000 + "]" * 20_000
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call(arguments=poison)], finish="tool_calls"),
+            reply(content="not-json", finish="stop"),
+        ],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert transport.called is False
+
+
 def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
     """End-to-end version of the projection test above: run the real loop
     with a poisoned ``evidence_context`` and inspect every byte actually

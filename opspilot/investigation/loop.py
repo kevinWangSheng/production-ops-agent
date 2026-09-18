@@ -651,9 +651,16 @@ def _bound_target(request: InvestigationRequest) -> str | None:
 
 
 def _parse_arguments(raw: str) -> object:
-    """Keep model JSON intact, including reserved keys, so the executor denies them."""
+    """Keep model JSON intact, including reserved keys, so the executor denies them.
+
+    ``json.loads`` raises ``RecursionError`` (not a ``ValueError``) on a
+    pathologically deep container instead of a decode error -- the same
+    stdlib gotcha PR #20's ``_result_rows`` (``opspilot/tools/executor.py``)
+    hit for tool *response* bodies. ``None`` here already flows into
+    ``_accept_params``/``_refuse`` as an ordinary malformed-params refusal.
+    """
     try:
         parsed = json.loads(raw) if raw else {}
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     return parsed
