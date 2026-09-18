@@ -8,6 +8,7 @@ execution with an explicit handoff, not a rewritten success.
 import hashlib
 import json
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -38,6 +39,7 @@ from opspilot.investigation.store import (
     StepStoreError,
     reservation_id_for,
 )
+from opspilot.tools import TransportResponse
 from tests.m1_investigation_support import (
     assemble,
     reply,
@@ -45,7 +47,7 @@ from tests.m1_investigation_support import (
     report_json,
     tool_call,
 )
-from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, FakeClock
+from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, FakeClock, body
 
 
 def test_reservation_ids_are_scoped_to_the_run():
@@ -141,6 +143,82 @@ def test_stale_view_is_not_bound_to_a_current_policy():
     outcome = loop.run(request)
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_source_interval_older_than_max_age_is_rejected_through_the_loop():
+    """End-to-end: PR #20 wires ``source_start_at``/``source_end_at`` onto
+    the tool-delivered view; the loop must actually pass them into
+    ``eligible_time_policies`` rather than only checking
+    ``freshness_seconds`` (the newest point) as before."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]),
+        data_as_of=NOW - timedelta(seconds=1),  # the newest point looks fresh
+        # Both ends sit inside the authorized query window (WINDOW_START..
+        # WINDOW_END), isolating the rejection to the max-age check below
+        # rather than the query-window containment check.
+        source_start_at=WINDOW_START,  # but the interval actually starts 65m ago
+        source_end_at=WINDOW_END,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    "max_source_age_seconds": 60,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_well_formed_source_interval_still_permits_citation_through_the_loop():
+    """Regression: a view whose interval genuinely fits inside both the
+    authorized query window (``WINDOW_START``..``WINDOW_END``, the fixture's
+    scope) and the policy's max age is unaffected by the new check."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]),
+        data_as_of=NOW - timedelta(seconds=1),
+        source_start_at=WINDOW_END - timedelta(seconds=30),
+        source_end_at=WINDOW_END,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    "max_source_age_seconds": 3600,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.handoff is False
 
 
 def test_mismatched_request_run_id_is_rejected():
@@ -413,6 +491,198 @@ def test_current_policy_still_accepts_a_fresh_nonnegative_reading():
         freshness_seconds=0,
     )
     assert eligible == frozenset({"policy-current"})
+
+
+def test_current_policy_rejects_a_source_interval_older_than_max_age():
+    """Bot review finding #3, second half (PR #20 srcrange.md): a view whose
+    ``source_start_at`` is old and ``source_end_at`` is fresh must not pass
+    on ``freshness_seconds`` (the newest point) alone -- the age must be
+    measured from the *older* end of the actual source interval."""
+    reference = NOW.isoformat()
+    stale_start = WINDOW_START.isoformat()  # 65 minutes before NOW
+    fresh_end = (NOW - timedelta(seconds=1)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,  # the newest sample alone looks perfectly fresh
+        source_start_at=stale_start,
+        source_end_at=fresh_end,
+        reference_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_rejects_a_future_dated_source_end():
+    """A ``source_end_at`` after the trusted reference instant is never
+    valid evidence, for any policy in the list -- the whole view's interval
+    claim is untrustworthy, not just the one policy being evaluated."""
+    reference = NOW.isoformat()
+    future_end = (NOW + timedelta(seconds=1)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            },
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": True,
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            },
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=0,
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=future_end,
+        reference_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_rejects_a_source_interval_outside_the_query_window():
+    """PR #20 srcrange.md: current-mode eligibility requires the full source
+    interval to fall inside the query/authorized window, not just inside
+    the max-age budget."""
+    reference = NOW.isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=0,
+        # Starts an hour before the authorized query window even opened.
+        source_start_at=(WINDOW_START - timedelta(hours=1)).isoformat(),
+        source_end_at=WINDOW_END.isoformat(),
+        reference_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_rejects_a_source_interval_outside_the_policy_window():
+    """PR #20 srcrange.md: historical-window eligibility requires
+    policy.window.start <= source_start_at <= source_end_at <=
+    policy.window.end directly -- not just that the query window (which
+    the source interval might not actually fill) sits inside it."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+        # The source data actually returned reaches past the policy's own
+        # window, even though the authorized query window does not.
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=(WINDOW_END + timedelta(minutes=1)).isoformat(),
+        reference_at=(WINDOW_END + timedelta(minutes=5)).isoformat(),
+    )
+    assert eligible == frozenset()
+
+
+def test_missing_source_interval_falls_back_to_existing_behaviour():
+    """PR #20's source_start_at/source_end_at default to None when unknown
+    -- a legitimate, common state, not malformed input. A view that omits
+    them entirely must keep exactly its pre-existing eligibility (both
+    modes), or every view recorded before this field existed would go
+    ineligible for no reason."""
+    current_eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+    )
+    assert current_eligible == frozenset({"policy-current"})
+    historical_eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": True,
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert historical_eligible == frozenset({"policy-hist"})
+
+
+def test_a_one_sided_source_interval_is_rejected_universally():
+    """Present-but-malformed is not the same as "unknown": PR #20 guarantees
+    a real adapter never delivers only one end (MALFORMED_RESULT catches
+    that before evidence registration), so a view claiming just one is
+    actively inconsistent, not merely missing data -- reject every policy,
+    the same as a future-dated end."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=None,
+        reference_at=NOW.isoformat(),
+    )
+    assert eligible == frozenset()
 
 
 def test_supplied_context_views_can_be_cited_without_new_tools():

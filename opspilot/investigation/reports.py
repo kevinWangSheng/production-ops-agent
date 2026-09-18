@@ -358,13 +358,52 @@ def eligible_time_policies(
     target_ids: frozenset[str],
     window: object,
     freshness_seconds: object,
+    source_start_at: object = None,
+    source_end_at: object = None,
+    reference_at: object = None,
 ) -> frozenset[str]:
-    """Policies this view is allowed to wear. Missing facts fail closed."""
+    """Policies this view is allowed to wear. Missing facts fail closed.
+
+    ``source_start_at``/``source_end_at`` are the tool executor's verified
+    source-data interval (PR #20, ``opspilot.tools.executor``); both
+    ``None`` means "coverage unknown" -- a legitimate, common state for a
+    view that predates this field or whose adapter simply does not report
+    it -- and eligibility falls back to the checks below exactly as before
+    this field existed. Present but malformed (only one end, unparseable,
+    naive, or inverted) is not "unknown": the view's own interval claim is
+    then internally inconsistent, so no policy in the list is eligible.
+    ``reference_at`` is the trusted instant to measure the interval against
+    (the view's own ``observed_at``); without it, or with ``source_end_at``
+    after it, the claim is a future timestamp and is rejected the same way.
+
+    When the interval is present and consistent, it must additionally fall
+    within the query window (``window``) and, per policy, within the
+    policy's own bound (``historical_window``) or its max age measured from
+    the interval's *older* end (``current``) -- closing the gap where a
+    view spanning old and new samples passed on the newest sample's
+    ``freshness_seconds`` alone (bot review finding, PR #29; PR #20's
+    ``srcrange.md`` for the exact semantics reused here).
+    """
     if not isinstance(policies, list):
         return frozenset()
     view_start = view_end = None
     if isinstance(window, Mapping):
         view_start, view_end = _aware(window.get("start")), _aware(window.get("end"))
+    source_interval: tuple[datetime, datetime] | None = None
+    reference: datetime | None = None
+    if source_start_at is not None or source_end_at is not None:
+        interval_start = _aware(source_start_at)
+        interval_end = _aware(source_end_at)
+        reference = _aware(reference_at)
+        if (
+            interval_start is None
+            or interval_end is None
+            or interval_start > interval_end
+            or reference is None
+            or interval_end > reference
+        ):
+            return frozenset()
+        source_interval = (interval_start, interval_end)
     eligible: set[str] = set()
     for policy in policies:
         if not isinstance(policy, Mapping):
@@ -412,6 +451,10 @@ def eligible_time_policies(
                 or not (policy_start <= view_start <= view_end <= policy_end)
             ):
                 continue
+            if source_interval is not None:
+                interval_start, interval_end = source_interval
+                if not (policy_start <= interval_start <= interval_end <= policy_end):
+                    continue
         else:
             max_age = policy.get("max_source_age_seconds")
             if type(max_age) is not int or max_age <= 0:
@@ -423,6 +466,17 @@ def eligible_time_policies(
             # as though it were the freshest possible reading.
             if not (0 <= float(freshness_seconds) <= max_age):
                 continue
+            if source_interval is not None:
+                interval_start, interval_end = source_interval
+                if (
+                    view_start is not None
+                    and view_end is not None
+                    and not (view_start <= interval_start and interval_end <= view_end)
+                ):
+                    continue
+                assert reference is not None  # set together with source_interval
+                if (reference - interval_start).total_seconds() > max_age:
+                    continue
         eligible.add(ident)
     return frozenset(eligible)
 
