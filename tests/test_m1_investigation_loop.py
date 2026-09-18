@@ -737,6 +737,42 @@ def test_investigation_inputs_preserve_the_question_field_follow_up_payloads_use
     assert "sk-leak" not in outbound
 
 
+def test_investigation_inputs_truncate_an_oversized_free_text_field():
+    """An arbitrarily large persisted text/question value must not be able
+    to strand the incident forever: begin_round()'s watermark is cumulative,
+    so an unbounded value would be re-selected on every future round and
+    _reject_oversized() would halt with REQUEST_TOO_LARGE every time, with
+    no control() action able to remove or replace a single bad input
+    (chatgpt-codex-connector review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"text": "x" * (MAX_HTTP_REQUEST_BYTES + 1)},
+            }
+        ],
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons != ("REQUEST_TOO_LARGE",)
+    assert model.calls
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert len(outbound) < MAX_HTTP_REQUEST_BYTES
+    assert outbound.endswith('…[truncated]"},"kind":"follow_up","sequence":1}]}')
+
+
 def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     loop, request, model, _, store, _ = assemble(
         replies=[

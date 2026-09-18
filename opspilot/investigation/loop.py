@@ -622,16 +622,33 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
 # credential.
 _INPUT_CONTENT_FIELDS = frozenset({"text", "channel", "question"})
 
+# Defensive per-field cap on the allowlisted free-text values, not one of
+# the frozen resource ceilings in investigation/limits.py (that table
+# tracks the *whole* serialized request against the 2026-09-13 freeze, not
+# any one field -- this is a locally-chosen default, flagged for the user
+# to confirm or replace with a formally frozen number). Without a bound, a
+# single oversized value persisted through control()/append_input() would
+# be stuck forever: begin_round()'s watermark is cumulative, so the same
+# entry is re-selected on every future round, _reject_oversized() halts
+# with REQUEST_TOO_LARGE each time, and nothing in the current control()
+# surface can remove or replace one bad input -- only a direct database
+# repair would recover the incident.
+_INPUT_CONTENT_FIELD_MAX_CHARS = 8192
+
 
 def _project_input_content(content: object) -> dict[str, Any]:
     if not isinstance(content, Mapping):
         return {}
-    return {
-        key: value
-        for key, value in content.items()
-        if key in _INPUT_CONTENT_FIELDS
-        and not isinstance(value, (Mapping, list, tuple))
-    }
+    projected: dict[str, Any] = {}
+    for key, value in content.items():
+        if key not in _INPUT_CONTENT_FIELDS or isinstance(
+            value, (Mapping, list, tuple)
+        ):
+            continue
+        if isinstance(value, str) and len(value) > _INPUT_CONTENT_FIELD_MAX_CHARS:
+            value = value[:_INPUT_CONTENT_FIELD_MAX_CHARS] + " …[truncated]"
+        projected[key] = value
+    return projected
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:
