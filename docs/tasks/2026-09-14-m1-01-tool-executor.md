@@ -954,11 +954,11 @@ pytest                → 1267 passed, 82 skipped, 2 xfailed
   仍要等接线任务里第一次出现真实 `QueryScope` 对象可读时才能完成。
 - F3/F7 的 `passes` 保持 `false`。
 
-## 15. 机器人 code review 第五轮一条 thread 处置（2026-09-18）
+## 15. 机器人 code review 第四轮一条 thread 处置（2026-09-18）
 
 推送第 14 节的修复（`4c6adce`）后，`@codex review` 又留下 1 条新的未处理 inline thread
-（`mergeStateStatus` 再次变为 `BLOCKED`）：第 14 节第 3 项（模型参数侧 NaN/Infinity 校验）的
-镜像发现——数据源响应侧同样可以携带 NaN/Infinity。
+（`mergeStateStatus` 再次变为 `BLOCKED`，用户称此批为「第四轮」）：第 14 节第 3 项（模型参数侧
+NaN/Infinity 校验）的镜像发现——数据源响应侧同样可以携带 NaN/Infinity。
 
 | # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
 |---|---|---|---|---|---|---|
