@@ -437,9 +437,12 @@ class InvestigationLoop:
                 evidence_ids.append(evidence_id)
                 target = view.get("target_id")
                 registry = target if isinstance(target, str) else None
-                catalog = context_target_catalog(
-                    request.evidence_context,
-                    authorized_targets=request.scope.target_ids,
+                catalog = (
+                    context_target_catalog(
+                        request.evidence_context,
+                        authorized_targets=request.scope.target_ids,
+                    )
+                    or {}
                 )
                 aliases = frozenset(
                     key for key, mapped in catalog.items() if mapped == registry

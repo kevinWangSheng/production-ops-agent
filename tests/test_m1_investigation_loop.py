@@ -304,6 +304,53 @@ def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
 
+def test_an_empty_v4_catalog_fails_closed_for_a_freshly_collected_view():
+    """Bot review finding (comment 4045327020, P1): ``target_catalog: {}``
+    is a v4 context that genuinely supplies zero opaque catalog keys --
+    every ``claim.target_refs`` must therefore fail to resolve against it,
+    the same as any other v4-catalog-present case (see
+    ``test_registry_id_is_rejected_when_a_v4_catalog_is_present`` above,
+    for a *nonempty* catalog). ``catalog = dict(target_catalog) if
+    target_catalog else {}`` in ``unsupported_citations`` could not tell a
+    genuinely empty catalog apart from no catalog at all -- both are
+    falsy -- so it fell back to accepting a fact that cites the raw
+    registry ``target_id`` directly, the exact thing an opaque v4 catalog
+    exists to prevent. A freshly tool-collected view (not a pre-supplied
+    ``view_bindings`` entry) still records its registry target in
+    ``DeliveredView.target_ids``, so this reaches the same gap through the
+    live citation path, not just the seeded one."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "all_authorized_targets": True,
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": WINDOW_END.isoformat(),
+                    },
+                }
+            ],
+            "target_catalog": {},
+        },
+    )
+    outcome = loop.run(request)
+    assert transport.called is True
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
 def test_fact_time_scope_must_match_the_cited_view():
     evidence_id = "ev-time"
     loop, request, _, _, _, _ = assemble(

@@ -392,18 +392,26 @@ def evidence_context_projection(
 
 def context_target_catalog(
     context: object, *, authorized_targets: frozenset[str] = frozenset()
-) -> dict[str, str | None]:
-    """Opaque v4 target_ref -> optional registry target_id.
+) -> dict[str, str | None] | None:
+    """Opaque v4 target_ref -> optional registry target_id, or ``None``
+    when no catalog was supplied at all.
 
     Catalog values may be a registry ``target_id`` wrapper, or a canonical
     v4 Target object with no ``target_id``. A unique unmapped catalog key
     binds to a unique authorized target; otherwise the mapping stays None.
+
+    ``None`` (catalog absent or malformed) and ``{}`` (catalog genuinely
+    present but empty) are kept distinct: a caller gating citation
+    validation on "was an opaque catalog supplied at all" must fail closed
+    for a genuinely empty catalog rather than silently falling back to
+    trusting raw registry ids the same as no catalog (bot review finding,
+    PR #29).
     """
     if not isinstance(context, Mapping):
-        return {}
+        return None
     catalog = context.get("target_catalog")
     if not isinstance(catalog, Mapping):
-        return {}
+        return None
     result: dict[str, str | None] = {}
     for key, entry in catalog.items():
         if not isinstance(key, str) or not key:
@@ -594,15 +602,15 @@ def unsupported_citations(
     """
     by_id = {view.evidence_id: view for view in views}
     policies = set(time_policy_ids)
-    catalog = dict(target_catalog) if target_catalog else {}
     for claim in report.claims:
         if any(eid not in by_id for eid in claim.evidence_ids):
             return True
-        if catalog:
-            if any(ref not in catalog for ref in claim.target_refs):
+        if target_catalog is not None:
+            if any(ref not in target_catalog for ref in claim.target_refs):
                 return True
             if any(
-                catalog[ref] is not None and catalog[ref] not in authorized_targets
+                target_catalog[ref] is not None
+                and target_catalog[ref] not in authorized_targets
                 for ref in claim.target_refs
             ):
                 return True
