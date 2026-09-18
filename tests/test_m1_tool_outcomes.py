@@ -229,6 +229,28 @@ def test_missing_required_parameter_is_an_input_error():
     assert not transport.called
 
 
+def test_a_string_parameter_holding_a_lone_surrogate_is_an_input_error():
+    """Independent review finding on top of the source-response-row surrogate
+    fix: a model-supplied string parameter (e.g. ``{"expr": "\\ud800"}``) is a
+    valid Python ``str`` -- ``ParameterSpec.accepts()`` only ``isinstance``
+    checks it -- but is not valid UTF-8. Left unchecked, it reaches
+    ``_record()``'s ``view["query"] = dict(plan.params)`` and crashes
+    ``canonical_hash(view)`` with an uncaught ``UnicodeEncodeError``: the same
+    failure class as the row-level finding, but via the params input, on a
+    currently-reachable dispatch path (no future combination-layer wiring
+    required).
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body(rows=[]))
+
+    outcome = executor.execute(request(params={"expr": "\ud800"}))
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert outcome.source_contact == "none"
+    assert not transport.called and sink.records == []
+
+
 @pytest.mark.parametrize(
     "payload",
     [

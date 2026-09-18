@@ -868,6 +868,19 @@ def _accept_params(
             return None, "PARAM_NOT_ALLOWED"
         if not spec.accepts(value):
             return None, "INVALID_PARAMS"
+        if isinstance(value, str):
+            try:
+                value.encode("utf-8")
+            except ValueError:
+                # A `\uD800`-style lone surrogate is a valid Python str (the
+                # model can supply one in a tool-call argument) but is not
+                # valid UTF-8: left unchecked here it reaches _record()'s
+                # view["query"] = dict(plan.params) and crashes
+                # canonical_hash(view) with an uncaught UnicodeEncodeError --
+                # the same failure class as the source-response-row finding,
+                # but via the params input instead (independent review
+                # finding on top of that fix).
+                return None, "INVALID_PARAMS"
         accepted[key] = value
     if any(
         spec.required and key not in accepted
