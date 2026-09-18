@@ -221,11 +221,14 @@ class InvestigationLoop:
             raise ValueError("INVALID_INPUT")
         # Project once, here, before anything else reads it: every later use
         # of ``evidence_context`` (the prompt message and every citation
-        # check below) sees only the allowlisted v4 fields, never a nested
-        # key that should not have reached the model (redline P3-4).
+        # check below) sees only this Run's own, allowlisted v4 fields --
+        # never a foreign context (bot review finding, PR #29) and never a
+        # nested key that should not have reached the model (redline P3-4).
         request = replace(
             request,
-            evidence_context=evidence_context_projection(request.evidence_context),
+            evidence_context=evidence_context_projection(
+                request.evidence_context, run_id=request.run_id
+            ),
         )
         started = self.clock.monotonic()
         system = render(

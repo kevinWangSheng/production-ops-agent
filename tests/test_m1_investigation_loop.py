@@ -93,6 +93,7 @@ def test_canonical_catalog_target_maps_onto_the_sole_authorized_target():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
@@ -131,6 +132,7 @@ def test_stale_view_is_not_bound_to_a_current_policy():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
@@ -170,6 +172,7 @@ def test_a_source_interval_older_than_max_age_is_rejected_through_the_loop():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
@@ -206,6 +209,7 @@ def test_a_well_formed_source_interval_still_permits_citation_through_the_loop()
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
@@ -765,6 +769,44 @@ def test_evidence_context_missing_run_id_entirely_is_not_trusted():
         },
     )
     outcome = loop.run(no_identity)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_foreign_run_context_grants_no_eligibility_to_freshly_collected_evidence():
+    """Bot review finding: the run_id/type binding in ``82218ae`` only
+    covers ``delivered_from_context()`` (pre-supplied evidence). A context
+    stamped with someone else's run_id was still consumed as-is by
+    ``context_target_catalog()``/``eligible_time_policies()`` for evidence
+    the tool executor freshly collected during *this* Run -- letting a
+    foreign context's target aliases and time policies apply to it."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": "some-other-run",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    # Comfortably wide: if the foreign context's policy is
+                    # (incorrectly) honoured, this freshly-collected view
+                    # passes the freshness check and the report completes.
+                    "max_source_age_seconds": 7200,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert transport.called is True
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
@@ -1424,7 +1466,7 @@ def test_evidence_context_projection_strips_nested_unlisted_keys():
             },
         },
     }
-    projected = evidence_context_projection(context)
+    projected = evidence_context_projection(context, run_id="run-9")
     serialized = json.dumps(projected)
     for leaked in (
         "leak-top-level",
@@ -1490,7 +1532,7 @@ def test_evidence_context_projection_rejects_a_nested_object_under_a_scalar_fiel
             },
         },
     }
-    projected = evidence_context_projection(context)
+    projected = evidence_context_projection(context, run_id="run-9")
     serialized = json.dumps(projected)
     for leaked in (
         "leak-interfaces",
@@ -1589,7 +1631,7 @@ def test_evidence_context_projection_preserves_every_schema_required_field():
             }
         ],
     }
-    assert evidence_context_projection(context) == context
+    assert evidence_context_projection(context, run_id="run-schema-check") == context
 
 
 def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():

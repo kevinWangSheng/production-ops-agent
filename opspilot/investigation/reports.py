@@ -219,18 +219,18 @@ def _is_list_of_str(value: object) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-# Only ``type``/``run_id`` are scalar-validated here; the three container
-# fields (``view_bindings``/``target_catalog``/``time_policies``) are never
-# copied by ``_project_fields`` at the top level -- they are always rebuilt
-# from scratch by the dedicated functions below, or omitted entirely when
-# the raw value is not the right container type. Doing it any other way
+# ``type``/``run_id`` need no shape map: by the time evidence_context_projection
+# reaches them, its own identity gate has already confirmed they exactly
+# equal ``EVIDENCE_CONTEXT_TYPE``/``run_id`` (a mismatch of any shape, not
+# just the right shape with the wrong value, is rejected there -- stronger
+# than a standalone shape check could be). The three container fields
+# (``view_bindings``/``target_catalog``/``time_policies``) are likewise
+# never copied by ``_project_fields`` -- they are always rebuilt from
+# scratch by the dedicated functions below, or omitted entirely when the
+# raw value is not the right container type. Doing it any other way
 # (allowlisting the key, then only *conditionally* overwriting it with a
 # validated rebuild) would leave a malformed raw value in place whenever
 # the overwrite's own type check failed.
-_CONTEXT_SCALAR_FIELDS: dict[str, Callable[[object], bool]] = {
-    "type": _is_str,
-    "run_id": _is_str,
-}
 # ``target_id`` is not part of the schema's ``ViewBinding``; it is a fallback
 # ``delivered_from_context`` below also accepts and existing tests rely on.
 # ``timing`` is handled the same way as the container fields above, never
@@ -333,7 +333,9 @@ def _project_time_policy(policy: object) -> dict[str, Any]:
     return projected
 
 
-def evidence_context_projection(context: object) -> dict[str, Any] | None:
+def evidence_context_projection(
+    context: object, *, run_id: str
+) -> dict[str, Any] | None:
     """Field- and shape-allowlist projection of a v4 evidence context.
 
     Every key the readers in this module (and the loop's prompt message)
@@ -345,10 +347,27 @@ def evidence_context_projection(context: object) -> dict[str, Any] | None:
     projected result -- for the model prompt and for every citation check
     -- so neither an unexpected nested key nor a malformed value under an
     allowlisted one can reach either (redline P3-4).
+
+    A context whose ``type``/``run_id`` do not match this Run's own
+    identity is discarded wholesale, before any projection: ``82218ae``
+    only added this check inside ``delivered_from_context()`` (pre-supplied
+    evidence bindings), but ``context_target_catalog()``/
+    ``eligible_time_policies()`` -- consulted here for evidence the tool
+    executor freshly collects during *this* Run, not just retained
+    bindings -- read the same caller-supplied context regardless of whose
+    Run it actually belonged to (bot review finding, PR #29). Doing the
+    check once, here, protects every consumer that reads the projected
+    context the loop reassigns onto ``request.evidence_context`` up front,
+    the same way the field allowlist above does.
     """
     if not isinstance(context, Mapping):
         return None
-    projected = _project_fields(context, _CONTEXT_SCALAR_FIELDS)
+    if context.get("type") != EVIDENCE_CONTEXT_TYPE or context.get("run_id") != run_id:
+        return None
+    # Both are now known to be exactly these two strings -- the identity
+    # gate above already confirmed it -- so they are set directly rather
+    # than through a shape map that could never reject anything here.
+    projected: dict[str, Any] = {"type": EVIDENCE_CONTEXT_TYPE, "run_id": run_id}
     bindings = context.get("view_bindings")
     if isinstance(bindings, Mapping):
         projected["view_bindings"] = {
