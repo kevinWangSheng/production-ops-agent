@@ -500,3 +500,36 @@ def test_durable_evidence_reregistration_reuses_the_first_observation():
         evidence.register(
             replace(record, raw=other, raw_sha256=hashlib.sha256(other).hexdigest())
         )
+
+
+def test_durable_evidence_commit_fences_stale_replacement():
+    """Round 3 thread: a stale same-bytes replay cannot overwrite a committed view."""
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.tools import TransportResponse
+    from opspilot.tools.registry import canonical_hash
+    from opspilot.web import DurableEvidenceStore
+    from tests.m1_tool_support import WINDOW_START, body, build, request
+
+    executor, transport, _, _ = build(scope_overrides={"run_id": f"run-{uuid4()}"})
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]), data_as_of=WINDOW_START
+    )
+    record = executor.execute(request(step_id=f"step-{uuid4()}")).evidence
+    assert record is not None
+    view2 = dict(record.view, observed_at="2026-09-14T01:07:00+00:00")
+    stale = replace(
+        record,
+        observed_at=record.observed_at + timedelta(minutes=2),
+        view=view2,
+        view_sha256=canonical_hash(view2),
+    )
+    evidence = DurableEvidenceStore(DurableStore(DSN))
+    evidence.install()
+    evidence.register(record)
+    evidence.commit(record.evidence_id, record.view)
+    assert evidence.register(stale) == record.evidence_id
+    kept = evidence.get(record.evidence_id)
+    assert kept is not None and kept.committed is True
+    assert kept.view_sha256 == record.view_sha256

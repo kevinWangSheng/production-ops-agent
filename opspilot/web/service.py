@@ -130,7 +130,9 @@ class _EmittingCommitter:
         run_id: UUID,
         *,
         renew: Callable[[], object] | None = None,
+        evidence: EvidenceStore | None = None,
     ) -> None:
+        self._evidence = evidence
         self._base = base
         self._events = events
         self._subject_id = subject_id
@@ -213,6 +215,12 @@ class _EmittingCommitter:
     ) -> None:
         self._renew()
         self._base.commit_tool(step_id, ordinal, result)
+        # The committed tool result is the authority for what was consumed:
+        # pin the evidence projection to it so a stale replay (an expired
+        # worker returning the same bytes later) cannot replace it.
+        evidence_id = result.get("evidence_id")
+        if self._evidence is not None and isinstance(evidence_id, str):
+            self._evidence.commit(evidence_id, result)
         self._events.append(
             self._subject_id,
             "tool_committed",
@@ -791,6 +799,12 @@ class Workbench:
         # while carrying older notes. With PR #31 the notes reach the model
         # through begin_round() inputs, frozen per round by the store; only
         # the pre-#31 base composes them into the question here.
+        # Under the lease: a note the store applied before this claim (and
+        # whose handler died before its confirm row) is confirmed here, so
+        # the attempt that now owns that generation composes it. A note
+        # applied after the claim bumps the generation and fences this
+        # attempt's commits instead.
+        self._reconcile_pending_notes(incident_id)
         notes = [] if self.incidents.payload_supported else self._notes(incident_id)
         self.events.append(
             incident_id,
@@ -807,6 +821,7 @@ class Workbench:
             incident_id,
             run_id,
             renew=lambda: self.incidents.renew_lease(lease, seconds),
+            evidence=self.evidence,
         )
         context = RunContext(
             incident_id=incident_id,

@@ -36,6 +36,9 @@ class StoredEvidence:
     projection_revision: str
     observed_at: datetime
     data_as_of: datetime | None
+    #: Set once the tool result citing this evidence committed; from then on
+    #: the projection is final and a same-bytes replay cannot replace it.
+    committed: bool = False
 
     @property
     def hashes_verified(self) -> bool:
@@ -48,6 +51,10 @@ class StoredEvidence:
 
 class EvidenceStore(Protocol):
     def register(self, record: EvidenceRecord) -> str: ...
+
+    def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
+        """Pin the projection to the committed tool result and freeze it."""
+        ...
 
     def get(self, evidence_id: str) -> StoredEvidence | None: ...
 
@@ -78,13 +85,47 @@ def _require_same_bytes(existing_raw_sha256: str, raw_sha256: str) -> None:
 
     A worker that stopped between ``register()`` and ``commit_tool()`` is
     replayed with the same stable ``evidence_id``; the re-executed query
-    returns the same source bytes but a later ``observed_at``. The earlier
-    observation was never committed as a tool result, so the replayed one
-    is what the loop consumes and what the store must hold: same bytes
-    replace the projection (view, time, status), different bytes conflict.
+    returns the same source bytes but a later ``observed_at``. While no tool
+    result has committed, the replayed observation is what the loop will
+    consume, so same bytes replace the projection (view, time, status).
+    Once ``commit()`` pinned the projection to the committed tool result,
+    a later same-bytes replay (an expired worker) leaves it untouched.
+    Different bytes always conflict.
     """
     if existing_raw_sha256 != raw_sha256:
         raise PersistenceError("IDENTITY_CONFLICT")
+
+
+def _pinned(existing: StoredEvidence, view: Mapping[str, Any]) -> StoredEvidence:
+    """The committed tool result's view becomes the stored projection."""
+    pinned = dict(view)
+    observed = pinned.get("observed_at")
+    data_as_of = pinned.get("data_as_of")
+    return StoredEvidence(
+        evidence_id=existing.evidence_id,
+        run_id=existing.run_id,
+        subject_id=existing.subject_id,
+        status=str(pinned.get("status", existing.status)),
+        adopted=bool(pinned.get("adopted", existing.adopted)),
+        raw=existing.raw,
+        raw_sha256=existing.raw_sha256,
+        view=pinned,
+        view_sha256=canonical_hash(pinned),
+        projection_revision=str(
+            pinned.get("projection_revision", existing.projection_revision)
+        ),
+        observed_at=(
+            datetime.fromisoformat(observed)
+            if isinstance(observed, str)
+            else existing.observed_at
+        ),
+        data_as_of=(
+            datetime.fromisoformat(data_as_of)
+            if isinstance(data_as_of, str)
+            else existing.data_as_of
+        ),
+        committed=True,
+    )
 
 
 class MemoryEvidenceStore:
@@ -96,8 +137,18 @@ class MemoryEvidenceStore:
         existing = self._records.get(stored.evidence_id)
         if existing is not None:
             _require_same_bytes(existing.raw_sha256, stored.raw_sha256)
+            if existing.committed:
+                return existing.evidence_id
         self._records[stored.evidence_id] = stored
         return stored.evidence_id
+
+    def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
+        existing = self._records.get(evidence_id)
+        if existing is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        if existing.committed:
+            return
+        self._records[evidence_id] = _pinned(existing, view)
 
     def get(self, evidence_id: str) -> StoredEvidence | None:
         return self._records.get(evidence_id)
@@ -118,6 +169,7 @@ class DurableEvidenceStore:
               data_as_of timestamptz
             );
             CREATE INDEX IF NOT EXISTS opspilot_evidence_run_id_idx ON opspilot_evidence(run_id);
+            ALTER TABLE opspilot_evidence ADD COLUMN IF NOT EXISTS committed boolean NOT NULL DEFAULT false;
             """)
 
     def register(self, record: EvidenceRecord) -> str:
@@ -127,7 +179,7 @@ class DurableEvidenceStore:
                 # Same bytes: the replayed projection replaces the earlier,
                 # never-committed one. Different bytes: leave the row and let
                 # the check below raise IDENTITY_CONFLICT.
-                "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO UPDATE SET status=EXCLUDED.status,adopted=EXCLUDED.adopted,view=EXCLUDED.view,view_sha256=EXCLUDED.view_sha256,projection_revision=EXCLUDED.projection_revision,observed_at=EXCLUDED.observed_at,data_as_of=EXCLUDED.data_as_of WHERE opspilot_evidence.raw_sha256=EXCLUDED.raw_sha256",
+                "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO UPDATE SET status=EXCLUDED.status,adopted=EXCLUDED.adopted,view=EXCLUDED.view,view_sha256=EXCLUDED.view_sha256,projection_revision=EXCLUDED.projection_revision,observed_at=EXCLUDED.observed_at,data_as_of=EXCLUDED.data_as_of WHERE opspilot_evidence.raw_sha256=EXCLUDED.raw_sha256 AND NOT opspilot_evidence.committed",
                 (
                     stored.evidence_id,
                     stored.run_id,
@@ -152,27 +204,57 @@ class DurableEvidenceStore:
             _require_same_bytes(row["raw_sha256"], stored.raw_sha256)
         return stored.evidence_id
 
+    def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
+        with self._store.transaction() as conn:
+            row = conn.execute(
+                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed FROM opspilot_evidence WHERE evidence_id=%s FOR UPDATE",
+                (evidence_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if row["committed"]:
+                return
+            pinned = _pinned(_from_row(row), view)
+            conn.execute(
+                "UPDATE opspilot_evidence SET status=%s,adopted=%s,view=%s,view_sha256=%s,projection_revision=%s,observed_at=%s,data_as_of=%s,committed=true WHERE evidence_id=%s",
+                (
+                    pinned.status,
+                    pinned.adopted,
+                    Jsonb(dict(pinned.view)),
+                    pinned.view_sha256,
+                    pinned.projection_revision,
+                    pinned.observed_at,
+                    pinned.data_as_of,
+                    evidence_id,
+                ),
+            )
+
     def get(self, evidence_id: str) -> StoredEvidence | None:
         if not isinstance(evidence_id, str) or not evidence_id:
             return None
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of FROM opspilot_evidence WHERE evidence_id=%s",
+                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed FROM opspilot_evidence WHERE evidence_id=%s",
                 (evidence_id,),
             ).fetchone()
         if row is None:
             return None
-        return StoredEvidence(
-            evidence_id=row["evidence_id"],
-            run_id=row["run_id"],
-            subject_id=row["subject_id"],
-            status=row["status"],
-            adopted=bool(row["adopted"]),
-            raw=bytes(row["raw"]),
-            raw_sha256=row["raw_sha256"],
-            view=row["view"],
-            view_sha256=row["view_sha256"],
-            projection_revision=row["projection_revision"],
-            observed_at=row["observed_at"],
-            data_as_of=row["data_as_of"],
-        )
+        return _from_row(row)
+
+
+def _from_row(row: Mapping[str, Any]) -> StoredEvidence:
+    return StoredEvidence(
+        evidence_id=row["evidence_id"],
+        run_id=row["run_id"],
+        subject_id=row["subject_id"],
+        status=row["status"],
+        adopted=bool(row["adopted"]),
+        raw=bytes(row["raw"]),
+        raw_sha256=row["raw_sha256"],
+        view=row["view"],
+        view_sha256=row["view_sha256"],
+        projection_revision=row["projection_revision"],
+        observed_at=row["observed_at"],
+        data_as_of=row["data_as_of"],
+        committed=bool(row["committed"]),
+    )

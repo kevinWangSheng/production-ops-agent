@@ -1303,3 +1303,95 @@ def test_a_completion_event_lost_after_publish_is_reconciled_from_the_run():
         until_events=1,
     )
     assert [k for _, k, _ in resumed.sse_events()] == ["run_completed"]
+
+
+# -- review threads on PR #33, round 3 -------------------------------------------
+
+
+def test_a_note_applied_between_reconcile_and_claim_is_seen_under_the_lease(
+    monkeypatch,
+):
+    """Round 3 thread 1 (P1): reconcile must happen after claim()."""
+    app, workbench, clock = build_workbench()
+    monkeypatch.setattr(MemoryIncidentStore, "payload_supported", False)
+    submit_incident(app, key="toctou")
+    subject = workbench.list_incidents()[0].incident_id
+    store = workbench.incidents
+    real_claim = store.claim
+
+    def note_then_claim(incident_id, run_id, owner, versions, lease_seconds=30):
+        # Another operator's note lands after the pre-claim reconcile: the
+        # store applies it, the handler dies before its confirm row.
+        workbench.ledger.put(
+            "control_intent",
+            f"{subject}:late-note",
+            {
+                "action": "correct",
+                "actor_id": "bob",
+                "expected_generation": 0,
+                "text": "Look at the canary.",
+            },
+        )
+        store.control(subject, 0, "correct", "bob")
+        store.claim = real_claim
+        return real_claim(incident_id, run_id, owner, versions, lease_seconds)
+
+    store.claim = note_then_claim
+    investigator = ScriptedInvestigator(clock)
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None and outcome.execution == "completed"
+    assert "Look at the canary." in investigator.contexts[0].question
+
+
+def test_a_committed_evidence_projection_is_not_replaced_by_a_stale_replay():
+    """Round 3 thread 2 (P1): replacement stops once the tool result committed."""
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.tools import TransportResponse
+    from opspilot.tools.registry import canonical_hash
+    from opspilot.web import MemoryEvidenceStore
+    from tests.m1_tool_support import WINDOW_START, body, build, request
+
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]), data_as_of=WINDOW_START
+    )
+    record = executor.execute(request()).evidence
+    assert record is not None
+
+    def at(minutes):
+        observed = record.observed_at + timedelta(minutes=minutes)
+        view = dict(record.view, observed_at=observed.isoformat())
+        return replace(
+            record, observed_at=observed, view=view, view_sha256=canonical_hash(view)
+        )
+
+    store = MemoryEvidenceStore()
+    current, stale = at(1), at(2)
+    store.register(current)
+    # The current worker commits its tool result: its projection is final.
+    store.commit(current.evidence_id, current.view)
+    # The expired worker's replay arrives later with the same bytes.
+    assert store.register(stale) == record.evidence_id
+    kept = store.get(record.evidence_id)
+    assert kept is not None and kept.view_sha256 == current.view_sha256
+    assert kept.observed_at == current.observed_at
+    assert kept.committed is True
+
+
+def test_commit_tool_pins_the_consumed_evidence_view():
+    """The emitting committer couples the evidence projection to the commit."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="pin")
+    subject = workbench.list_incidents()[0].incident_id
+    outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert outcome is not None and outcome.execution == "completed"
+    evidence_id = outcome.evidence_ids[0]
+    stored = workbench.evidence.get(evidence_id)
+    assert stored is not None and stored.committed is True
+    rebuilt = workbench.incidents.rebuild(subject)
+    committed_view = rebuilt["steps"][0]["tool_results"][0]["result"]
+    from opspilot.tools.registry import canonical_hash
+
+    assert stored.view_sha256 == canonical_hash(committed_view)
