@@ -899,6 +899,17 @@ def _result_rows(
         cursor = cursor[step]
     if not isinstance(cursor, list):
         return None, payload
+    try:
+        for row in cursor:
+            canonical(row).encode("utf-8")
+    except (ValueError, RecursionError):
+        # A `\uD800`-style escape decodes into a Python str holding a lone
+        # surrogate codepoint -- json.loads accepts it without error -- but
+        # re-encoding it to UTF-8 for canonicalization (here, and later in
+        # _fit_rows()) raises UnicodeEncodeError, a ValueError subclass. This
+        # is a fresh failure mode past decoding succeeding, not a duplicate
+        # of the decoder-limit check above (bot review finding).
+        return None, payload
     return cursor, payload
 
 

@@ -280,6 +280,28 @@ def test_a_json_decoder_limit_is_malformed_not_a_crash(payload):
     assert outcome.evidence is None and sink.records == []
 
 
+def test_a_row_with_a_lone_surrogate_is_malformed_not_a_crash():
+    """Bot review finding: a size-compliant body decodes fine (``json.loads``
+    accepts a ``\\uD800``-style escape as a lone surrogate codepoint in a
+    Python ``str``, no error), but ``_fit_rows()`` later calls
+    ``canonical(row).encode("utf-8")``, which raises ``UnicodeEncodeError``
+    -- a fresh failure mode beyond the JSON-decoder-limit fix, since it
+    happens *after* decoding succeeds, during canonical re-encoding. An
+    untrusted source response must not be able to crash ``execute()`` this
+    way either.
+    """
+
+    payload = b'{"data":{"result":["\\ud800"]}}'
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
 def test_a_non_response_object_from_the_transport_is_an_error():
     executor, transport, _, _ = build()
     transport.response = {"data": {"result": []}}
