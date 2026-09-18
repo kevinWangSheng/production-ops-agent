@@ -283,9 +283,24 @@ class Workbench:
             versions=dict(self.run_versions),
         )
         if not inserted:
+            # A retry after the process died between accept() and the
+            # event append must repair the missing projection, not skip it.
+            self._announce_intake(
+                incident_id, run_id, _envelope_from_json(stored["envelope"])
+            )
             return IntakeResult(
                 incident_id, run_id, True, self.events.latest(incident_id)
             )
+        sequence = self._announce_intake(incident_id, run_id, envelope)
+        return IntakeResult(incident_id, run_id, False, sequence)
+
+    def _announce_intake(
+        self, incident_id: UUID, run_id: UUID, envelope: IntakeEnvelope
+    ) -> int:
+        """Emit ``intake_accepted`` exactly once per incident (ledger-keyed)."""
+        announced = self.ledger.get("intake_event", str(incident_id))
+        if announced is not None:
+            return int(announced["sequence"])
         sequence = self.events.append(
             incident_id,
             "intake_accepted",
@@ -299,7 +314,10 @@ class Workbench:
                 "received_at": envelope.received_at.isoformat(),
             },
         )
-        return IntakeResult(incident_id, run_id, False, sequence)
+        row, _ = self.ledger.put(
+            "intake_event", str(incident_id), {"sequence": sequence}
+        )
+        return int(row["sequence"])
 
     # -- human control --------------------------------------------------
 
@@ -594,6 +612,13 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             return
+        intake = self.ledger.get("intake", summary.intake_key)
+        if intake is not None:
+            self._announce_intake(
+                incident_id,
+                UUID(intake["run_id"]),
+                _envelope_from_json(intake["envelope"]),
+            )
         self._reconcile_pending_notes(incident_id)
         run_id = summary.current_run_id
         if not summary.concluded or run_id is None:

@@ -1395,3 +1395,50 @@ def test_commit_tool_pins_the_consumed_evidence_view():
     from opspilot.tools.registry import canonical_hash
 
     assert stored.view_sha256 == canonical_hash(committed_view)
+
+
+# -- review threads on PR #33, round 4 -------------------------------------------
+
+
+def test_a_lost_intake_event_is_repaired_on_replay_and_on_reconcile():
+    """Round 4 thread (P2): accept() committed, intake_accepted append crashed."""
+    app, workbench, _ = build_workbench()
+    real_append = workbench.events.append
+
+    def crash_on_intake(incident_id, kind, payload):
+        if kind == "intake_accepted":
+            raise RuntimeError("process died after accept")
+        return real_append(incident_id, kind, payload)
+
+    import pytest
+
+    workbench.events.append = crash_on_intake
+    with pytest.raises(RuntimeError):
+        submit_incident(app, key="lost-intake")
+    workbench.events.append = real_append
+    subject = workbench.list_incidents()[0].incident_id
+    assert workbench.events.read_after(subject, 0) == ()
+    # Replay repairs the projection and reports the true sequence.
+    again = submit_incident(app, key="lost-intake")
+    assert again.status == 200 and again.json()["replayed"] is True
+    events = workbench.events.read_after(subject, 0)
+    assert [e.kind for e in events] == ["intake_accepted"]
+    assert again.json()["sequence"] == events[0].sequence
+    assert events[0].payload["question"] == "Why is checkout erroring?"
+    # Idempotent: a further replay and a page load add nothing.
+    submit_incident(app, key="lost-intake")
+    workbench.snapshot(subject)
+    assert [e.kind for e in workbench.events.read_after(subject, 0)] == [
+        "intake_accepted"
+    ]
+    # A page load alone repairs it too (no replay needed).
+    app2, workbench2, _ = build_workbench()
+    real_append2 = workbench2.events.append
+    workbench2.events.append = crash_on_intake
+    with pytest.raises(RuntimeError):
+        submit_incident(app2, key="lost-intake-2")
+    workbench2.events.append = real_append2
+    subject2 = workbench2.list_incidents()[0].incident_id
+    snapshot = workbench2.snapshot(subject2)
+    assert [e["kind"] for e in snapshot["events"]] == ["intake_accepted"]
+    assert snapshot["question"] == "Why is checkout erroring?"
