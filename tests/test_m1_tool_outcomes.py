@@ -352,6 +352,28 @@ def test_a_row_with_a_lone_surrogate_is_malformed_not_a_crash():
     assert outcome.evidence is None and sink.records == []
 
 
+@pytest.mark.parametrize("token", [b"NaN", b"Infinity", b"-Infinity"])
+def test_a_row_holding_a_non_finite_number_is_malformed_not_a_crash(token):
+    """Bot review finding: a bare ``NaN``/``Infinity``/``-Infinity`` token is
+    accepted by ``json.loads()``'s default ``parse_constant`` (a Python
+    extension, not standard JSON) with no error, decoding into a non-finite
+    ``float``. ``canonical()`` then re-emits the same non-standard token
+    rather than raising, so it would otherwise reach the committed view
+    unnoticed -- the row-level mirror of the non-finite *parameter* check
+    added for the same reason.
+    """
+
+    payload = b'{"data":{"result":[' + token + b"]}}"
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
 def test_a_non_response_object_from_the_transport_is_an_error():
     executor, transport, _, _ = build()
     transport.response = {"data": {"result": []}}

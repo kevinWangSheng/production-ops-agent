@@ -926,6 +926,7 @@ def _result_rows(
     try:
         for row in cursor:
             canonical(row).encode("utf-8")
+            json.dumps(row, allow_nan=False)
     except (ValueError, RecursionError):
         # A `\uD800`-style escape decodes into a Python str holding a lone
         # surrogate codepoint -- json.loads accepts it without error -- but
@@ -933,6 +934,16 @@ def _result_rows(
         # _fit_rows()) raises UnicodeEncodeError, a ValueError subclass. This
         # is a fresh failure mode past decoding succeeding, not a duplicate
         # of the decoder-limit check above (bot review finding).
+        #
+        # A bare `NaN`/`Infinity`/`-Infinity` token is likewise accepted by
+        # json.loads()'s default parse_constant (a Python json extension,
+        # not standard JSON) and decodes into a non-finite float with no
+        # error either -- canonical() later re-emits the same non-standard
+        # token rather than raising, so it would otherwise pass straight
+        # through into the committed view. json.dumps(row, allow_nan=False)
+        # raises ValueError on a non-finite float anywhere in the row,
+        # mirroring the finite-parameter check already applied to
+        # model-supplied params (bot review finding).
         return None, payload
     return cursor, payload
 
