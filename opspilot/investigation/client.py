@@ -102,6 +102,15 @@ class DeepSeekClient:
         return _parse_reply(payload)
 
     def _post(self, body: bytes, timeout: float) -> tuple[bytes, int]:
+        if timeout <= 0:
+            # ``loop.py``'s ``_remaining_timeout()`` already halts with
+            # DEADLINE_EXCEEDED/WALL_TIME_EXHAUSTED before ever calling this
+            # client with a non-positive value; this is a defensive
+            # boundary for any other caller. Fail before any dispatch --
+            # never silently substitute a floor (bot review finding, PR
+            # #29: a positive-but-sub-100ms budget must not be extended
+            # either, see ``budget`` below).
+            raise ModelError("MODEL_UNAVAILABLE")
         request = Request(
             self._endpoint,
             data=body,
@@ -128,7 +137,16 @@ class DeepSeekClient:
         # ``_tighten_socket_deadline`` below remains the finer-grained,
         # faster-to-fire mechanism for the body-read phase once a response
         # object exists to reach into.
-        budget = max(timeout, 0.1)
+        #
+        # ``budget`` is exactly ``timeout`` -- no floor. A floor here used
+        # to be a soft, mostly-harmless minimum on a per-socket-operation
+        # timeout; now that it also bounds ``future.result(timeout=budget)``
+        # (the real wall-clock wait on *this* thread), flooring it would
+        # let a request run past an authorized sub-100ms remaining budget,
+        # i.e. past when the Run's own deadline/wall limit actually expired
+        # (bot review finding, PR #29). The guard above already rules out
+        # timeout <= 0, so this is always a well-defined positive value.
+        budget = timeout
         deadline = self._clock.monotonic() + budget
 
         def _fetch() -> tuple[bytes, int]:

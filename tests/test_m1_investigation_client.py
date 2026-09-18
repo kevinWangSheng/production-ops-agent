@@ -297,3 +297,54 @@ def test_a_stalled_http_error_body_drain_is_also_bounded():
     with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
         client.complete(_call(0.05))
     assert time.monotonic() - started < 0.3
+
+
+class _RecordingOpener:
+    """Records whether ``open()`` was ever reached, to prove a call never
+    dispatches at all."""
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def open(self, request: object, timeout: float) -> _FixedResponse:
+        self.called = True
+        return _FixedResponse(b"unused", status=200)
+
+
+def test_a_non_positive_timeout_fails_before_dispatch():
+    """A defensive boundary: ``loop.py``'s ``_remaining_timeout()`` already
+    halts before ever calling the client with a non-positive value, but the
+    client itself must not silently treat zero/negative as "dispatch
+    anyway" -- it must fail closed without ever reaching the transport."""
+    opener = _RecordingOpener()
+    client = DeepSeekClient("test-key", opener=opener)
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(0))
+    assert opener.called is False
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(-1))
+    assert opener.called is False
+
+
+def test_a_sub_100ms_deadline_is_not_extended_past_the_authorized_budget():
+    """Bot review finding (comment 4044987306, P1): ``budget = max(timeout,
+    0.1)`` silently extended an authorized sub-100ms remaining budget
+    (Run deadline or wall-time nearly exhausted) up to 100ms. Once the
+    earlier wall-clamp fix turned this same ``budget`` into the real
+    wall-clock bound ``future.result(timeout=budget)`` blocks the calling
+    thread on, this floor stopped being a soft, mostly-harmless minimum on
+    a per-socket-operation timeout: it became a genuine deadline/control-
+    boundary violation, letting the request (and its background transport
+    thread) keep running up to 5x past when the Run's authorization
+    actually expired. ``_remaining_timeout()`` in loop.py already
+    guarantees a strictly positive ``timeout_seconds`` reaches this client
+    (it halts with ``DEADLINE_EXCEEDED``/``WALL_TIME_EXHAUSTED`` before
+    ever calling it otherwise), so no floor is needed to keep
+    ``future.result(timeout=...)`` well-defined -- only the true remaining
+    budget must be honoured."""
+    opener = _StalledOpenOpener(delay=0.3, body=b"unused")
+    client = DeepSeekClient("test-key", opener=opener)
+    started = time.monotonic()
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(0.02))
+    assert time.monotonic() - started < 0.08
