@@ -8,7 +8,7 @@ asserted without PostgreSQL.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4, uuid5
@@ -30,6 +30,10 @@ class StepStoreError(Exception):
 class StepCommitter(Protocol):
     @property
     def authorized_run_id(self) -> str: ...
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]: ...
+
+    def assert_current(self) -> None: ...
 
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None: ...
 
@@ -68,6 +72,7 @@ class MemoryStepStore:
         clock: Clock,
         run_id: str,
         control_denied: bool = False,
+        inputs: Sequence[dict[str, Any]] = (),
     ) -> None:
         if type(budget_limit) is not int or budget_limit < 0:
             raise StepStoreError("INVALID_INPUT")
@@ -78,12 +83,20 @@ class MemoryStepStore:
         self.deadline = deadline
         self._clock = clock
         self._control_denied = control_denied
+        self._inputs = list(inputs)
         self.budget_reserved = 0
         self.budget_spent = 0
         self.reservations: dict[UUID, int] = {}
         self.steps: dict[str, dict[str, Any]] = {}
         self.step_ids: dict[str, UUID] = {}
         self.tool_results: dict[UUID, list[dict[str, Any]]] = {}
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        self._guard()
+        return logical_key, list(self._inputs)
+
+    def assert_current(self) -> None:
+        self._guard()
 
     def deny_control(self) -> None:
         self._control_denied = True
@@ -148,6 +161,25 @@ class DurableStepStore:
     @property
     def authorized_run_id(self) -> str:
         return str(self._lease.run_id)
+
+    def assert_current(self) -> None:
+        try:
+            if not self._store.lease_current(self._lease):
+                raise PersistenceError("CONTROL_DENIED")
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        # Each explicit execution attempt owns fresh keys; recovery of committed
+        # tool plans remains Worker/RecoverySession's responsibility.
+        key = f"g{self._lease.control_generation}:e{self._lease.epoch}:{logical_key}"
+        try:
+            frozen = self._store.begin_round(self._lease, key)
+            if frozen["committed"]:
+                raise PersistenceError("ROUND_ALREADY_COMMITTED")
+            return key, list(frozen["inputs"])
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
 
     def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
         try:

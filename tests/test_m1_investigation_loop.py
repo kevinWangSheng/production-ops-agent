@@ -652,6 +652,127 @@ def test_model_error_does_not_look_like_completion():
     assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
 
 
+def test_investigation_inputs_only_send_the_allowlisted_text_and_channel_fields():
+    """A nested/differently-cased credential-shaped key in a follow_up payload
+    must never reach the model, even though a key-name blocklist would have
+    let ``api_key``/``Api-Key``/nested values through (digest3.md PR #31 §5.1)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {
+                    "text": "please check the payments pod",
+                    "channel": "web",
+                    "api_key": "sk-leak-flat",
+                    "Api-Key": "sk-leak-title",
+                    "AUTHORIZATION": "sk-leak-upper",
+                    "nested": {"api_key": "sk-leak-nested"},
+                },
+            }
+        ],
+    )
+    loop.run(request)
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert outbound == (
+        '{"investigation_inputs":[{"content":{"channel":"web",'
+        '"text":"please check the payments pod"},"kind":"follow_up","sequence":1}]}'
+    )
+    for leaked in (
+        "sk-leak-flat",
+        "sk-leak-title",
+        "sk-leak-upper",
+        "sk-leak-nested",
+    ):
+        assert leaked not in outbound
+    for dropped_key in ("api_key", "Api-Key", "AUTHORIZATION", "nested"):
+        assert dropped_key not in outbound
+
+
+def test_investigation_inputs_preserve_the_question_field_follow_up_payloads_use():
+    """The follow_up payload shape this PR's own PG test persists and reads
+    back (``{"question": "why"}``) must still reach the model -- the
+    allowlist must not silently empty a real follow-up's content just
+    because it used a field name other than ``text`` (chatgpt-codex-connector
+    review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"question": "why", "api_key": "sk-leak"},
+            }
+        ],
+    )
+    loop.run(request)
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert outbound == (
+        '{"investigation_inputs":[{"content":{"question":"why"},'
+        '"kind":"follow_up","sequence":1}]}'
+    )
+    assert "sk-leak" not in outbound
+
+
+def test_investigation_inputs_truncate_an_oversized_free_text_field():
+    """An arbitrarily large persisted text/question value must not be able
+    to strand the incident forever: begin_round()'s watermark is cumulative,
+    so an unbounded value would be re-selected on every future round and
+    _reject_oversized() would halt with REQUEST_TOO_LARGE every time, with
+    no control() action able to remove or replace a single bad input
+    (chatgpt-codex-connector review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"text": "x" * (MAX_HTTP_REQUEST_BYTES + 1)},
+            }
+        ],
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons != ("REQUEST_TOO_LARGE",)
+    assert model.calls
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert len(outbound) < MAX_HTTP_REQUEST_BYTES
+    assert outbound.endswith('…[truncated]"},"kind":"follow_up","sequence":1}]}')
+
+
 def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     loop, request, model, _, store, _ = assemble(
         replies=[
