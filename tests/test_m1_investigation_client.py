@@ -13,6 +13,7 @@ wall-clamp path is exercised deterministically and instantly.
 
 import json
 import time
+from urllib.error import HTTPError
 
 import pytest
 
@@ -240,6 +241,58 @@ def test_a_stalled_connect_or_header_phase_is_also_bounded():
     client = DeepSeekClient(
         "test-key", opener=_StalledOpenOpener(delay=0.3, body=payload)
     )
+    started = time.monotonic()
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(0.05))
+    assert time.monotonic() - started < 0.3
+
+
+class _StalledErrorBody:
+    """A fake HTTP error body whose single ``read()`` call blocks for real
+    time -- stands in for a 4xx/5xx peer that trickles its error body
+    slowly enough that no individual read ever hits a timeout on its own,
+    the same shape of gap the connect/header-phase test above covers for
+    the success path."""
+
+    def __init__(self, delay: float) -> None:
+        self._delay = delay
+
+    def read(self, size: int = -1) -> bytes:
+        time.sleep(self._delay)
+        return b""
+
+    def close(self) -> None:
+        pass
+
+
+class _ErroringOpener:
+    def __init__(self, code: int, body_delay: float) -> None:
+        self._code = code
+        self._body_delay = body_delay
+
+    def open(self, request: object, timeout: float):
+        raise HTTPError(
+            "https://api.deepseek.com/v1/chat/completions",
+            self._code,
+            "error",
+            {},
+            _StalledErrorBody(self._body_delay),
+        )
+
+
+def test_a_stalled_http_error_body_drain_is_also_bounded():
+    """Bot review finding (comment 4044473894): the ``except HTTPError``
+    branch drains the error body with a raw, untimed ``HTTPError.read()``
+    call in the calling thread -- not through ``_read_capped``'s deadline-
+    checked loop -- so a 429/500/503 whose body trickles slowly (each read
+    still completing, just slowly) can hold this call open indefinitely,
+    bypassing the model timeout and Run wall limit exactly the way the
+    connect/header-phase gap above did. A real, small sleep stands in for
+    that slow drain; the bound under test is the same wall-clock-real
+    ``future.result(timeout=...)`` backstop, reused for this second
+    blocking call rather than invented anew."""
+    opener = _ErroringOpener(code=500, body_delay=0.3)
+    client = DeepSeekClient("test-key", opener=opener)
     started = time.monotonic()
     with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
         client.complete(_call(0.05))

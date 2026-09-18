@@ -141,10 +141,22 @@ class DeepSeekClient:
             future = pool.submit(_fetch)
             return future.result(timeout=budget)
         except HTTPError as exc:
-            try:
-                exc.read(MAX_HTTP_RESPONSE_BYTES + 1)
-            except OSError:
-                pass
+            # ``exc.read()`` is a raw, untimed blocking call (bot review
+            # finding, PR #29): a 429/500/503 whose error body trickles
+            # slowly -- each individual read still completing, just slowly
+            # -- can hold this call open indefinitely, the exact same gap
+            # ``future.result(timeout=...)`` above closes for the success
+            # path. Reuse the same pool/backstop rather than a second
+            # mechanism; ``OSError`` already covers a timed-out drain
+            # (``TimeoutError`` is an ``OSError`` subclass) same as before.
+            remaining = deadline - self._clock.monotonic()
+            if remaining > 0:
+                try:
+                    pool.submit(exc.read, MAX_HTTP_RESPONSE_BYTES + 1).result(
+                        timeout=remaining
+                    )
+                except OSError:
+                    pass
             return b"", int(exc.code)
         except (URLError, TimeoutError, OSError) as exc:
             # ``concurrent.futures.TimeoutError`` (``future.result``'s own
