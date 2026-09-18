@@ -889,3 +889,67 @@ pytest                → 1261 passed, 81 skipped, 2 xfailed
   已知项，本轮不实现修复；独立审查建议接线并发调度时优先于 `max_operations` 脱钩项处理。
 - 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
 - F3/F7 的 `passes` 保持 `false`。
+
+## 14. 机器人 code review 第三/四轮三条 thread 处置（2026-09-18）
+
+推送第 13 节的修复（`7660dad`）后，`@codex review` 又留下 2 条新的未处理 inline thread
+（`mergeStateStatus` 再次变为 `BLOCKED`）；处置并推送（`e641e6d`）后约 2.5 分钟内，机器人又追加
+第 3 条全新 thread（与前两条无关，是独立的一次新发现，不是同一批延迟到达）。三条一并逐条核实、
+处置、回复并 resolve：
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `registry.py:327`（`ToolRegistration.__post_init__`） | P2 | `max_view_bytes=1` 被接受，但 `_fit_rows()` 无论结果是否为空，`used` 都从 2（`[]` 的两个包裹字节）起步；空结果的 `content: []` 规范化后正好 2 字节，声明的上限从未真正生效，代码也未报告这个矛盾 | 采纳 | 新增共享常量 `EMPTY_VIEW_BYTES = 2`（`registry.py`），`_fit_rows()` 的 `used` 初值与注册期校验共用同一常量；校验下界从 `0 <` 改为 `EMPTY_VIEW_BYTES <=` | `2aa82e2` |
+| 2 | `ledger.py:38`（`DurableToolLedger.__init__`） | P1 | `max_operations` 默认取全局冻结上限（20），与 `QueryScope.max_operations`（允许更窄的 per-Run 值）脱钩；未来若接线代码构造该账本时忘记显式传参，会静默按更宽的全局上限强制，而不是该 Run 实际被授权的更窄上限 | 采纳 | 去掉默认值，改为必填关键字参数（与本 PR 更早一轮 `persistence.charge_tool` 的同类修复 `defecd1` 同一思路）；仓库里唯一真实调用点（PG 集成测试的 `_attempt`）已更新为显式传参 | `e641e6d` |
+| 3 | `registry.py:188`（`ParameterSpec.accepts` 附近的 `_accept_params`） | P2 | 声明为 `number` 的参数接受 `float("nan")`/`float("inf")`（`accepts()` 只做 `isinstance` 检查），`canonical()` 随后把它们序列化成非标准 JSON token `NaN`/`Infinity`，可能被严格的下游反序列化器拒绝，或被不同数据源不一致地解释 | 采纳 | `_accept_params()` 新增校验：`isinstance(value, float) and not math.isfinite(value)` 时返回 `INVALID_PARAMS`，与既有字符串 UTF-8 可编码性校验并列 | `7db5c0c` |
+
+第 1、3 项均先复现（红）再修复（绿），逐项变异验证（改回旧逻辑确认对应测试转红，随后精确还原并
+与保存的 `git diff` 补丁逐字节核对一致）。第 2 项的验证性质不同——见下方独立审查小节。
+
+**独立审查**（两轮，均为全新上下文只读子代理，未参与实现；派发提示均明写禁止
+`git checkout --`/`stash`/`reset`/`amend`，改用 `git diff > patch` 与 `git apply -R`/`apply` 对照）：
+
+- 第 1 项：核实 `_fit_rows()` 在 `budget == EMPTY_VIEW_BYTES` 且非空 `rows` 时的边界行为
+  （`_fit_rows([1,2,3], budget=2)` → `([], 3, 3)`，零行保留、全部行正确报告为省略，未发现漏算）；
+  确认 `max_view_bytes=0` 这条参数化用例在旧代码下本就因为触达旧下界而通过，不区分新旧代码，
+  只有 `max_view_bytes=1` 才是真正定位新收紧边界的用例——已在变异验证记录中注明这一点。
+- 第 2 项：独立复核确认一个关键性质——**去掉默认值本身，对"显式传参"这条路径的运行时行为没有
+  任何改变**（`charge()` 转发 `self._max_operations` 给 `store.charge_tool()` 的逻辑修复前后完全
+  一致），唯一的行为变化是"遗漏传参"从"静默用 20"变成"`TypeError`"。因此新增的 PG 集成测试
+  `test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global_default`
+  （构造 `max_operations=1` 的账本，证明第二次充值被按 1 而非全局 20 拒绝）**不是**这个具体缺陷的
+  红绿回归测试——独立审查用变异验证直接证实：把默认值还原后，这条 PG 测试仍然通过，因为它本来就
+  显式传参。真正钉住这个缺陷的是新增的纯单元测试
+  `tests/test_m1_tool_ledger.py::test_max_operations_has_no_default_and_must_be_supplied_explicitly`
+  （断言遗漏该关键字参数时抛 `TypeError`）——变异验证：还原默认值后此测试正确转红。PG 测试的准确
+  定位是"独立证明一个调用方主动传入的更窄上限，端到端地被真实账本正确强制"，而不是这个具体 bug 的
+  回归锁定；报告已按这个更准确的措辞记录，不高估也不低估其价值。`grep` 确认仓库里构造
+  `DurableToolLedger(` 的地方只有测试文件，去掉默认值不会破坏任何现存调用点。
+- 两轮审查均确认 `git status --short`/`git diff --stat` 在变异验证后为空，未留残留改动。
+
+全部 3 条已在 GitHub 上逐条回复（引用具体提交、测试、变异验证结果，第 2 项的回复采用独立审查
+澄清后的"端到端确认"措辞而非"回归测试"措辞）并 `resolveReviewThread`；`gh api graphql` 复核
+`reviewThreads` 当前 15 条（含第 12/13 节共 12 条）全部 `isResolved: true`。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 423 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1267 passed, 82 skipped, 2 xfailed
+```
+
+`exit=0`。第 2 项涉及持久层，过了真实 PostgreSQL（`M1_DURABLE_POSTGRES=1`）：
+`tests/integration/test_m1_tool_budget_postgres.py tests/integration/test_m1_durable_state_postgres.py`
+→ `28 passed`（原 27 + 新增 1）。`git diff --stat` 确认本轮改动只涉及
+`opspilot/tools/executor.py`、`opspilot/tools/registry.py`、`opspilot/tools/ledger.py` 及对应
+测试文件（含新增 `tests/test_m1_tool_ledger.py`），未触碰
+`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件。
+
+### 未完成/限制
+
+- 组合层（#29/#30/#33）仍未接入真实执行器/账本：第 2 项的修复只消除了"遗漏传参就静默用错默认值"
+  这一种失败模式；真正把 `DurableToolLedger` 绑定到某个 Run 自己的 `QueryScope.max_operations`，
+  仍要等接线任务里第一次出现真实 `QueryScope` 对象可读时才能完成。
+- F3/F7 的 `passes` 保持 `false`。
