@@ -12,20 +12,29 @@ from __future__ import annotations
 
 from opspilot.persistence import DurableStore, Lease
 
-from .executor import MAX_OPERATIONS_PER_RUN, ToolUsage
+from .executor import ToolUsage
 
 __all__ = ["DurableToolLedger"]
 
 
 class DurableToolLedger:
-    """``ToolUsageLedger`` over committed PostgreSQL rows for one lease."""
+    """``ToolUsageLedger`` over committed PostgreSQL rows for one lease.
+
+    ``max_operations`` is required, not defaulted to the frozen global
+    ceiling: a caller wiring this ledger to a specific Run must pass that
+    Run's own ``QueryScope.max_operations``, which may be narrower than the
+    global cap. A silent default here would let the durable charge path
+    enforce the wrong (wider) ceiling for a Run authorized under a tighter
+    one -- the same shape of gap ``charge_tool``'s own ``max_operations``
+    kwarg was made required to close (bot review finding).
+    """
 
     def __init__(
         self,
         store: DurableStore,
         lease: Lease,
         *,
-        max_operations: int = MAX_OPERATIONS_PER_RUN,
+        max_operations: int,
     ) -> None:
         self._store = store
         self._lease = lease

@@ -38,7 +38,7 @@ def _accept(store, tag):
 
 
 def _attempt(store, lease, clock, *, duration):
-    ledger = DurableToolLedger(store, lease)
+    ledger = DurableToolLedger(store, lease, max_operations=MAX_OPERATIONS_PER_RUN)
     executor, transport, _, _ = build(
         clock=clock,
         ledger=ledger,
@@ -170,6 +170,31 @@ def test_charge_tool_settlement_is_not_subject_to_the_cap():
     row = store.rebuild(incident)["run"]
     assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
     assert row["tool_seconds_used"] == 3.0
+
+
+def test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global_default():
+    """Bot review finding: ``DurableToolLedger`` defaulted ``max_operations``
+    to the frozen global ceiling (20) regardless of what a Run's own
+    ``QueryScope.max_operations`` actually authorized. A Run issued a
+    narrower per-Run cap would still have its durable charges enforced
+    against the wider global cap -- the ledger adapter, not just
+    ``charge_tool`` itself, has to carry the caller's real cap through.
+    ``max_operations`` is now a required keyword; this proves binding it to
+    something narrower than the global default actually changes what the
+    durable ledger enforces, not just what ``charge_tool`` accepts directly.
+    """
+
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "ledger-narrow-cap")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    ledger = DurableToolLedger(store, lease, max_operations=1)
+
+    ledger.charge("step-1:0", 1.0)
+    assert ledger.usage().operations_used == 1
+
+    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
+        ledger.charge("step-1:1", 1.0)  # refused at 1, not the global cap of 20
+    assert ledger.usage().operations_used == 1
 
 
 def test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again():
