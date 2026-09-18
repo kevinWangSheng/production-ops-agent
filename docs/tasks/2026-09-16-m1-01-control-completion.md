@@ -190,7 +190,7 @@
   `review-verify-persistence-only-1789683798` 在共享 stash 栈里，不影响本仓库工作区内容，需要有权限的会话
   手动清理。
 
-## 追加修复（2026-09-17 第三轮）：第二轮改动引出的 2 条新 bot thread
+## 追加修复（2026-09-18 第三轮）：第二轮改动引出的 2 条新 bot thread
 
 第二轮修复推送后，机器人对新 HEAD 又留了 2 条未 resolve review thread，均已处置为「成立修复」。
 
