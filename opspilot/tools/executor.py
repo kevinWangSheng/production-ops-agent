@@ -45,6 +45,7 @@ from .outcomes import (
     Window,
 )
 from .registry import (
+    EMPTY_VIEW_BYTES,
     READ_ONLY_VERBS,
     RegisteredTarget,
     TargetRegistry,
@@ -941,7 +942,7 @@ def _fit_rows(rows: Sequence[object], budget: int) -> tuple[list[object], int, i
     """
 
     kept: list[object] = []
-    used = 2  # the enclosing brackets of the JSON array
+    used = EMPTY_VIEW_BYTES  # the enclosing brackets of the JSON array
     for index, row in enumerate(rows):
         size = len(canonical(row).encode("utf-8")) + (1 if kept else 0)
         if used + size > budget:

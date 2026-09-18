@@ -30,6 +30,7 @@ from types import MappingProxyType
 from typing import Literal, TypeVar
 
 __all__ = [
+    "EMPTY_VIEW_BYTES",
     "FORBIDDEN_VERBS",
     "MAX_REQUEST_TIMEOUT_SECONDS",
     "MAX_RESULT_BYTES",
@@ -61,6 +62,12 @@ class ToolContractError(Exception):
 # acceptance packet, not a code change alone.
 MAX_REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RESULT_BYTES = 2 * 1024 * 1024
+
+# The smallest canonical view an executor can ever emit is the empty array
+# `[]` (zero kept rows): `_fit_rows()` always counts these two enclosing
+# bytes. A `max_view_bytes` below this is a ceiling no result, not even an
+# empty one, could ever satisfy (bot review finding).
+EMPTY_VIEW_BYTES = 2
 
 # Technical plan section 8: Kubernetes exposes only get/list/watch/logs, and no
 # arbitrary shell, SQL or code execution is offered at all.
@@ -316,7 +323,7 @@ class ToolRegistration:
             raise ToolContractError("RESULT_LIMIT_OUT_OF_RANGE")
         if (
             type(self.max_view_bytes) is not int
-            or not 0 < self.max_view_bytes <= self.max_result_bytes
+            or not EMPTY_VIEW_BYTES <= self.max_view_bytes <= self.max_result_bytes
         ):
             raise ToolContractError("VIEW_LIMIT_OUT_OF_RANGE")
         if type(self.max_window_seconds) is not int or self.max_window_seconds <= 0:

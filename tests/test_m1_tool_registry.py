@@ -74,10 +74,18 @@ def test_gateway_owned_parameters_cannot_be_declared(name):
         ({"max_result_bytes": MAX_RESULT_BYTES + 1}, "RESULT_LIMIT_OUT_OF_RANGE"),
         ({"max_result_bytes": 0}, "RESULT_LIMIT_OUT_OF_RANGE"),
         ({"max_view_bytes": 8192}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_bytes": 0}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_bytes": 1}, "VIEW_LIMIT_OUT_OF_RANGE"),
         ({"max_window_seconds": 0}, "WINDOW_LIMIT_OUT_OF_RANGE"),
     ],
 )
 def test_frozen_m1_01_ceilings_are_enforced_by_construction(overrides, code):
+    """``max_view_bytes`` in (0, 1) is a bot review finding: ``_fit_rows()``
+    always counts the two enclosing bytes of an empty JSON array `[]`, so a
+    budget below that floor is a ceiling no result -- not even an empty one
+    -- could ever satisfy.
+    """
+
     with pytest.raises(ToolContractError, match=code):
         registration(**overrides)
 
