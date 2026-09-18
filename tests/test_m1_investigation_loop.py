@@ -1393,6 +1393,7 @@ def test_evidence_context_projection_strips_nested_unlisted_keys():
     opaque = "target:deadbeef"
     context = {
         "type": "opspilot-evidence-context-v4",
+        "run_id": "run-9",
         "followup_text": {"password": "leak-top-level"},
         "time_policies": [
             {
@@ -1442,6 +1443,68 @@ def test_evidence_context_projection_strips_nested_unlisted_keys():
     # must survive the projection unchanged.
     assert projected["time_policies"][0]["window"]["start"] == WINDOW_START.isoformat()
     assert projected["target_catalog"][opaque]["namespace"] == "checkout"
+    assert projected["view_bindings"][evidence_id]["status"] == "ok"
+
+
+def test_evidence_context_projection_rejects_a_nested_object_under_a_scalar_field():
+    """Bot review finding: a key-name allowlist alone is not enough. An
+    allowlisted field whose value is the *wrong shape* -- a nested object
+    where the schema expects a scalar, or a list of objects where it
+    expects a list of strings -- was copied verbatim, letting unexpected
+    nested keys (and secrets) leave the process despite the "any depth"
+    claim. A malformed-shaped value must be dropped, not forwarded."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    evidence_id = "ev-shape"
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        # A matching, valid run_id: the identity gate (a separate finding,
+        # tested elsewhere) would otherwise reject any mismatched-or-
+        # malformed run_id before this shape validation ever ran.
+        "run_id": "run-9",
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "current",
+                "max_source_age_seconds": 60,
+                # A schema-compliant TimePolicy.interfaces is a list of
+                # strings; this smuggles an object instead.
+                "interfaces": [{"token": "leak-interfaces"}],
+            }
+        ],
+        "target_catalog": {
+            "target:deadbeef": {
+                "namespace": "checkout",
+                # A schema-compliant IntegrationTarget.observed_services is
+                # a list of strings.
+                "observed_services": [{"secret": "leak-observed-services"}],
+            }
+        },
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                # A schema-compliant ViewBinding.target_refs is a list of
+                # strings.
+                "target_refs": [{"authorization": "leak-target-refs"}],
+                "time_scope_refs": ["policy-window-1"],
+            },
+        },
+    }
+    projected = evidence_context_projection(context)
+    serialized = json.dumps(projected)
+    for leaked in (
+        "leak-interfaces",
+        "leak-observed-services",
+        "leak-target-refs",
+    ):
+        assert leaked not in serialized
+    assert projected["run_id"] == "run-9"
+    assert "interfaces" not in projected["time_policies"][0]
+    assert "observed_services" not in projected["target_catalog"]["target:deadbeef"]
+    assert "target_refs" not in projected["view_bindings"][evidence_id]
+    # The legitimate, correctly-shaped fields survive unaffected.
+    assert projected["time_policies"][0]["max_source_age_seconds"] == 60
+    assert projected["target_catalog"]["target:deadbeef"]["namespace"] == "checkout"
     assert projected["view_bindings"][evidence_id]["status"] == "ok"
 
 

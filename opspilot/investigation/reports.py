@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -182,7 +182,7 @@ class DeliveredView:
 
 
 # Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
-# set is exactly the keys the frozen v4 contract
+# map is exactly the keys the frozen v4 contract
 # (``docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json``,
 # ``$defs.EvidenceContext`` and everything it reaches) declares for that
 # position -- not just the subset today's readers below happen to touch --
@@ -192,102 +192,163 @@ class DeliveredView:
 # ``token`` only catches names someone thought of in advance; an allowlist
 # also catches an unexpected field routed in later (e.g. an operator's
 # follow-up text via a future ``append_input`` path).
-_CONTEXT_FIELDS = frozenset(
-    {"type", "run_id", "view_bindings", "target_catalog", "time_policies"}
-)
+#
+# A key name alone is not enough (bot review finding, PR #29): each value
+# is also checked against the shape the schema declares for that field, so
+# an allowlisted key whose value is the *wrong shape* -- a nested object
+# where the schema expects a scalar, or a list of objects where it expects
+# a list of strings, e.g. ``interfaces: [{"token": "..."}]`` -- is dropped
+# rather than copied verbatim into the model prompt.
+def _is_str(value: object) -> bool:
+    return isinstance(value, str)
+
+
+def _is_str_or_none(value: object) -> bool:
+    return value is None or isinstance(value, str)
+
+
+def _is_bool(value: object) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_int_or_none(value: object) -> bool:
+    return value is None or (isinstance(value, int) and not isinstance(value, bool))
+
+
+def _is_list_of_str(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+# Only ``type``/``run_id`` are scalar-validated here; the three container
+# fields (``view_bindings``/``target_catalog``/``time_policies``) are never
+# copied by ``_project_fields`` at the top level -- they are always rebuilt
+# from scratch by the dedicated functions below, or omitted entirely when
+# the raw value is not the right container type. Doing it any other way
+# (allowlisting the key, then only *conditionally* overwriting it with a
+# validated rebuild) would leave a malformed raw value in place whenever
+# the overwrite's own type check failed.
+_CONTEXT_SCALAR_FIELDS: dict[str, Callable[[object], bool]] = {
+    "type": _is_str,
+    "run_id": _is_str,
+}
 # ``target_id`` is not part of the schema's ``ViewBinding``; it is a fallback
 # ``delivered_from_context`` below also accepts and existing tests rely on.
-_VIEW_BINDING_FIELDS = frozenset(
-    {"view_hash", "target_refs", "time_scope_refs", "timing", "status", "target_id"}
-)
-_TIMING_FIELDS = frozenset(
-    {
-        "operation_started_at",
-        "collection_completed_at",
-        "source_start_at",
-        "source_end_at",
-        "source_time_basis",
-    }
-)
+# ``timing`` is handled the same way as the container fields above, never
+# through this map.
+_VIEW_BINDING_FIELDS: dict[str, Callable[[object], bool]] = {
+    "view_hash": _is_str,
+    "target_refs": _is_list_of_str,
+    "time_scope_refs": _is_list_of_str,
+    "status": _is_str,
+    "target_id": _is_str,
+}
+_TIMING_FIELDS: dict[str, Callable[[object], bool]] = {
+    "operation_started_at": _is_str_or_none,
+    "collection_completed_at": _is_str_or_none,
+    "source_start_at": _is_str_or_none,
+    "source_end_at": _is_str_or_none,
+    "source_time_basis": _is_str,
+}
 # Union of ``KubernetesTarget`` / ``ComposeTarget`` / ``IntegrationTarget``
 # (the schema's ``target_catalog`` discriminated union) plus the registry
 # ``target_id`` wrapper that ``context_target_catalog`` below also accepts
 # and existing tests rely on -- not schema-defined, kept for compatibility.
-_TARGET_CATALOG_ENTRY_FIELDS = frozenset(
-    {
-        "target_id",
-        "kind",
-        "integration_id",
-        "cluster_uid",
-        "namespace",
-        "resource_uid",
-        "revision",
-        "deployment_instance",
-        "service",
-        "container_id",
-        "image_digest",
-        "telemetry_instance",
-        "mapping_revision",
-        "config_revision",
-        "service_identity",
-        "observed_services",
-    }
-)
-_TIME_POLICY_FIELDS = frozenset(
-    {
-        "id",
-        "revision",
-        "integration_id",
-        "interfaces",
-        "mode",
-        "reference_rule",
-        "window",
-        "max_source_age_seconds",
-        "target_refs",
-        "all_authorized_targets",
-        "scope_revision",
-    }
-)
-_TIME_WINDOW_FIELDS = frozenset({"start", "end"})
+_TARGET_CATALOG_ENTRY_FIELDS: dict[str, Callable[[object], bool]] = {
+    "target_id": _is_str,
+    "kind": _is_str,
+    "integration_id": _is_str,
+    "cluster_uid": _is_str,
+    "namespace": _is_str,
+    "resource_uid": _is_str,
+    "revision": _is_str,
+    "deployment_instance": _is_str,
+    "service": _is_str,
+    "container_id": _is_str,
+    "image_digest": _is_str,
+    "telemetry_instance": _is_str,
+    "mapping_revision": _is_str,
+    "config_revision": _is_str,
+    "service_identity": _is_str,
+    "observed_services": _is_list_of_str,
+}
+# ``window`` is handled the same way as the container fields above, never
+# through this map.
+_TIME_POLICY_FIELDS: dict[str, Callable[[object], bool]] = {
+    "id": _is_str,
+    "revision": _is_str,
+    "integration_id": _is_str,
+    "interfaces": _is_list_of_str,
+    "mode": _is_str,
+    "reference_rule": _is_str,
+    "max_source_age_seconds": _is_int_or_none,
+    "target_refs": _is_list_of_str,
+    "all_authorized_targets": _is_bool,
+    "scope_revision": _is_str_or_none,
+}
+_TIME_WINDOW_FIELDS: dict[str, Callable[[object], bool]] = {
+    "start": _is_str,
+    "end": _is_str,
+}
 
 
-def _project_fields(mapping: object, fields: frozenset[str]) -> dict[str, Any]:
+def _project_fields(
+    mapping: object, fields: Mapping[str, Callable[[object], bool]]
+) -> dict[str, Any]:
+    """Allowlist projection that also enforces each field's declared shape.
+
+    A value that fails its field's validator is dropped, not kept
+    unvalidated and not coerced -- there is no partial/best-effort
+    forwarding of a malformed value.
+    """
     if not isinstance(mapping, Mapping):
         return {}
-    return {key: value for key, value in mapping.items() if key in fields}
+    return {
+        key: mapping[key]
+        for key, is_valid in fields.items()
+        if key in mapping and is_valid(mapping[key])
+    }
 
 
 def _project_view_binding(binding: object) -> dict[str, Any]:
     if not isinstance(binding, Mapping):
         return {}
     projected = _project_fields(binding, _VIEW_BINDING_FIELDS)
-    if isinstance(binding.get("timing"), Mapping):
-        projected["timing"] = _project_fields(binding["timing"], _TIMING_FIELDS)
+    timing = binding.get("timing")
+    if isinstance(timing, Mapping):
+        projected["timing"] = _project_fields(timing, _TIMING_FIELDS)
     return projected
+
+
+def _project_target_catalog_entry(entry: object) -> dict[str, Any]:
+    return _project_fields(entry, _TARGET_CATALOG_ENTRY_FIELDS)
 
 
 def _project_time_policy(policy: object) -> dict[str, Any]:
     if not isinstance(policy, Mapping):
         return {}
     projected = _project_fields(policy, _TIME_POLICY_FIELDS)
-    if isinstance(policy.get("window"), Mapping):
-        projected["window"] = _project_fields(policy["window"], _TIME_WINDOW_FIELDS)
+    window = policy.get("window")
+    if isinstance(window, Mapping):
+        projected["window"] = _project_fields(window, _TIME_WINDOW_FIELDS)
     return projected
 
 
 def evidence_context_projection(context: object) -> dict[str, Any] | None:
-    """Field-allowlist projection of a caller-supplied v4 evidence context.
+    """Field- and shape-allowlist projection of a v4 evidence context.
 
     Every key the readers in this module (and the loop's prompt message)
-    actually consume is listed above; anything else is dropped, including
-    inside ``view_bindings``/``target_catalog``/``time_policies`` entries.
-    The loop calls this once, at context-assembly time, and uses only the
-    projected result -- for the model prompt and for every citation check --
-    so an unexpected nested key can never reach either (redline P3-4).
+    actually consume is listed above, together with the shape the schema
+    declares for it; anything else -- an unlisted key, or a listed key
+    whose value is the wrong shape -- is dropped, including inside
+    ``view_bindings``/``target_catalog``/``time_policies`` entries. The
+    loop calls this once, at context-assembly time, and uses only the
+    projected result -- for the model prompt and for every citation check
+    -- so neither an unexpected nested key nor a malformed value under an
+    allowlisted one can reach either (redline P3-4).
     """
     if not isinstance(context, Mapping):
         return None
-    projected = _project_fields(context, _CONTEXT_FIELDS)
+    projected = _project_fields(context, _CONTEXT_SCALAR_FIELDS)
     bindings = context.get("view_bindings")
     if isinstance(bindings, Mapping):
         projected["view_bindings"] = {
@@ -298,7 +359,7 @@ def evidence_context_projection(context: object) -> dict[str, Any] | None:
     catalog = context.get("target_catalog")
     if isinstance(catalog, Mapping):
         projected["target_catalog"] = {
-            key: _project_fields(entry, _TARGET_CATALOG_ENTRY_FIELDS)
+            key: _project_target_catalog_entry(entry)
             for key, entry in catalog.items()
             if isinstance(key, str)
         }
