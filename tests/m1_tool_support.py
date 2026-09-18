@@ -15,6 +15,7 @@ from opspilot.tools import (
     ReadOnlyToolExecutor,
     RegisteredTarget,
     TargetRegistry,
+    ToolBudgetExhausted,
     ToolDescription,
     ToolRegistration,
     ToolRegistry,
@@ -127,9 +128,10 @@ class SlowControl(FixedControl):
 class RecordingLedger:
     """In-memory tool budget ledger; ``usage`` seeds what earlier attempts spent."""
 
-    def __init__(self, usage=None, fail_on=None):
+    def __init__(self, usage=None, fail_on=None, exhausted_on=None):
         self.usage_value = usage if usage is not None else ToolUsage()
         self.fail_on = fail_on  # 1-based charge call numbers that raise
+        self.exhausted_on = exhausted_on  # 1-based calls that raise the cap
         self.charges = []
 
     def usage(self):
@@ -137,7 +139,10 @@ class RecordingLedger:
 
     def charge(self, operation_id, seconds):
         self.charges.append((operation_id, seconds))
-        if self.fail_on is not None and len(self.charges) in self.fail_on:
+        call = len(self.charges)
+        if self.exhausted_on is not None and call in self.exhausted_on:
+            raise ToolBudgetExhausted("OPERATION_BUDGET_EXHAUSTED")
+        if self.fail_on is not None and call in self.fail_on:
             raise RuntimeError("budget ledger unavailable")
 
 

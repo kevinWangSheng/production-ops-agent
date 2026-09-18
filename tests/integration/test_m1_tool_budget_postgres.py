@@ -14,7 +14,11 @@ from uuid import uuid4
 import pytest
 
 from opspilot.persistence import DurableStore, PersistenceError
-from opspilot.tools import MAX_OPERATIONS_PER_RUN, TransportResponse
+from opspilot.tools import (
+    MAX_OPERATIONS_PER_RUN,
+    ToolBudgetExhausted,
+    TransportResponse,
+)
 from opspilot.tools.ledger import DurableToolLedger
 from scripts.m0.postgres_lab import DSN
 from tests.m1_tool_support import WINDOW_START, FakeClock, body, build, request
@@ -182,6 +186,11 @@ def test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global
     ``max_operations`` is now a required keyword; this proves binding it to
     something narrower than the global default actually changes what the
     durable ledger enforces, not just what ``charge_tool`` accepts directly.
+
+    Also proves the real translation from ``charge_tool``'s
+    ``PersistenceError("OPERATION_BUDGET_EXHAUSTED")`` into the abstract
+    ``ToolUsageLedger`` contract's ``ToolBudgetExhausted`` (a later, separate
+    bot review finding) -- not just the in-memory test double's behaviour.
     """
 
     store = DurableStore(DSN)
@@ -192,7 +201,7 @@ def test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global
     ledger.charge("step-1:0", 1.0)
     assert ledger.usage().operations_used == 1
 
-    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
+    with pytest.raises(ToolBudgetExhausted, match="OPERATION_BUDGET_EXHAUSTED"):
         ledger.charge("step-1:1", 1.0)  # refused at 1, not the global cap of 20
     assert ledger.usage().operations_used == 1
 

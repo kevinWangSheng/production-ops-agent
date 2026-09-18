@@ -957,6 +957,46 @@ def test_a_result_whose_cost_cannot_be_settled_is_not_adopted():
     assert executor.operations_used == 1
 
 
+def test_a_ledger_that_refuses_the_operation_cap_reports_the_authoritative_reason():
+    """Bot review finding: ``_charge()`` collapsed every ledger exception,
+    including the fixed-code ``ToolBudgetExhausted``, into a generic
+    ``False`` -> ``CONTROL_UNAVAILABLE``. A caller must see the durable
+    cap's own authoritative denial, the same reason the in-process
+    pre-check (``_reserve()``) already reports for the identical
+    condition, not a transient-looking control failure it might retry.
+    """
+
+    ledger = RecordingLedger(exhausted_on={1})
+    executor, transport, _, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "OPERATION_BUDGET_EXHAUSTED")
+    assert outcome.source_contact == "none"
+    assert not transport.called
+    assert executor.operations_used == 0
+
+
+def test_a_ledger_that_refuses_settlement_on_the_cap_is_handled_defensively():
+    """The durable WHERE clause only gates a *new* operation, so a real
+    ledger cannot raise ``ToolBudgetExhausted`` from a settlement charge --
+    but ``_charge()`` re-raises it unconditionally from either call site,
+    so this must still be handled rather than escape ``execute()``.
+    """
+
+    ledger = RecordingLedger(exhausted_on={2})
+    executor, transport, sink, _ = build(ledger=ledger)
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "OPERATION_BUDGET_EXHAUSTED")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and outcome.model_view["content"] is None
+    assert sink.records == []
+
+
 def test_a_ledger_that_is_not_a_ledger_is_a_contract_error():
     class NotALedger:
         pass

@@ -67,6 +67,7 @@ __all__ = [
     "QueryScope",
     "ReadOnlyToolExecutor",
     "ReadOnlyTransport",
+    "ToolBudgetExhausted",
     "ToolRequest",
     "ToolUsage",
     "ToolUsageLedger",
@@ -105,6 +106,18 @@ class TransportResultTooLarge(TransportError):
 
 class ControlUnavailable(Exception):
     """Control state could not be read, so no new call may be made."""
+
+
+class ToolBudgetExhausted(Exception):
+    """The ledger refused a new operation: the Run's durable cap is spent.
+
+    A ``ToolUsageLedger`` implementation raises this specific, fixed-code
+    exception for exactly this one condition so the executor can propagate
+    ``OPERATION_BUDGET_EXHAUSTED`` -- the same authoritative reason the
+    in-process pre-check already reports -- instead of collapsing it into
+    the generic ``CONTROL_UNAVAILABLE`` every other ledger failure maps to
+    (bot review finding).
+    """
 
 
 @dataclass(frozen=True)
@@ -307,6 +320,9 @@ class ToolUsageLedger(Protocol):
     counted even if the process dies mid-flight, and once after it with the
     measured wall time. Both calls carry the same ``operation_id``, so a
     repeated charge settles seconds instead of counting the operation twice.
+    ``charge`` raises ``ToolBudgetExhausted`` specifically when it refuses a
+    *new* operation because the Run's durable cap is spent; any other
+    failure is an opaque, unclassified error the caller fails closed on.
     """
 
     def usage(self) -> ToolUsage: ...
@@ -529,7 +545,15 @@ class ReadOnlyToolExecutor:
         # sees it as spent (section 13: unknown cost stays occupied). A budget
         # authority that cannot record it stops the call, as control does, and
         # an operation that was never recorded is not counted locally either.
-        if not self._charge(operation.operation_id, 0.0):
+        try:
+            charged = self._charge(operation.operation_id, 0.0)
+        except ToolBudgetExhausted:
+            # The durable cap is the authoritative one; a caller must see
+            # this as the same denial the in-process pre-check reports, not
+            # a transient control failure it might retry (bot review
+            # finding).
+            return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
+        if not charged:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         self._operations_used += 1
         # The charge above is itself a ledger round trip of unbounded
@@ -594,7 +618,18 @@ class ReadOnlyToolExecutor:
         # store that cannot commit (``EVIDENCE_NOT_COMMITTED``). The durable
         # record then keeps this operation at its reserved 0 s (the count is
         # kept); the attempt-local total still carries the measured time.
-        if not self._charge(operation.operation_id, elapsed):
+        # Settling an already-counted operation is never subject to the
+        # operation cap (the durable WHERE clause only gates a *new*
+        # operation), so a real ledger cannot raise ToolBudgetExhausted
+        # here -- but _charge() re-raises it unconditionally, so this is
+        # still handled defensively rather than left to escape execute().
+        try:
+            charged = self._charge(operation.operation_id, elapsed)
+        except ToolBudgetExhausted:
+            return self._refuse(
+                operation, "denied", "OPERATION_BUDGET_EXHAUSTED", "confirmed"
+            )
+        if not charged:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", "confirmed")
         if failure is not None:
             return self._refuse(operation, *failure)
@@ -717,8 +752,14 @@ class ReadOnlyToolExecutor:
     def _charge(self, operation_id: str, seconds: float) -> bool:
         try:
             self._ledger.charge(operation_id, seconds)
+        except ToolBudgetExhausted:
+            # A fixed-code signal, not vendor text: let the caller report
+            # the authoritative denial instead of a generic ledger failure
+            # (bot review finding).
+            raise
         except Exception:
-            # Ledger error text may carry storage detail; never re-raise it.
+            # Any other ledger error text may carry storage detail; never
+            # re-raise it.
             return False
         return True
 

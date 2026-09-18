@@ -10,9 +10,9 @@ through the lease-fenced ``charge_tool`` write path.
 
 from __future__ import annotations
 
-from opspilot.persistence import DurableStore, Lease
+from opspilot.persistence import DurableStore, Lease, PersistenceError
 
-from .executor import ToolUsage
+from .executor import ToolBudgetExhausted, ToolUsage
 
 __all__ = ["DurableToolLedger"]
 
@@ -50,6 +50,16 @@ class DurableToolLedger:
         )
 
     def charge(self, operation_id: str, seconds: float) -> None:
-        self._store.charge_tool(
-            self._lease, operation_id, seconds, max_operations=self._max_operations
-        )
+        try:
+            self._store.charge_tool(
+                self._lease, operation_id, seconds, max_operations=self._max_operations
+            )
+        except PersistenceError as exc:
+            # OPERATION_BUDGET_EXHAUSTED is charge_tool's own fixed code
+            # (never vendor/storage text), so it is safe to translate into
+            # the abstract ToolUsageLedger contract's dedicated exception
+            # rather than the generic opaque failure every other
+            # PersistenceError collapses to (bot review finding).
+            if str(exc) == "OPERATION_BUDGET_EXHAUSTED":
+                raise ToolBudgetExhausted(str(exc)) from exc
+            raise
