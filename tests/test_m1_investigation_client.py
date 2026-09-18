@@ -12,6 +12,7 @@ wall-clamp path is exercised deterministically and instantly.
 """
 
 import json
+import time
 
 import pytest
 
@@ -196,3 +197,50 @@ def test_missing_socket_shape_is_ignored_without_breaking_the_wall_clamp():
     )
     with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
         client.complete(_call(200))
+
+
+class _StalledOpenOpener:
+    """Simulates a peer that stalls during connection establishment or
+    header receipt -- entirely inside ``opener.open()`` itself, before any
+    response object (and so no ``_read_capped``/``_tighten_socket_deadline``
+    chance) exists at all."""
+
+    def __init__(self, delay: float, body: bytes) -> None:
+        self._delay = delay
+        self._body = body
+
+    def open(self, request: object, timeout: float) -> _FixedResponse:
+        time.sleep(self._delay)
+        return _FixedResponse(self._body, status=200)
+
+
+def test_a_stalled_connect_or_header_phase_is_also_bounded():
+    """Bot review finding (comment 4042176056): ``opener.open()`` itself --
+    connection establishment and header receipt -- can stall arbitrarily
+    long on a slow-trickling peer; ``urlopen``'s ``timeout`` only bounds
+    each individual socket operation inside it, and this client's own
+    wall-clock deadline only starts being checked once ``open()`` has
+    already returned and ``_read_capped`` begins. A real, small sleep
+    stands in for a slow peer here: the bound under test is necessarily
+    wall-clock-real (a background thread's ``future.result(timeout=...)``),
+    not the injectable fake clock the other tests in this file use, since
+    Python cannot inject a fake clock into a blocking C-level socket call."""
+    payload = json.dumps(
+        {
+            "id": "resp-1",
+            "model": "deepseek-flash",
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    client = DeepSeekClient(
+        "test-key", opener=_StalledOpenOpener(delay=0.3, body=payload)
+    )
+    started = time.monotonic()
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(0.05))
+    assert time.monotonic() - started < 0.3

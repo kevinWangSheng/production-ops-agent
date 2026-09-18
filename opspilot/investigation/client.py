@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -113,22 +114,32 @@ class DeepSeekClient:
         # ``timeout`` here already is ``min(360s frozen limit, remaining
         # deadline, remaining wall)`` (the loop's ``_remaining_timeout``).
         # ``urlopen``'s ``timeout`` only bounds each individual socket
-        # operation, not the whole response: a slow trickle -- many small
-        # chunks, each arriving just under that per-read timeout -- could
-        # keep ``_read_capped`` looping far past this budget. ``deadline``
-        # below bounds the number of *further* top-level reads once it
-        # passes. That alone is not sufficient: ``io.BufferedReader.read(n)``
-        # (what ``response.fp.read`` -- and so ``response.read`` -- actually
-        # calls) loops internally over the raw socket until it collects the
-        # full ``n`` bytes, so one single call can itself run long past
-        # ``deadline`` the same way, independent of the per-iteration check.
-        # ``_tighten_socket_deadline`` closes that inner gap by shrinking the
-        # socket's own timeout before every read, top-level or internal.
-        deadline = self._clock.monotonic() + max(timeout, 0.1)
-        try:
-            with self._opener.open(request, timeout=max(timeout, 0.1)) as response:
+        # operation, not the whole request: a slow trickle -- many small
+        # reads, each arriving just under that per-operation timeout --
+        # could keep ``_read_capped`` (the body) looping far past this
+        # budget, or keep ``opener.open()`` itself (connection
+        # establishment, status line, headers) blocking past it before a
+        # response object even exists to check anything against (bot
+        # review finding, PR #29: no check on *this* thread can run until
+        # ``open()`` returns). ``future.result(timeout=budget)`` is the
+        # only wall-clock-real backstop that covers both phases: it bounds
+        # how long *this* thread waits, unconditionally, regardless of
+        # what ``_fetch`` is still doing in the background.
+        # ``_tighten_socket_deadline`` below remains the finer-grained,
+        # faster-to-fire mechanism for the body-read phase once a response
+        # object exists to reach into.
+        budget = max(timeout, 0.1)
+        deadline = self._clock.monotonic() + budget
+
+        def _fetch() -> tuple[bytes, int]:
+            with self._opener.open(request, timeout=budget) as response:
                 raw = _read_capped(response, self._clock, deadline)
                 return raw, int(response.status)
+
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            future = pool.submit(_fetch)
+            return future.result(timeout=budget)
         except HTTPError as exc:
             try:
                 exc.read(MAX_HTTP_RESPONSE_BYTES + 1)
@@ -136,7 +147,18 @@ class DeepSeekClient:
                 pass
             return b"", int(exc.code)
         except (URLError, TimeoutError, OSError) as exc:
+            # ``concurrent.futures.TimeoutError`` (``future.result``'s own
+            # timeout, i.e. ``_fetch`` did not finish within ``budget`` at
+            # all) is ``TimeoutError`` itself as of this project's pinned
+            # Python version -- no separate branch needed.
             raise ModelError("MODEL_UNAVAILABLE") from exc
+        finally:
+            # Never wait for an orphaned, still-stalled fetch: the point of
+            # the timeout above is that this call returns within ``budget``
+            # regardless of what the background thread is still doing. It
+            # finishes (and is garbage-collected) on its own once the peer
+            # actually responds or its own socket timeout fires.
+            pool.shutdown(wait=False)
 
 
 def _tighten_socket_deadline(response: Any, remaining: float) -> None:
