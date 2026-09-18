@@ -1,7 +1,7 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：PR 已就绪，待用户审核合并；已合并 base 分支 PR #20 的最新提交解决 DIRTY/CONFLICTING，`mergeStateStatus=CLEAN`；上一轮 4 条机器人发现已全部处置——3 条完全修复，第 4 条（source 区间校验）此前受阻的另一半已随 `facb64d` 补齐，独立审查确认无发现（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
-- 更新日期：2026-09-17
+- 状态：`facb64d` 推送后机器人又追加 5 条新发现（4 条同批 + 1 条晚到），已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`），独立审查确认全部「正确、最小」，仅记录 1 条非阻塞后续建议；本地 `make check`/PG 定向全绿；待推送、CI、PR 描述更新与用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 更新日期：2026-09-18
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md)「Flash 调查 loop」；
@@ -594,3 +594,195 @@ window`/`Window.as_json()` 保证非空），只对直接单测调用方有意�
   （与合并后持平，符合预期——本次改动不碰 `persistence.py`）；完成后
   `postgres_lab stop`。独立审查期间也独立起停过一次 PG lab，同样
   32 passed。
+
+## 追加（srcrange-29 续：`facb64d` 推送后新增的 5 个机器人发现）
+
+`facb64d`/`bcc466b` 推送后，`chatgpt-codex-connector` 在同一 PR 上追加了
+5 个新 review thread（前 4 个于 2026-09-17T23:12:30Z 一批发出，第 5 个于
+2026-09-18T06:51:08Z 单独发出，晚于前 4 个的修复提交）。按本项目「合并后
+出现新 bot thread 也一并处置」的既定做法，逐条修复，先红后绿，一发现一
+提交。
+
+### 发现 1（P1，`reports.py:257`，comment 4042176048）—— 允许字段的值形状未校验
+
+- **问题**：P3-4 的字段白名单只按 key 名过滤，未校验 value 的形状；
+  `interfaces: [{"token": "..."}]`、对象值的 `namespace` 等畸形嵌套值会
+  被原样拷贝，随 `InvestigationLoop.run()` 序列化进外部模型请求，等于
+  「任意深度白名单」的说法名不副实。
+- **修复**（`7eea577`）：把 `_VIEW_BINDING_FIELDS`/`_TIMING_FIELDS`/
+  `_TARGET_CATALOG_ENTRY_FIELDS`/`_TIME_POLICY_FIELDS`/`_TIME_WINDOW_FIELDS`
+  从 `frozenset[str]` 改为 `dict[str, Callable[[object], bool]]`，新增
+  `_is_str`/`_is_str_or_none`/`_is_bool`/`_is_int_or_none`/`_is_list_of_str`
+  校验器；`_project_fields()` 改为 key 存在**且** value 形状合法才拷贝；
+  容器字段（`view_bindings`/`target_catalog`/`time_policies` 及嵌套
+  `timing`/`window`）不再泛化拷贝，只在显式 `isinstance` 检查后逐条投影。
+  副作用：发现并修掉了「条件覆盖遗留旧畸形容器」的次生 bug（旧代码对
+  容器字段做条件覆盖时，形状不合法的旧值不会被清空）。
+- **测试**：`test_evidence_context_projection_rejects_a_nested_object_
+  under_a_scalar_field` 新增，构造 `interfaces`/`observed_services`/
+  `target_refs` 三处形状不合法的嵌套值，断言全部被丢弃、合法同级字段
+  保留。先红（旧 `_project_fields` 原样拷贝对象值）后绿。
+
+### 发现 2（P1，`loop.py:456`，comment 4042176052）—— 陌生 Run 的 context 仍能授予新证据资格
+
+- **问题**：更早一轮的 `82218ae` 只把 `type`/`run_id` 身份校验绑定到
+  `delivered_from_context()`（预先提供的证据），`context_target_catalog()`/
+  `eligible_time_policies()`（工具**新采集**证据走的路径）仍然照单全收
+  陌生 `run_id` 的 context——陌生 context 的 target 别名和 time policy
+  可以套用到本 Run 新采集的 view 上。
+- **修复**（`bab8941`）：`evidence_context_projection()` 新增 `run_id`
+  必填关键字参数，在任何字段投影之前先校验 `context.get("type") ==
+  EVIDENCE_CONTEXT_TYPE and context.get("run_id") == run_id`，不匹配直接
+  返回 `None`；`loop.py`（`run()` 顶部）调用点改为传入
+  `run_id=request.run_id`。因为身份门禁现在在投影入口就短路，原来的
+  `_CONTEXT_SCALAR_FIELDS`（用于旁路校验 type/run_id 两个标量字段）变成
+  死代码，一并删除。
+- **交付顺序**：因为发现 2 直接改了发现 1 刚加的函数签名和容器逻辑，为
+  保持「一次提交一个逻辑变更」，采用「回退发现-2 专属改动→单独提交
+  发现-1→在其上恢复发现-2→单独提交发现-2」的手工拆分，每一步都跑过
+  全量测试确认绿（发现-1-only 1363 passed；恢复后 1364 passed，与两者
+  合并态完全一致）。
+- **测试**：`test_a_foreign_run_context_grants_no_eligibility_to_freshly_
+  collected_evidence` 新增：陌生 `run_id` + 宽松 `current` 策略
+  （`max_source_age_seconds: 7200`），断言即使工具真实调用成功
+  （`transport.called is True`），最终仍 `execution == "failed"` 且
+  `handoff_reasons == ("REPORT_INVALID",)`。级联影响：身份门禁导致约 5
+  个既有测试的 fixture 因缺 `run_id` 转红，逐一在基础 fixture
+  （`tests/m1_investigation_support.py`）、4 处独立 fixture、2 处
+  `run_id` 不匹配的调用点补齐/修正后转绿。
+
+### 发现 3（P1，`client.py:130`，comment 4042176056）—— 连接建立/收头阶段未受 wall clamp 约束
+
+- **问题**：`urlopen` 的 `timeout` 只约束单次 socket 操作，服务端如果让
+  每次 socket 读都恰好在 `timeout` 前完成（慢滴灌），`opener.open()`
+  本身（连接建立、状态行、响应头）可以无限期阻塞在拿到 response 对象
+  之前——此时既有的 `_read_capped`/`_tighten_socket_deadline` 都无从
+  介入，因为它们只在拿到 response 对象之后才能生效。可能超过模型
+  超时、Run wall 上限与授权 deadline，延误 pause/cancel。
+- **修复**（`8f9688c`）：把 `opener.open()` + `_read_capped()` 整体包进
+  `_fetch()`，提交到 `ThreadPoolExecutor(max_workers=1)`，用
+  `future.result(timeout=budget)` 作为唯一的、真实时钟的兜底——无论
+  `_fetch` 内部卡在哪个阶段，本线程最多等 `budget` 秒。`finally` 块用
+  `pool.shutdown(wait=False)`（而非 `with` 语句的隐式 `shutdown(wait=
+  True)`）避免反过来阻塞在被抛弃的慢线程上。验证
+  `concurrent.futures.TimeoutError is TimeoutError`（本项目锁定
+  Python 3.12 下为 `True`），既有的 `except (URLError, TimeoutError,
+  OSError)` 不需要新增分支即可捕获 `future.result` 自身超时。
+- **测试**：`test_a_stalled_connect_or_header_phase_is_also_bounded`
+  新增（`tests/test_m1_investigation_client.py`）：因为该阶段完全在
+  `opener.open()` 内部阻塞，无法像其余用例一样注入 `FakeClock`（Python
+  无法把假时钟注入阻塞的 C 级 socket 调用），改用真实 `time.sleep(0.3)`
+  模拟慢连接，断言真实耗时 `< 0.3s`（即被 `future.result(timeout=0.05
+  的 budget)` 提前打断，而非等满 0.3s）。先红（旧代码耗时 ≥0.3s）后绿。
+
+### 发现 4（P2，`loop.py:655`，comment 4042176058）—— 工具调用参数 JSON 的 RecursionError 未捕获
+
+- **问题**：模型返回约一万层嵌套的 `function.arguments` 时，Python 3.12
+  的 `json.loads()` 抛 `RecursionError` 而非 `ValueError`——`RecursionError`
+  不是 `ValueError` 子类，`_parse_arguments()` 原有的 `except ValueError:`
+  漏抓，异常从 `InvestigationLoop.run()` 逃逸，此时该轮 assistant step
+  已经落库提交，调用方却收不到任何 `LoopOutcome`。
+- **修复**（`0c648fe`）：`except ValueError:` 扩为 `except (ValueError,
+  RecursionError):`，与 #20 在 `opspilot/tools/executor.py`
+  `_result_rows`（提交 `46cbf3e`）解析工具**响应体**时遇到的同一个
+  stdlib 陷阱采用完全相同的修法，是复用而非重复发明。核实过下游：
+  `params=None` 会流入 `_accept_params`（`isinstance(params, Mapping)`
+  为假）→ `(None, "INVALID_PARAMS")` → `_refuse(operation, "error",
+  "INVALID_PARAMS")`，是既有的、已被良好测试覆盖的「参数不合法」拒绝
+  路径，不需要在 `_parse_arguments` 之外新增任何处理。
+- **测试**：`test_a_deeply_nested_tool_call_argument_does_not_crash_the_
+  loop` 新增：`"[" * 20_000 + "]" * 20_000` 作为 `arguments`，断言
+  `outcome.execution == "failed"` 且 `transport.called is False`（因为
+  在 `_authorize` 阶段就被拒绝，根本到不了 transport）。先红（旧代码
+  `RecursionError` 逃出 `loop.run()`）后绿。
+
+### 发现 5（P1，`client.py:136`，comment 4044473894，晚于前 4 个发现单独出现）—— HTTP 错误响应体的排空读取未受 deadline 约束
+
+- **问题**：`except HTTPError as exc:` 分支里直接调用
+  `exc.read(MAX_HTTP_RESPONSE_BYTES + 1)` 排空错误响应体，这是在**调用
+  线程**里的一次原始、无超时阻塞调用，没有走 `_read_capped()` 的逐块
+  deadline 检查——与发现 3 修复的连接/收头阶段是同一类缺口，只是发生
+  在 429/500/503 错误体的排空阶段：服务端慢滴灌错误体（每次读仍能
+  完成，只是很慢）可以让这次调用无限期挂起，绕开模型超时和 Run wall
+  上限，延误 pause/cancel。
+- **修复**（`bad4ab6`）：复用发现 3 引入的同一套机制，而非另起一套——
+  把排空读取提交到**同一个** `pool`（`max_workers=1`，此时 `_fetch`
+  已跑完，worker 空闲），用 `future.result(timeout=remaining)` 兜底，
+  `remaining = deadline - self._clock.monotonic()`（`deadline` 是本次
+  物理请求一开始就算好的同一个绝对时间点，此处直接复用，非新增字段）；
+  `remaining <= 0` 时直接跳过排空。验证 `TimeoutError` 是 `OSError` 的
+  子类（`issubclass(TimeoutError, OSError) is True`），既有的
+  `except OSError: pass` 不需要新增分支即可同时覆盖「原始读取自身的
+  OSError」与「`future.result` 排空超时」两种情况。
+- **测试**：`test_a_stalled_http_error_body_drain_is_also_bounded` 新增
+  （`tests/test_m1_investigation_client.py`）：构造真实
+  `urllib.error.HTTPError`，其 `fp` 参数是一个 `.read()` 会真实
+  `time.sleep(0.3)` 的假对象（验证过 `HTTPError.read()` 通过
+  `tempfile._TemporaryFileWrapper` 的属性代理确实会转发到 `fp.read()`），
+  断言真实耗时 `< 0.3s`。先红（旧代码耗时 ≥0.3s）后绿。
+
+### 测试与检查汇总（5 个发现合计）
+
+- 新增测试 5 条（`tests/test_m1_investigation_loop.py` 4 条 + `tests/
+  test_m1_investigation_client.py` 1 条，各发现一条），全部先红后绿。
+- `make check`（`bad4ab6` 上）：`ruff check .`/`ruff format --check .`/
+  `mypy` 全部干净；`pytest` **1367 passed, 86 skipped, 2 xfailed**。
+  基数为 `facb64d`/`bcc466b`（srcrange 轮结束时）的 **1362 passed**，
+  5 个发现各新增 1 条用例，1362+5=1367，与实测一致。
+- `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/
+  test_m1_durable_state_postgres.py tests/integration/
+  test_m1_tool_budget_postgres.py -q` → **32 passed**（每个发现修复后
+  单独跑过一次，均为 32 passed，与合并后持平；本轮改动不碰
+  `persistence.py`）。
+- 真实 Run 回放：`tests/acceptance/test_m1_live_flash_replay.py` 在本
+  仓库/本 worktree 不存在（上一轮 `find` 已确认，任务书引用已过期）；
+  `docs/evidence/m1-01-investigation-loop/` 的 `ledger.json` 只记录
+  token/耗时等汇总统计，不保留原始 `function.arguments` 字符串，且该
+  Run 只有 1 次工具调用（`tool_call_count: 1`），DeepSeek 真实返回的
+  正常 `{"expr": "..."}"` 参数不可能触发 `RecursionError`——5 个发现均
+  不改变任何「合法输入」下的既有行为（发现 4 只多捕获一种此前会让
+  进程崩溃的病态输入；发现 3/5 只在服务端行为异常慢时才会分支进新
+  代码路径），回放这份证据不受影响。
+
+### 独立审查（全新上下文 general-purpose 子代理）
+
+未继承本会话讨论，给定 5 个待审提交（`7eea577`/`bab8941`/`8f9688c`/
+`0c648fe`/`bad4ab6`）、各自对应的机器人原始评论文本、v4 schema 与
+`opspilot/tools/executor.py` 作为独立核对依据，未以实现者结论引导。
+逐条复核（含在独立沙箱脚本里重放红/绿、逐行核对控制流）：
+
+1. 发现 1（字段形状校验）：对照 v4 schema 的每个 `$def` 逐字段核实
+   校验器类型匹配，容器字段确认「只经校验重建、不再泛拷贝」，判定
+   「正确、无遗漏」。
+2. 发现 2（run_id 身份门禁）：核实 `loop.run()` 里投影调用在**所有**
+   后续读取（含 `delivered_from_context`、`_run_tools` 内的
+   `context_target_catalog`/`eligible_time_policies`）之前完成，判定
+   「正确闭合了描述的缺口，无合法路径被误伤」。
+3. 发现 3（连接/收头阶段 wall clamp）：独立验证
+   `concurrent.futures.TimeoutError is TimeoutError` 为 `True`、
+   `pool.shutdown(wait=False)` 不阻塞，沙箱重放确认先红后绿，判定
+   「正确」；提出一条非阻塞性后续建议——`ThreadPoolExecutor` 的 worker
+   线程受 CPython `concurrent.futures.thread._python_exit`（进程退出
+   钩子）跟踪，如果对端持续无限慢滴灌（每次读都恰好在单次 socket
+   超时前完成），被 `shutdown(wait=False)` 放弃的线程永远不会结束，
+   进程正常退出时的 `join()` 可能被卡住——这是「放弃并继续」设计本身
+   的既有取舍（本次改动的 P1 之前就已存在同构风险，不是新引入的
+   缺陷，也不在 comment 4042176056 的范围内），不阻塞本次交付，记录
+   为后续可选项（若需要保证进程在对抗性网络条件下干净退出，需要另开
+   任务评估）。
+4. 发现 4（RecursionError 捕获）：独立验证 `issubclass(RecursionError,
+   ValueError)` 为 `False`（`RecursionError` 是 `RuntimeError` 子类）、
+   沙箱重放确认先红后绿、`params=None` 到 `_refuse` 的下游路径核实
+   无误，判定「正确、复用 #20 手法属实」。
+5. 发现 5（错误体排空 wall clamp）：核实 `deadline` 在 `HTTPError` 可能
+   抛出之前就已算好、复用同一个 `pool` 不会与 `finally` 里的
+   `shutdown(wait=False)` 竞争（排空提交与 `.result()` 均在
+   `except HTTPError` 块内先于 `finally` 完成）、`issubclass(TimeoutError,
+   OSError)` 为 `True`，判定「正确」。
+
+结论：5 项全部「正确、最小、按声称复用既有机制」，全量测试/ruff/mypy
+均干净（`1367 passed, 86 skipped, 2 xfailed`，与本次实测一致）。
+PG 定向测试在独立审查的沙箱环境里无本地 PostgreSQL，未能重跑（明确
+标注为「未验证的声称，非失败」）；本任务在本 worktree 已用真实 PG lab
+独立跑过（见上）。无需在合并前修复任何项；发现 3 的后续建议记入本节，
+留待需要时另开任务处理，不阻塞本次 PR。
