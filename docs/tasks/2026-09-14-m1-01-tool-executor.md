@@ -999,3 +999,81 @@ pytest                → 1270 passed, 82 skipped, 2 xfailed
 
 - 组合层（#29/#30/#33）仍未接入真实执行器/账本，本轮不改变这一状态。
 - F3/F7 的 `passes` 保持 `false`。
+
+## 16. 机器人 code review 第五轮两条 thread 处置（2026-09-18，用户明确的最后一轮）
+
+推送第 15 节的修复（`3012f36`）后，`@codex review` 又留下 2 条新的未处理 inline thread
+（`mergeStateStatus` 再次变为 `BLOCKED`）。用户明确此为最后一轮：处置到 unresolved=0 且 CLEAN
+后不再手动触发 `@codex review`。
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `executor.py:722`（`_charge`） | P2 | `_charge()` 用 `except Exception: return False` 无差别吞掉账本异常，`_run()` 两处调用点都把失败映射成通用 `CONTROL_UNAVAILABLE`——包括第 12 节第 5 项（`defecd1`）已经让 `charge_tool` 在原子上限校验失败时抛出的具体、权威的 `PersistenceError("OPERATION_BUDGET_EXHAUSTED")`。调用方看到的是像瞬时故障一样的通用拒绝，可能做不必要的重试，审计也丢失真实原因 | 采纳 | 新增 `ToolBudgetExhausted` 异常（`executor.py`，作为抽象 `ToolUsageLedger` Protocol 契约的一部分，与既有 `TransportError`/`ControlUnavailable` 同一模式）；`_charge()` 让它穿透而不是被吞掉；`_run()` 两处调用点捕获后映射为 `("denied", "OPERATION_BUDGET_EXHAUSTED")`；`DurableToolLedger.charge()` 把 `PersistenceError("OPERATION_BUDGET_EXHAUSTED")`（固定代码，非厂商文本）翻译成这个抽象异常，其它 `PersistenceError` 原样透传 | `3a84cec` |
+| 2 | `registry.py:234`（`ToolDescription.__post_init__`） | P1 | C3 §8 明确禁止模型可见面出现"凭据、认证信息或具体 endpoint / base_url / 凭据句柄"，但既有校验只查非空与占位符存在，从未查内容——把真实 URL 写死进任意字段会被原样接受，成为未来渲染器发给模型的工具注册表内容 | 采纳 | 复用既有 `_ENDPOINT` 正则（`RegisteredTarget.endpoint` 格式校验用的同一条，`.search()` 而非 `.fullmatch()`），命中即抛 `CREDENTIAL_MATERIAL_FORBIDDEN`。刻意只挡具体 URL，不做关键词扫描——见下方"范围说明" | `e60fc75` |
+
+第 1、2 项均先复现（读码/变异确认缺陷存在）再修复，逐项变异验证（改回旧逻辑确认对应新测试转红，
+随后精确还原并与保存的 `git diff` 补丁逐字节核对一致）。第 1 项额外过了真实 PostgreSQL：更新了
+第 15 节前新增的 PG 集成测试 `test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global_default`
+的断言，从 `pytest.raises(PersistenceError, ...)` 改为 `pytest.raises(ToolBudgetExhausted, ...)`，
+证明这条转换路径在真实数据库上确实生效，不只是内存替身的行为。
+
+### 第 2 项范围说明：为何只挡 URL，不做通用凭据关键词扫描
+
+C3 §8 原文明确写了"保留参数名集合……不可平移到描述文本——授权范围内的服务名枚举与实例标识是必须
+写入描述的内容"：也就是说"endpoint"/"token"/"credential" 这些词本身在描述文本里是合法甚至必要
+的内容（例如"这个工具读取 /metrics 端点"、"返回内容里不会包含任何 token"这类澄清句）。基于关键词
+的过滤器要么漏掉真正的密钥，要么挡下合法描述，两难。"文本里是否嵌了一个完整 URL"是语法上可以
+确定性判断的，直接对应 §8 点名的"具体 endpoint / base_url"子类；"文本里是否包含一个真实凭据取值"
+不是语法可判定的问题，与 `ToolDescription` 类文档字符串已经确立的原则一致——结构完整性在注册期
+检查，文本内容质量（含这一类安全属性）留给人工审阅（该原则引用自 PR #27 任务记录的独立审查处置
+F10）。
+
+**独立审查**（全新上下文只读子代理，未参与实现，派发提示明写「禁止 `git checkout --`/`stash`/
+`reset`/`amend`，对照用 `git diff > patch` 与 `git apply -R`/`apply`」）：
+
+- 第 1 项：独立复现底层缺陷、独立完成变异验证、读码确认 `charge_tool` 结算分支确实不受上限
+  WHERE 子句影响（结算调用点的处理确实是纯防御性、真实账本不可达）、确认 `DurableToolLedger`
+  的翻译只精确匹配 `"OPERATION_BUDGET_EXHAUSTED"` 这一个固定字符串（grep 了 `persistence.py`
+  全部 29 个 `PersistenceError` 抛出点，确认无同名冲突）、针对真实 PostgreSQL 重新跑通该 PG
+  测试。结论：修复正确、完整，两条新测试均非空洞。
+- 第 2 项：独立复核了"URL-only vs. 通用扫描"这一范围决策，**独立判断该决策正确**：URL 匹配语法
+  上无歧义、与合法文本零冲突（已实测确认 `_ENDPOINT.search()` 不会误伤"the metrics endpoint"这类
+  纯词语提及或不带 scheme 的裸路径），关键词扫描则会直接与 §8 原文冲突。指出写作上一处不够精确的
+  表述——`RegisteredTarget` 里 `_ENDPOINT` 实际只用于端点格式校验（`INVALID_ENDPOINT`），真正的
+  `CREDENTIAL_MATERIAL_FORBIDDEN` 判定用的是另外的 userinfo/查询串检查，不是同一条正则——已在
+  GitHub 回复与本节措辞中改为准确表述（"复用格式校验用的同一条正则"，不再说"复用凭据检查用的
+  同一条正则"）。另指出一个真实但不在本条 thread 范围内的交接项：`ParameterSpec.description`
+  （同属 §8"模型可见面"概念，其自身文档字符串也引用了同一条 §8 原文）目前完全没有内容检查，存在
+  与本次修复前 `ToolDescription` 相同的缺口——可用同一条 `_ENDPOINT.search()` 直接补上，是一个
+  小而机械的后续修改，本轮按 thread 范围不实现，记为交接项。
+
+全部 2 条已在 GitHub 上逐条回复（引用具体提交、测试名、变异验证结果、范围决策依据，第 2 项回复
+按独立审查的措辞修正更新）并 `resolveReviewThread`；`gh api graphql` 复核 `reviewThreads` 当前
+**18 条**（前几轮共 16 条 + 本轮 2 条）全部 `isResolved: true`。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 423 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1278 passed, 82 skipped, 2 xfailed
+```
+
+`exit=0`。第 1 项涉及持久层，过了真实 PostgreSQL（`M1_DURABLE_POSTGRES=1`）：
+`tests/integration/test_m1_tool_budget_postgres.py tests/integration/test_m1_durable_state_postgres.py`
+→ `28 passed`。`git diff --stat` 确认本轮改动只涉及 `opspilot/tools/executor.py`、
+`opspilot/tools/ledger.py`、`opspilot/tools/registry.py`、`opspilot/tools/__init__.py` 及对应
+测试文件，未触碰 `feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件。
+
+### 未完成/交接项（第五轮）
+
+- **新增交接项**：`ParameterSpec.description`（每参数模型可见文本）目前无任何内容检查，存在与
+  本轮修复前 `ToolDescription` 相同的"嵌入 URL 不被拦"缺口，可直接复用同一条 `_ENDPOINT.search()`
+  校验补上；本轮按用户指定的 thread 范围（仅本轮机器人指出的两条）不实现，留给后续任务或用户
+  决定是否现在处理。
+- 此前记录的组合层接线依赖（时间预算竞态、`DurableToolLedger.max_operations` 绑定）状态不变。
+- F3/F7 的 `passes` 保持 `false`。
+- 用户已明确本轮为最后一轮机器人 review 处置：处置完成、unresolved=0、`mergeStateStatus: CLEAN`
+  后不再手动触发 `@codex review`；若后续仍有机器人自动/延迟触发的新 thread，按本任务已建立的
+  处置流程处理，但不主动再发起新一轮触发。
