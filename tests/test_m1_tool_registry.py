@@ -231,6 +231,28 @@ def test_endpoint_may_not_carry_userinfo():
         target(endpoint="https://reader:inline-material@metrics.internal:9090")
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://metrics.internal/api?token=secret",
+        "https://metrics.internal/api?sig=presigned-signature&expires=123",
+        "https://metrics.internal/api#fragment-token",
+    ],
+)
+def test_endpoint_may_not_carry_a_query_string_or_fragment(endpoint):
+    """Bot review finding: only the userinfo component was rejected. A
+    query-auth or presigned-URL style endpoint (``?token=...``, ``?sig=...``)
+    passed the regex and the userinfo check untouched, storing a secret
+    directly in ``RegisteredTarget.endpoint`` -- and from there in every
+    ``TransportRequest.endpoint`` -- bypassing the opaque ``credential_ref``
+    indirection this dataclass otherwise enforces entirely. Request-time
+    query values belong in ``TransportRequest.params``, never baked into the
+    registered endpoint.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        target(endpoint=endpoint)
+
+
 def test_targets_resolve_only_by_registered_identity():
     registry = TargetRegistry(
         [

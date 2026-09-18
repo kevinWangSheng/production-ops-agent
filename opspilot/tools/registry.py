@@ -369,6 +369,14 @@ class RegisteredTarget:
         if "@" in self.endpoint.split("//", 1)[1].split("/", 1)[0]:
             # Userinfo in the authority would carry credential material.
             raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
+        if "?" in self.endpoint or "#" in self.endpoint:
+            # A query string or fragment could carry a credential baked
+            # directly into the endpoint -- a query-auth token, an API key, a
+            # presigned-URL signature -- bypassing the opaque credential_ref
+            # indirection this dataclass otherwise enforces (bot review
+            # finding). Request-time query values belong in
+            # TransportRequest.params, never in the registered endpoint.
+            raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
         if not isinstance(self.credential_ref, str) or not _HANDLE.fullmatch(
             self.credential_ref
         ):
