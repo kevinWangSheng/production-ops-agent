@@ -1,6 +1,6 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：`facb64d` 推送后机器人又追加 5 条新发现（4 条同批 + 1 条晚到），已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`），独立审查确认全部「正确、最小」，仅记录 1 条非阻塞后续建议；本地 `make check`/PG 定向全绿；待推送、CI、PR 描述更新与用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 状态：`facb64d` 推送后机器人先后共追加 6 条新发现（5 条 + 后续单条 `client.py` sub-100ms 预算下限），已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`），两轮独立审查均确认全部「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、29 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
 - 更新日期：2026-09-18
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
@@ -786,3 +786,64 @@ PG 定向测试在独立审查的沙箱环境里无本地 PostgreSQL，未能重
 标注为「未验证的声称，非失败」）；本任务在本 worktree 已用真实 PG lab
 独立跑过（见上）。无需在合并前修复任何项；发现 3 的后续建议记入本节，
 留待需要时另开任务处理，不阻塞本次 PR。
+
+## 追加（2026-09-18 续：`b89d10d` 推送后新增第 6 条机器人发现）
+
+`c496cea` 推送后，`chatgpt-codex-connector` 又追加 1 条新 review thread
+（comment 4044987306，P1，`client.py:132`，2026-09-18T08:13:31Z）。
+
+### 发现 6（P1，`client.py:132`）—— 不应把 sub-100ms 剩余预算延长
+
+- **问题**：`budget = max(timeout, 0.1)` 会把已授权的 sub-100ms 剩余预算
+  （Run deadline 或 wall 上限已接近耗尽）静默延长到 100ms。这个下限本身
+  在本会话工作之前就已存在；但发现 3（`8f9688c`）把同一个 `budget` 变成
+  了 `future.result(timeout=budget)` 的真实墙钟等待时间之后，这个下限就
+  从「per-socket-operation timeout 上一个软性、基本无害的最小值」变成了
+  「真实的 deadline/control 边界违规」——请求（及其后台 transport 线程）
+  可能比 Run 实际授权多跑最多 5 倍时间。
+- **修复**（`b89d10d`）：移除下限，`budget = timeout`；在 `_post()` 最前
+  面新增 `if timeout <= 0: raise ModelError("MODEL_UNAVAILABLE")`，在任何
+  dispatch 之前 fail-closed。核实过 `loop.py` 的 `_remaining_timeout()`
+  本就保证送进本客户端的 `timeout_seconds` 严格为正（否则先以
+  `DEADLINE_EXCEEDED`/`WALL_TIME_EXHAUSTED` halt），所以下限本不需要用来
+  保证 `future.result(timeout=...)` 语义良好——只需如实传递真实剩余预算；
+  新增的守卫是给其他潜在调用方（本客户端是通用组件，非仅被 loop 驱动）
+  的防御边界，不是本次改动依赖的新逻辑。
+- **测试**：2 条新用例（`tests/test_m1_investigation_client.py`）：
+  `test_a_non_positive_timeout_fails_before_dispatch`（0/负数 timeout 断言
+  从未触达 opener）；`test_a_sub_100ms_deadline_is_not_extended_past_the_
+  authorized_budget`（20ms 授权预算 + 真实延迟 0.3s 的假 opener，断言真实
+  耗时远低于旧下限 100ms）。先红后绿。
+- **独立审查（全新上下文子代理）**：判定「正确、最小、按声称复用既有
+  `_remaining_timeout()` 保证」。额外核实过 `ModelCall.timeout_seconds`
+  是未做校验的裸 `float` 字段，理论上可能收到 NaN/inf/极小正数等退化值；
+  但唯一真实调用方 `_remaining_timeout()` 结构上不可能产生这类值（来自
+  真实 datetime/monotonic 减法），判定为「本 finding 范围外的既有非问题」；
+  即便出现，直接验证过 `future.result(timeout=float('nan'))` 会抛既有
+  `except (URLError, TimeoutError, OSError)` 链已捕获的 `TimeoutError`，
+  不会新增未捕获异常路径。
+
+### 验证证据
+
+- `make check`（`b89d10d` 上）→ `ruff check`/`ruff format --check`/`mypy`
+  全干净；`pytest` **1369 passed, 86 skipped, 2 xfailed**（较上一节
+  1367 净增 2，即本条新用例）。
+- PG 定向：本 worktree 专属 55431 端口曾被另一 worktree
+  （`production-ops-agent-m1-control-completion`）的 PG lab 临时占用
+  （2 分钟量级）——未强行处理，等待其自然释放后（`lsof` 确认端口转空）
+  再 `postgres_lab start`；`M1_DURABLE_POSTGRES=1 pytest tests/integration/
+  test_m1_durable_state_postgres.py tests/integration/
+  test_m1_tool_budget_postgres.py -q` → **32 passed**；用完立即
+  `postgres_lab stop`。
+- 推送与 CI：`b89d10d` 已推送；`workflow_dispatch` 触发 run
+  `35326233029`，`completed`/`success`。
+- PR 状态：`gh pr view 29` → `mergeStateStatus=CLEAN`、
+  `mergeable=MERGEABLE`。
+- base 分支（PR #20）状态：推送前后两次核实 `origin/feature/m1-01-tool-
+  executor` 又前进了若干提交（最终 HEAD `5f6cc44`），`git merge-tree
+  --write-tree HEAD origin/feature/m1-01-tool-executor` 本地 dry-run 与
+  GitHub 的 `mergeStateStatus` 均确认仍为 `CLEAN`，未变 `DIRTY/
+  CONFLICTING`，按任务要求未执行合并。
+- 机器人审查处置：GraphQL 核查 reviewThreads 共 29 条。本条新增发现
+  已回复处置说明（引用修复提交、测试、独立审查结论）并
+  `resolveReviewThread`；复查确认全部 29 条 resolve，无新增。
