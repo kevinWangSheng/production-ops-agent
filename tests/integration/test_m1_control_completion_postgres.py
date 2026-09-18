@@ -104,6 +104,42 @@ def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
     )
 
 
+def test_same_value_global_suspension_write_does_not_revoke_active_leases():
+    """A retried/duplicate release submitted while the gate is already False
+    (e.g. a lost ack followed by a generation refresh) must not bump
+    global_generation -- _lease_revoked() fences every active lease on any
+    generation change, so an unconditional bump here would kick every worker
+    to LEASE_ACTIVE for a suspension state that never actually changed."""
+    s = _store()
+    i, r = _accept(s)
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    # ``global_suspended`` is a scope-wide singleton row shared across every
+    # test that has ever run against this persistent PG instance, so its
+    # generation is never reliably 0 here -- only per-target rows (freshly
+    # inserted per test target below) start at 0. Read the lease's own
+    # captured generation instead of assuming a fixed starting value.
+    generation = lease.global_suspension_generation
+    assert (
+        s.set_global_suspension(False, expected_generation=generation, actor="operator")
+        == generation
+    )
+    assert s.lease_current(lease) is True
+    s.reserve_budget(lease, uuid4(), 1)
+
+
+def test_same_value_target_suspension_write_does_not_revoke_active_leases():
+    s = _store()
+    t = s.register_target("target-" + str(uuid4()))
+    i, r = _accept(s, target=t)
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    assert lease.target_suspension_generation == 0
+    assert (
+        s.set_target_suspension(t, False, expected_generation=0, actor="operator") == 0
+    )
+    assert s.lease_current(lease) is True
+    s.reserve_budget(lease, uuid4(), 1)
+
+
 def test_new_run_created_while_suspended_persists_paused_on_the_run_row_too():
     """new_run() puts a suspended successor's Incident in 'paused', but used to
     leave the Run row itself at the hardcoded 'queued' it always inserted with

@@ -345,6 +345,19 @@ class DurableStore:
                 or expected_generation != current
             ):
                 raise PersistenceError("CONTROL_CONFLICT")
+            if suspended == row["global_suspended"]:
+                # Same-value write (e.g. a retried release after a lost ack,
+                # resubmitted against a refreshed generation): still record
+                # the decision, but do not bump the fence generation. Every
+                # active lease's captured global_suspension_generation is
+                # compared for equality in _lease_revoked(), so an
+                # unconditional bump here would revoke leases that were
+                # never actually affected by any suspension state change.
+                conn.execute(
+                    "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(NULL,%s,%s,%s)",
+                    (suspended, current, actor),
+                )
+                return current
             nxt = current + 1
             conn.execute(
                 "UPDATE opspilot_scope_controls SET global_suspended=%s,global_generation=%s WHERE scope_id=1",
@@ -403,6 +416,16 @@ class DurableStore:
                 or expected_generation != current
             ):
                 raise PersistenceError("CONTROL_CONFLICT")
+            if suspended == row["suspended"]:
+                # Same-value write: see set_global_suspension for why this
+                # must not bump the fence generation (it would revoke every
+                # lease on this target's incidents for no actual state
+                # change).
+                conn.execute(
+                    "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(%s,%s,%s,%s)",
+                    (target_id, suspended, current, actor),
+                )
+                return current
             nxt = current + 1
             conn.execute(
                 "UPDATE opspilot_target_suspensions SET suspended=%s,generation=%s,updated_at=clock_timestamp() WHERE target_id=%s",
