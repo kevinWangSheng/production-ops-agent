@@ -189,3 +189,72 @@
   当前改动逐字一致（已本地 diff 核对），但 `git stash drop` 被权限规则拒绝，遗留 stash 条目
   `review-verify-persistence-only-1789683798` 在共享 stash 栈里，不影响本仓库工作区内容，需要有权限的会话
   手动清理。
+
+## 追加修复（2026-09-17 第三轮）：第二轮改动引出的 2 条新 bot thread
+
+第二轮修复推送后，机器人对新 HEAD 又留了 2 条未 resolve review thread，均已处置为「成立修复」。
+
+### Thread A（P1）：白名单误删 `question` 字段
+
+- 问题：`_INPUT_CONTENT_FIELDS = frozenset({"text","channel"})` 会把 `{"question":"why"}` 整个丢弃——这
+  正是本 PR 自己的 `test_follow_up_payload_is_durable_and_readable` 用作例子的 payload 形状，也是
+  `opspilot/intake.py::IntakeRequest.question` 这个生产入口真实使用的字段名（独立审查指出的额外证据，
+  未仅凭本仓库一个测试例子下结论）。修复前该场景下 `_round()` 发给模型的 `content` 会是空字典，追问文本
+  实际上永远到不了模型——这是白名单选错字段集合导致的功能性回退，不是安全问题被绕过。
+- 修复：`_INPUT_CONTENT_FIELDS` 加入 `"question"`，值仍必须是标量（非 `Mapping`/`list`/`tuple`），机制
+  不变——不是退化回黑名单，`api_key`/`Api-Key`/`AUTHORIZATION`/嵌套结构在 `question`/`text`/`channel`
+  任一键下依旧被丢弃（独立审查另做了一轮不依赖本仓库测试的对抗验证，含大小写变体、嵌套 dict/list/tuple，
+  均确认被拦）。
+- 新增测试 `tests/test_m1_investigation_loop.py::
+  test_investigation_inputs_preserve_the_question_field_follow_up_payloads_use`：修复前（`git diff`+
+  `git apply -R` 临时回退验证）红——`content` 变空字典；修复后绿。
+- 提交 `18bd8f3`；已在该 review thread 回复采纳理由并 resolve。
+
+### Thread B（P2）：同值 suspension 写入不该撤销活跃租约
+
+- 问题：`set_global_suspension`/`set_target_suspension` 在校验完 `expected_generation` 后，无条件
+  `nxt = current + 1`，即使提交的 `suspended` 值和当前值完全相同（例如：确认丢失后用刷新过的 generation
+  重新提交一次「释放」，而释放前其实已经是释放状态）。`_lease_revoked()` 对每条活跃租约都比较
+  `global_generation`/`target_generation` 是否等于租约捕获时的值，任何 generation 变化都会让所有当前
+  持有的活租约被判定撤销——即使 suspension 实际值根本没变，被撤销的 worker 要等到租约自然过期才能重新
+  claim。
+- 修复：在 `expected_generation` 校验之后（不影响乐观并发校验本身，generation 不匹配仍然
+  `CONTROL_CONFLICT`）新增判断——`suspended == row["global_suspended"]`（或目标版的
+  `row["suspended"]`）时不递增 generation，仍写一条 `opspilot_suspension_audit` 记录（用当前 generation，
+  该表 `audit_id` 是独立自增主键，`generation` 只是普通列，多行共享同一 `generation` 不违反约束），
+  直接 `return current`。跳过 `if suspended: ...`（批量置 paused）副作用是安全的：独立审查核实
+  `claim()`/`control()` 都直接读当前 `suspended` 布尔值（不只靠 generation）拒绝写入，且全仓库唯一把
+  run 置为 `running` 的路径是 `claim()`；只要 suspended 保持 True，就不会有新的 run 进入需要「顺带置
+  paused」的状态，因此 True→True 的 no-op 分支跳过该副作用不会漏处理任何 run。
+- 新增 PG 测试 `test_same_value_global_suspension_write_does_not_revoke_active_leases`/
+  `test_same_value_target_suspension_write_does_not_revoke_active_leases`：claim 一个 lease 后对同一
+  scope/target 提交一次值不变的 suspension 写，断言返回 generation 不变、`lease_current(lease)` 仍
+  `True`、`reserve_budget` 仍成功。全局测试读 `lease.global_suspension_generation`（claim 时刻捕获值）
+  而非硬编码 0——`global_suspended` 是单例行，其 generation 会跨本 worktree 专属 PG 实例历史上所有测试
+  运行累积，不会每次从 0 开始（这是我们第一版测试踩的坑，写成硬编码 0 后在真实 PG 上被推翻，已改正）；
+  目标测试因为每次都注册全新 UUID 的 target，`target_generation` 确实总是从 0 开始，两种写法在仓库里都有
+  先例。修复前（`git diff`+`git apply -R` 回退验证）两个测试均红（数值因历史累积不同，形如
+  `assert 19 == 18`/`assert 26 == 25`、`assert 1 == 0`）；修复后绿。
+- **未在本次处理、需要用户确认的文档冲突**：独立审查指出，C3 第 4 节「暂停事务增加对应 scope generation」
+  （`docs/design/technical-proposal-2026-09-07.md` 第 112 行）字面上没有为「同值/幂等重复提交」留例外，
+  与本次修复字面冲突。是否需要同步澄清/更新这句措辞（明确「generation 递增对应的是暂停生效状态的实际
+  改变，不是每次调用」），留给用户/架构决策者判断，本任务未修改 C3。
+- **已知、非本次引入的既有不一致**：`opspilot/domain/control.py::suspend_globally`/`suspend_targets`
+  纯函数仍是「每次调用无条件 bump」，与本次修复后的 `persistence.py` 行为不一致；但这两个域层函数目前
+  只被 `opspilot/domain/__init__.py`（重导出）和 `tests/test_domain_contracts.py` 使用，运行时代码不调用
+  它们（`persistence.py` 是独立用原生 SQL 实现同一套语义，不经过域层），且
+  `tests/test_architecture.py::test_persistence_builds_on_domain`（`xfail(strict=True)`）已经把「持久化层
+  是否应建立在 domain 状态机之上」记录为待决架构债务——这处不一致不是本次 PR 新增或加深的遗漏，不额外处理。
+- 提交 `0d1437b`；已在该 review thread 回复采纳理由（含上述文档冲突提示）并 resolve。
+
+### 验证（第三轮）
+
+- `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_control_completion_postgres.py -v`：**7 passed**。
+- `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py -q`：**41 passed**（无回归）。
+- `pytest tests/test_m1_investigation_loop.py tests/test_m1_investigation_pairing.py -q`：**48 passed**
+  （原 47 + 新增 1）。
+- `make check`：**1446 passed, 102 skipped, 2 xfailed**，ruff check/format、mypy 均通过。
+- 独立审查（全新上下文子代理，未参与改动讨论）：独立发现 `IntakeRequest.question` 作为 Thread A 修复的
+  额外佐证；独立走完 no-op 分支跳过批量 paused 副作用的安全性推理链；确认审计表无唯一性约束依赖
+  `generation`；确认域层不一致属于既有已记录债务；用 diff+apply -R 独立复现两组红绿；全量回归复核一致；
+  指出上述 C3 措辞冲突。结论：两处修复均安全、依据充分，可以合并。
