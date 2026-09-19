@@ -1595,3 +1595,57 @@ def test_a_completion_confirmed_after_a_lost_marker_announces_one_run_completed(
     workbench.snapshot(subject)
     assert workbench.events.latest(subject) == before
     assert workbench.events.read_after(subject, before) == ()
+
+
+def test_a_completion_lost_after_the_stream_opened_is_repaired_while_following():
+    """Round 7 thread (P2): the stream reconciled once, then the worker
+    published and died before announcing. The open stream must repair the
+    projection itself instead of leaving the page on the running state."""
+    import pytest
+
+    app, workbench, clock = build_workbench(sse_idle=0.5, sse_repair=0.05)
+    submit_incident(app, key="late-loss")
+    subject = workbench.list_incidents()[0].incident_id
+    cursor = workbench.events.latest(subject)
+    real_append = workbench.events.append
+    real_read = workbench.events.read_after
+    armed = [True]
+
+    def crash_on_completion(incident_id, kind, payload):
+        if kind == "run_completed":
+            raise RuntimeError("process died after publish")
+        return real_append(incident_id, kind, payload)
+
+    def publish_and_die_inside_the_first_poll(subject_id, after, *, limit=100):
+        # The stream's first poll: the endpoint's reconcile already ran, so
+        # this loss lands after it.
+        if armed[0]:
+            armed[0] = False
+            workbench.events.append = crash_on_completion
+            with pytest.raises(RuntimeError):
+                workbench.run_once(subject, ScriptedInvestigator(clock))
+            workbench.events.append = real_append
+        return real_read(subject_id, after, limit=limit)
+
+    workbench.events.read_after = publish_and_die_inside_the_first_poll
+    # Read until the stream ends on idle: the repair tick (0.05 s of silence)
+    # comes well before the idle cut (0.5 s), so a repaired stream carries
+    # the completion and an unrepaired one ends without it.
+    lost = stream(
+        app,
+        f"/incidents/{subject}/events?cursor={cursor}",
+        headers=basic(),
+        until_events=10_000,
+    )
+    workbench.events.read_after = real_read
+    kinds = [k for _, k, _ in lost.sse_events()]
+    assert kinds[-1] == "run_completed", kinds
+    assert kinds.count("run_completed") == 1
+    assert workbench.list_incidents()[0].concluded is True
+    # Exactly one run_completed was appended; the marker was written with it.
+    retained = [e for e in workbench.events.read_after(subject, 0)]
+    completed = [e for e in retained if e.kind == "run_completed"]
+    assert len(completed) == 1
+    assert workbench.ledger.get("completion", completed[0].payload["run_id"]) == {
+        "sequence": completed[0].sequence
+    }

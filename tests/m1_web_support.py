@@ -627,7 +627,7 @@ class ScriptedInvestigator:
         return outcome
 
 
-def build_workbench(*, clock=None, sse_poll=0.01, sse_idle=0.2):
+def build_workbench(*, clock=None, sse_poll=0.01, sse_idle=0.2, sse_repair=5.0):
     clock = clock or FakeClock(start=NOW)
     incidents = MemoryIncidentStore(clock)
     events = MemoryEventLog()
@@ -653,6 +653,7 @@ def build_workbench(*, clock=None, sse_poll=0.01, sse_idle=0.2):
         clock,
         sse_poll_seconds=sse_poll,
         sse_idle_seconds=sse_idle,
+        sse_repair_seconds=sse_repair,
     )
     return app, workbench, clock
 

@@ -85,6 +85,7 @@ def create_app(
     *,
     sse_poll_seconds: float = 0.5,
     sse_idle_seconds: float | None = 30.0,
+    sse_repair_seconds: float = 5.0,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -346,11 +347,17 @@ def create_app(
         if await in_thread(workbench.incidents.find_incident, subject) is None:
             raise _Refusal(404, "UNKNOWN_INCIDENT")
         # A completion whose event was lost is announced before the stream
-        # replays, so a reconnecting page sees it.
+        # replays, so a reconnecting page sees it; the stream repeats the
+        # repair while it follows, for a loss that happens after this point.
         await in_thread(workbench.reconcile, subject)
         return StreamingResponse(
             _stream(
-                workbench, subject, int(raw_cursor), sse_poll_seconds, sse_idle_seconds
+                workbench,
+                subject,
+                int(raw_cursor),
+                sse_poll_seconds,
+                sse_idle_seconds,
+                sse_repair_seconds,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -417,15 +424,21 @@ async def _stream(
     cursor: int,
     poll_seconds: float,
     idle_seconds: float | None,
+    repair_seconds: float,
 ) -> AsyncIterator[bytes]:
     """Replay from ``cursor`` then follow. Ends only on reload, idle or disconnect.
 
     A browser drop does not touch the Run: nothing here holds a lease or a
     transaction. A cursor older than the retained floor gets ``reload`` so
     the page fetches the snapshot instead of trusting a gapped stream.
+    While following, every ``repair_seconds`` of silence the stream runs
+    the same idempotent ``reconcile`` the endpoint ran before replaying:
+    a worker that published and died before announcing after the stream
+    opened would otherwise leave a long-lived stream on a stale page.
     """
     yield b"retry: 2000\n\n"
     idle = 0.0
+    quiet = 0.0
     while True:
         try:
             batch = await asyncio.to_thread(
@@ -439,9 +452,15 @@ async def _stream(
                 yield _sse(event.kind, dict(event.payload), event.sequence)
                 cursor = event.sequence
             idle = 0.0
+            quiet = 0.0
+            continue
+        if quiet >= repair_seconds:
+            quiet = 0.0
+            await asyncio.to_thread(workbench.reconcile, subject)
             continue
         if idle_seconds is not None and idle >= idle_seconds:
             yield b": idle\n\n"
             return
         await asyncio.sleep(poll_seconds)
         idle += poll_seconds
+        quiet += poll_seconds
