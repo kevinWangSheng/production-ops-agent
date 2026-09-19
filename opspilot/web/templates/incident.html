@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% set inc = snapshot.incident %}
+{% set run = snapshot.run %}
+{% block title %}Incident {{ inc.incident_id }}{% endblock %}
+{% block body %}
+<h1>Incident <code>{{ inc.incident_id }}</code></h1>
+<p>
+  State <span class="badge" id="incident-state">{{ inc.state }}</span>
+  · lifecycle <span class="badge">{{ inc.lifecycle }}</span>
+  · <span class="badge" id="concluded">{{ "concluded" if inc.concluded else "no conclusion" }}</span>
+  · control generation <strong id="control-generation">{{ inc.control_generation }}</strong>
+  · run <code>{{ run.run_id }}</code> <span class="badge" id="run-state">{{ run.state }}</span>
+  · epoch {{ run.epoch }}
+  · budget {{ run.budget_spent }} spent / {{ run.budget_reserved }} reserved / {{ run.budget_unknown }} unknown of {{ run.budget_limit }}
+  · deadline {{ run.deadline }}
+</p>
+{% if snapshot.target_id %}
+<p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+{% endif %}
+{% if snapshot.question %}
+<h2>Question</h2>
+<pre>{{ snapshot.question }}</pre>
+{% endif %}
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation {{ inc.control_generation }}. A stale form is refused, never applied.</p>
+{% for action in actions %}
+<form class="inline" method="post" action="/incidents/{{ inc.incident_id }}/control">
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
+  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ inc.control_generation }}-{{ form_nonce }}">
+  {% if action in ("follow_up", "correct") %}
+    <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="16384">
+  {% endif %}
+  <button type="submit">{{ action }}</button>
+</form>
+{% endfor %}
+
+<h2>Report</h2>
+{% set report = snapshot.report %}
+{% if report is none %}
+  <p class="muted" id="report-missing">No published conclusion yet.
+  {% if snapshot.outcome %}Last attempt: <code>{{ snapshot.outcome.execution }}</code>
+    {% if snapshot.outcome.reasons %}
+      handoff <code>{{ snapshot.outcome.reasons | join(", ") }}</code>
+    {% endif %}
+  {% endif %}</p>
+  {% if snapshot.handoff_report and snapshot.handoff_report.parsed %}
+    {% set report = snapshot.handoff_report %}
+    <p id="handoff-report"><strong>Unpublished handoff report</strong> (not the incident conclusion; human follow-up remains open).</p>
+  {% endif %}
+{% endif %}
+{% if report is none %}
+{% elif not report.parsed %}
+  <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
+{% else %}
+  <p id="report-status">
+    Assessment <span class="badge">{{ report.assessment_status }}</span>
+    · conclusion <span class="badge">{{ report.conclusion }}</span>
+    {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
+    · content sha256 <code>{{ report.content_sha256 }}</code>
+  </p>
+  <p>{{ report.summary }}</p>
+  {% macro claims(title, items, css) %}
+    <section class="{{ css }}">
+      <h3>{{ title }} ({{ items | length }})</h3>
+      {% if items %}
+      <ul>
+        {% for claim in items %}
+        <li>{{ claim.text }}
+          {% if claim.evidence_ids %}<br><span class="muted">evidence:</span>
+            {% for eid in claim.evidence_ids %}
+              <a href="/incidents/{{ inc.incident_id }}/evidence/{{ eid }}"><code>{{ eid }}</code></a>
+            {% endfor %}
+          {% endif %}
+          {% if claim.target_refs %}<span class="muted">targets:</span> {% for t in claim.target_refs %}<code>{{ t }}</code> {% endfor %}{% endif %}
+          {% if claim.time_scope_ref %}<span class="muted">time scope:</span> <code>{{ claim.time_scope_ref }}</code>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">none</p>{% endif %}
+    </section>
+  {% endmacro %}
+  {{ claims("Facts", report.facts, "facts") }}
+  {{ claims("Hypotheses", report.hypotheses, "hypotheses") }}
+  {{ claims("Counter-evidence", report.counter_evidence, "counter") }}
+  {{ claims("Rejected hypotheses", report.rejected_hypotheses, "rejected") }}
+  <section class="unknown">
+    <h3>Unknown / gaps ({{ report.unknown | length }})</h3>
+    {% if report.unknown %}<ul>{% for gap in report.unknown %}<li>{{ gap }}</li>{% endfor %}</ul>{% else %}<p class="muted">none declared</p>{% endif %}
+  </section>
+  {{ claims("Recommendations", report.recommendations, "recommend") }}
+  <section>
+    <h3>Advisory next steps</h3>
+    {% if report.next_steps %}<ul>{% for step in report.next_steps %}<li>{{ step }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
+  </section>
+{% endif %}
+
+<h2>Steps</h2>
+{% if snapshot.steps %}
+<table>
+  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
+  <tbody>
+  {% for step in snapshot.steps %}
+  <tr>
+    <td>{{ step.sequence }}</td>
+    <td><code>{{ step.logical_key }}</code></td>
+    <td><span class="badge">{{ step.status }}</span>{% if step.history_only %} <span class="muted">history only</span>{% endif %}</td>
+    <td>{{ step.control_generation }}</td>
+    <td>{{ step.finish_reason or "" }}</td>
+    <td>
+      {{ step.tools | length }} / {{ step.planned_tools }}
+      {% for tool in step.tools %}
+        <br><code>{{ tool.tool }}</code> → <span class="badge">{{ tool.status }}</span>
+        {% if tool.evidence_id %}<a href="/incidents/{{ inc.incident_id }}/evidence/{{ tool.evidence_id }}"><code>{{ tool.evidence_id }}</code></a>{% endif %}
+        {% if tool.adopted is sameas false %}<span class="muted">(not adopted)</span>{% endif %}
+      {% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if snapshot.pending_tools %}<p class="muted">{{ snapshot.pending_tools }} planned tool operation(s) not yet committed.</p>{% endif %}
+{% else %}
+<p class="muted">No committed steps.</p>
+{% endif %}
+
+<h2>Human decisions</h2>
+{% if snapshot.controls %}
+<table>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <tbody>
+  {% for item in snapshot.controls %}
+  <tr><td>{{ item.sequence }}</td><td><code>{{ item.action }}</code></td><td><code>{{ item.actor_id }}</code></td>
+      <td>{{ item.expected_generation }} → {{ item.generation }}</td><td>{{ item.text or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="muted">None recorded.</p>{% endif %}
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from {{ snapshot.latest_sequence }})</span></h2>
+<ul id="progress">
+  {% for event in snapshot.events %}
+  <li data-sequence="{{ event.sequence }}"><code>{{ event.sequence }}</code> <strong>{{ event.kind }}</strong> <span class="muted">{{ event.payload | tojson }}</span></li>
+  {% endfor %}
+</ul>
+<script>
+(function () {
+  var cursor = {{ snapshot.latest_sequence }};
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/{{ inc.incident_id }}/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+{% endblock %}
