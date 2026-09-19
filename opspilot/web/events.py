@@ -42,6 +42,18 @@ class EventLog(Protocol):
         self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
     ) -> int: ...
 
+    def append_once(
+        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+    ) -> int:
+        """Append unless an event of ``kind`` is already retained for the subject.
+
+        The check and the insert happen under the same per-subject append
+        lock, so concurrent callers cannot both append. Returns the retained
+        or the new sequence. Retention may prune the earlier event, so callers
+        that need exactly-once across pruning also keep a ledger marker.
+        """
+        ...
+
     def read_after(
         self, subject_id: UUID, cursor: int, *, limit: int = 100
     ) -> tuple[SubjectEvent, ...]: ...
@@ -78,6 +90,15 @@ class MemoryEventLog:
         sequence = (events[-1].sequence if events else 0) + 1
         events.append(SubjectEvent(subject_id, sequence, kind, dict(payload), None))
         return sequence
+
+    def append_once(
+        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+    ) -> int:
+        _check(kind, payload)
+        for event in self._events.get(subject_id, ()):
+            if event.kind == kind:
+                return event.sequence
+        return self.append(subject_id, kind, payload)
 
     def prune_before(self, subject_id: UUID, sequence: int) -> None:
         """Drop retained events older than ``sequence`` (tests and demos)."""
@@ -129,6 +150,37 @@ class DurableEventLog:
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
                 (str(subject_id),),
             )
+            row = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM opspilot_subject_events WHERE subject_id=%s",
+                (subject_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("INCONSISTENT_STATE")
+            sequence = int(row["next_sequence"])
+            conn.execute(
+                "INSERT INTO opspilot_subject_events(subject_id,sequence,kind,payload) VALUES(%s,%s,%s,%s)",
+                (subject_id, sequence, kind, Jsonb(dict(payload))),
+            )
+            return sequence
+
+    def append_once(
+        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+    ) -> int:
+        _check(kind, payload)
+        with self._store.transaction() as conn:
+            # Same per-subject lock as append(): the existence check and the
+            # insert are one critical section, so two announcers of the same
+            # fact cannot both pass the check.
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
+                (str(subject_id),),
+            )
+            retained = conn.execute(
+                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s",
+                (subject_id, kind),
+            ).fetchone()
+            if retained is not None and retained["sequence"] is not None:
+                return int(retained["sequence"])
             row = conn.execute(
                 "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM opspilot_subject_events WHERE subject_id=%s",
                 (subject_id,),

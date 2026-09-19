@@ -533,3 +533,27 @@ def test_durable_evidence_commit_fences_stale_replacement():
     kept = evidence.get(record.evidence_id)
     assert kept is not None and kept.committed is True
     assert kept.view_sha256 == record.view_sha256
+
+
+def test_durable_append_once_admits_a_single_intake_event_under_concurrency():
+    """Round 5 thread (P2): concurrent announcers must not duplicate the event."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, workbench, _ = _build()
+    events = workbench.events
+    subject = uuid4()
+    payload = {"question": "once"}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        sequences = list(
+            pool.map(
+                lambda _: events.append_once(subject, "intake_accepted", payload),
+                range(16),
+            )
+        )
+    assert sequences == [1] * 16
+    retained = events.read_after(subject, 0)
+    assert [e.kind for e in retained] == ["intake_accepted"]
+    # Other kinds still append normally; a later append_once returns the old row.
+    assert events.append(subject, "run_claimed", {}) == 2
+    assert events.append_once(subject, "intake_accepted", payload) == 1
+    assert events.latest(subject) == 2

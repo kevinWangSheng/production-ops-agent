@@ -297,11 +297,19 @@ class Workbench:
     def _announce_intake(
         self, incident_id: UUID, run_id: UUID, envelope: IntakeEnvelope
     ) -> int:
-        """Emit ``intake_accepted`` exactly once per incident (ledger-keyed)."""
+        """Emit ``intake_accepted`` exactly once per incident.
+
+        Two guards: the ``intake_event`` ledger row survives event pruning
+        and short-circuits every later call; ``append_once`` fences the
+        window before that row exists, where concurrent retries (or a retry
+        racing a page-load reconcile) have all seen no marker yet. The
+        marker is still written after the append so a crash in between is
+        repaired by the next replay or reconcile rather than hidden.
+        """
         announced = self.ledger.get("intake_event", str(incident_id))
         if announced is not None:
             return int(announced["sequence"])
-        sequence = self.events.append(
+        sequence = self.events.append_once(
             incident_id,
             "intake_accepted",
             {

@@ -1442,3 +1442,39 @@ def test_a_lost_intake_event_is_repaired_on_replay_and_on_reconcile():
     snapshot = workbench2.snapshot(subject2)
     assert [e["kind"] for e in snapshot["events"]] == ["intake_accepted"]
     assert snapshot["question"] == "Why is checkout erroring?"
+
+
+def test_concurrent_intake_retries_announce_exactly_one_intake_event():
+    """Round 5 thread (P2): two retries pass the ledger check before either appends.
+
+    The rival retry runs to completion inside the first call's window between
+    ``ledger.get("intake_event")`` and ``events.append``; the durable stream
+    must still carry a single ``intake_accepted``.
+    """
+    app, workbench, _ = build_workbench()
+    real_get = workbench.ledger.get
+    armed = [True]
+    rival = []
+
+    def racing_get(namespace, key):
+        value = real_get(namespace, key)
+        if namespace == "intake_event" and value is None and armed[0]:
+            armed[0] = False
+            rival.append(submit_incident(app, key="race"))
+        return value
+
+    workbench.ledger.get = racing_get
+    first = submit_incident(app, key="race")
+    workbench.ledger.get = real_get
+    assert first.status == 201 and first.json()["replayed"] is False
+    assert rival[0].status == 200 and rival[0].json()["replayed"] is True
+    subject = workbench.list_incidents()[0].incident_id
+    events = workbench.events.read_after(subject, 0)
+    assert [e.kind for e in events] == ["intake_accepted"]
+    assert first.json()["sequence"] == events[0].sequence == 1
+    assert rival[0].json()["sequence"] == 1
+    assert workbench.ledger.get("intake_event", str(subject)) == {"sequence": 1}
+    # A later replay and a page-load reconcile add nothing either.
+    submit_incident(app, key="race")
+    workbench.snapshot(subject)
+    assert workbench.events.latest(subject) == 1
