@@ -467,7 +467,8 @@ class InvestigationLoop:
                             freshness_seconds=view.get("freshness_seconds"),
                             source_start_at=view.get("source_start_at"),
                             source_end_at=view.get("source_end_at"),
-                            reference_at=view.get("observed_at"),
+                            dispatch_started_at=view.get("dispatch_started_at"),
+                            response_received_at=view.get("observed_at"),
                         ),
                     )
                 )

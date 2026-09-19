@@ -216,6 +216,7 @@ def test_a_well_formed_source_interval_still_permits_citation_through_the_loop()
                     "mode": "current",
                     "all_authorized_targets": True,
                     "max_source_age_seconds": 3600,
+                    "reference_rule": "response_received_at",
                 }
             ],
         },
@@ -559,6 +560,7 @@ def test_current_policy_rejects_a_source_interval_older_than_max_age():
                 "mode": "current",
                 "all_authorized_targets": True,
                 "max_source_age_seconds": 60,
+                "reference_rule": "response_received_at",
             }
         ],
         source="prometheus",
@@ -568,29 +570,42 @@ def test_current_policy_rejects_a_source_interval_older_than_max_age():
         freshness_seconds=1,  # the newest sample alone looks perfectly fresh
         source_start_at=stale_start,
         source_end_at=fresh_end,
-        reference_at=reference,
+        response_received_at=reference,
     )
     assert eligible == frozenset()
 
 
 def test_current_policy_rejects_a_future_dated_source_end():
     """A ``source_end_at`` after the trusted reference instant is never
-    valid evidence, for any policy in the list -- the whole view's interval
-    claim is untrustworthy, not just the one policy being evaluated."""
+    valid evidence, for any policy in the list -- whichever of the two
+    delivery instants that policy's own ``reference_rule`` names, since
+    dispatch never happens after the response is received (bot review
+    finding, PR #29: eligibility is resolved per policy, but a claim this
+    far in the future is still untrustworthy under every policy)."""
+    dispatch = (NOW - timedelta(minutes=10)).isoformat()
     reference = NOW.isoformat()
     future_end = (NOW + timedelta(seconds=1)).isoformat()
     eligible = eligible_time_policies(
         [
             {
-                "id": "policy-current",
+                "id": "policy-current-response",
                 "mode": "current",
                 "all_authorized_targets": True,
                 "max_source_age_seconds": 3600,
+                "reference_rule": "response_received_at",
+            },
+            {
+                "id": "policy-current-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "dispatch_started_at",
             },
             {
                 "id": "policy-hist",
                 "mode": "historical_window",
                 "all_authorized_targets": True,
+                "reference_rule": "response_received_at",
                 "window": {
                     "start": WINDOW_START.isoformat(),
                     "end": WINDOW_END.isoformat(),
@@ -604,7 +619,8 @@ def test_current_policy_rejects_a_future_dated_source_end():
         freshness_seconds=0,
         source_start_at=WINDOW_START.isoformat(),
         source_end_at=future_end,
-        reference_at=reference,
+        dispatch_started_at=dispatch,
+        response_received_at=reference,
     )
     assert eligible == frozenset()
 
@@ -621,6 +637,7 @@ def test_current_policy_rejects_a_source_interval_outside_the_query_window():
                 "mode": "current",
                 "all_authorized_targets": True,
                 "max_source_age_seconds": 3600,
+                "reference_rule": "response_received_at",
             }
         ],
         source="prometheus",
@@ -631,7 +648,7 @@ def test_current_policy_rejects_a_source_interval_outside_the_query_window():
         # Starts an hour before the authorized query window even opened.
         source_start_at=(WINDOW_START - timedelta(hours=1)).isoformat(),
         source_end_at=WINDOW_END.isoformat(),
-        reference_at=reference,
+        response_received_at=reference,
     )
     assert eligible == frozenset()
 
@@ -646,6 +663,7 @@ def test_historical_policy_rejects_a_source_interval_outside_the_policy_window()
             {
                 "id": "policy-hist",
                 "mode": "historical_window",
+                "reference_rule": "response_received_at",
                 "window": {
                     "start": WINDOW_START.isoformat(),
                     "end": WINDOW_END.isoformat(),
@@ -661,7 +679,7 @@ def test_historical_policy_rejects_a_source_interval_outside_the_policy_window()
         # window, even though the authorized query window does not.
         source_start_at=WINDOW_START.isoformat(),
         source_end_at=(WINDOW_END + timedelta(minutes=1)).isoformat(),
-        reference_at=(WINDOW_END + timedelta(minutes=5)).isoformat(),
+        response_received_at=(WINDOW_END + timedelta(minutes=5)).isoformat(),
     )
     assert eligible == frozenset()
 
@@ -731,7 +749,103 @@ def test_a_one_sided_source_interval_is_rejected_universally():
         freshness_seconds=0,
         source_start_at=WINDOW_START.isoformat(),
         source_end_at=None,
-        reference_at=NOW.isoformat(),
+        response_received_at=NOW.isoformat(),
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_honors_its_own_dispatch_reference_rule():
+    """Bot review finding (comment 4052348800, ``loop.py:471``): the call
+    site passed only the view's ``observed_at`` (the tool call's own
+    response-received instant) as the single reference for every policy,
+    even though the v4 contract lets each ``TimePolicy`` pick either
+    ``dispatch_started_at`` or ``response_received_at`` via its
+    ``reference_rule``. A policy that names ``dispatch_started_at`` must be
+    judged against when the tool call went out, not against a slow
+    response's completion time -- otherwise a perfectly fresh reading (zero
+    age at dispatch) is wrongly marked stale just because the round trip
+    took a while."""
+    dispatch = NOW.isoformat()
+    slow_response = (NOW + timedelta(seconds=50)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 10,
+                "reference_rule": "dispatch_started_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=NOW.isoformat(),
+        dispatch_started_at=dispatch,
+        response_received_at=slow_response,
+    )
+    assert eligible == frozenset({"policy-dispatch"})
+
+
+def test_current_policy_rejects_a_claim_future_dated_relative_to_dispatch():
+    """The mirror failure of the test above: a source interval that ends
+    after dispatch but before the (slow) response looks perfectly
+    unremarkable if the reference is taken from ``response_received_at``,
+    but is a future-dated claim relative to the ``dispatch_started_at`` a
+    policy actually declared -- and must be rejected for that policy, not
+    silently accepted because the wrong instant was used to judge it."""
+    dispatch = NOW.isoformat()
+    interval_end = (NOW + timedelta(seconds=5)).isoformat()
+    slow_response = (NOW + timedelta(seconds=10)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "dispatch_started_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=interval_end,
+        dispatch_started_at=dispatch,
+        response_received_at=slow_response,
+    )
+    assert eligible == frozenset()
+
+
+def test_policy_with_an_unrecognized_reference_rule_is_rejected_closed():
+    """Missing facts fail closed: a policy whose ``reference_rule`` is
+    absent or not one of the two contract values can never be resolved to
+    an instant, so it must not silently fall back to either delivery
+    timestamp."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-no-rule",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=NOW.isoformat(),
+        dispatch_started_at=NOW.isoformat(),
+        response_received_at=NOW.isoformat(),
     )
     assert eligible == frozenset()
 

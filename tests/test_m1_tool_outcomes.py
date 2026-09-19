@@ -23,6 +23,8 @@ from opspilot.tools import (
 from opspilot.tools.registry import canonical, canonical_hash
 from tests.m1_tool_support import (
     NOW,
+    FakeClock,
+    FakeTransport,
     RecordingSink,
     body,
     build,
@@ -76,6 +78,31 @@ def test_ok_outcome_registers_the_source_coverage_interval():
     assert outcome.evidence.source_end_at == source_end
     assert outcome.model_view["source_start_at"] == source_start.isoformat()
     assert outcome.model_view["source_end_at"] == source_end.isoformat()
+
+
+def test_ok_outcome_registers_the_dispatch_started_at_instant():
+    """Bot review finding (comment 4052348800, ``loop.py:471``):
+    ``eligible_time_policies()`` needs the tool call's own dispatch instant,
+    not just its response-received instant (``observed_at``), to honor a
+    'current' time policy's ``reference_rule``. The view must carry both,
+    and they must actually differ when the round trip takes measurable
+    time -- otherwise a slow response looks identical to an instant one."""
+    payload = body([{"metric": "checkout", "value": 3}])
+    clock = FakeClock()
+    transport = FakeTransport(clock=clock, duration=5.0)
+    executor, transport, _, clock = build(transport=transport, clock=clock)
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    assert outcome.operation.started_at == NOW
+    assert outcome.operation.finished_at == NOW + timedelta(seconds=5)
+    assert outcome.model_view["dispatch_started_at"] == NOW.isoformat()
+    assert outcome.model_view["observed_at"] == (NOW + timedelta(seconds=5)).isoformat()
+    assert (
+        outcome.model_view["dispatch_started_at"] != outcome.model_view["observed_at"]
+    )
 
 
 @pytest.mark.parametrize(

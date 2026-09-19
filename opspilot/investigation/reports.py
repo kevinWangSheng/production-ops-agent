@@ -448,7 +448,8 @@ def eligible_time_policies(
     freshness_seconds: object,
     source_start_at: object = None,
     source_end_at: object = None,
-    reference_at: object = None,
+    dispatch_started_at: object = None,
+    response_received_at: object = None,
 ) -> frozenset[str]:
     """Policies this view is allowed to wear. Missing facts fail closed.
 
@@ -459,10 +460,25 @@ def eligible_time_policies(
     it -- and eligibility falls back to the checks below exactly as before
     this field existed. Present but malformed (only one end, unparseable,
     naive, or inverted) is not "unknown": the view's own interval claim is
-    then internally inconsistent, so no policy in the list is eligible.
-    ``reference_at`` is the trusted instant to measure the interval against
-    (the view's own ``observed_at``); without it, or with ``source_end_at``
-    after it, the claim is a future timestamp and is rejected the same way.
+    then internally inconsistent, so no policy in the list is eligible --
+    that part alone is independent of any reference instant.
+
+    ``dispatch_started_at``/``response_received_at`` are the two delivery
+    timestamps the v4 contract's ``TimePolicy.reference_rule`` chooses
+    between (this tool call's own dispatch and response-received instants,
+    ``opspilot.tools.executor``'s ``operation.started_at``/``observed_at``).
+    Each policy declares which one it trusts, so the reference is resolved
+    *per policy*, not once for the whole view: a policy with no recognized
+    ``reference_rule`` is rejected the same way a missing fact would be
+    (bot review finding, PR #29 -- the previous single global reference
+    could mark a source interval stale after a slow response, or accept it
+    as not-yet-future-dated, when the policy asked to be judged against the
+    dispatch instant instead). With the interval present, a reference after
+    ``source_end_at`` (a future-dated claim relative to the instant *that
+    policy* trusts) is rejected for that policy only; dispatch never
+    happens after the response, so an interval genuinely in the future of
+    the whole view is still rejected under every policy regardless of which
+    instant it names.
 
     When the interval is present and consistent, it must additionally fall
     within the query window (``window``) and, per policy, within the
@@ -477,21 +493,16 @@ def eligible_time_policies(
     view_start = view_end = None
     if isinstance(window, Mapping):
         view_start, view_end = _aware(window.get("start")), _aware(window.get("end"))
-    source_interval: tuple[datetime, datetime] | None = None
-    reference: datetime | None = None
-    if source_start_at is not None or source_end_at is not None:
-        interval_start = _aware(source_start_at)
-        interval_end = _aware(source_end_at)
-        reference = _aware(reference_at)
-        if (
-            interval_start is None
-            or interval_end is None
-            or interval_start > interval_end
-            or reference is None
-            or interval_end > reference
-        ):
+    has_interval_claim = source_start_at is not None or source_end_at is not None
+    verified_interval: tuple[datetime, datetime] | None = None
+    if has_interval_claim:
+        parsed_start = _aware(source_start_at)
+        parsed_end = _aware(source_end_at)
+        if parsed_start is None or parsed_end is None or parsed_start > parsed_end:
             return frozenset()
-        source_interval = (interval_start, interval_end)
+        verified_interval = (parsed_start, parsed_end)
+    dispatch_reference = _aware(dispatch_started_at)
+    response_reference = _aware(response_received_at)
     eligible: set[str] = set()
     for policy in policies:
         if not isinstance(policy, Mapping):
@@ -502,6 +513,20 @@ def eligible_time_policies(
             continue
         if mode not in {"historical_window", "current"}:
             continue
+        source_interval: tuple[datetime, datetime] | None = None
+        reference: datetime | None = None
+        if verified_interval is not None:
+            interval_start, interval_end = verified_interval
+            reference_rule = policy.get("reference_rule")
+            if reference_rule == "dispatch_started_at":
+                reference = dispatch_reference
+            elif reference_rule == "response_received_at":
+                reference = response_reference
+            else:
+                continue
+            if reference is None or interval_end > reference:
+                continue
+            source_interval = (interval_start, interval_end)
         interfaces = policy.get("interfaces")
         if isinstance(interfaces, list) and interfaces:
             allowed = {item for item in interfaces if isinstance(item, str)}
