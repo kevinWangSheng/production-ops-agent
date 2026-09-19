@@ -414,7 +414,13 @@ class Workbench:
         payload = dict(intent, generation=generation)
         if new_run_id is not None:
             payload["run_id"] = str(new_run_id)
-        sequence = self.events.append(incident_id, "control_applied", payload)
+        # Keyed by generation: the store hands each applied decision one
+        # generation, so a retry or reconciler that finds this generation
+        # applied but its ``control`` marker lost reuses the published
+        # event instead of announcing the decision twice.
+        sequence = self.events.append_once(
+            incident_id, "control_applied", payload, key={"generation": generation}
+        )
         result_row, _ = self.ledger.put(
             "control",
             key,
@@ -496,10 +502,11 @@ class Workbench:
         intent: Mapping[str, Any],
         audit: ControlAudit,
     ) -> ControlResult:
-        sequence = self.events.append(
+        sequence = self.events.append_once(
             incident_id,
             "control_applied",
             dict(intent, generation=audit.resulting_generation, reconciled=True),
+            key={"generation": audit.resulting_generation},
         )
         row, _ = self.ledger.put(
             "control",
@@ -615,7 +622,9 @@ class Workbench:
         Confirms notes the store already applied and emits a missing
         ``run_completed`` for a Run that published its conclusion but whose
         worker died before appending the event; the ledger remembers which
-        runs were announced so the event is emitted exactly once.
+        runs were announced, and the append is keyed by run so a worker
+        that died between the append and the marker is repaired, not
+        announced twice.
         """
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
@@ -636,7 +645,7 @@ class Workbench:
         rebuilt = self.incidents.rebuild(incident_id)
         if rebuilt["run"]["state"] != "completed":
             return
-        sequence = self.events.append(
+        sequence = self.events.append_once(
             incident_id,
             "run_completed",
             {
@@ -649,6 +658,7 @@ class Workbench:
                 "report_sha256": _content_sha256(rebuilt.get("conclusion")),
                 "evidence_ids": [],
             },
+            key={"run_id": str(run_id)},
         )
         self.ledger.put("completion", str(run_id), {"sequence": sequence})
 
@@ -699,12 +709,14 @@ class Workbench:
         events = self._newest_events(incident_id)
         run = rebuilt["run"]
         steps = [_step_view(step) for step in rebuilt["steps"]]
+        # A published conclusion is terminal: a ``run_handoff`` the crashed
+        # worker's exit path appended after it is history, not the outcome.
         outcome = next(
             (
                 e
+                for kind in ("run_completed", "run_handoff")
                 for e in reversed(events)
-                if e.kind in {"run_completed", "run_handoff"}
-                and e.payload.get("run_id") == str(run["run_id"])
+                if e.kind == kind and e.payload.get("run_id") == str(run["run_id"])
             ),
             None,
         )
@@ -894,7 +906,7 @@ class Workbench:
                 evidence_ids=outcome.evidence_ids,
             )
             return outcome
-        sequence = self.events.append(
+        sequence = self.events.append_once(
             incident_id,
             "run_completed",
             {
@@ -908,6 +920,7 @@ class Workbench:
                 "model_requests_used": outcome.model_requests_used,
                 "prompt_revision": outcome.prompt_revision,
             },
+            key={"run_id": str(run_id)},
         )
         self.ledger.put("completion", str(run_id), {"sequence": sequence})
         return outcome

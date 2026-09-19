@@ -557,3 +557,63 @@ def test_durable_append_once_admits_a_single_intake_event_under_concurrency():
     assert events.append(subject, "run_claimed", {}) == 2
     assert events.append_once(subject, "intake_accepted", payload) == 1
     assert events.latest(subject) == 2
+
+
+def test_durable_append_once_keys_repeating_kinds_by_payload_identity():
+    """Round 6 threads (P2): one ``control_applied`` per generation, one
+    ``run_completed`` per run, even under concurrent announcers."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, workbench, _ = _build()
+    events = workbench.events
+    subject = uuid4()
+    run_a, run_b = str(uuid4()), str(uuid4())
+
+    def announce(generation):
+        return events.append_once(
+            subject,
+            "control_applied",
+            {"action": "follow_up", "generation": generation, "text": "x"},
+            key={"generation": generation},
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        first = list(pool.map(lambda _: announce(1), range(16)))
+    assert first == [1] * 16
+    # A different generation is a different fact and appends.
+    assert announce(2) == 2
+    assert announce(1) == 1
+    # Same for runs: the reconciled stub reuses the worker's own event.
+    assert (
+        events.append_once(
+            subject,
+            "run_completed",
+            {"run_id": run_a, "published": True},
+            key={"run_id": run_a},
+        )
+        == 3
+    )
+    assert (
+        events.append_once(
+            subject,
+            "run_completed",
+            {"run_id": run_a, "published": True, "reconciled": True},
+            key={"run_id": run_a},
+        )
+        == 3
+    )
+    assert (
+        events.append_once(
+            subject,
+            "run_completed",
+            {"run_id": run_b, "published": True},
+            key={"run_id": run_b},
+        )
+        == 4
+    )
+    assert [(e.sequence, e.kind) for e in events.read_after(subject, 0)] == [
+        (1, "control_applied"),
+        (2, "control_applied"),
+        (3, "run_completed"),
+        (4, "run_completed"),
+    ]

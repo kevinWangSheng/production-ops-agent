@@ -1478,3 +1478,120 @@ def test_concurrent_intake_retries_announce_exactly_one_intake_event():
     submit_incident(app, key="race")
     workbench.snapshot(subject)
     assert workbench.events.latest(subject) == 1
+
+
+# -- review threads on PR #33, round 6 -------------------------------------------
+
+
+def test_a_control_confirmed_after_a_lost_marker_announces_one_control_applied():
+    """Round 6 thread 1 (P2): ``control_applied`` appended, ``control`` row lost.
+
+    The retry sees the generation applied but no marker, confirms from the
+    audit, and must reuse the published event instead of appending a twin.
+    """
+    from opspilot.persistence import PersistenceError
+
+    app, workbench, _ = build_workbench()
+    incident = submit_incident(app, key="twin-control").json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    real_put = workbench.ledger.put
+    armed = [True]
+
+    def lose_marker(namespace, key, value):
+        if namespace == "control" and armed[0]:
+            armed[0] = False
+            raise PersistenceError("STORAGE_UNAVAILABLE")
+        return real_put(namespace, key, value)
+
+    workbench.ledger.put = lose_marker
+    fields = {
+        "action": "follow_up",
+        "expected_generation": "0",
+        "idempotency_key": "note-twin",
+        "text": "Only once, please.",
+    }
+    assert _control(app, incident, fields).status == 503
+    applied = [
+        e
+        for e in workbench.events.read_after(subject, 0)
+        if e.kind == "control_applied"
+    ]
+    assert [e.payload["generation"] for e in applied] == [1]
+    retry = _control(app, incident, fields)
+    assert retry.status == 200 and retry.json()["replayed"] is True
+    assert retry.json()["sequence"] == applied[0].sequence
+    applied = [
+        e
+        for e in workbench.events.read_after(subject, 0)
+        if e.kind == "control_applied"
+    ]
+    assert [e.payload["generation"] for e in applied] == [1]
+    assert workbench.ledger.get("control", f"{subject}:note-twin") == {
+        "action": "follow_up",
+        "generation": 1,
+        "sequence": applied[0].sequence,
+    }
+    # A page-load reconcile and a further replay add nothing.
+    workbench.snapshot(subject)
+    _control(app, incident, fields)
+    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
+        "control_applied"
+    ) == 1
+    # Later decisions (cancel, new_run) are new generations and still
+    # publish their own events.
+    _renew(app, incident, generation=1)
+    assert [
+        e.payload["generation"]
+        for e in workbench.events.read_after(subject, 0)
+        if e.kind == "control_applied"
+    ] == [1, 2, 3]
+
+
+def test_a_completion_confirmed_after_a_lost_marker_announces_one_run_completed():
+    """Round 6 thread 2 (P2): ``run_completed`` appended, ``completion`` row lost.
+
+    The next reconcile sees no marker; it must repair the marker from the
+    published event rather than announce the conclusion twice. The worker's
+    exit path still appends its ``run_handoff`` after the publication (as
+    it does today); the page must keep showing the published conclusion.
+    """
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="twin-completion")
+    subject = workbench.list_incidents()[0].incident_id
+    real_put = workbench.ledger.put
+    armed = [True]
+
+    def lose_marker(namespace, key, value):
+        if namespace == "completion" and armed[0]:
+            armed[0] = False
+            raise RuntimeError("process died after run_completed")
+        return real_put(namespace, key, value)
+
+    workbench.ledger.put = lose_marker
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert workbench.list_incidents()[0].concluded is True
+    completed = [
+        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_completed"
+    ]
+    assert len(completed) == 1
+    run_id = completed[0].payload["run_id"]
+    assert workbench.ledger.get("completion", run_id) is None
+    before = workbench.events.latest(subject)
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["outcome"] is not None and snapshot["outcome"]["published"] is True
+    # The outcome is the worker's own record, not a reconciled stub.
+    assert snapshot["outcome"].get("reconciled") is None
+    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
+        "run_completed"
+    ) == 1
+    assert workbench.ledger.get("completion", run_id) == {
+        "sequence": completed[0].sequence
+    }
+    # Nothing was appended by the repair, nor by a further page load, so a
+    # reconnecting stream at the old cursor has no twin to deliver.
+    workbench.snapshot(subject)
+    assert workbench.events.latest(subject) == before
+    assert workbench.events.read_after(subject, before) == ()

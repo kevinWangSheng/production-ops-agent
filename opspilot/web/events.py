@@ -43,18 +43,26 @@ class EventLog(Protocol):
     ) -> int: ...
 
     def append_once(
-        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+        self,
+        subject_id: UUID,
+        kind: str,
+        payload: Mapping[str, Any],
+        *,
+        key: Mapping[str, Any] | None = None,
     ) -> int:
-        """Append unless an event of ``kind`` is already retained for the subject.
+        """Append unless a matching event of ``kind`` is already retained.
 
-        Keyed by (subject, kind) only: use it for facts that occur once per
-        subject, never for kinds that legitimately repeat. ``DurableEventLog``
-        runs the check and the insert under the same per-subject append lock,
-        so concurrent callers cannot both append; ``MemoryEventLog`` is
-        process-local and single-threaded like the rest of that double.
-        Returns the retained or the new sequence. Retention may prune the
-        earlier event, so callers that need exactly-once across pruning also
-        keep a ledger marker.
+        Without ``key`` the match is (subject, kind): use that only for facts
+        that occur once per subject. With ``key`` the match also requires
+        the retained payload to contain every ``key`` item, so a kind that
+        repeats per subject (one ``control_applied`` per generation, one
+        ``run_completed`` per run) is fenced by its own identity.
+        ``DurableEventLog`` runs the check and the insert under the same
+        per-subject append lock, so concurrent callers cannot both append;
+        ``MemoryEventLog`` is process-local and single-threaded like the rest
+        of that double. Returns the retained or the new sequence. Retention
+        may prune the earlier event, so callers that need exactly-once across
+        pruning also keep a ledger marker.
         """
         ...
 
@@ -96,11 +104,19 @@ class MemoryEventLog:
         return sequence
 
     def append_once(
-        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+        self,
+        subject_id: UUID,
+        kind: str,
+        payload: Mapping[str, Any],
+        *,
+        key: Mapping[str, Any] | None = None,
     ) -> int:
         _check(kind, payload)
+        wanted = {} if key is None else dict(key)
         for event in self._events.get(subject_id, ()):
-            if event.kind == kind:
+            if event.kind == kind and all(
+                event.payload.get(k) == v for k, v in wanted.items()
+            ):
                 return event.sequence
         return self.append(subject_id, kind, payload)
 
@@ -168,20 +184,26 @@ class DurableEventLog:
             return sequence
 
     def append_once(
-        self, subject_id: UUID, kind: str, payload: Mapping[str, Any]
+        self,
+        subject_id: UUID,
+        kind: str,
+        payload: Mapping[str, Any],
+        *,
+        key: Mapping[str, Any] | None = None,
     ) -> int:
         _check(kind, payload)
         with self._store.transaction() as conn:
             # Same per-subject lock as append(): the existence check and the
             # insert are one critical section, so two announcers of the same
-            # fact cannot both pass the check.
+            # fact cannot both pass the check. ``@>`` is jsonb containment,
+            # so an empty key matches any payload of the kind.
             conn.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
                 (str(subject_id),),
             )
             retained = conn.execute(
-                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s",
-                (subject_id, kind),
+                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
+                (subject_id, kind, Jsonb({} if key is None else dict(key))),
             ).fetchone()
             if retained is not None and retained["sequence"] is not None:
                 return int(retained["sequence"])
