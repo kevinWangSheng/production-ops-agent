@@ -47,10 +47,14 @@ class EventLog(Protocol):
     ) -> int:
         """Append unless an event of ``kind`` is already retained for the subject.
 
-        The check and the insert happen under the same per-subject append
-        lock, so concurrent callers cannot both append. Returns the retained
-        or the new sequence. Retention may prune the earlier event, so callers
-        that need exactly-once across pruning also keep a ledger marker.
+        Keyed by (subject, kind) only: use it for facts that occur once per
+        subject, never for kinds that legitimately repeat. ``DurableEventLog``
+        runs the check and the insert under the same per-subject append lock,
+        so concurrent callers cannot both append; ``MemoryEventLog`` is
+        process-local and single-threaded like the rest of that double.
+        Returns the retained or the new sequence. Retention may prune the
+        earlier event, so callers that need exactly-once across pruning also
+        keep a ledger marker.
         """
         ...
 
