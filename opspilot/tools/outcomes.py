@@ -32,6 +32,7 @@ cancellation cannot recall a read-only request that already reached the source.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -260,7 +261,7 @@ class EvidenceRecord:
     status: ToolStatus
     raw: bytes
     raw_sha256: str
-    view: Mapping[str, object]
+    _view: Mapping[str, object]
     view_sha256: str
     projection_revision: str
     observed_at: datetime
@@ -273,6 +274,19 @@ class EvidenceRecord:
     omitted_rows: int
     omitted_bytes: int
     adopted: bool
+
+    @property
+    def view(self) -> Mapping[str, object]:
+        """A detached copy: mutating it can never change committed evidence.
+
+        ``EvidenceRecord`` is otherwise frozen, but a ``dict``/``list`` value is
+        still mutable through any reference to it. Handing out the same object
+        on every access let a consumer -- or an evidence sink that retained the
+        record -- mutate "committed" evidence in place while ``view_sha256``
+        kept hashing the original contents (bot review finding).
+        """
+
+        return deepcopy(self._view)
 
     @property
     def freshness_seconds(self) -> float | None:

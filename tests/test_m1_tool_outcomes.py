@@ -489,6 +489,32 @@ def test_the_model_view_is_detached_from_the_committed_evidence():
     assert outcome.evidence.view_sha256 == canonical_hash(outcome.evidence.view)
 
 
+def test_mutating_a_committed_evidence_view_does_not_corrupt_the_stored_record():
+    """Bot review finding: ``EvidenceRecord.view`` handed out the same mutable
+    dict object on every access, so a consumer that mutated
+    ``outcome.evidence.view`` (or an evidence sink that retained the record
+    and later mutated its own reference) permanently corrupted the committed
+    evidence even though ``view_sha256`` still hashed the original,
+    pre-mutation contents.
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+    record = outcome.evidence
+
+    first_access = record.view
+    first_access["content"].append({"injected": "value"})
+    first_access["extra"] = "mutated"
+
+    second_access = record.view
+    assert "extra" not in second_access
+    assert second_access["content"] == [{"value": 1}]
+    assert sink.records[0].view["content"] == [{"value": 1}]
+    assert record.view_sha256 == canonical_hash(record.view)
+
+
 def test_a_mismatched_evidence_reference_is_not_a_commit():
     executor, transport, _, _ = build(sink=RecordingSink(reference="other-evidence"))
     transport.response = TransportResponse(body=body([{"value": 1}]))

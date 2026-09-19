@@ -30,7 +30,6 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping, Sequence
-from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -740,12 +739,11 @@ class ReadOnlyToolExecutor:
             status=status,
             reason=reason,
             source_contact="confirmed",
-            # A detached copy, not the same object as ``record.view``: a
-            # caller mutating the model-facing view must never be able to
-            # change the evidence already committed under ``view_sha256``,
-            # or a sink that retained the record would see its "committed"
-            # evidence drift out from under it (bot review finding).
-            model_view=deepcopy(record.view),
+            # ``record.view`` is itself a detached copy (``EvidenceRecord.view``
+            # deep-copies on every access), so this is already a separate
+            # object from whatever is committed under ``view_sha256``; a
+            # caller mutating it can never reach the stored evidence.
+            model_view=record.view,
             evidence=record,
         )
 
@@ -839,7 +837,7 @@ class ReadOnlyToolExecutor:
             status=status,
             raw=response.body,
             raw_sha256=sha256(response.body).hexdigest(),
-            view=view,
+            _view=view,
             view_sha256=canonical_hash(view),
             projection_revision=PROJECTION_REVISION,
             observed_at=observed_at,
