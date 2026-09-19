@@ -1,7 +1,7 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：`facb64d` 推送后机器人先后共追加 7 条新发现，已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`/`929ee54`），三轮独立审查均确认全部「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、30 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；不手动触发 `@codex review`；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
-- 更新日期：2026-09-18
+- 状态：`facb64d` 推送后机器人先后共追加 9 条新发现，已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`/`929ee54`/`4af8348`/`00cd6ce`），全部独立审查均确认「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、32 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；不手动触发 `@codex review`；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
+- 更新日期：2026-09-19
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md)「Flash 调查 loop」；
@@ -993,3 +993,109 @@ review thread（comment 4045569482，P2，`client.py:100`，
   resolve、0 unresolved。按任务书要求未手动触发 `@codex review`；截至
   报告完成时未见新增 thread（若收尾前又出现，报告里单独列出原文摘要，
   不处置）。
+
+## 追加（2026-09-19：Herdr 调度者再派「最后一轮」处置任务，第 9 条机器人发现）
+
+`152f6ec` 推送后，`chatgpt-codex-connector` 又追加 1 条新 review thread
+（comment 4052348800，P1，`loop.py:471`，2026-09-19T05:29:38Z）。本轮
+任务书明确覆盖了上一轮末尾「不再处置新增 thread」的收尾条款，改为：
+处置完推送后每 5 分钟复查一次 reviewThreads，若又出新 thread 就继续
+处置，直到连续一次复查 0 新 thread 为止（过程记录见
+`scratchpad/reports/final-29.md` 的「第 N 轮」）。
+
+### 发现 9（P1，`loop.py:471`）—— 未按 policy 自己的 reference_rule 选参照时刻
+
+- **问题**：`_run_tools()` 调用 `eligible_time_policies()` 时，只传了
+  单一 `reference_at=view.get("observed_at")`（工具调用的响应完成时刻），
+  对列表里所有 policy 一视同仁；v4 契约的 `TimePolicy.reference_rule`
+  是必填枚举（`dispatch_started_at` 或 `response_received_at`），但函数
+  从未读取这个字段。后果两个方向都有：一条声明按 dispatch 计时效的
+  `current` policy，如果响应耗时长，会被误判为「过期」（其实数据在
+  dispatch 那一刻是新鲜的）；反过来，一个区间终点晚于 dispatch、但早于
+  （慢）响应完成的数据，本该相对 dispatch 判定为「未来数据」而拒绝，却
+  因为函数只看 response 时刻而被放行。
+- **修复**（`00cd6ce`）：`opspilot/investigation/reports.py` 的
+  `eligible_time_policies()` 改为对每条 policy 单独解析
+  reference——从新增的 `dispatch_started_at`/`response_received_at`
+  两个参数里，按该 policy 自己的 `reference_rule` 选一个；选不出（字段
+  缺失或不是这两个枚举值之一）就让这条 policy 直接 fail closed，不再
+  隐式回退到某个默认时刻。区间自洽性检查（起止都在、起点<=终点）仍是
+  进入逐 policy 循环前算一次的全局检查，与用哪个 reference 无关；「区间
+  终点晚于 reference 即未来数据」这条检查现在按 policy 分别判断（因为
+  不同 policy 可能选不同 reference），但由于 dispatch 恒不晚于
+  response，一个真正晚于两者中较晚者（response）的区间，无论哪条
+  policy 选哪个 reference 都仍会被拒绝——「未来数据对所有 policy 都不可
+  信」这条不变量并未因为改成逐 policy 判定而减弱。`opspilot/tools/
+  executor.py` 的 `_record()` 新增 `view["dispatch_started_at"]`（取自
+  `operation.started_at`，和 `_refuse()` 视图里早就把它当
+  `"requested_at"` 用的语义一致），与既有 `view["observed_at"]`
+  （= `operation.finished_at or operation.started_at`）并列；
+  `opspilot/investigation/loop.py` 的调用点相应传两个参数。
+  `PROJECTION_REVISION` 按仓库既有惯例（v1→v2→v3 均对应 view 形状变化）
+  从 `v3` 升到 `v4`。
+- **测试**：`tests/test_m1_investigation_loop.py` 新增
+  `test_current_policy_honors_its_own_dispatch_reference_rule`（dispatch
+  参照的 policy 不再被慢响应误判过期）、
+  `test_current_policy_rejects_a_claim_future_dated_relative_to_dispatch`
+  （镜像方向：相对 dispatch 未来数据被拒绝，即便相对 response 看着没
+  问题）、`test_policy_with_an_unrecognized_reference_rule_is_rejected_closed`
+  （reference_rule 缺失/不识别时 fail closed）；`tests/
+  test_m1_tool_outcomes.py` 新增
+  `test_ok_outcome_registers_the_dispatch_started_at_instant`（用
+  `FakeTransport(duration=5.0)` 制造响应比 dispatch 晚 5 秒的场景，断言
+  `model_view["dispatch_started_at"]` 与 `model_view["observed_at"]`
+  确实不同）。既有 5 个直接调 `eligible_time_policies()` 的测试把
+  `reference_at=` 改成 `response_received_at=`，并给对应 policy 补上
+  `"reference_rule": "response_received_at"`（否则新逻辑下会因为缺
+  reference_rule 直接被拒，测不到原本要测的边界）；一个端到端跑 loop 的
+  既有测试（`test_a_well_formed_source_interval_still_permits_citation_through_the_loop`）
+  同样补了这个字段。修复前（`git apply -R` 只回退源码半边，测试文件不
+  动）这些新增/改动测试以 `TypeError`（新增关键字参数在旧函数签名里不
+  存在）或 `KeyError`（视图里没有 `dispatch_started_at`）真实失败，精确
+  指向本条发现；`git apply` 复原后全绿。
+- **独立审查（全新上下文只读子代理）**：判定「CORRECT」。逐项核实：
+  （1）读改动后 `eligible_time_policies()` 完整实现，自行写独立于仓库
+  测试文件的最小复现验证两个方向都成立；（2）用 2000 组随机
+  dispatch<=response 组合（共 4000 次判定）验证「未来数据对所有 policy
+  都不可信」这条不变量确实仍然成立，同时指出这依赖时钟单调不回退这个
+  该模块一直隐含、未显式断言的前提——这是本 PR 之前就有的既有设计前提，
+  不是本次改动新引入的风险，仅作观察记录；（3）自己重做红绿对照（未采信
+  转述），确认失败原因精确指向本条发现、无无关失败，收尾时
+  `git status --short` 与开始前一致；（4）`git diff --stat` 确认只有
+  预期的 6 个文件，无 `pyproject.toml`/`uv.lock`/验收字段/无关改动；
+  （5）抽查既有测试改动，确认边界值未被削弱，还如实核实了
+  `test_historical_policy_rejects_a_source_interval_outside_the_policy_window`
+  「其实是靠 target_refs 缺失被拒绝，未真正测到窗口越界」这个既有测试
+  缺陷（本次改动之前就存在，未被引入或掩盖）；（6）确认
+  `PROJECTION_REVISION` 升版本号符合既有惯例，全仓无硬编码旧字符串
+  `m1-01-tool-view-v3` 会因此断裂；（7）确认改动只涉及纯逻辑层，未碰
+  `persistence.py`/`DurableStore`，`make check` 全绿（`ruff check`/
+  `ruff format --check`/`mypy` 干净，`pytest` 全量 1375 passed, 86
+  skipped, 2 xfailed，无回归）。
+
+### 验证证据
+
+- `make check`（`00cd6ce` 上）→ `ruff check`/`ruff format --check`/
+  `mypy` 全干净；`pytest` **1375 passed, 86 skipped, 2 xfailed**
+  （较上一节 1371 净增 4，即本条新增的 4 个测试）。
+- PG 定向：本发现只涉及 `opspilot/investigation/reports.py`/`loop.py`/
+  `opspilot/tools/executor.py` 纯逻辑层，不涉及
+  `persistence.py`/`DurableStore`，任务书「涉及 PG 的跑定向」的前提不
+  成立，未运行 PG lab。
+- 推送与 CI：`00cd6ce` 已推送；`workflow_dispatch` 触发 run
+  `35426760131`，`completed`/`success`。
+- PR 状态：`gh pr view 29` → `mergeStateStatus=CLEAN`、
+  `mergeable=MERGEABLE`。
+- base 分支（PR #20）状态：核实 `origin/feature/m1-01-tool-executor`
+  又前进（最终 HEAD `c12066a`），本地 `git merge-tree --write-tree`
+  dry-run 未报冲突，与 GitHub `mergeStateStatus=CLEAN` 一致，未执行合并
+  （未出现 DIRTY/CONFLICTING，不满足任务书里「解决冲突」的前提）。
+- 机器人审查处置：用 `addPullRequestReviewThreadReply` GraphQL
+  mutation（`-F body=@<文件>` 读文件）回复该 thread，引用提交
+  `00cd6ce`、测试名与独立审查结论；已核对正文完整未被 shell 吞掉。
+  `resolveReviewThread` 已执行。GraphQL 复查 reviewThreads 共 32 条，
+  0 unresolved。
+- 本轮起，覆盖上一轮「不再处置新增 thread」的收尾条款：推送后循环
+  以 5 分钟为间隔复查 reviewThreads，直到连续一次复查 0 新 thread 为止
+  （不手动触发 `@codex review`，只处理自动出现的）；具体每轮记录见
+  `scratchpad/reports/final-29.md`。
