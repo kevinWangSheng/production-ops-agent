@@ -1077,3 +1077,72 @@ pytest                → 1278 passed, 82 skipped, 2 xfailed
 - 用户已明确本轮为最后一轮机器人 review 处置：处置完成、unresolved=0、`mergeStateStatus: CLEAN`
   后不再手动触发 `@codex review`；若后续仍有机器人自动/延迟触发的新 thread，按本任务已建立的
   处置流程处理，但不主动再发起新一轮触发。
+
+## 17. 机器人 code review 第六轮两条 thread 处置（2026-09-18，用户重申的最后一轮）
+
+第 16 节收尾后，`@codex review` 又自动/延迟触发出 2 条新的未处理 inline thread
+（`mergeStateStatus` 再次变为 `BLOCKED`）。用户经由调度者重申此为最后一轮：处置到
+unresolved=0 且 CLEAN 后不再手动触发 `@codex review`；若收尾时又自动出现新 thread，只在报告
+里列出原文摘要，不处置。
+
+| # | 位置 | 级别 | 发现摘要 | 判定 | 处置 | 提交 |
+|---|---|---|---|---|---|---|
+| 1 | `executor.py:844`（`_record()` 构造 `EvidenceRecord`） | P2 | `EvidenceRecord.view` 在每次访问时都返回同一个可变 dict 对象（含嵌套的 `content` 列表）。任何读取 `outcome.evidence.view`（或持有 record 引用的 evidence sink）后就地修改它的调用方，都能悄悄改动"已提交"的证据，而 `view_sha256` 仍然是修改前内容的哈希，导致审计校验与留存证据不一致 | 采纳 | `EvidenceRecord.view` 字段改名为私有 `_view`，新增 `view` 属性在每次访问时返回 `deepcopy(self._view)`，调用方永远拿不到内部存储对象的引用；`_run()` 原有的 `model_view=deepcopy(record.view)` 简化为 `model_view=record.view`（属性本身已返回新副本，无需再套一层 deepcopy），移除因此未使用的 `executor.py` 内 `copy` 导入 | `22e979e` |
+| 2 | `executor.py:538`（`_run()` 构造 `TransportRequest`） | P2 | `plan.params`（普通可变 dict）被按引用直接传给 `TransportRequest.params`。若某个 transport 适配器就地归一化/修改 `request.params`，会同时改到 `plan.params`——而这正是 `_record()` 之后再次读取（`dict(plan.params)`）用于构建证据视图 `query` 字段的同一个对象，导致记录下来的 query 可能悄悄偏离接受时已经固定的 `operation.query`，也偏离实际派发的内容 | 采纳 | `_run()` 改为把 `MappingProxyType(dict(plan.params))`（分离且不可变的副本）交给 transport；适配器就地修改的尝试会直接抛异常，而不是静默污染 `plan.params` | `7598809` |
+
+两项均先写确定性测试复现（红：临时撤回对应修复，让新测试在旧逻辑下转红）→ 最小修复（绿）→
+精确还原对照，确认 `git status --short`/`git diff --stat` 在还原后为空、修复重新应用后两个新
+测试同时转绿。新增测试：
+`test_mutating_a_committed_evidence_view_does_not_corrupt_the_stored_record`
+（`tests/test_m1_tool_outcomes.py`）、
+`test_a_transport_that_mutates_dispatched_params_cannot_corrupt_the_recorded_query`
+（`tests/test_m1_tool_boundaries.py`）。
+
+**独立审查**（全新上下文只读子代理，未参与实现，派发提示明写禁止 `git checkout --`/`stash`/
+`reset`/`amend`/`rebase`/force-push，对照用 `git diff`/`git apply -R`/`apply`）：两项修复均判定
+"sound"（关闭了对应发现，未引入新问题）。
+
+- 第 1 项：确认 `_record()` 里本地 `view` dict 在构造 `EvidenceRecord` 之前没有任何"首次读取前
+  就已被别处持有并可能被修改"的别名缺口（`view` 由 `dict(plan.params)`、`plan.window.as_json()`
+  等新鲜副本拼成，从未被其它代码保留引用）；确认"每次访问都 deepcopy"是必要强度而非过度设计——
+  若只在构造时深拷贝一次，第一个调用方的修改仍会污染第二个调用方（如 sink）看到的内容；确认
+  `deepcopy` 对 `view` 里实际存放的所有值类型（纯 JSON 安全的 str/int/float/bool/None/dict/list，
+  日期一律先转 ISO 字符串）都正确适用；全仓库 grep 确认 `EvidenceRecord(` 只有一处构造点，字段
+  改名不会破坏其它代码。
+- 第 2 项：确认 `MappingProxyType(dict(...))`（浅拷贝级别）已经足够、并非不足或过度设计——
+  `_accept_params()`/`ParameterSpec.accepts()` 已把每个被接受的参数值限制为
+  `str`/`int`/`float`/`bool`，`plan.params` 里不可能出现可变容器，因此不需要深拷贝；专门检查了
+  `TransportRequest` 另外两个同样按引用传递的字段（`selector`、`window`）是否存在同类"可变对象被
+  多处别名持有"的问题，结论两者均已天然免疫：`RegisteredTarget.selector` 在构造时已被
+  `object.__setattr__` 包成 `MappingProxyType`（`registry.py`），`Window` 本身是已冻结的
+  dataclass——**未发现附近还有第三处同类未报告的实例**。
+- 两项均在本次会话里独立重新跑过 `ruff check .`/`ruff format --check .`/`mypy`/
+  `pytest tests/ -q`，结论与实现者自测一致（全部干净，`1280 passed, 82 skipped, 2 xfailed`）。
+
+全部 2 条已在 GitHub 上逐条回复（引用具体提交、测试名、红绿对照结论、独立审查确认的"未发现
+第三处同类实例"结论）并 `resolveReviewThread`；`gh api graphql` 复核 `reviewThreads` 当前
+**20 条**（前五轮共 18 条 + 本轮 2 条）全部 `isResolved: true`。
+
+### 验证
+
+```text
+ruff check .          → All checks passed!
+ruff format --check . → 423 files already formatted
+mypy                  → Success: no issues found in 18 source files
+pytest                → 1280 passed, 82 skipped, 2 xfailed
+```
+
+`exit=0`。本轮两项发现均不涉及持久层（`opspilot/tools/executor.py`/`outcomes.py` 的纯内存逻辑），
+未额外跑 `M1_DURABLE_POSTGRES=1` 定向测试。`git diff --stat` 确认本轮改动只涉及
+`opspilot/tools/executor.py`、`opspilot/tools/outcomes.py` 及
+`tests/test_m1_tool_outcomes.py`、`tests/test_m1_tool_boundaries.py`，未触碰
+`feature_list.json`/`SPEC.md`/`ROADMAP.md`/`PRODUCT-CONSTRAINTS.md`/依赖锁文件。已推送
+`22e979e`、`7598809`；base 分支为 `main`，普通 push 即触发了 CI（run 35424605647），
+`checks`/`m0-postgres` 两个 job 均通过；`mergeStateStatus: CLEAN`，`mergeable: MERGEABLE`。
+
+### 未完成/限制
+
+- 此前记录的组合层接线依赖、`ParameterSpec.description` 内容校验交接项状态不变。
+- F3/F7 的 `passes` 保持 `false`。
+- 用户/调度者已重申本轮为最后一轮：本次收尾未再手动触发 `@codex review`；若收尾检查时发现机器人
+  又自动出现新 thread，按约定只在任务报告里列出原文摘要，不在本轮处置。
