@@ -645,6 +645,10 @@ class Workbench:
         rebuilt = self.incidents.rebuild(incident_id)
         if rebuilt["run"]["state"] != "completed":
             return
+        # This stub can be the retained record: a page load that races the
+        # worker between its publish and its append wins the run_id key, so
+        # readers must not rely on the worker-only fields (evidence_ids,
+        # model_requests_used, prompt_revision) being present.
         sequence = self.events.append_once(
             incident_id,
             "run_completed",
