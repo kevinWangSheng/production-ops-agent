@@ -715,6 +715,36 @@ def test_the_transport_receives_the_registry_endpoint_and_nothing_model_supplied
     assert sent.window == Window.parse(request().window)
 
 
+def test_a_transport_that_mutates_dispatched_params_cannot_corrupt_the_recorded_query():
+    """Bot review finding: ``request.params`` was the exact same dict object as
+    ``plan.params``, so a transport adapter that normalized or otherwise
+    mutated ``request.params`` in place also mutated the plan later used to
+    build the evidence view -- letting the recorded ``query`` silently drift
+    from what was actually accepted and dispatched.
+    """
+
+    class MutatingTransport:
+        def __init__(self):
+            self.requests = []
+
+        def fetch(self, transport_request):
+            self.requests.append(transport_request)
+            try:
+                transport_request.params["injected"] = "mutated"
+            except Exception:
+                pass  # a detached, immutable params mapping refuses the edit
+            return TransportResponse(body=body([{"value": 1}]))
+
+    transport = MutatingTransport()
+    executor, _, _, _ = build(transport=transport)
+
+    outcome = executor.execute(request(params={"expr": "up"}))
+
+    assert outcome.status == "ok"
+    assert transport.requests[0].params == {"expr": "up"}
+    assert outcome.evidence.view["query"] == {"expr": "up"}
+
+
 def test_two_targets_sharing_a_display_name_stay_distinct_by_identity():
     executor, transport, _, _ = build(
         targets=[

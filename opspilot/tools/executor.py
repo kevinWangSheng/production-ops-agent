@@ -33,6 +33,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from .outcomes import (
@@ -533,7 +534,11 @@ class ReadOnlyToolExecutor:
             verb=plan.registration.verb,
             endpoint=plan.target.endpoint,
             selector=plan.target.selector,
-            params=plan.params,
+            # A detached, immutable copy: a transport adapter that normalizes
+            # or otherwise mutates ``request.params`` in place must never be
+            # able to reach ``plan.params``, which ``_record()`` reads again
+            # afterward to build the evidence view (bot review finding).
+            params=MappingProxyType(dict(plan.params)),
             window=plan.window,
             timeout_seconds=timeout,
             max_result_bytes=plan.registration.max_result_bytes,
