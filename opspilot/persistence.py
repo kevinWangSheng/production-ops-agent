@@ -46,6 +46,10 @@ class Lease:
     control_generation: int
 
 
+# 预留结算的两种去向：列名由结算结果决定，不由调用方拼 SQL。
+_SETTLEMENTS: dict[str, str] = {"spent": "budget_spent", "unknown": "budget_unknown"}
+
+
 class DurableStore:
     """Small transactional store; callers only observe committed business rows."""
 
@@ -300,6 +304,60 @@ class DurableStore:
                 (amount, lease.run_id),
             )
 
+    def settle_budget(self, lease: Lease, reservation_id: UUID, outcome: str) -> None:
+        """Settle one reservation after the physical request finished (C3 §13).
+
+        ``spent``: the provider answered, the request is real usage.
+        ``unknown``: the outcome is not known (timeout, transport failure,
+        rejected request); the reserved amount stays occupied under
+        ``budget_unknown`` and is never released. Settling the same
+        reservation twice with the same outcome is a no-op; a different
+        outcome is an identity conflict. Fenced by the lease like every
+        other write path, so a revoked attempt leaves its reservation as
+        ``reserved`` -- still counted against the limit.
+        """
+        if outcome not in _SETTLEMENTS:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                (lease.run_id,),
+            ).fetchone()
+            if (
+                not row
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["control_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= self._db_now(conn)
+                or row["deadline"] <= self._db_now(conn)
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            reservation = conn.execute(
+                "SELECT amount,run_id,state FROM opspilot_budget_reservations WHERE reservation_id=%s FOR UPDATE",
+                (reservation_id,),
+            ).fetchone()
+            if not reservation or reservation["run_id"] != lease.run_id:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if reservation["state"] != "reserved":
+                if reservation["state"] == outcome:
+                    return
+                raise PersistenceError("IDENTITY_CONFLICT")
+            conn.execute(
+                "UPDATE opspilot_budget_reservations SET state=%s WHERE reservation_id=%s",
+                (outcome, reservation_id),
+            )
+            column = _SETTLEMENTS[outcome]
+            conn.execute(
+                f"UPDATE opspilot_runs SET budget_reserved=budget_reserved-%s,{column}={column}+%s WHERE run_id=%s",
+                (reservation["amount"], reservation["amount"], lease.run_id),
+            )
+
     def charge_tool(
         self, lease: Lease, operation_id: str, seconds: float, *, max_operations: int
     ) -> None:
@@ -398,6 +456,8 @@ class DurableStore:
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
+        fenced = False
+        step_id: UUID | None = None
         with self.transaction() as conn:
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
@@ -421,32 +481,62 @@ class DurableStore:
                 )
                 or row["deadline"] <= self._db_now(conn)
             ):
-                raise PersistenceError("CONTROL_DENIED")
-            existing = conn.execute(
-                "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
-                (lease.run_id, logical_key),
-            ).fetchone()
-            if existing:
-                return cast(UUID, existing["step_id"])
-            step_id = uuid4()
-            sequence = self._require_row(
+                # Fenced: this reply is no longer authorized to become the
+                # current step, but it must not vanish -- it becomes
+                # non-adopted history, the same way publish() below retains
+                # a late conclusion instead of discarding it (bot review
+                # finding, PR #29). ``pending_tools`` in rebuild() only reads
+                # ``tool_calls`` from a top-level key this payload never
+                # carries, so a late-recorded reply can never be scheduled
+                # for tool execution.
+                #
+                # Raising here instead of after the ``with`` block would
+                # roll this insert back along with it -- the transaction
+                # context commits on a normal return, not on an exception --
+                # so ``fenced`` is set and the raise happens once the
+                # transaction has already committed, exactly as publish()
+                # returns ``False`` instead of raising for the same reason.
                 conn.execute(
-                    "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
-                    (lease.run_id,),
+                    "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
+                    (
+                        uuid4(),
+                        lease.run_id,
+                        f"late:{logical_key}:{uuid4()}",
+                        Jsonb(response),
+                        lease.control_generation,
+                    ),
                 )
-            )["next_sequence"]
-            conn.execute(
-                "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
-                (
-                    step_id,
-                    lease.run_id,
-                    sequence,
-                    logical_key,
-                    Jsonb(response),
-                    lease.control_generation,
-                ),
-            )
-            return step_id
+                fenced = True
+            else:
+                existing = conn.execute(
+                    "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
+                    (lease.run_id, logical_key),
+                ).fetchone()
+                if existing:
+                    step_id = cast(UUID, existing["step_id"])
+                else:
+                    step_id = uuid4()
+                    sequence = self._require_row(
+                        conn.execute(
+                            "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                            (lease.run_id,),
+                        )
+                    )["next_sequence"]
+                    conn.execute(
+                        "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
+                        (
+                            step_id,
+                            lease.run_id,
+                            sequence,
+                            logical_key,
+                            Jsonb(response),
+                            lease.control_generation,
+                        ),
+                    )
+        if fenced:
+            raise PersistenceError("CONTROL_DENIED")
+        assert step_id is not None
+        return step_id
 
     def commit_tool(
         self, lease: Lease, step_id: UUID, ordinal: int, result: dict[str, Any]

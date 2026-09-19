@@ -820,6 +820,9 @@ class ReadOnlyToolExecutor:
             "query": dict(plan.params),
             "window": plan.window.as_json(),
             "observed_at": observed_at.isoformat(),
+            "dispatch_started_at": None
+            if operation.started_at is None
+            else operation.started_at.isoformat(),
             "data_as_of": None if data_as_of is None else data_as_of.isoformat(),
             "source_start_at": None
             if source_start_at is None
