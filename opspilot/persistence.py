@@ -134,6 +134,16 @@ class DurableStore:
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
             );
+            -- 工具次数/秒数是每 Run 的冻结上限（C3 第 13 节：重启不能重置预算）。
+            -- 累计值落在 run 行；每次工具操作按 (run, epoch, operation) 记一行，
+            -- 同一操作重复结算只更新秒数，不重复计次。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_operations_used integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_seconds_used double precision NOT NULL DEFAULT 0;
+            CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
+              run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
+              operation_id text NOT NULL, seconds double precision NOT NULL DEFAULT 0,
+              PRIMARY KEY(run_id, epoch, operation_id)
+            );
             """)
 
     def accept(
@@ -288,6 +298,101 @@ class DurableStore:
             conn.execute(
                 "UPDATE opspilot_runs SET budget_reserved=budget_reserved+%s WHERE run_id=%s",
                 (amount, lease.run_id),
+            )
+
+    def charge_tool(
+        self, lease: Lease, operation_id: str, seconds: float, *, max_operations: int
+    ) -> None:
+        """Charge one tool operation to the Run's durable tool budget.
+
+        The first charge for ``(run, epoch, operation_id)`` counts the operation;
+        later charges with the same key only raise its recorded seconds, so an
+        executor may charge once before dispatch and once after with the
+        measured wall time. The key includes the epoch on purpose: a new attempt
+        that re-dispatches an uncommitted operation issues a real second query
+        (technical plan section 7), so it is counted again; the per-Run total
+        only ever grows. Fenced by the lease like every other write path.
+
+        ``max_operations`` is required, not defaulted: this module does not
+        import the frozen ceiling from ``opspilot.tools.executor`` (that
+        would invert the existing one-way dependency, ``opspilot.tools``
+        already imports from here), so every caller must supply the same
+        value the executor is enforcing. Counting a *new* operation is
+        refused, atomically under the same row lock as everything else in
+        this transaction, once the Run is already at the cap -- two
+        executors racing from the same stale ``operations_used`` snapshot
+        serialize on this lock, and only the one that arrives first may
+        still increment (bot review finding: the increment used to be
+        unconditional once past application-level checks, so both could
+        succeed and the durable count could exceed the frozen cap).
+        Settling an *already-counted* operation's seconds is never subject
+        to this check -- it does not add a new operation.
+        """
+        if not isinstance(operation_id, str) or not operation_id:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            type(seconds) not in (int, float)
+            or seconds != seconds
+            or seconds in (float("inf"), float("-inf"))
+            or seconds < 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        if type(max_operations) is not int or max_operations <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                (lease.run_id,),
+            ).fetchone()
+            # 与 PR #26 收敛后的 `_lease_revoked` 同一口径：`lease_until IS NULL`
+            # 判为撤销（control() 收回 worker 权限时正是清空它）。本文件另三条
+            # 写路径仍是 main 上容忍 NULL 的旧写法，由 #26 统一，本处不回改它们。
+            if (
+                not row
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["control_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= self._db_now(conn)
+                or row["deadline"] <= self._db_now(conn)
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            existing = conn.execute(
+                "SELECT seconds FROM opspilot_tool_charges WHERE run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
+                (lease.run_id, lease.epoch, operation_id),
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    "INSERT INTO opspilot_tool_charges(run_id,epoch,operation_id,seconds) VALUES(%s,%s,%s,%s)",
+                    (lease.run_id, lease.epoch, operation_id, float(seconds)),
+                )
+                cursor = conn.execute(
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s",
+                    (float(seconds), lease.run_id, max_operations),
+                )
+                if cursor.rowcount == 0:
+                    # The row is already locked (``FOR UPDATE`` above), so this
+                    # is not a lost-update race with another writer -- the cap
+                    # was already reached when we got here. Raising rolls back
+                    # the INSERT above too, so no orphaned charge row survives
+                    # for an operation that was never actually counted.
+                    raise PersistenceError("OPERATION_BUDGET_EXHAUSTED")
+                return
+            delta = max(0.0, float(seconds) - float(existing["seconds"]))
+            if delta == 0.0:
+                return
+            conn.execute(
+                "UPDATE opspilot_tool_charges SET seconds=seconds+%s WHERE run_id=%s AND epoch=%s AND operation_id=%s",
+                (delta, lease.run_id, lease.epoch, operation_id),
+            )
+            conn.execute(
+                "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
+                (delta, lease.run_id),
             )
 
     def commit_step(
