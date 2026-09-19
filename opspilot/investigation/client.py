@@ -97,7 +97,16 @@ class DeepSeekClient:
             raise ModelError("MODEL_UNAVAILABLE")
         try:
             payload = json.loads(raw)
-        except ValueError as exc:
+        except (ValueError, RecursionError) as exc:
+            # RecursionError covers a body nested deep enough to exceed the
+            # decoder's recursion limit (bot review finding, PR #29): it is
+            # not a ValueError subclass, so it escaped this call and then
+            # the loop's _call_model() (which only handles ModelError),
+            # crashing the run without a handoff even though the physical
+            # request had already completed and been counted. Same pattern
+            # already used for adversarial JSON elsewhere in this codebase
+            # (opspilot/tools/executor.py, opspilot/investigation/reports.py,
+            # opspilot/investigation/loop.py).
             raise ModelError("MODEL_UNAVAILABLE") from exc
         return _parse_reply(payload)
 

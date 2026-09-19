@@ -326,6 +326,25 @@ def test_a_non_positive_timeout_fails_before_dispatch():
     assert opener.called is False
 
 
+def test_a_deeply_nested_response_body_is_unavailable_not_a_crash():
+    """Bot review finding (comment 4045569482, P2): a successful (status
+    200) response whose body is deeply-nested JSON can make
+    ``json.loads(raw)`` raise ``RecursionError`` instead of a
+    ``json.JSONDecodeError`` (a ``ValueError`` subclass). ``complete()``
+    only caught ``ValueError`` around that call, so the ``RecursionError``
+    escaped both ``complete()`` and the loop's ``_call_model()`` (which only
+    handles ``ModelError``), crashing the run without a handoff even though
+    the physical request already completed and was counted. Same adversarial
+    body used elsewhere in this codebase for the identical decoder-limit gap
+    (``tests/test_m1_tool_outcomes.py``,
+    ``tests/test_m1_investigation_loop.py``)."""
+    body = b"[" * 20_000 + b"]" * 20_000
+    opener = _FixedOpener(body, status=200)
+    client = DeepSeekClient("test-key", opener=opener)
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(5.0))
+
+
 def test_a_sub_100ms_deadline_is_not_extended_past_the_authorized_budget():
     """Bot review finding (comment 4044987306, P1): ``budget = max(timeout,
     0.1)`` silently extended an authorized sub-100ms remaining budget
