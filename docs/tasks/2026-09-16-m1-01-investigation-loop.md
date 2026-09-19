@@ -918,3 +918,78 @@ PG 定向测试在独立审查的沙箱环境里无本地 PostgreSQL，未能重
   已更正。GraphQL 复查 reviewThreads 共 30 条，本条已回复（更正后的
   完整正文）并 `resolveReviewThread`；全部 30 条 resolve，无新增。用户
   已明确指示本轮处置完毕后不再手动触发 `@codex review`，未触发。
+
+## 追加（2026-09-18 四续：最后一轮）：`83fb9a7` 之后新增第 8 条机器人发现，`client.py` RecursionError
+
+`929ee54`/`83fb9a7` 推送后，`chatgpt-codex-connector` 又追加 1 条新
+review thread（comment 4045569482，P2，`client.py:100`，
+2026-09-18T09:37:07Z）。这是本次「最后一轮」处置任务书（Herdr 调度者
+派发）里 GraphQL 拉取到的唯一一条 `isResolved=false` thread。
+
+### 发现 8（P2，`client.py:100`）—— 解码 provider 响应体未捕获 RecursionError
+
+- **问题**：`complete()` 里 `json.loads(raw)` 只捕获 `ValueError`；一个
+  状态码 200（成功）但深嵌套的响应体会让 `json.loads` 抛
+  `RecursionError`（核实 `issubclass(RecursionError, ValueError)` 为
+  `False`——是 `RuntimeError` 子类，不是 `ValueError` 子类），穿出
+  `DeepSeekClient.complete()` 和 loop 的 `_call_model()`（只处理
+  `ModelError`），在物理请求已完成计数后使整个 run 崩溃、拿不到
+  handoff。这是与发现 4（`loop.py:655`，工具调用参数 JSON）、
+  `executor.py:865`（PR #20 的 `_result_rows`）同一类缺口在第 4 个
+  `json.loads` 调用点上的复现——前 3 处此前已用同一手法修过，这处（HTTP
+  响应体本身的解码）此前未覆盖。
+- **修复**（`4af8348`）：`except ValueError as exc:` 扩为
+  `except (ValueError, RecursionError) as exc:`，与仓库其余 3 处
+  `json.loads` 调用点（`opspilot/tools/executor.py`、
+  `opspilot/investigation/reports.py`、`opspilot/investigation/loop.py`）
+  的既有模式一致；未改动其余异常路径（状态码分支、`HTTPError`/
+  `URLError`/`TimeoutError`/`OSError` 分支、`_parse_reply` 自己的
+  `(KeyError, TypeError, ValueError)` 分支均保持不变）。
+- **测试**：新增
+  `tests/test_m1_investigation_client.py::test_a_deeply_nested_response_body_is_unavailable_not_a_crash`，
+  复用仓库其余同类测试（`tests/test_m1_tool_outcomes.py`、
+  `tests/test_m1_investigation_loop.py`）里同一条 adversarial payload
+  `b"[" * 20_000 + b"]" * 20_000`，经既有 `_FixedOpener`/`_FixedResponse`
+  测试替身构造一个状态码 200 的响应；修复前该用例以 `RecursionError`
+  直接冒出（非 `pytest.raises` 断言失败，是异常真的逃出去了）确认先红；
+  修复后断言 `client.complete()` 抛 `ModelError("MODEL_UNAVAILABLE")`
+  确认后绿。
+- **独立审查（全新上下文只读子代理）**：判定「CORRECT」。逐项核实：
+  （1）`git diff HEAD~1 -- opspilot/investigation/client.py` 确认只改了
+  该一行 + 注释，未夹带无关改动，状态码分支与 `_parse_reply` 分支未变；
+  （2）自行用 `git diff HEAD~1 -- opspilot/investigation/client.py >
+  /tmp/recursion-fix.patch` + `git apply -R` 只回退源码那一半（测试文件
+  不动）重放，确认测试以 `RecursionError` 真实逃出失败（不是断言不匹配）
+  后红，`git apply` 复原后绿，用完清理补丁文件、确认
+  `git status --short` 干净；（3）独立验证
+  `issubclass(RecursionError, ValueError)` 为 `False`，确认这不是机器人
+  的误报；（4）grep 全仓 `opspilot/` 下全部 4 处 `json.loads` 调用点，
+  确认其余 3 处（`executor.py:886`、`reports.py:164`、`loop.py:666`）此前
+  已是 `except (..., RecursionError)`，本次修复后 4 处全部一致，没有遗留
+  未修的同类调用点（范围内未发现需要另开任务处理的兄弟缺口）；（5）确认
+  改动没有过度吞掉其他异常类型；（6）跑 `tests/test_m1_investigation_client.py`
+  全文件 9 passed，无回归。
+
+### 验证证据
+
+- `make check`（`4af8348` 上）→ `ruff check`/`ruff format --check`/
+  `mypy` 全干净；`pytest` **1371 passed, 86 skipped, 2 xfailed**
+  （较上一节 1370 净增 1，即本条新用例）。
+- PG 定向：本发现不涉及 `persistence.py`/`DurableStore`，按任务书
+  「涉及 PG 的跑定向」的前提不成立，未运行 PG lab。
+- 推送与 CI：`4af8348` 已推送；`workflow_dispatch` 触发 run
+  `35423850158`，`checks`/`m0-postgres` 两个 job 均 `completed`/`success`。
+- PR 状态：`gh pr view 29` → `mergeStateStatus=CLEAN`、
+  `mergeable=MERGEABLE`。
+- base 分支（PR #20）状态：核实 `origin/feature/m1-01-tool-executor`
+  又前进（最终 HEAD `8cf6d73`），本地 `git merge-tree --write-tree`
+  dry-run 未报冲突，与 GitHub `mergeStateStatus=CLEAN` 一致，未执行合并
+  （未出现 DIRTY/CONFLICTING，不满足任务书里「解决冲突」的前提）。
+- 机器人审查处置：回复该 thread 时改用
+  `addPullRequestReviewThreadReply` GraphQL mutation（`-F body=@<文件>`
+  读文件，避开上一节踩坑记录里反引号被 shell 命令替换吞正文的问题）；
+  引用提交 `4af8348`、测试名与独立审查结论。GraphQL 复查 reviewThreads
+  共 31 条，本条已回复并 `resolveReviewThread`；复查确认全部 31 条
+  resolve、0 unresolved。按任务书要求未手动触发 `@codex review`；截至
+  报告完成时未见新增 thread（若收尾前又出现，报告里单独列出原文摘要，
+  不处置）。
