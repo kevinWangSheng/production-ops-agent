@@ -245,3 +245,23 @@
   再抛 TIMEOUT，或 `claim()` 抛 `LEASE_ACTIVE`），它的异常会替换原解码错误，原错误仅保留在 `__context__`。
   注释已改为如实说明这一点，并指出下次重试会先跑正常版本门，因此该行为收敛而不会锁死。
   仅改注释，行为未变。
+
+## 追加（2026-09-20）：第六轮 1 条 P2——claim 后刷新失败也要重跑版本门
+
+- **P2：post-claim refresh 失败时重跑版本门（`4057830925`）**：采纳并修复。第三轮我只给 claim **之前**的
+  `recover()` 加了版本 re-gate，claim **之后**的第二次 `recover()` 用的是同一段竞态逻辑却没有同样处理——
+  这是我自己留下的不对称，不是新竞态。并发 cancel -> new_run 若把已 claim 的兼容 Run 换成不兼容版本的 Run，
+  旧校验器拒绝其 payload 后，原实现只 abandon 旧租约并上抛 `INCONSISTENT_STATE`，新 Run 仍停在 queued，
+  正常的升级交接被错误地走进「损坏状态」这条不可重试路径。
+- 修复：在释放旧租约**之后**调用 `self._gate_versions()`，不兼容则走 blocked/`INCOMPATIBLE_STATE` 交接；
+  兼容 Run 的解码错误仍原样上抛。顺序重要：先 abandon 旧 Run 上的陈旧租约，再对新 Run 做版本门。
+  注释与第一处 re-gate 保持同一口径，并同样如实写明「re-gate 自身失败时其异常会替换原错误（原错误保留在
+  `__context__`），下次重试先跑正常门因而收敛」。
+- 回归：`test_resume_blocks_an_incompatible_run_that_replaces_the_claimed_one`（断言先释放旧租约、
+  再对新 run_id claim、抛 `INCOMPATIBLE_STATE`）、`test_a_post_claim_decode_failure_on_a_compatible_run_surfaces_as_itself`
+  （兼容 Run 的解码失败必须原样上抛且不得触发第二次 claim）。撤销本轮改动后前者红。
+- 验证：`make check` → `1081 passed, 126 skipped, 2 xfailed`，ruff/format/mypy 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `29 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
+- 本轮 code review 已覆盖当时的 HEAD `e6fefb8`（codex 19:20:24 的 review），不再是「审查只覆盖旧提交」的状态；
+  本次修复后 HEAD 变更，仍需新一轮覆盖当前 HEAD 的复审。

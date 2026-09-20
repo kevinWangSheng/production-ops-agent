@@ -252,6 +252,15 @@ class Worker:
                 self.store.abandon(lease)
             except PersistenceError:
                 pass
+            # The same replacement race as the pre-decode gate, one step
+            # later: a cancel followed by a new_run can swap in a Run whose
+            # payload this version cannot decode. Re-gate once the stale
+            # lease is released, so an incompatible replacement reaches the
+            # durable blocked handoff instead of being reported as corrupt
+            # state. A compatible Run still surfaces its decode error as
+            # itself; if the re-gate fails, its error replaces this one
+            # (kept as __context__) and the next retry gates first.
+            self._gate_versions(incident_id, lease_seconds)
             raise
         if (
             not current.candidate

@@ -704,3 +704,103 @@ def test_a_failed_fence_read_releases_the_live_lease():
     assert store.abandon_calls == [lease]
     assert store.renew_calls == []
     assert store.commit_calls == []
+
+
+def test_resume_blocks_an_incompatible_run_that_replaces_the_claimed_one():
+    """The post-claim refresh races the same replacement as the first decode.
+
+    A cancel -> new_run after the claim leaves this session holding a stale
+    lease and decoding rows it does not understand; the replacement must still
+    reach the durable blocked handoff rather than be reported as corrupt state.
+    """
+    incident_id, old_run, new_run = uuid4(), uuid4(), uuid4()
+    lease = Lease(incident_id, old_run, uuid4(), 2, 0)
+    snapshot = {
+        "incident_id": incident_id,
+        "control_generation": 0,
+        "run": {"run_id": old_run, "state": "queued"},
+        "steps": [],
+        "pending_tools": [],
+        "conclusion": None,
+    }
+
+    class Store:
+        def __init__(self):
+            self.metadata_calls = 0
+            self.rebuild_calls = 0
+            self.claims = []
+            self.abandoned = []
+
+        def recovery_metadata(self, _incident_id):
+            self.metadata_calls += 1
+            if self.metadata_calls == 1:
+                return {"run_id": old_run, "versions": {"state": "v1"}}
+            # The Run was replaced while this worker held its lease.
+            return {"run_id": new_run, "versions": {"state": "v2"}}
+
+        def rebuild(self, _incident_id):
+            self.rebuild_calls += 1
+            if self.rebuild_calls == 1:
+                return snapshot
+            raise PersistenceError("INCONSISTENT_STATE")
+
+        def claim(self, incident, run, _owner, _versions, _lease_seconds):
+            self.claims.append(run)
+            if run == old_run:
+                return lease
+            raise PersistenceError("INCOMPATIBLE_STATE")
+
+        def abandon(self, value):
+            self.abandoned.append(value)
+
+    store = Store()
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident_id)
+
+    # The stale lease is released before the replacement is blocked.
+    assert store.abandoned == [lease]
+    assert store.claims == [old_run, new_run]
+
+
+def test_a_post_claim_decode_failure_on_a_compatible_run_surfaces_as_itself():
+    """Re-gating after the claim must not relabel ordinary corrupt state."""
+    incident_id, run_id = uuid4(), uuid4()
+    lease = Lease(incident_id, run_id, uuid4(), 2, 0)
+    snapshot = {
+        "incident_id": incident_id,
+        "control_generation": 0,
+        "run": {"run_id": run_id, "state": "queued"},
+        "steps": [],
+        "pending_tools": [],
+        "conclusion": None,
+    }
+
+    class Store:
+        def __init__(self):
+            self.rebuild_calls = 0
+            self.claims = []
+            self.abandoned = []
+
+        def recovery_metadata(self, _incident_id):
+            return {"run_id": run_id, "versions": {"state": "v1"}}
+
+        def rebuild(self, _incident_id):
+            self.rebuild_calls += 1
+            if self.rebuild_calls == 1:
+                return snapshot
+            raise PersistenceError("INCONSISTENT_STATE")
+
+        def claim(self, _incident, run, _owner, _versions, _lease_seconds):
+            self.claims.append(run)
+            return lease
+
+        def abandon(self, value):
+            self.abandoned.append(value)
+
+    store = Store()
+    with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident_id)
+
+    assert store.abandoned == [lease]
+    # Only the original claim: a compatible Run is never blocked.
+    assert store.claims == [run_id]
