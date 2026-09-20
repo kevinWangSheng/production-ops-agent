@@ -181,6 +181,17 @@ class ParameterSpec:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if not isinstance(self.description, str):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
+        if _ENDPOINT.search(self.description):
+            # Parameter prose is part of the same section 8 model-visible
+            # face as :class:`ToolDescription`, which refuses a concrete
+            # ``scheme://`` URL for the same reason; leaving this field
+            # unchecked let a registration route an endpoint, a credential
+            # handle URL or a URL-embedded token to the model through the
+            # other half of that face (bot review finding). Same
+            # deterministic rule, same limits: see ToolDescription's
+            # docstring for why secret-*value* detection stays a
+            # human-review question rather than a keyword scanner.
+            raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
     def accepts(self, value: object) -> bool:
         if self.kind != "boolean" and type(value) is bool:

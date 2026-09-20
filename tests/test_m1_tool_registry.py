@@ -436,3 +436,39 @@ def test_missing_secret_declaration_cannot_register_a_source():
     fields.pop("may_contain_secrets")
     with pytest.raises(TypeError, match="may_contain_secrets"):
         ToolRegistration(**fields)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "the cluster read from https://metrics.internal:9090/api",
+        "pass the handle issued by https://vault.internal/creds/reader",
+    ],
+)
+def test_a_parameter_description_may_not_carry_a_concrete_endpoint(text):
+    """Bot review finding: `ToolDescription`'s five fields reject a concrete
+    `scheme://` URL, but `ParameterSpec.description` is the *same* section 8
+    model-visible face (its own docstring says so) and was checked only for
+    being a string. A registration could therefore put an endpoint, a
+    credential handle URL or a URL-embedded token into a parameter
+    description and have `ToolRegistry` accept and fingerprint it, and a
+    renderer would send it to the model -- exactly what section 8 forbids.
+
+    This is the same deterministic URL rule, not a keyword scanner: the
+    reasoning in `ToolDescription`'s docstring about why secret-*value*
+    detection stays a human-review question applies here unchanged.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+
+
+def test_a_parameter_description_may_still_name_a_reserved_word():
+    """The URL rule must not become a keyword scanner: naming which endpoint
+    or token a parameter refers to is legitimate required prose (see
+    `ToolDescription`'s docstring), so only concrete `scheme://` material is
+    refused.
+    """
+    spec = ParameterSpec(
+        kind="string", description="which endpoint alias to read; not a token"
+    )
+    assert spec.description.startswith("which endpoint")
