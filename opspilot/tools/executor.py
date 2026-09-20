@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
+from uuid import UUID, uuid4
 
 from .outcomes import (
     PROJECTION_REVISION,
@@ -318,8 +319,12 @@ class ToolUsageLedger(Protocol):
     ``usage()`` instead of zero and charges every dispatched operation back
     through ``charge``: once before the transport call, so the operation is
     counted even if the process dies mid-flight, and once after it with the
-    measured wall time. Both calls carry the same ``operation_id``, so a
+    measured wall time. Both calls carry the same ``dispatch_id``, so a
     repeated charge settles seconds instead of counting the operation twice.
+    ``operation_id`` deliberately does *not* key the charge: it is stable
+    across deliveries and attempts (section 7), so a duplicate delivery or a
+    same-epoch retry is a second *real* read that section 13 requires to be
+    charged again ("重试计入次数和费用") rather than folded into the first.
     ``charge`` raises ``ToolBudgetExhausted`` specifically when it refuses a
     *new* operation because the Run's durable cap is spent; any other
     failure is an opaque, unclassified error the caller fails closed on.
@@ -327,7 +332,9 @@ class ToolUsageLedger(Protocol):
 
     def usage(self) -> ToolUsage: ...
 
-    def charge(self, operation_id: str, seconds: float) -> None: ...
+    def charge(
+        self, operation_id: str, seconds: float, *, dispatch_id: UUID
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -528,6 +535,11 @@ class ReadOnlyToolExecutor:
     def _run(
         self, operation: ToolOperation, plan: _Plan, timeout: float
     ) -> ToolOutcome:
+        # One identity for this read, reused by the pre-dispatch charge and
+        # the settlement below so the two are the same dispatch. A duplicate
+        # delivery of the same tool call gets its own id and is charged
+        # separately: it really does issue a second query (section 13).
+        dispatch_id = uuid4()
         request = TransportRequest(
             operation_id=operation.operation_id,
             source=plan.registration.source,
@@ -550,7 +562,7 @@ class ReadOnlyToolExecutor:
         # authority that cannot record it stops the call, as control does, and
         # an operation that was never recorded is not counted locally either.
         try:
-            charged = self._charge(operation.operation_id, 0.0)
+            charged = self._charge(operation.operation_id, 0.0, dispatch_id)
         except ToolBudgetExhausted:
             # The durable cap is the authoritative one; a caller must see
             # this as the same denial the in-process pre-check reports, not
@@ -628,7 +640,7 @@ class ReadOnlyToolExecutor:
         # here -- but _charge() re-raises it unconditionally, so this is
         # still handled defensively rather than left to escape execute().
         try:
-            charged = self._charge(operation.operation_id, elapsed)
+            charged = self._charge(operation.operation_id, elapsed, dispatch_id)
         except ToolBudgetExhausted:
             return self._refuse(
                 operation, "denied", "OPERATION_BUDGET_EXHAUSTED", "confirmed"
@@ -752,9 +764,9 @@ class ReadOnlyToolExecutor:
             evidence=record,
         )
 
-    def _charge(self, operation_id: str, seconds: float) -> bool:
+    def _charge(self, operation_id: str, seconds: float, dispatch_id: UUID) -> bool:
         try:
-            self._ledger.charge(operation_id, seconds)
+            self._ledger.charge(operation_id, seconds, dispatch_id=dispatch_id)
         except ToolBudgetExhausted:
             # A fixed-code signal, not vendor text: let the caller report
             # the authoritative denial instead of a generic ledger failure

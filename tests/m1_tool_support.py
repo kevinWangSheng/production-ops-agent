@@ -133,12 +133,16 @@ class RecordingLedger:
         self.fail_on = fail_on  # 1-based charge call numbers that raise
         self.exhausted_on = exhausted_on  # 1-based calls that raise the cap
         self.charges = []
+        self.dispatches = []
 
     def usage(self):
         return self.usage_value
 
-    def charge(self, operation_id, seconds):
+    def charge(self, operation_id, seconds, *, dispatch_id):
+        # dispatch_id is the charge key (one per real read); a test asserting
+        # on pairing reads ``dispatches``, the recorded order stays the same.
         self.charges.append((operation_id, seconds))
+        self.dispatches.append(dispatch_id)
         call = len(self.charges)
         if self.exhausted_on is not None and call in self.exhausted_on:
             raise ToolBudgetExhausted("OPERATION_BUDGET_EXHAUSTED")
@@ -161,10 +165,10 @@ class SlowLedger(RecordingLedger):
         self.duration = duration
         self.charge_on = charge_on
 
-    def charge(self, operation_id, seconds):
+    def charge(self, operation_id, seconds, *, dispatch_id):
         if self.charge_on is None or (len(self.charges) + 1) in self.charge_on:
             self.clock.advance(self.duration)
-        super().charge(operation_id, seconds)
+        super().charge(operation_id, seconds, dispatch_id=dispatch_id)
 
 
 class UnavailableControl:

@@ -1035,14 +1035,14 @@ def test_a_ledger_that_is_not_a_ledger_is_a_contract_error():
         def usage(self):
             return {"operations_used": 1}
 
-        def charge(self, operation_id, seconds):
+        def charge(self, operation_id, seconds, *, dispatch_id):
             pass
 
     class Unreachable:
         def usage(self):
             raise RuntimeError("storage down")
 
-        def charge(self, operation_id, seconds):
+        def charge(self, operation_id, seconds, *, dispatch_id):
             pass
 
     with pytest.raises(ToolContractError, match="INVALID_LEDGER"):

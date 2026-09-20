@@ -239,15 +239,26 @@ class DurableStore:
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
             );
             -- 工具次数/秒数是每 Run 的冻结上限（C3 第 13 节：重启不能重置预算）。
-            -- 累计值落在 run 行；每次工具操作按 (run, epoch, operation) 记一行，
-            -- 同一操作重复结算只更新秒数，不重复计次。
+            -- 累计值落在 run 行；**每一次真实派发**记一行，主键是 dispatch_id，
+            -- 同一次派发重复结算只更新秒数，不重复计次。键不是 operation_id：
+            -- 后者由步骤 ID 和工具序号稳定生成（C3 第 7 节），而 C3 第 13 节要求
+            -- 「重试计入次数和费用」、第 4 节明确不承诺外部查询 exactly-once，
+            -- 所以同一 operation 的第二次真实读取必须再计一次，不能被去重掉。
             ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_operations_used integer NOT NULL DEFAULT 0;
             ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_seconds_used double precision NOT NULL DEFAULT 0;
             CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
+              dispatch_id uuid PRIMARY KEY,
               run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
-              operation_id text NOT NULL, seconds double precision NOT NULL DEFAULT 0,
-              PRIMARY KEY(run_id, epoch, operation_id)
+              operation_id text NOT NULL, seconds double precision NOT NULL DEFAULT 0
             );
+            -- 本表由本分支引入，尚未进入任何产品环境；开发库里可能还是
+            -- (run, epoch, operation) 主键的旧形状，就地迁移到 dispatch_id。
+            ALTER TABLE opspilot_tool_charges ADD COLUMN IF NOT EXISTS dispatch_id uuid;
+            UPDATE opspilot_tool_charges SET dispatch_id=gen_random_uuid() WHERE dispatch_id IS NULL;
+            ALTER TABLE opspilot_tool_charges ALTER COLUMN dispatch_id SET NOT NULL;
+            ALTER TABLE opspilot_tool_charges DROP CONSTRAINT IF EXISTS opspilot_tool_charges_pkey;
+            ALTER TABLE opspilot_tool_charges ADD CONSTRAINT opspilot_tool_charges_pkey PRIMARY KEY (dispatch_id);
+            CREATE INDEX IF NOT EXISTS opspilot_tool_charges_run_epoch_idx ON opspilot_tool_charges(run_id, epoch);
             """)
 
     def accept(
@@ -542,16 +553,33 @@ class DurableStore:
             )
 
     def charge_tool(
-        self, lease: Lease, operation_id: str, seconds: float, *, max_operations: int
+        self,
+        lease: Lease,
+        operation_id: str,
+        seconds: float,
+        *,
+        max_operations: int,
+        dispatch_id: UUID,
     ) -> None:
-        """Charge one tool operation to the Run's durable tool budget.
+        """Charge one tool dispatch to the Run's durable tool budget.
 
-        The first charge for ``(run, epoch, operation_id)`` counts the operation;
-        later charges with the same key only raise its recorded seconds, so an
-        executor may charge once before dispatch and once after with the
-        measured wall time. The key includes the epoch on purpose: a new attempt
-        that re-dispatches an uncommitted operation issues a real second query
-        (technical plan section 7), so it is counted again; the per-Run total
+        The first charge for ``dispatch_id`` counts one operation; later
+        charges with the same ``dispatch_id`` only raise its recorded seconds,
+        so an executor may charge once before its read goes out and once after
+        it with the measured wall time.
+
+        ``dispatch_id`` is the key, not ``operation_id``, and it is required
+        rather than derived here: ``operation_id`` is stable by construction
+        (technical plan section 7 -- step id plus tool ordinal), so keying on
+        it silently collapsed *two real reads* of the same tool call into one
+        charge whenever a duplicate delivery or a same-epoch retry occurred --
+        the Run was charged one operation and ``max(seconds)`` instead of the
+        sum, and could exceed both frozen ceilings with real queries (bot
+        review finding). Section 13 settles the semantics -- "重试计入次数和
+        费用" -- and section 4 explicitly declines to promise exactly-once
+        external queries, so the second dispatch is charged, not refused. A
+        new attempt that re-dispatches an uncommitted operation likewise
+        issues a real second query and is charged again; the per-Run total
         only ever grows. Fenced by the lease like every other write path.
 
         ``max_operations`` is required, not defaulted: this module does not
@@ -566,7 +594,7 @@ class DurableStore:
         still increment (bot review finding: the increment used to be
         unconditional once past application-level checks, so both could
         succeed and the durable count could exceed the frozen cap).
-        Settling an *already-counted* operation's seconds is never subject
+        Settling an *already-counted* dispatch's seconds is never subject
         to this check -- it does not add a new operation.
         """
         if not isinstance(operation_id, str) or not operation_id:
@@ -579,6 +607,8 @@ class DurableStore:
         ):
             raise PersistenceError("INVALID_INPUT")
         if type(max_operations) is not int or max_operations <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        if not isinstance(dispatch_id, UUID):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run，与其余写路径同一顺序。
@@ -597,13 +627,19 @@ class DurableStore:
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
-                "SELECT seconds FROM opspilot_tool_charges WHERE run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
-                (lease.run_id, lease.epoch, operation_id),
+                "SELECT seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
+                (dispatch_id, lease.run_id, lease.epoch, operation_id),
             ).fetchone()
             if existing is None:
                 conn.execute(
-                    "INSERT INTO opspilot_tool_charges(run_id,epoch,operation_id,seconds) VALUES(%s,%s,%s,%s)",
-                    (lease.run_id, lease.epoch, operation_id, float(seconds)),
+                    "INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id,seconds) VALUES(%s,%s,%s,%s,%s)",
+                    (
+                        dispatch_id,
+                        lease.run_id,
+                        lease.epoch,
+                        operation_id,
+                        float(seconds),
+                    ),
                 )
                 cursor = conn.execute(
                     "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s",
@@ -621,8 +657,8 @@ class DurableStore:
             if delta == 0.0:
                 return
             conn.execute(
-                "UPDATE opspilot_tool_charges SET seconds=seconds+%s WHERE run_id=%s AND epoch=%s AND operation_id=%s",
-                (delta, lease.run_id, lease.epoch, operation_id),
+                "UPDATE opspilot_tool_charges SET seconds=seconds+%s WHERE dispatch_id=%s",
+                (delta, dispatch_id),
             )
             conn.execute(
                 "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",

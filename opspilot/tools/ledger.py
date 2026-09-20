@@ -10,6 +10,8 @@ through the lease-fenced ``charge_tool`` write path.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 
 from .executor import ToolBudgetExhausted, ToolUsage
@@ -49,10 +51,14 @@ class DurableToolLedger:
             tool_seconds_used=float(run["tool_seconds_used"]),
         )
 
-    def charge(self, operation_id: str, seconds: float) -> None:
+    def charge(self, operation_id: str, seconds: float, *, dispatch_id: UUID) -> None:
         try:
             self._store.charge_tool(
-                self._lease, operation_id, seconds, max_operations=self._max_operations
+                self._lease,
+                operation_id,
+                seconds,
+                max_operations=self._max_operations,
+                dispatch_id=dispatch_id,
             )
         except PersistenceError as exc:
             # OPERATION_BUDGET_EXHAUSTED is charge_tool's own fixed code
