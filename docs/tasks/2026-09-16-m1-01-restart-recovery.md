@@ -239,3 +239,9 @@
   4. `copy.deepcopy(RecoverySession)` 会因 `threading.Lock` 不可 pickle 而 TypeError（当前无调用方）。
 - 审查者复核证据：`make check` `1079 passed, 126 skipped, 2 xfailed`（两条架构 xfail 仍为 XFAIL）；
   PG durable_state + lease_renewal + wiring `72 passed`；并发测试连跑 5 次全过；ruff/format/mypy 全绿。
+
+- **更正 3（同一类：注释比代码乐观）**：`Worker.resume()` 里版本 re-gate 的注释原写
+  「Any other failure ... still surfaces as itself」。实际上 re-gate **自身**失败时（`recovery_metadata()`
+  再抛 TIMEOUT，或 `claim()` 抛 `LEASE_ACTIVE`），它的异常会替换原解码错误，原错误仅保留在 `__context__`。
+  注释已改为如实说明这一点，并指出下次重试会先跑正常版本门，因此该行为收敛而不会锁死。
+  仅改注释，行为未变。

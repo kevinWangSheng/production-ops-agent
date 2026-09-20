@@ -227,8 +227,11 @@ class Worker:
             # validators then meet new rows and fail before the incompatible
             # handoff is persisted. Re-run the gate: if the current Run is now
             # version-incompatible, blocked/INCOMPATIBLE_STATE is the right
-            # outcome rather than this decode error. Any other failure, and any
-            # later change, still surfaces as itself and is re-gated on retry.
+            # outcome rather than this decode error. A compatible Run still
+            # surfaces its decode error as itself. If the re-gate *itself*
+            # fails, its error replaces the decode error (which survives as
+            # __context__); the next retry runs the ordinary gate first, so
+            # this converges rather than latching.
             self._gate_versions(incident_id, lease_seconds)
             raise
         if not plan.candidate:
