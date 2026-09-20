@@ -75,3 +75,11 @@
 - 依赖顺序：**#35 需先合并**才能让本分支的 `renew_lease` 真正生效（当前是可选能力，缺失时无操作）；#35
   合并前，本改动本身对生产行为无影响（`getattr` 找不到方法）。合并授权：本任务未授权合并，PR #30 状态
   为「实现中，待推送与 CI」。
+
+## 追加（2026-09-20）：PR #30 P1——claim 后刷新恢复计划
+
+- 依据：PR #30 最新 Code Review thread 指出，`Worker.resume()` 原先在 `claim()` 前生成 `RecoveryPlan`，claim 后只校验代际；同代际的另一 worker 可能先提交 pending tool 后失去 lease，导致旧计划重复外部查询或漏掉新状态。
+- 修复：claim 成功后再次调用 `DurableStore.rebuild()`/`recover()`，再校验刷新计划的 `candidate`、`run_id` 与 lease 的 `control_generation`；任一不符即精确 `abandon()` 并返回 `CONTROL_DENIED`。通过 `RecoverySession` 绑定刷新后的计划，保留已有 fence 语义。
+- 回归：`tests/test_worker_recovery.py::test_resume_refreshes_pending_plan_after_claim` 使用确定性双快照替身，断言 `rebuild → claim → rebuild` 顺序、claim 前后计划不同，以及 session 使用新 pending tool/run state。
+- 工作区/版本：分支 `feature/m1-01-restart-recovery`，基线 `origin/main=a1eeadf88bc0e8c93e3f0ee223fae5bc6a339091`，修复开始前 HEAD `f9f936c4de61f2b0279b000a8f06085445254202`，当前提交 HEAD `04c3b563a4c5d814767920d8c112ac670d1064b5`。
+- 验证：定向 worker 单测 `10 passed`；`make check`（含 ruff、format、mypy）`1061 passed, 111 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` `38 passed`。55431 已被其他 worktree 的 PostgreSQL 进程占用，本 worktree 未停止或接管该进程；定向 PG 测试在该现有实例上通过。无真实模型调用、无产品验收或 feature passes 结论。

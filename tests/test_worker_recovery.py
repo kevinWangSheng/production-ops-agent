@@ -83,6 +83,50 @@ def test_worker_uses_unique_owner():
     assert worker.owner
 
 
+def test_resume_refreshes_pending_plan_after_claim():
+    """A same-generation handoff must use rows committed before the new claim."""
+    incident_id, run_id = uuid4(), uuid4()
+    lease = Lease(incident_id, run_id, uuid4(), 2, 0)
+    old_plan = {
+        "incident_id": incident_id,
+        "control_generation": 0,
+        "run": {"run_id": run_id, "state": "queued"},
+        "steps": [],
+        "pending_tools": [{"step_id": uuid4(), "ordinal": 0}],
+        "conclusion": None,
+    }
+    refreshed = dict(old_plan)
+    refreshed["run"] = {"run_id": run_id, "state": "running"}
+    refreshed["pending_tools"] = [{"step_id": uuid4(), "ordinal": 1}]
+
+    class Store:
+        def __init__(self):
+            self.snapshots = [old_plan, refreshed]
+            self.rebuild_calls = []
+            self.events = []
+
+        def rebuild(self, _incident_id):
+            snapshot = self.snapshots.pop(0)
+            self.rebuild_calls.append(snapshot)
+            self.events.append("rebuild")
+            return snapshot
+
+        def claim(self, *_args, **_kwargs):
+            self.events.append("claim")
+            return lease
+
+        def abandon(self, _lease):
+            raise AssertionError("the refreshed plan should still be current")
+
+    store = Store()
+    session = Worker.create(store, {"state": "v1"}).resume(incident_id)
+    assert old_plan != refreshed
+    assert store.events == ["rebuild", "claim", "rebuild"]
+    assert store.rebuild_calls == [old_plan, refreshed]
+    assert session.plan.pending_tools[0]["ordinal"] == 1
+    assert session.plan.run["state"] == "running"
+
+
 def test_the_initial_claim_defaults_to_the_same_length_as_renewal():
     """Renewal only runs after a tool executes (between execute and commit),
     so the *first* pending tool's own execution is covered only by the

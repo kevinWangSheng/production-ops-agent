@@ -102,7 +102,17 @@ class Worker:
         if not plan.candidate:
             raise PersistenceError("CONTROL_DENIED")
         lease = self.claim(incident_id, plan.run_id, lease_seconds=lease_seconds)
-        if plan.control_generation != lease.control_generation:
+        # The snapshot used to choose the Run can become stale even when the
+        # control generation is unchanged: another worker may commit one of
+        # the pending tools and then lose its lease before this claim. Rebuild
+        # after acquiring the new lease so execution starts from current
+        # committed business rows, not the pre-claim plan.
+        current = self.recover(incident_id)
+        if (
+            not current.candidate
+            or current.run_id != lease.run_id
+            or current.control_generation != lease.control_generation
+        ):
             self.store.abandon(lease)
             raise PersistenceError("CONTROL_DENIED")
-        return RecoverySession(plan, lease, self.store, renew_seconds)
+        return RecoverySession(current, lease, self.store, renew_seconds)
