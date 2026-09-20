@@ -561,6 +561,22 @@ class ReadOnlyToolExecutor:
         )
         return operation, timeout
 
+    def _control_decision(self) -> str:
+        """The human/控制 decision that invalidates this operation, or "".
+
+        Deliberately excludes the deadline: a lapsed authorization and a
+        human decision are different facts, and only the latter outranks a
+        transport failure's own classification (see ``_run``).
+        """
+        control = self._read_control()
+        if control is None:
+            return "CONTROL_UNAVAILABLE"
+        if control.suspended:
+            return "SUSPENDED"
+        if control.control_generation != self._scope.control_generation:
+            return "CONTROL_GENERATION_CHANGED"
+        return ""
+
     def _control_invalid(self, deadline_at: datetime) -> str:
         """The authoritative reason this operation may not proceed, or "".
 
@@ -570,13 +586,9 @@ class ReadOnlyToolExecutor:
         both ledger-denial paths and the post-fetch re-check so the three
         cannot drift apart.
         """
-        control = self._read_control()
-        if control is None:
-            return "CONTROL_UNAVAILABLE"
-        if control.suspended:
-            return "SUSPENDED"
-        if control.control_generation != self._scope.control_generation:
-            return "CONTROL_GENERATION_CHANGED"
+        decision = self._control_decision()
+        if decision:
+            return decision
         if deadline_at >= self._scope.deadline:
             return "DEADLINE_EXCEEDED"
         return ""
@@ -735,6 +747,18 @@ class ReadOnlyToolExecutor:
         if not charged and not settlement_denied:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
         if failure is not None:
+            # A newer human decision outranks the transport's own failure
+            # classification: reporting only ``SOURCE_UNAVAILABLE`` would drop
+            # the operator's pause out of the outcome and the audit path
+            # entirely (bot review finding). The deadline is deliberately not
+            # consulted here -- a lapsed authorization does not make a
+            # transport error a gateway timeout, and claiming otherwise would
+            # upgrade this call's uncertain contact into a false "confirmed".
+            decision = self._control_decision()
+            if decision:
+                return self._refuse(operation, "denied", decision, contact)
+            if settlement_denied:
+                return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
             return self._refuse(operation, *failure)
         if elapsed > timeout:
             # A result that arrives after its deadline must not update state.

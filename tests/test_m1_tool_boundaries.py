@@ -1208,3 +1208,36 @@ def test_a_control_denied_pre_dispatch_charge_reports_a_reason_even_if_control_l
 
     assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert not transport.called and sink.records == []
+
+
+def test_a_human_decision_outranks_a_transport_failure():
+    """Bot review finding: the transport-exception path returned before the
+    control re-read, so an operator pausing while ``fetch()`` was in flight got
+    ``SOURCE_UNAVAILABLE`` reported and the authoritative decision never
+    appeared in the outcome or the audit path.
+    """
+    # snapshot 1 = _reserve, 2 = pre-dispatch re-check, 3 = this failure path.
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.error = TransportUnavailable("source down")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    # Still uncertain: the pause does not tell us whether the source was read.
+    assert outcome.source_contact == "possible"
+    assert sink.records == []
+
+
+def test_a_transport_failure_is_still_reported_when_control_is_current():
+    """The control re-read must not swallow the transport's own classification
+    when there is no human decision to report.
+    """
+    executor, transport, sink, _ = build()
+    transport.error = TransportUnavailable("source down")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "SOURCE_UNAVAILABLE")
+    assert outcome.source_contact == "possible"
+    assert sink.records == []
