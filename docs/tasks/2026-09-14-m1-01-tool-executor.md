@@ -1516,9 +1516,10 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 13 | 2 | 2 | 0 | 1（第十二轮仍漏掉两个结算出口） |
 | 14 | 1 | 1 | 0 | 0（旧的行级非有限数检查覆盖不足） |
 | 15 | 3 | 3 | 0 | 1（第十轮的认证名规则未覆盖全大写） |
+| 16 | 3 | 3 | 0 | 1（第十五轮的可编码性只逐字段补） |
 
-累计 46 条 thread 全部有结论。第 9–15 轮共 14 条中有 7 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1 → 3。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
+累计 49 条 thread 全部有结论。第 9–16 轮共 17 条中有 8 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
 
 ## 24. 机器人 code review 第十二轮一条 thread 处置（2026-09-20）
 
@@ -1631,4 +1632,46 @@ lone surrogate 是合法 `str` 但不可编码，通过全部注册检查后在
 make check → 1377 passed, 136 skipped, 2 xfailed
 M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
 三条均先红后绿（还原实现后 7 个用例失败）
+```
+
+
+## 28. 机器人 code review 第十六轮三条 thread 处置（2026-09-20）
+
+三条均采纳修复（`daba268`）。本轮最重要的不是三条本身，而是第 3 条促成的方法修正。
+
+### P1 无 scheme 的具体 endpoint 未被拦下
+
+`metrics.internal:9090`、`10.0.0.4:4317` 定位内部目标的精确度与带 scheme 的写法无异。新增
+`_SCHEMELESS_ENDPOINT`，**刻意收窄**：主机须为带字母末段的点分名或点分四段 IP，端口须为数字。
+`12:30`/`5xx:2xx`/`section 3/4`/`v1.2.3` 均不匹配且各有用例。不带端口的裸主机名仍留人工审查——
+在自由文本里检测它会连 `config.yaml` 一起拒，那就变成本模块反复拒绝建立的关键词扫描器。
+
+### P2 畸形 control 快照 fail-open
+
+`bool` 是 `int` 子类：`control_generation=True` 与 scope 的 `1` 判等通过、执行器照常派发；
+`suspended=0` 被当作权威「未暂停」。`ControlSnapshot.__post_init__` 改为强制非负真 int 与真 bool。
+校验放在构造处，使畸形数据在适配器自己的 `snapshot()` 内失败，落进 `_read_control()` 兜底映射为
+`CONTROL_UNAVAILABLE`，即 fail closed；端到端用例确认与「适配器答不上来」同样拒绝。
+
+### P2 可编码性：从逐字段补改为单一入口保证
+
+本条提示参数名仍漏。按提示自查后发现**仍在漏的有四个**：参数名、`result_path` 元素、
+`error_classes` 键、`incomplete_marker`。
+
+**这是同一类问题连续第三轮**（第 27 节描述字段 → 同节 selector → 本轮四个字段）。逐字段补已经
+证明收敛不了，因此把保证移到唯一入口：`canonical_hash()` 要么成功，要么抛
+`ToolContractError("INVALID_REGISTRATION_TEXT")`，任何现在或将来进入指纹的字段自动覆盖。既有的
+按字段精确错误码保留以提供定位。模型参数路径不受影响（`UnicodeEncodeError` 是 `ValueError`
+子类，执行器既有捕获仍转 `INVALID_PARAMS`）。
+
+**方法教训（第三次，已升级为做法）**：同类缺陷第二次出现时，不应再修那一个实例，而应找到该类
+问题的唯一收口点把保证一次性建立起来。本轮的 `canonical_hash` 与第 24 节的 `refuse_after_fetch`
+是同一种手法，区别是本轮更早地做了这个判断。
+
+### 验证
+
+```text
+make check → 1394 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+三条均先红后绿（还原实现后 13 个用例失败）
 ```
