@@ -7,17 +7,6 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
-from uuid import UUID
-
-import httpx2
-
-from scripts.m0.budget import PostgresBudget
-from scripts.m0.config import load_config
-from scripts.m0.contracts import RunContext
-from scripts.m0.postgres_lab import DSN
-from scripts.m0.step_store import Fence, StepStore, digest
 
 
 def main():
@@ -38,6 +27,20 @@ def main():
         or body.get("max_tokens") != 32768
     ):
         raise ValueError
+    # Deferred past body validation: an invalid body must not pay for (or
+    # risk touching) the HTTP client, PG and config-loading import surface.
+    from datetime import datetime
+    from pathlib import Path
+    from uuid import UUID
+
+    import httpx2
+
+    from scripts.m0.budget import PostgresBudget
+    from scripts.m0.config import load_config
+    from scripts.m0.contracts import RunContext
+    from scripts.m0.postgres_lab import DSN
+    from scripts.m0.step_store import Fence, StepStore, digest
+
     config = load_config(Path("/Users/shenghuikevin/dev/AI/production-ops-agent/.env"))
     metadata = json.loads(sys.argv[3])
     run = RunContext(
