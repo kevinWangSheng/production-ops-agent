@@ -34,6 +34,9 @@ _ERROR_CODES: tuple[tuple[type[psycopg.Error], str], ...] = (
 
 # 非 cancel 的人工动作只对这些 run 状态开放；其余一律拒绝（fail closed）。
 _CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_human"})
+# 迟到历史占用 (run_id, logical_key) 唯一键。业务步骤不得使用此外缀，否则会
+# 把迟到结果挤掉或把 late_result 行当成已提交步骤返回。
+_LATE_RESULT_KEY_PREFIX = "late_result:"
 
 
 class PersistenceError(RuntimeError):
@@ -152,9 +155,11 @@ class DurableStore:
               step_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL, status text NOT NULL, response jsonb,
               tool_results jsonb NOT NULL DEFAULT '[]'::jsonb, control_generation integer NOT NULL,
+              observed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
               UNIQUE(run_id, logical_key)
             );
             ALTER TABLE opspilot_steps ADD COLUMN IF NOT EXISTS sequence integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_steps ADD COLUMN IF NOT EXISTS observed_at timestamptz NOT NULL DEFAULT clock_timestamp();
             CREATE TABLE IF NOT EXISTS opspilot_controls (
               audit_id uuid PRIMARY KEY, incident_id uuid NOT NULL REFERENCES opspilot_incidents,
               action text NOT NULL, expected_generation integer NOT NULL,
@@ -213,6 +218,97 @@ class DurableStore:
                 "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
                 (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
             )
+
+    def new_run(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        expected_generation: int,
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        actor: str,
+    ) -> int:
+        """Continue a cancelled incident with a fresh Run and control generation."""
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            # run_id 是幂等键，但 queued + 当前 Run 也是 accept()/follow_up 之后
+            # 的状态。只有已经写过 new_run 审计的接续才能当作丢失确认后的重试。
+            existing_run = conn.execute(
+                "SELECT control_generation FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+                (run_id, incident_id),
+            ).fetchone()
+            if existing_run is not None:
+                generation = int(existing_run["control_generation"])
+                replay = conn.execute(
+                    "SELECT 1 FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
+                    (incident_id, generation),
+                ).fetchone()
+                if (
+                    replay is not None
+                    and row["state"] == "queued"
+                    and row["current_run_id"] == run_id
+                    and int(row["control_generation"]) == generation
+                    and expected_generation == generation - 1
+                ):
+                    return generation
+                if row["current_run_id"] == run_id and row["state"] != "cancelled":
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                raise PersistenceError("IDENTITY_CONFLICT")
+            if row["state"] != "cancelled":
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            if int(row["control_generation"]) != expected_generation:
+                raise PersistenceError("CONTROL_CONFLICT")
+            nxt = int(row["control_generation"]) + 1
+            conn.execute(
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
+                (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
+            )
+            conn.execute(
+                "UPDATE opspilot_incidents SET state='queued',lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
+                (nxt, run_id, incident_id),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,'new_run',%s,%s,%s)",
+                (uuid4(), incident_id, nxt - 1, nxt, actor),
+            )
+            return nxt
+
+    @staticmethod
+    def _late_result(
+        conn: Connection,
+        run_id: UUID,
+        logical_key: str,
+        payload: dict[str, Any],
+        generation: int,
+    ) -> None:
+        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。"""
+        if (
+            conn.execute(
+                "SELECT 1 FROM opspilot_runs WHERE run_id=%s",
+                (run_id,),
+            ).fetchone()
+            is None
+        ):
+            return
+        sequence = DurableStore._require_row(
+            conn.execute(
+                "SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence FROM opspilot_steps WHERE run_id=%s",
+                (run_id,),
+            )
+        )["next_sequence"]
+        conn.execute(
+            "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation,observed_at) VALUES(%s,%s,%s,%s,'late_result',%s,%s,clock_timestamp()) ON CONFLICT (run_id, logical_key) DO NOTHING",
+            (uuid4(), run_id, sequence, logical_key, Jsonb(payload), generation),
+        )
 
     def claim(
         self,
@@ -371,6 +467,8 @@ class DurableStore:
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
+        if logical_key.startswith(_LATE_RESULT_KEY_PREFIX):
+            raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
             # publish() 交叉形成 ABBA 死锁（control 只拿到 incident_id，
@@ -384,6 +482,14 @@ class DurableStore:
                 (lease.run_id,),
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}",
+                    response,
+                    lease.control_generation,
+                )
+                conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT step_id FROM opspilot_steps WHERE run_id=%s AND logical_key=%s",
@@ -424,14 +530,40 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.response,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            tool_calls = (row["response"] or {}).get("tool_calls")
             if (
-                not row
-                or row["step_generation"] != lease.control_generation
+                type(ordinal) is not int
+                or ordinal < 0
+                or not isinstance(tool_calls, list)
+                or ordinal >= len(tool_calls)
+            ):
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if (
+                row["step_generation"] != lease.control_generation
+                or row["step_status"] == "late_result"
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}",
+                    result,
+                    lease.control_generation,
+                )
+                conn.commit()
                 raise PersistenceError("CONTROL_DENIED")
             results = list(row["tool_results"] or [])
             if any(item.get("ordinal") == ordinal for item in results):
@@ -552,15 +684,20 @@ class DurableStore:
                 or row["incident_state"] in {"completed", "cancelled", "paused"}
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
-                conn.execute(
-                    "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) VALUES(%s,%s,%s,'late_result',%s,%s) ON CONFLICT DO NOTHING",
-                    (
-                        uuid4(),
-                        lease.run_id,
-                        f"late:{uuid4()}",
-                        Jsonb(conclusion),
-                        lease.control_generation,
-                    ),
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}",
+                    conclusion,
+                    lease.control_generation,
                 )
                 return False
             final_step = conn.execute(
@@ -610,14 +747,15 @@ class DurableStore:
                 "control_generation": incident_generation,
                 "run": run,
                 "steps": steps,
-                # 只列出当前代际的待办工具调用。旧代际的步骤仍留在 steps 里作为
-                # 记录，但人工决定之后它们已经不该再被执行；照旧列出会让调用方
-                # 把过期证据重新提交成「当前已提交的证据」，而 commit_tool 在
-                # 写入处拒绝它们——断点会因此永远重建出做不完的待办。
+                # 只列出当前代际、且仍是活步骤的待办工具调用。late_result 即使
+                # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
+                # 租约把迟到响应写回成可发布步骤。
                 "pending_tools": [
                     {"step_id": step["step_id"], "ordinal": ordinal}
                     for step in steps
                     if step["control_generation"] == incident_generation
+                    and step["status"]
+                    in {"response_committed", "tool_result_committed"}
                     for ordinal in range(
                         len((step["response"] or {}).get("tool_calls", []))
                     )
