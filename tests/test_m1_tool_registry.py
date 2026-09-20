@@ -747,3 +747,12 @@ def test_bare_key_parameters_are_still_accepted(name):
     assert (
         name in registration(parameters={name: ParameterSpec(kind="string")}).parameters
     )
+
+
+def test_an_uncanonicalizable_window_limit_is_refused_at_registration():
+    """Bot review finding: the choke point guarded only the encoding half, so a
+    positive integer past the interpreter's digit limit still raised a raw
+    `ValueError` out of `canonical_hash()` while serialising the fingerprint.
+    """
+    with pytest.raises(ToolContractError, match="INVALID_REGISTRATION_VALUE"):
+        ToolRegistry([registration(max_window_seconds=10**4300)])

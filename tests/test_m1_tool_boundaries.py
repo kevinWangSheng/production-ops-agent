@@ -1381,3 +1381,62 @@ def test_a_controller_returning_a_malformed_snapshot_is_control_unavailable():
 
     assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert not transport.called and sink.records == []
+
+
+def test_a_control_denied_evidence_commit_reports_the_human_decision():
+    """Bot review finding: the sink is required to validate the control
+    generation inside the commit, but `_register()` collapsed that rejection
+    into `False` and the outcome said `EVIDENCE_NOT_COMMITTED` -- the very
+    human decision the commit-time fence exists to enforce stayed out of it.
+    """
+
+    class DenyingSink:
+        def __init__(self):
+            self.records = []
+
+        def register(self, record):
+            raise ToolControlDenied("CONTROL_DENIED")
+
+    sink = DenyingSink()
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=3)
+    executor, transport, _, _ = build(sink=sink, control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert outcome.evidence is None and outcome.model_view["content"] is None
+
+
+def test_a_control_denied_evidence_commit_names_a_reason_even_if_control_looks_current():
+    class DenyingSink:
+        def __init__(self):
+            self.records = []
+
+        def register(self, record):
+            raise ToolControlDenied("CONTROL_DENIED")
+
+    executor, transport, _, _ = build(sink=DenyingSink())
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert outcome.evidence is None
+
+
+def test_an_ordinary_sink_failure_is_still_an_evidence_error():
+    """The typed signal must not swallow the generic failure mapping."""
+
+    class BrokenSink:
+        records = []
+
+        def register(self, record):
+            raise RuntimeError("storage down")
+
+    executor, transport, _, _ = build(sink=BrokenSink())
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "EVIDENCE_NOT_COMMITTED")

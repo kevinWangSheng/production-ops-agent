@@ -322,6 +322,12 @@ class EvidenceSink(Protocol):
     Rejecting is safe here: ``register`` may raise or return a reference that
     is not ``record.evidence_id``, and the executor then fails closed with
     ``EVIDENCE_NOT_COMMITTED`` without handing the content to the model.
+
+    **Raise ``ToolControlDenied`` when the rejection is a control decision.**
+    Any other exception is an opaque failure the executor reports as
+    ``EVIDENCE_NOT_COMMITTED``; that generic mapping would otherwise hide the
+    human decision the commit-time fence exists to enforce, which is exactly
+    the outcome this protocol's obligation is meant to produce.
     """
 
     def register(self, record: EvidenceRecord) -> str: ...
@@ -928,9 +934,15 @@ class ReadOnlyToolExecutor:
             adopted=not invalid,
         )
         if invalid:
-            registered = self._register(
-                record
-            )  # history only; adoption already refused
+            try:
+                registered = self._register(
+                    record
+                )  # history only; adoption already refused
+            except ToolControlDenied:
+                # Already being refused for a control reason; a sink that also
+                # rejects on control grounds leaves no evidence, which the
+                # outcome reports by carrying none.
+                registered = False
             return self._refuse(
                 operation,
                 "denied",
@@ -938,7 +950,18 @@ class ReadOnlyToolExecutor:
                 "confirmed",
                 evidence=record if registered else None,
             )
-        if not self._register(record):
+        try:
+            committed = self._register(record)
+        except ToolControlDenied:
+            # Decided between the re-check above and the commit: report the
+            # authoritative reason, not a generic evidence error.
+            return self._refuse(
+                operation,
+                "denied",
+                self._control_decision() or "CONTROL_GENERATION_CHANGED",
+                "confirmed",
+            )
+        if not committed:
             # Evidence must be committed before it may be consumed.
             return self._refuse(
                 operation, "error", "EVIDENCE_NOT_COMMITTED", "confirmed"
@@ -975,6 +998,14 @@ class ReadOnlyToolExecutor:
     def _register(self, record: EvidenceRecord) -> bool:
         try:
             reference = self._evidence.register(record)
+        except ToolControlDenied:
+            # The sink is required to validate the control generation inside
+            # the commit; when it rejects on those grounds that is a human
+            # decision, not a storage outage, and collapsing it into ``False``
+            # reported ``EVIDENCE_NOT_COMMITTED`` while the operator's pause
+            # stayed out of the outcome entirely (bot review finding). Same
+            # typed signal, same treatment as the ledger's.
+            raise
         except Exception:
             return False
         return reference == record.evidence_id

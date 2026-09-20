@@ -303,7 +303,14 @@ def canonical(value: object) -> str:
 def canonical_hash(value: object) -> str:
     try:
         encoded = canonical(value).encode("utf-8")
-    except UnicodeEncodeError as exc:
+    except ValueError as exc:
+        # ``UnicodeEncodeError`` is a ``ValueError``; so is the JSON encoder's
+        # refusal to serialise an integer past the interpreter's digit limit
+        # (`max_window_seconds=10**4300`). The previous pass guarded only the
+        # encoding half and left the serialising half raising raw -- the same
+        # "fix the instance, miss the class" mistake this choke point exists to
+        # end. Anything that cannot be canonicalised is refused here, in the
+        # contract's own error type (bot review findings).
         # The single choke point for encodability. Text that is a valid ``str``
         # but not encodable (a lone surrogate) reached this line from any
         # fingerprinted field -- parameter *names*, ``result_path`` elements,
@@ -313,7 +320,11 @@ def canonical_hash(value: object) -> str:
         # at a time kept missing the next one (three rounds of bot review found
         # three different fields), so the guarantee is stated here instead:
         # fingerprinting either succeeds or raises ``ToolContractError``.
-        raise ToolContractError("INVALID_REGISTRATION_TEXT") from exc
+        raise ToolContractError(
+            "INVALID_REGISTRATION_TEXT"
+            if isinstance(exc, UnicodeEncodeError)
+            else "INVALID_REGISTRATION_VALUE"
+        ) from exc
     return hashlib.sha256(encoded).hexdigest()
 
 
