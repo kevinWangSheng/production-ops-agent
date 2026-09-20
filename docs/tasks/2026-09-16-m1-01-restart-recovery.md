@@ -67,3 +67,9 @@
 - **P2：续租任务记录状态（`4057446911`）**：采纳并修复。明确 `origin/main` 已含 PR #35（`76293b0`，实现 `91451d9`），当前 `renew_lease` 已存在且 wiring PG 测试在显式 `M1_DURABLE_POSTGRES=1` 下可运行；历史临时合并与恒跳过描述已标注为历史，不伪称当前 wiring 已运行。本次验证实际结果以命令输出为准。
 - 本轮没有真实模型调用、产品验收或 feature passes 结论；55431 若由其他 worktree 占用，不停止或接管其 PostgreSQL 进程。
 - 最终本地验证（当前工作树，2026-09-20）：`PYTHONPATH=. .venv/bin/pytest -q tests/test_worker_recovery.py` 为 `14 passed`；显式复用已由其他 worktree 持有的 55431 PostgreSQL（未停止/接管），`M1_DURABLE_POSTGRES=1 PYTHONPATH=. .venv/bin/pytest -q tests/integration/test_m1_durable_state_postgres.py tests/integration/test_m1_lease_renewal_postgres.py tests/integration/test_m1_lease_renewal_wiring_postgres.py` 为 `67 passed`，wiring 未跳过；`make check` 为 `1065 passed, 121 skipped, 2 xfailed`，其中默认未设置 PG opt-in，wiring 的 2 项按显式 PG 条件跳过。`ruff check`、`ruff format --check`、`mypy` 均由 `make check` 覆盖并通过。
+
+## 追加（2026-09-20）：当前 HEAD 新增 P2 findings
+
+- **P2：续租/提交失败后的 lease 清理（`4057494822`）**：采纳并修复。executor 成功但 `_renew()` 或 `commit_tool()` 抛出持久化/控制异常时，`execute_pending()` 对同一 lease best-effort `abandon()`，原始异常原样抛出；新增 renew rejection 与 commit failure 回归断言，释放失败不覆盖原始错误。
+- **P2：持久 `tool_results` fail-closed（`4057494824`）**：采纳并修复。`rebuild()` 对活模型步骤要求 `tool_results` 是列表，每项是带唯一、非负、范围内整数 ordinal 和 mapping result 的记录；malformed 值返回 `INCONSISTENT_STATE`，不把 falsey 值当空列表而重放外部查询。新增 PG 回归覆盖非列表、非法 ordinal、缺失/错误 result。
+- 最新本地验证：worker 定向 `15 passed`；55431 复用的 M1 durable/renewal/wiring `68 passed`；`make check` `1066 passed, 122 skipped, 2 xfailed`；ruff/format/mypy 全绿。无真实模型调用、产品验收或 feature passes 结论。

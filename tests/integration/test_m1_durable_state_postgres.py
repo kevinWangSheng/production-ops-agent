@@ -160,6 +160,39 @@ def test_rebuild_rejects_a_falsey_malformed_tool_calls_value():
             store.rebuild(incident)
 
 
+def test_rebuild_rejects_malformed_persisted_tool_results():
+    """Corrupt checkpoints must not silently replay a completed tool."""
+    store = DurableStore(DSN)
+    for broken in (
+        {},
+        {"ordinal": 0, "result": {"ok": True}},
+        [{"ordinal": "0", "result": {"ok": True}}],
+        [{"ordinal": 1, "result": {"ok": True}}],
+        [{"ordinal": 0}],
+        [{"ordinal": 0, "result": "bad"}],
+    ):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-malformed-tool-results-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        step = store.commit_step(
+            lease, "malformed-results", {"tool_calls": [{"id": "a"}]}
+        )
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_steps SET tool_results=%s WHERE step_id=%s",
+                (Jsonb(broken), step),
+            )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
 def test_recovered_session_checks_epoch_before_dispatch():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()

@@ -39,15 +39,21 @@ class RecoverySession:
             raise PersistenceError("CONTROL_DENIED")
 
     def _renew(self) -> None:
-        # Optional capability: DurableStore.renew_lease ships with #35, not yet
-        # merged into this branch. Absent, this is a no-op and behavior is
-        # unchanged; once present it keeps the lease alive across a tool call
-        # (which can run as long as the tool timeout) before the commit that
-        # depends on it, under the same fence and rejection semantics
-        # (PersistenceError) as the rest of this module.
+        # DurableStore.renew_lease is present on the current main base. Keep
+        # getattr for minimal store doubles and older callers; when absent,
+        # this remains a no-op. When present it keeps the lease alive across a
+        # tool call before the commit that depends on it, under the same fence
+        # and rejection semantics (PersistenceError) as the rest of this
+        # module.
         renew = getattr(self.store, "renew_lease", None)
         if renew is not None:
             renew(self.lease, self.renew_seconds)
+
+    def _abandon_best_effort(self) -> None:
+        try:
+            self.store.abandon(self.lease)
+        except Exception:
+            pass
 
     def execute_pending(
         self, execute: Callable[[Mapping[str, Any]], Mapping[str, Any]]
@@ -64,15 +70,20 @@ class RecoverySession:
                 # immediately instead of waiting for its full expiry.  The
                 # cleanup is deliberately best-effort: a storage failure
                 # must never replace the executor's exception.
-                try:
-                    self.store.abandon(self.lease)
-                except Exception:
-                    pass
+                self._abandon_best_effort()
                 raise
-            self._renew()
-            self.store.commit_tool(
-                self.lease, item["step_id"], int(item["ordinal"]), dict(result)
-            )
+            try:
+                self._renew()
+                self.store.commit_tool(
+                    self.lease, item["step_id"], int(item["ordinal"]), dict(result)
+                )
+            except BaseException:
+                # A successful callback still has no durable outcome until
+                # renewal and commit both return.  Release this lease on any
+                # persistence failure so a retry can take over promptly,
+                # while preserving the original storage/control exception.
+                self._abandon_best_effort()
+                raise
             count += 1
         return count
 

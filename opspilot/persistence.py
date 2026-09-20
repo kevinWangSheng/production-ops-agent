@@ -87,6 +87,34 @@ def _tool_calls(container: dict[str, Any]) -> Any:
     return calls if isinstance(calls, list) else None
 
 
+def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
+    """Validate and index durable tool-result checkpoints.
+
+    Recovery must fail closed on corrupted business rows: treating a falsey
+    mapping as an empty result list would replay an already-executed query,
+    while malformed records could otherwise crash with an incidental
+    ``AttributeError``.  ``commit_tool`` writes mapping results with a unique,
+    in-range integer ordinal, so anything else is inconsistent state.
+    """
+    if not isinstance(tool_results, list):
+        raise PersistenceError("INCONSISTENT_STATE")
+    completed: set[int] = set()
+    for item in tool_results:
+        if not isinstance(item, dict):
+            raise PersistenceError("INCONSISTENT_STATE")
+        ordinal = item.get("ordinal")
+        if (
+            type(ordinal) is not int
+            or ordinal < 0
+            or ordinal >= call_count
+            or ordinal in completed
+            or not isinstance(item.get("result"), dict)
+        ):
+            raise PersistenceError("INCONSISTENT_STATE")
+        completed.add(ordinal)
+    return completed
+
+
 class DurableStore:
     """Small transactional store; callers only observe committed business rows."""
 
@@ -806,6 +834,25 @@ class DurableStore:
                     not isinstance(call, dict) for call in calls
                 ):
                     raise PersistenceError("INCONSISTENT_STATE")
+                _completed_tool_ordinals(step["tool_results"], len(calls))
+            pending_tools: list[dict[str, Any]] = []
+            for step in steps:
+                if step["control_generation"] != incident_generation or step[
+                    "status"
+                ] not in {"response_committed", "tool_result_committed"}:
+                    continue
+                calls = _tool_plan(step["response"])
+                completed = _completed_tool_ordinals(step["tool_results"], len(calls))
+                for ordinal, call in enumerate(calls):
+                    if ordinal not in completed:
+                        pending_tools.append(
+                            {
+                                "step_id": step["step_id"],
+                                "ordinal": ordinal,
+                                "operation_id": f"{step['step_id']}:{ordinal}",
+                                "tool_call": call,
+                            }
+                        )
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],
@@ -815,22 +862,6 @@ class DurableStore:
                 # 只列出当前代际、且仍是活步骤的待办工具调用。late_result 即使
                 # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
                 # 租约把迟到响应写回成可发布步骤。
-                "pending_tools": [
-                    {
-                        "step_id": step["step_id"],
-                        "ordinal": ordinal,
-                        "operation_id": f"{step['step_id']}:{ordinal}",
-                        "tool_call": _tool_plan(step["response"])[ordinal],
-                    }
-                    for step in steps
-                    if step["control_generation"] == incident_generation
-                    and step["status"]
-                    in {"response_committed", "tool_result_committed"}
-                    for ordinal in range(len(_tool_plan(step["response"])))
-                    if ordinal
-                    not in {
-                        item.get("ordinal") for item in (step["tool_results"] or [])
-                    }
-                ],
+                "pending_tools": pending_tools,
                 "conclusion": row["conclusion"],
             }
