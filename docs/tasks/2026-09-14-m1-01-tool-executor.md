@@ -1436,3 +1436,53 @@ M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed,
 
 - 三条已全部回复并 resolve。累计 38 条 thread，全部有采纳或拒绝结论。
 - 观察到的循环特征：第八、九两轮的多数发现都是前一轮修复引出的后果。是否继续由用户决定。
+
+## 22. 机器人 code review 第十轮三条 thread 处置（2026-09-20）
+
+三条全部采纳修复（提交 `f9202f7`）。**第 1 条是第九轮修复引入的回归。**
+
+### P1 `ToolControlDenied` 在派发前逃出 execute()（本分支回归）
+
+第九轮为让结算路径拿到权威原因，把 `_charge()` 改成重新抛出 `ToolControlDenied`，但只在结算处
+接住；派发前那次计费仍只捕 `ToolBudgetExhausted`。实测确认逃逸：
+
+```text
+*** EXCEPTION ESCAPED execute(): ToolControlDenied: CONTROL_DENIED
+transport called? False
+```
+
+修复：该处也接住并按权威 control 复读给出真实原因（复读无异常则 `CONTROL_UNAVAILABLE`）；此时
+尚未派发，不登记证据。控制判定顺序抽成 `_control_invalid()`，派发前拒绝 / 结算拒绝 / 取回后复检
+三处共用，避免再次漂移。
+
+### P1 模型可见面的 URI 检测只认 HTTP(S)
+
+`postgresql://user:pass@db.internal/x` 会把凭据直接带进送给模型的文本；`grpc://`、`wss://`、
+`file://` 同样是具体 endpoint。拆成两个检测器：新增通用 `_MODEL_VISIBLE_URI`（任意 scheme）用于
+两个模型可见面；`_ENDPOINT` 保持 HTTP(S) 专用，继续只管注册的传输 endpoint——放宽它会让非 HTTP
+scheme 变成合法注册 endpoint，那是另一回事。
+
+### P2 认证参数别名
+
+大小写折叠无法拒绝不在 `RESERVED_PARAMETERS` 里的名字（`X-Api-Key`、`access_token`、
+`proxy_authorization`）。改为两条规则并存：明确凭据词按折叠后子串匹配；`auth`/`cookie`/
+`session`/`sig` 这类普通英文片段按分词精确匹配。
+
+**第一版写成统一子串匹配，被自己新加的用例当场拒掉**：`author_filter` 折叠后含 `auth`。该假阳性
+用例（`test_ordinary_parameter_names_are_still_accepted`）保留在仓库，防止后人再收紧成纯子串规则。
+
+### 验证
+
+```text
+make check → 1353 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+红绿对照：git apply -R 仅还原实现、保留新测试 → 11 个用例失败；还原实现 → 全绿
+```
+
+### 未完成/限制
+
+- 三条已回复并 resolve；累计 41 条 thread。
+- **本轮的教训已记录**：第 1 条与第九轮两条一样，都是前一轮修复的后果。每次推送都会触发新一轮
+  审查，本任务记录中的「循环无自然终点」观察继续成立，是否继续由用户决定。
+- 每次向用户汇报 PR 状态前必须重新查询 thread，快照会在数分钟内过期（上一次汇报即因此把
+  已出现新一轮的 PR 说成零未处理）。
