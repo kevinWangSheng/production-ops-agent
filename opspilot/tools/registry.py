@@ -142,7 +142,13 @@ SOURCE_ERROR_REASONS = frozenset(
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,63}")
 _HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{2,63}")
 _VERSION = re.compile(r"[a-z0-9][a-z0-9.+-]{0,31}")
-_ENDPOINT = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}")
+# URI schemes are case-insensitive (RFC 3986), and this pattern is used both
+# to validate an endpoint and to *detect* one hiding in model-visible prose.
+# Compiled case-sensitively, ``HTTPS://metrics.internal/api`` walked straight
+# through the detection path (bot review finding).
+_ENDPOINT = re.compile(
+    r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}", re.IGNORECASE
+)
 
 # C3 section 8 requires `window_format`/`values_format` to carry a placeholder
 # for the absolute window / value enumeration a future renderer fills in per
@@ -353,7 +359,13 @@ class ToolRegistration:
             for key, spec in self.parameters.items()
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if RESERVED_PARAMETERS & set(self.parameters):
+        if RESERVED_PARAMETERS & {key.lower() for key in self.parameters}:
+            # Compared case-folded: reviewed configuration writing the
+            # conventional ``Authorization``/``Token`` capitalisation used to
+            # slip past this exact-case intersection, after which the model
+            # could supply that declared field and the gateway forwarded it in
+            # ``TransportRequest.params`` -- defeating the invariant this set
+            # exists to hold (bot review finding).
             raise ToolContractError("RESERVED_PARAMETER")
         if not isinstance(self.description, ToolDescription):
             # ToolDescription.__post_init__ already asserted the five-field

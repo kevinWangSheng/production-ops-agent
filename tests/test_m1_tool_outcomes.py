@@ -24,6 +24,8 @@ from opspilot.tools import (
 from opspilot.tools.registry import canonical, canonical_hash
 from tests.m1_tool_support import (
     NOW,
+    WINDOW_END,
+    WINDOW_START,
     RecordingSink,
     body,
     build,
@@ -586,7 +588,14 @@ def test_unknown_source_interval_is_not_filled_from_query_or_freshness():
 
 
 def test_single_source_instant_and_offset_are_preserved():
-    instant = NOW.astimezone(timezone(timedelta(hours=8)))
+    # Inside the authorized scope window, in a non-UTC offset: the offset is
+    # what this test is about. It used to read ``NOW``, which sits past
+    # WINDOW_END and is now refused as out-of-scope source data (see
+    # test_source_timestamps_outside_the_authorized_scope_are_refused); that
+    # value was incidental to preserving the offset.
+    instant = (WINDOW_START + timedelta(minutes=30)).astimezone(
+        timezone(timedelta(hours=8))
+    )
     executor, transport, _, _ = build()
     transport.response = TransportResponse(
         body=body([{"value": 1}]), source_start_at=instant, source_end_at=instant
@@ -596,3 +605,44 @@ def test_single_source_instant_and_offset_are_preserved():
     assert outcome.model_view["source_start_at"] == instant.isoformat()
     assert outcome.model_view["source_end_at"] == instant.isoformat()
     assert outcome.evidence.view_sha256 == canonical_hash(outcome.model_view)
+
+
+def test_source_timestamps_outside_the_authorized_scope_are_refused():
+    """Bot review finding: the reported interval was checked only for type and
+    ordering, so an adapter reporting source timestamps outside the Run's
+    authorized window still had its rows adopted and shown to the model.
+
+    ``TransportResponse``'s own contract says these bounds are "the actual
+    source timestamps represented by this response", so a response claiming
+    data from outside the authorization is out-of-scope data whose violation
+    is detectable from trusted metadata -- fail closed. The bound compared is
+    the *scope* window, not the narrower requested one: a source may cover a
+    different interval inside the authorization, never outside it.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=WINDOW_START - timedelta(minutes=1),
+        source_end_at=WINDOW_END,
+    )
+    outcome = executor.execute(request())
+    assert (outcome.status, outcome.reason) == ("denied", "WINDOW_OUT_OF_SCOPE")
+    assert outcome.source_contact == "confirmed"  # the source really was read
+    assert outcome.model_view["content"] is None  # the rows never reach the model
+    assert sink.records == []  # refused before evidence registration, as a
+    # malformed interval already is
+
+
+def test_a_source_interval_inside_the_scope_but_wider_than_requested_is_kept():
+    """The scope window is the authorization boundary; the requested window is
+    not. A source whose covered interval differs from the request but stays
+    inside the scope (bucket alignment) must still be adopted.
+    """
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=WINDOW_START,
+        source_end_at=WINDOW_END,
+    )
+    outcome = executor.execute(request())
+    assert outcome.status == "ok"

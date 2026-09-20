@@ -26,6 +26,7 @@ from opspilot.tools import (
     TransportRequest,
     TransportResponse,
     TransportTimeout,
+    TransportUnavailable,
     Window,
 )
 from tests.m1_tool_support import (
@@ -1054,3 +1055,61 @@ def test_a_ledger_that_is_not_a_ledger_is_a_contract_error():
     for bad in ({"operations_used": -1}, {"tool_seconds_used": float("nan")}):
         with pytest.raises(ToolContractError, match="INVALID_USAGE"):
             ToolUsage(**bad)
+
+
+def test_a_window_bound_that_cannot_be_normalized_to_utc_is_invalid_input():
+    """Bot review finding: ``datetime.fromisoformat`` accepts bounds that
+    ``Window.__post_init__`` then fails to convert -- ``0001-01-01T00:00:00
+    +14:00`` raises ``OverflowError``, which is not a ``ValueError`` and so
+    escaped ``execute()`` instead of becoming the promised outcome. Model
+    text must never abort the investigation loop with an exception.
+    """
+    executor, transport, sink, _ = build()
+
+    outcome = executor.execute(
+        request(
+            window={
+                # start < end, so the ordering check passes and the failure
+                # really happens in the UTC conversion.
+                "start": "0001-01-01T00:00:00+14:00",
+                "end": "0001-01-02T00:00:00+14:00",
+            }
+        )
+    )
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert not transport.called and sink.records == []
+
+
+def test_an_integer_parameter_that_cannot_be_canonicalized_is_invalid_input():
+    """Bot review finding: a declared integer passes ``ParameterSpec.accepts``
+    but ``canonical()`` refuses to encode it past Python's integer-string
+    digit limit (4300 on the supported runtime), and the ``ValueError``
+    escaped ``execute()``.
+    """
+    executor, transport, sink, _ = build()
+
+    outcome = executor.execute(
+        request(params={"expr": "rate(http_errors[5m])", "step_seconds": 10**4300})
+    )
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert not transport.called and sink.records == []
+
+
+def test_a_settlement_failure_keeps_the_fetch_s_uncertain_contact():
+    """Bot review finding: when the fetch itself left contact merely
+    ``possible`` (timeout, unavailable source) and the ledger settlement then
+    failed, the refusal reported ``confirmed`` regardless -- a transient
+    PostgreSQL error turning an unknown source contact into a false audit
+    fact. Whether the source was reached is decided by the fetch.
+    """
+    ledger = RecordingLedger(fail_on={2})  # the post-fetch settlement
+    executor, transport, sink, _ = build(ledger=ledger)
+    transport.error = TransportUnavailable("source down")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert outcome.source_contact == "possible"  # not upgraded to confirmed
+    assert sink.records == []

@@ -503,3 +503,34 @@ def test_target_selectors_may_not_carry_authentication_material(selector):
 def test_target_selectors_still_accept_plain_targeting_metadata():
     entry = target(selector={"cluster": "prod-1", "table": "orders"})
     assert dict(entry.selector) == {"cluster": "prod-1", "table": "orders"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "read from HTTPS://metrics.internal:9090/api",
+        "read from Http://metrics.internal/api",
+    ],
+)
+def test_a_model_visible_url_is_detected_whatever_the_scheme_case(text):
+    """Bot review finding: URI schemes are case-insensitive (RFC 3986) but the
+    detector was compiled case-sensitively, so `HTTPS://metrics.internal/api`
+    walked straight through the endpoint-leak check that the earlier
+    description fix was supposed to close.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize("name", ["Authorization", "TOKEN", "Api_Key", "Headers"])
+def test_reserved_parameter_names_are_matched_case_insensitively(name):
+    """Bot review finding: `RESERVED_PARAMETERS` holds lowercase names and the
+    check was an exact set intersection, so reviewed configuration using the
+    conventional capitalisation declared the field successfully -- after which
+    the model could supply it and the gateway forwarded it in
+    `TransportRequest.params`, defeating the invariant the set exists for.
+    """
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={name: ParameterSpec(kind="string")})

@@ -151,7 +151,12 @@ class Window:
             bounds.append(moment)
         try:
             return cls(*bounds)
-        except ValueError:
+        except (ValueError, OverflowError):
+            # ``fromisoformat`` accepts bounds that cannot be normalised to
+            # UTC -- e.g. ``0001-01-01T00:00:00+14:00`` raises OverflowError
+            # inside ``__post_init__``. Model-supplied text must never escape
+            # as an exception; it is invalid window input like any other (bot
+            # review finding).
             return None
 
 

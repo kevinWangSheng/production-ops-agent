@@ -477,7 +477,17 @@ class ReadOnlyToolExecutor:
         params, problem = _accept_params(registration, request.params)
         if params is None:
             return self._refuse(operation, _status_for(problem), problem)
-        operation = replace(operation, query=canonical(params))
+        try:
+            query = canonical(params)
+        except (ValueError, OverflowError):
+            # A declared integer parameter can still be unencodable: Python
+            # refuses ``str()`` past ``sys.get_int_max_str_digits()`` (4300 on
+            # the supported runtime), so ``10**4300`` passes
+            # ``ParameterSpec.accepts`` and then raises inside ``canonical``.
+            # Model-proposed input must never escape ``execute()`` as an
+            # exception and abort the investigation loop (bot review finding).
+            return self._refuse(operation, "error", "INVALID_PARAMS")
+        operation = replace(operation, query=query)
         return operation, _Plan(registration, target, window, params)
 
     def _reserve(
@@ -639,14 +649,21 @@ class ReadOnlyToolExecutor:
         # operation), so a real ledger cannot raise ToolBudgetExhausted
         # here -- but _charge() re-raises it unconditionally, so this is
         # still handled defensively rather than left to escape execute().
+        # Whether the source was actually reached is decided by the fetch, not
+        # by what happened afterwards. When the fetch already classified
+        # contact as merely ``possible`` (a timeout, an unavailable source),
+        # a failure to settle the cost must report that same uncertainty:
+        # reporting ``confirmed`` here would let a transient PostgreSQL error
+        # manufacture a false audit fact (bot review finding).
+        contact: SourceContact = failure[2] if failure is not None else "confirmed"
         try:
             charged = self._charge(operation.operation_id, elapsed, dispatch_id)
         except ToolBudgetExhausted:
             return self._refuse(
-                operation, "denied", "OPERATION_BUDGET_EXHAUSTED", "confirmed"
+                operation, "denied", "OPERATION_BUDGET_EXHAUSTED", contact
             )
         if not charged:
-            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", "confirmed")
+            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
         if failure is not None:
             return self._refuse(operation, *failure)
         if elapsed > timeout:
@@ -689,6 +706,28 @@ class ReadOnlyToolExecutor:
             )
         ):
             return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+        if source_start_at is not None:
+            # The adapter's own trusted metadata says which interval these
+            # rows cover. When it lies outside what this Run was authorized to
+            # read, the rows are out-of-scope data and the violation is
+            # detectable here, so fail closed rather than hand them to the
+            # model (bot review finding). The bound is the *scope* window, not
+            # the narrower requested one: a source may legitimately cover a
+            # slightly different interval inside the authorization (bucket
+            # alignment), but never outside it.
+            # Compared as bare bounds, not through ``Window``: a source may
+            # report a single instant (start == end), which ``Window`` refuses.
+            assert source_end_at is not None
+            try:
+                covered_start = source_start_at.astimezone(timezone.utc)
+                covered_end = source_end_at.astimezone(timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+            scope_window = self._scope.window
+            if covered_start < scope_window.start or covered_end > scope_window.end:
+                return self._refuse(
+                    operation, "denied", "WINDOW_OUT_OF_SCOPE", "confirmed"
+                )
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
