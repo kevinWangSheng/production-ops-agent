@@ -203,6 +203,8 @@ def test_late_step_and_tool_results_are_recorded_as_history():
         store.commit_step(stale, "late-round", {"result": "late-retry"})
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(fresh, step, 0, {"result": "late-tool-retry"})
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.commit_tool(fresh, step, 1, {"result": "forged-tool"})
     steps = store.rebuild(incident)["steps"]
     original = next(item for item in steps if item["step_id"] == step)
     late = [item for item in steps if item["status"] == "late_result"]
@@ -649,7 +651,7 @@ def test_old_generation_step_and_tool_writes_are_fenced():
     step = store.commit_step(lease, "final", {"result": "old"})
     assert store.control(incident, 0, "follow_up", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         store.commit_tool(lease, step, 0, {"ok": True})
     with pytest.raises(PersistenceError, match="FINAL_STEP_REQUIRED"):
         store.publish(fresh, {"result": "old"}, step_id=step)

@@ -530,10 +530,18 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.response,s.tool_results FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE",
                 (lease.run_id, step_id),
             ).fetchone()
             if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            tool_calls = (row["response"] or {}).get("tool_calls")
+            if (
+                type(ordinal) is not int
+                or ordinal < 0
+                or not isinstance(tool_calls, list)
+                or ordinal >= len(tool_calls)
+            ):
                 raise PersistenceError("UNKNOWN_IDENTITY")
             if (
                 row["step_generation"] != lease.control_generation

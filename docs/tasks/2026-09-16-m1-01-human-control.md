@@ -51,6 +51,7 @@
 
 - 采纳并修复：`new_run()` 增加 `expected_generation`，拒绝旧观察代际在更晚控制后重新创建 Run；重复确认仅在原代际关系仍匹配时幂等返回。
 - 采纳并修复：失效 `publish()` 在写入 `late_result` 前验证 `step_id` 属于该 Run；随机或跨 Run 的 step 返回 `UNKNOWN_IDENTITY`，不制造伪历史。
+- 采纳并修复：失效 `commit_tool()` 在写入 `late_result` 前验证 `ordinal` 确实对应该 step 的 `tool_calls`，不存在的工具序号返回 `UNKNOWN_IDENTITY`。
 - PG 定向测试：`40 passed`；全量 `make check`：`1051 passed, 111 skipped, 2 xfailed`。
 
 ## C3 第 4 节逐条映射
