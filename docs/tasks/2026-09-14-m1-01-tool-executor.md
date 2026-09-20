@@ -1146,3 +1146,64 @@ pytest                → 1280 passed, 82 skipped, 2 xfailed
 - F3/F7 的 `passes` 保持 `false`。
 - 用户/调度者已重申本轮为最后一轮：本次收尾未再手动触发 `@codex review`；若收尾检查时发现机器人
   又自动出现新 thread，按约定只在任务报告里列出原文摘要，不在本轮处置。
+
+## 18. 与 main 的合并冲突处置（2026-09-20）
+
+PR #20 在 `mergeStateStatus: DIRTY`、`mergeable: CONFLICTING`。原因是分支停在 `c12066a`
+之后 main 前进了 82 个提交，其中 [PR #26](https://github.com/kevinWangSheng/production-ops-agent/pull/26)
+（`ddc1c2b`，确认是 `origin/main` 祖先）把租约栅栏收敛成 `_lease_revoked` 一份实现，
+PR #30（`8e67237`）又在同一文件加入 `lease_current()`/`abandon()`。
+
+合并方向为 `git merge origin/main`（不 rebase，不改写已推送历史）。
+
+### 冲突范围
+
+两侧自 merge-base `b483a12` 起都改过的文件**只有** `opspilot/persistence.py`
+（`comm -12` 比对两侧 `--name-only` 结果）。冲突是同一位置的 add/add：本分支在
+`reserve_budget()` 之后新增 `charge_tool()`，main 在同一位置新增 `lease_current()`/
+`abandon()`。两者互不相关，**双方全部保留**。
+
+### charge_tool 的租约栅栏改为复用 _lease_revoked
+
+`charge_tool()` 原先是内联的六条件判定，并带注释说明「本文件另三条写路径仍是 main 上
+容忍 NULL 的旧写法，由 #26 统一，本处不回改它们」——#26 已随 main 合入，该注释在合并
+后不再成立。因此本次把内联判定换成 `self._lease_revoked(row, lease, self._db_now(conn))`，
+并给 SELECT 的 `i.control_generation` 加上 `AS incident_generation` 别名以匹配该实现的
+取值口径。
+
+**这是等价替换，不是行为变更**：两侧逐条相同——`owner`、`epoch`、事故代际
+（两边读的都是 `i.control_generation`，只是别名不同）、`lease_until IS NULL`、
+`lease_until <= now`、`deadline <= now`，缺一不多一。合并后 `charge_tool` 成为第五条
+共用同一栅栏实现的写路径，docstring 里「Fenced by the lease like every other write path」
+由此成为字面属实的陈述。
+
+### 对既有 code review 处置的影响：无
+
+前六轮 review 的修复提交（`5f6cc44`/`3a84cec`/`e60fc75`/`22e979e`/`7598809`）全部落在
+`opspilot/tools/*` 与 `tests/*`；本次合并在 `opspilot/` 下只动 `persistence.py`、
+`recovery.py`、`worker.py`，与这些文件无交集，没有回退任何一条已处置的发现。合并前
+`reviewThreads` 20 条仍全部 `isResolved: true`。
+
+### 验证
+
+```text
+git diff --stat origin/main -- opspilot/persistence.py
+  → 1 file changed, 95 insertions(+)        # 纯新增，0 删除：main 的 #26/#30 一行未丢
+make check                                  → 1313 passed, 133 skipped, 2 xfailed（ruff/format/mypy 全过）
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q
+  → 95 passed, 38 skipped                   # 与 CI m0-postgres 同一组 opt-in
+pytest tests/integration/test_m1_tool_budget_postgres.py \
+       tests/integration/test_m1_lease_renewal_postgres.py \
+       tests/integration/test_m1_durable_state_postgres.py -q
+  → 76 passed
+```
+
+改动后的栅栏由 `test_charge_tool_is_fenced_by_the_lease_like_every_write_path` 在真实
+PostgreSQL 上覆盖（`control(..., "cancel", ...)` 之后 `charge_tool` 抛 `CONTROL_DENIED`，
+且用量停在取消前的 `(1, 1.0)`），本地已实际执行通过，非仅静态推断。
+
+### 未完成/限制
+
+- 合并后 HEAD 变化，机器人上一轮 review 覆盖的是 `8cf6d73`，不覆盖当前 HEAD；按项目
+  规则需要一轮覆盖当前 HEAD 的 code review，其结果另行逐条处置。
+- 本次只解决合并冲突，未改动 F3/F7 的实现范围；两者 `passes` 保持 `false`。
