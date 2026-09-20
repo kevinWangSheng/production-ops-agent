@@ -107,7 +107,17 @@ class Worker:
         # the pending tools and then lose its lease before this claim. Rebuild
         # after acquiring the new lease so execution starts from current
         # committed business rows, not the pre-claim plan.
-        current = self.recover(incident_id)
+        try:
+            current = self.recover(incident_id)
+        except PersistenceError:
+            # A failed post-claim read must not strand this lease until its
+            # full expiry. Preserve the refresh error while best-effort
+            # releasing only this owner/epoch/generation lease.
+            try:
+                self.store.abandon(lease)
+            except PersistenceError:
+                pass
+            raise
         if (
             not current.candidate
             or current.run_id != lease.run_id

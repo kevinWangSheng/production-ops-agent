@@ -127,6 +127,73 @@ def test_resume_refreshes_pending_plan_after_claim():
     assert session.plan.run["state"] == "running"
 
 
+def test_resume_releases_lease_when_post_claim_refresh_fails():
+    incident_id, run_id = uuid4(), uuid4()
+    lease = Lease(incident_id, run_id, uuid4(), 2, 0)
+    snapshot = {
+        "incident_id": incident_id,
+        "control_generation": 0,
+        "run": {"run_id": run_id, "state": "queued"},
+        "steps": [],
+        "pending_tools": [],
+        "conclusion": None,
+    }
+
+    class Store:
+        def __init__(self):
+            self.rebuild_count = 0
+            self.abandoned = []
+
+        def rebuild(self, _incident_id):
+            self.rebuild_count += 1
+            if self.rebuild_count == 2:
+                raise PersistenceError("TIMEOUT")
+            return snapshot
+
+        def claim(self, *_args, **_kwargs):
+            return lease
+
+        def abandon(self, value):
+            self.abandoned.append(value)
+
+    store = Store()
+    with pytest.raises(PersistenceError, match="TIMEOUT"):
+        Worker.create(store, {"state": "v1"}).resume(incident_id)
+    assert store.abandoned == [lease]
+
+
+def test_resume_preserves_refresh_error_when_lease_release_also_fails():
+    incident_id, run_id = uuid4(), uuid4()
+    lease = Lease(incident_id, run_id, uuid4(), 2, 0)
+    snapshot = {
+        "incident_id": incident_id,
+        "control_generation": 0,
+        "run": {"run_id": run_id, "state": "queued"},
+        "steps": [],
+        "pending_tools": [],
+        "conclusion": None,
+    }
+
+    class Store:
+        def __init__(self):
+            self.rebuild_count = 0
+
+        def rebuild(self, _incident_id):
+            self.rebuild_count += 1
+            if self.rebuild_count == 2:
+                raise PersistenceError("STORAGE_UNAVAILABLE")
+            return snapshot
+
+        def claim(self, *_args, **_kwargs):
+            return lease
+
+        def abandon(self, _lease):
+            raise PersistenceError("LEASE_RELEASE_FAILED")
+
+    with pytest.raises(PersistenceError, match="STORAGE_UNAVAILABLE"):
+        Worker.create(Store(), {"state": "v1"}).resume(incident_id)
+
+
 def test_the_initial_claim_defaults_to_the_same_length_as_renewal():
     """Renewal only runs after a tool executes (between execute and commit),
     so the *first* pending tool's own execution is covered only by the

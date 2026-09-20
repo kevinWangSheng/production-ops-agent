@@ -83,3 +83,10 @@
 - 回归：`tests/test_worker_recovery.py::test_resume_refreshes_pending_plan_after_claim` 使用确定性双快照替身，断言 `rebuild → claim → rebuild` 顺序、claim 前后计划不同，以及 session 使用新 pending tool/run state。
 - 工作区/版本：分支 `feature/m1-01-restart-recovery`，基线 `origin/main=a1eeadf88bc0e8c93e3f0ee223fae5bc6a339091`，修复开始前 HEAD `f9f936c4de61f2b0279b000a8f06085445254202`，修复代码提交 HEAD `e24b7325f304846499a7ad56aa54d8597e91c708`。
 - 验证：定向 worker 单测 `10 passed`；`make check`（含 ruff、format、mypy）`1061 passed, 111 skipped, 2 xfailed`；`M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` `38 passed`。55431 已被其他 worktree 的 PostgreSQL 进程占用，本 worktree 未停止或接管该进程；定向 PG 测试在该现有实例上通过。无真实模型调用、无产品验收或 feature passes 结论。
+
+## 追加（2026-09-20）：PR #30 最新 review findings 收尾
+
+- **P1：迟到结果不得参与模型计划校验（`4057312360`）**：采纳并修复。`DurableStore.rebuild()` 对 `status='late_result'` 的不可变历史行跳过 `_tool_plan()` 校验；模型步骤仍保持原有 fail-closed 校验。新增 `test_rebuild_ignores_late_result_payload_shape`，覆盖 `{"tool_calls": 0}` 这类合法任意结果，避免后续重建被污染历史阻断。
+- **P2：claim 后刷新失败必须释放租约（`4057312362`）**：采纳并修复。`Worker.resume()` 的第二次 `recover()` 抛出 `PersistenceError` 时，对同一 owner/epoch/generation 执行 best-effort `abandon()`，原始刷新错误原样抛出；释放失败不会覆盖原始错误。新增两个确定性单测，分别覆盖释放成功与释放自身失败。
+- **P2：恢复被位移的人控 PG 覆盖（`4057312364`）**：采纳并修复。恢复原先被 worker 测试替换的 9 个 `DurableStore` 集成测试，覆盖取消后新 Run、迟到结果历史/命名空间、旧代际与幂等、并发 follow-up/cancel 等控制语义；另新增 1 个 late-result rebuild 回归。
+- 工作区/验证：分支 `feature/m1-01-restart-recovery`，55431 由其他 worktree 持有，未停止或接管。`ruff check`、`ruff format --check`、`mypy` 全绿；worker 定向单测 `12 passed`；`M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` `48 passed`；最终 `make check` `1061 passed, 111 skipped, 2 xfailed`。无真实模型调用、无产品验收或 feature passes 结论。

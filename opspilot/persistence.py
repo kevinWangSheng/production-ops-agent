@@ -796,6 +796,11 @@ class DurableStore:
                 (row["current_run_id"],),
             ).fetchall()
             for step in steps:
+                # Late tool/step results are immutable history payloads, not
+                # model responses. They may have any JSON shape and must not
+                # make a later rebuild fail model-plan validation.
+                if step["status"] == "late_result":
+                    continue
                 calls = _tool_plan(step["response"])
                 if not isinstance(calls, list) or any(
                     not isinstance(call, dict) for call in calls
