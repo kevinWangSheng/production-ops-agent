@@ -109,6 +109,20 @@ class ControlUnavailable(Exception):
     """Control state could not be read, so no new call may be made."""
 
 
+class ToolControlDenied(Exception):
+    """The ledger refused the write because control revoked the Run.
+
+    A ``ToolUsageLedger`` implementation raises this specific, fixed-code
+    exception when the authoritative store rejects the charge on control
+    grounds (a human pause or cancel, a newer control generation, an expired
+    lease). Collapsing it into the generic opaque failure made the executor
+    return before its own control re-read, so a read that *did* reach the
+    source was dropped from the evidence audit and reported as
+    ``CONTROL_UNAVAILABLE`` instead of the authoritative human decision (bot
+    review finding).
+    """
+
+
 class ToolBudgetExhausted(Exception):
     """The ledger refused a new operation: the Run's durable cap is spent.
 
@@ -671,13 +685,21 @@ class ReadOnlyToolExecutor:
         # reporting ``confirmed`` here would let a transient PostgreSQL error
         # manufacture a false audit fact (bot review finding).
         contact: SourceContact = failure[2] if failure is not None else "confirmed"
+        settlement_denied = False
         try:
             charged = self._charge(operation.operation_id, elapsed, dispatch_id)
         except ToolBudgetExhausted:
             return self._refuse(
                 operation, "denied", "OPERATION_BUDGET_EXHAUSTED", contact
             )
-        if not charged:
+        except ToolControlDenied:
+            # The store refused on control grounds, which is a human decision,
+            # not a storage outage. Do not return here: fall through to this
+            # method's own control re-read so the outcome carries the
+            # authoritative reason and the observation that really reached the
+            # source is still registered as history (bot review finding).
+            charged, settlement_denied = False, True
+        if not charged and not settlement_denied:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
         if failure is not None:
             return self._refuse(operation, *failure)
@@ -778,9 +800,17 @@ class ReadOnlyToolExecutor:
             invalid = "CONTROL_GENERATION_CHANGED"
         elif operation.finished_at >= self._scope.deadline:
             invalid = "DEADLINE_EXCEEDED"
+        elif settlement_denied:
+            # The store denied the settlement on control grounds while this
+            # re-read sees nothing wrong (the decision may have been taken and
+            # reverted, or this snapshot may be stale). The authoritative
+            # writer said no, and a result whose cost could not be recorded is
+            # never adopted, so refuse -- but as history, not silence.
+            invalid = "CONTROL_UNAVAILABLE"
         else:
             invalid = ""
         record = self._record(
+            dispatch_id,
             operation,
             plan,
             response,
@@ -821,10 +851,12 @@ class ReadOnlyToolExecutor:
     def _charge(self, operation_id: str, seconds: float, dispatch_id: UUID) -> bool:
         try:
             self._ledger.charge(operation_id, seconds, dispatch_id=dispatch_id)
-        except ToolBudgetExhausted:
-            # A fixed-code signal, not vendor text: let the caller report
-            # the authoritative denial instead of a generic ledger failure
-            # (bot review finding).
+        except (ToolBudgetExhausted, ToolControlDenied):
+            # Fixed-code signals, not vendor text: let the caller report the
+            # authoritative denial instead of a generic ledger failure (bot
+            # review finding). ``ToolControlDenied`` must reach the caller for
+            # the same reason -- swallowing it here would put the observation
+            # back on the generic path that drops its history.
             raise
         except Exception:
             # Any other ledger error text may carry storage detail; never
@@ -843,6 +875,7 @@ class ReadOnlyToolExecutor:
 
     def _record(
         self,
+        dispatch_id: UUID,
         operation: ToolOperation,
         plan: _Plan,
         response: TransportResponse,
@@ -871,7 +904,17 @@ class ReadOnlyToolExecutor:
             None if data_as_of is None else (observed_at - data_as_of).total_seconds()
         )
         view: dict[str, object] = {
-            "evidence_id": operation.operation_id,
+            # One identity per dispatched observation, not per stable
+            # operation: the per-dispatch charging protocol permits the same
+            # operation to be dispatched twice (a retry, a duplicate
+            # delivery), and those responses can carry different bytes and
+            # observation times. Sharing an id would let a sink keyed by it
+            # drop or overwrite one of them and return the surviving
+            # reference, which ``_register()`` accepts as proof of commit --
+            # the model view would then describe bytes the evidence link does
+            # not resolve to (bot review finding). ``operation_id`` stays
+            # beside it for correlation.
+            "evidence_id": f"{operation.operation_id}:{dispatch_id}",
             "operation_id": operation.operation_id,
             "trust": "untrusted-evidence",
             "status": status,
@@ -903,7 +946,7 @@ class ReadOnlyToolExecutor:
             "content": None if not adopted else kept,
         }
         return EvidenceRecord(
-            evidence_id=operation.operation_id,
+            evidence_id=f"{operation.operation_id}:{dispatch_id}",
             operation=operation,
             status=status,
             raw=response.body,

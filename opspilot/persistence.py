@@ -253,11 +253,28 @@ class DurableStore:
             );
             -- 本表由本分支引入，尚未进入任何产品环境；开发库里可能还是
             -- (run, epoch, operation) 主键的旧形状，就地迁移到 dispatch_id。
+            -- 迁移整体条件化：主键替换要 ACCESS EXCLUSIVE 锁并重建索引，而本
+            -- store 设了 5 秒 statement timeout，无条件每次 install 都重建会
+            -- 随表增长阻塞正在进行的计费甚至稳定失败（bot review 发现）。只在
+            -- 真的检测到旧主键形状时才动它。
             ALTER TABLE opspilot_tool_charges ADD COLUMN IF NOT EXISTS dispatch_id uuid;
-            UPDATE opspilot_tool_charges SET dispatch_id=gen_random_uuid() WHERE dispatch_id IS NULL;
-            ALTER TABLE opspilot_tool_charges ALTER COLUMN dispatch_id SET NOT NULL;
-            ALTER TABLE opspilot_tool_charges DROP CONSTRAINT IF EXISTS opspilot_tool_charges_pkey;
-            ALTER TABLE opspilot_tool_charges ADD CONSTRAINT opspilot_tool_charges_pkey PRIMARY KEY (dispatch_id);
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM pg_constraint c
+                WHERE c.conrelid = 'opspilot_tool_charges'::regclass
+                  AND c.contype = 'p'
+                  AND c.conkey <> ARRAY[(
+                    SELECT a.attnum FROM pg_attribute a
+                    WHERE a.attrelid = c.conrelid AND a.attname = 'dispatch_id'
+                  )]
+              ) THEN
+                UPDATE opspilot_tool_charges SET dispatch_id=gen_random_uuid() WHERE dispatch_id IS NULL;
+                ALTER TABLE opspilot_tool_charges ALTER COLUMN dispatch_id SET NOT NULL;
+                ALTER TABLE opspilot_tool_charges DROP CONSTRAINT opspilot_tool_charges_pkey;
+                ALTER TABLE opspilot_tool_charges ADD CONSTRAINT opspilot_tool_charges_pkey PRIMARY KEY (dispatch_id);
+              END IF;
+            END $$;
             CREATE INDEX IF NOT EXISTS opspilot_tool_charges_run_epoch_idx ON opspilot_tool_charges(run_id, epoch);
             """)
 

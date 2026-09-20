@@ -60,7 +60,15 @@ def test_ok_outcome_registers_raw_bytes_view_and_both_hashes():
     assert record.view["trust"] == "untrusted-evidence"
     assert record.freshness_seconds == 30.0
     assert record.view["freshness_seconds"] == 30.0
-    assert record.evidence_id == record.operation.operation_id == "step-1-t0"
+    assert record.operation.operation_id == "step-1-t0"
+    # The evidence identity is per dispatched observation, not per stable
+    # operation -- this assertion used to require them equal, which is exactly
+    # what let two dispatches of one operation collide (see
+    # test_two_dispatches_of_one_operation_get_distinct_evidence_ids). The
+    # operation id stays in the view beside it for correlation.
+    assert record.evidence_id.startswith("step-1-t0:")
+    assert record.view["evidence_id"] == record.evidence_id
+    assert record.view["operation_id"] == "step-1-t0"
 
 
 def test_ok_outcome_registers_the_source_coverage_interval():
@@ -646,3 +654,30 @@ def test_a_source_interval_inside_the_scope_but_wider_than_requested_is_kept():
     )
     outcome = executor.execute(request())
     assert outcome.status == "ok"
+
+
+def test_two_dispatches_of_one_operation_get_distinct_evidence_ids():
+    """Bot review finding: the per-dispatch charging protocol permits the same
+    stable operation to be dispatched twice (a retry, a duplicate delivery),
+    and those responses can carry different bytes and observation times. With
+    one shared ``evidence_id`` a sink keyed by it would drop or overwrite one
+    observation and return the surviving reference, which ``_register()``
+    accepts as proof the new record was committed -- the model view would then
+    describe bytes its own evidence link does not resolve to.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+    first = executor.execute(request())
+    transport.response = TransportResponse(body=body([{"value": 2}]))
+    second = executor.execute(request())  # same step_id and tool_index
+
+    assert first.operation.operation_id == second.operation.operation_id
+    assert first.evidence.evidence_id != second.evidence.evidence_id
+    assert len(sink.records) == 2
+    assert {record.evidence_id for record in sink.records} == {
+        first.evidence.evidence_id,
+        second.evidence.evidence_id,
+    }
+    # Each view resolves to its own bytes.
+    assert first.model_view["content"] == [{"value": 1}]
+    assert second.model_view["content"] == [{"value": 2}]

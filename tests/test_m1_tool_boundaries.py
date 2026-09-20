@@ -22,6 +22,7 @@ from opspilot.tools import (
     READ_ONLY_VERBS,
     ControlSnapshot,
     ToolContractError,
+    ToolControlDenied,
     ToolUsage,
     TransportRequest,
     TransportResponse,
@@ -1113,3 +1114,54 @@ def test_a_settlement_failure_keeps_the_fetch_s_uncertain_contact():
     assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert outcome.source_contact == "possible"  # not upgraded to confirmed
     assert sink.records == []
+
+
+def test_a_control_denied_settlement_keeps_the_observation_as_history():
+    """Bot review finding: when the durable ledger refuses the settlement
+    because control revoked the Run, that denial used to collapse into the
+    generic ledger failure, so the executor returned before its own control
+    re-read. A read that really reached the source was dropped from the
+    evidence audit and reported as ``CONTROL_UNAVAILABLE`` rather than the
+    authoritative human decision.
+    """
+
+    class ControlDeniedLedger(RecordingLedger):
+        def charge(self, operation_id, seconds, *, dispatch_id):
+            super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+            if len(self.charges) == 2:  # the post-fetch settlement
+                raise ToolControlDenied("CONTROL_DENIED")
+
+    # The suspension must land after the pre-dispatch re-check (snapshot 2),
+    # so the read really goes out and the denial happens at settlement.
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(ledger=ControlDeniedLedger(), control=control)
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    # The authoritative human decision, not a generic ledger outage.
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    # The read reached the source, so it survives as history -- not silence.
+    assert len(sink.records) == 1
+    assert sink.records[0].adopted is False
+    assert outcome.model_view["content"] is None
+
+
+def test_a_control_denied_settlement_is_refused_even_if_control_looks_current():
+    """The authoritative writer said no; a result whose cost could not be
+    recorded is never adopted, whatever this executor's own snapshot sees.
+    """
+
+    class ControlDeniedLedger(RecordingLedger):
+        def charge(self, operation_id, seconds, *, dispatch_id):
+            super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+            if len(self.charges) == 2:
+                raise ToolControlDenied("CONTROL_DENIED")
+
+    executor, transport, sink, _ = build(ledger=ControlDeniedLedger())
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert len(sink.records) == 1 and sink.records[0].adopted is False

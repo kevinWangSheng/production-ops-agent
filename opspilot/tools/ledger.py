@@ -14,7 +14,7 @@ from uuid import UUID
 
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 
-from .executor import ToolBudgetExhausted, ToolUsage
+from .executor import ToolBudgetExhausted, ToolControlDenied, ToolUsage
 
 __all__ = ["DurableToolLedger"]
 
@@ -68,4 +68,12 @@ class DurableToolLedger:
             # PersistenceError collapses to (bot review finding).
             if str(exc) == "OPERATION_BUDGET_EXHAUSTED":
                 raise ToolBudgetExhausted(str(exc)) from exc
+            if str(exc) == "CONTROL_DENIED":
+                # Also a fixed code from charge_tool, and also authoritative:
+                # the Run was revoked by a human decision, a newer control
+                # generation or an expired lease. Reported as its own typed
+                # signal so the executor keeps the observation as history and
+                # names the real reason instead of a generic ledger outage
+                # (bot review finding).
+                raise ToolControlDenied(str(exc)) from exc
             raise
