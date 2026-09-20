@@ -271,6 +271,56 @@ class DurableStore:
         assert lease is not None
         return lease
 
+    def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime:
+        """把持有中的租约延至 `now + extend_seconds`，返回新的 `lease_until`。
+
+        C3 第 6 节：续租与提交同样校验执行身份与租约。因此本方法过的是与
+        写路径完全相同的栅栏：owner / epoch / 事故代际相符、run 仍 running、
+        租约未过期、未过 deadline；任一不满足即 `CONTROL_DENIED`，且不改动
+        `lease_until`。过期租约只能重新 `claim()` 得到新 epoch，不能续活——
+        否则被硬杀的 worker 若晚些恢复，会夺回已由别的 worker 领走的 Run。
+
+        续期不换身份：owner/epoch/generation 都不变，调用方继续用同一个
+        `Lease`；返回值是数据库时钟下的新到期时间，供调用方安排下一次续期。
+        新值取 `LEAST(GREATEST(lease_until, now + extend), deadline)`：
+        除封顶到 deadline 外不缩短仍然更长的剩余租约，也永远不越过 Run deadline。
+        """
+        if extend_seconds <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run：与 reserve_budget()/commit_*() 同序，
+            # 避免与 control()/publish() 交叉形成 ABBA 死锁。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            # 代际以事故行为准：人工决定只递增 opspilot_incidents.control_generation，
+            # run 行上的同名列是 claim()/control() 盖下的副本。
+            row = conn.execute(
+                "SELECT r.state AS run_state,r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            now = self._db_now(conn)
+            if (
+                not row
+                or row["run_state"] != "running"
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["incident_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= now
+                or row["deadline"] <= now
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            renewed = self._require_row(
+                conn.execute(
+                    # 检查与写入用同一个时钟值，返回值不会超过已校验的 now + extend。
+                    "UPDATE opspilot_runs SET lease_until=LEAST(GREATEST(lease_until,%s+make_interval(secs=>%s)),deadline) WHERE run_id=%s RETURNING lease_until",
+                    (now, extend_seconds, lease.run_id),
+                )
+            )
+            return cast(datetime, renewed["lease_until"])
+
     def reserve_budget(self, lease: Lease, reservation_id: UUID, amount: int) -> None:
         if amount <= 0:
             raise PersistenceError("INVALID_INPUT")
