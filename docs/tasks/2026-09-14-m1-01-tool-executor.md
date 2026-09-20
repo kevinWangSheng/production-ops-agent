@@ -1515,9 +1515,10 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 12 | 1 | 1 | 0 | 1（第十一轮的修复只打在一条分支上） |
 | 13 | 2 | 2 | 0 | 1（第十二轮仍漏掉两个结算出口） |
 | 14 | 1 | 1 | 0 | 0（旧的行级非有限数检查覆盖不足） |
+| 15 | 3 | 3 | 0 | 1（第十轮的认证名规则未覆盖全大写） |
 
-累计 43 条 thread 全部有结论。第 9–14 轮共 11 条中有 6 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
+累计 46 条 thread 全部有结论。第 9–15 轮共 14 条中有 7 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
 
 ## 24. 机器人 code review 第十二轮一条 thread 处置（2026-09-20）
 
@@ -1593,3 +1594,41 @@ P2「Reject non-finite values throughout source payloads」——成立，已修
 重新解析」这条规则存在的理由本身钉住。
 
 验证：`make check` → 1368 passed；PG 集成 98 passed。
+
+
+## 27. 机器人 code review 第十五轮三条 thread 处置（2026-09-20）
+
+三条均采纳修复（`69753f4`）。
+
+### P2 全大写认证名漏网（第十轮规则未做全）
+
+实测：`AUTH`/`AUTH_HEADER`/`COOKIE`/`SESSION`/`SIG` 全部 `refused=False`，而 `auth`/`cookie`
+是被拒的。原因是 `_WORDS` 只在小写字符上延续 token，对原始拼写分词会把 `AUTH` 切成四个单字母。
+
+改为先折叠大小写再按分隔符分词，并保留 camelCase 那一遍，取两遍并集：`refreshAuth` 仍被拒，
+`author_filter` 仍被接受，两个方向都有用例（参数名与 selector 键两条路径都覆盖）。
+
+### P2 `authorized_at` 记录的不是派发前最后一次检查
+
+字段契约写明是「派发前紧邻的那次授权检查」，实际保留 `_reserve()` 更早的读数；账本写入或派发前
+control 快照一慢，审计即低估授权最后核实时刻，且记录中无其他字段可推导。改为在最后一次检查处
+更新。`_reserve()` 阶段被拒的场景不受影响（既有 `DEADLINE_EXCEEDED` 用例断言未改仍通过）。
+
+### P2 不可编码文本在注册期未被拒
+
+lone surrogate 是合法 `str` 但不可编码，通过全部注册检查后在
+`canonical_hash(...).encode("utf-8")` 抛**裸 `UnicodeEncodeError`**，绕过固定码契约并能中断注册表
+构造。在注册期校验：`ToolDescription` 五字段 → `INVALID_DESCRIPTION_TEXT`；
+`ParameterSpec.description` → `INVALID_PARAMETER_SPEC`。
+
+**按整类修**：selector 的键与值同样进指纹、同样抛裸异常，一并纳入 `INVALID_SELECTOR`。新增性质
+用例：任何被接受的注册都能完成指纹计算而不抛契约外异常（含可编码的中文文本，确认拒的是不可编码
+而非非 ASCII）。
+
+### 验证
+
+```text
+make check → 1377 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+三条均先红后绿（还原实现后 7 个用例失败）
+```
