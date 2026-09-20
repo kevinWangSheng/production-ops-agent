@@ -737,3 +737,47 @@ def test_a_data_as_of_equal_to_the_read_instant_is_still_valid():
 
     assert outcome.status == "ok"
     assert outcome.evidence.freshness_seconds == 0.0
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"meta": NaN, "data": {"result": [{"value": 1}]}}',
+        b'{"meta": Infinity, "data": {"result": [{"value": 1}]}}',
+        b'{"data": {"result": [{"value": 1}], "incomplete": -Infinity}}',
+        b'{"data": {"result": [{"value": NaN}]}}',
+    ],
+)
+def test_a_non_finite_constant_anywhere_in_the_body_is_refused(raw):
+    """Bot review finding: the earlier fix validated only the rows under
+    `result_path`, but `json.loads` accepts `NaN`/`Infinity` by default, so a
+    body carrying one outside that subtree was adopted -- and the raw bytes
+    retained as evidence were then not valid JSON, failing a strict evidence
+    reader, while a non-finite incomplete marker can steer projection
+    semantics.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=raw)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert sink.records == []
+
+
+def test_committed_evidence_bytes_always_parse_under_a_strict_reader():
+    """The property the rule exists for: whatever is retained as evidence can
+    be re-read by a decoder that refuses JSON's non-standard constants.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}])
+    )
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    json.loads(
+        sink.records[0].raw.decode("utf-8"),
+        parse_constant=lambda name: pytest.fail(f"non-finite {name} in evidence"),
+    )

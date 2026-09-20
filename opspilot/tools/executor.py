@@ -1141,13 +1141,28 @@ def _accept_params(
     return accepted, ""
 
 
+def _reject_constant(name: str) -> object:
+    """Refuse JSON's non-standard constants anywhere in a source body.
+
+    ``json.loads`` accepts ``NaN``/``Infinity``/``-Infinity`` by default, and
+    the earlier row-level check only looked at values under ``result_path``.
+    A body such as ``{"meta": NaN, "data": {"result": [...]}}`` was therefore
+    adopted, and the *raw bytes retained as evidence* were not valid JSON --
+    a strict evidence reader fails on them, and non-finite values in fields
+    like the incomplete marker can steer projection semantics (bot review
+    finding). Rejecting at decode time covers the whole payload, not one
+    subtree.
+    """
+    raise ValueError(f"NON_FINITE_CONSTANT:{name}")
+
+
 def _result_rows(
     registration: ToolRegistration, body: bytes
 ) -> tuple[list[object] | None, object]:
     """Navigate the declared result path; ``None`` rows means malformed."""
 
     try:
-        payload = json.loads(body.decode("utf-8"))
+        payload = json.loads(body.decode("utf-8"), parse_constant=_reject_constant)
     except (UnicodeDecodeError, ValueError, RecursionError):
         # ValueError also covers json.JSONDecodeError (a subclass) and the
         # decoder's own digit-count guard on an oversized integer literal;
