@@ -1387,3 +1387,52 @@ M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed,
 - 8 条已全部回复并 resolve（7 采纳 / 1 拒绝并说明依据）。
 - 每轮修复都会改变 HEAD，机器人随即产出新一轮；本轮之后是否继续由用户决定。
 - 第 18 节记录的 `charge_tool` 栅栏回归测试维度缺口不变。
+
+## 21. 机器人 code review 第九轮三条 thread 处置（2026-09-20）
+
+三条全部采纳修复（提交 `b0b4d07`），其中**两条是第八轮 per-dispatch 计费改动引出的后果**。
+
+### P1 证据身份仍是稳定的 operation_id
+
+per-dispatch 计费明确允许同一 operation 被派发两次（重试、重复投递），两次响应的字节与观察
+时间可以不同。共用一个 `evidence_id` 会让按它做键的 sink 丢弃或覆盖其中一次并返回幸存者的
+引用，而 `_register()` 正是拿「返回引用 == `record.evidence_id`」当作新记录已提交的证明——
+模型视图于是可能描述它自己的证据链接解析不到的字节。
+
+改为 `evidence_id = f"{operation_id}:{dispatch_id}"`，视图中 `operation_id` 原样保留作关联。
+
+**既有断言被改动并已在 PR 上说明**：`test_ok_outcome_registers_raw_bytes_view_and_both_hashes`
+原断言 `record.evidence_id == record.operation.operation_id`，钉住的正是本条要改掉的行为；改为
+断言前缀关系与视图两字段各自正确，并新增 `test_two_dispatches_of_one_operation_get_distinct_evidence_ids`。
+
+### P1 control 撤销导致的结算拒绝丢失历史
+
+`DurableToolLedger.charge` 此前只翻译 `OPERATION_BUDGET_EXHAUSTED`，`CONTROL_DENIED` 被
+`_charge()` 的 `except Exception` 塌缩成 `False`，执行器在自己的 control 复读之前返回：真的读到
+来源的观察被逐出证据审计，且上报 `CONTROL_UNAVAILABLE` 而非权威暂停。
+
+新增 `ToolControlDenied` 类型信号（与既有 `ToolBudgetExhausted` 同一做法），由 ledger 翻译，
+**`_charge()` 须连同一并向上抛**——实现时踩到过：只加 except 分支而不改 `_charge`，异常仍被吞。
+执行器继续走 control 复读：看到暂停/代际变化则上报权威原因并 history-only 登记证据；复读看不到
+异常则仍以 `CONTROL_UNAVAILABLE` 拒绝（权威写方说了不行，且「费用无法记录的结果从不采纳」不松动）。
+两条路径各有用例。
+
+### P2 install() 每次重建计费表主键
+
+主键替换要 ACCESS EXCLUSIVE 锁并重建索引，而本 store 设了 5 秒 statement timeout，随表增长会
+阻塞正在进行的计费甚至稳定失败。整段迁移改为条件化 DO 块，只在检测到旧主键形状时执行。
+
+真实库双向验证：连续两次 `install()` 后主键索引 oid 不变（21160 → 21160，未重建）；另造一张
+`(run_id, epoch, operation_id)` 旧形状且有数据的表，同一段 DO 块仍正确迁移并回填（backfilled rows: 1）。
+
+### 验证
+
+```text
+make check → 1337 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+```
+
+### 未完成/限制
+
+- 三条已全部回复并 resolve。累计 38 条 thread，全部有采纳或拒绝结论。
+- 观察到的循环特征：第八、九两轮的多数发现都是前一轮修复引出的后果。是否继续由用户决定。
