@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -100,7 +100,7 @@ def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
         raise PersistenceError("INCONSISTENT_STATE")
     completed: set[int] = set()
     for item in tool_results:
-        if not isinstance(item, dict):
+        if not isinstance(item, Mapping):
             raise PersistenceError("INCONSISTENT_STATE")
         ordinal = item.get("ordinal")
         if (
@@ -108,7 +108,7 @@ def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
             or ordinal < 0
             or ordinal >= call_count
             or ordinal in completed
-            or not isinstance(item.get("result"), dict)
+            or not isinstance(item.get("result"), Mapping)
         ):
             raise PersistenceError("INCONSISTENT_STATE")
         completed.add(ordinal)
