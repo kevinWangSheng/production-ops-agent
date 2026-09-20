@@ -205,3 +205,37 @@
   `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `27 passed`。
   复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
 - 边界不变：无真实模型调用，无产品验收或 feature passes 结论。
+
+## 追加（2026-09-20）：第二次独立审查（覆盖 `9cfed14..8616ea7`）与两处更正
+
+第二位独立审查者（全新上下文、只读、未参与实现）审查了第二至四轮的全部改动，结论为**无阻塞**，
+三个修复方向均正确、未引入新缺陷；另有 2 条 P2 属「陈述与代码不符」，已按下述更正。
+
+- **更正 1（我此前的公开理由不准确）**：第三轮我在 PR thread 与任务记录里写「在 `persistence.py` 加
+  `from opspilot.domain import tool_operation_id` 会让 `test_persistence_builds_on_domain` 变成
+  `XPASS(strict)`，`make check` 直接红」。该结论**只对绝对 import 成立**。
+  `tests/test_architecture.py` 的 `_imported_modules()` 只收集 `node.module`：
+  `from opspilot.domain import x` → `'opspilot.domain'`（命中）；
+  `from .domain import x` → `'domain'`、`level=1`（**不命中**）。
+  而 `opspilot/` 内部一律使用相对 import。已实测确认两种形式的差异。
+  因此正确的理由是：**持久化层是否建立在 domain 之上是未决架构决定，不应由一行顺手 import 替它作出**——
+  而不是「测试会红」。修复位置（放在 `recovery.py`）不变，审查者也认可该位置。
+  代码注释已相应改写为「reaching for the helper here would settle that decision in passing」。
+- **更正 2（`publish()` 注释与实际错误面不符）**：原注释称该清理「only covers real publication failures」。
+  实际上 `store.publish()` 还会抛确定性的 `UNKNOWN_IDENTITY` 与 `FINAL_STEP_REQUIRED`（后者租约仍有效，
+  只是结论与已提交步骤不匹配），改动后这两种也会 `abandon()`。注释已改为如实说明：
+  对所有 `PersistenceError` 释放（本包任何地方都不按错误码分支），此后该 session 作废，
+  调用方需重新 `resume()` 取得新 epoch；并标注「`FINAL_STEP_REQUIRED` 是否应保留租约，待投资循环真正调用本方法时再定」。
+  行为未改：审查者指出 `RecoverySession.publish` 目前无产品调用方，且 `execute_pending` 对 `commit_tool` 的
+  `UNKNOWN_IDENTITY` 早就是同样处置，与既有模式一致。
+
+- 审查者记录的后续项（先于本 PR、超出本次范围，**未修**）：
+  1. `tests/test_architecture.py::_imported_modules()` 不收集相对 import，使该架构欠债守卫存在漏报；
+     修好后 `persistence.py` 仍不依赖 domain，故不影响当前结论。
+  2. 结构测试 `test_recovery_session_releases_its_lease_when_a_store_call_fails` 不校验 handler 捕获的异常类型，
+     也不强制 `_renew()` 必须在受保护 try 内（当前代码满足，但将来可能漏报）。
+  3. `operation_id` 在本分支无消费者；执行器分支的 `ToolRequest.operation_id` 若未改用 `tool_operation_id()`，
+     接入时须核对，否则不一致只是从 persistence 挪到了接缝处。**未确认**。
+  4. `copy.deepcopy(RecoverySession)` 会因 `threading.Lock` 不可 pickle 而 TypeError（当前无调用方）。
+- 审查者复核证据：`make check` `1079 passed, 126 skipped, 2 xfailed`（两条架构 xfail 仍为 XFAIL）；
+  PG durable_state + lease_renewal + wiring `72 passed`；并发测试连跑 5 次全过；ruff/format/mypy 全绿。

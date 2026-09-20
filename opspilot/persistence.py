@@ -850,13 +850,14 @@ class DurableStore:
                 for ordinal, call in enumerate(calls):
                     if ordinal not in completed:
                         # No operation id here: its canonical format lives in
-                        # opspilot.domain.tool_operation_id, and this module
-                        # does not depend on the domain layer (that dependency
-                        # direction is still an open decision -- see
-                        # tests/test_architecture.py). recovery.rebuild_plan
-                        # stamps it from the shared helper instead, so there is
-                        # only one definition of the format executors and the
-                        # evidence store deduplicate by.
+                        # opspilot.domain.tool_operation_id, and whether this
+                        # module may depend on the domain layer is still an
+                        # open decision (tests/test_architecture.py records it
+                        # as a strict xfail). Reaching for the helper here
+                        # would settle that decision in passing, so
+                        # recovery.rebuild_plan stamps it instead -- one
+                        # definition of the format executors and the evidence
+                        # store deduplicate by, with the decision left open.
                         pending_tools.append(
                             {
                                 "step_id": step["step_id"],

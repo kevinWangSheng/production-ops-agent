@@ -155,13 +155,18 @@ class RecoverySession:
         try:
             return self.store.publish(self.lease, conclusion, step_id=step_id)
         except PersistenceError:
-            # Same rule as the tool-commit path: a write that neither
-            # succeeded nor observably failed must not keep this lease alive
-            # for its full term, or a replacement worker meets LEASE_ACTIVE
-            # for up to renew_seconds. A revoked lease is not an exception
-            # here -- store.publish returns False for that -- so this only
-            # covers real publication failures. Best-effort: releasing must
-            # never replace the original error.
+            # Release on any PersistenceError, matching the tool-commit path;
+            # nothing in this package branches on error codes. That
+            # deliberately includes store.publish's deterministic rejections
+            # (FINAL_STEP_REQUIRED, UNKNOWN_IDENTITY), not just transient
+            # storage failures, so the session is finished either way: the
+            # lease is gone afterwards and a caller who wants another attempt
+            # must resume() for a fresh epoch rather than reuse this one.
+            # Whether FINAL_STEP_REQUIRED deserves to keep its lease is worth
+            # revisiting when the investigation loop actually calls this.
+            # A *revoked* lease is not an exception here -- store.publish
+            # returns False for that -- so human control never lands here.
+            # Best-effort: releasing must never replace the original error.
             self._abandon_best_effort()
             raise
 
