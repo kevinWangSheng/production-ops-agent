@@ -1486,3 +1486,32 @@ M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed,
   审查，本任务记录中的「循环无自然终点」观察继续成立，是否继续由用户决定。
 - 每次向用户汇报 PR 状态前必须重新查询 thread，快照会在数分钟内过期（上一次汇报即因此把
   已出现新一轮的 PR 说成零未处理）。
+
+## 23. 机器人 code review 第十一轮一条 thread 处置（2026-09-20）
+
+P1「Recheck control before returning transport failures」——成立，已修（`3e3fa4a`）。
+
+transport 异常路径的返回排在 control 复读之前，飞行中的人工暂停/取消会让结果报
+`TOOL_TIMEOUT`/`SOURCE_UNAVAILABLE`，权威决定完全不出现在 outcome 与审计路径中。修复在该返回
+之前插入一次 control 复读，命中则以权威原因拒绝，接触分类沿用 fetch 的判定（暂停并不告诉我们
+来源是否被读到，仍是 `possible`）。
+
+**刻意的范围限制**：此处只查人工/控制决定，不查 deadline。把 deadline 也放进来会把 transport
+自报的超时改写成网关超时，从而把 `possible` 接触升级为 `confirmed`——正是第 20 节记录的、第八轮
+已拒绝的那条提案所带来的假审计事实。为此把判定拆成 `_control_decision()`（仅决定）与
+`_control_invalid()`（决定 + deadline）。
+
+验证：`make check` → 1355 passed；PG 集成 98 passed；先红后绿（还原实现后暂停用例失败）。
+
+### 轮次统计（截至第十一轮）
+
+| 轮次 | 条数 | 采纳 | 拒绝 | 其中「由上一轮修复引出」 |
+| --- | --- | --- | --- | --- |
+| 7 | 4 | 4 | 0 | 0 |
+| 8 | 8 | 7 | 1 | 0 |
+| 9 | 3 | 3 | 0 | 2 |
+| 10 | 3 | 3 | 0 | 1（本分支回归：`ToolControlDenied` 逃逸） |
+| 11 | 1 | 1 | 0 | 1（第九/十轮 `settlement_denied` 路径的延伸） |
+
+累计 39 条 thread 全部有结论。第 9–11 轮共 7 条中有 4 条源自前一轮修复，单轮条数从 8 → 3 → 1
+递减。是否继续跟进由用户决定。
