@@ -587,9 +587,12 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
-                (lease.run_id,),
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                (lease.run_id, lease.incident_id),
             ).fetchone()
+            # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
+            # 这种 Lease 锁住 A 却改 B 的业务记录，同时绕开上面刚建立的 incident→run
+            # 锁序（bot review 发现）。renew_lease()/lease_current() 本就是这个写法。
             # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")

@@ -6,6 +6,7 @@ in instance memory, so every new attempt of the same Run had the frozen
 20 operations / 240 s again.
 """
 
+import dataclasses
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -233,3 +234,38 @@ def test_charge_tool_is_fenced_by_the_lease_like_every_write_path():
         store.charge_tool(lease, "step-1:1", 1.0, max_operations=MAX_OPERATIONS_PER_RUN)
     row = store.rebuild(incident)["run"]
     assert (row["tool_operations_used"], row["tool_seconds_used"]) == (1, 1.0)
+
+
+def test_charge_tool_refuses_a_lease_whose_incident_and_run_disagree():
+    """Bot review finding: the Run lookup matched on ``r.run_id`` alone.
+
+    ``charge_tool`` locks ``lease.incident_id``'s incident row first (the
+    module-wide incident-before-Run order), but then joined the Run row back
+    to *its own* incident, never checking that it is the same incident. A
+    Lease pairing incident A with a Run of incident B therefore locked A and
+    charged B whenever B's owner/epoch/generation happened to match --
+    mutating the wrong business record and defeating the documented lock
+    order at the same time. ``renew_lease()`` and ``lease_current()`` already
+    bind both identities; this path now does too.
+    """
+    store = DurableStore(DSN)
+    incident_a, run_a = _accept(store, "cross-a")
+    incident_b, run_b = _accept(store, "cross-b")
+    owner = uuid4()
+    lease_a = store.claim(incident_a, run_a, owner, {"state": "v1"})
+    lease_b = store.claim(incident_b, run_b, owner, {"state": "v1"})
+    # The two Runs really are indistinguishable on the fields the fence reads.
+    assert (lease_a.owner, lease_a.epoch, lease_a.control_generation) == (
+        lease_b.owner,
+        lease_b.epoch,
+        lease_b.control_generation,
+    )
+
+    crossed = dataclasses.replace(lease_a, run_id=run_b)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.charge_tool(
+            crossed, "step-1:0", 1.0, max_operations=MAX_OPERATIONS_PER_RUN
+        )
+
+    row = store.rebuild(incident_b)["run"]
+    assert (row["tool_operations_used"], row["tool_seconds_used"]) == (0, 0.0)
