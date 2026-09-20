@@ -241,15 +241,20 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
+            # Human control takes precedence over version incompatibility. A
+            # claim must not rewrite a paused or terminal run as blocked.
+            if row["incident_state"] in {"completed", "cancelled", "paused"}:
+                raise PersistenceError("CONTROL_DENIED")
+            if row["run_state"] not in {"queued", "running", "blocked"}:
+                raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s AND state IN ('queued','running')",
                     (run_id,),
                 )
                 incompatible = True
-            elif row["incident_state"] in {"completed", "cancelled", "paused"}:
-                raise PersistenceError("CONTROL_DENIED")
-            elif row["run_state"] not in ("queued", "running"):
+            elif row["run_state"] == "blocked":
+                # A blocked run is not silently resumed by a matching version.
                 raise PersistenceError("CONTROL_DENIED")
             elif (
                 row["run_state"] == "running"
