@@ -1241,3 +1241,49 @@ def test_a_transport_failure_is_still_reported_when_control_is_current():
     assert (outcome.status, outcome.reason) == ("error", "SOURCE_UNAVAILABLE")
     assert outcome.source_contact == "possible"
     assert sink.records == []
+
+
+def test_a_human_decision_outranks_a_late_response():
+    """Bot review finding: the prior fix applied human-control precedence only
+    to the transport-exception path, so a response that returned *normally*
+    but late still reported ``GATEWAY_TIMEOUT`` and dropped the operator's
+    pause from the outcome and the audit path.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, clock = build(control=control)
+    transport.clock, transport.duration = clock, 15.0
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == []
+
+
+def test_a_human_decision_outranks_a_source_error_response():
+    """Same precedence for every other normally-returned refusal: a source
+    error tag must not hide a newer human decision either.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([]), source_status="503")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == []
+
+
+def test_a_late_response_is_still_a_gateway_timeout_when_control_is_current():
+    """The precedence check must not swallow the response classification when
+    there is no human decision to report.
+    """
+    executor, transport, sink, clock = build()
+    transport.clock, transport.duration = clock, 15.0
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("timeout", "GATEWAY_TIMEOUT")
+    assert outcome.source_contact == "confirmed"
+    assert sink.records == []

@@ -746,45 +746,58 @@ class ReadOnlyToolExecutor:
             charged, settlement_denied = False, True
         if not charged and not settlement_denied:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
-        if failure is not None:
-            # A newer human decision outranks the transport's own failure
-            # classification: reporting only ``SOURCE_UNAVAILABLE`` would drop
-            # the operator's pause out of the outcome and the audit path
-            # entirely (bot review finding). The deadline is deliberately not
-            # consulted here -- a lapsed authorization does not make a
-            # transport error a gateway timeout, and claiming otherwise would
-            # upgrade this call's uncertain contact into a false "confirmed".
+
+        def refuse_after_fetch(status: ToolStatus, reason: str) -> ToolOutcome:
+            """Refuse a dispatched read, human decisions first.
+
+            Every refusal below this point is about a read that already went
+            out, so a pause or cancel taken while it was in flight outranks
+            whatever the response itself turned out to be: classifying it as
+            ``SOURCE_UNAVAILABLE``/``GATEWAY_TIMEOUT``/``MALFORMED_RESULT``
+            would drop the operator's decision out of the outcome and the
+            audit path (bot review finding -- first fixed for the transport
+            exception only, which left every normally returned response on the
+            old path). ``settlement_denied`` likewise applies to all of them.
+
+            The deadline is deliberately not consulted here: a lapsed
+            authorization does not make a transport error a gateway timeout,
+            and claiming otherwise would upgrade an uncertain contact into a
+            false ``confirmed``.
+            """
             decision = self._control_decision()
             if decision:
                 return self._refuse(operation, "denied", decision, contact)
             if settlement_denied:
                 return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
-            return self._refuse(operation, *failure)
+            return self._refuse(operation, status, reason, contact)
+
+        if failure is not None:
+            return refuse_after_fetch(failure[0], failure[1])
         if elapsed > timeout:
             # A result that arrives after its deadline must not update state.
-            return self._refuse(operation, "timeout", "GATEWAY_TIMEOUT", "confirmed")
+            return refuse_after_fetch("timeout", "GATEWAY_TIMEOUT")
         if not isinstance(response, TransportResponse) or not isinstance(
             response.body, bytes
         ):
-            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+            return refuse_after_fetch("error", "MALFORMED_RESULT")
         if len(response.body) > plan.registration.max_result_bytes:
-            return self._refuse(operation, "error", "RESULT_TOO_LARGE", "confirmed")
+            return refuse_after_fetch("error", "RESULT_TOO_LARGE")
         if response.source_status is not None:
             # A source error is not an observation of the target's state, so it
             # is classified onto a fixed reason and the operation record keeps
             # the audit trail; the error body itself is not registered as
             # evidence and its vendor text never reaches model context.
             source_reason = plan.registration.classify(str(response.source_status))
-            return self._refuse(operation, "error", source_reason, "confirmed")
+            return refuse_after_fetch("error", source_reason)
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
-            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+            return refuse_after_fetch("error", "MALFORMED_RESULT")
         if response.data_as_of is not None and (
             not isinstance(response.data_as_of, datetime)
             or response.data_as_of.tzinfo is None
             or response.data_as_of.utcoffset() is None
         ):
-            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+            return refuse_after_fetch("error", "MALFORMED_RESULT")
         source_start_at = response.source_start_at
         source_end_at = response.source_end_at
         if (source_start_at is None) != (source_end_at is None) or (
@@ -799,7 +812,7 @@ class ReadOnlyToolExecutor:
                 or source_start_at > source_end_at
             )
         ):
-            return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+            return refuse_after_fetch("error", "MALFORMED_RESULT")
         if source_start_at is not None:
             # The adapter's own trusted metadata says which interval these
             # rows cover. When it lies outside what this Run was authorized to
@@ -816,12 +829,10 @@ class ReadOnlyToolExecutor:
                 covered_start = source_start_at.astimezone(timezone.utc)
                 covered_end = source_end_at.astimezone(timezone.utc)
             except (ValueError, OverflowError, OSError):
-                return self._refuse(operation, "error", "MALFORMED_RESULT", "confirmed")
+                return refuse_after_fetch("error", "MALFORMED_RESULT")
             scope_window = self._scope.window
             if covered_start < scope_window.start or covered_end > scope_window.end:
-                return self._refuse(
-                    operation, "denied", "WINDOW_OUT_OF_SCOPE", "confirmed"
-                )
+                return refuse_after_fetch("denied", "WINDOW_OUT_OF_SCOPE")
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
