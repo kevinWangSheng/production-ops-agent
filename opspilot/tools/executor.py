@@ -561,6 +561,26 @@ class ReadOnlyToolExecutor:
         )
         return operation, timeout
 
+    def _control_invalid(self, deadline_at: datetime) -> str:
+        """The authoritative reason this operation may not proceed, or "".
+
+        Control is read before the deadline is tested, the priority
+        ``PRODUCT-CONSTRAINTS.md`` requires: a human decision must still be
+        reported as such when the authorization has also lapsed. Shared by
+        both ledger-denial paths and the post-fetch re-check so the three
+        cannot drift apart.
+        """
+        control = self._read_control()
+        if control is None:
+            return "CONTROL_UNAVAILABLE"
+        if control.suspended:
+            return "SUSPENDED"
+        if control.control_generation != self._scope.control_generation:
+            return "CONTROL_GENERATION_CHANGED"
+        if deadline_at >= self._scope.deadline:
+            return "DEADLINE_EXCEEDED"
+        return ""
+
     def _read_control(self) -> ControlSnapshot | None:
         try:
             snapshot = self._control.snapshot(self._scope)
@@ -608,6 +628,19 @@ class ReadOnlyToolExecutor:
             # a transient control failure it might retry (bot review
             # finding).
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
+        except ToolControlDenied:
+            # A control race between ``_reserve()`` and this charge is normal,
+            # not exceptional: the store refused because a human decision or a
+            # newer generation landed in between. ``_charge()`` re-raises this
+            # signal for the settlement path, so it must be caught here too --
+            # otherwise it escapes ``execute()`` and aborts the investigation
+            # loop (bot review finding). Nothing was dispatched yet, so there
+            # is no observation to keep; name the authoritative reason.
+            return self._refuse(
+                operation,
+                "denied",
+                self._control_invalid(self._clock.now()) or "CONTROL_UNAVAILABLE",
+            )
         if not charged:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         self._operations_used += 1
@@ -791,15 +824,9 @@ class ReadOnlyToolExecutor:
         # guarantees is that nothing is adopted whose *read* completed outside
         # the authorization window -- not that adoption finishes inside it.
         assert operation.finished_at is not None
-        control = self._read_control()
-        if control is None:
-            invalid = "CONTROL_UNAVAILABLE"
-        elif control.suspended:
-            invalid = "SUSPENDED"
-        elif control.control_generation != self._scope.control_generation:
-            invalid = "CONTROL_GENERATION_CHANGED"
-        elif operation.finished_at >= self._scope.deadline:
-            invalid = "DEADLINE_EXCEEDED"
+        invalid = self._control_invalid(operation.finished_at)
+        if invalid:
+            pass
         elif settlement_denied:
             # The store denied the settlement on control grounds while this
             # re-read sees nothing wrong (the decision may have been taken and

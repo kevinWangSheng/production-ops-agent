@@ -1165,3 +1165,46 @@ def test_a_control_denied_settlement_is_refused_even_if_control_looks_current():
 
     assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert len(sink.records) == 1 and sink.records[0].adopted is False
+
+
+def test_a_control_denied_pre_dispatch_charge_never_escapes():
+    """Bot review finding, and a regression this branch introduced: making
+    ``_charge()`` re-raise ``ToolControlDenied`` for the settlement path left
+    the *pre-dispatch* call catching only ``ToolBudgetExhausted``, so a normal
+    control race between ``_reserve()`` and that charge threw out of
+    ``execute()`` and would abort the investigation loop.
+    """
+
+    class DeniedAtDispatch(RecordingLedger):
+        def charge(self, operation_id, seconds, *, dispatch_id):
+            super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+            if len(self.charges) == 1:  # the pre-dispatch charge
+                raise ToolControlDenied("CONTROL_DENIED")
+
+    # The pre-dispatch charge runs before this method's own control re-check,
+    # so the re-read triggered by the denial is snapshot 2.
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    executor, transport, sink, _ = build(ledger=DeniedAtDispatch(), control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())  # must not raise
+
+    # The authoritative reason, read back from control -- not a bare failure.
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    # Nothing was dispatched, so there is no observation to keep.
+    assert not transport.called and sink.records == []
+
+
+def test_a_control_denied_pre_dispatch_charge_reports_a_reason_even_if_control_looks_current():
+    class DeniedAtDispatch(RecordingLedger):
+        def charge(self, operation_id, seconds, *, dispatch_id):
+            super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+            if len(self.charges) == 1:
+                raise ToolControlDenied("CONTROL_DENIED")
+
+    executor, transport, sink, _ = build(ledger=DeniedAtDispatch())
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert not transport.called and sink.records == []

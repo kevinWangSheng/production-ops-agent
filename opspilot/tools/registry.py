@@ -133,6 +133,49 @@ _AUTHENTICATION_KEYS = frozenset(
     }
 )
 
+# A flat denylist cannot hold the invariant on its own: `X-Api-Key`,
+# `access_token` and `proxy_authorization` are conventional authentication
+# fields that no normalization of the names above would ever reach (bot
+# review finding). Two rules cover the alias families without swallowing
+# legitimate query parameters:
+#
+# * unambiguous credential words are matched against the name folded to
+#   alphanumerics, so separators and capitalisation cannot hide them;
+# * short words that are also ordinary English fragments are matched only as
+#   whole tokens, split on separators and camelCase. "auth" as a token is an
+#   authentication field; "auth" inside `author_filter` is not, and that
+#   distinction is what a plain substring rule got wrong (caught by
+#   test_ordinary_parameter_names_are_still_accepted).
+#
+# This is a rule about parameter *names*, not about prose: it does not
+# contradict the deliberate decision (see ToolDescription) to keep
+# secret-*value* detection a human-review question. A legitimate read-only
+# query parameter has no business being named after a credential, and the
+# refusal is a fixed-code registration error the operator sees immediately.
+_AUTHENTICATION_SUBSTRINGS = (
+    "apikey",
+    "accesstoken",
+    "authorization",
+    "authorisation",
+    "bearer",
+    "credential",
+    "passwd",
+    "password",
+    "secret",
+    "signature",
+    "token",
+)
+_AUTHENTICATION_TOKENS = frozenset({"auth", "cookie", "session", "sig"})
+_WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
+
+
+def _authentication_name(name: str) -> bool:
+    folded = "".join(char for char in name.lower() if char.isalnum())
+    if any(stem in folded for stem in _AUTHENTICATION_SUBSTRINGS):
+        return True
+    return any(word.lower() in _AUTHENTICATION_TOKENS for word in _WORDS.findall(name))
+
+
 # Outcome reasons a registration may map a source-reported status onto. The
 # vocabulary is fixed so a data source cannot invent its own outcome class.
 SOURCE_ERROR_REASONS = frozenset(
@@ -148,6 +191,18 @@ _VERSION = re.compile(r"[a-z0-9][a-z0-9.+-]{0,31}")
 # through the detection path (bot review finding).
 _ENDPOINT = re.compile(
     r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}", re.IGNORECASE
+)
+
+# The model-visible face is checked with a *generic* scheme detector, not the
+# HTTP(S) endpoint validator above: `postgresql://user:pass@db.internal/x`,
+# `grpc://metrics.internal:4317` and `wss://logs.internal/stream` are concrete
+# endpoints too, and the first carries credentials straight into the text
+# intended for the model (bot review finding). Section 8 forbids 凭据、认证信息
+# or a concrete endpoint / base_url / 凭据句柄 there, whatever the scheme.
+# `_ENDPOINT` keeps its narrower job: what a registered transport endpoint may
+# actually be.
+_MODEL_VISIBLE_URI = re.compile(
+    r"[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}"
 )
 
 # C3 section 8 requires `window_format`/`values_format` to carry a placeholder
@@ -204,7 +259,7 @@ class ParameterSpec:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if not isinstance(self.description, str):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if _ENDPOINT.search(self.description):
+        if _MODEL_VISIBLE_URI.search(self.description):
             # Parameter prose is part of the same section 8 model-visible
             # face as :class:`ToolDescription`, which refuses a concrete
             # ``scheme://`` URL for the same reason; leaving this field
@@ -296,7 +351,7 @@ class ToolDescription:
             "cannot_prove",
         ):
             value = getattr(self, name)
-            if isinstance(value, str) and _ENDPOINT.search(value):
+            if isinstance(value, str) and _MODEL_VISIBLE_URI.search(value):
                 raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
 
@@ -359,7 +414,9 @@ class ToolRegistration:
             for key, spec in self.parameters.items()
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if RESERVED_PARAMETERS & {key.lower() for key in self.parameters}:
+        if RESERVED_PARAMETERS & {key.lower() for key in self.parameters} or any(
+            _authentication_name(key) for key in self.parameters
+        ):
             # Compared case-folded: reviewed configuration writing the
             # conventional ``Authorization``/``Token`` capitalisation used to
             # slip past this exact-case intersection, after which the model
@@ -460,7 +517,10 @@ class RegisteredTarget:
             for key, value in self.selector.items()
         ):
             raise ToolContractError("INVALID_SELECTOR")
-        if any(key.lower() in _AUTHENTICATION_KEYS for key in self.selector):
+        if any(
+            key.lower() in _AUTHENTICATION_KEYS or _authentication_name(key)
+            for key in self.selector
+        ):
             # The selector is targeting metadata that flows verbatim into
             # ``TransportRequest.selector`` ("nothing secret"). Naming an
             # authentication field here would carry credential material past

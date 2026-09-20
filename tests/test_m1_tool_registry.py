@@ -534,3 +534,60 @@ def test_reserved_parameter_names_are_matched_case_insensitively(name):
     """
     with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
         registration(parameters={name: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "rows come from postgresql://reader:inline-material@db.internal/metrics",
+        "the collector at grpc://metrics.internal:4317",
+        "streamed over wss://logs.internal/stream",
+        "see file:///etc/opspilot/targets.yaml",
+    ],
+)
+def test_model_visible_prose_rejects_every_concrete_uri_scheme(text):
+    """Bot review finding: the detector recognised HTTP(S) only, so a
+    `postgresql://user:pass@host/db` in the model-visible face carried
+    credentials straight into the text intended for the model, and
+    `grpc://`/`wss://` endpoints passed untouched. Section 8's prohibition is
+    about concrete endpoints and credential material, not about one scheme.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+def test_model_visible_prose_still_accepts_ordinary_text():
+    """The generic detector must key on a real `scheme://`, not on punctuation:
+    ordinary prose with colons and slashes stays legitimate.
+    """
+    spec = ParameterSpec(
+        kind="string",
+        description="ratio of 5xx:2xx over the window; see runbook section 3/4",
+    )
+    assert spec.description.startswith("ratio")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["X-Api-Key", "access_token", "proxy_authorization", "refreshToken", "Auth"],
+)
+def test_authentication_parameter_aliases_are_refused(name):
+    """Bot review finding: normalising case cannot reject names that are simply
+    absent from `RESERVED_PARAMETERS`. `X-Api-Key`, `access_token` and
+    `proxy_authorization` are conventional authentication fields; declaring one
+    let the model supply the credential-bearing value, which `_run()` then
+    forwarded in `TransportRequest.params`.
+    """
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={name: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize("name", ["expr", "step_seconds", "author_filter", "cluster"])
+def test_ordinary_parameter_names_are_still_accepted(name):
+    """The stem rule must not swallow legitimate query parameters -- including
+    `author_filter`, which contains "auth" only as a substring of a word.
+    """
+    entry = registration(parameters={name: ParameterSpec(kind="string")})
+    assert name in entry.parameters
