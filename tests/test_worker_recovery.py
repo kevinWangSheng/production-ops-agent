@@ -195,11 +195,11 @@ def test_resume_preserves_refresh_error_when_lease_release_also_fails():
 
 
 def test_the_initial_claim_defaults_to_the_same_length_as_renewal():
-    """Renewal only runs after a tool executes (between execute and commit),
-    so the *first* pending tool's own execution is covered only by the
-    initial claim, not by any renewal. A short initial claim (the pre-#35
-    lease_seconds=30) would defeat the renewal wiring for that first tool;
-    the defaults must match so it is covered too.
+    """``execute_pending`` renews before dispatching each tool and
+    ``renew_lease`` never shortens a lease, so it is the renewal -- not this
+    default -- that covers a tool's own execution. Equal defaults still matter
+    for the window from claim to that first renewal, and for a store double
+    with no ``renew_lease`` where the initial claim is the only cover.
     """
     import inspect
 
@@ -239,21 +239,25 @@ def _pending_plan(run_id: UUID, pending: list[dict]):
 class _RecordingStore:
     """Minimal double for the store seam RecoverySession touches.
 
-    ``renew_lease`` is attached only when ``with_renew`` is set, mirroring
-    the minimal store doubles that can be passed to ``RecoverySession``:
-    absent, ``getattr`` in ``RecoverySession._renew`` finds nothing and the
-    call is a no-op.
+    ``rebuild`` serves a durable pending set that ``commit_tool`` consumes,
+    mirroring ``DurableStore``: a committed ordinal stops being listed as
+    pending. ``renew_lease`` is attached only when ``with_renew`` is set,
+    mirroring the minimal store doubles that can be passed to
+    ``RecoverySession``: absent, ``getattr`` in ``RecoverySession._renew``
+    finds nothing and the call is a no-op.
     """
 
     def __init__(
         self,
         *,
         run_id: UUID,
+        pending: list[dict],
         with_renew: bool = False,
         deny_after: int | None = None,
         order: list[str] | None = None,
     ) -> None:
         self._run_id = run_id
+        self._pending = [dict(item) for item in pending]
         self._deny_after = deny_after
         self._order = order if order is not None else []
         self.commit_calls: list[tuple[UUID, int, dict]] = []
@@ -269,7 +273,11 @@ class _RecordingStore:
         return True
 
     def rebuild(self, incident_id: UUID) -> dict:
-        return {"control_generation": 0, "run": {"run_id": self._run_id}}
+        return {
+            "control_generation": 0,
+            "run": {"run_id": self._run_id},
+            "pending_tools": [dict(item) for item in self._pending],
+        }
 
     def commit_tool(
         self, lease: Lease, step_id: UUID, ordinal: int, result: dict
@@ -278,6 +286,11 @@ class _RecordingStore:
         if self.commit_error is not None:
             raise self.commit_error
         self.commit_calls.append((step_id, ordinal, dict(result)))
+        self._pending = [
+            item
+            for item in self._pending
+            if (item["step_id"], int(item["ordinal"])) != (step_id, ordinal)
+        ]
 
     def _renew_lease(self, lease: Lease, extend_seconds: int) -> None:
         self._order.append("renew")
@@ -297,41 +310,68 @@ def test_execute_pending_is_unchanged_when_the_store_has_no_renew_lease():
     """Optional-capability fallback: no ``renew_lease`` on the store, no call."""
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=False)
-    assert not hasattr(store, "renew_lease")
     step_id = uuid4()
-    plan = _pending_plan(run_id, [{"step_id": step_id, "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    pending = [{"step_id": step_id, "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=False)
+    assert not hasattr(store, "renew_lease")
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     assert session.execute_pending(lambda item: {"ok": True}) == 1
     assert store.commit_calls == [(step_id, 0, {"ok": True})]
 
 
-def test_execute_pending_renews_between_execute_and_commit_when_available():
+def test_execute_pending_renews_before_dispatch_and_before_commit():
+    """The lease must cover the in-flight call, not only the commit after it."""
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
     order: list[str] = []
-    store = _RecordingStore(run_id=run_id, with_renew=True, order=order)
-    step_id = uuid4()
-    plan = _pending_plan(run_id, [{"step_id": step_id, "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store, renew_seconds=99)  # type: ignore[arg-type]
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(
+        run_id=run_id, pending=pending, with_renew=True, order=order
+    )
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store, 99)  # type: ignore[arg-type]
 
     def execute(item: dict) -> dict:
         order.append("execute")
         return {"ok": True}
 
     assert session.execute_pending(execute) == 1
-    assert order == ["execute", "renew", "commit"]
-    assert store.renew_calls == [(lease, 99)]
+    assert order == ["renew", "execute", "renew", "commit"]
+    assert store.renew_calls == [(lease, 99), (lease, 99)]
 
 
-def test_renewal_rejection_stops_before_the_tool_result_is_committed():
-    """Same rejection semantics as the rest of the module: PersistenceError."""
+def test_a_denied_renewal_stops_before_the_tool_is_dispatched():
+    """Same rejection semantics as the rest of the module: PersistenceError.
+
+    The pre-dispatch renewal is the first fence a lapsed lease meets, so the
+    external call never runs and no result is committed.
+    """
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=True, deny_after=1)
-    plan = _pending_plan(run_id, [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(
+        run_id=run_id, pending=pending, with_renew=True, deny_after=1
+    )
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+    executed: list[dict] = []
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        session.execute_pending(lambda item: executed.append(item) or {"ok": True})
+
+    assert executed == []
+    assert store.commit_calls == []
+    assert store.abandon_calls == [lease]
+
+
+def test_a_denied_renewal_after_execution_stops_before_the_commit():
+    """A lease revoked while the callback ran must not reach ``commit_tool``."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(
+        run_id=run_id, pending=pending, with_renew=True, deny_after=2
+    )
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         session.execute_pending(lambda item: {"ok": True})
@@ -343,12 +383,12 @@ def test_renewal_rejection_stops_before_the_tool_result_is_committed():
 def test_renew_failure_releases_lease_and_preserves_original_error():
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=True)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
     failure = PersistenceError("TIMEOUT")
     store.renew_error = failure
     store.abandon_error = PersistenceError("LEASE_RELEASE_FAILED")
-    plan = _pending_plan(run_id, [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     with pytest.raises(PersistenceError, match="TIMEOUT") as caught:
         session.execute_pending(lambda _item: {"ok": True})
@@ -361,10 +401,10 @@ def test_renew_failure_releases_lease_and_preserves_original_error():
 def test_executor_failure_releases_lease_and_preserves_original_error():
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=True)
     step_id = uuid4()
-    plan = _pending_plan(run_id, [{"step_id": step_id, "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    pending = [{"step_id": step_id, "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     failure = RuntimeError("tool transport failed")
     with pytest.raises(RuntimeError, match="tool transport failed") as caught:
@@ -372,17 +412,18 @@ def test_executor_failure_releases_lease_and_preserves_original_error():
 
     assert caught.value is failure
     assert store.abandon_calls == [lease]
-    assert store.renew_calls == []
+    # Only the pre-dispatch renewal ran; nothing was committed.
+    assert store.renew_calls == [(lease, 420)]
     assert store.commit_calls == []
 
 
 def test_executor_failure_does_not_mask_a_failed_lease_release():
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=True)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
     store.abandon_error = PersistenceError("STORAGE_UNAVAILABLE")
-    plan = _pending_plan(run_id, [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     with pytest.raises(RuntimeError, match="executor failed"):
         session.execute_pending(
@@ -395,16 +436,102 @@ def test_executor_failure_does_not_mask_a_failed_lease_release():
 def test_commit_failure_releases_lease_and_preserves_storage_error():
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    store = _RecordingStore(run_id=run_id, with_renew=True)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
     failure = PersistenceError("STORAGE_UNAVAILABLE")
     store.commit_error = failure
     store.abandon_error = PersistenceError("LEASE_RELEASE_FAILED")
-    plan = _pending_plan(run_id, [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}])
-    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
     with pytest.raises(PersistenceError, match="STORAGE_UNAVAILABLE") as caught:
         session.execute_pending(lambda _item: {"ok": True})
 
     assert caught.value is failure
     assert store.abandon_calls == [lease]
+    assert store.commit_calls == []
+
+
+def test_a_second_pass_does_not_repeat_an_already_committed_tool():
+    """The plan is a snapshot; the committed rows decide what is still due.
+
+    Re-running a still-valid session must not re-issue the external query
+    that ``commit_tool`` would then discard as a duplicate.
+    """
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    step_id = uuid4()
+    pending = [{"step_id": step_id, "ordinal": 0, "tool_call": {"name": "logs.search"}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+    executed: list[int] = []
+
+    def execute(item: dict) -> dict:
+        executed.append(int(item["ordinal"]))
+        return {"ok": True}
+
+    assert session.execute_pending(execute) == 1
+    assert session.execute_pending(execute) == 0
+    assert executed == [0]
+    assert store.commit_calls == [(step_id, 0, {"ok": True})]
+
+
+def test_only_the_still_outstanding_call_of_a_step_is_dispatched():
+    """Partial progress under this lease leaves the plan ahead of the rows."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    step_id = uuid4()
+    planned = [
+        {"step_id": step_id, "ordinal": 0, "tool_call": {"name": "metrics.range"}},
+        {"step_id": step_id, "ordinal": 1, "tool_call": {"name": "logs.search"}},
+    ]
+    # Ordinal 0 was already committed under this lease after the plan was read.
+    store = _RecordingStore(run_id=run_id, pending=planned[1:], with_renew=True)
+    session = RecoverySession(_pending_plan(run_id, planned), lease, store)  # type: ignore[arg-type]
+    executed: list[int] = []
+
+    def execute(item: dict) -> dict:
+        executed.append(int(item["ordinal"]))
+        return {"ok": True}
+
+    assert session.execute_pending(execute) == 1
+    assert executed == [1]
+    assert store.commit_calls == [(step_id, 1, {"ok": True})]
+
+
+def test_a_transient_rebuild_failure_releases_the_live_lease():
+    """The fence just passed, so a failed read must not strand the lease."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    failure = PersistenceError("STORAGE_UNAVAILABLE")
+
+    def rebuild(_incident_id: UUID) -> dict:
+        raise failure
+
+    store.rebuild = rebuild  # type: ignore[method-assign]
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="STORAGE_UNAVAILABLE") as caught:
+        session.execute_pending(lambda _item: {"ok": True})
+
+    assert caught.value is failure
+    assert store.abandon_calls == [lease]
+    assert store.renew_calls == []
+    assert store.commit_calls == []
+
+
+def test_a_fence_rejection_does_not_release_anything():
+    """``lease_current`` False means the lease is already gone; nothing to free."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    store.lease_current = lambda _lease: False  # type: ignore[method-assign]
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        session.execute_pending(lambda _item: {"ok": True})
+
+    assert store.abandon_calls == []
     assert store.commit_calls == []

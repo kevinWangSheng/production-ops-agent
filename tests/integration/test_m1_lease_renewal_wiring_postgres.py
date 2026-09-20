@@ -135,3 +135,46 @@ def test_human_control_between_execute_and_commit_stops_the_commit():
     # outstanding on the (now cancelled) step.
     step_tools = [s for s in rebuilt["steps"] if s["step_id"] == step][0]
     assert step_tools["tool_results"] == []
+
+
+def test_the_lease_is_renewed_before_each_tool_is_dispatched():
+    """The lease must cover the in-flight call, not only the commit after it.
+
+    With renewal only between ``execute`` and ``commit``, a callback longer
+    than the lease remaining at entry runs unprotected: the lease lapses
+    mid-call, a competing worker can claim the Run and repeat the same
+    operation, and this session then loses its own result to the fence.
+    """
+    store = DurableStore(DSN)
+    store.install()
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-lease-predispatch-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    store.commit_step(dead, "round-1", _loop_step("logs.search"))
+    time.sleep(1.2)
+
+    def execute(item):
+        # Outlives the 2s initial claim below; only a renewal taken *before*
+        # dispatch keeps the Run held for the whole call.
+        time.sleep(2.5)
+        with pytest.raises(PersistenceError, match="LEASE_ACTIVE"):
+            store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=5)
+        return {"ok": True, "evidence_id": "e0"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(
+        incident, lease_seconds=2, renew_seconds=30
+    )
+    assert session.execute_pending(execute) == 1
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    assert rebuilt["steps"][0]["tool_results"] == [
+        {"ordinal": 0, "result": {"ok": True, "evidence_id": "e0"}}
+    ]

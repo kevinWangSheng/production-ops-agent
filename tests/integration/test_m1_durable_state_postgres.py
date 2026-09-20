@@ -1740,3 +1740,91 @@ def test_version_change_cannot_override_a_paused_cancelled_or_completed_run():
     rebuilt = store.rebuild(incident)
     assert rebuilt["conclusion"] == {"result": "supported"}
     assert rebuilt["run"]["state"] == "completed"
+
+
+def test_a_second_execute_pending_pass_does_not_repeat_a_committed_query():
+    """``RecoveryPlan`` is a snapshot; the committed rows decide what is due.
+
+    Re-running a still-valid session must not re-issue the external query for
+    a call that was already committed -- ``commit_tool`` would deduplicate the
+    result, so the repeat would be invisible in the durable state but would
+    still spend real query scope, cost and rate budget against the target.
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-second-pass-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    time.sleep(1.2)
+
+    executed = []
+
+    def execute(item):
+        executed.append((item["step_id"], item["ordinal"]))
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=30)
+    assert session.execute_pending(execute) == 2
+    # The same session is still valid: its lease was never revoked.
+    assert store.lease_current(session.lease)
+    assert session.execute_pending(execute) == 0
+    assert executed == [(step, 0), (step, 1)]
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    results = {
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
+    }
+    assert results == {
+        0: {"ok": True, "evidence_id": "e0"},
+        1: {"ok": True, "evidence_id": "e1"},
+    }
+
+
+def test_resume_skips_a_call_already_committed_under_this_lease():
+    """A commit landing between the plan read and the dispatch is respected."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-handoff-skip-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    time.sleep(1.2)
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=30)
+    assert [item["ordinal"] for item in session.plan.pending_tools] == [0, 1]
+    # Ordinal 0 is committed under this same lease after the plan was built --
+    # the partial-progress shape an earlier pass or a parallel caller leaves.
+    # (Another worker could not do this: commit_tool fences on owner+epoch.)
+    store.commit_tool(session.lease, step, 0, {"ok": True, "evidence_id": "other"})
+
+    executed = []
+
+    def execute(item):
+        executed.append(item["ordinal"])
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    assert session.execute_pending(execute) == 1
+    assert executed == [1]
+    results = {
+        item["ordinal"]: item["result"]
+        for item in store.rebuild(incident)["steps"][0]["tool_results"]
+    }
+    assert results[0] == {"ok": True, "evidence_id": "other"}

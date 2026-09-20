@@ -79,3 +79,44 @@
 - **P2：续租/提交失败后的 lease 清理（`4057494822`）**：采纳并修复。executor 成功但 `_renew()` 或 `commit_tool()` 抛出持久化/控制异常时，`execute_pending()` 对同一 lease best-effort `abandon()`，原始异常原样抛出；新增 renew rejection 与 commit failure 回归断言，释放失败不覆盖原始错误。
 - **P2：持久 `tool_results` fail-closed（`4057494824`）**：采纳并修复。`rebuild()` 对活模型步骤要求 `tool_results` 是列表，每项是带唯一、非负、范围内整数 ordinal 和 mapping result 的记录；malformed 值返回 `INCONSISTENT_STATE`，不把 falsey 值当空列表而重放外部查询。新增 PG 回归覆盖非列表、非法 ordinal、缺失/错误 result。
 - 最新本地验证：worker 定向 `15 passed`；55431 复用的 M1 durable/renewal/wiring `68 passed`；`make check` `1066 passed, 122 skipped, 2 xfailed`；ruff/format/mypy 全绿。无真实模型调用、产品验收或 feature passes 结论。
+
+## 追加（2026-09-20）：PR #30 最新两条 findings——恢复执行的在途租约与待办复核
+
+- 起点：PR #30 在 HEAD `0c0325b` 上 CI 两项均 success、分支与 `main` 同步，`mergeStateStatus=BLOCKED` 的唯一原因是 `main` 分支保护的
+  `required_conversation_resolution`，即下面两条未处理 thread（`required_approving_review_count` 为 0）。
+
+- **P1：每个工具 dispatch 前续租（`4057662960`）**：采纳并修复。原实现只在 `execute()` 之后、`commit_tool()` 之前续租，
+  进入时剩余租约短于 callback 时（如 `resume(lease_seconds=2)` 而工具耗时 2.5s），租约在外部调用在途期间就过期，别的 worker 可以
+  claim 同一个 Run 并重复同一操作。`RecoverySession.execute_pending()` 现在在 dispatch 前也调用 `_renew()`；
+  `renew_lease` 用 `LEAST(GREATEST(lease_until, now+extend), deadline)`（`persistence.py:482`）从不缩短租约，因此工具执行期间
+  实际由 `renew_seconds` 覆盖，且不越过 Run deadline。
+  - 部分拒绝并说明依据：同一条意见还要求「强制工具超时或心跳」。`execute` 是同步不透明 callable，本层无法取消已进入的调用，
+    `join(timeout)` 只会让 session 提前放弃而 callback 仍在后台查询，重复查询风险不降反升。墙钟终止按 C3 §8 属于工具网关
+    （`feature/m1-01-tool-executor` 的 `opspilot/tools/registry.py:63` `MAX_REQUEST_TIMEOUT_SECONDS = 30.0`，远小于 420s）。
+    已知限制照实记录：callback 超过 `renew_seconds` 时不保证外部查询 exactly-once；此时本 session 的结果走 `_late_result`
+    保留为历史行而非静默丢失，且工具为只读、受查询预算约束。
+- **P2：跳过已不在持久待办集合中的工具（`4057662963`）**：采纳并修复。`RecoveryPlan` 是快照，提交后不变；对同一个仍然有效的
+  session 再次调用 `execute_pending()` 会重复外部查询，之后才由 `commit_tool()` 按 ordinal 去重——持久状态正确，但真实花掉了
+  查询范围/成本/速率预算。新增 `_still_pending()`：每个 item 用 `_assert_current()` 取回的当前快照按 `(step_id, ordinal)` 复核，
+  已提交的跳过（`continue`）而不报错，因为人工控制变化已由 `_assert_current()` 抛 `CONTROL_DENIED` 拦截。
+- **独立审查（全新上下文只读子代理，未参与实现）发现并处置**：
+  - F1 文案：原注释/测试名称把跳过场景写成「另一个 worker 在同代际提交」。核对 `_lease_revoked`（`persistence.py:157-163`）后确认
+    不可达——`commit_tool` 以 owner+epoch 设栅栏，别的 worker 换了 epoch 只会写 `_late_result`；本方租约若已失效则 `lease_current`
+    先失败。已改写为「同一租约的先前一轮或并行调用者」，PG 测试同步改名。
+  - F2 代码（本次一并修复）：`_assert_current()` 内 `rebuild()` 抛瞬时 `PersistenceError` 时不释放租约，会把一次短暂读失败变成
+    最长 `renew_seconds` 的恢复停摆，与 `Worker.resume()` claim 后刷新失败的处理不对称。已按同一 best-effort `abandon()` 模式补上，
+    原始读错误原样抛出。栅栏拒绝（`lease_current` 为 False 或代际/run 不匹配）仍不 abandon，并已加注释说明依据：
+    `abandon()` 的 WHERE 要求 owner+epoch+generation 全匹配，这些情形要么不命中，要么只清掉一个 `claim()` 本就视为可领取的过期租约。
+  - F3 文案：`DEFAULT_LEASE_SECONDS` 注释与默认值一致性测试的归因不准——「工具不会在更短租约下执行」现在由 pre-dispatch 续租本身
+    保证，与两个默认值是否相等无关。已改写为：相等的实际意义是覆盖 claim→首次续租之间的窗口，以及无 `renew_lease` 的最小替身。
+- 红绿对照（按约定用 `git diff` 补丁 + `git apply -R`，未使用 checkout/stash）：单独撤销 `opspilot/worker.py` 后
+  6 个单测 + 3 个 PG 测试红；其中 pre-dispatch 续租的 PG 测试红因正是竞争 `claim()` 未抛 `LEASE_ACTIVE`（"DID NOT RAISE"），
+  即改动前另一 worker 确实能在工具在途时夺走 Run。单独移除 F2 的 try/except 后 `test_a_transient_rebuild_failure_releases_the_live_lease` 红。
+- 新增测试：单测 `tests/test_worker_recovery.py` 共 `21 passed`（含 dispatch 前后两次续租顺序、续租在 dispatch 前被拒时工具不执行、
+  第二轮不重复已提交工具、只执行仍未完成的 ordinal、瞬时 rebuild 失败释放租约、栅栏拒绝不释放）；PG 新增 3 条
+  （`test_the_lease_is_renewed_before_each_tool_is_dispatched`、`test_a_second_execute_pending_pass_does_not_repeat_a_committed_query`、
+  `test_resume_skips_a_call_already_committed_under_this_lease`）。
+- 验证：`make check` → `1072 passed, 126 skipped, 2 xfailed`，`ruff check`/`ruff format --check`/`mypy` 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管该进程。
+- 边界：无真实模型调用，无产品验收或 feature passes 结论；本次只改恢复执行的租约时机与待办复核，不触碰冻结上限与验收步骤。
