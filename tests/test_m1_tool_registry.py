@@ -472,3 +472,34 @@ def test_a_parameter_description_may_still_name_a_reserved_word():
         kind="string", description="which endpoint alias to read; not a token"
     )
     assert spec.description.startswith("which endpoint")
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        {"authorization": "Bearer inline-material"},
+        {"token": "inline-material"},
+        {"api_key": "inline-material"},
+        {"password": "inline-material"},
+        {"credential": "inline-material"},
+        {"headers": "authorization: Bearer inline-material"},
+    ],
+)
+def test_target_selectors_may_not_carry_authentication_material(selector):
+    """Bot review finding: `selector` was validated only as a str->str
+    mapping, so reviewed target configuration could put `authorization` or
+    `token` in it. `RegisteredTarget` otherwise enforces that secret material
+    stays behind the opaque `credential_ref` -- it rejects endpoint userinfo,
+    query strings and fragments for exactly this reason -- and the selector
+    flows straight into `TransportRequest.selector`, whose docstring claims
+    it holds "nothing secret". The reserved authentication names are the
+    deterministic part of that rule, the same list the gateway already
+    refuses to let a registration declare as a parameter.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        target(selector=selector)
+
+
+def test_target_selectors_still_accept_plain_targeting_metadata():
+    entry = target(selector={"cluster": "prod-1", "table": "orders"})
+    assert dict(entry.selector) == {"cluster": "prod-1", "table": "orders"}

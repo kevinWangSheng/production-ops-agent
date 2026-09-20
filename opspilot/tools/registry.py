@@ -116,6 +116,23 @@ RESERVED_PARAMETERS = frozenset(
     }
 )
 
+# The authentication-bearing subset of RESERVED_PARAMETERS. These names may
+# not appear as target selector keys either: unlike "target"/"target_id",
+# which are targeting words a selector could plausibly need, every name here
+# denotes credential material, which belongs behind `credential_ref`.
+_AUTHENTICATION_KEYS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "credential",
+        "credential_ref",
+        "headers",
+        "password",
+        "secret",
+        "token",
+    }
+)
+
 # Outcome reasons a registration may map a source-reported status onto. The
 # vocabulary is fixed so a data source cannot invent its own outcome class.
 SOURCE_ERROR_REASONS = frozenset(
@@ -431,6 +448,18 @@ class RegisteredTarget:
             for key, value in self.selector.items()
         ):
             raise ToolContractError("INVALID_SELECTOR")
+        if any(key.lower() in _AUTHENTICATION_KEYS for key in self.selector):
+            # The selector is targeting metadata that flows verbatim into
+            # ``TransportRequest.selector`` ("nothing secret"). Naming an
+            # authentication field here would carry credential material past
+            # the opaque ``credential_ref`` indirection this dataclass
+            # enforces everywhere else -- the same bypass already refused for
+            # endpoint userinfo, query strings and fragments (bot review
+            # finding). Only the reserved authentication *names* are
+            # refused, deterministically; whether an arbitrary value is a
+            # secret is not decidable here, same limit as the description
+            # rule above.
+            raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
         if not isinstance(self.display_name, str):
             raise ToolContractError("INVALID_TARGET_IDENTITY")
         object.__setattr__(self, "selector", MappingProxyType(dict(self.selector)))
