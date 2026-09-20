@@ -51,18 +51,24 @@ class RecoverySession:
     )
 
     def _assert_current(self) -> Mapping[str, Any]:
-        # A fence rejection needs no release: abandon() matches on
-        # owner+epoch+generation, so the row is either already another
-        # worker's or an expired lease that claim() treats as free anyway.
-        if not self.store.lease_current(self.lease):
+        # A read that *fails* and a fence that *rejects* need opposite
+        # handling, so every read here is wrapped and every rejection is not.
+        # A failed read leaves this session possibly still holding a live
+        # lease: unwinding without releasing it blocks every other worker
+        # until the lease expires, turning a brief storage outage into a
+        # renew_seconds-long recovery outage. A rejection needs no release --
+        # abandon() matches on owner+epoch+generation, so the row is either
+        # already another worker's or an expired lease claim() treats as free.
+        try:
+            fenced = self.store.lease_current(self.lease)
+        except PersistenceError:
+            self._abandon_best_effort()
+            raise
+        if not fenced:
             raise PersistenceError("CONTROL_DENIED")
         try:
             current = self.store.rebuild(self.plan.incident_id)
         except PersistenceError:
-            # A transient read failure is different: the fence above just
-            # confirmed this lease is live, so returning without releasing it
-            # would block every other worker until it expires. Mirror
-            # Worker.resume's post-claim refresh and preserve the read error.
             self._abandon_best_effort()
             raise
         if (

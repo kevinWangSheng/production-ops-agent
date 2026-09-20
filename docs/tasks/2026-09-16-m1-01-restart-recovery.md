@@ -183,3 +183,25 @@
   `ruff check`/`ruff format --check`/`mypy` 全绿；`M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；
   worker 定向 `26 passed`。复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
 - 边界不变：无真实模型调用，无产品验收或 feature passes 结论。
+
+## 追加（2026-09-20）：PR #30 第四轮 1 条 P2——栅栏读失败的租约清理，并把该缺陷类结构化
+
+- **P2：`lease_current()` 读失败需释放租约（`4057763665`）**：采纳并修复。`_assert_current()` 原先只把 `rebuild()`
+  包进 best-effort `abandon()`，漏了它上一行的 `lease_current()`。该调用**抛异常**（TIMEOUT/STORAGE_UNAVAILABLE）
+  与**返回 False**语义相反：前者是读失败，本会话可能仍持有活跃租约，直接上抛会让替补 worker 在存储恢复后仍拿到
+  `LEASE_ACTIVE` 直到租约到期；后者是栅栏拒绝，租约本就不在手上，无需释放。现在两次读各自包在 try 内，
+  拒绝路径保持不释放。
+- **止损：把这一缺陷类变成结构断言。** executor 失败、续租/提交失败、`publish()`、`rebuild()`、`lease_current()`
+  是**分四轮**被逐个发现的同一类缺陷（持有租约期间某个 store 调用抛错 → 租约留到期 → 恢复停摆）。继续逐点补只会
+  再来一轮，因此新增 `tests/test_architecture.py::test_recovery_session_releases_its_lease_when_a_store_call_fails`：
+  用 AST 检查 `RecoverySession` 内所有直接的 `self.store.<方法>` 调用是否都位于「except 分支调用
+  `_abandon_best_effort()`」的 try 内，`_abandon_best_effort` 自身除外。撤销本轮修复后该结构测试与行为测试同时红。
+  覆盖边界已写入 docstring：只覆盖直接 store 调用；`_renew()` 经 `getattr` 间接调用 `renew_lease`，由其调用点的 try 覆盖。
+  该测试放在 `tests/test_architecture.py`，符合该文件「每条断言对应一个已经发生过的真实缺陷」的既有定位。
+- 当前审计结论（本轮逐条核对 `worker.py` 全部 store 调用）：`lease_current`、`rebuild`、`commit_tool`、`publish`
+  均在释放路径内；`abandon` 自身是终点；`Worker.claim`/首次 `recover()`/`_gate_versions()` 发生在取得租约之前，
+  无租约可释放；`resume()` claim 后的第二次 `recover()` 已有精确 `abandon()`。持有租约期间的 store 调用已无遗漏。
+- 验证：`make check` → `1079 passed, 126 skipped, 2 xfailed`，`ruff check`/`ruff format --check`/`mypy` 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `27 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
+- 边界不变：无真实模型调用，无产品验收或 feature passes 结论。

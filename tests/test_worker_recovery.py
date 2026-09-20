@@ -675,3 +675,32 @@ def test_a_decode_failure_on_a_compatible_run_surfaces_as_itself():
     with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
         Worker.create(store, {"state": "v1"}).resume(incident_id)
     assert store.claims == []
+
+
+def test_a_failed_fence_read_releases_the_live_lease():
+    """``lease_current`` raising is a failed read, not a fence rejection.
+
+    Sibling of the rebuild case: the session may still hold a live lease, so
+    unwinding without releasing it blocks a replacement worker for the full
+    lease term once storage recovers.
+    """
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    failure = PersistenceError("TIMEOUT")
+
+    def lease_current(_lease: Lease) -> bool:
+        raise failure
+
+    store.lease_current = lease_current  # type: ignore[method-assign]
+    store.abandon_error = PersistenceError("LEASE_RELEASE_FAILED")
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="TIMEOUT") as caught:
+        session.execute_pending(lambda _item: {"ok": True})
+
+    assert caught.value is failure
+    assert store.abandon_calls == [lease]
+    assert store.renew_calls == []
+    assert store.commit_calls == []

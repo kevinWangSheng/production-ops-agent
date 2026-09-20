@@ -18,6 +18,7 @@ from opspilot.domain.control import _ACTIONS, ControlAction
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 PERSISTENCE = REPO_ROOT / "opspilot" / "persistence.py"
+WORKER = REPO_ROOT / "opspilot" / "worker.py"
 
 
 def _imported_modules(path: pathlib.Path) -> set[str]:
@@ -126,4 +127,66 @@ def test_persistence_sql_never_selects_a_qualified_star() -> None:
     assert not offenders, (
         "持久化层的 SQL 使用了带表别名的 `*`，同名列会在结果集里重复并被静默"
         f"取到最后一个；改为显式列名：{offenders}"
+    )
+
+
+def _protected_by_lease_release(node: ast.AST) -> set[ast.AST]:
+    """Calls whose enclosing ``try`` releases the lease on the way out."""
+    protected: set[ast.AST] = set()
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, ast.Try):
+            continue
+        releases = any(
+            isinstance(inner, ast.Attribute) and inner.attr == "_abandon_best_effort"
+            for handler in candidate.handlers
+            for inner in ast.walk(handler)
+        )
+        if not releases:
+            continue
+        for statement in candidate.body:
+            protected.update(ast.walk(statement))
+    return protected
+
+
+def test_recovery_session_releases_its_lease_when_a_store_call_fails() -> None:
+    """持有租约期间的每个 store 调用，失败时都必须释放该租约。
+
+    这条断言对应一次反复发生的真实缺陷：`RecoverySession` 里某个
+    store 调用抛出瞬时存储错误后直接向上抛，租约留到期（最长
+    `renew_seconds` 或 Run deadline），替补 worker 拿到 `LEASE_ACTIVE`，
+    一次短暂的存储故障被放大成一次恢复停摆。executor、续租、提交、
+    `publish()`、`rebuild()` 与 `lease_current()` 是分四轮逐个发现的，
+    因此改为在结构上一次性约束，而不是继续逐个补。
+
+    只覆盖直接的 `self.store.<方法>` 调用；`_renew()` 经 `getattr` 间接
+    调用 `renew_lease`，由其调用点所在的 try 覆盖。
+    """
+    tree = ast.parse(WORKER.read_text())
+    session = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "RecoverySession"
+    )
+    protected = _protected_by_lease_release(session)
+
+    unprotected = []
+    for method in session.body:
+        if not isinstance(method, ast.FunctionDef):
+            continue
+        # The release helper itself is the terminal path; it swallows.
+        if method.name == "_abandon_best_effort":
+            continue
+        for node in ast.walk(method):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "store"
+                and node not in protected
+            ):
+                unprotected.append(f"{method.name}: self.store.{node.func.attr}()")
+
+    assert not unprotected, (
+        "以下 store 调用失败时不会释放本会话的租约："
+        f"{sorted(unprotected)}；请置于调用 _abandon_best_effort() 的 try 内"
     )
