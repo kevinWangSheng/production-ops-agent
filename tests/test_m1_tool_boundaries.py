@@ -1287,3 +1287,38 @@ def test_a_late_response_is_still_a_gateway_timeout_when_control_is_current():
     assert (outcome.status, outcome.reason) == ("timeout", "GATEWAY_TIMEOUT")
     assert outcome.source_contact == "confirmed"
     assert sink.records == []
+
+
+def test_a_human_decision_outranks_a_settlement_storage_failure():
+    """Bot review finding: the generic settlement-failure return was the one
+    post-fetch exit the previous pass did not enumerate, so it still reported
+    ``CONTROL_UNAVAILABLE`` and dropped a pause taken while the read was in
+    flight out of the outcome and the audit path.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(
+        ledger=RecordingLedger(fail_on={2}), control=control
+    )
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == []
+
+
+def test_a_human_decision_outranks_a_settlement_budget_refusal():
+    """Same precedence for the durable cap: a newer human decision is the
+    authoritative fact, and the budget refusal is not lost -- it is simply not
+    what this outcome reports.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(
+        ledger=RecordingLedger(exhausted_on={2}), control=control
+    )
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == []

@@ -731,21 +731,6 @@ class ReadOnlyToolExecutor:
         # manufacture a false audit fact (bot review finding).
         contact: SourceContact = failure[2] if failure is not None else "confirmed"
         settlement_denied = False
-        try:
-            charged = self._charge(operation.operation_id, elapsed, dispatch_id)
-        except ToolBudgetExhausted:
-            return self._refuse(
-                operation, "denied", "OPERATION_BUDGET_EXHAUSTED", contact
-            )
-        except ToolControlDenied:
-            # The store refused on control grounds, which is a human decision,
-            # not a storage outage. Do not return here: fall through to this
-            # method's own control re-read so the outcome carries the
-            # authoritative reason and the observation that really reached the
-            # source is still registered as history (bot review finding).
-            charged, settlement_denied = False, True
-        if not charged and not settlement_denied:
-            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
 
         def refuse_after_fetch(status: ToolStatus, reason: str) -> ToolOutcome:
             """Refuse a dispatched read, human decisions first.
@@ -770,6 +755,25 @@ class ReadOnlyToolExecutor:
             if settlement_denied:
                 return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
             return self._refuse(operation, status, reason, contact)
+
+        try:
+            charged = self._charge(operation.operation_id, elapsed, dispatch_id)
+        except ToolBudgetExhausted:
+            return refuse_after_fetch("denied", "OPERATION_BUDGET_EXHAUSTED")
+        except ToolControlDenied:
+            # The store refused on control grounds, which is a human decision,
+            # not a storage outage. Do not return here: fall through to this
+            # method's own control re-read so the outcome carries the
+            # authoritative reason and the observation that really reached the
+            # source is still registered as history (bot review finding).
+            charged, settlement_denied = False, True
+        if not charged and not settlement_denied:
+            # A generic storage failure at settlement is still a post-fetch
+            # refusal: route it through the same precedence check, or a pause
+            # taken while the read was in flight stays out of the outcome and
+            # the audit path (bot review finding -- this return was the one
+            # post-fetch exit the previous pass did not enumerate).
+            return refuse_after_fetch("denied", "CONTROL_UNAVAILABLE")
 
         if failure is not None:
             return refuse_after_fetch(failure[0], failure[1])
