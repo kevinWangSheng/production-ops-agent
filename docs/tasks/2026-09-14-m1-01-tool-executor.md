@@ -1257,3 +1257,69 @@ PostgreSQL 上覆盖（`control(..., "cancel", ...)` 之后 `charge_tool` 抛 `C
 
 判定：**无确认缺陷，可按现状交付**；唯一必改项是本节上方已修正的措辞（把未核到的时钟差异
 陈述成了已核查的等价）。独立审查不替代覆盖当前 HEAD 的机器人 code review。
+
+## 19. 机器人 code review 第七轮四条 thread 处置（2026-09-20，合并后 HEAD）
+
+机器人先回「usage limits」，随后仍对 `ea2ac8e` 产出 4 条 thread（2×P1、2×P2）。全部**采纳并
+修复**，无拒绝项。
+
+### P1 `opspilot/tools/registry.py:183` — 参数描述可夹带具体 endpoint
+
+成立。`ToolDescription` 五个字段都过 `_ENDPOINT` 检查（`:263-266`），但 `ParameterSpec.description`
+是**同一个** C3 第 8 节模型可见面（其 docstring 原文如此），此前只校验 `isinstance(str)`。修复
+（`04d0e14`）对该字段施加同一条确定性 URL 规则。边界不变、不做关键词扫描，理由沿用
+`ToolDescription` docstring，并新增
+`test_a_parameter_description_may_still_name_a_reserved_word` 钉住「描述里可以出现
+endpoint/token 这类词」。先红后绿：修复前两个 URL 用例 DID NOT RAISE。
+
+### P1 `opspilot/persistence.py:600` — 同一 epoch 内重复 operation_id 只计一次
+
+成立，且已在真实 PostgreSQL 上复现：两次真实读取（5.0s、7.0s）→ `ops=1 secs=7.0`，即两次
+读取都发出、只计 1 次、秒数取 max 而非求和，真实读取可越过 20 次 / 240 秒。
+
+**语义按合同定，未采用机器人提出的「独占预留、拒绝第二次」**：C3 第 13 节 `:457`「重试计入
+次数和费用」，第 4 节 `:258` 明确不承诺外部查询 exactly-once。合同要求的是计费，不是去重或
+拒绝。修复（`b559f60`）把计费行从 `(run, epoch, operation_id)` 改为**每次真实派发一行**，
+主键 `dispatch_id`：
+
+- `charge_tool` 新增必填 `dispatch_id`（与 `max_operations` 同理由：给默认值会悄悄退回旧行为）。
+- 同一 `dispatch_id` 的后续调用仍按 max 抬升秒数，因此
+  `test_charge_tool_counts_once_per_operation_and_settles_seconds_upward` 钉住的「重放结算不
+  改变任何东西、绝不向下计费」原样成立。
+- `ToolUsageLedger.charge` / `DurableToolLedger.charge` 透传；执行器在 `_run()` 为每次读取生成
+  一个 id，派发前计次与取回后结算共用它。
+- `opspilot_tool_charges` 主键改为 `dispatch_id`，`install()` 内含幂等就地迁移（本表由本分支
+  引入，尚未进入任何产品环境）。
+
+修复后同一场景 `ops=2 secs=12.0`。新增两个用例：重复派发都被计费（含重放结算仍幂等）、
+重复派发不能越过上限。既有用例断言一字未改，只按新签名补 `dispatch_id`。
+
+### P2 `opspilot/tools/registry.py:420` — selector 可夹带认证材料
+
+成立。`selector` 此前只校验 str->str，受审目标配置可放 `{"authorization": "Bearer ..."}` 并原样
+流进 `TransportRequest.selector`——而后者 docstring 写的是 "nothing secret"，与该类已拒绝的
+endpoint userinfo / query / fragment 是同一种绕过 `credential_ref` 的路径。修复（`ff40696`）新增
+`_AUTHENTICATION_KEYS`（`RESERVED_PARAMETERS` 中承载凭据的子集，不含 `target`/`target_id` 这类
+定位词），selector 键按小写命中即拒；普通定位元数据不受影响，由
+`test_target_selectors_still_accept_plain_targeting_metadata` 钉住。
+
+### P2 `opspilot/persistence.py:591` — 计费的 Run 未绑定租约事故
+
+成立，且已复现：`charge_tool` 只按 `r.run_id` 查询，一个把事故 A 的 `incident_id` 与事故 B 的
+`run_id` 组合的 Lease，在 B 的 owner/epoch/代际相同时会锁住 A 却改 B 的 Run，同时绕开本文件
+incident→run 的锁序。修复（`176a45b`）同时绑定 `i.incident_id`，与 `renew_lease()`/
+`lease_current()` 一致。先红后绿：修复前 DID NOT RAISE 且 B 被实际计费，修复后 `CONTROL_DENIED`
+且 B 停在 `(0, 0.0)`。
+
+### 验证
+
+```text
+make check → 1323 passed, 136 skipped, 2 xfailed（ruff / ruff format / mypy 全过）
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+```
+
+### 未完成/限制
+
+- 本轮四条均为采纳修复，无拒绝项；GitHub 上逐条回复并 resolve。
+- 修复后 HEAD 再次变化，需要覆盖新 HEAD 的复审；机器人额度状态不稳定，缺口按前节口径如实记录。
+- 第 18 节记录的 `charge_tool` 栅栏回归测试维度缺口不变（仅事故代际维度入仓）。
