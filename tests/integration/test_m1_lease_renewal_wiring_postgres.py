@@ -1,13 +1,11 @@
 """Wiring for the RecoverySession renewal seam (lease-wire.md §7b) against a
 real ``DurableStore``.
 
-``DurableStore.renew_lease`` ships with PR #35 (``fix/lease-renewal``), not
-yet merged into this branch. ``opspilot/worker.py`` reaches it only through
-``getattr(store, "renew_lease", None)`` -- an optional capability -- so
-these tests only exercise anything once that method exists on the object
-under test. Until #35 merges, run this file against a local, unpushed
-merge of this branch with ``origin/fix/lease-renewal`` (see the task
-record); on this branch alone every test here is skipped.
+``DurableStore.renew_lease`` was delivered by PR #35 (``fix/lease-renewal``)
+and is present on the current ``main`` base. ``opspilot/worker.py`` reaches
+it through ``getattr(store, "renew_lease", None)`` for compatibility with
+minimal store doubles, while these tests exercise the real method whenever
+the explicit PostgreSQL opt-in is enabled.
 """
 
 import os
@@ -24,7 +22,7 @@ from scripts.m0.postgres_lab import DSN
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1"
     or not hasattr(DurableStore, "renew_lease"),
-    reason="explicit PG opt-in + DurableStore.renew_lease (#35, not merged here) required",
+    reason="explicit PG opt-in + DurableStore.renew_lease required",
 )
 
 

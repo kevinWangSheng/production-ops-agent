@@ -183,12 +183,12 @@ def test_renewal_is_capped_at_the_run_deadline_and_refused_after_it():
 
 
 def test_deadline_passed_is_refused_even_when_the_lease_itself_is_still_unexpired():
-    """claim() 不把租约封顶到 deadline；过了 deadline 的续期不能靠 LEAST 悄悄「成功」。"""
+    """claim() 把租约封顶到 deadline，过期后直接按 deadline 拒绝。"""
     store = DurableStore(DSN)
     incident, run = _accept(store, deadline_seconds=3)
     lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=600)
     before = _run_row(store, run)
-    assert before["lease_until"] > before["deadline"]
+    assert before["lease_until"] == before["deadline"]
     time.sleep(3.2)
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.renew_lease(lease, 600)
@@ -215,8 +215,8 @@ def test_a_lease_that_reached_the_deadline_is_not_extended_past_it():
     incident, run = _accept(store, deadline_seconds=5)
     lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=600)
     deadline = _run_row(store, run)["deadline"]
-    # claim() 本身不封顶；续期后必须回到 deadline 之内。
-    assert _run_row(store, run)["lease_until"] > deadline
+    # claim() 与续期都在持久化边界封顶到 deadline。
+    assert _run_row(store, run)["lease_until"] == deadline
     assert store.renew_lease(lease, 600) == deadline
     assert store.renew_lease(lease, 1) == deadline
 

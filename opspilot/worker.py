@@ -55,7 +55,20 @@ class RecoverySession:
         count = 0
         for item in self.plan.pending_tools:
             self._assert_current()
-            result = execute(item)
+            try:
+                result = execute(item)
+            except BaseException:
+                # A callback may have performed an external query before it
+                # failed.  Keep the original failure visible to the caller,
+                # but relinquish this exact lease so a retry can take over
+                # immediately instead of waiting for its full expiry.  The
+                # cleanup is deliberately best-effort: a storage failure
+                # must never replace the executor's exception.
+                try:
+                    self.store.abandon(self.lease)
+                except Exception:
+                    pass
+                raise
             self._renew()
             self.store.commit_tool(
                 self.lease, item["step_id"], int(item["ordinal"]), dict(result)

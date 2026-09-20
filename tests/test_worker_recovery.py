@@ -258,6 +258,8 @@ class _RecordingStore:
         self._order = order if order is not None else []
         self.commit_calls: list[tuple[UUID, int, dict]] = []
         self.renew_calls: list[tuple[Lease, int]] = []
+        self.abandon_calls: list[Lease] = []
+        self.abandon_error: Exception | None = None
         if with_renew:
             self.renew_lease = self._renew_lease  # type: ignore[method-assign]
 
@@ -278,6 +280,11 @@ class _RecordingStore:
         self.renew_calls.append((lease, extend_seconds))
         if self._deny_after is not None and len(self.renew_calls) >= self._deny_after:
             raise PersistenceError("CONTROL_DENIED")
+
+    def abandon(self, lease: Lease) -> None:
+        self.abandon_calls.append(lease)
+        if self.abandon_error is not None:
+            raise self.abandon_error
 
 
 def test_execute_pending_is_unchanged_when_the_store_has_no_renew_lease():
@@ -324,3 +331,37 @@ def test_renewal_rejection_stops_before_the_tool_result_is_committed():
         session.execute_pending(lambda item: {"ok": True})
 
     assert store.commit_calls == []
+
+
+def test_executor_failure_releases_lease_and_preserves_original_error():
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    store = _RecordingStore(run_id=run_id, with_renew=True)
+    step_id = uuid4()
+    plan = _pending_plan(run_id, [{"step_id": step_id, "ordinal": 0, "tool_call": {}}])
+    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+
+    failure = RuntimeError("tool transport failed")
+    with pytest.raises(RuntimeError, match="tool transport failed") as caught:
+        session.execute_pending(lambda _item: (_ for _ in ()).throw(failure))
+
+    assert caught.value is failure
+    assert store.abandon_calls == [lease]
+    assert store.renew_calls == []
+    assert store.commit_calls == []
+
+
+def test_executor_failure_does_not_mask_a_failed_lease_release():
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    store = _RecordingStore(run_id=run_id, with_renew=True)
+    store.abandon_error = PersistenceError("STORAGE_UNAVAILABLE")
+    plan = _pending_plan(run_id, [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}])
+    session = RecoverySession(plan, lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="executor failed"):
+        session.execute_pending(
+            lambda _item: (_ for _ in ()).throw(RuntimeError("executor failed"))
+        )
+
+    assert store.abandon_calls == [lease]

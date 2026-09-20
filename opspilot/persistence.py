@@ -396,7 +396,7 @@ class DurableStore:
             else:
                 epoch = int(row["epoch"]) + 1
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=LEAST(clock_timestamp()+make_interval(secs=>%s),deadline) WHERE run_id=%s",
                     (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
