@@ -1514,9 +1514,10 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 11 | 1 | 1 | 0 | 1（第九/十轮 `settlement_denied` 路径的延伸） |
 | 12 | 1 | 1 | 0 | 1（第十一轮的修复只打在一条分支上） |
 | 13 | 2 | 2 | 0 | 1（第十二轮仍漏掉两个结算出口） |
+| 14 | 1 | 1 | 0 | 0（旧的行级非有限数检查覆盖不足） |
 
-累计 42 条 thread 全部有结论。第 9–13 轮共 10 条中有 6 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
+累计 43 条 thread 全部有结论。第 9–14 轮共 11 条中有 6 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
 
 ## 24. 机器人 code review 第十二轮一条 thread 处置（2026-09-20）
 
@@ -1573,3 +1574,22 @@ make check → 1363 passed, 136 skipped, 2 xfailed
 M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
 两条均先红后绿
 ```
+
+
+## 26. 机器人 code review 第十四轮一条 thread 处置（2026-09-20）
+
+P2「Reject non-finite values throughout source payloads」——成立，已修（`1c31f72`）。
+
+此前的非有限数校验只作用于 `result_path` 下的行，而 `json.loads` 默认接受
+`NaN`/`Infinity`/`-Infinity`。复现：`{"meta": NaN, "data": {"result": [{"value": 1}]}}` →
+`status=ok`、`adopted=True`、证据已登记，而**留存为证据的原始字节不是合法严格 JSON**，用拒绝
+非标准常量的解码器读取直接失败。
+
+改为在解码整个 body 时用 `parse_constant` 拒绝这三个常量；行级 `math.isfinite` 保留作纵深防御。
+
+**红绿对照印证了覆盖缺口**：4 个参数化用例中 3 个在修复前通过（漏网），唯一被旧检查拦住的正是
+行内 `{"value": NaN}`。另新增性质用例
+`test_committed_evidence_bytes_always_parse_under_a_strict_reader`，把「留存证据可被严格解码器
+重新解析」这条规则存在的理由本身钉住。
+
+验证：`make check` → 1368 passed；PG 集成 98 passed。
