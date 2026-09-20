@@ -218,7 +218,8 @@ def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
         store.control(incident, 2, "resume", "operator")
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "late"}, step_id=uuid4())
 
 
 def test_expired_lease_cannot_publish_or_reserve():
@@ -240,7 +241,8 @@ def test_expired_lease_cannot_publish_or_reserve():
         )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.reserve_budget(lease, uuid4(), 1)
-    assert store.publish(lease, {"result": "expired"}, step_id=uuid4()) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "expired"}, step_id=uuid4())
 
 
 def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
@@ -422,7 +424,7 @@ def test_old_generation_step_and_tool_writes_are_fenced():
     step = store.commit_step(lease, "final", {"result": "old"})
     assert store.control(incident, 0, "follow_up", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         store.commit_tool(lease, step, 0, {"ok": True})
     with pytest.raises(PersistenceError, match="FINAL_STEP_REQUIRED"):
         store.publish(fresh, {"result": "old"}, step_id=step)
@@ -1268,3 +1270,66 @@ def test_rebuild_rejects_a_malformed_loop_shaped_step():
         store.commit_step(lease, "round-1", broken)
         with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
             store.rebuild(incident)
+
+
+def test_version_change_cannot_override_a_paused_cancelled_or_completed_run():
+    """版本不符只能把可领取的 Run 记成 ``blocked``；人工决定先于版本判定。
+
+    C3 第 5 节：``INCOMPATIBLE_STATE`` 与人工控制是两套语义，不得互相顶替。
+    部署换版本后任何一次 claim 都不得把 ``paused``/``cancelled``/``completed`` 的
+    Run 行改成 ``blocked``——否则人工 ``resume`` 会得到 ``ILLEGAL_TRANSITION``，
+    人工取消会被投影成版本事故（ADR-0003：业务记录里的人工决定是权威）。
+    """
+    store = DurableStore(DSN)
+
+    def accepted(tag):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-version-vs-control-{tag}-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        return incident, run
+
+    # paused：版本变了也不得改写 run 行；人工 resume 仍然合法。
+    incident, run = accepted("paused")
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["run"]["state"] == "paused"
+    assert store.control(incident, 1, "resume", "operator") == 2
+    # 解除暂停后再被新版本领取，才是版本事故：这时才允许 blocked。
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+    # 已 blocked 的 Run 即使版本对回来也不静默恢复：显式迁移或新 Run。
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+    # cancelled：人工取消的终态不得被投影成 blocked/INCOMPATIBLE_STATE。
+    incident, run = accepted("cancelled")
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "cancelled"
+    assert rebuilt["run"]["state"] == "cancelled"
+
+    # completed：已发布结论的 Run 同样保持终态。
+    incident, run = accepted("completed")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "final", {"result": "supported"})
+    assert store.publish(lease, {"result": "supported"}, step_id=step) is True
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["conclusion"] == {"result": "supported"}
+    assert rebuilt["run"]["state"] == "completed"
