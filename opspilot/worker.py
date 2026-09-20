@@ -122,6 +122,18 @@ class Worker:
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
         renew_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> RecoverySession:
+        metadata_reader = getattr(self.store, "recovery_metadata", None)
+        if metadata_reader is not None:
+            metadata = metadata_reader(incident_id)
+            if metadata["versions"] != self.versions:
+                # Let the durable claim path persist the incompatible handoff
+                # before any version-specific step payload is decoded.
+                self.claim(
+                    incident_id,
+                    metadata["run_id"],
+                    lease_seconds=lease_seconds,
+                )
+                raise PersistenceError("INCOMPATIBLE_STATE")
         plan = self.recover(incident_id)
         if not plan.candidate:
             raise PersistenceError("CONTROL_DENIED")

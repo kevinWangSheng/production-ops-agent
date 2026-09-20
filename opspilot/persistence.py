@@ -865,3 +865,14 @@ class DurableStore:
                 "pending_tools": pending_tools,
                 "conclusion": row["conclusion"],
             }
+
+    def recovery_metadata(self, incident_id: UUID) -> dict[str, Any]:
+        """Read identity/version fields without decoding versioned step payloads."""
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT i.state AS incident_state,i.control_generation,r.run_id,r.state AS run_state,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            return row

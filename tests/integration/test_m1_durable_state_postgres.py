@@ -193,6 +193,38 @@ def test_rebuild_rejects_malformed_persisted_tool_results():
             store.rebuild(incident)
 
 
+def test_resume_blocks_incompatible_payload_before_decoding_it():
+    """Version fencing must run before recovery decodes a newer step shape."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-incompatible-recovery-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v2"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v2"})
+    step = store.commit_step(lease, "new-shape", {"tool_calls": []})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+            (Jsonb({"tool_calls": "new-v2-shape"}), step),
+        )
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident)
+    with store.transaction(snapshot=True) as conn:
+        state = conn.execute(
+            "SELECT state FROM opspilot_runs WHERE run_id=%s", (run,)
+        ).fetchone()["state"]
+    assert state == "blocked"
+
+
 def test_recovered_session_checks_epoch_before_dispatch():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -440,6 +472,16 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         versions={"state": "v1"},
     )
     assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
     generation = store.new_run(
         incident,
         next_run,
@@ -454,6 +496,44 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.claim(incident, next_run, uuid4(), {"state": "v1"}).control_generation
         == 2
     )
+    assert (
+        store.new_run(
+            incident,
+            next_run,
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+        == 2
+    )
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.new_run(
+            incident,
+            uuid4(),
+            expected_generation=2,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.new_run(
+            incident,
+            run,
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+    with store.transaction(snapshot=True) as conn:
+        audits = conn.execute(
+            "SELECT action FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation, created_at",
+            (incident,),
+        ).fetchall()
+    assert [item["action"] for item in audits] == ["cancel", "new_run"]
 
 
 def test_new_run_rejects_a_stale_observed_generation_after_a_later_cancel():

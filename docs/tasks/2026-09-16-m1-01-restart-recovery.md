@@ -68,6 +68,12 @@
 - 本轮没有真实模型调用、产品验收或 feature passes 结论；55431 若由其他 worktree 占用，不停止或接管其 PostgreSQL 进程。
 - 最终本地验证（当前工作树，2026-09-20）：`PYTHONPATH=. .venv/bin/pytest -q tests/test_worker_recovery.py` 为 `14 passed`；显式复用已由其他 worktree 持有的 55431 PostgreSQL（未停止/接管），`M1_DURABLE_POSTGRES=1 PYTHONPATH=. .venv/bin/pytest -q tests/integration/test_m1_durable_state_postgres.py tests/integration/test_m1_lease_renewal_postgres.py tests/integration/test_m1_lease_renewal_wiring_postgres.py` 为 `67 passed`，wiring 未跳过；`make check` 为 `1065 passed, 121 skipped, 2 xfailed`，其中默认未设置 PG opt-in，wiring 的 2 项按显式 PG 条件跳过。`ruff check`、`ruff format --check`、`mypy` 均由 `make check` 覆盖并通过。
 
+## 追加（2026-09-20）：PR #30 最新 P2 持久化失败与工具结果校验
+
+- **P2：executor 后续持久化失败释放租约（`4057494822`）**：采纳并修复。`RecoverySession.execute_pending()` 将续租和 `commit_tool()` 纳入同一 best-effort `abandon()` 清理路径；释放失败不会遮蔽原始 `TIMEOUT`/`RETRY`/`STORAGE_UNAVAILABLE` 等持久化错误。新增确定性 worker 回归，分别覆盖续租失败、提交失败及释放失败仍保留原异常。
+- **P2：live step 的畸形 `tool_results` fail closed（`4057494824`）**：采纳并修复。`DurableStore.rebuild()` 在构造 `pending_tools` 前验证结果为 list、每项为 mapping、ordinal 为非 bool 的合法 int（范围内且无重复），并拒绝缺失/非 mapping result；`{}`、scalar、非 mapping 项统一抛出 `PersistenceError("INCONSISTENT_STATE")`。新增 PG 回归覆盖这些损坏形状，并保留现有工具计划/代际过滤语义。
+- 当前验证：worker 定向 `16 passed`；复用其他 worktree 持有的 55431 PostgreSQL（未停止/接管），M1 durable + lease renewal + wiring 定向 `68 passed`；`make check` 为 `1067 passed, 122 skipped, 2 xfailed`，`ruff`、格式、`mypy` 均通过。无真实模型调用、产品验收或 feature passes 结论。
+
 ## 追加（2026-09-20）：当前 HEAD 新增 P2 findings
 
 - **P2：续租/提交失败后的 lease 清理（`4057494822`）**：采纳并修复。executor 成功但 `_renew()` 或 `commit_tool()` 抛出持久化/控制异常时，`execute_pending()` 对同一 lease best-effort `abandon()`，原始异常原样抛出；新增 renew rejection 与 commit failure 回归断言，释放失败不覆盖原始错误。
