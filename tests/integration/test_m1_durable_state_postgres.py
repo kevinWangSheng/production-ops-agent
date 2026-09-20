@@ -1663,6 +1663,12 @@ def test_rebuild_rejects_a_malformed_loop_shaped_step():
         {"assistant": {"tool_calls": {}}},
         {"assistant": {"tool_calls": ""}},
         {"assistant": {"tool_calls": 0}},
+        # A committed model response is always an object; a scalar, list or
+        # null one is corrupted data, not a step that happened to plan no
+        # tools, so it must not read back as a resumable empty plan.
+        "oops",
+        [{"tool_calls": []}],
+        7,
     ):
         incident, run = uuid4(), uuid4()
         store.accept(

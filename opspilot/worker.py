@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -39,6 +40,15 @@ class RecoverySession:
     lease: Lease
     store: DurableStore
     renew_seconds: int = DEFAULT_LEASE_SECONDS
+    # One lease is one execution attempt (C3 §6), so dispatch is serialized
+    # within the session: the pending check and the callback are several
+    # non-atomic steps apart, and two in-process callers could otherwise both
+    # see an ordinal as pending and issue the same external query. Duplication
+    # by a *different* worker is already prevented by commit_tool's
+    # owner/epoch fence; this closes the one gap that fence cannot see.
+    _dispatch_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     def _assert_current(self) -> Mapping[str, Any]:
         # A fence rejection needs no release: abandon() matches on
@@ -82,16 +92,23 @@ class RecoverySession:
     def execute_pending(
         self, execute: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     ) -> int:
+        with self._dispatch_lock:
+            return self._execute_pending_locked(execute)
+
+    def _execute_pending_locked(
+        self, execute: Callable[[Mapping[str, Any]], Mapping[str, Any]]
+    ) -> int:
         count = 0
         for item in self.plan.pending_tools:
             current = self._assert_current()
             if not _still_pending(current, item):
                 # The plan is a snapshot; the committed rows are the
                 # authority.  This call has since been committed under this
-                # same lease -- an earlier pass over this session, or a
-                # parallel caller holding it -- so dispatching it again would
-                # repeat an external query only for ``commit_tool`` to drop
-                # the result as a duplicate.  (A *different* worker cannot
+                # same lease -- by an earlier pass over this session, or by a
+                # concurrent caller that held the dispatch lock first -- so
+                # dispatching it again would repeat an external query only for
+                # ``commit_tool`` to drop the result as a duplicate.  (A
+                # *different* worker cannot
                 # retire it while this lease is live: commit_tool fences on
                 # owner and epoch, and if this lease were gone the
                 # lease_current check above would have failed first.)
@@ -129,7 +146,18 @@ class RecoverySession:
         return count
 
     def publish(self, conclusion: dict[str, Any], *, step_id: UUID) -> bool:
-        return self.store.publish(self.lease, conclusion, step_id=step_id)
+        try:
+            return self.store.publish(self.lease, conclusion, step_id=step_id)
+        except PersistenceError:
+            # Same rule as the tool-commit path: a write that neither
+            # succeeded nor observably failed must not keep this lease alive
+            # for its full term, or a replacement worker meets LEASE_ACTIVE
+            # for up to renew_seconds. A revoked lease is not an exception
+            # here -- store.publish returns False for that -- so this only
+            # covers real publication failures. Best-effort: releasing must
+            # never replace the original error.
+            self._abandon_best_effort()
+            raise
 
 
 @dataclass

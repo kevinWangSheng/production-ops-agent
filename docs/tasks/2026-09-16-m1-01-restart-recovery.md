@@ -120,3 +120,34 @@
   `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`。
   复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管该进程。
 - 边界：无真实模型调用，无产品验收或 feature passes 结论；本次只改恢复执行的租约时机与待办复核，不触碰冻结上限与验收步骤。
+
+## 追加（2026-09-20）：PR #30 第二轮 3 条 P2（HEAD `9cfed14` 上的新 review）
+
+`9cfed14` 的 CI 两项均 success，但机器人在该 HEAD 上开出 3 条新 P2，`mergeStateStatus` 仍因
+`required_conversation_resolution` 为 BLOCKED。三条均采纳并修复：
+
+- **P2：同一 session 的并发 dispatch 需串行化（`4057730348`）**：采纳并修复。上一轮的待办复核在「复核 → 续租 → 回调」之间是多步非原子操作，
+  两个线程共用同一个 `RecoverySession` 时可能都判定同一 ordinal 仍 pending 并各发一次外部查询；`commit_tool` 事后去重救不回已花掉的查询成本与速率。
+  `RecoverySession` 新增 `_dispatch_lock`（`field(default_factory=threading.Lock, repr=False, compare=False)`），`execute_pending()` 整轮持锁，
+  实际执行移入 `_execute_pending_locked()`。语义依据 C3 §6「一个租约就是一次执行尝试」。
+  说明边界：锁只覆盖**进程内**并发；跨 worker 的重复本来就由 `commit_tool` 的 owner+epoch 栅栏挡住，锁补的正是该栅栏看不见的那一段。
+  机器人建议的另一方案「durably claim each ordinal」需要新增每 ordinal 的持久认领行，属 schema 变更，超出本 PR 范围，未采用。
+- **P2：`publish()` 失败需释放租约（`4057730354`）**：采纳并修复。`RecoverySession.publish()` 原先直接透传，`store.publish()` 抛
+  `TIMEOUT`/`RETRY`/`STORAGE_UNAVAILABLE` 时租约会留到期（最长 `renew_seconds` 或 Run deadline），替补 worker 拿到 `LEASE_ACTIVE`。
+  现按本模块既有模式 best-effort `abandon()` 后原样抛出原异常。注意租约被撤销时 `store.publish()` 是**返回 False 而不是抛异常**，
+  因此该路径不会误释放；已加回归测试固定这一点。全仓没有任何调用方按 `PersistenceError` 的错误码分支，故与 `execute_pending` 一致地对所有
+  `PersistenceError` 释放，不引入新的错误码判别。
+- **P2：非 mapping 的持久模型响应需 fail closed（`4057730358`）**：采纳并修复。`_tool_plan()` 对非 dict 的 `response` 原先返回 `[]`，
+  于是 JSON scalar/list/null 会被读成「该步骤没有工具」的合法空计划，绕过 `rebuild()` 的既有 fail-closed 校验。改为返回 `None`
+  这个既有的非 list 哨兵（与 `assistant` 损坏时同一处置），由 `rebuild()` 拒为 `INCONSISTENT_STATE`。
+  `commit_tool()` 也调用 `_tool_plan()`，改动后该路径仍是 `UNKNOWN_IDENTITY`，结果不变。
+
+- 红绿对照（补丁 + `git apply -R`/定点移除，未用 checkout/stash）：移除串行化与 publish 清理后
+  `test_concurrent_passes_do_not_dispatch_the_same_call_twice`、`test_publish_failure_releases_the_lease_and_preserves_the_error` 红；
+  还原 `_tool_plan` 后 `test_rebuild_rejects_a_malformed_loop_shaped_step` 红因 `DID NOT RAISE PersistenceError`。
+- 新增测试：并发双线程 dispatch（用 `Event` 让第二个调用者确实在第一个回调在途时进入）、publish 失败释放且不遮蔽原异常、
+  publish 被拒（返回 False）不释放；PG `test_rebuild_rejects_a_malformed_loop_shaped_step` 扩展 `"oops"`、`[{...}]`、`7` 三种形状。
+- 验证：`make check` → `1075 passed, 126 skipped, 2 xfailed`，`ruff check`/`ruff format --check`/`mypy` 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `24 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
+- 边界不变：无真实模型调用，无产品验收或 feature passes 结论。

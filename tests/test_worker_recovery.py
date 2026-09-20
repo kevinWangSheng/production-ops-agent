@@ -1,3 +1,5 @@
+import threading
+import time
 from uuid import UUID, uuid4
 
 import pytest
@@ -535,3 +537,77 @@ def test_a_fence_rejection_does_not_release_anything():
 
     assert store.abandon_calls == []
     assert store.commit_calls == []
+
+
+def test_concurrent_passes_do_not_dispatch_the_same_call_twice():
+    """One lease is one execution attempt: dispatch is serialized per session.
+
+    Without it, a second caller rebuilds while the first is still inside its
+    callback, sees the same ordinal pending, and repeats the external query --
+    a duplicate ``commit_tool`` deduplicates but cannot refund.
+    """
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    step_id = uuid4()
+    pending = [{"step_id": step_id, "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+    dispatched: list[int] = []
+    dispatching = threading.Event()
+
+    def execute(item: dict) -> dict:
+        dispatched.append(int(item["ordinal"]))
+        dispatching.set()
+        # Still in flight while the second caller tries to start.
+        time.sleep(0.2)
+        return {"ok": True}
+
+    counts: list[int] = []
+    first = threading.Thread(
+        target=lambda: counts.append(session.execute_pending(execute))
+    )
+    first.start()
+    assert dispatching.wait(5)
+    second = threading.Thread(
+        target=lambda: counts.append(session.execute_pending(execute))
+    )
+    second.start()
+    first.join(10)
+    second.join(10)
+
+    assert dispatched == [0]
+    assert sorted(counts) == [0, 1]
+    assert store.commit_calls == [(step_id, 0, {"ok": True})]
+
+
+def test_publish_failure_releases_the_lease_and_preserves_the_error():
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    store = _RecordingStore(run_id=run_id, pending=[], with_renew=True)
+    failure = PersistenceError("STORAGE_UNAVAILABLE")
+
+    def publish(_lease: Lease, _conclusion: dict, *, step_id: UUID) -> bool:
+        raise failure
+
+    store.publish = publish  # type: ignore[attr-defined]
+    store.abandon_error = PersistenceError("LEASE_RELEASE_FAILED")
+    session = RecoverySession(_pending_plan(run_id, []), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="STORAGE_UNAVAILABLE") as caught:
+        session.publish({"summary": "done"}, step_id=uuid4())
+
+    assert caught.value is failure
+    assert store.abandon_calls == [lease]
+
+
+def test_a_rejected_publish_keeps_the_lease():
+    """``store.publish`` returns False for a revoked lease; that is not a
+    failed write, so there is nothing to release."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    store = _RecordingStore(run_id=run_id, pending=[], with_renew=True)
+    store.publish = lambda _lease, _conclusion, *, step_id: False  # type: ignore[attr-defined]
+    session = RecoverySession(_pending_plan(run_id, []), lease, store)  # type: ignore[arg-type]
+
+    assert session.publish({"summary": "done"}, step_id=uuid4()) is False
+    assert store.abandon_calls == []

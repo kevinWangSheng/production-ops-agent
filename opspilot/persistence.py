@@ -63,7 +63,11 @@ def _tool_plan(response: Any) -> Any:
     the round instead of finishing the committed tools.
     """
     if not isinstance(response, dict):
-        return []
+        # A committed model response is always an object. A scalar, list or
+        # null here is corrupted/legacy business data, so hand back the same
+        # non-list sentinel used for a corrupt ``assistant`` rather than an
+        # empty plan the caller would accept as "this step had no tools".
+        return None
     if "assistant" in response:
         assistant = response["assistant"]
         if not isinstance(assistant, dict):
