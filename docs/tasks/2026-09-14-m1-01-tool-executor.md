@@ -1171,11 +1171,22 @@ PR #30（`8e67237`）又在同一文件加入 `lease_current()`/`abandon()`。
 并给 SELECT 的 `i.control_generation` 加上 `AS incident_generation` 别名以匹配该实现的
 取值口径。
 
-**这是等价替换，不是行为变更**：两侧逐条相同——`owner`、`epoch`、事故代际
-（两边读的都是 `i.control_generation`，只是别名不同）、`lease_until IS NULL`、
-`lease_until <= now`、`deadline <= now`，缺一不多一。合并后 `charge_tool` 成为第五条
-共用同一栅栏实现的写路径，docstring 里「Fenced by the lease like every other write path」
-由此成为字面属实的陈述。
+**六条判定条件相同**：`owner`、`epoch`、事故代际（两边读的都是 `i.control_generation`，
+只是别名不同）、`lease_until IS NULL`、`lease_until <= now`、`deadline <= now`，缺一不多一。
+合并后 `charge_tool` 成为第五条共用同一栅栏实现的写路径，docstring 里「Fenced by the lease
+like every other write path」由此成为字面属实的陈述。
+
+**但这不是逐字节等价，有一处真实差异**（独立审查指出，本次已复核修正措辞）：原内联判定对
+`lease_until` 和 `deadline` 各调用一次 `self._db_now(conn)`，共读两次库时钟；`_lease_revoked`
+只取一个 `now` 传入，读一次。`clock_timestamp()` 在事务内会前进（实测两次调用间隔
+55µs–4.2ms），因此 `deadline` 恰好落在该亚毫秒窗口内时，旧写法拒绝、新写法放行——方向是
+**更宽松**。评估为无害且更一致：`deadline` 是 Run 级墙钟上限、不是人工决定，不触碰
+PRODUCT-CONSTRAINTS 的人工控制优先级；且单一 `now` 正是 `_lease_revoked` 其余全部调用点
+（`:517`/`:636`/`:663`/`:728`/`:864`）与 `claim()`/`renew_lease()` 的既有口径，原先两次读取
+才是本文件里的异类。故不改代码，只把「无行为变化」的说法修正为本段。
+
+提交 `66f5957` 的提交信息里写的是「逐条相同，无行为变化」，该措辞同样越过了证据；提交信息
+不改写历史，以本节为准。
 
 ### 对既有 code review 处置的影响：无
 
@@ -1204,6 +1215,45 @@ PostgreSQL 上覆盖（`control(..., "cancel", ...)` 之后 `charge_tool` 抛 `C
 
 ### 未完成/限制
 
-- 合并后 HEAD 变化，机器人上一轮 review 覆盖的是 `8cf6d73`，不覆盖当前 HEAD；按项目
-  规则需要一轮覆盖当前 HEAD 的 code review，其结果另行逐条处置。
+- 合并后 HEAD 变为 `ea2ac8e`，已在该 HEAD 上触发 `@codex review`，机器人返回
+  「You have reached your Codex usage limits for code reviews」，**本轮未产出任何 review 或
+  thread**，当前 HEAD 因此没有机器人复审覆盖（上一轮覆盖的是 `8cf6d73`）。按 AGENTS.md
+  机器人额度不足不计为交付阻塞，此处如实记录该缺口。
+- 仓库内针对 `charge_tool` 栅栏的回归测试只有
+  `test_charge_tool_is_fenced_by_the_lease_like_every_write_path` 一条，走的是
+  `control(..., "cancel", ...)` 即事故代际维度；`lease_until IS NULL`、owner 单独不匹配、
+  epoch 单独不匹配、deadline 过期、run 行代际单独变化这五个维度没有入仓测试（独立审查用
+  一次性脚本覆盖过，脚本未入库）。该缺口非本次合并引入，不阻塞本次交付，列入后续。
 - 本次只解决合并冲突，未改动 F3/F7 的实现范围；两者 `passes` 保持 `false`。
+
+### 独立审查（全新上下文只读子代理，未参与本次合并实现）
+
+因机器人额度用尽无法覆盖当前 HEAD，另起一个未参与实现、全新上下文的只读子代理复核本次合并。
+审查点与结论：
+
+1. **等价性**——成立。核法不是读码推断：子代理构造了 `runs.control_generation=3` /
+   `incidents.control_generation=7` 的真实行，实测两侧读到的都是 `7`（事故代际），确认
+   `i.control_generation` 无别名时 psycopg `dict_row` 的取值不存在同名列歧义（该 SELECT 未投影
+   `r.control_generation`）；再把 c12066a 的六条件谓词逐字复刻，与合并后的 `_lease_revoked`
+   跑同一批行做 10 维差分（含专门用来暴露「读错列」的 `RUN-ROW generation bumped only`），
+   **mismatches: 0**；活体 `charge_tool()` 在同样 10 个状态下结果一一对应。
+2. **是否丢失 main 行为**——没有。`git diff --stat 8e67237 ea2ac8e` 为
+   `14 files changed, 6177 insertions(+)`、**全树 0 deletions**，强于本节原先只核
+   `persistence.py` 的那条证据。
+3. **是否回退已处置的 review 修复**——没有，且是内容级证据：`opspilot/tools/` 全部文件及
+   `tests/test_m1_tool_*.py`、`tests/m1_tool_support.py`、`tests/integration/test_m1_tool_budget_postgres.py`
+   在 `c12066a` 与 `ea2ac8e` 之间逐字节相同（祖先关系不足以证明内容存活，故另做比对）。
+4. **跨 PR 语义冲突**——未发现。实测 `abandon()` 只清 `owner`/`lease_until` 不动 epoch，而
+   `claim()` 的 `epoch = int(row["epoch"]) + 1` 单调递增，故 `(run, epoch, operation_id)`
+   计费键在 abandon 后不会复用（attempt2 epoch=2，同一 operation_id 重新派发被再次计次）；
+   abandoned lease 上 `charge_tool` 抛 `CONTROL_DENIED`；`rebuild()` 仍是
+   `SELECT * FROM opspilot_runs`，新列照常流出。
+5. **`OPERATION_BUDGET_EXHAUSTED`**——仍成立。`CAP=3` 实跑：上限硬拦、被拒操作的
+   `opspilot_tool_charges` INSERT 随事务回滚不留孤儿行、已计次操作的秒数结算不受上限影响。
+
+子代理独立重跑：`make check`（`1313 passed, 133 skipped, 2 xfailed`，ruff/format/mypy 全过）、
+`M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration/ -q`（`95 passed, 38 skipped`）、
+四个 PG 文件定向 `79 passed`（无 skip）。
+
+判定：**无确认缺陷，可按现状交付**；唯一必改项是本节上方已修正的措辞（把未核到的时钟差异
+陈述成了已核查的等价）。独立审查不替代覆盖当前 HEAD 的机器人 code review。
