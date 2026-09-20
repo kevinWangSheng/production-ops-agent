@@ -279,7 +279,22 @@ class ReadOnlyTransport(Protocol):
 
 
 class EvidenceSink(Protocol):
-    """Committed evidence store. Returns the stored evidence reference."""
+    """Committed evidence store. Returns the stored evidence reference.
+
+    **An implementation must validate the control generation inside the same
+    transaction that commits.** The executor's pre-commit control read is a
+    fast path, not the fence: a human pause or cancel landing between that
+    read and this call would otherwise commit a record still marked
+    ``adopted`` (bot review finding). The durable path already works this way
+    -- ``DurableStore.commit_tool`` re-reads owner/epoch/generation under the
+    row lock and diverts a result whose generation moved to
+    ``_late_result``, history only -- and this protocol states the obligation
+    so an implementation cannot satisfy the type and drop the guarantee.
+
+    Rejecting is safe here: ``register`` may raise or return a reference that
+    is not ``record.evidence_id``, and the executor then fails closed with
+    ``EVIDENCE_NOT_COMMITTED`` without handing the content to the model.
+    """
 
     def register(self, record: EvidenceRecord) -> str: ...
 
