@@ -224,12 +224,15 @@ class DurableStore:
         incident_id: UUID,
         run_id: UUID,
         *,
+        expected_generation: int,
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
     ) -> int:
         """Continue a cancelled incident with a fresh Run and control generation."""
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             row = conn.execute(
                 "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
@@ -254,6 +257,7 @@ class DurableStore:
                     and row["state"] == "queued"
                     and row["current_run_id"] == run_id
                     and int(row["control_generation"]) == generation
+                    and expected_generation == generation - 1
                 ):
                     return generation
                 if row["current_run_id"] == run_id and row["state"] != "cancelled":
@@ -261,6 +265,8 @@ class DurableStore:
                 raise PersistenceError("IDENTITY_CONFLICT")
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
+            if int(row["control_generation"]) != expected_generation:
+                raise PersistenceError("CONTROL_CONFLICT")
             nxt = int(row["control_generation"]) + 1
             conn.execute(
                 "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
@@ -534,6 +540,14 @@ class DurableStore:
                 or row["step_status"] == "late_result"
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
                 self._late_result(
                     conn,
                     lease.run_id,
@@ -662,6 +676,14 @@ class DurableStore:
                 or row["incident_state"] in {"completed", "cancelled", "paused"}
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
                 self._late_result(
                     conn,
                     lease.run_id,

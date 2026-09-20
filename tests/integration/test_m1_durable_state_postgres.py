@@ -106,7 +106,8 @@ def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
         store.control(incident, 2, "resume", "operator")
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "late"}, step_id=uuid4())
 
 
 def test_expired_lease_cannot_publish_or_reserve():
@@ -128,7 +129,8 @@ def test_expired_lease_cannot_publish_or_reserve():
         )
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.reserve_budget(lease, uuid4(), 1)
-    assert store.publish(lease, {"result": "expired"}, step_id=uuid4()) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "expired"}, step_id=uuid4())
 
 
 def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
@@ -166,6 +168,8 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     assert store.control(incident, 0, "correct", "operator") == 1
     assert store.publish(stale, {"result": "old"}, step_id=step) is False
     assert store.publish(stale, {"result": "old-retry"}, step_id=step) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(stale, {"result": "forged"}, step_id=uuid4())
     rebuilt = store.rebuild(incident)
     assert rebuilt["conclusion"] is None
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
@@ -312,6 +316,7 @@ def test_new_run_is_refused_until_the_incident_is_cancelled():
         store.new_run(
             incident,
             run,
+            expected_generation=0,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -326,6 +331,7 @@ def test_new_run_is_refused_until_the_incident_is_cancelled():
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -350,6 +356,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -358,6 +365,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
     generation = store.new_run(
         incident,
         next_run,
+        expected_generation=1,
         deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
         budget_limit=10,
         versions={"state": "v1"},
@@ -375,6 +383,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             next_run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -386,6 +395,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             uuid4(),
+            expected_generation=2,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -395,6 +405,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -406,6 +417,47 @@ def test_cancelled_incident_can_continue_with_a_new_run():
             (incident,),
         ).fetchall()
     assert [item["action"] for item in audits] == ["cancel", "new_run"]
+
+
+def test_new_run_rejects_a_stale_observed_generation_after_a_later_cancel():
+    store = DurableStore(DSN)
+    incident, run, next_run = uuid4(), uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-stale-new-run-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    assert (
+        store.new_run(
+            incident,
+            next_run,
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+        == 2
+    )
+    assert store.control(incident, 2, "cancel", "operator") == 3
+    with pytest.raises(PersistenceError, match="CONTROL_CONFLICT"):
+        store.new_run(
+            incident,
+            uuid4(),
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="stale-operator",
+        )
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "cancelled"
+    assert rebuilt["control_generation"] == 3
+    assert rebuilt["run"]["run_id"] == next_run
 
 
 def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
