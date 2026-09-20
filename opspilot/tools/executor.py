@@ -955,10 +955,20 @@ class ReadOnlyToolExecutor:
         except ToolControlDenied:
             # Decided between the re-check above and the commit: report the
             # authoritative reason, not a generic evidence error.
+            #
+            # The fallback is deliberately neutral. ``ToolControlDenied`` covers
+            # an expired lease and a changed owner as well as a newer
+            # generation, so naming ``CONTROL_GENERATION_CHANGED`` when this
+            # snapshot sees no change would assert a specific decision nobody
+            # verified -- the same fabricated-audit-fact class as the contact
+            # classification fixed earlier (bot review finding). It matches the
+            # settlement-denied fallback in ``refuse_after_fetch`` for the same
+            # reason. The precise cause stays where it was decided: the store
+            # records the diverted result in its own audit trail.
             return self._refuse(
                 operation,
                 "denied",
-                self._control_decision() or "CONTROL_GENERATION_CHANGED",
+                self._control_decision() or "CONTROL_UNAVAILABLE",
                 "confirmed",
             )
         if not committed:

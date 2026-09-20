@@ -1408,7 +1408,15 @@ def test_a_control_denied_evidence_commit_reports_the_human_decision():
     assert outcome.evidence is None and outcome.model_view["content"] is None
 
 
-def test_a_control_denied_evidence_commit_names_a_reason_even_if_control_looks_current():
+def test_a_control_denied_evidence_commit_does_not_invent_a_generation_change():
+    """Bot review finding: this fallback used to report
+    ``CONTROL_GENERATION_CHANGED``. ``ToolControlDenied`` also covers an
+    expired lease and a changed owner, so naming a generation change when this
+    snapshot sees none asserts a specific decision nobody verified -- the same
+    fabricated-audit-fact class as the contact classification fixed earlier.
+    The neutral reason is what this executor can actually stand behind.
+    """
+
     class DenyingSink:
         def __init__(self):
             self.records = []
@@ -1421,7 +1429,7 @@ def test_a_control_denied_evidence_commit_names_a_reason_even_if_control_looks_c
 
     outcome = executor.execute(request())
 
-    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
     assert outcome.evidence is None
 
 
