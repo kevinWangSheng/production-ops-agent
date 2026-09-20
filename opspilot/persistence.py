@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,6 +50,73 @@ class Lease:
     owner: UUID
     epoch: int
     control_generation: int
+
+
+def _tool_plan(response: Any) -> Any:
+    """The tool plan a committed ModelStep carries (C3 §4/§7).
+
+    The investigation loop commits the complete model response as
+    ``{"assistant": {..., "tool_calls": [...]}, "finish_reason": ..., ...}``;
+    the M0 harness and older tests commit the assistant message itself, with
+    ``tool_calls`` at the top level. Recovery must see the plan in both
+    shapes, otherwise ``pending_tools`` is empty and a new attempt re-runs
+    the round instead of finishing the committed tools.
+    """
+    if not isinstance(response, dict):
+        # A committed model response is always an object. A scalar, list or
+        # null here is corrupted/legacy business data, so hand back the same
+        # non-list sentinel used for a corrupt ``assistant`` rather than an
+        # empty plan the caller would accept as "this step had no tools".
+        return None
+    if "assistant" in response:
+        assistant = response["assistant"]
+        if not isinstance(assistant, dict):
+            # A loop-shaped step whose assistant message is corrupt: hand back
+            # a non-list so the caller's validation fails closed.
+            return None
+        return _tool_calls(assistant)
+    return _tool_calls(response)
+
+
+def _tool_calls(container: dict[str, Any]) -> Any:
+    """``tool_calls`` absent or ``None`` means no tools; any other non-list
+    value (``{}``, ``""``, ``0``, ...) is corrupted business data, not an
+    empty plan -- ``value or []`` would silently swallow a falsey one of
+    those into a valid-looking empty list, so check the type explicitly and
+    hand back a non-list for the caller to fail closed on.
+    """
+    calls = container.get("tool_calls")
+    if calls is None:
+        return []
+    return calls if isinstance(calls, list) else None
+
+
+def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
+    """Validate and index durable tool-result checkpoints.
+
+    Recovery must fail closed on corrupted business rows: treating a falsey
+    mapping as an empty result list would replay an already-executed query,
+    while malformed records could otherwise crash with an incidental
+    ``AttributeError``.  ``commit_tool`` writes mapping results with a unique,
+    in-range integer ordinal, so anything else is inconsistent state.
+    """
+    if not isinstance(tool_results, list):
+        raise PersistenceError("INCONSISTENT_STATE")
+    completed: set[int] = set()
+    for item in tool_results:
+        if not isinstance(item, Mapping):
+            raise PersistenceError("INCONSISTENT_STATE")
+        ordinal = item.get("ordinal")
+        if (
+            type(ordinal) is not int
+            or ordinal < 0
+            or ordinal >= call_count
+            or ordinal in completed
+            or not isinstance(item.get("result"), Mapping)
+        ):
+            raise PersistenceError("INCONSISTENT_STATE")
+        completed.add(ordinal)
+    return completed
 
 
 class DurableStore:
@@ -361,7 +428,7 @@ class DurableStore:
             else:
                 epoch = int(row["epoch"]) + 1
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=LEAST(clock_timestamp()+make_interval(secs=>%s),deadline) WHERE run_id=%s",
                     (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
@@ -464,6 +531,23 @@ class DurableStore:
                 (amount, lease.run_id),
             )
 
+    def lease_current(self, lease: Lease) -> bool:
+        """Read the authoritative owner/epoch/generation/expiry fence."""
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            return bool(row and not self._lease_revoked(row, lease, self._db_now(conn)))
+
+    def abandon(self, lease: Lease) -> None:
+        """Release only this exact lease after a recovery plan is rejected."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL WHERE run_id=%s AND owner=%s AND epoch=%s AND control_generation=%s",
+                (lease.run_id, lease.owner, lease.epoch, lease.control_generation),
+            )
+
     def commit_step(
         self, lease: Lease, logical_key: str, response: dict[str, Any]
     ) -> UUID:
@@ -535,7 +619,7 @@ class DurableStore:
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
-            tool_calls = (row["response"] or {}).get("tool_calls")
+            tool_calls = _tool_plan(row["response"])
             if (
                 type(ordinal) is not int
                 or ordinal < 0
@@ -737,10 +821,50 @@ class DurableStore:
             run = conn.execute(
                 "SELECT * FROM opspilot_runs WHERE run_id=%s", (row["current_run_id"],)
             ).fetchone()
+            if run is None or run["incident_id"] != incident_id:
+                raise PersistenceError("INCONSISTENT_STATE")
             steps = conn.execute(
                 "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
                 (row["current_run_id"],),
             ).fetchall()
+            for step in steps:
+                # Late tool/step results are immutable history payloads, not
+                # model responses. They may have any JSON shape and must not
+                # make a later rebuild fail model-plan validation.
+                if step["status"] == "late_result":
+                    continue
+                calls = _tool_plan(step["response"])
+                if not isinstance(calls, list) or any(
+                    not isinstance(call, dict) for call in calls
+                ):
+                    raise PersistenceError("INCONSISTENT_STATE")
+                _completed_tool_ordinals(step["tool_results"], len(calls))
+            pending_tools: list[dict[str, Any]] = []
+            for step in steps:
+                if step["control_generation"] != incident_generation or step[
+                    "status"
+                ] not in {"response_committed", "tool_result_committed"}:
+                    continue
+                calls = _tool_plan(step["response"])
+                completed = _completed_tool_ordinals(step["tool_results"], len(calls))
+                for ordinal, call in enumerate(calls):
+                    if ordinal not in completed:
+                        # No operation id here: its canonical format lives in
+                        # opspilot.domain.tool_operation_id, and whether this
+                        # module may depend on the domain layer is still an
+                        # open decision (tests/test_architecture.py records it
+                        # as a strict xfail). Reaching for the helper here
+                        # would settle that decision in passing, so
+                        # recovery.rebuild_plan stamps it instead -- one
+                        # definition of the format executors and the evidence
+                        # store deduplicate by, with the decision left open.
+                        pending_tools.append(
+                            {
+                                "step_id": step["step_id"],
+                                "ordinal": ordinal,
+                                "tool_call": call,
+                            }
+                        )
             return {
                 "incident_id": row["incident_id"],
                 "state": row["state"],
@@ -750,19 +874,17 @@ class DurableStore:
                 # 只列出当前代际、且仍是活步骤的待办工具调用。late_result 即使
                 # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
                 # 租约把迟到响应写回成可发布步骤。
-                "pending_tools": [
-                    {"step_id": step["step_id"], "ordinal": ordinal}
-                    for step in steps
-                    if step["control_generation"] == incident_generation
-                    and step["status"]
-                    in {"response_committed", "tool_result_committed"}
-                    for ordinal in range(
-                        len((step["response"] or {}).get("tool_calls", []))
-                    )
-                    if ordinal
-                    not in {
-                        item.get("ordinal") for item in (step["tool_results"] or [])
-                    }
-                ],
+                "pending_tools": pending_tools,
                 "conclusion": row["conclusion"],
             }
+
+    def recovery_metadata(self, incident_id: UUID) -> dict[str, Any]:
+        """Read identity/version fields without decoding versioned step payloads."""
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT i.state AS incident_state,i.control_generation,r.run_id,r.state AS run_state,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            return row
