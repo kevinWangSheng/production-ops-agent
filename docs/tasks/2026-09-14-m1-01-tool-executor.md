@@ -1519,10 +1519,34 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 16 | 3 | 3 | 0 | 1（第十五轮的可编码性只逐字段补） |
 | 17 | 2 | 2 | 0 | 2（第十六轮两条规则的收窄边界各漏一类） |
 | 18 | 2 | 2 | 0 | 2（第十六轮两处处置各留半成品） |
+| 19 | 1 | 1 | 0 | 1（第十八轮兜底原因写死了未核实的具体决定） |
 
-累计 53 条 thread 全部有结论。第 9–18 轮共 21 条中有 12 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2。用户已明确：继续处理，采纳或拒绝由执行者按实际
-情况判断。
+累计 54 条 thread 全部有结论。第 9–19 轮共 22 条中有 13 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1。用户已明确：继续处理，采纳或拒绝由执行者按
+实际情况判断。
+
+## 31. 机器人 code review 第十九轮一条 thread 处置（2026-09-20）
+
+P2「Preserve the actual evidence-commit denial reason」——成立，已修（`bc84b76`）。
+
+`ToolControlDenied` 覆盖租约过期、owner 变更、代际变化、deadline 一整族原因（存储层
+`_lease_revoked` 正是这几条的并集）。第十八轮我在提交被拒的兜底里写死
+`CONTROL_GENERATION_CHANGED`：本次快照看不到变化时，等于断言了一个没人核实过的具体决定。
+
+**这与本任务早先修掉的「结算失败把不确定接触升级为 confirmed」是同一类——伪造审计事实**，而我
+在那一条的处置里刚阐述过它的危害，随后自己又犯了一次。改为中性的 `CONTROL_UNAVAILABLE`，与
+`refuse_after_fetch` 中 `settlement_denied` 的兜底同一口径（那处当时就选了中性值，第十八轮没保持
+一致）。
+
+未采用「让 sink 传回固定拒绝原因」：精确原因应留在它被决定的地方（存储层 `_late_result` 的审计），
+让协议多带一个原因码等于让执行器复述一份它无法验证的结论，制造同一事实的两个可能不一致来源。
+
+既有断言 `CONTROL_GENERATION_CHANGED` 被改为 `CONTROL_UNAVAILABLE`，并把用例改名为
+`test_a_control_denied_evidence_commit_does_not_invent_a_generation_change`——它钉住的正是本轮
+判定为缺陷的行为，理由写在 docstring。
+
+验证：`make check` → 1410 passed；PG 集成 98 passed。
+
 
 ## 30. 机器人 code review 第十八轮两条 thread 处置（2026-09-20）
 
