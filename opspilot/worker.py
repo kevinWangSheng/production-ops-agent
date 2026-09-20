@@ -70,6 +70,9 @@ class RecoverySession:
             current = self.store.rebuild(self.plan.incident_id)
         except PersistenceError:
             self._abandon_best_effort()
+            # A Run swapped out by human control is a control outcome, not
+            # corrupt business state; separate the two before surfacing this.
+            self._raise_if_superseded()
             raise
         if (
             current["control_generation"] != self.lease.control_generation
@@ -88,6 +91,38 @@ class RecoverySession:
         renew = getattr(self.store, "renew_lease", None)
         if renew is not None:
             renew(self.lease, self.renew_seconds)
+
+    def _raise_if_superseded(self) -> None:
+        """Report a Run replaced by human control as control, not corruption.
+
+        A cancel/new_run landing between the fence read and the rebuild makes
+        this session decode a Run it never held, possibly under a schema this
+        version does not understand. The decode then fails as
+        ``INCONSISTENT_STATE`` when the truthful answer is that control moved
+        on. Read identity only -- ``recovery_metadata`` decodes no versioned
+        payload -- to tell the two apart, and leave a genuinely corrupt Run of
+        our own reported as corrupt.
+
+        This deliberately does not claim or block the replacement. A session
+        holds exactly one lease and carries no ``versions``; blocking a Run it
+        never claimed would take authority outside that lease. The
+        incompatible-version handoff belongs to the claim path, which
+        ``Worker.resume`` runs before decoding anything.
+        """
+        reader = getattr(self.store, "recovery_metadata", None)
+        if reader is None:
+            return
+        try:
+            metadata = reader(self.plan.incident_id)
+        except PersistenceError:
+            # Keep the original decode error rather than replacing it with a
+            # failure of this diagnostic read.
+            return
+        if (
+            metadata["run_id"] != self.lease.run_id
+            or metadata["control_generation"] != self.lease.control_generation
+        ):
+            raise PersistenceError("CONTROL_DENIED")
 
     def _renew_after_call(self) -> None:
         """Keep the lease alive for the commit, but never replace it as fence.

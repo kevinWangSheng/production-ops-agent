@@ -821,3 +821,56 @@ def test_a_post_claim_decode_failure_on_a_compatible_run_surfaces_as_itself():
     assert store.abandoned == [lease]
     # Only the original claim: a compatible Run is never blocked.
     assert store.claims == [run_id]
+
+
+def test_a_run_replaced_mid_dispatch_is_reported_as_control_not_corruption():
+    """cancel -> new_run between the fence read and the rebuild.
+
+    The session then decodes a Run it never held, so the decode error says
+    corrupt state when the truthful answer is that control moved on.
+    """
+    run_id, replacement = uuid4(), uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+
+    def rebuild(_incident_id: UUID) -> dict:
+        raise PersistenceError("INCONSISTENT_STATE")
+
+    store.rebuild = rebuild  # type: ignore[method-assign]
+    store.recovery_metadata = lambda _i: {  # type: ignore[attr-defined]
+        "run_id": replacement,
+        "control_generation": 1,
+    }
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        session.execute_pending(lambda _item: {"ok": True})
+
+    assert store.abandon_calls == [lease]
+    assert store.commit_calls == []
+
+
+def test_a_corrupt_run_of_our_own_is_still_reported_as_corruption():
+    """Same Run, same generation: this really is corrupt state."""
+    run_id = uuid4()
+    lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
+    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    store = _RecordingStore(run_id=run_id, pending=pending, with_renew=True)
+    failure = PersistenceError("INCONSISTENT_STATE")
+
+    def rebuild(_incident_id: UUID) -> dict:
+        raise failure
+
+    store.rebuild = rebuild  # type: ignore[method-assign]
+    store.recovery_metadata = lambda _i: {  # type: ignore[attr-defined]
+        "run_id": run_id,
+        "control_generation": 0,
+    }
+    session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
+
+    with pytest.raises(PersistenceError, match="INCONSISTENT_STATE") as caught:
+        session.execute_pending(lambda _item: {"ok": True})
+
+    assert caught.value is failure
+    assert store.abandon_calls == [lease]

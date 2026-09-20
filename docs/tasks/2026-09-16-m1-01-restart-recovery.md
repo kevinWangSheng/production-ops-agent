@@ -289,3 +289,27 @@
 - 验证：`make check` → `1081 passed, 126 skipped, 2 xfailed`，ruff/format/mypy 全绿；
   `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `29 passed`。
   复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
+
+## 追加（2026-09-20）：第八轮 1 条 P2——execute_pending 内的替换竞态（部分采纳、部分拒绝）
+
+- **P2：执行期 rebuild 失败后重跑版本门（`4057868033`）**：**部分采纳、部分拒绝**。
+- **采纳的部分（错误分类）**：`lease_current()` 通过之后、`_assert_current()` 的 `rebuild()` 取快照之前，
+  若发生 cancel + new_run，本会话会去解码一个它从未持有的 Run（可能还是它不认识的 schema），
+  于是抛出 `INCONSISTENT_STATE`——而真实原因是人工控制换掉了这个 Run。把控制变更报成业务数据损坏是错的分类。
+  新增 `RecoverySession._raise_if_superseded()`：解码失败后用 `recovery_metadata()`（只读身份，不解码任何
+  版本化 payload）区分两者；`run_id` 或 `control_generation` 与本租约不符即抛 `CONTROL_DENIED`，
+  否则保留原 `INCONSISTENT_STATE`。该诊断读自身失败时不替换原错误。
+- **拒绝的部分（从 `execute_pending` 内持久化 blocked/INCOMPATIBLE_STATE）**，依据：
+  1. `RecoverySession` 只持有一个 `Lease`、一个 store 和一份 plan，**不持有 `versions`**，也没有 `claim()`；
+     要 block 那个替换 Run，就必须去 claim 一个它从未持有的 Run，即把权限伸出自己那张租约之外。
+     这与 C3 §6「一个租约就是一次执行尝试」相悖。
+  2. 新 Run 停在 `queued` 并不是丢失交接：`blocked` 正是 `claim()` 在版本不符时写下的，
+     而任何一次后续 `resume()` 都会在解码之前先跑 `_gate_versions()` 完成该交接（第三、六轮已修）。
+     与第三/六轮不同的是，那两处本会话正在 claim/已经 claim，交接当场就该发生；这里并没有。
+- 三处解码点现已全部有对应处置：`resume()` claim 前（版本门）、`resume()` claim 后（版本门）、
+  `execute_pending()` 每个工具前（错误分类）。这是该类问题的完整清点，不是又一次逐点补。
+- 回归：`test_a_run_replaced_mid_dispatch_is_reported_as_control_not_corruption`（撤销后红）、
+  `test_a_corrupt_run_of_our_own_is_still_reported_as_corruption`（防止把普通损坏状态误标成控制变更）。
+- 验证：`make check` → `1083 passed, 126 skipped, 2 xfailed`，ruff/format/mypy 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 `tests/integration/` 全量 → `72 passed, 54 skipped`；worker 定向 `31 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
