@@ -1518,9 +1518,48 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 15 | 3 | 3 | 0 | 1（第十轮的认证名规则未覆盖全大写） |
 | 16 | 3 | 3 | 0 | 1（第十五轮的可编码性只逐字段补） |
 | 17 | 2 | 2 | 0 | 2（第十六轮两条规则的收窄边界各漏一类） |
+| 18 | 2 | 2 | 0 | 2（第十六轮两处处置各留半成品） |
 
-累计 51 条 thread 全部有结论。第 9–17 轮共 19 条中有 10 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2。用户已明确：继续处理，采纳或拒绝由执行者按实际情况判断。
+累计 53 条 thread 全部有结论。第 9–18 轮共 21 条中有 12 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2。用户已明确：继续处理，采纳或拒绝由执行者按实际
+情况判断。
+
+## 30. 机器人 code review 第十八轮两条 thread 处置（2026-09-20）
+
+两条均采纳（`b6fc843`），且**两条都是第十六轮处置的半成品**。
+
+### P1 sink 的控制拒绝被塌缩
+
+第十六轮把「提交事务内校验 control 代际」写成 `EvidenceSink` 的义务，却没打通回程：
+`_register()` 把任何异常塌缩成 `False`，于是**合规实现**的控制拒绝被报成 `EVIDENCE_NOT_COMMITTED`
+——提交期栅栏生效了却说不出口。
+
+沿用账本已有模式：sink 用 `ToolControlDenied` 表达控制拒绝，`_register()` 原样上抛，采纳路径走
+控制优先级回报权威原因（复读见暂停 → `SUSPENDED`；复读无异常 → `CONTROL_GENERATION_CHANGED`）。
+协议 docstring 补明该要求。专门用例钉住普通异常仍报 `EVIDENCE_NOT_COMMITTED`，防止类型信号吞掉
+通用映射。
+
+### P2 指纹收口只包了一半
+
+第十六轮宣称「把保证移到唯一入口，任何字段自动覆盖」，实现却只包了 `.encode()`，`canonical()`
+自身的序列化失败（`max_window_seconds=10**4300` → 裸 `ValueError`）未覆盖——**即我自己刚宣称要
+终结的「修实例、漏整类」，在同一个函数里又犯了一次**。
+
+改为捕获 `ValueError` 整体（`UnicodeEncodeError` 是其子类），编码失败仍报
+`INVALID_REGISTRATION_TEXT`，其余序列化失败报 `INVALID_REGISTRATION_VALUE`。选择在收口点翻译而非
+给 `max_window_seconds` 加上界：加上界只解决被点名的字段，任何进指纹的数值字段都有同样问题。
+
+**方法教训（第四次）**：建立收口点时，必须同时验证该收口点覆盖了整条失败路径，而不只是当时那个
+触发实例。前三次的教训是「找到收口点」，这次补上的是「验证收口点本身是完整的」。
+
+### 验证
+
+```text
+make check → 1410 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+两条均先红后绿
+```
+
 
 ## 29. 机器人 code review 第十七轮两条 thread 处置（2026-09-20）
 
