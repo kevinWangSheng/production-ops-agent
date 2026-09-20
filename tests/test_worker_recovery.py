@@ -4,28 +4,32 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from opspilot.domain import tool_operation_id
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.recovery import rebuild_plan
 from opspilot.worker import RecoverySession, Worker
 
 
 def test_rebuild_plan_only_resumes_committed_pending_work():
-    run = uuid4()
+    run, step_id = uuid4(), uuid4()
     plan = rebuild_plan(
         {
             "incident_id": uuid4(),
             "control_generation": 0,
             "run": {"run_id": run, "state": "running"},
-            "steps": [{"step_id": uuid4()}],
-            "pending_tools": [{"ordinal": 1}],
+            "steps": [{"step_id": step_id}],
+            "pending_tools": [{"step_id": step_id, "ordinal": 1}],
             "conclusion": None,
         }
     )
     assert plan.candidate
-    assert plan.pending_tools == ({"ordinal": 1},)
+    assert [item["ordinal"] for item in plan.pending_tools] == [1]
 
 
-def test_pending_tool_keeps_stable_operation_and_call_details():
+def test_pending_tool_carries_the_canonical_operation_id():
+    """A replayed call must present the id executors deduplicate by, or a
+    restart looks like a brand new operation and splits its evidence."""
+    step_id = uuid4()
     plan = rebuild_plan(
         {
             "incident_id": uuid4(),
@@ -34,16 +38,16 @@ def test_pending_tool_keeps_stable_operation_and_call_details():
             "steps": [],
             "pending_tools": [
                 {
-                    "step_id": uuid4(),
+                    "step_id": step_id,
                     "ordinal": 0,
-                    "operation_id": "s:0",
                     "tool_call": {"name": "query", "arguments": {"x": 1}},
                 }
             ],
             "conclusion": None,
         }
     )
-    assert plan.pending_tools[0]["operation_id"] == "s:0"
+    assert plan.pending_tools[0]["operation_id"] == tool_operation_id(str(step_id), 0)
+    assert plan.pending_tools[0]["operation_id"] == f"{step_id}#0"
     assert plan.pending_tools[0]["tool_call"]["name"] == "query"
 
 
@@ -54,7 +58,9 @@ def test_recovery_plan_nested_values_are_immutable():
             "control_generation": 0,
             "run": {"run_id": uuid4(), "state": "running"},
             "steps": [],
-            "pending_tools": [{"ordinal": 0, "tool_call": {"name": "query"}}],
+            "pending_tools": [
+                {"step_id": uuid4(), "ordinal": 0, "tool_call": {"name": "query"}}
+            ],
             "conclusion": None,
         }
     )
@@ -611,3 +617,61 @@ def test_a_rejected_publish_keeps_the_lease():
 
     assert session.publish({"summary": "done"}, step_id=uuid4()) is False
     assert store.abandon_calls == []
+
+
+def test_resume_blocks_a_run_replaced_by_an_incompatible_one_mid_decode():
+    """The version gate and the decode are separate transactions.
+
+    A cancel -> new_run under a new schema between them makes old validators
+    reject new rows; the incompatible Run must still reach the durable
+    blocked handoff instead of surfacing that decode error.
+    """
+    incident_id, run_id = uuid4(), uuid4()
+
+    class Store:
+        def __init__(self):
+            self.metadata_calls = 0
+            self.claims = []
+
+        def recovery_metadata(self, _incident_id):
+            self.metadata_calls += 1
+            # Compatible when first gated, replaced by the time it is re-read.
+            versions = {"state": "v1"} if self.metadata_calls == 1 else {"state": "v2"}
+            return {"run_id": run_id, "versions": versions}
+
+        def rebuild(self, _incident_id):
+            raise PersistenceError("INCONSISTENT_STATE")
+
+        def claim(self, incident, run, owner, versions, lease_seconds):
+            self.claims.append((incident, run))
+            raise PersistenceError("INCOMPATIBLE_STATE")
+
+    store = Store()
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident_id)
+
+    assert store.metadata_calls == 2
+    assert store.claims == [(incident_id, run_id)]
+
+
+def test_a_decode_failure_on_a_compatible_run_surfaces_as_itself():
+    """Re-gating must not relabel an ordinary corrupt-state error."""
+    incident_id, run_id = uuid4(), uuid4()
+
+    class Store:
+        def __init__(self):
+            self.claims = []
+
+        def recovery_metadata(self, _incident_id):
+            return {"run_id": run_id, "versions": {"state": "v1"}}
+
+        def rebuild(self, _incident_id):
+            raise PersistenceError("INCONSISTENT_STATE")
+
+        def claim(self, *_args, **_kwargs):
+            raise AssertionError("a compatible Run must not be blocked")
+
+    store = Store()
+    with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident_id)
+    assert store.claims == []

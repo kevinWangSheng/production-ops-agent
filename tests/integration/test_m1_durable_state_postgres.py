@@ -1220,7 +1220,7 @@ def test_rebuild_drops_pending_tools_from_a_superseded_generation():
     store.commit_tool(stale, old_step, 0, {"ok": True})
     pending = store.rebuild(incident)["pending_tools"]
     assert pending[0]["step_id"] == old_step and pending[0]["ordinal"] == 1
-    assert pending[0]["operation_id"].endswith(":1")
+    assert "operation_id" not in pending[0]
     assert pending[0]["tool_call"] == {"id": "b"}
 
     assert store.control(incident, 0, "follow_up", "operator") == 1
@@ -1596,7 +1596,9 @@ def test_rebuild_lists_pending_tools_from_a_loop_shaped_step():
 
     pending = store.rebuild(incident)["pending_tools"]
     assert [(item["step_id"], item["ordinal"]) for item in pending] == [(step, 1)]
-    assert pending[0]["operation_id"] == f"{step}:1"
+    # The canonical id is stamped by recovery.rebuild_plan from the shared
+    # domain helper, not invented here; see test_worker_recovery.
+    assert "operation_id" not in pending[0]
     assert pending[0]["tool_call"]["function"]["name"] == "logs.search"
     # The legacy top-level shape used by the M0 harness keeps working.
     legacy = store.commit_step(lease, "round-2", {"tool_calls": [{"id": "x"}]})

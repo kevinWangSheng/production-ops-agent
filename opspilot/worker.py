@@ -184,6 +184,21 @@ class Worker:
             incident_id, run_id, self.owner, self.versions, lease_seconds
         )
 
+    def _gate_versions(self, incident_id: UUID, lease_seconds: int) -> None:
+        """Route a version-incompatible Run to the durable blocked handoff.
+
+        Read identity and versions without decoding any version-specific step
+        payload, so an incompatible Run is persisted as blocked instead of
+        being rejected by validators that do not understand its rows.
+        """
+        metadata_reader = getattr(self.store, "recovery_metadata", None)
+        if metadata_reader is None:
+            return
+        metadata = metadata_reader(incident_id)
+        if metadata["versions"] != self.versions:
+            self.claim(incident_id, metadata["run_id"], lease_seconds=lease_seconds)
+            raise PersistenceError("INCOMPATIBLE_STATE")
+
     def resume(
         self,
         incident_id: UUID,
@@ -191,19 +206,20 @@ class Worker:
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
         renew_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> RecoverySession:
-        metadata_reader = getattr(self.store, "recovery_metadata", None)
-        if metadata_reader is not None:
-            metadata = metadata_reader(incident_id)
-            if metadata["versions"] != self.versions:
-                # Let the durable claim path persist the incompatible handoff
-                # before any version-specific step payload is decoded.
-                self.claim(
-                    incident_id,
-                    metadata["run_id"],
-                    lease_seconds=lease_seconds,
-                )
-                raise PersistenceError("INCOMPATIBLE_STATE")
-        plan = self.recover(incident_id)
+        self._gate_versions(incident_id, lease_seconds)
+        try:
+            plan = self.recover(incident_id)
+        except PersistenceError:
+            # The gate above and this decode are separate transactions, so the
+            # Run can be replaced in between -- a cancel followed by a new_run
+            # whose steps a different-version worker already committed. Old
+            # validators then meet new rows and fail before the incompatible
+            # handoff is persisted. Re-run the gate: if the current Run is now
+            # version-incompatible, blocked/INCOMPATIBLE_STATE is the right
+            # outcome rather than this decode error. Any other failure, and any
+            # later change, still surfaces as itself and is re-gated on retry.
+            self._gate_versions(incident_id, lease_seconds)
+            raise
         if not plan.candidate:
             raise PersistenceError("CONTROL_DENIED")
         lease = self.claim(incident_id, plan.run_id, lease_seconds=lease_seconds)

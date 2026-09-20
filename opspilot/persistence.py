@@ -849,11 +849,18 @@ class DurableStore:
                 completed = _completed_tool_ordinals(step["tool_results"], len(calls))
                 for ordinal, call in enumerate(calls):
                     if ordinal not in completed:
+                        # No operation id here: its canonical format lives in
+                        # opspilot.domain.tool_operation_id, and this module
+                        # does not depend on the domain layer (that dependency
+                        # direction is still an open decision -- see
+                        # tests/test_architecture.py). recovery.rebuild_plan
+                        # stamps it from the shared helper instead, so there is
+                        # only one definition of the format executors and the
+                        # evidence store deduplicate by.
                         pending_tools.append(
                             {
                                 "step_id": step["step_id"],
                                 "ordinal": ordinal,
-                                "operation_id": f"{step['step_id']}:{ordinal}",
                                 "tool_call": call,
                             }
                         )

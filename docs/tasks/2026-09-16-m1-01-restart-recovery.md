@@ -151,3 +151,35 @@
   `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `24 passed`。
   复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
 - 边界不变：无真实模型调用，无产品验收或 feature passes 结论。
+
+## 追加（2026-09-20）：PR #30 第三轮 2 条 P2（HEAD `fa6683f`）
+
+`fa6683f` 的 CI 两项均 success，机器人在该 HEAD 上开出 2 条新 P2，均已采纳并修复，其中一条的**实施位置**与建议不同。
+
+- **P2：恢复调用应使用规范 operation id（`4057748291`）**：采纳（修复位置调整）。
+  缺陷属实：`rebuild()` 手写 `f"{step_id}:{ordinal}"`，而仓库规范来源 `opspilot/domain/runs.py:272` 的
+  `tool_operation_id()` 产出 `f"{step}#{tool_index}"`。按规范 id 去重的网关或证据库会把重启重放当成新操作，
+  重复外部查询并拆散证据历史。该不一致先于本 PR 存在，之前作为「已知项」记在 PR 与任务记录里，本轮予以消除。
+  **不能按字面建议在 `opspilot/persistence.py` 里调用该 helper**：持久化层是否建立在 domain 之上，是本仓库
+  **尚未做出的架构决定**，由 `tests/test_architecture.py::test_persistence_builds_on_domain` 以
+  `xfail(strict=True)` 记录。实测在 `persistence.py` 加 `from opspilot.domain import tool_operation_id` 后，
+  该测试变成 `XPASS(strict)`，`make check` 直接红——即按字面修会以「顺手改一行」的方式替一个开放架构问题作出决定。
+  **实际做法**：`rebuild()` 不再产出 `operation_id`（附注释说明原因与去处）；由 `opspilot/recovery.py` 的
+  `rebuild_plan()` 经新增 `_identified()` 用 `tool_operation_id()` 打戳。`recovery` 依赖 `domain` 不受上述架构欠债约束。
+  这样格式只有一个定义，且架构决定仍然保持开放（两条 xfail 仍为 xfail）。
+- **P2：版本复核需与被解码的快照绑定（`4057748294`）**：采纳并修复。`recovery_metadata()` 与随后的 `recover()`
+  是两个事务；其间若发生 cancel -> new_run 且新 Run 的步骤已由另一版本的 worker 写入新 schema，旧校验器会先抛
+  `INCONSISTENT_STATE`，`claim()` 来不及持久化 `blocked`/`INCOMPATIBLE_STATE` 交接。
+  抽出 `Worker._gate_versions()`，解码失败时再跑一次该门：当前 Run 已不兼容则走 blocked 交接，否则原异常原样抛出。
+  **残余与诚实边界**：这是「复核」而非机器人建议的「与同一快照原子绑定」。真正的原子绑定需要把版本判定下沉进
+  `rebuild()` 的快照事务，即改动被多处调用的持久化 API，超出本 PR 范围；本实现在该窄窗口后收敛（重试时正常门先跑），
+  已加回归固定「兼容 Run 的解码失败不得被改写成 INCOMPATIBLE_STATE」。
+
+- 红绿对照：单独撤销本轮 `opspilot/` 改动后 `test_pending_tool_carries_the_canonical_operation_id`、
+  `test_resume_blocks_a_run_replaced_by_an_incompatible_one_mid_decode` 红；还原后全绿。
+- 受影响的既有断言已更新：2 条 PG 断言改为断言 `rebuild()` 不再产出 `operation_id`；单测 fixture 补 `step_id`
+  （规范 id 由它派生）。
+- 验证：`make check` → `1077 passed, 126 skipped, 2 xfailed`（两条架构 xfail 仍为 xfail，欠债未被本次顺手改掉），
+  `ruff check`/`ruff format --check`/`mypy` 全绿；`M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；
+  worker 定向 `26 passed`。复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
+- 边界不变：无真实模型调用，无产品验收或 feature passes 结论。
