@@ -817,6 +817,27 @@ class ReadOnlyToolExecutor:
             )
         ):
             return refuse_after_fetch("error", "MALFORMED_RESULT")
+        assert operation.finished_at is not None
+        if any(
+            moment is not None and moment > operation.finished_at
+            for moment in (response.data_as_of, source_start_at, source_end_at)
+        ):
+            # No observation may claim source timestamps later than the moment
+            # its own read completed. A future ``data_as_of`` makes
+            # ``freshness_seconds`` negative, i.e. makes impossible metadata
+            # look unusually fresh, and a future source interval claims rows
+            # that cannot exist yet -- both were adopted and shown to the model
+            # (bot review finding; the interval half is the same defect one
+            # field over, found by checking the class rather than the one
+            # reported field).
+            #
+            # Compared strictly against the trusted clock, with no skew
+            # tolerance: any tolerance would be an arbitrary constant, and the
+            # fail-closed direction surfaces a source whose clock is wrong as a
+            # refusal the operator sees, instead of silently recording
+            # corrupt freshness. ``data_as_of == finished_at`` stays valid
+            # (freshness 0).
+            return refuse_after_fetch("error", "MALFORMED_RESULT")
         if source_start_at is not None:
             # The adapter's own trusted metadata says which interval these
             # rows cover. When it lies outside what this Run was authorized to

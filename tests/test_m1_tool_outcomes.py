@@ -20,6 +20,7 @@ from opspilot.tools import (
     TransportResultTooLarge,
     TransportTimeout,
     TransportUnavailable,
+    Window,
 )
 from opspilot.tools.registry import canonical, canonical_hash
 from tests.m1_tool_support import (
@@ -681,3 +682,58 @@ def test_two_dispatches_of_one_operation_get_distinct_evidence_ids():
     # Each view resolves to its own bytes.
     assert first.model_view["content"] == [{"value": 1}]
     assert second.model_view["content"] == [{"value": 2}]
+
+
+def test_a_future_data_as_of_is_refused_before_adoption():
+    """Bot review finding: an aware `data_as_of` later than the moment the read
+    completed was accepted, `_record()` computed a negative
+    `freshness_seconds`, and the rows were committed and shown to the model --
+    impossible future-dated metadata reading as unusually fresh.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]), data_as_of=NOW + timedelta(hours=1)
+    )
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.model_view["content"] is None
+    assert sink.records == []
+
+
+def test_a_future_source_interval_is_refused_before_adoption():
+    """The same defect one field over, found by checking the class rather than
+    only the reported field: a source interval claiming rows that cannot exist
+    yet was adopted whenever the scope window reached into the future.
+    """
+    scope_window = Window(NOW - timedelta(minutes=5), NOW + timedelta(minutes=30))
+    executor, transport, sink, _ = build(scope_overrides={"window": scope_window})
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=NOW + timedelta(minutes=10),
+        source_end_at=NOW + timedelta(minutes=10),
+    )
+
+    outcome = executor.execute(
+        request(
+            window={
+                "start": (NOW - timedelta(minutes=5)).isoformat(),
+                "end": (NOW + timedelta(minutes=5)).isoformat(),
+            }
+        )
+    )
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert sink.records == []
+
+
+def test_a_data_as_of_equal_to_the_read_instant_is_still_valid():
+    """The boundary stays open: zero freshness is a real, ordinary reading."""
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]), data_as_of=NOW)
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    assert outcome.evidence.freshness_seconds == 0.0
