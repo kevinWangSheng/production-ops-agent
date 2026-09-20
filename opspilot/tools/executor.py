@@ -137,10 +137,24 @@ class ToolBudgetExhausted(Exception):
 
 @dataclass(frozen=True)
 class ControlSnapshot:
-    """Controller-owned control state at one instant."""
+    """Controller-owned control state at one instant.
+
+    The field types are enforced, not assumed: ``bool`` is an ``int`` subclass,
+    so a controller adapter returning ``control_generation=True`` compared
+    equal to a scope generation of ``1`` and the executor dispatched, while
+    ``suspended=0`` was read as an authoritative "not suspended". Malformed
+    controller data must fail closed (the executor maps a snapshot it cannot
+    obtain to ``CONTROL_UNAVAILABLE``), never open (bot review finding).
+    """
 
     control_generation: int
     suspended: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.control_generation) is not int or self.control_generation < 0:
+            raise ToolContractError("INVALID_CONTROL_SNAPSHOT")
+        if type(self.suspended) is not bool:
+            raise ToolContractError("INVALID_CONTROL_SNAPSHOT")
 
 
 @dataclass(frozen=True)

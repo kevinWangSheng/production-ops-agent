@@ -225,6 +225,20 @@ _ENDPOINT = re.compile(
 # or a concrete endpoint / base_url / 凭据句柄 there, whatever the scheme.
 # `_ENDPOINT` keeps its narrower job: what a registered transport endpoint may
 # actually be.
+# A concrete endpoint does not need a scheme to be one: `metrics.internal:9090`
+# and `10.0.0.4:4317` locate an internal target just as precisely (bot review
+# finding). Kept deliberately narrow so ordinary prose survives: the host must
+# be dotted with an alphabetic final label, or a dotted quad, and the port must
+# be digits. `12:30`, `5xx:2xx` and `section 3/4` therefore do not match, and
+# a bare hostname with no port stays a human-review question -- detecting one
+# in free text would reject `config.yaml` and `v1.2.3` as well.
+_SCHEMELESS_ENDPOINT = re.compile(
+    r"\b(?:"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
+    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
+    r"):[0-9]{1,5}\b"
+)
+
 _MODEL_VISIBLE_URI = re.compile(
     r"[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}"
 )
@@ -257,7 +271,20 @@ def canonical(value: object) -> str:
 
 
 def canonical_hash(value: object) -> str:
-    return hashlib.sha256(canonical(value).encode("utf-8")).hexdigest()
+    try:
+        encoded = canonical(value).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        # The single choke point for encodability. Text that is a valid ``str``
+        # but not encodable (a lone surrogate) reached this line from any
+        # fingerprinted field -- parameter *names*, ``result_path`` elements,
+        # ``error_classes`` keys, the incomplete marker -- and raised a raw
+        # ``UnicodeEncodeError`` that escaped this module's fixed-code
+        # contract and could abort registry construction. Validating fields one
+        # at a time kept missing the next one (three rounds of bot review found
+        # three different fields), so the guarantee is stated here instead:
+        # fingerprinting either succeeds or raises ``ToolContractError``.
+        raise ToolContractError("INVALID_REGISTRATION_TEXT") from exc
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -285,7 +312,9 @@ class ParameterSpec:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if not _utf8_text(self.description):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if _MODEL_VISIBLE_URI.search(self.description):
+        if _MODEL_VISIBLE_URI.search(self.description) or _SCHEMELESS_ENDPOINT.search(
+            self.description
+        ):
             # Parameter prose is part of the same section 8 model-visible
             # face as :class:`ToolDescription`, which refuses a concrete
             # ``scheme://`` URL for the same reason; leaving this field
@@ -379,7 +408,9 @@ class ToolDescription:
             value = getattr(self, name)
             if isinstance(value, str) and not _utf8_text(value):
                 raise ToolContractError("INVALID_DESCRIPTION_TEXT")
-            if isinstance(value, str) and _MODEL_VISIBLE_URI.search(value):
+            if isinstance(value, str) and (
+                _MODEL_VISIBLE_URI.search(value) or _SCHEMELESS_ENDPOINT.search(value)
+            ):
                 raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
 

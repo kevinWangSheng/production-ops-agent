@@ -639,3 +639,59 @@ def test_registries_build_from_every_accepted_registration():
     )
     assert ToolRegistry([entry]).revision
     assert TargetRegistry([target(selector={"cluster": "生产-1"})]).revision
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "query metrics.internal:9090/api",
+        "connect to 10.0.0.4:4317",
+        "the collector lives at otel.observability.svc:4318",
+    ],
+)
+def test_scheme_less_endpoints_in_model_visible_prose_are_refused(text):
+    """Bot review finding: the detector required `://`, so a concrete endpoint
+    written without a scheme still reached the model-visible face and would
+    expose an internal target location when rendered.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "the window runs 12:30 to 13:00",
+        "ratio of 5xx:2xx over the window",
+        "see runbook section 3/4 and config.yaml",
+        "resolution v1.2.3 or newer",
+    ],
+)
+def test_ordinary_prose_is_not_mistaken_for_an_endpoint(text):
+    """The rule is deliberately narrow: a dotted host with an alphabetic final
+    label (or a dotted quad) plus a numeric port. Times, ratios, paths and
+    version strings must survive, or the rule becomes the keyword scanner this
+    module has repeatedly declined to build.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "build_registration",
+    [
+        lambda bad: registration(parameters={bad: ParameterSpec(kind="string")}),
+        lambda bad: registration(result_path=("data", bad)),
+        lambda bad: registration(error_classes={bad: "SOURCE_ERROR"}),
+        lambda bad: registration(incomplete_marker=bad),
+    ],
+)
+def test_no_fingerprinted_field_can_raise_outside_the_contract(build_registration):
+    """Bot review finding, third field of the same class in three rounds:
+    validating encodability field by field kept missing the next one, so the
+    guarantee now lives at the single choke point -- `canonical_hash` either
+    succeeds or raises `ToolContractError`.
+    """
+    with pytest.raises(ToolContractError):
+        ToolRegistry([build_registration("x\ud800")])

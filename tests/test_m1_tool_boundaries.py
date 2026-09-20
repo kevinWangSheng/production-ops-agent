@@ -1344,3 +1344,40 @@ def test_authorized_at_records_the_final_check_before_dispatch():
     assert audit["started_at"] == NOW.isoformat()
     # The final check, not the one _reserve() made five seconds earlier.
     assert audit["authorized_at"] == (NOW + timedelta(seconds=5)).isoformat()
+
+
+@pytest.mark.parametrize(
+    "snapshot_args",
+    [
+        {"control_generation": True, "suspended": False},
+        {"control_generation": 7, "suspended": 0},
+        {"control_generation": 7, "suspended": 1},
+        {"control_generation": -1, "suspended": False},
+        {"control_generation": 7.0, "suspended": False},
+    ],
+)
+def test_a_malformed_control_snapshot_fails_closed(snapshot_args):
+    """Bot review finding: `bool` is an `int` subclass, so a controller adapter
+    returning `control_generation=True` compared equal to a scope generation of
+    `1` and the executor dispatched; `suspended=0` was likewise read as an
+    authoritative "not suspended". Malformed controller data must fail closed.
+    """
+    with pytest.raises(ToolContractError, match="INVALID_CONTROL_SNAPSHOT"):
+        ControlSnapshot(**snapshot_args)
+
+
+def test_a_controller_returning_a_malformed_snapshot_is_control_unavailable():
+    """End to end: an adapter that cannot produce a well-formed snapshot is
+    indistinguishable from one that cannot answer at all -- both deny.
+    """
+
+    class BadControl:
+        def snapshot(self, scope):
+            return ControlSnapshot(control_generation=True, suspended=False)
+
+    executor, transport, sink, _ = build(control=BadControl())
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_UNAVAILABLE")
+    assert not transport.called and sink.records == []
