@@ -1322,3 +1322,25 @@ def test_a_human_decision_outranks_a_settlement_budget_refusal():
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
     assert sink.records == []
+
+
+def test_authorized_at_records_the_final_check_before_dispatch():
+    """Bot review finding: ``authorized_at`` documents itself as the check
+    immediately before dispatch, but kept the earlier ``_reserve()`` reading,
+    so a slow ledger charge or pre-fetch control snapshot left the audit
+    record understating when authorization was last verified -- and nothing
+    else in the record can be used to derive it.
+    """
+    clock = FakeClock()
+    # Slow pre-fetch control snapshot (call 2), after _reserve's own (call 1).
+    control = SlowControl(clock=clock, duration=5.0, slow_on={2})
+    executor, transport, _, _ = build(clock=clock, control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    audit = outcome.operation.audit_json()
+    assert audit["started_at"] == NOW.isoformat()
+    # The final check, not the one _reserve() made five seconds earlier.
+    assert audit["authorized_at"] == (NOW + timedelta(seconds=5)).isoformat()

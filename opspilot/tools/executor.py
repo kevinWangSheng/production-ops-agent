@@ -676,6 +676,13 @@ class ReadOnlyToolExecutor:
         if control.control_generation != self._scope.control_generation:
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
         now = self._clock.now()
+        # This is the authorization check immediately before dispatch, which is
+        # what ``authorized_at`` documents itself to be. Leaving the earlier
+        # ``_reserve()`` reading in place made the audit record understate when
+        # authorization was last verified whenever the ledger charge or this
+        # control snapshot was slow, and nothing else in the record can be used
+        # to derive it (bot review finding).
+        operation = replace(operation, authorized_at=now)
         if now >= self._scope.deadline:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
         # The control read and the charge above may themselves have consumed

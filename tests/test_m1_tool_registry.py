@@ -591,3 +591,51 @@ def test_ordinary_parameter_names_are_still_accepted(name):
     """
     entry = registration(parameters={name: ParameterSpec(kind="string")})
     assert name in entry.parameters
+
+
+@pytest.mark.parametrize("name", ["AUTH", "AUTH_HEADER", "COOKIE", "SESSION", "SIG"])
+def test_uppercase_authentication_names_are_refused_like_their_lowercase_forms(name):
+    """Bot review finding: `_WORDS` continues a token only through lowercase
+    characters, so tokenizing the original spelling split `AUTH` into four
+    single letters and let the all-caps spellings through while `auth`,
+    `cookie`, `session` and `sig` were refused.
+    """
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={name: ParameterSpec(kind="string")})
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        target(selector={name: "x"})
+
+
+def test_camel_case_authentication_names_are_still_refused():
+    """The case-folded pass must not lose the camelCase one."""
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={"refreshAuth": ParameterSpec(kind="string")})
+
+
+def test_non_encodable_description_text_is_refused_at_registration():
+    """Bot review finding: a lone surrogate is a valid `str` but not encodable,
+    so it passed every registration check and then raised a raw
+    `UnicodeEncodeError` out of `canonical_hash(...).encode("utf-8")`,
+    bypassing this module's fixed-code contract and able to abort registry
+    construction.
+    """
+    with pytest.raises(ToolContractError, match="INVALID_DESCRIPTION_TEXT"):
+        description(returns="x\ud800")
+    with pytest.raises(ToolContractError, match="INVALID_PARAMETER_SPEC"):
+        ParameterSpec(kind="string", description="x\ud800")
+    # Same class one field over: selector text is fingerprinted too.
+    with pytest.raises(ToolContractError, match="INVALID_SELECTOR"):
+        target(selector={"cluster": "x\ud800"})
+    with pytest.raises(ToolContractError, match="INVALID_SELECTOR"):
+        target(selector={"x\ud800": "prod-1"})
+
+
+def test_registries_build_from_every_accepted_registration():
+    """The property behind the rule: whatever registration is accepted can be
+    fingerprinted without raising outside the ToolContractError contract.
+    """
+    entry = registration(
+        parameters={"expr": ParameterSpec(kind="string", description="PromQL 表达式")}
+    )
+    assert ToolRegistry([entry]).revision
+    assert TargetRegistry([target(selector={"cluster": "生产-1"})]).revision

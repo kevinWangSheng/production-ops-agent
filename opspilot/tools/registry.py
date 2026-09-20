@@ -169,11 +169,35 @@ _AUTHENTICATION_TOKENS = frozenset({"auth", "cookie", "session", "sig"})
 _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 
 
+def _utf8_text(value: str) -> bool:
+    """Whether this text can be encoded, i.e. can survive fingerprinting.
+
+    A lone surrogate (``"x\ud800"``) is a valid ``str`` but not encodable, so
+    it passed every registration check and then raised a raw
+    ``UnicodeEncodeError`` out of ``canonical_hash(...).encode("utf-8")`` --
+    bypassing this module's fixed-code ``ToolContractError`` contract and able
+    to abort registry construction (bot review finding).
+    """
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _authentication_name(name: str) -> bool:
     folded = "".join(char for char in name.lower() if char.isalnum())
     if any(stem in folded for stem in _AUTHENTICATION_SUBSTRINGS):
         return True
-    return any(word.lower() in _AUTHENTICATION_TOKENS for word in _WORDS.findall(name))
+    # Tokenized twice, and case-folded first: ``_WORDS`` continues a token
+    # only through lowercase characters, so tokenizing the original spelling
+    # split ``AUTH`` into four single letters and let ``AUTH``/``AUTH_HEADER``/
+    # ``COOKIE``/``SESSION``/``SIG`` through while their lowercase forms were
+    # refused (bot review finding). The camelCase pass is kept as well, so
+    # ``refreshAuth`` still matches while ``author_filter`` still does not.
+    words = {word.lower() for word in _WORDS.findall(name)}
+    words.update(part for part in re.split(r"[^a-z0-9]+", name.lower()) if part)
+    return bool(words & _AUTHENTICATION_TOKENS)
 
 
 # Outcome reasons a registration may map a source-reported status onto. The
@@ -258,6 +282,8 @@ class ParameterSpec:
         if self.kind not in _PYTHON_KINDS or type(self.required) is not bool:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if not isinstance(self.description, str):
+            raise ToolContractError("INVALID_PARAMETER_SPEC")
+        if not _utf8_text(self.description):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if _MODEL_VISIBLE_URI.search(self.description):
             # Parameter prose is part of the same section 8 model-visible
@@ -351,6 +377,8 @@ class ToolDescription:
             "cannot_prove",
         ):
             value = getattr(self, name)
+            if isinstance(value, str) and not _utf8_text(value):
+                raise ToolContractError("INVALID_DESCRIPTION_TEXT")
             if isinstance(value, str) and _MODEL_VISIBLE_URI.search(value):
                 raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
@@ -513,7 +541,13 @@ class RegisteredTarget:
             # with the transport's credential provider, outside this package.
             raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
         if not isinstance(self.selector, Mapping) or any(
-            not isinstance(key, str) or not isinstance(value, str)
+            not isinstance(key, str)
+            or not isinstance(value, str)
+            # Selector keys and values are fingerprinted too, so the same
+            # non-encodable text would abort TargetRegistry construction with
+            # a raw UnicodeEncodeError (same class as the description fields).
+            or not _utf8_text(key)
+            or not _utf8_text(value)
             for key, value in self.selector.items()
         ):
             raise ToolContractError("INVALID_SELECTOR")
