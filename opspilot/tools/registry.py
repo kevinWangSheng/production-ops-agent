@@ -153,19 +153,29 @@ _AUTHENTICATION_KEYS = frozenset(
 # query parameter has no business being named after a credential, and the
 # refusal is a fixed-code registration error the operator sees immediately.
 _AUTHENTICATION_SUBSTRINGS = (
-    "apikey",
+    "accesskey",
     "accesstoken",
-    "authorization",
+    "apikey",
     "authorisation",
+    "authorization",
     "bearer",
+    "certificate",
     "credential",
+    "keypair",
+    "keystore",
     "passwd",
     "password",
+    "privatekey",
+    "publickey",
     "secret",
     "signature",
+    "sshkey",
     "token",
+    "truststore",
 )
-_AUTHENTICATION_TOKENS = frozenset({"auth", "cookie", "session", "sig"})
+_AUTHENTICATION_TOKENS = frozenset(
+    {"auth", "cert", "cookie", "p12", "pem", "pfx", "session", "sig"}
+)
 _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 
 
@@ -189,6 +199,15 @@ def _authentication_name(name: str) -> bool:
     folded = "".join(char for char in name.lower() if char.isalnum())
     if any(stem in folded for stem in _AUTHENTICATION_SUBSTRINGS):
         return True
+    # Bare ``key`` is deliberately absent from both collections: `label_key`,
+    # `group_by_key` and `partition_key` are ordinary query parameters for a
+    # read-only metrics tool, so matching it would refuse legitimate
+    # registrations. The credential families that *use* the word are matched
+    # as whole compounds instead (``privatekey``/``accesskey``/``sshkey``/
+    # ``keypair``/``keystore``). A denylist cannot be complete; what actually
+    # holds the boundary is that secrets live behind ``credential_ref`` and
+    # never in a model-proposable parameter at all.
+    #
     # Tokenized twice, and case-folded first: ``_WORDS`` continues a token
     # only through lowercase characters, so tokenizing the original spelling
     # split ``AUTH`` into four single letters and let ``AUTH``/``AUTH_HEADER``/
@@ -225,17 +244,28 @@ _ENDPOINT = re.compile(
 # or a concrete endpoint / base_url / 凭据句柄 there, whatever the scheme.
 # `_ENDPOINT` keeps its narrower job: what a registered transport endpoint may
 # actually be.
-# A concrete endpoint does not need a scheme to be one: `metrics.internal:9090`
-# and `10.0.0.4:4317` locate an internal target just as precisely (bot review
-# finding). Kept deliberately narrow so ordinary prose survives: the host must
-# be dotted with an alphabetic final label, or a dotted quad, and the port must
-# be digits. `12:30`, `5xx:2xx` and `section 3/4` therefore do not match, and
-# a bare hostname with no port stays a human-review question -- detecting one
-# in free text would reject `config.yaml` and `v1.2.3` as well.
+# A concrete endpoint does not need a scheme to be one: `metrics.internal:9090`,
+# `prometheus:9090` and `[fd00::1]:4317` locate an internal target just as
+# precisely (bot review findings). Three unambiguous forms are detected:
+# bracketed IPv6, a dotted quad, and a hostname label followed by a numeric
+# port -- the label must contain a letter, which is what keeps `12:30`,
+# `5xx:2xx` and `section 3/4` out.
+#
+# Accepted cost: prose of the shape `step:30` is now refused as well. It is a
+# registration-time refusal with a fixed code that the operator sees
+# immediately and can rewrite ("a step of 30 seconds"), which is the
+# fail-closed direction for a rule whose job is to keep internal target
+# locations out of the model-visible face.
+#
+# Still *not* detected, deliberately: a bare hostname with no port. Matching
+# one in free text would reject `config.yaml` and `v1.2.3` too, which is the
+# keyword scanner this module has repeatedly declined to build; that case
+# stays a human-review question.
 _SCHEMELESS_ENDPOINT = re.compile(
-    r"\b(?:"
-    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
-    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
+    r"(?:"
+    r"\[[0-9A-Fa-f:]{2,45}\]"  # bracketed IPv6
+    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # dotted quad
+    r"|\b(?:[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*)(?:\.[A-Za-z0-9-]+)*"  # host label
     r"):[0-9]{1,5}\b"
 )
 

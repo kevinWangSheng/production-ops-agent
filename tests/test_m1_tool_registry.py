@@ -695,3 +695,55 @@ def test_no_fingerprinted_field_can_raise_outside_the_contract(build_registratio
     """
     with pytest.raises(ToolContractError):
         ToolRegistry([build_registration("x\ud800")])
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "scrape localhost:4317",
+        "read prometheus:9090/api",
+        "the collector answers on [fd00::1]:4317",
+    ],
+)
+def test_single_label_and_ipv6_endpoints_are_refused(text):
+    """Bot review finding: requiring a dotted hostname missed the most common
+    in-cluster addressing form (`prometheus:9090`) and bracketed IPv6, both of
+    which identify an internal target exactly as precisely.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "private_key",
+        "aws_access_key_id",
+        "ssh_key",
+        "client_certificate",
+        "CERT",
+        "keystore_path",
+    ],
+)
+def test_key_and_certificate_credential_families_are_refused(name):
+    """Bot review finding: neither collection recognised the key/certificate
+    families, so a reviewed registration could declare `private_key` and let a
+    model-supplied private key through `TransportRequest.params`.
+    """
+    with pytest.raises(ToolContractError, match="RESERVED_PARAMETER"):
+        registration(parameters={name: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize("name", ["label_key", "group_by_key", "partition_key"])
+def test_bare_key_parameters_are_still_accepted(name):
+    """Bare `key` is deliberately not matched: these are ordinary query
+    parameters for a read-only metrics tool. The credential families that use
+    the word are matched as whole compounds instead, and what actually holds
+    the boundary is that secrets live behind `credential_ref` and never in a
+    model-proposable parameter at all.
+    """
+    assert (
+        name in registration(parameters={name: ParameterSpec(kind="string")}).parameters
+    )
