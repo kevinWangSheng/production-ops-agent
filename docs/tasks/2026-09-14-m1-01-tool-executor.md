@@ -1323,3 +1323,67 @@ M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed,
 - 本轮四条均为采纳修复，无拒绝项；GitHub 上逐条回复并 resolve。
 - 修复后 HEAD 再次变化，需要覆盖新 HEAD 的复审；机器人额度状态不稳定，缺口按前节口径如实记录。
 - 第 18 节记录的 `charge_tool` 栅栏回归测试维度缺口不变（仅事故代际维度入仓）。
+
+## 20. 机器人 code review 第八轮八条 thread 处置（2026-09-20）
+
+机器人对 `d0a7461` 与 `ff40696` 各出一轮，合计 8 条（3×P1、5×P2）。**7 条采纳修复，1 条拒绝**。
+
+### 采纳（6 条代码修复，提交 `f5dee7f`）
+
+| 条目 | 判定依据 | 处置 |
+| --- | --- | --- |
+| P1 `_ENDPOINT` 大小写敏感 | 实测 `_ENDPOINT.search("see HTTPS://...")` 为 `False`，且 `ParameterSpec` 接受该描述——第七轮刚补的规则被绕过。URI scheme 本不区分大小写（RFC 3986） | 改 `re.IGNORECASE` |
+| P2 保留参数名精确大小写 | 实测 `"Authorization" in RESERVED_PARAMETERS` 为 `False` | 按小写折叠比较，与上一轮 selector 检查同口径 |
+| P2 `OverflowError` 逃逸 | 实测 `fromisoformat("0001-01-01T00:00:00+14:00")` 成功、`.astimezone(utc)` 抛 `OverflowError` | 一并按无效窗口处理 |
+| P2 超长整数 `canonical` 抛错逃逸 | 实测 `int_max_str_digits=4300`，`json.dumps({"n": 10**4300})` 抛 `ValueError`，而 `accepts()` 放行 | 转 `error`/`INVALID_PARAMS`，未新增 reason 码 |
+| P2 结算失败把不确定接触升级为 confirmed | fetch 的失败元组第三项即接触分类（超时/不可用均为 `possible`），结算失败路径写死 `confirmed` | 沿用 `failure[2]`；`ToolBudgetExhausted` 同形状路径一并修正 |
+| P1 响应 source 区间未按授权校验 | `TransportResponse` 合同写明这是「本响应所代表的真实来源时间戳」（`executor.py:251-253`） | 超出 **scope** 窗口即 `denied`/`WINDOW_OUT_OF_SCOPE`；按裸边界比较以允许单点瞬时 |
+
+六条均先红后绿：保存 `git diff` 补丁后 `git apply -R` 仅还原实现、保留新测试，确认 9 个新用例
+全部失败，再还原实现确认全绿（**过程中发现并修正了一个假绿用例**：`OverflowError` 用例原本
+用 `start == end`，会先撞上 `start >= end` 的 `ValueError`，根本走不到 UTC 转换）。
+
+**一处既有用例输入被改动并已在 PR 上说明**：`test_single_source_instant_and_offset_are_preserved`
+原用 `NOW`（01:05）作来源瞬时，而 fixture scope 窗口是 00:00–01:00，新规则下即越权数据。该用例
+目的是「保留非 UTC 偏移」，取值偶然，改为窗口内同偏移瞬时并注明原委；**断言未改**，新规则另立
+专门用例（含「区间在 scope 内但与请求窗口不同仍应采纳」的反向用例）。
+
+### 采纳（1 条以协议义务形式，提交 `e6976d5`）
+
+P1「Fence evidence adoption inside the commit」：所指窗口真实存在，但结论分两层——
+
+1. **产品的原子栅栏已存在**：`DurableStore.commit_tool` 在同一事务同一行锁内复核
+   `step_generation != lease.control_generation` 与 `_lease_revoked(...)`，命中即转 `_late_result`
+   仅存历史。这正是本条要求的原子校验。
+2. **执行器已 fail closed**：`_register()` 在实现抛异常或返回引用不匹配时返回 `False`，执行器返回
+   `EVIDENCE_NOT_COMMITTED`，内容不交给模型。
+
+真实缺口是 `EvidenceSink` 协议没写出这条义务，实现可满足类型却丢掉保证。已在其 docstring 中
+明确要求，并写明 `commit_tool` 的既有做法与执行器的 fail-closed 行为。耐久实现随组合层接线落地
+（既有交接项不变）。
+
+### 拒绝（1 条，已在 PR 上说明依据）
+
+P2「Let elapsed timeout override transport failures」——**前提不成立且会制造假审计事实**：
+
+- 该条称此顺序违反「executor's stated rule that any fetch which outlasts the handed-off request
+  bound is a timeout」。仓库中不存在该规则：`GATEWAY_TIMEOUT` 在 `opspilot/` 下只出现一次，就是
+  被指的那一行，无 docstring 亦无注释表述过它。
+- 按提案前置 `elapsed > timeout` 后，transport 自报超时的调用会从
+  `("timeout", "TOOL_TIMEOUT", "possible")` 改报 `GATEWAY_TIMEOUT` + `confirmed`，把「是否真的读到
+  来源不可知」升级为「确认联系过来源」——正是**同一轮另一条 P2**（`:649`）要求消除的缺陷类别。
+- 超时事实未丢失：记录在 `operation.elapsed_seconds`、`executor.tool_seconds_used`，并按 per-dispatch
+  计费落进耐久账本。
+
+### 验证
+
+```text
+make check → 1334 passed, 136 skipped, 2 xfailed（ruff / ruff format / mypy 全过）
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+```
+
+### 未完成/限制
+
+- 8 条已全部回复并 resolve（7 采纳 / 1 拒绝并说明依据）。
+- 每轮修复都会改变 HEAD，机器人随即产出新一轮；本轮之后是否继续由用户决定。
+- 第 18 节记录的 `charge_tool` 栅栏回归测试维度缺口不变。
