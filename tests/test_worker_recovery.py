@@ -371,20 +371,37 @@ def test_a_denied_renewal_stops_before_the_tool_is_dispatched():
     assert store.abandon_calls == [lease]
 
 
-def test_a_denied_renewal_after_execution_stops_before_the_commit():
-    """A lease revoked while the callback ran must not reach ``commit_tool``."""
+def test_a_denied_renewal_after_execution_still_attempts_the_commit():
+    """A lease revoked mid-callback must not discard the completed query.
+
+    The renewal after the callback is an optimisation; ``commit_tool`` is the
+    fence *and* the thing that records a rejected result as durable
+    ``late_result`` history. Skipping it because renewal was denied would
+    erase the evidence that a real external call ran, so the commit is
+    attempted and its rejection is what surfaces.
+    """
     run_id = uuid4()
     lease = Lease(uuid4(), run_id, uuid4(), 1, 0)
-    pending = [{"step_id": uuid4(), "ordinal": 0, "tool_call": {}}]
+    step_id = uuid4()
+    pending = [{"step_id": step_id, "ordinal": 0, "tool_call": {}}]
+    order: list[str] = []
     store = _RecordingStore(
-        run_id=run_id, pending=pending, with_renew=True, deny_after=2
+        run_id=run_id, pending=pending, with_renew=True, deny_after=2, order=order
     )
+    # The real store rejects the revoked lease here, after recording the
+    # result under the late_result namespace.
+    store.commit_error = PersistenceError("CONTROL_DENIED")
     session = RecoverySession(_pending_plan(run_id, pending), lease, store)  # type: ignore[arg-type]
 
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        session.execute_pending(lambda item: {"ok": True})
+    def execute(item: dict) -> dict:
+        order.append("execute")
+        return {"ok": True}
 
-    assert store.commit_calls == []
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        session.execute_pending(execute)
+
+    # The denied renewal did not short-circuit the commit.
+    assert order == ["renew", "execute", "renew", "commit"]
     assert store.abandon_calls == [lease]
 
 

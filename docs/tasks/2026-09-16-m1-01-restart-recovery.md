@@ -265,3 +265,27 @@
   复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。
 - 本轮 code review 已覆盖当时的 HEAD `e6fefb8`（codex 19:20:24 的 review），不再是「审查只覆盖旧提交」的状态；
   本次修复后 HEAD 变更，仍需新一轮覆盖当前 HEAD 的复审。
+
+## 追加（2026-09-20）：第七轮 1 条 P1——迟到工具结果被丢弃（并更正我先前的错误陈述）
+
+- **P1：post-call 续租被拒时须记录迟到结果（`4057849960`）**：采纳并修复。**同时更正我在第一轮回复、PR 说明
+  与本任务记录里写过的一句错误陈述**：我曾称人工控制在工具在途时收回租约后，「本 session 的结果走 `_late_result`
+  保留为历史行而非静默丢失」。**该陈述不成立。** 因为续租发生在 `commit_tool()` **之前**，续租被拒会直接抛出，
+  `commit_tool()` 根本不会被调用，而写 `late_result` 行的正是 `commit_tool()` 内部的那条分支。结果是：
+  一次真实发生过的外部查询，其结果被完全丢弃，业务记录里没有任何它执行过的证据。
+- 实测证据（修复前，真实 PostgreSQL）：在 `test_human_control_between_execute_and_commit_stops_the_commit`
+  中追加断言「存在 status=late_result 且 response 为该结果的步骤行」，修复前红：`assert [] == [{'ok': True}]`。
+- 修复：区分两次续租的性质。**dispatch 前**的续租仍是硬门（此时尚未产生外部副作用，拒绝即停止）；
+  **callback 之后**的续租改为 best-effort（新增 `_renew_after_call()`），因为此时外部调用已经发生，
+  真正的栅栏与迟到结果登记都在 `commit_tool()` 内——续租失败不得短路提交。提交仍会被 `commit_tool()`
+  按 owner/epoch/generation 栅栏拒绝并抛 `CONTROL_DENIED`，结果不会进入新代际的 `tool_results`，
+  但会作为 `late_result:tool:{step_id}:{ordinal}` 历史行留存。对调用方可见的异常与修复前一致。
+- **一条我自己写错的测试已改正**：第二轮我加的 `test_a_denied_renewal_after_execution_stops_before_the_commit`
+  断言「续租被拒后不得调用 commit_tool」，把错误行为固化成了期望。已改为
+  `test_a_denied_renewal_after_execution_still_attempts_the_commit`，断言顺序为
+  `renew → execute → renew → commit`，且提交被拒时仍释放租约。
+- 回归：上述单测 + PG `test_human_control_between_execute_and_commit_stops_the_commit` 新增的 late_result 断言。
+  撤销本轮 `opspilot/worker.py` 改动后两者同时红。
+- 验证：`make check` → `1081 passed, 126 skipped, 2 xfailed`，ruff/format/mypy 全绿；
+  `M1_DURABLE_POSTGRES=1` 下 durable_state + lease_renewal + wiring → `72 passed`；worker 定向 `29 passed`。
+  复用其他 worktree 持有的 55431 PostgreSQL，未停止或接管。

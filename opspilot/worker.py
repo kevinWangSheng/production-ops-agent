@@ -89,6 +89,22 @@ class RecoverySession:
         if renew is not None:
             renew(self.lease, self.renew_seconds)
 
+    def _renew_after_call(self) -> None:
+        """Keep the lease alive for the commit, but never replace it as fence.
+
+        Renewing after the callback is an optimisation: it stops a long call
+        from losing a lease that is still rightfully held. ``commit_tool`` is
+        the authority on whether the result may be admitted, and it is also
+        what records a rejected one as a ``late_result`` history row. So a
+        denied or failed renewal must not short-circuit the commit -- doing
+        that drops a query that really did reach the outside world, leaving
+        no durable evidence it ran.
+        """
+        try:
+            self._renew()
+        except PersistenceError:
+            pass
+
     def _abandon_best_effort(self) -> None:
         try:
             self.store.abandon(self.lease)
@@ -131,9 +147,10 @@ class RecoverySession:
                 # timeout; nothing here can cap an opaque callable.
                 self._renew()
                 result = execute(item)
-                # The lease must still be live for the commit the callback's
-                # result depends on, so renew again after a long call.
-                self._renew()
+                # Best-effort, unlike the pre-dispatch renewal above: by now
+                # the external call has happened, so the commit must be
+                # attempted whatever the lease says (see _renew_after_call).
+                self._renew_after_call()
                 self.store.commit_tool(
                     self.lease, item["step_id"], int(item["ordinal"]), dict(result)
                 )

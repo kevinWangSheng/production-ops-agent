@@ -131,10 +131,14 @@ def test_human_control_between_execute_and_commit_stops_the_commit():
 
     rebuilt = store.rebuild(incident)
     assert rebuilt["run"]["state"] == "cancelled"
-    # The tool result was never committed: the pending tool call is still
-    # outstanding on the (now cancelled) step.
+    # The tool result was never admitted into the newer generation: the
+    # pending tool call is still outstanding on the (now cancelled) step.
     step_tools = [s for s in rebuilt["steps"] if s["step_id"] == step][0]
     assert step_tools["tool_results"] == []
+    # ...but the query did complete, so the business record must still show
+    # that it ran. Losing it would erase evidence of a real external call.
+    late = [s for s in rebuilt["steps"] if s["status"] == "late_result"]
+    assert [s["response"] for s in late] == [{"ok": True}]
 
 
 def test_the_lease_is_renewed_before_each_tool_is_dispatched():
