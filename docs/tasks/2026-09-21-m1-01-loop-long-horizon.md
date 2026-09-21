@@ -1,13 +1,13 @@
 # M1-01 调查 loop 长程执行边界改造（设计阶段）
 
-- 状态：**设计草案已完成独立审查并修订，待用户决定 PR 策略与压缩方式后进入 P1 实施**
+- 状态：**用户已决定 PR 策略 A 与 Holmes 式压缩，进入 P1 实施**
 - 更新日期：2026-09-21
 - 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
   v4 冻结包 B2 段；[上游对标调研](../research/upstream-agent-loop-benchmark-2026-09-21.md)
 - 工件：[设计草案](../design/investigation-loop-long-horizon-2026-09-21.md)
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-investigation-loop`，
-  分支 `feature/m1-01-investigation-loop`；本记录与草案只本地提交、未推送
+  分支 `feature/m1-01-loop-long-horizon`（worktree `../production-ops-agent-loop-long-horizon`，起点 #29 头 `9f3506f`）；#29 合并后 rebase 到 main 再开 PR
 
 ## 目标与范围
 

@@ -13,8 +13,13 @@
 2. **持久 transcript 就是 `opspilot_steps` 业务行，不新建 messages 表。**
    缺的是「从行重建模型可见上下文」的纯函数和「把 loop 挂到 `Worker.resume` 之后继续跑」的组合层，
    不是新的存储。
-3. **上下文压缩用确定性折叠，不用 LLM 摘要。** 折叠只产生新的、可追踪的 context 表示，
-   原始步骤/工具结果行不动；折叠决定随下一步 ModelStep 持久化。
+3. **上下文压缩按 HolmesGPT 的两段式结构实现（2026-09-21 用户决定「按参考的来」）**：
+   (a) 单工具结果超过单工具 token 上限时，模型可见消息替换为指针 stub（evidence_id + 状态 + 预览），完整 view 仍在 `tool_results`；
+   (b) 每轮模型调用前，若 `估计 tokens + MAX_OUTPUT_TOKENS > 预算 × 阈值比例`，用一次模型请求把历史摘要为一条 user 消息，
+   保留 system + 摘要 + 最后一条 user；摘要仍超预算则 `CONTEXT_EXHAUSTED`（Holmes `CompactionInsufficientError`）。
+   与 Holmes 的差异只有合同强制的三点：摘要消息**前置一段确定性来源摘要**（逐 view 的 evidence_id/target/window/status，PC「压缩必须保留证据来源」）；
+   摘要请求计入本 Run 物理模型请求预算并按同一 reserve/settle 记账；摘要请求失败时不回退到原始历史继续（Holmes 行为），
+   而是保留旧上下文并显式 handoff（C3 §5「压缩失败时保留旧上下文并交接」）。压缩结果作为新的 context 表示随下一步 ModelStep 持久化，原始行不动。
 4. **上下文预算用「保守估计 + provider 回报 `usage.prompt_tokens` 校准 + fail-closed」测量**，
    不引入 tokenizer 依赖；HTTP 字节上限保留为传输层第二道闸。
 5. **4 次模型请求保持为 M1-01 冻结上限**，但从 loop 的硬编码变成 `RunLimits` 参数：
@@ -68,7 +73,7 @@ OpenAI Agents SDK 的 Session / RunState / compaction session 是最清晰的**�
 
 | 任务书假设 | 本方案处理 | 理由 |
 |---|---|---|
-| 压缩「可采用手写或 LangGraph 运行时」，隐含可用 LLM 摘要 | **确定性折叠**（M0 压缩器产品化）；LLM 摘要不做 | Holmes 的 LLM 摘要把整段历史（含 reasoning_content）送去总结，摘要成为产品记忆，与「不把隐藏思维链作为产品记忆」和 PC「压缩必须保留证据来源」冲突；确定性折叠零模型费用、可重算、可先红后绿测试。**移植时新增**（M0 压缩器没有）：折叠摘要按 view 逐条保留 evidence_id/operation_id/tool/source/target_id/window/observed_at/freshness/status/truncated/adopted，作为 P2 验收断言（PC「压缩必须保留证据来源」） |
+| 压缩「可采用手写或 LangGraph 运行时」 | 原稿推荐纯确定性折叠；**用户 2026-09-21 决定按 Holmes 参考实现 LLM 摘要 compaction**，确定性来源摘要作为强制附加，见第 1 节第 3 条 | Holmes 的 LLM 摘要把整段历史（含 reasoning_content）送去总结，摘要成为产品记忆，与「不把隐藏思维链作为产品记忆」和 PC「压缩必须保留证据来源」冲突；确定性折叠零模型费用、可重算、可先红后绿测试。**移植时新增**（M0 压缩器没有）：折叠摘要按 view 逐条保留 evidence_id/operation_id/tool/source/target_id/window/observed_at/freshness/status/truncated/adopted，作为 P2 验收断言（PC「压缩必须保留证据来源」） |
 | 「上下文预算必须可测量，不能只依赖 HTTP 字节」→ 隐含 tokenizer | 保守估计（bytes/4）× 本 Run 校准因子（`usage.prompt_tokens / 估计`，单调只增），每步把估计与实测都落库 | DeepSeek tokenizer 是新依赖且随模型换代漂移；Holmes/OpenSRE 在非 OpenAI 模型上同样是估计；真实测量只有 provider 的 `usage`，而每一步的 usage 已经持久化 |
 | 「支持在同一 Incident 下创建或接续新的 Run」 | 只做 handoff 结论 + `continuation_context()` 构造器；创建新 Run 保持人工 / Controller | C3 §13「过期后使用新 Run 接续，不静默延长旧执行权」、`new_run` 现有合同要求先 cancel；自动串 Run 等于把预算耗尽变成无界工作，PC 禁止 |
 | 「为调查 Run 建立清晰的持久执行状态」 | 不新建表；`opspilot_runs` 增 `input` 快照与 `active_seconds_used`，`opspilot_steps` 增 `context` 列 | 步骤行已经是有序 transcript；再建 messages 表会出现两份权威 |
@@ -162,10 +167,10 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 
 ## 9. 需要用户决定的事项
 
-1. **PR 策略**：A）合并 #29 现有有界切片，本方案作为新 PR（推荐：#29 已 52 提交 / 49 轮审查且 `CLEAN`，
+1. ~~PR 策略~~：2026-09-21 用户决定 A。实施分支 `feature/m1-01-loop-long-horizon`（worktree `../production-ops-agent-loop-long-horizon`），起点 #29 头 `9f3506f`，#29 合并后 rebase 到 main 再开 PR。原选项：A）合并 #29 现有有界切片，本方案作为新 PR（推荐：#29 已 52 提交 / 49 轮审查且 `CLEAN`，
    新 PR 审查范围干净，符合 #39 不做 stacked PR 与机器人审查停机规则）；
    B）在 #29 分支上继续重做，PR 描述重写。实现内容两者相同。
-2. **压缩方式**：确定性折叠（推荐）还是保留 LLM 摘要作为第二表示。
+2. ~~压缩方式~~：2026-09-21 用户决定按上游参考（HolmesGPT）实现，见第 1 节第 3 条。
 3. **`reasoning_content` 与折叠的真实 provider 冒烟改为 P2 前置条件**（1 次请求，常设授权内）：
    round-07 证据只证明「折叠后的合成 transcript 被接受」，未证明「请求带 `tools`+thinking、剩余组带真实 reasoning_content」时不 400。
    推断依据是 API 无状态（参考 §1.1）、折叠删除的是整组消息而非字段；这是推断，不是已证。
