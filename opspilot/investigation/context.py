@@ -18,6 +18,7 @@ without PostgreSQL.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -43,7 +44,229 @@ from opspilot.tools.registry import canonical
 
 INITIAL_SEGMENT = "ctx0"
 CONCLUSION_KIND = "conclusion"
+COMPACTION_KIND = "compaction"
 INPUT_VERSION = "opspilot-investigation-input-v1"
+
+# --- context policy (HolmesGPT's two mechanisms, C3 §5 constraints) ---------
+#
+# Mechanism 1: a single tool result above ``single_tool_pct`` of the context
+# budget is replaced, in the model-visible message only, by a provenance stub
+# (Holmes spills to disk; here the full view already sits in ``tool_results``
+# and the evidence store). Mechanism 2: before each model call, when the
+# estimated prompt plus the output allowance passes ``compaction_pct`` of the
+# budget, the history after the fixed prefix is summarised by one model
+# request and replaced by a deterministic provenance digest plus that summary.
+# Everything model-visible here is versioned into ``context_policy_revision``.
+
+COMPACTION_INSTRUCTION = (
+    "Context compaction request. The investigation continues after this, so "
+    "write the working summary you need to continue it: observed facts with "
+    "their exact evidence_id values, hypotheses and counter-evidence, what is "
+    "still unknown, which queries were already made so they are not repeated, "
+    "and the next intended step. Cite evidence_id values exactly as given. "
+    "Do not call tools. Plain text only, no JSON, no Markdown fences."
+)
+COMPACTION_PREAMBLE = (
+    "Earlier turns were compacted to keep the context within budget. The "
+    "provenance digest below lists every evidence_id that was collected; the "
+    "summary after it replaces the earlier turns:"
+)
+COMPACTION_SUFFIX = (
+    "Continue the investigation from here. Cite only evidence_id values "
+    "listed above or collected after this point; do not repeat listed queries."
+)
+STUB_REASON = "VIEW_TOO_LARGE"
+_VIEW_PROVENANCE_KEYS = (
+    "evidence_id",
+    "operation_id",
+    "status",
+    "adopted",
+    "tool",
+    "source",
+    "target_id",
+    "window",
+    "observed_at",
+    "freshness_seconds",
+    "truncated",
+)
+_TOKENS_PER_BYTE = 0.25
+_MESSAGE_OVERHEAD_TOKENS = 4
+
+
+@dataclass(frozen=True)
+class ContextPolicy:
+    version: str = "ctx-policy-v1"
+    compaction_pct: float = 0.8
+    single_tool_pct: float = 0.25
+    stub_preview_chars: int = 512
+
+
+CONTEXT_POLICY = ContextPolicy()
+
+
+def context_policy_revision(policy: ContextPolicy = CONTEXT_POLICY) -> str:
+    """Content hash of everything the compaction path shows the model or does.
+
+    C3 §5 revision rule 4: recomputable from code alone. Changing the
+    instruction text, the stub shape or a threshold moves this value, and a
+    Run reclaimed under a different value is ``blocked(INCOMPATIBLE_STATE)``.
+    """
+    digest = hashlib.sha256(
+        canonical(
+            {
+                "policy": {
+                    "version": policy.version,
+                    "compaction_pct": policy.compaction_pct,
+                    "single_tool_pct": policy.single_tool_pct,
+                    "stub_preview_chars": policy.stub_preview_chars,
+                },
+                "instruction": COMPACTION_INSTRUCTION,
+                "preamble": COMPACTION_PREAMBLE,
+                "suffix": COMPACTION_SUFFIX,
+                "stub_keys": list(_VIEW_PROVENANCE_KEYS),
+                "estimator": {"tokens_per_byte": _TOKENS_PER_BYTE},
+            }
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"ctx-{policy.version}-{digest[:12]}"
+
+
+def context_policy_versions() -> dict[str, str]:
+    """The ``versions`` entry a Run creator/claimer must include (C3 §5)."""
+    return {"context_policy_revision": context_policy_revision()}
+
+
+def estimate_tokens(
+    messages: Sequence[Mapping[str, Any]],
+    tools: Sequence[Mapping[str, Any]] | None = None,
+    *,
+    extra: Sequence[Mapping[str, Any]] = (),
+) -> int:
+    """Conservative provider-agnostic estimate of a request's prompt tokens.
+
+    Bytes of the canonical JSON at four bytes per token plus a per-message
+    overhead, over messages *and* the tools array (the M0 estimator counted
+    messages only, which under-reported every tools request). The provider's
+    ``usage.prompt_tokens`` calibrates it upward per Run; see ``Calibration``.
+    """
+    total = 0
+    for message in (*messages, *extra):
+        size = len(canonical(dict(message)).encode("utf-8"))
+        total += int(size * _TOKENS_PER_BYTE) + _MESSAGE_OVERHEAD_TOKENS
+    if tools:
+        size = len(canonical([dict(tool) for tool in tools]).encode("utf-8"))
+        total += int(size * _TOKENS_PER_BYTE)
+    return total
+
+
+def calibrated(factor: float, estimated: int, observed: object) -> float:
+    """The next calibration factor after the provider reported ``observed``.
+
+    Monotone: it only grows, so once a Run has seen the estimator under-count
+    it stays conservative. ``observed`` comes from ``usage.prompt_tokens`` and
+    is ignored unless it is a positive integer.
+    """
+    if type(observed) is not int or observed <= 0 or estimated <= 0:
+        return factor
+    return max(factor, observed / estimated)
+
+
+def view_stub(view: Mapping[str, Any], *, preview_chars: int) -> dict[str, Any]:
+    """Model-visible replacement for a tool view above the single-tool cap.
+
+    Keeps every provenance field (the citation is unaffected: ``delivered_view``
+    reads the persisted full view), marks the omission, and carries a short
+    preview. Deterministic, so a rebuild reproduces the same bytes.
+    """
+    full = canonical(view)
+    stub: dict[str, Any] = {key: view.get(key) for key in _VIEW_PROVENANCE_KEYS}
+    stub["truncated"] = True
+    stub["spilled"] = True
+    stub["reason"] = STUB_REASON
+    stub["full_view_sha256"] = hashlib.sha256(full.encode("utf-8")).hexdigest()
+    stub["full_view_bytes"] = len(full.encode("utf-8"))
+    stub["preview"] = full[:preview_chars]
+    return stub
+
+
+def visible_view(
+    view: Mapping[str, Any],
+    *,
+    limits: RunLimits,
+    policy: ContextPolicy = CONTEXT_POLICY,
+) -> Mapping[str, Any]:
+    """The view the model sees for one committed tool result (mechanism 1)."""
+    cap = int((limits.context_tokens - limits.output_tokens) * policy.single_tool_pct)
+    if estimate_tokens([{"role": "tool", "content": canonical(view)}]) > cap:
+        return view_stub(view, preview_chars=policy.stub_preview_chars)
+    return view
+
+
+def fold_digest(messages: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Deterministic provenance digest of the messages a compaction folds.
+
+    Every tool view (or stub) contributes its provenance fields verbatim;
+    assistant turns contribute their tool-call ids and a hash of their text.
+    Private protocol fields are never read.
+    """
+    views: list[dict[str, Any]] = []
+    tool_calls: list[dict[str, str]] = []
+    texts: list[str] = []
+    for message in messages:
+        role = message.get("role")
+        if role == "tool":
+            try:
+                payload = json.loads(str(message.get("content")))
+            except ValueError:
+                payload = None
+            entry = (
+                {key: payload.get(key) for key in _VIEW_PROVENANCE_KEYS}
+                if isinstance(payload, Mapping)
+                else {key: None for key in _VIEW_PROVENANCE_KEYS}
+            )
+            entry["tool_call_id"] = message.get("tool_call_id")
+            views.append(entry)
+        elif role == "assistant":
+            for call in message.get("tool_calls") or ():
+                if isinstance(call, Mapping) and isinstance(
+                    call.get("function"), Mapping
+                ):
+                    tool_calls.append(
+                        {
+                            "id": str(call.get("id")),
+                            "name": str(call["function"].get("name")),
+                            "arguments_sha256": hashlib.sha256(
+                                str(call["function"].get("arguments")).encode("utf-8")
+                            ).hexdigest(),
+                        }
+                    )
+            content = message.get("content")
+            if isinstance(content, str) and content:
+                texts.append(hashlib.sha256(content.encode("utf-8")).hexdigest())
+    return {
+        "folded_messages": len(messages),
+        "tool_calls": tool_calls,
+        "views": views,
+        "evidence_ids": list(
+            dict.fromkeys(
+                v["evidence_id"] for v in views if isinstance(v.get("evidence_id"), str)
+            )
+        ),
+        "assistant_text_sha256": texts,
+    }
+
+
+def compaction_message(
+    revision: int, digest: Mapping[str, Any], summary: str
+) -> dict[str, Any]:
+    """The single user message that replaces the folded turns (Holmes shape)."""
+    return {
+        "role": "user",
+        "content": (
+            f"[context compacted rev={revision}] {COMPACTION_PREAMBLE}\n"
+            f"{canonical(digest)}\n\n{summary.strip()}\n\n{COMPACTION_SUFFIX}"
+        ),
+    }
 
 
 class ContextError(Exception):
@@ -281,6 +504,10 @@ class Transcript:
     next_round: int
     segment: str
     live_steps: int
+    prefix_len: int
+    calibration: float = 1.0
+    folded_since: tuple[UUID, ...] = ()
+    compactions: int = 0
     dropped_groups: tuple[UUID, ...] = ()
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
 
@@ -346,6 +573,7 @@ def rebuild_transcript(
         raise ContextError("INCONSISTENT_STATE")
     context = evidence_context_projection(input.evidence_context, run_id=run_id)
     messages, _system = initial_messages(input, evidence_context=context)
+    prefix_len = len(messages)
     delivered = delivered_from_context(context, run_id=run_id)
     evidence_ids = [view.evidence_id for view in delivered]
     steps = snapshot.get("steps")
@@ -360,6 +588,9 @@ def rebuild_transcript(
     max_round = 0
     segment = INITIAL_SEGMENT
     live = 0
+    calibration = 1.0
+    folded_since: list[UUID] = []
+    compactions = 0
     dropped: list[UUID] = []
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
     for step in ordered:
@@ -378,10 +609,43 @@ def rebuild_transcript(
             if snapshot.get("conclusion") is None:
                 pending_publish = (step_id, dict(response))
             continue
+        calibration = _calibration_from_row(response, calibration)
+        if kind == COMPACTION_KIND:
+            record = response.get("compaction")
+            if not isinstance(record, Mapping):
+                raise ContextError("INCONSISTENT_STATE")
+            if record.get("accepted") is not True:
+                continue
+            if (
+                record.get("from_segment") != segment
+                or list(record.get("folded_step_ids") or ())
+                != [str(i) for i in folded_since]
+                or not isinstance(record.get("digest"), Mapping)
+                or type(record.get("revision")) is not int
+                or not isinstance(record.get("to_segment"), str)
+            ):
+                # The row claims to fold steps this rebuild does not see (or
+                # sees differently): never guess which context the model had.
+                raise ContextError("INCOMPATIBLE_STATE")
+            summary = (response.get("assistant") or {}).get("content")
+            if not isinstance(summary, str) or not summary.strip():
+                raise ContextError("INCONSISTENT_STATE")
+            messages = [
+                *messages[:prefix_len],
+                compaction_message(int(record["revision"]), record["digest"], summary),
+            ]
+            segment = str(record["to_segment"])
+            folded_since = []
+            compactions += 1
+            continue
         if kind is not None:
             raise ContextError("INCOMPATIBLE_STATE")
         parsed = parse_step_key(step.get("logical_key"))
         if parsed is None:
+            raise ContextError("INCOMPATIBLE_STATE")
+        if parsed[0] != segment:
+            # A round committed under a context representation this rebuild
+            # did not reproduce (a lost compaction row, or rows out of order).
             raise ContextError("INCOMPATIBLE_STATE")
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
@@ -391,8 +655,8 @@ def rebuild_transcript(
         except PairingError:
             raise ContextError("INCONSISTENT_STATE") from None
         max_round = max(max_round, parsed[1])
-        segment = parsed[0]
         live += 1
+        folded_since.append(step_id)
         content = assistant.get("content")
         reasoning = assistant.get("reasoning_content")
         if content is not None and not isinstance(content, str):
@@ -418,7 +682,7 @@ def rebuild_transcript(
             if isinstance(target, str) and target not in authorized_targets:
                 payload: Mapping[str, Any] = revoked_view(view)
             else:
-                payload = view
+                payload = visible_view(view, limits=input.limits)
                 citation = delivered_view(
                     view,
                     evidence_context=context,
@@ -461,6 +725,21 @@ def rebuild_transcript(
         next_round=max_round + 1,
         segment=segment,
         live_steps=live,
+        prefix_len=prefix_len,
+        calibration=calibration,
+        folded_since=tuple(folded_since),
+        compactions=compactions,
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
     )
+
+
+def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:
+    context = response.get("context")
+    usage = response.get("usage")
+    if not isinstance(context, Mapping) or not isinstance(usage, Mapping):
+        return factor
+    estimated = context.get("estimated_prompt_tokens")
+    if type(estimated) is not int:
+        return factor
+    return calibrated(factor, estimated, usage.get("prompt_tokens"))

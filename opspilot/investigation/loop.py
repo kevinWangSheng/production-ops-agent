@@ -13,19 +13,28 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from opspilot.instructions.discipline import prompt_revision
 from opspilot.investigation.context import (
+    COMPACTION_INSTRUCTION,
+    COMPACTION_KIND,
     CONCLUSION_KIND,
+    CONTEXT_POLICY,
     INITIAL_SEGMENT,
     InvestigationInput,
     Transcript,
+    calibrated,
+    compaction_message,
+    context_policy_versions,
     delivered_view,
+    estimate_tokens,
+    fold_digest,
     initial_messages,
     step_key,
+    visible_view,
 )
 from opspilot.investigation.limits import (
     M1_FROZEN_LIMITS,
@@ -100,6 +109,16 @@ def prompt_revision_versions(
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
+def investigation_versions(variant_id: str = DISCIPLINE_VARIANT) -> dict[str, str]:
+    """Every ``versions`` key the loop's behaviour depends on (C3 §5).
+
+    ``prompt_revision`` (L1a + L2) and ``context_policy_revision`` (the
+    compaction path). ``tool_schema_revision`` belongs to the tool registry and
+    is merged in by the caller that builds the Run's ``versions``.
+    """
+    return {**prompt_revision_versions(variant_id), **context_policy_versions()}
+
+
 _STORE_REFUSALS = frozenset(
     {"CONTROL_DENIED", "INCOMPATIBLE_STATE", "STORAGE_UNAVAILABLE"}
 )
@@ -246,6 +265,10 @@ class _State:
     revision: str
     face: str
     question_sha: str
+    prefix_len: int
+    calibration: float = 1.0
+    folded_since: list[UUID] = field(default_factory=list)
+    compactions: int = 0
     steps_committed: int = 0
     seconds_used: float = 0.0
     last_step_id: UUID | None = None
@@ -294,6 +317,10 @@ class InvestigationLoop:
         next_round: int,
         segment: str,
         system: str,
+        prefix_len: int,
+        calibration: float = 1.0,
+        folded_since: Sequence[UUID] = (),
+        compactions: int = 0,
     ) -> _State:
         usage = self.store.usage()
         return _State(
@@ -312,6 +339,10 @@ class InvestigationLoop:
             revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
+            prefix_len=prefix_len,
+            calibration=calibration,
+            folded_since=list(folded_since),
+            compactions=compactions,
         )
 
     def run(self, request: InvestigationRequest) -> LoopOutcome:
@@ -342,6 +373,7 @@ class InvestigationLoop:
             next_round=1,
             segment=INITIAL_SEGMENT,
             system=system,
+            prefix_len=len(messages),
         )
         return self._drive(state)
 
@@ -377,6 +409,10 @@ class InvestigationLoop:
             next_round=transcript.next_round,
             segment=transcript.segment,
             system=system,
+            prefix_len=transcript.prefix_len,
+            calibration=transcript.calibration,
+            folded_since=transcript.folded_since,
+            compactions=transcript.compactions,
         )
         return self._drive(state)
 
@@ -409,13 +445,16 @@ class InvestigationLoop:
         self, state: _State, *, final: bool
     ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
         request = state.request
+        tools = None if final else tuple(request.tool_schemas)
+        extra = (
+            ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},) if final else ()
+        )
+        self._manage_context(state, tools=tools, extra=extra)
         timeout = self._remaining_timeout(state)
-        outbound = list(state.messages)
-        if final:
-            outbound.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+        outbound = [*state.messages, *extra]
         call = ModelCall(
             messages=tuple(outbound),
-            tools=None if final else tuple(request.tool_schemas),
+            tools=tools,
             json_mode=final,
             max_tokens=request.limits.output_tokens,
             timeout_seconds=timeout,
@@ -440,6 +479,7 @@ class InvestigationLoop:
             tool_calls=reply.tool_calls,
         )
         step_id = self._commit_step(state, logical_key, assistant, reply, dispatched)
+        state.folded_since.append(step_id)
         state.next_round += 1
         try:
             calls = validate_tool_calls(assistant)
@@ -525,10 +565,131 @@ class InvestigationLoop:
                 {
                     "role": "tool",
                     "tool_call_id": call["id"],
-                    "content": canonical(view),
+                    # Mechanism 1: an oversized view reaches the model as a
+                    # provenance stub; the row above keeps the full view.
+                    "content": canonical(visible_view(view, limits=request.limits)),
                 }
             )
         return results
+
+    # -- context management (HolmesGPT mechanism 2, C3 §5) -------------------
+
+    def _manage_context(
+        self,
+        state: _State,
+        *,
+        tools: tuple[Mapping[str, Any], ...] | None,
+        extra: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Compact the history before a call that would not fit the budget.
+
+        Threshold and insufficiency rule follow Holmes: compact when
+        ``estimate + output allowance > budget * pct``; if the compacted
+        context still does not fit, stop with ``CONTEXT_EXHAUSTED`` rather
+        than send a request that silently truncates evidence references.
+        A compaction is one physical model request charged to this Run, so it
+        needs two remaining slots (its own and the next call's).
+        """
+        limits = state.request.limits
+        budget = limits.context_tokens - limits.output_tokens
+        projected = (
+            estimate_tokens(state.messages, tools, extra=extra) * state.calibration
+        )
+        if projected <= budget * CONTEXT_POLICY.compaction_pct:
+            return
+        if state.request.model_requests - state.used < 2:
+            raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+        self._compact(state)
+        projected = (
+            estimate_tokens(state.messages, tools, extra=extra) * state.calibration
+        )
+        if projected > budget:
+            raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+
+    def _compact(self, state: _State) -> None:
+        request = state.request
+        revision = state.compactions + 1
+        logical_key = f"{state.segment}:compact-{revision}"
+        outbound = [
+            *state.messages,
+            {"role": "user", "content": COMPACTION_INSTRUCTION},
+        ]
+        call = ModelCall(
+            messages=tuple(outbound),
+            tools=None,
+            json_mode=False,
+            max_tokens=request.limits.output_tokens,
+            timeout_seconds=self._remaining_timeout(state),
+            model=self.accepted_response_model,
+        )
+        self._reject_oversized(call, request.limits)
+        try:
+            reply, dispatched = self._call_model(
+                call, state=state, logical_key=logical_key, final=False
+            )
+        except _RoundAborted:
+            # The retry would have taken the reserved final slot: the old
+            # context stays as it is and the Run hands off (C3 §5).
+            raise _LoopHalt("failed", ("COMPACTION_FAILED",)) from None
+        summary = reply.content if isinstance(reply.content, str) else ""
+        accepted = (
+            not reply.tool_calls
+            and reply.finish_reason == "stop"
+            and bool(summary.strip())
+        )
+        folded = state.messages[state.prefix_len :]
+        digest = fold_digest(folded)
+        to_segment = f"ctx{revision}"
+        estimated = estimate_tokens(dispatched.messages, dispatched.tools)
+        state.calibration = calibrated(
+            state.calibration, estimated, reply.usage.get("prompt_tokens")
+        )
+        payload = {
+            "kind": COMPACTION_KIND,
+            "assistant": dict(
+                assistant_message(
+                    content=reply.content,
+                    reasoning_content=reply.reasoning_content,
+                    tool_calls=reply.tool_calls,
+                )
+            ),
+            "finish_reason": reply.finish_reason,
+            "response_model": reply.response_model,
+            "usage": dict(reply.usage),
+            "request_sha256": hashlib.sha256(
+                serialized_request(dispatched)
+            ).hexdigest(),
+            "context": {
+                "segment": state.segment,
+                "estimated_prompt_tokens": estimated,
+                "calibration": state.calibration,
+            },
+            "compaction": {
+                "revision": revision,
+                "accepted": accepted,
+                "from_segment": state.segment,
+                "to_segment": to_segment,
+                "folded_step_ids": [str(step_id) for step_id in state.folded_since],
+                "digest": digest,
+                "estimated_before": estimate_tokens(state.messages),
+            },
+        }
+        try:
+            self.store.commit_step(logical_key, payload)
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
+        state.steps_committed += 1
+        if not accepted:
+            # Keep the old context untouched and hand off; never continue on
+            # a summary that is missing or tried to call tools.
+            raise _LoopHalt("failed", ("COMPACTION_FAILED",))
+        state.messages = [
+            *state.messages[: state.prefix_len],
+            compaction_message(revision, digest, summary),
+        ]
+        state.segment = to_segment
+        state.folded_since = []
+        state.compactions = revision
 
     def _reserve(self, run_id: str, logical_key: str, *, seconds: float) -> None:
         try:
@@ -563,6 +724,12 @@ class InvestigationLoop:
         dispatched: ModelCall,
     ) -> UUID:
         response_id = reply.raw.get("id")
+        estimated = estimate_tokens(dispatched.messages, dispatched.tools)
+        # The provider's own count calibrates the estimator for the rest of
+        # this Run (and, through the row, for any later attempt).
+        state.calibration = calibrated(
+            state.calibration, estimated, reply.usage.get("prompt_tokens")
+        )
         payload = {
             "assistant": dict(assistant),
             "finish_reason": reply.finish_reason,
@@ -573,7 +740,8 @@ class InvestigationLoop:
             ).hexdigest(),
             "response_id": response_id if isinstance(response_id, str) else None,
             # C3 §7 step identity beyond the key: which context representation
-            # this round saw, and a hash of exactly what was sent.
+            # this round saw, a hash of exactly what was sent, and the
+            # measured-vs-estimated prompt size behind the context budget.
             "context": {
                 "segment": state.segment,
                 "round": state.next_round,
@@ -582,6 +750,8 @@ class InvestigationLoop:
                         [dict(message) for message in dispatched.messages]
                     ).encode("utf-8")
                 ).hexdigest(),
+                "estimated_prompt_tokens": estimated,
+                "calibration": state.calibration,
             },
         }
         try:
@@ -714,6 +884,8 @@ class InvestigationLoop:
                 else str(state.last_step_id),
                 "segment": state.segment,
                 "rounds": state.next_round - 1,
+                "compactions": state.compactions,
+                "calibration": state.calibration,
             },
         }
         final_step_id: UUID | None = None
