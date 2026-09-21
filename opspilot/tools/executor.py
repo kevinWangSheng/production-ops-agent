@@ -228,7 +228,16 @@ class QueryScope:
                 not isinstance(name, str) or not name for name in names
             ):
                 raise ToolContractError("INVALID_SCOPE_NAMES")
-        object.__setattr__(self, "deadline", self.deadline.astimezone(timezone.utc))
+        try:
+            normalized = self.deadline.astimezone(timezone.utc)
+        except (OverflowError, OSError, ValueError) as exc:
+            # `fromisoformat` accepts aware bounds that cannot be normalised
+            # (`0001-01-01T00:00:00+14:00`), and the raw OverflowError escaped
+            # this module's fixed-code boundary -- `Window.parse()` already
+            # treats the same timestamp class as invalid input (bot review
+            # finding).
+            raise ToolContractError("INVALID_DEADLINE") from exc
+        object.__setattr__(self, "deadline", normalized)
 
 
 @dataclass(frozen=True)

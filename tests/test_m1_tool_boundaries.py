@@ -14,15 +14,17 @@ and "Data flow contract"; ``feature_list.json`` F7.
 """
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
 from opspilot.tools import (
     READ_ONLY_VERBS,
     ControlSnapshot,
+    TargetRegistry,
     ToolContractError,
     ToolControlDenied,
+    ToolRegistry,
     ToolUsage,
     TransportRequest,
     TransportResponse,
@@ -46,6 +48,7 @@ from tests.m1_tool_support import (
     build,
     registration,
     request,
+    scope,
     target,
 )
 
@@ -1567,3 +1570,20 @@ def test_a_ledger_that_cannot_record_the_release_does_not_change_the_reason():
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
     assert not transport.called
+
+
+def test_a_deadline_that_cannot_be_normalized_is_a_contract_error():
+    """Bot review finding: an aware but non-normalizable deadline passed the
+    awareness checks and then raised a raw `OverflowError` out of
+    `astimezone`, bypassing this module's fixed-code boundary and able to
+    abort scope construction. `Window.parse()` already treats the same
+    timestamp class as invalid input.
+    """
+    targets = TargetRegistry([target()])
+    tools = ToolRegistry([registration()])
+    with pytest.raises(ToolContractError, match="INVALID_DEADLINE"):
+        scope(
+            targets,
+            tool_registry=tools,
+            deadline=datetime.fromisoformat("0001-01-01T00:00:00+14:00"),
+        )

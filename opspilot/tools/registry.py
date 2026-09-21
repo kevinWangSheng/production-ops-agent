@@ -289,12 +289,17 @@ _ENDPOINT = re.compile(
 # keyword scanner this module has repeatedly declined to build; that case
 # stays a human-review question.
 _SCHEMELESS_ENDPOINT = re.compile(
-    r"(?:"
-    # 方括号 IPv6，含 zone id（`[fe80::1%eth0]`）：链路本地地址同样是具体
-    # endpoint，而方括号加冒号本身就是无歧义锚点，放宽 zone 不带来误判——
-    # `数组 [1:2]`、`区间 [a:b]` 仍不匹配，因为端口仍要求是数字（bot review 发现）。
-    r"\[[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
-    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # dotted quad
+    # 方括号 IPv6（含 zone id），端口可选：`[fd00::1]` 不带端口同样是具体
+    # endpoint，方括号本身就是锚点（bot review 发现）。判别式是**冒号数量**：
+    # 前瞻要求方括号内至少两个冒号，真实 IPv6 字面量必然满足（`::` 或分段形式），
+    # 而 `数组 [1:2]`、`区间 [a:b]`、`矩阵 [i:j]` 这类切片/区间写法只有一个冒号，
+    # 因此仍是普通散文——端口不再能充当这个判别式，冒号数量接替了它。
+    r"\[(?=[0-9A-Fa-f]*:[0-9A-Fa-f:]*:)[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
+    r"(?::[0-9]{1,5})?"
+    # 其余形式仍要求数字端口：没有方括号这个锚点时，端口是唯一能把
+    # `metrics.internal:9090` 与普通散文分开的特征。
+    r"|(?:"
+    r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # dotted quad
     r"|\b(?:[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*)(?:\.[A-Za-z0-9-]+)*"  # host label
     r"):[0-9]{1,5}\b"
 )

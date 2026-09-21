@@ -980,3 +980,27 @@ def test_an_endpoint_without_a_usable_authority_is_refused(endpoint):
 )
 def test_usable_endpoints_are_still_accepted(endpoint):
     assert target(endpoint=endpoint).endpoint == endpoint
+
+
+@pytest.mark.parametrize(
+    "text", ["连接 [fd00::1]", "连接 [fe80::1%eth0]", "监听 [::1] 上"]
+)
+def test_unported_bracketed_ipv6_endpoints_are_refused(text):
+    """Bot review finding: the bracketed form still required `:port`, so an
+    unported literal reached the model. Brackets are the anchor; the port was
+    only ever standing in for one.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize("text", ["数组 [1:2] 的写法", "区间 [a:b]", "矩阵 [i:j] 切片"])
+def test_slice_notation_survives_the_unported_bracket_rule(text):
+    """Dropping the port requirement needed a new discriminator, or slice and
+    interval notation (whose contents are also hex-ish characters and a colon)
+    would be refused. It is the *colon count*: a real IPv6 literal has at least
+    two, `[1:2]` has one.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text
