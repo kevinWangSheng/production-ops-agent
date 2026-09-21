@@ -2,7 +2,6 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, "chore/m0-*"]
   push:
     branches: [main]
   workflow_dispatch:
