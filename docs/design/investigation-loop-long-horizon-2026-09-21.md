@@ -186,7 +186,21 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 每阶段 `make check` + `M1_DURABLE_POSTGRES=1` 定向 PG；先红后绿；不改 11 个 `passes`、
 不改 v4 冻结值、不调用真实模型（P2 冒烟除外，另行记录）。
 
-## 11. 独立审查记录（2026-09-21）
+## 11. 实施与草案的差异（2026-09-21，P1–P3 完成后）
+
+| 草案 | 实施 | 原因 |
+|---|---|---|
+| `opspilot_steps.context` 新列 | 写在步骤 `response` 载荷的 `context` 键内（`segment/round/input_snapshot_hash/estimated_prompt_tokens/calibration`） | 不改 `rebuild()`/`publish()` 的列契约，`SELECT *` 与 `response == conclusion` 比较原样成立 |
+| `opspilot_runs.active_seconds_used` 列 | `opspilot_budget_reservations.reserved_seconds / seconds` 两列，`run_usage()` 按「已结算取实测、未结算取上界」求和 | 与预留/结算同一条记录，不需要第二个累加器 |
+| 非模型 handoff 步骤 `handoff:{reason}` | 统一为 `kind=conclusion` 终态步骤（`conclusion:{segment}:round-{n}`），完成与 handoff 都经它 `publish` | 一条写路径覆盖 C3 §7 第 5 行与「预算耗尽不是完成」两种终态；载荷不含私有协议字段，可直接导出 |
+| 压缩记录随下一步 ModelStep 持久化 | 压缩本身是一条 `kind=compaction` 步骤（`{segment}:compact-{k}`，含 `folded_step_ids/digest/accepted`），重建按顺序回放 | 摘要请求是真实模型响应，C3 要求提交；`accepted=false` 的行保留旧上下文 |
+| `versions["context_policy_revision"]` | `investigation_versions()` = `prompt_revision` + `context_policy_revision`，调用方合并 `tool_schema_revision` | 同草案 |
+| 折叠摘要「keep 最新 1 组」 | 按 Holmes 折叠前缀之后的全部消息 | 用户决定按参考实现 |
+| P2 前置真实冒烟 | 已执行：`scripts/m1_compaction_smoke.py`，2 次请求均 200，见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json` | 第 9 节第 3 项关闭；估计器首轮校准因子见该文件 |
+| runner 对 blocked 的落库 | 新增 `DurableStore.block(lease)`（同栅栏），`claim()` 不静默恢复 blocked | 草案第 7 节 fail-closed 行需要一条写路径 |
+| 本 worktree PG lab | 55431 被 `m1-human-control` worktree 实例占用，本任务在 `tmp/m1-lh/postgres` 起 55432 实例，测试经 scratchpad 脚本改写 `DSN` 运行 | 项目约定不共用他人实例；未改仓库脚本 |
+
+## 12. 独立审查记录（2026-09-21）
 
 全新上下文子代理只读审查，结论「需修改后实施」，七项取舍均判定成立。采纳并已写入本文的修订：
 第 2 节两处事实修正（round-07 折叠证据、`loop.py` 三处硬编码）；第 3 节 LangGraph 论证改为合同禁止；
@@ -196,7 +210,7 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 审查列出的三大翻车点（segment/k 跨 attempt 确定性、旧代际悬空组、终态无写路径）分别对应第 6/7 节新增规则，
 实施时各需一条先红后绿用例。
 
-## 12. 来源
+## 13. 来源
 
 HolmesGPT `773fddf`：`tool_calling_llm.py` L1147–1210（`max_steps`、末轮无 tools、每轮前 compaction）、
 `tool_context_window_limiter.py`（单工具 spill）、`compaction.py` / `input_context_window_limiter.py`

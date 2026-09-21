@@ -10,6 +10,7 @@
 | feature passes | 0 / 11 | [feature_list.json](feature_list.json)；验收 harness 场景覆盖某 feature 全部步骤时翻转，接线为独立任务。 |
 | M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36） | main `e45208b`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
 | M1-01 待合并 | #21 intake auth、#27 discipline、#29 调查 loop、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录、#38 adapter flake | #29 已在分支内合并 `main` 并解决冲突（待 CI/审查）；#21/#37 与 main 冲突待处理；#31/#32/#33 目标为 `integration/m1-01`，按新流程 retarget 到 `main`。 |
+| M1-01 长程 loop 改造 | 实施中（P1–P3 代码与测试已在分支完成，待 #29 合并后 rebase 到 main 开 PR） | [任务记录](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md)；分支 `feature/m1-01-loop-long-horizon` |
 | M1-01 缺项 | worker 组合层未接 DurableToolLedger；suspension 持久化栅栏为 Controller 待办 | 见 [集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) 与 [工具执行器记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)。 |
 | DurableStore 加固 | A 类已合并（#26）；B/C 类待决 | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md)；运行时依赖声明按 AGENTS.md 由 Agent 自行处理。 |
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |

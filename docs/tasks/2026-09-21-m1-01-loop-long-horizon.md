@@ -1,36 +1,47 @@
-# M1-01 调查 loop 长程执行边界改造（设计阶段）
+# M1-01 调查 loop 长程执行边界改造
 
-- 状态：**用户已决定 PR 策略 A 与 Holmes 式压缩，进入 P1 实施**
+- 状态：**P1–P3 实现与确定性/PG 验证完成，待独立实现审查；PR 待 #29 合并后 rebase 到 main 创建**
 - 更新日期：2026-09-21
-- 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核）
+- 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
-  v4 冻结包 B2 段；[上游对标调研](../research/upstream-agent-loop-benchmark-2026-09-21.md)
-- 工件：[设计草案](../design/investigation-loop-long-horizon-2026-09-21.md)
-- 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-m1-investigation-loop`，
-  分支 `feature/m1-01-loop-long-horizon`（worktree `../production-ops-agent-loop-long-horizon`，起点 #29 头 `9f3506f`）；#29 合并后 rebase 到 main 再开 PR
+  v4 冻结包 B2 段；[上游对标调研](../research/upstream-agent-loop-benchmark-2026-09-21.md)；
+  [设计草案（含独立审查与实施差异）](../design/investigation-loop-long-horizon-2026-09-21.md)
+- 用户决定（2026-09-21）：PR 策略 A（合并 #29 后新 PR）；压缩「按参考的来」→ HolmesGPT 两段式（单结果 stub + LLM 摘要 compaction）
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-loop-long-horizon`，
+  分支 `feature/m1-01-loop-long-horizon`，起点 #29 头 `9f3506f`；本任务专属 PG：`tmp/m1-lh/postgres`，端口 55432
 
 ## 目标与范围
 
-把 PR #29 的单 Run 内存 loop 改造成：从 PostgreSQL 业务行重建模型上下文并继续、可测量的上下文预算与确定性折叠、
-模型/工具/活跃时间/上下文预算分离且重启不重置、显式 handoff 与跨 Run 续接上下文构造器。
-范围外：UI、intake、observer、postmortem、自动创建新 Run、修改 11 个 `passes`、修改 v4 冻结值、引入 LangGraph 或 Agents SDK。
+把 PR #29 的单 Run 内存 loop 改造成：从 PostgreSQL 业务行重建模型上下文并继续、可测量的上下文预算与
+Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不重置、显式 handoff 与跨 Run 续接上下文构造器。
+范围外：UI、intake、observer、postmortem、自动创建新 Run、修改 11 个 `passes`、修改 v4 冻结值、引入框架。
 
-## 前提与完成条件
+## 实现（提交 `cf56d46..HEAD`）
 
-- 前提：用户对草案第 9 节两项作决定（PR 策略 A/B；折叠 vs 保留 LLM 摘要）；P2 前置一次真实折叠冒烟走常设授权。
-- 完成条件：草案第 10 节 P1–P3 全部用例先红后绿；`make check` 与 PG 定向通过；独立审查完成并处置；
-  任务记录、ADR-0004 复核注记、PR 描述更新。
+- `opspilot/investigation/limits.py`：`RunLimits` / `M1_FROZEN_LIMITS`；loop 的上限从常量变为参数，产品边界（runner）拒绝超冻结值。
+- `opspilot/persistence.py`：`opspilot_runs.input` 输入快照；预留表 `reserved_seconds/seconds`（活跃时间先预留后结算）；`run_usage()`；`block(lease)`；`accept/new_run` 可选 `input`。
+- `opspilot/investigation/store.py`：接缝增 `usage()`、seconds 参数、`MemoryStepStore.snapshot()`；`DurableStepStore` 每次物理请求前续租。
+- `opspilot/investigation/context.py`（新）：`InvestigationInput`、步骤键 `{segment}:round-{n}`、`rebuild_transcript()`、估计器 + 校准、`visible_view()` stub、`fold_digest()`/`compaction_message()`、`context_policy_revision()`、`continuation_context()`。
+- `opspilot/investigation/loop.py`：`run()/resume()` 共用 `_drive()`；逻辑轮与物理请求分开计数；活跃时间跨 attempt；每轮前 `_manage_context()`（Holmes 阈值公式；压缩失败或仍超预算 fail-closed）；终态统一提交 `kind=conclusion` 步骤。
+- `opspilot/investigation/runner.py`（新）：`Worker.resume` → `execute_pending` → `rebuild_transcript` → `loop.resume` → `publish`；已发布/控制拒绝/不兼容/malformed 各有明确结果，malformed 落库 `blocked`。
+- `scripts/m1_compaction_smoke.py`（开发脚本）：真实 provider 折叠冒烟。
 
-## 执行进展与证据
+## 验证证据
 
-- 2026-09-21：读取 #29 分支、main 已合并的 #30 恢复层、C3/ADR/PC/v4、上游一手源码
-  （HolmesGPT `773fddf`、OpenSRE `4303874`、OpenAI Agents SDK `ad93f54`、LangGraph 官方文档）；写出草案。
-- 2026-09-21：全新上下文子代理独立审查，结论「需修改后实施」，七项取舍成立；
-  4 处实质缺口（tools 面只存 sha、活跃时间结算方式、同 Run follow_up/correct 后旧代际悬空组、
-  非报告终态无持久写路径）与若干事实修正已全部写回草案第 2/3/4/6/7/8/10 节，见草案第 11 节。
-- 未运行任何代码、测试或真实模型；本阶段只有静态源码与文档证据。
+| 项 | 命令 / 工件 | 结果 |
+|---|---|---|
+| 静态 + 单元 | `make check`（HEAD `6083da5` 起） | `ruff` 全过、`mypy` 31 文件无问题、`1630 passed, 161 skipped, 2 xfailed` |
+| 确定性恢复 | `tests/test_m1_investigation_context.py`（16 条） | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt |
+| 确定性压缩 | `tests/test_m1_investigation_compaction.py`（10 条） | 阈值触发、字节级重建、压缩后重启、摘要失败 handoff、不足两槽 `CONTEXT_EXHAUSTED`、摘要仍超预算、计费、stub、校准、策略哈希 |
+| 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（3 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、fail-closed |
+| PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（13 条）+ 既有 4 个 M1 PG 套件 | `107 passed`（含既有 94 条无回归） |
+| 真实 provider 冒烟 | `.venv/bin/python -m scripts.m1_compaction_smoke` | 2 次 HTTP 200、`deepseek-flash`、带 tools + thinking；`prompt 3422 / completion 2147` tokens；费用上界见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json`；估计 vs 实测校准因子已记录 |
 
-## 下一步
+不是产品验收：11 个 `passes` 未改；未做真实 Run 全链路；worker 进程级 kill 只在既有 `test_worker_subprocess_kill_then_resume_from_business_rows` 覆盖 claim 后一点，其余断点用进程内异常 + 租约过期等价模拟。
 
-1. 用户决定草案第 9 节两项。
-2. 按决定开始 P1（持久状态与恢复），先写 5 个断点的子进程 kill 用例与 fake ModelClient。
+## 未完成 / 后续
+
+- 独立实现审查（全新上下文）及发现处置。
+- #29 合并后：rebase 到 main、推送、开 PR（含 PR 描述：覆盖/未覆盖、权限/费用/兼容性）。
+- 供应商余额差记账（2 次冒烟请求）。
+- 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
