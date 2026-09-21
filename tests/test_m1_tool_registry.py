@@ -646,25 +646,6 @@ def test_registries_build_from_every_accepted_registration():
 @pytest.mark.parametrize(
     "text",
     [
-        "query metrics.internal:9090/api",
-        "connect to 10.0.0.4:4317",
-        "the collector lives at otel.observability.svc:4318",
-    ],
-)
-def test_scheme_less_endpoints_in_model_visible_prose_are_refused(text):
-    """Bot review finding: the detector required `://`, so a concrete endpoint
-    written without a scheme still reached the model-visible face and would
-    expose an internal target location when rendered.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        description(returns=text)
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
         "the window runs 12:30 to 13:00",
         "ratio of 5xx:2xx over the window",
         "see runbook section 3/4 and config.yaml",
@@ -697,25 +678,6 @@ def test_no_fingerprinted_field_can_raise_outside_the_contract(build_registratio
     """
     with pytest.raises(ToolContractError):
         ToolRegistry([build_registration("x\ud800")])
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "scrape localhost:4317",
-        "read prometheus:9090/api",
-        "the collector answers on [fd00::1]:4317",
-    ],
-)
-def test_single_label_and_ipv6_endpoints_are_refused(text):
-    """Bot review finding: requiring a dotted hostname missed the most common
-    in-cluster addressing form (`prometheus:9090`) and bracketed IPv6, both of
-    which identify an internal target exactly as precisely.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        description(returns=text)
 
 
 @pytest.mark.parametrize(
@@ -790,7 +752,7 @@ def test_non_ascii_prose_with_colons_is_not_mistaken_for_an_endpoint(text):
 
 @pytest.mark.parametrize(
     "name",
-    ["https://metrics.internal/api", "prometheus:9090", "10.0.0.4:4317"],
+    ["https://metrics.internal/api", "//reader:secret@prometheus"],
 )
 def test_endpoints_embedded_in_parameter_names_are_refused(name):
     """Bot review finding: parameter keys become property names in the
@@ -806,15 +768,14 @@ def test_endpoints_embedded_in_parameter_names_are_refused(name):
     "text",
     [
         "fetch //reader:secret@metrics.internal/api",
-        "fetch //metrics.internal/api",
-        "fetch //prometheus:9090/api",
-        "fetch //10.0.0.4/api",
+        "fetch //reader:secret@10.0.0.4/api",
     ],
 )
 def test_protocol_relative_urls_in_model_visible_prose_are_refused(text):
-    """Bot review finding: `//authority/path` needs neither a scheme nor a
-    port, so it slipped past both detectors -- including the variant carrying
-    inline credentials.
+    """`//user@host` carries an inline credential as well as a target and no
+    ordinary prose writes it, so it is one of the two anchored forms the
+    detector refuses. A credential-free `//host/path` is left to human review
+    (see test_double_slash_prose_is_not_mistaken_for_an_endpoint).
     """
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         ParameterSpec(kind="string", description=text)
@@ -829,8 +790,9 @@ def test_protocol_relative_urls_in_model_visible_prose_are_refused(text):
     ["// TODO: 补充说明", "paths like //shared/config", "see //notes", "a//b 比较"],
 )
 def test_double_slash_prose_is_not_mistaken_for_an_endpoint(text):
-    """An authority is recognised only when it has a dot, a port, brackets or
-    userinfo, so an ordinary `//` in prose survives.
+    """Without userinfo a `//` in prose is not recognised as an authority, so
+    ordinary `//` survives -- including `//shared/config`, which is left to
+    human review rather than told apart from a single-label endpoint.
     """
     assert ParameterSpec(kind="string", description=text).description == text
 
@@ -870,21 +832,6 @@ def test_protocol_relative_userinfo_covers_unicode_hosts(text):
         description(returns=text)
 
 
-@pytest.mark.parametrize("text", ["读取 //监控.内部/api", "采集 //监控.内部:4317/api"])
-def test_protocol_relative_unicode_hosts_are_refused(text):
-    """Bot review finding: the protocol-relative branch without userinfo still
-    required an ASCII hostname. `//监控.内部/api` and `//metrics.internal/api`
-    are the same thing -- the anchor is `//` plus a dotted authority, and the
-    alphabet is not the criterion.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        description(returns=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        registration(parameters={text: ParameterSpec(kind="string")})
-
-
 @pytest.mark.parametrize(
     "text", ["见 //说明 一节", "a//b 比较", "对比 //方案 与 //方案二"]
 )
@@ -894,31 +841,6 @@ def test_cjk_prose_with_double_slashes_survives(text):
     own language.
     """
     assert ParameterSpec(kind="string", description=text).description == text
-
-
-@pytest.mark.parametrize("text", ["采集 //监控:4317/api", "//监控:4317"])
-def test_protocol_relative_unicode_ported_hosts_are_refused(text):
-    """Bot review finding: the ported-host alternative was the last ASCII-only
-    branch of the `//` family. `//监控:4317` and `//prometheus:9090` are the
-    same thing -- the anchor is `//` plus a numeric port.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-
-
-def test_double_slash_prose_with_a_numeric_suffix_is_an_accepted_cost():
-    """The accepted cost of the branch above, stated rather than hidden: CJK
-    prose that writes `//词:数字` is refused too. It is a registration-time
-    error the operator sees and can reword; the alternative -- keeping the
-    branch ASCII-only -- would mean `//监控:4317` reaches the model while
-    `//prometheus:9090` does not, which is a worse trade.
-
-    Prose without the `//` anchor is unaffected, which is what keeps this
-    narrow: `按步骤:30 秒聚合` remains legitimate (pinned separately).
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description="见 //步骤:30 的说明")
-    assert ParameterSpec(kind="string", description="按步骤:30 秒聚合").description
 
 
 @pytest.mark.parametrize("name", ["//prometheus/api", "//监控/指标", "//shared/config"])
@@ -933,21 +855,6 @@ def test_any_double_slash_in_a_parameter_name_is_refused(name):
     """
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         registration(parameters={name: ParameterSpec(kind="string")})
-
-
-@pytest.mark.parametrize(
-    "text",
-    ["连接 [fe80::1%eth0]:4317", "读取 //[fe80::1%eth0]:4317/api"],
-)
-def test_scoped_ipv6_endpoints_are_refused(text):
-    """Bot review finding: the bracketed-IPv6 class excluded zone identifiers,
-    so a link-local endpoint reached the model. Brackets plus a numeric port
-    are the anchor; the zone is part of the address, not a new ambiguity.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        description(returns=text)
 
 
 @pytest.mark.parametrize("text", ["数组 [1:2] 的写法", "区间 [a:b]", "矩阵 [i:j] 切片"])
@@ -982,20 +889,6 @@ def test_an_endpoint_without_a_usable_authority_is_refused(endpoint):
 )
 def test_usable_endpoints_are_still_accepted(endpoint):
     assert target(endpoint=endpoint).endpoint == endpoint
-
-
-@pytest.mark.parametrize(
-    "text", ["连接 [fd00::1]", "连接 [fe80::1%eth0]", "监听 [::1] 上"]
-)
-def test_unported_bracketed_ipv6_endpoints_are_refused(text):
-    """Bot review finding: the bracketed form still required `:port`, so an
-    unported literal reached the model. Brackets are the anchor; the port was
-    only ever standing in for one.
-    """
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        ParameterSpec(kind="string", description=text)
-    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
-        description(returns=text)
 
 
 @pytest.mark.parametrize("text", ["数组 [1:2] 的写法", "区间 [a:b]", "矩阵 [i:j] 切片"])

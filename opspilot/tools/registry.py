@@ -184,16 +184,13 @@ _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 def _endpoint_text(value: str) -> bool:
     """Whether this model-visible text carries a concrete endpoint.
 
-    The three detectors live behind one predicate so every model-visible
-    surface -- the five description fields, a parameter description and a
-    parameter name -- applies exactly the same rule. Adding a form here covers
-    all of them at once; adding it at one call site is how the earlier rounds
-    kept leaving one surface behind.
+    The detectors live behind one predicate so every model-visible surface --
+    the five description fields, a parameter description and a parameter name
+    -- applies exactly the same rule. The forms detected, and the ones
+    deliberately left to human review, are stated at the pattern definitions.
     """
     return bool(
-        _MODEL_VISIBLE_URI.search(value)
-        or _PROTOCOL_RELATIVE_URI.search(value)
-        or _SCHEMELESS_ENDPOINT.search(value)
+        _MODEL_VISIBLE_URI.search(value) or _PROTOCOL_RELATIVE_CREDENTIAL.search(value)
     )
 
 
@@ -282,10 +279,7 @@ SOURCE_ERROR_REASONS = frozenset(
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,63}")
 _HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{2,63}")
 _VERSION = re.compile(r"[a-z0-9][a-z0-9.+-]{0,31}")
-# URI schemes are case-insensitive (RFC 3986), and this pattern is used both
-# to validate an endpoint and to *detect* one hiding in model-visible prose.
-# Compiled case-sensitively, ``HTTPS://metrics.internal/api`` walked straight
-# through the detection path (bot review finding).
+# URI schemes are case-insensitive (RFC 3986).
 _ENDPOINT = re.compile(
     r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}", re.IGNORECASE
 )
@@ -294,86 +288,26 @@ _ENDPOINT = re.compile(
 # HTTP(S) endpoint validator above: `postgresql://user:pass@db.internal/x`,
 # `grpc://metrics.internal:4317` and `wss://logs.internal/stream` are concrete
 # endpoints too, and the first carries credentials straight into the text
-# intended for the model (bot review finding). Section 8 forbids 凭据、认证信息
-# or a concrete endpoint / base_url / 凭据句柄 there, whatever the scheme.
-# `_ENDPOINT` keeps its narrower job: what a registered transport endpoint may
-# actually be.
-# A concrete endpoint does not need a scheme to be one: `metrics.internal:9090`,
-# `prometheus:9090` and `[fd00::1]:4317` locate an internal target just as
-# precisely (bot review findings). Three unambiguous forms are detected:
-# bracketed IPv6, a dotted quad, and a hostname label followed by a numeric
-# port -- the label must contain a letter, which is what keeps `12:30`,
-# `5xx:2xx` and `section 3/4` out.
+# intended for the model. Section 8 forbids 凭据、认证信息 or a concrete
+# endpoint / base_url / 凭据句柄 there, whatever the scheme. `_ENDPOINT` keeps
+# its narrower job: what a registered transport endpoint may actually be.
 #
-# Accepted cost: prose of the shape `step:30` is now refused as well. It is a
-# registration-time refusal with a fixed code that the operator sees
-# immediately and can rewrite ("a step of 30 seconds"), which is the
-# fail-closed direction for a rule whose job is to keep internal target
-# locations out of the model-visible face.
+# Only two forms are detected, and both have an unambiguous anchor: ``://``
+# (prose does not accidentally contain it, so what follows is not restricted
+# to an alphabet -- `https://监控.内部/指标` is as concrete as its ASCII
+# equivalent) and ``//user@host`` (no ordinary prose writes `//x@y`, and the
+# form carries an inline credential as well as a target).
 #
-# Still *not* detected, deliberately: a bare hostname with no port. Matching
-# one in free text would reject `config.yaml` and `v1.2.3` too, which is the
-# keyword scanner this module has repeatedly declined to build; that case
-# stays a human-review question.
-_SCHEMELESS_ENDPOINT = re.compile(
-    # 方括号 IPv6（含 zone id），端口可选：`[fd00::1]` 不带端口同样是具体
-    # endpoint，方括号本身就是锚点（bot review 发现）。判别式是**冒号数量**：
-    # 前瞻要求方括号内至少两个冒号，真实 IPv6 字面量必然满足（`::` 或分段形式），
-    # 而 `数组 [1:2]`、`区间 [a:b]`、`矩阵 [i:j]` 这类切片/区间写法只有一个冒号，
-    # 因此仍是普通散文——端口不再能充当这个判别式，冒号数量接替了它。
-    r"\[(?=[0-9A-Fa-f]*:[0-9A-Fa-f:]*:)[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
-    r"(?::[0-9]{1,5})?"
-    # 其余形式仍要求数字端口：没有方括号这个锚点时，端口是唯一能把
-    # `metrics.internal:9090` 与普通散文分开的特征。
-    r"|(?:"
-    r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # dotted quad
-    r"|\b(?:[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*)(?:\.[A-Za-z0-9-]+)*"  # host label
-    r"):[0-9]{1,5}\b"
-)
-
-# The ``scheme://`` form is unambiguous, so what follows it is not restricted
-# to an alphabet: `https://监控.内部/指标` is as concrete an endpoint as its
-# ASCII equivalent, and an ASCII-only class let it through (bot review
-# finding). Prose does not accidentally contain ``://``.
-#
-# The scheme-less detector above deliberately stays ASCII: a non-ASCII label
-# followed by ``:`` and digits is indistinguishable from ordinary prose in
-# this repository's own languages ("步骤:30"), and that rule has no ``://``
-# anchor to lean on.
+# Deliberately *not* detected: scheme-less `host:port`, `//host/path` and bare
+# hostnames. C3 section 8 is a registration-time check of structured text an
+# operator writes and reviews, not a filter on adversarial input; detecting
+# those forms in free text needs a URL parser with no anchor to lean on, and
+# each widening of it refused more ordinary prose (`步骤:30`, `//词:数字`) while
+# still leaving the next spelling for a human to catch. Those spellings stay a
+# human-review question, the same stance this module already takes for a bare
+# hostname.
 _MODEL_VISIBLE_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S{1,512}")
-
-# The protocol-relative form `//authority/path` needs neither a scheme nor a
-# port, so it slipped past both detectors above -- including
-# `//reader:secret@metrics.internal/api`, which carries inline credentials as
-# well as the endpoint (bot review finding). `//` plus a *recognisable
-# authority* is the anchor here, the same kind of unambiguous marker that
-# justifies not restricting the alphabet after `://`; an authority is
-# recognised only when it has a dot, a port, brackets or userinfo, so a bare
-# `// TODO` comment or a `//shared/config` path stays ordinary prose.
-_PROTOCOL_RELATIVE_URI = re.compile(
-    # Userinfo alone is an unambiguous authority marker: `//reader:secret@prometheus/api`
-    # carries both an inline credential and an internal target, and no ordinary
-    # prose writes `//x@y` (bot review finding -- the previous pass made
-    # userinfo optional but still required the *host* to be dotted, ported or
-    # bracketed, so a single-label host with credentials slipped through).
-    r"//[^\s/@]+@[^\s/:?#]+"
-    r"|//(?:[^\s/@]+@)?(?:"
-    # 点分主机名与 scheme:// 之后一样不限字母表：`//监控.内部/api` 与
-    # `//metrics.internal/api` 是同一件事，锚点是 `//` 加点分 authority，字母表
-    # 本身不是判据（bot review 发现；scheme:// 与 userinfo 两个分支已先后放开，
-    # 这是最后一个仍限 ASCII 的）。末段要求至少两个字母，`a//b`、`// TODO`、
-    # `//shared/config` 这类散文因此仍不匹配。
-    r"(?:[^\W\d_][^\s/@:.?#]*\.)+[^\W\d_]{2,}"
-    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
-    r"|\[[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
-    # 带端口的单标签主机同样不限字母表：`//监控:4317` 与 `//prometheus:9090`
-    # 是同一件事。这里的锚点是 `//` 加数字端口，字母表不是判据（bot review
-    # 发现；本分支是 `//` 系列里最后一个仍限 ASCII 的）。注意无 `//` 前缀的
-    # `_SCHEMELESS_ENDPOINT` 仍然刻意只认 ASCII——那条没有锚点，放开会把
-    # 「按步骤:30 秒聚合」这类中文散文一并拒掉。
-    r"|[^\W\d_][^\s/@:.?#]*:[0-9]{1,5}"
-    r")"
-)
+_PROTOCOL_RELATIVE_CREDENTIAL = re.compile(r"//[^\s/@]+@[^\s/:?#]+")
 
 # C3 section 8 requires `window_format`/`values_format` to carry a placeholder
 # for the absolute window / value enumeration a future renderer fills in per
@@ -613,17 +547,12 @@ class ToolRegistration:
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if any(_endpoint_text(key) or "//" in key for key in self.parameters):
-            # 参数名不是散文：标识符里没有任何正当理由出现 `//`，因此这一面可以
-            # 无条件拒绝，而不必像描述字段那样区分「endpoint」与「路径」。
-            # 单标签协议相对 endpoint（`//prometheus/api`）在散文里与普通路径
-            # （`//shared/config`）语法上不可区分，故描述字段不采用该规则；名称
-            # 这一面没有这个顾虑，于是在这里收紧（bot review 第 27 轮：其中
-            # 参数名部分采纳，散文部分说明依据后拒绝）。
             # Parameter keys become property names in the model-visible
-            # schema, so the endpoint prohibition applies to them exactly as it
-            # does to the prose beside them; checking only the descriptions
-            # left `{"prometheus:9090": ...}` as an open route (bot review
-            # finding).
+            # schema, so the endpoint rule applies to them as it does to the
+            # prose beside them. A name is not prose: an identifier has no
+            # legitimate reason to contain `//`, so that is refused outright
+            # here while `//shared/config` stays ordinary prose in a
+            # description.
             raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
         if RESERVED_PARAMETERS & {key.lower() for key in self.parameters} or any(
             _authentication_name(key) for key in self.parameters
