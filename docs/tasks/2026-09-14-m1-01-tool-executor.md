@@ -1523,10 +1523,42 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 20 | 2 | 2 | 0 | 1（第十二轮的统一入口丢掉了 history 保留） |
 | 21 | 2 | 2 | 0 | 1（第二十轮新增的 _history 绕过响应校验） |
 | 22 | 1 | 1 | 0 | 0（endpoint 检测器的第四种形式） |
+| 23 | 2 | 2 | 0 | 1（第二十二轮 userinfo 分支的边界划错） |
 
-累计 59 条 thread 全部有结论。第 9–22 轮共 27 条中有 15 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1 → 2 → 2 → 1。用户已明确：继续处理，采纳或拒绝
-由执行者按实际情况判断。
+累计 61 条 thread 全部有结论。第 9–23 轮共 29 条中有 16 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1 → 2 → 2 → 1 → 2。用户已明确：继续处理，采纳或
+拒绝由执行者按实际情况判断。
+
+## 35. 机器人 code review 第二十三轮两条 thread 处置（2026-09-20）
+
+两条均采纳（`12b82bc`）。
+
+### P1 userinfo + 单标签 host 的协议相对 URL
+
+第二十二轮让 userinfo 可选，却仍要求 host 带点/端口/方括号，于是
+`//reader:secret@prometheus/api`——**单标签 host + 内联凭据**，危害更大的那一种——反而漏过。
+userinfo 本身即无歧义 authority 标记（普通散文不写 `//x@y`），新增该分支。反向用例钉住
+「邮件 a@b 的格式」仍是散文：标记是 `//` 加 userinfo，不是文本任意位置的 `@`。
+
+### P2 耐久层未原子强制秒数上限
+
+原子 UPDATE 只判 `tool_operations_used`；秒数仅在进程内把关，两个执行器各读到 239 秒即可各按
+「还剩 1 秒」派发并结算，Run 停在 241 秒而两次观察都被采纳。次数上限早先已原子化，秒数没有，
+是一处不对称。
+
+改为同一条锁内 UPDATE 一并判定，与次数上限同形：`charge_tool` 新增必填 `max_tool_seconds`；
+行锁下的计数用于区分触发的上限并报告与进程内一致的原因码；**结算已计次的派发仍不受任一上限
+约束**（用例钉住 240 → 242 秒仍可结算）；`DurableToolLedger` 透传并把 `TIME_BUDGET_EXHAUSTED`
+翻译成新的 `ToolTimeBudgetExhausted`，执行器据此上报与其进程内预检一致的原因码。
+
+### 验证
+
+```text
+make check → 1434 passed, 138 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 100 passed, 38 skipped
+两条均先红后绿（registry 规则的红检验单独还原 registry.py，避免新导出缺失导致收集失败）
+```
+
 
 ## 34. 机器人 code review 第二十二轮一条 thread 处置（2026-09-20）
 
