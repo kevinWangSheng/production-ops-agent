@@ -1156,3 +1156,12 @@ docstring 删除「已知缺口留给 #27 合并」段落（缺口随本次合�
 - 推送后等待 CI 与一次 `@codex review` 分诊（#39 新流程），机器人发现按
   AGENTS.md「逐项处置」；PR 仍走用户审核合并。
 - 真实 Run 证据未按修复后的脚本重放。
+
+### 收尾（2026-09-21）
+
+- CI run `35591054937`（HEAD `1fcf318`）`completed/success`。
+- `@codex review` 一次分诊（2026-09-21T10:54Z）：「Didn't find any major
+  issues」，Reviewed commit `1fcf318`。
+- reviewThreads unresolved = 0；`gh pr view 29` → `mergeable=MERGEABLE`、
+  `mergeStateStatus=CLEAN`。
+- 状态：**PR 已就绪，待用户审核合并**。合并仍走用户门，不自动合并。
