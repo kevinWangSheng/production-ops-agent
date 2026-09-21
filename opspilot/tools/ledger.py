@@ -14,7 +14,12 @@ from uuid import UUID
 
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 
-from .executor import ToolBudgetExhausted, ToolControlDenied, ToolUsage
+from .executor import (
+    ToolBudgetExhausted,
+    ToolControlDenied,
+    ToolTimeBudgetExhausted,
+    ToolUsage,
+)
 
 __all__ = ["DurableToolLedger"]
 
@@ -37,10 +42,12 @@ class DurableToolLedger:
         lease: Lease,
         *,
         max_operations: int,
+        max_tool_seconds: float,
     ) -> None:
         self._store = store
         self._lease = lease
         self._max_operations = max_operations
+        self._max_tool_seconds = max_tool_seconds
 
     def usage(self) -> ToolUsage:
         run = self._store.rebuild(self._lease.incident_id)["run"]
@@ -58,6 +65,7 @@ class DurableToolLedger:
                 operation_id,
                 seconds,
                 max_operations=self._max_operations,
+                max_tool_seconds=self._max_tool_seconds,
                 dispatch_id=dispatch_id,
             )
         except PersistenceError as exc:
@@ -68,6 +76,12 @@ class DurableToolLedger:
             # PersistenceError collapses to (bot review finding).
             if str(exc) == "OPERATION_BUDGET_EXHAUSTED":
                 raise ToolBudgetExhausted(str(exc)) from exc
+            if str(exc) == "TIME_BUDGET_EXHAUSTED":
+                # The cumulative time ceiling is enforced in the same atomic
+                # UPDATE as the operation ceiling, so it needs the same typed
+                # signal -- reporting it as a generic ledger outage would let a
+                # caller retry a Run whose durable time budget is spent.
+                raise ToolTimeBudgetExhausted(str(exc)) from exc
             if str(exc) == "CONTROL_DENIED":
                 # Also a fixed code from charge_tool, and also authoritative:
                 # the Run was revoked by a human decision, a newer control

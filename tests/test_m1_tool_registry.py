@@ -831,3 +831,24 @@ def test_double_slash_prose_is_not_mistaken_for_an_endpoint(text):
     userinfo, so an ordinary `//` in prose survives.
     """
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["fetch //reader:secret@prometheus/api", "//token@localhost"],
+)
+def test_protocol_relative_userinfo_is_refused_even_with_a_single_label_host(text):
+    """Bot review finding: userinfo was optional but the host still had to be
+    dotted, ported or bracketed, so a single-label host carrying credentials
+    slipped through. Userinfo alone is an unambiguous authority marker.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        registration(parameters={text: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize("text", ["邮件 a@b 的格式", "see user@host style ids"])
+def test_a_bare_at_sign_in_prose_is_not_an_authority(text):
+    """The marker is `//` plus userinfo, not an `@` anywhere in the text."""
+    assert ParameterSpec(kind="string", description=text).description == text

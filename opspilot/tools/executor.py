@@ -109,6 +109,17 @@ class ControlUnavailable(Exception):
     """Control state could not be read, so no new call may be made."""
 
 
+class ToolTimeBudgetExhausted(Exception):
+    """The ledger refused a new dispatch: the Run's durable seconds are spent.
+
+    The sibling of :class:`ToolBudgetExhausted` for the cumulative time
+    ceiling, which is enforced in the same atomic UPDATE. It is a distinct
+    type so the executor can report ``TIME_BUDGET_EXHAUSTED`` -- the same
+    authoritative reason its in-process pre-check uses -- rather than the
+    operation-count reason or a generic ledger failure.
+    """
+
+
 class ToolControlDenied(Exception):
     """The ledger refused the write because control revoked the Run.
 
@@ -660,6 +671,8 @@ class ReadOnlyToolExecutor:
             # a transient control failure it might retry (bot review
             # finding).
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
+        except ToolTimeBudgetExhausted:
+            return self._refuse(operation, "denied", "TIME_BUDGET_EXHAUSTED")
         except ToolControlDenied:
             # A control race between ``_reserve()`` and this charge is normal,
             # not exceptional: the store refused because a human decision or a
@@ -800,6 +813,11 @@ class ReadOnlyToolExecutor:
             charged = self._charge(operation.operation_id, elapsed, dispatch_id)
         except ToolBudgetExhausted:
             return refuse_after_fetch("denied", "OPERATION_BUDGET_EXHAUSTED")
+        except ToolTimeBudgetExhausted:
+            # Settling an already-counted dispatch is not gated by either cap,
+            # so a real ledger cannot raise this here; handled for the same
+            # defensive reason as its sibling.
+            return refuse_after_fetch("denied", "TIME_BUDGET_EXHAUSTED")
         except ToolControlDenied:
             # The store refused on control grounds, which is a human decision,
             # not a storage outage. Do not return here: fall through to this
@@ -933,7 +951,7 @@ class ReadOnlyToolExecutor:
     def _charge(self, operation_id: str, seconds: float, dispatch_id: UUID) -> bool:
         try:
             self._ledger.charge(operation_id, seconds, dispatch_id=dispatch_id)
-        except (ToolBudgetExhausted, ToolControlDenied):
+        except (ToolBudgetExhausted, ToolTimeBudgetExhausted, ToolControlDenied):
             # Fixed-code signals, not vendor text: let the caller report the
             # authoritative denial instead of a generic ledger failure (bot
             # review finding). ``ToolControlDenied`` must reach the caller for

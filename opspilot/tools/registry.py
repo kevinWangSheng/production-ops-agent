@@ -305,7 +305,13 @@ _MODEL_VISIBLE_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S{1,512}")
 # recognised only when it has a dot, a port, brackets or userinfo, so a bare
 # `// TODO` comment or a `//shared/config` path stays ordinary prose.
 _PROTOCOL_RELATIVE_URI = re.compile(
-    r"//(?:[^\s/@]+@)?(?:"
+    # Userinfo alone is an unambiguous authority marker: `//reader:secret@prometheus/api`
+    # carries both an inline credential and an internal target, and no ordinary
+    # prose writes `//x@y` (bot review finding -- the previous pass made
+    # userinfo optional but still required the *host* to be dotted, ported or
+    # bracketed, so a single-label host with credentials slipped through).
+    r"//[^\s/@]+@[A-Za-z0-9-]+"
+    r"|//(?:[^\s/@]+@)?(?:"
     r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
     r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
     r"|\[[0-9A-Fa-f:]{2,45}\]"

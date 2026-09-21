@@ -576,6 +576,7 @@ class DurableStore:
         seconds: float,
         *,
         max_operations: int,
+        max_tool_seconds: float,
         dispatch_id: UUID,
     ) -> None:
         """Charge one tool dispatch to the Run's durable tool budget.
@@ -584,6 +585,11 @@ class DurableStore:
         charges with the same ``dispatch_id`` only raise its recorded seconds,
         so an executor may charge once before its read goes out and once after
         it with the measured wall time.
+
+        ``max_operations`` and ``max_tool_seconds`` are both required and both
+        gate the *same* atomic UPDATE: counting a new dispatch is refused once
+        the Run has reached either frozen ceiling. Settling an already-counted
+        dispatch is never subject to either -- it adds no new operation.
 
         ``dispatch_id`` is the key, not ``operation_id``, and it is required
         rather than derived here: ``operation_id`` is stable by construction
@@ -625,6 +631,13 @@ class DurableStore:
             raise PersistenceError("INVALID_INPUT")
         if type(max_operations) is not int or max_operations <= 0:
             raise PersistenceError("INVALID_INPUT")
+        if (
+            type(max_tool_seconds) not in (int, float)
+            or max_tool_seconds != max_tool_seconds
+            or max_tool_seconds in (float("inf"), float("-inf"))
+            or max_tool_seconds <= 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
         if not isinstance(dispatch_id, UUID):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
@@ -634,7 +647,7 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.tool_operations_used,r.tool_seconds_used,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
                 (lease.run_id, lease.incident_id),
             ).fetchone()
             # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
@@ -659,16 +672,31 @@ class DurableStore:
                     ),
                 )
                 cursor = conn.execute(
-                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s",
-                    (float(seconds), lease.run_id, max_operations),
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used<%s",
+                    (
+                        float(seconds),
+                        lease.run_id,
+                        max_operations,
+                        float(max_tool_seconds),
+                    ),
                 )
                 if cursor.rowcount == 0:
                     # The row is already locked (``FOR UPDATE`` above), so this
-                    # is not a lost-update race with another writer -- the cap
+                    # is not a lost-update race with another writer -- a cap
                     # was already reached when we got here. Raising rolls back
                     # the INSERT above too, so no orphaned charge row survives
                     # for an operation that was never actually counted.
-                    raise PersistenceError("OPERATION_BUDGET_EXHAUSTED")
+                    #
+                    # 两个上限都在这一条 UPDATE 里判定。秒数此前只在进程内把关：
+                    # 两个执行器各自读到 239 秒，就会各自按「还剩 1 秒」派发并成功结算，
+                    # 把 Run 留在 241 秒，而两次观察都被采纳（bot review 发现）。
+                    # 行锁下读到的计数用来区分是哪一个上限触发，报告与进程内同一个
+                    # 原因码。
+                    raise PersistenceError(
+                        "OPERATION_BUDGET_EXHAUSTED"
+                        if int(row["tool_operations_used"]) >= max_operations
+                        else "TIME_BUDGET_EXHAUSTED"
+                    )
                 return
             delta = max(0.0, float(seconds) - float(existing["seconds"]))
             if delta == 0.0:
