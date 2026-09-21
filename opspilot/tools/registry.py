@@ -312,7 +312,12 @@ _PROTOCOL_RELATIVE_URI = re.compile(
     # bracketed, so a single-label host with credentials slipped through).
     r"//[^\s/@]+@[^\s/:?#]+"
     r"|//(?:[^\s/@]+@)?(?:"
-    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
+    # 点分主机名与 scheme:// 之后一样不限字母表：`//监控.内部/api` 与
+    # `//metrics.internal/api` 是同一件事，锚点是 `//` 加点分 authority，字母表
+    # 本身不是判据（bot review 发现；scheme:// 与 userinfo 两个分支已先后放开，
+    # 这是最后一个仍限 ASCII 的）。末段要求至少两个字母，`a//b`、`// TODO`、
+    # `//shared/config` 这类散文因此仍不匹配。
+    r"(?:[^\W\d_][^\s/@:.?#]*\.)+[^\W\d_]{2,}"
     r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
     r"|\[[0-9A-Fa-f:]{2,45}\]"
     r"|[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*:[0-9]{1,5}"

@@ -866,3 +866,29 @@ def test_protocol_relative_userinfo_covers_unicode_hosts(text):
         ParameterSpec(kind="string", description=text)
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         description(returns=text)
+
+
+@pytest.mark.parametrize("text", ["读取 //监控.内部/api", "采集 //监控.内部:4317/api"])
+def test_protocol_relative_unicode_hosts_are_refused(text):
+    """Bot review finding: the protocol-relative branch without userinfo still
+    required an ASCII hostname. `//监控.内部/api` and `//metrics.internal/api`
+    are the same thing -- the anchor is `//` plus a dotted authority, and the
+    alphabet is not the criterion.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        registration(parameters={text: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize(
+    "text", ["见 //说明 一节", "a//b 比较", "对比 //方案 与 //方案二"]
+)
+def test_cjk_prose_with_double_slashes_survives(text):
+    """The dotted authority is what makes it an endpoint: CJK prose using `//`
+    without one stays legitimate, or this rule would reject the repository's
+    own language.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text
