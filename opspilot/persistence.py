@@ -238,6 +238,24 @@ class DurableStore:
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
             );
+            -- 工具次数/秒数是每 Run 的冻结上限（C3 第 13 节：重启不能重置预算）。
+            -- 累计值落在 run 行；**每一次真实派发**记一行，主键是 dispatch_id，
+            -- 同一次派发重复结算只更新秒数，不重复计次。键不是 operation_id：
+            -- 后者由步骤 ID 和工具序号稳定生成（C3 第 7 节），而 C3 第 13 节要求
+            -- 「重试计入次数和费用」、第 4 节明确不承诺外部查询 exactly-once，
+            -- 所以同一 operation 的第二次真实读取必须再计一次，不能被去重掉。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_operations_used integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_seconds_used double precision NOT NULL DEFAULT 0;
+            CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
+              dispatch_id uuid PRIMARY KEY,
+              run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
+              operation_id text NOT NULL,
+              -- 预留的授权秒数（C3 第 13 节：预算原子预留和结算）。seconds 为 NULL
+              -- 表示尚未结算，此时该次派发按 reserved 占用预算——「未知费用保持占用」。
+              reserved double precision NOT NULL DEFAULT 0,
+              seconds double precision
+            );
+            CREATE INDEX IF NOT EXISTS opspilot_tool_charges_run_epoch_idx ON opspilot_tool_charges(run_id, epoch);
             """)
 
     def accept(
@@ -529,6 +547,176 @@ class DurableStore:
             conn.execute(
                 "UPDATE opspilot_runs SET budget_reserved=budget_reserved+%s WHERE run_id=%s",
                 (amount, lease.run_id),
+            )
+
+    def charge_tool(
+        self,
+        lease: Lease,
+        operation_id: str,
+        seconds: float,
+        *,
+        max_operations: int,
+        max_tool_seconds: float,
+        dispatch_id: UUID,
+    ) -> None:
+        """Charge one tool dispatch to the Run's durable tool budget.
+
+        The first charge for ``dispatch_id`` counts one operation; later
+        charges with the same ``dispatch_id`` only raise its recorded seconds,
+        so an executor may charge once before its read goes out and once after
+        it with the measured wall time.
+
+        The first charge for a ``dispatch_id`` is a **reservation**: its
+        ``seconds`` is the longest this dispatch is authorized to take, and the
+        whole of it is held against the Run's time ceiling until the dispatch
+        settles (C3 section 13: 预算在 PostgreSQL 原子预留和结算，未知费用保持
+        占用). Both ceilings gate that one atomic UPDATE -- a new dispatch is
+        refused unless the Run still has an operation left *and* room for the
+        full reservation. Settling is never refused: it releases the
+        reservation and records what the read actually cost, which may be less
+        than reserved and, for a transport that overran its bound, more. The
+        ceiling governs what may be started; the record tells the truth about
+        what was spent.
+
+        ``dispatch_id`` is the key, not ``operation_id``, and it is required
+        rather than derived here: ``operation_id`` is stable by construction
+        (technical plan section 7 -- step id plus tool ordinal), so keying on
+        it silently collapsed *two real reads* of the same tool call into one
+        charge whenever a duplicate delivery or a same-epoch retry occurred --
+        the Run was charged one operation and ``max(seconds)`` instead of the
+        sum, and could exceed both frozen ceilings with real queries (bot
+        review finding). Section 13 settles the semantics -- "重试计入次数和
+        费用" -- and section 4 explicitly declines to promise exactly-once
+        external queries, so the second dispatch is charged, not refused. A
+        new attempt that re-dispatches an uncommitted operation likewise
+        issues a real second query and is charged again; the per-Run total
+        only ever grows. Fenced by the lease like every other write path.
+
+        ``max_operations`` is required, not defaulted: this module does not
+        import the frozen ceiling from ``opspilot.tools.executor`` (that
+        would invert the existing one-way dependency, ``opspilot.tools``
+        already imports from here), so every caller must supply the same
+        value the executor is enforcing. Counting a *new* operation is
+        refused, atomically under the same row lock as everything else in
+        this transaction, once the Run is already at the cap -- two
+        executors racing from the same stale ``operations_used`` snapshot
+        serialize on this lock, and only the one that arrives first may
+        still increment (bot review finding: the increment used to be
+        unconditional once past application-level checks, so both could
+        succeed and the durable count could exceed the frozen cap).
+        Settling an *already-counted* dispatch's seconds is never subject
+        to this check -- it does not add a new operation.
+        """
+        if not isinstance(operation_id, str) or not operation_id:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            type(seconds) not in (int, float)
+            or seconds != seconds
+            or seconds in (float("inf"), float("-inf"))
+            or seconds < 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        if type(max_operations) is not int or max_operations <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            type(max_tool_seconds) not in (int, float)
+            or max_tool_seconds != max_tool_seconds
+            or max_tool_seconds in (float("inf"), float("-inf"))
+            or max_tool_seconds <= 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        if not isinstance(dispatch_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.tool_operations_used,r.tool_seconds_used,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
+            # 这种 Lease 锁住 A 却改 B 的业务记录，同时绕开上面刚建立的 incident→run
+            # 锁序（bot review 发现）。renew_lease()/lease_current() 本就是这个写法。
+            if not row:
+                raise PersistenceError("CONTROL_DENIED")
+            existing = conn.execute(
+                "SELECT reserved,seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
+                (dispatch_id, lease.run_id, lease.epoch, operation_id),
+            ).fetchone()
+            # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
+            # 唯一的例外是**结算一个本租约已经预留过的派发**：栅栏若连它也拒，
+            # 预留的整段超时就永远占着 tool_seconds_used，恢复后的尝试继承这个
+            # 虚高总量，可能因为根本没花掉的秒数而 TIME_BUDGET_EXHAUSTED
+            # （bot review 发现）。结算只是把已知的实际耗时写回本租约自己建立的
+            # 那一行：它不新建预留、不采纳任何结果，人工决定仍由执行器取回后的
+            # control 复读上报并按 history-only 登记。
+            if existing is None and self._lease_revoked(row, lease, self._db_now(conn)):
+                raise PersistenceError("CONTROL_DENIED")
+            if existing is None:
+                # 首次出现该 dispatch_id 即预留：`seconds` 是本次派发被授权的最长
+                # 时间，整段先占住预算，结算时再核减为实际耗时。此前这里记的是
+                # 调用方传来的 0.0，于是两个执行器都能通过「已用 < 上限」这道门、
+                # 各自派发，再各自无条件结算，把 Run 推过冻结上限（bot review 发现：
+                # 上一轮只判已用量，并没有真的关掉这个竞态）。
+                conn.execute(
+                    "INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id,reserved,seconds) VALUES(%s,%s,%s,%s,%s,NULL)",
+                    (
+                        dispatch_id,
+                        lease.run_id,
+                        lease.epoch,
+                        operation_id,
+                        float(seconds),
+                    ),
+                )
+                cursor = conn.execute(
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used+%s<=%s",
+                    (
+                        float(seconds),
+                        lease.run_id,
+                        max_operations,
+                        float(seconds),
+                        float(max_tool_seconds),
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    # The row is already locked (``FOR UPDATE`` above), so this
+                    # is not a lost-update race with another writer -- a cap
+                    # was already reached when we got here. Raising rolls back
+                    # the INSERT above too, so no orphaned charge row survives
+                    # for an operation that was never actually counted.
+                    #
+                    # 两个上限都在这一条 UPDATE 里判定。秒数此前只在进程内把关：
+                    # 两个执行器各自读到 239 秒，就会各自按「还剩 1 秒」派发并成功结算，
+                    # 把 Run 留在 241 秒，而两次观察都被采纳（bot review 发现）。
+                    # 行锁下读到的计数用来区分是哪一个上限触发，报告与进程内同一个
+                    # 原因码。
+                    raise PersistenceError(
+                        "OPERATION_BUDGET_EXHAUSTED"
+                        if int(row["tool_operations_used"]) >= max_operations
+                        else "TIME_BUDGET_EXHAUSTED"
+                    )
+                return
+            if existing["seconds"] is None:
+                # 第一次结算：释放预留，按实际耗时记账。差值可以为负——预留本就是
+                # 上界，这正是 C3「原子预留和结算」里的结算那一半。
+                settled = float(seconds)
+                delta = settled - float(existing["reserved"])
+            else:
+                # 重复结算只允许向上修正，不允许把已记录的实际耗时改小。
+                settled = max(float(existing["seconds"]), float(seconds))
+                delta = settled - float(existing["seconds"])
+            conn.execute(
+                "UPDATE opspilot_tool_charges SET seconds=%s WHERE dispatch_id=%s",
+                (settled, dispatch_id),
+            )
+            if delta == 0.0:
+                return
+            conn.execute(
+                "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
+                (delta, lease.run_id),
             )
 
     def lease_current(self, lease: Lease) -> bool:
