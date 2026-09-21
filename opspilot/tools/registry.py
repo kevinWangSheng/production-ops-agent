@@ -279,7 +279,10 @@ _ENDPOINT = re.compile(
 # stays a human-review question.
 _SCHEMELESS_ENDPOINT = re.compile(
     r"(?:"
-    r"\[[0-9A-Fa-f:]{2,45}\]"  # bracketed IPv6
+    # 方括号 IPv6，含 zone id（`[fe80::1%eth0]`）：链路本地地址同样是具体
+    # endpoint，而方括号加冒号本身就是无歧义锚点，放宽 zone 不带来误判——
+    # `数组 [1:2]`、`区间 [a:b]` 仍不匹配，因为端口仍要求是数字（bot review 发现）。
+    r"\[[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
     r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # dotted quad
     r"|\b(?:[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*)(?:\.[A-Za-z0-9-]+)*"  # host label
     r"):[0-9]{1,5}\b"
@@ -319,7 +322,7 @@ _PROTOCOL_RELATIVE_URI = re.compile(
     # `//shared/config` 这类散文因此仍不匹配。
     r"(?:[^\W\d_][^\s/@:.?#]*\.)+[^\W\d_]{2,}"
     r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
-    r"|\[[0-9A-Fa-f:]{2,45}\]"
+    r"|\[[0-9A-Fa-f:]{2,45}(?:%[A-Za-z0-9._-]{1,32})?\]"
     # 带端口的单标签主机同样不限字母表：`//监控:4317` 与 `//prometheus:9090`
     # 是同一件事。这里的锚点是 `//` 加数字端口，字母表不是判据（bot review
     # 发现；本分支是 `//` 系列里最后一个仍限 ASCII 的）。注意无 `//` 前缀的

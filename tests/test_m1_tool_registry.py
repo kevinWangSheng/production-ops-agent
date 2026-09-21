@@ -931,3 +931,26 @@ def test_any_double_slash_in_a_parameter_name_is_refused(name):
     """
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         registration(parameters={name: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["连接 [fe80::1%eth0]:4317", "读取 //[fe80::1%eth0]:4317/api"],
+)
+def test_scoped_ipv6_endpoints_are_refused(text):
+    """Bot review finding: the bracketed-IPv6 class excluded zone identifiers,
+    so a link-local endpoint reached the model. Brackets plus a numeric port
+    are the anchor; the zone is part of the address, not a new ambiguity.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize("text", ["数组 [1:2] 的写法", "区间 [a:b]", "矩阵 [i:j] 切片"])
+def test_bracketed_prose_is_not_mistaken_for_ipv6(text):
+    """Brackets alone are not the anchor: slice and interval notation stays
+    legitimate because the address must still look like IPv6.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text
