@@ -1521,10 +1521,51 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 18 | 2 | 2 | 0 | 2（第十六轮两处处置各留半成品） |
 | 19 | 1 | 1 | 0 | 1（第十八轮兜底原因写死了未核实的具体决定） |
 | 20 | 2 | 2 | 0 | 1（第十二轮的统一入口丢掉了 history 保留） |
+| 21 | 2 | 2 | 0 | 1（第二十轮新增的 _history 绕过响应校验） |
 
-累计 56 条 thread 全部有结论。第 9–20 轮共 24 条中有 14 条源自前一轮修复，单轮条数
-8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1 → 2。用户已明确：继续处理，采纳或拒绝由执行者
-按实际情况判断。
+累计 58 条 thread 全部有结论。第 9–21 轮共 26 条中有 15 条源自前一轮修复，单轮条数
+8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1 → 2 → 2。用户已明确：继续处理，采纳或拒绝由
+执行者按实际情况判断。
+
+## 33. 机器人 code review 第二十一轮两条 thread 处置（2026-09-20）
+
+两条均采纳（`0f95369`）。第 1 条是第二十轮 `_history()` 引入的缺陷。
+
+### P1 历史路径绕过响应校验
+
+`_history()` 只重复了解析这一步。实测两个后果：
+
+```text
+source_start_at="bad" + 暂停 → *** ESCAPED execute(): AttributeError: 'str' object has no attribute 'isoformat'
+超限 body + 暂停             → denied SUSPENDED，history committed: 1（绕过 max_result_bytes）
+```
+
+异常逃出 `execute()` 尤其严重，且发生在人工控制路径上——本任务前面刚修过数条同类，我自己又开了
+一个。
+
+**修法不是在 `_history()` 里补齐检查**（那会留下第三份需同步的规则，正是本任务反复栽跟头的模式），
+而是把整条响应校验链抽成 `_inspect()`，返回 `(problem, rows, payload)`，采纳路径与历史路径共用：
+凡在采纳路径会被拒绝的响应，历史路径同样不保留。`_inspect()` docstring 写明它是这些规则的唯一
+所在地及原因。
+
+### P1 参数名中的 endpoint
+
+参数名只校验类型与认证别名，而它们会成为模型可见 schema 的属性名，`{"prometheus:9090": ...}`
+因此绕过了施加于描述的 endpoint 规则——同一个模型可见面，两个字段两套标准。改为施加同一套检查。
+
+### 验证
+
+```text
+make check → 1422 passed, 136 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 98 passed, 38 skipped
+两条均先红后绿（还原实现后 5 个用例失败，其中 AttributeError 用例直接抛出）
+```
+
+### 工具注记
+
+本轮回复因正文含反引号被 zsh 当作命令替换而解析失败（未误发，已核实两条 thread 的 last_author
+仍为机器人），改为把正文写入文件并以 `gh api -F b=@file` 传参。后续含代码标记的回复一律走文件。
+
 
 ## 32. 机器人 code review 第二十轮两条 thread 处置（2026-09-20）
 
