@@ -114,8 +114,17 @@ class Window:
     def __post_init__(self) -> None:
         if not (_aware(self.start) and _aware(self.end)) or self.start >= self.end:
             raise ValueError("INVALID_WINDOW")
-        object.__setattr__(self, "start", self.start.astimezone(timezone.utc))
-        object.__setattr__(self, "end", self.end.astimezone(timezone.utc))
+        try:
+            start = self.start.astimezone(timezone.utc)
+            end = self.end.astimezone(timezone.utc)
+        except OverflowError as error:
+            # An aware bound at the edge of the datetime range, such as
+            # ``0001-01-01T00:00:00+14:00``, cannot be normalised to UTC. It is
+            # an invalid window whichever caller built it, not a crash: the
+            # class's documented failure is ``INVALID_WINDOW``.
+            raise ValueError("INVALID_WINDOW") from error
+        object.__setattr__(self, "start", start)
+        object.__setattr__(self, "end", end)
 
     @property
     def seconds(self) -> float:
@@ -151,12 +160,9 @@ class Window:
             bounds.append(moment)
         try:
             return cls(*bounds)
-        except (ValueError, OverflowError):
-            # ``fromisoformat`` accepts bounds that cannot be normalised to
-            # UTC -- e.g. ``0001-01-01T00:00:00+14:00`` raises OverflowError
-            # inside ``__post_init__``. Model-supplied text must never escape
-            # as an exception; it is invalid window input like any other (bot
-            # review finding).
+        except ValueError:
+            # Includes a bound that cannot be normalised to UTC, which
+            # ``__post_init__`` reports as ``INVALID_WINDOW`` like any other.
             return None
 
 

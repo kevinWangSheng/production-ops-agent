@@ -781,3 +781,15 @@ def test_committed_evidence_bytes_always_parse_under_a_strict_reader():
         sink.records[0].raw.decode("utf-8"),
         parse_constant=lambda name: pytest.fail(f"non-finite {name} in evidence"),
     )
+
+
+def test_a_window_bound_that_cannot_be_normalised_to_utc_is_an_invalid_window():
+    """A direct ``Window`` construction with an aware bound at the edge of the
+    datetime range raised a raw ``OverflowError`` from ``astimezone``; the
+    class's documented failure is ``INVALID_WINDOW`` whoever built it.
+    """
+    edge = datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14)))
+    later = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="INVALID_WINDOW"):
+        Window(start=edge, end=later)
+    assert Window.parse({"start": edge.isoformat(), "end": later.isoformat()}) is None
