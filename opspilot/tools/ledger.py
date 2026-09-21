@@ -27,6 +27,18 @@ __all__ = ["DurableToolLedger"]
 class DurableToolLedger:
     """``ToolUsageLedger`` over committed PostgreSQL rows for one lease.
 
+    **Known limit — durable suspension fencing.** The lease this adapter
+    carries fences on the *incident* control generation only. The global and
+    target suspension generations the executor now compares
+    (``QueryScope``/``ControlSnapshot``) stop at those snapshots: the durable
+    store has no suspension state and no target identities at all, so there is
+    nothing for ``charge_tool`` to compare them against. A global or target
+    suspension landing between the executor's last snapshot and this write is
+    therefore not caught atomically (bot review finding). Closing it requires
+    persisting ``opspilot.domain.control.SuspensionState`` -- global and
+    per-target generations plus resolved target identities -- which is the
+    Controller's work, not this adapter's.
+
     ``max_operations`` is required, not defaulted to the frozen global
     ceiling: a caller wiring this ledger to a specific Run must pass that
     Run's own ``QueryScope.max_operations``, which may be narrower than the

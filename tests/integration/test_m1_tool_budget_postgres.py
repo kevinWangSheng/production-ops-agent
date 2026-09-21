@@ -711,3 +711,56 @@ def test_a_run_without_issued_ceilings_still_follows_the_caller():
         dispatch_id=uuid4(),
     )
     assert store.rebuild(incident)["run"]["tool_operations_used"] == 1
+
+
+def test_a_continuation_run_carries_its_own_issued_ceilings():
+    """Bot review finding: only ``accept()`` took the new ceilings, so a
+    cancelled incident continued with a freshly authorized narrow scope left
+    both columns NULL and a reconstructed executor's wider limits governed.
+    """
+    store = DurableStore(DSN)
+    incident, first = uuid4(), uuid4()
+    store.accept(
+        incident,
+        first,
+        f"m1-continuation-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+        tool_max_operations=5,
+        tool_max_seconds=50.0,
+    )
+    assert store.control(incident, 0, "cancel", "operator") == 1
+
+    second = uuid4()
+    generation = store.new_run(
+        incident,
+        second,
+        expected_generation=1,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+        actor="operator",
+        tool_max_operations=1,  # the continuation is authorized narrower
+        tool_max_seconds=5.0,
+    )
+    lease = store.claim(incident, second, uuid4(), {"state": "v1"})
+    assert lease.control_generation == generation
+
+    store.charge_tool(
+        lease,
+        "step-1:0",
+        1.0,
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+        dispatch_id=uuid4(),
+    )
+    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
+        store.charge_tool(
+            lease,
+            "step-1:1",
+            1.0,
+            max_operations=MAX_OPERATIONS_PER_RUN,
+            max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+            dispatch_id=uuid4(),
+        )

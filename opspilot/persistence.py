@@ -364,8 +364,17 @@ class DurableStore:
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
+        tool_max_operations: int | None = None,
+        tool_max_seconds: float | None = None,
     ) -> int:
-        """Continue a cancelled incident with a fresh Run and control generation."""
+        """Continue a cancelled incident with a fresh Run and control generation.
+
+        The continuation Run carries its own issued tool ceilings, exactly as
+        ``accept()`` does: a freshly authorized narrow scope must not end up
+        with ``NULL`` columns that let a reconstructed executor's wider limits
+        govern (bot review finding -- the first pass added the ceilings to the
+        initial-Run path only).
+        """
         if type(expected_generation) is not int or expected_generation < 0:
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
@@ -404,8 +413,17 @@ class DurableStore:
                 raise PersistenceError("CONTROL_CONFLICT")
             nxt = int(row["control_generation"]) + 1
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
-                (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,tool_max_operations,tool_max_seconds) VALUES(%s,%s,'queued',%s,%s,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    nxt,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    tool_max_operations,
+                    tool_max_seconds,
+                ),
             )
             conn.execute(
                 "UPDATE opspilot_incidents SET state='queued',lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
