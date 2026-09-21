@@ -954,3 +954,29 @@ def test_bracketed_prose_is_not_mistaken_for_ipv6(text):
     legitimate because the address must still look like IPv6.
     """
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["https:///api", "http://:9090", "https://metrics.internal:99999"],
+)
+def test_an_endpoint_without_a_usable_authority_is_refused(endpoint):
+    """Bot review finding: the regex only guaranteed "some allowed characters
+    after `://`", so a target with no host or an impossible port registered
+    cleanly and every authorized call then carried an unusable endpoint to the
+    transport instead of failing at registration.
+    """
+    with pytest.raises(ToolContractError, match="INVALID_ENDPOINT"):
+        target(endpoint=endpoint)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://metrics.internal:9090",
+        "https://metrics.internal",
+        "HTTPS://metrics.internal:9090",
+    ],
+)
+def test_usable_endpoints_are_still_accepted(endpoint):
+    assert target(endpoint=endpoint).endpoint == endpoint

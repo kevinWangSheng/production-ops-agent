@@ -598,3 +598,54 @@ def test_the_durable_ledger_reports_the_time_ceiling_with_its_own_signal():
     ledger.charge("step-1:0", 2.0, dispatch_id=uuid4())  # reserves the whole cap
     with pytest.raises(ToolTimeBudgetExhausted, match="TIME_BUDGET_EXHAUSTED"):
         ledger.charge("step-1:1", 0.5, dispatch_id=uuid4())
+
+
+def test_a_revoked_lease_may_settle_its_own_reservation_but_not_make_a_new_one():
+    """Bot review finding: the lease fence rejected the settlement too, so the
+    whole reserved timeout stayed in ``tool_seconds_used`` forever -- a resumed
+    attempt inherited the inflated total and could hit TIME_BUDGET_EXHAUSTED
+    for seconds nobody ever spent.
+
+    Settling only writes the now-known elapsed time back to the row this same
+    lease created; it makes no reservation and adopts nothing. Creating a new
+    reservation under a revoked lease is still refused.
+    """
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "revoked-settle")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    dispatch = uuid4()
+
+    store.charge_tool(
+        lease,
+        "step-1:0",
+        30.0,  # reserves the full authorized timeout
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+        dispatch_id=dispatch,
+    )
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 30.0
+
+    assert store.control(incident, 0, "cancel", "operator") == 1
+
+    # The read finished in 2 s; that reconciliation must still land.
+    store.charge_tool(
+        lease,
+        "step-1:0",
+        2.0,
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+        dispatch_id=dispatch,
+    )
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 2.0
+
+    # A *new* dispatch under the revoked lease is still refused.
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.charge_tool(
+            lease,
+            "step-1:1",
+            1.0,
+            max_operations=MAX_OPERATIONS_PER_RUN,
+            max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+            dispatch_id=uuid4(),
+        )
+    assert store.rebuild(incident)["run"]["tool_operations_used"] == 1

@@ -666,13 +666,21 @@ class DurableStore:
             # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
             # 这种 Lease 锁住 A 却改 B 的业务记录，同时绕开上面刚建立的 incident→run
             # 锁序（bot review 发现）。renew_lease()/lease_current() 本就是这个写法。
-            # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
-            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
+            if not row:
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
                 "SELECT reserved,seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
                 (dispatch_id, lease.run_id, lease.epoch, operation_id),
             ).fetchone()
+            # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
+            # 唯一的例外是**结算一个本租约已经预留过的派发**：栅栏若连它也拒，
+            # 预留的整段超时就永远占着 tool_seconds_used，恢复后的尝试继承这个
+            # 虚高总量，可能因为根本没花掉的秒数而 TIME_BUDGET_EXHAUSTED
+            # （bot review 发现）。结算只是把已知的实际耗时写回本租约自己建立的
+            # 那一行：它不新建预留、不采纳任何结果，人工决定仍由执行器取回后的
+            # control 复读上报并按 history-only 登记。
+            if existing is None and self._lease_revoked(row, lease, self._db_now(conn)):
+                raise PersistenceError("CONTROL_DENIED")
             if existing is None:
                 # 首次出现该 dispatch_id 即预留：`seconds` 是本次派发被授权的最长
                 # 时间，整段先占住预算，结算时再核减为实际耗时。此前这里记的是

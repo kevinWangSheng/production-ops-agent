@@ -28,6 +28,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, TypeVar
+from urllib.parse import urlsplit
 
 __all__ = [
     "EMPTY_VIEW_BYTES",
@@ -193,6 +194,16 @@ def _endpoint_text(value: str) -> bool:
         or _PROTOCOL_RELATIVE_URI.search(value)
         or _SCHEMELESS_ENDPOINT.search(value)
     )
+
+
+def _usable_authority(endpoint: str) -> bool:
+    """Whether this endpoint has a real host and, if given, a port in range."""
+    try:
+        parts = urlsplit(endpoint)
+        port = parts.port
+    except ValueError:
+        return False  # urllib itself rejects an out-of-range port
+    return bool(parts.hostname) and (port is None or 0 < port <= 65535)
 
 
 def _utf8_text(value: str) -> bool:
@@ -662,6 +673,13 @@ class RegisteredTarget:
         ):
             raise ToolContractError("INVALID_TARGET_IDENTITY")
         if not isinstance(self.endpoint, str) or not _ENDPOINT.fullmatch(self.endpoint):
+            raise ToolContractError("INVALID_ENDPOINT")
+        if not _usable_authority(self.endpoint):
+            # 正则只保证「`scheme://` 之后是一串允许的字符」，因此
+            # `https:///api`（无 host）、`http://:9090`（无 host）、
+            # `https://metrics.internal:99999`（端口越界）都能通过。这样的目标
+            # 在注册期看似有效，实际每一次被授权的调用都会带着不可用的 endpoint
+            # 发给传输层，而不是在注册期就失败（bot review 发现）。
             raise ToolContractError("INVALID_ENDPOINT")
         if "@" in self.endpoint.split("//", 1)[1].split("/", 1)[0]:
             # Userinfo in the authority would carry credential material.
