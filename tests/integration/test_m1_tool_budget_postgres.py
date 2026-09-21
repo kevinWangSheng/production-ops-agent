@@ -482,48 +482,44 @@ def test_a_duplicate_dispatch_still_cannot_exceed_the_operation_cap():
     assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
 
 
-def test_the_cumulative_time_ceiling_is_enforced_in_the_same_atomic_update():
-    """Bot review finding: the atomic update gated only the operation count, so
-    two executors both reading 239 seconds used could each dispatch on their
-    locally computed one-second remainder and both settle, leaving the Run at
-    241 seconds with both observations adopted. The time ceiling is now gated
-    by the same locked UPDATE as the operation ceiling.
+def test_a_dispatch_that_does_not_fit_the_remaining_time_is_refused():
+    """Bot review finding: the previous pass gated on seconds *already used*,
+    but a pre-dispatch charge carried 0.0 seconds, so two executors both
+    starting from 239 s each passed the gate, each dispatched a one-second
+    read, and their unconditional settlements left the Run at 241 s.
+
+    The reservation closes it: the first charge for a dispatch holds the whole
+    authorized duration against the ceiling, so the second dispatch has no room
+    and is refused before it is ever sent.
     """
     store = DurableStore(DSN)
-    incident, run = _accept(store, "time-cap")
+    incident, run = _accept(store, "time-reserve")
     lease = store.claim(incident, run, uuid4(), {"state": "v1"})
     cap = 240.0
 
-    first = uuid4()
-    store.charge_tool(
-        lease,
-        "step-1:0",
-        0.0,
-        max_operations=MAX_OPERATIONS_PER_RUN,
-        max_tool_seconds=cap,
-        dispatch_id=first,
-    )
-    store.charge_tool(
-        lease,
-        "step-1:0",
-        239.0,
-        max_operations=MAX_OPERATIONS_PER_RUN,
-        max_tool_seconds=cap,
-        dispatch_id=first,
-    )
+    spent = uuid4()
+    for value in (239.0, 239.0):  # reserve then settle
+        store.charge_tool(
+            lease,
+            "step-1:0",
+            value,
+            max_operations=MAX_OPERATIONS_PER_RUN,
+            max_tool_seconds=cap,
+            dispatch_id=spent,
+        )
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 239.0
 
-    # Two more dispatches from the same 239 s snapshot: the first may still
-    # take the remaining second, the second must be refused durably.
-    second = uuid4()
+    first = uuid4()  # executor A reserves the one second that is left
     store.charge_tool(
         lease,
         "step-1:1",
         1.0,
         max_operations=MAX_OPERATIONS_PER_RUN,
         max_tool_seconds=cap,
-        dispatch_id=second,
+        dispatch_id=first,
     )
     with pytest.raises(PersistenceError, match="TIME_BUDGET_EXHAUSTED"):
+        # Executor B, holding the same stale 239 s snapshot, gets nothing.
         store.charge_tool(
             lease,
             "step-1:2",
@@ -532,22 +528,59 @@ def test_the_cumulative_time_ceiling_is_enforced_in_the_same_atomic_update():
             max_tool_seconds=cap,
             dispatch_id=uuid4(),
         )
-
     row = store.rebuild(incident)["run"]
     assert row["tool_seconds_used"] == 240.0
     assert row["tool_operations_used"] == 2  # the refused dispatch left nothing
 
-    # Settling an already-counted dispatch is never refused by the time cap.
-    store.charge_tool(
-        lease,
-        "step-1:1",
-        3.0,
-        max_operations=MAX_OPERATIONS_PER_RUN,
-        max_tool_seconds=cap,
-        dispatch_id=second,
-    )
-    row = store.rebuild(incident)["run"]
-    assert row["tool_seconds_used"] == 242.0
+
+def test_settling_releases_the_unused_part_of_a_reservation():
+    """The other half of the contract's 原子预留和结算: a read that finishes
+    early gives the budget back, so the ceiling bounds real spend, not intent.
+    """
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "time-release")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    dispatch = uuid4()
+
+    def charge(value):
+        store.charge_tool(
+            lease,
+            "step-1:0",
+            value,
+            max_operations=MAX_OPERATIONS_PER_RUN,
+            max_tool_seconds=240.0,
+            dispatch_id=dispatch,
+        )
+
+    charge(10.0)  # reservation
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 10.0
+    charge(2.5)  # settled at its real cost
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 2.5
+    for replayed in (2.5, 1.0):
+        charge(replayed)  # replay changes nothing; never lowered below 2.5
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 2.5
+
+
+def test_a_transport_that_overran_its_reservation_is_recorded_truthfully():
+    """The ceiling governs what may be started; the record tells the truth
+    about what was spent. A transport that outlasts its bound settles above
+    the reservation.
+    """
+    store = DurableStore(DSN)
+    incident, run = _accept(store, "time-overrun")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    dispatch = uuid4()
+
+    for value in (5.0, 9.0):
+        store.charge_tool(
+            lease,
+            "step-1:0",
+            value,
+            max_operations=MAX_OPERATIONS_PER_RUN,
+            max_tool_seconds=240.0,
+            dispatch_id=dispatch,
+        )
+    assert store.rebuild(incident)["run"]["tool_seconds_used"] == 9.0
 
 
 def test_the_durable_ledger_reports_the_time_ceiling_with_its_own_signal():
@@ -562,6 +595,6 @@ def test_the_durable_ledger_reports_the_time_ceiling_with_its_own_signal():
         store, lease, max_operations=MAX_OPERATIONS_PER_RUN, max_tool_seconds=2.0
     )
 
-    ledger.charge("step-1:0", 2.0, dispatch_id=uuid4())
+    ledger.charge("step-1:0", 2.0, dispatch_id=uuid4())  # reserves the whole cap
     with pytest.raises(ToolTimeBudgetExhausted, match="TIME_BUDGET_EXHAUSTED"):
-        ledger.charge("step-1:1", 0.0, dispatch_id=uuid4())
+        ledger.charge("step-1:1", 0.5, dispatch_id=uuid4())

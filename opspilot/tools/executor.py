@@ -664,7 +664,10 @@ class ReadOnlyToolExecutor:
         # authority that cannot record it stops the call, as control does, and
         # an operation that was never recorded is not counted locally either.
         try:
-            charged = self._charge(operation.operation_id, 0.0, dispatch_id)
+            # Reserve the full authorized duration, not 0.0: the reservation is
+            # what keeps two executors from both starting a read the Run cannot
+            # afford (bot review finding).
+            charged = self._charge(operation.operation_id, timeout, dispatch_id)
         except ToolBudgetExhausted:
             # The durable cap is the authoritative one; a caller must see
             # this as the same denial the in-process pre-check reports, not

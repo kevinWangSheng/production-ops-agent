@@ -954,8 +954,12 @@ def test_each_dispatched_operation_is_charged_before_and_after_the_read():
 
     assert refused.reason == "TARGET_NOT_REGISTERED"
     # A refusal that never reached the transport costs nothing.
+    # The pre-dispatch charge is the *reservation* -- the longest this read is
+    # authorized to take -- not 0.0: holding the full authorization is what
+    # stops two executors both starting a read the Run cannot afford. The
+    # settlement then records what it actually cost.
     assert ledger.charges == [
-        (outcome.operation.operation_id, 0.0),
+        (outcome.operation.operation_id, 10.0),
         (outcome.operation.operation_id, 3.0),
     ]
 

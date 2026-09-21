@@ -852,3 +852,17 @@ def test_protocol_relative_userinfo_is_refused_even_with_a_single_label_host(tex
 def test_a_bare_at_sign_in_prose_is_not_an_authority(text):
     """The marker is `//` plus userinfo, not an `@` anywhere in the text."""
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "text", ["fetch //reader:secret@监控/api", "//токен@метрики/api"]
+)
+def test_protocol_relative_userinfo_covers_unicode_hosts(text):
+    """Bot review finding: the userinfo branch still restricted the host to
+    ASCII. Userinfo already makes this an unambiguous authority, so the host
+    alphabet is as irrelevant here as it is after `scheme://`.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)

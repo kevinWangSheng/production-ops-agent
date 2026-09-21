@@ -249,8 +249,14 @@ class DurableStore:
             CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
               dispatch_id uuid PRIMARY KEY,
               run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
-              operation_id text NOT NULL, seconds double precision NOT NULL DEFAULT 0
+              operation_id text NOT NULL,
+              -- 预留的授权秒数（C3 第 13 节：预算原子预留和结算）。seconds 为 NULL
+              -- 表示尚未结算，此时该次派发按 reserved 占用预算——「未知费用保持占用」。
+              reserved double precision NOT NULL DEFAULT 0,
+              seconds double precision
             );
+            ALTER TABLE opspilot_tool_charges ADD COLUMN IF NOT EXISTS reserved double precision NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_tool_charges ALTER COLUMN seconds DROP NOT NULL;
             -- 本表由本分支引入，尚未进入任何产品环境；开发库里可能还是
             -- (run, epoch, operation) 主键的旧形状，就地迁移到 dispatch_id。
             -- 迁移整体条件化：主键替换要 ACCESS EXCLUSIVE 锁并重建索引，而本
@@ -586,10 +592,17 @@ class DurableStore:
         so an executor may charge once before its read goes out and once after
         it with the measured wall time.
 
-        ``max_operations`` and ``max_tool_seconds`` are both required and both
-        gate the *same* atomic UPDATE: counting a new dispatch is refused once
-        the Run has reached either frozen ceiling. Settling an already-counted
-        dispatch is never subject to either -- it adds no new operation.
+        The first charge for a ``dispatch_id`` is a **reservation**: its
+        ``seconds`` is the longest this dispatch is authorized to take, and the
+        whole of it is held against the Run's time ceiling until the dispatch
+        settles (C3 section 13: 预算在 PostgreSQL 原子预留和结算，未知费用保持
+        占用). Both ceilings gate that one atomic UPDATE -- a new dispatch is
+        refused unless the Run still has an operation left *and* room for the
+        full reservation. Settling is never refused: it releases the
+        reservation and records what the read actually cost, which may be less
+        than reserved and, for a transport that overran its bound, more. The
+        ceiling governs what may be started; the record tells the truth about
+        what was spent.
 
         ``dispatch_id`` is the key, not ``operation_id``, and it is required
         rather than derived here: ``operation_id`` is stable by construction
@@ -657,12 +670,17 @@ class DurableStore:
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             existing = conn.execute(
-                "SELECT seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
+                "SELECT reserved,seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
                 (dispatch_id, lease.run_id, lease.epoch, operation_id),
             ).fetchone()
             if existing is None:
+                # 首次出现该 dispatch_id 即预留：`seconds` 是本次派发被授权的最长
+                # 时间，整段先占住预算，结算时再核减为实际耗时。此前这里记的是
+                # 调用方传来的 0.0，于是两个执行器都能通过「已用 < 上限」这道门、
+                # 各自派发，再各自无条件结算，把 Run 推过冻结上限（bot review 发现：
+                # 上一轮只判已用量，并没有真的关掉这个竞态）。
                 conn.execute(
-                    "INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id,seconds) VALUES(%s,%s,%s,%s,%s)",
+                    "INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id,reserved,seconds) VALUES(%s,%s,%s,%s,%s,NULL)",
                     (
                         dispatch_id,
                         lease.run_id,
@@ -672,11 +690,12 @@ class DurableStore:
                     ),
                 )
                 cursor = conn.execute(
-                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used<%s",
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used+%s<=%s",
                     (
                         float(seconds),
                         lease.run_id,
                         max_operations,
+                        float(seconds),
                         float(max_tool_seconds),
                     ),
                 )
@@ -698,13 +717,21 @@ class DurableStore:
                         else "TIME_BUDGET_EXHAUSTED"
                     )
                 return
-            delta = max(0.0, float(seconds) - float(existing["seconds"]))
+            if existing["seconds"] is None:
+                # 第一次结算：释放预留，按实际耗时记账。差值可以为负——预留本就是
+                # 上界，这正是 C3「原子预留和结算」里的结算那一半。
+                settled = float(seconds)
+                delta = settled - float(existing["reserved"])
+            else:
+                # 重复结算只允许向上修正，不允许把已记录的实际耗时改小。
+                settled = max(float(existing["seconds"]), float(seconds))
+                delta = settled - float(existing["seconds"])
+            conn.execute(
+                "UPDATE opspilot_tool_charges SET seconds=%s WHERE dispatch_id=%s",
+                (settled, dispatch_id),
+            )
             if delta == 0.0:
                 return
-            conn.execute(
-                "UPDATE opspilot_tool_charges SET seconds=seconds+%s WHERE dispatch_id=%s",
-                (delta, dispatch_id),
-            )
             conn.execute(
                 "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
                 (delta, lease.run_id),

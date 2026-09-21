@@ -310,7 +310,7 @@ _PROTOCOL_RELATIVE_URI = re.compile(
     # prose writes `//x@y` (bot review finding -- the previous pass made
     # userinfo optional but still required the *host* to be dotted, ported or
     # bracketed, so a single-label host with credentials slipped through).
-    r"//[^\s/@]+@[A-Za-z0-9-]+"
+    r"//[^\s/@]+@[^\s/:?#]+"
     r"|//(?:[^\s/@]+@)?(?:"
     r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
     r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
