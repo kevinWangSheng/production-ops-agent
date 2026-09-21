@@ -1,6 +1,6 @@
 # M1-01 调查 loop 长程执行边界改造
 
-- 状态：**P1–P3 实现与确定性/PG 验证完成，待独立实现审查；PR 待 #29 合并后 rebase 到 main 创建**
+- 状态：**实现完成，独立实现审查的 2 个 P1 / 4 个 P2 已全部修复并复验；分支已推送，PR 待 #29 合并后 rebase 到 main 创建**
 - 更新日期：2026-09-21
 - 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
@@ -30,18 +30,26 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 | 项 | 命令 / 工件 | 结果 |
 |---|---|---|
-| 静态 + 单元 | `make check`（HEAD `6083da5` 起） | `ruff` 全过、`mypy` 31 文件无问题、`1630 passed, 161 skipped, 2 xfailed` |
-| 确定性恢复 | `tests/test_m1_investigation_context.py`（16 条） | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt |
-| 确定性压缩 | `tests/test_m1_investigation_compaction.py`（10 条） | 阈值触发、字节级重建、压缩后重启、摘要失败 handoff、不足两槽 `CONTEXT_EXHAUSTED`、摘要仍超预算、计费、stub、校准、策略哈希 |
+| 静态 + 单元 | `make check`（审查修复后 HEAD） | `ruff` 全过、`mypy` 31 文件无问题、`1640 passed, 163 skipped, 2 xfailed` |
+| 确定性恢复 | `tests/test_m1_investigation_context.py`（20 条） | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt |
+| 确定性压缩 | `tests/test_m1_investigation_compaction.py`（13 条） | 阈值触发、字节级重建、压缩后重启、摘要失败 handoff、不足两槽 `CONTEXT_EXHAUSTED`、摘要仍超预算、计费、stub、校准、策略哈希 |
 | 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（3 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、fail-closed |
-| PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（13 条）+ 既有 4 个 M1 PG 套件 | `107 passed`（含既有 94 条无回归） |
+| PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（15 条）+ 既有 4 个 M1 PG 套件 | `109 passed`（含既有 94 条无回归） |
 | 真实 provider 冒烟 | `.venv/bin/python -m scripts.m1_compaction_smoke` | 2 次 HTTP 200、`deepseek-flash`、带 tools + thinking；`prompt 3422 / completion 2147` tokens；费用上界见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json`；估计 vs 实测校准因子已记录 |
 
 不是产品验收：11 个 `passes` 未改；未做真实 Run 全链路；worker 进程级 kill 只在既有 `test_worker_subprocess_kill_then_resume_from_business_rows` 覆盖 claim 后一点，其余断点用进程内异常 + 租约过期等价模拟。
 
+## 独立实现审查（2026-09-21）
+
+全新上下文子代理审查 `9f3506f..HEAD`，结论「修复后可合并」；2 个 P1（压缩吞掉报告槽、已提交报告崩溃后被改写为预算耗尽）、
+4 个 P2（被拒计划被 recovery 执行、旧代际 conclusion 永久拒绝 publish、rebuild 不比对哈希、字节级测试不真）全部采纳修复，
+每项配先红后绿用例；处置表见设计文档第 13 节。
+
 ## 未完成 / 后续
 
-- 独立实现审查（全新上下文）及发现处置。
+- 审查 P3 后续项：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；`DEADLINE_EXCEEDED` 后无可落库终态；
+  runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；
+  `executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
 - #29 合并后：rebase 到 main、推送、开 PR（含 PR 描述：覆盖/未覆盖、权限/费用/兼容性）。
 - 供应商余额差记账（2 次冒烟请求）。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。

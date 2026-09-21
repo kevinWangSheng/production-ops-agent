@@ -210,7 +210,21 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 审查列出的三大翻车点（segment/k 跨 attempt 确定性、旧代际悬空组、终态无写路径）分别对应第 6/7 节新增规则，
 实施时各需一条先红后绿用例。
 
-## 13. 来源
+## 13. 实现独立审查记录（2026-09-21）
+
+全新上下文子代理对 `9f3506f..HEAD` 的代码做对抗性审查（含用替身复现），结论「修复后可合并」。处置：
+
+| 级别 | 发现 | 处置 |
+|---|---|---|
+| P1-A | 压缩占掉一个槽后本轮仍带 tools 发出，冻结 4 次下可能永远发不出最终报告 | 采纳：`_round` 在 `_manage_context` 后重算 `final`；用例 `test_a_compaction_never_takes_the_reserved_final_report_slot` |
+| P1-C | 合法报告步骤已提交、conclusion 提交前崩溃，resume 被写成 `BUDGET_EXHAUSTED` | 采纳：`resume()` 先复核末尾 assistant 报告（`parse_report` + 引用校验），通过则零请求完成；用例 `test_an_accepted_report_whose_conclusion_was_never_committed_finishes_on_resume` |
+| P2-B | 被拒绝的 tool 计划以 `assistant.tool_calls` 落库，recovery 会当作 pending 真实执行 | 采纳：拒绝在提交前判定，计划移到 `rejected_plan`，`assistant` 不带 `tool_calls`；压缩被拒同理；runner 在 `execute_pending` 前先识别已提交 conclusion；用例 2 条单元 + 1 条 PG |
+| P2-D | 旧代际 conclusion 行让 publish 永久 `FINAL_STEP_REQUIRED` | 采纳：`pending_publish`/`pending_conclusion` 只认当前代际；用例 1 条单元 + 1 条 PG |
+| P2 | rebuild 不比对已记录哈希；「字节级」测试只比 dict | 采纳：每步记录 `context.final`，rebuild 逐步比对 `input_snapshot_hash`（撤权 stub 后停止比对并标记 diverged）；新增篡改 fail-closed 用例与正向哈希断言 |
+| P3 | digest 列入 revoked id；`as_input()` 存投影前上下文；continuation 文档与 `timing` 死代码 | 采纳（三项已改） |
+| P3 | `MODEL_REJECTED` 按超时上界计活跃时间；`DEADLINE_EXCEEDED` 无终态；runner 不校验 Worker.versions 含策略版本；dropped 组只在内存；`executor_factory` 回填工具时间的合同未写明 | 记录为后续项，见任务记录「未完成 / 后续」 |
+
+## 14. 来源
 
 HolmesGPT `773fddf`：`tool_calling_llm.py` L1147–1210（`max_steps`、末轮无 tools、每轮前 compaction）、
 `tool_context_window_limiter.py`（单工具 spill）、`compaction.py` / `input_context_window_limiter.py`
