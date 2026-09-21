@@ -159,13 +159,17 @@ class ControlSnapshot:
     """
 
     control_generation: int
-    suspended: bool = False
     # 全局与目标两层暂停各有自己的版本号（domain 层 ScopeVersions 早已如此建模）。
     # 只带主体版本时，「全局暂停后又解除」这一序列无法被发现：布尔位已经归零，
     # 主体版本没变，一份暂停前的旧 scope 于是继续匹配——而 C3 第 4 节 :114 要求
     # 解除暂停后「新尝试使用当前所有控制版本」，旧授权不自动恢复（bot review 发现）。
-    global_suspension_generation: int = 0
-    target_suspension_generation: int = 0
+    # 必填，不给默认值：默认 0 会让一个尚未填这两个字段的 controller 适配器在
+    # 「全局/目标暂停后又解除」时与旧 scope 恰好相等而悄悄放行——正是这两个字段
+    # 要挡住的那条路径。与 max_operations / dispatch_id 同一理由：不完整的接线
+    # 必须 fail closed（bot review 发现）。
+    global_suspension_generation: int
+    target_suspension_generation: int
+    suspended: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -194,6 +198,10 @@ class QueryScope:
     subject_id: str
     run_id: str
     control_generation: int
+    # 与 ControlSnapshot 相同的三个版本，同样必填：授权在预留、派发与采纳三处
+    # 都按当前全局/目标/主体版本复核（C3 第 4 节 :112）。
+    global_suspension_generation: int
+    target_suspension_generation: int
     registry_revision: str
     tool_registry_revision: str
     target_ids: frozenset[str]
@@ -202,11 +210,6 @@ class QueryScope:
     deadline: datetime
     max_operations: int = MAX_OPERATIONS_PER_RUN
     max_tool_seconds: float = MAX_TOOL_SECONDS_PER_RUN
-    # 与 ControlSnapshot 相同的三个版本：授权在预留、派发与采纳三处都按当前
-    # 全局/目标/主体版本复核（C3 第 4 节 :112）。默认 0 是为了让既有调用方在
-    # 尚未接线时保持可构造，一旦 Controller 提供真实版本即按值比较。
-    global_suspension_generation: int = 0
-    target_suspension_generation: int = 0
 
     def __post_init__(self) -> None:
         if not all(

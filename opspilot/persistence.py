@@ -246,6 +246,12 @@ class DurableStore:
             -- 所以同一 operation 的第二次真实读取必须再计一次，不能被去重掉。
             ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_operations_used integer NOT NULL DEFAULT 0;
             ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_seconds_used double precision NOT NULL DEFAULT 0;
+            -- Run 被授权时发放的工具上限。此前只持久化用量，上限每次都由调用方
+            -- 传入：一个原本只授权 1 次操作的 Run，在恢复后由带着全局上限 20 的
+            -- 执行器重建时，判定用的就是 20（bot review 发现）。发放值随 Run 落库
+            -- 并在行锁下参与判定。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_max_operations integer;
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_max_seconds double precision;
             CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
               dispatch_id uuid PRIMARY KEY,
               run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
@@ -293,8 +299,18 @@ class DurableStore:
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
+        tool_max_operations: int | None = None,
+        tool_max_seconds: float | None = None,
     ) -> None:
-        """Create incident/run atomically. Return only after commit."""
+        """Create incident/run atomically. Return only after commit.
+
+        ``tool_max_operations``/``tool_max_seconds`` are the ceilings issued to
+        this Run. They are stored with it and are what ``charge_tool`` enforces,
+        so a later attempt cannot widen them by passing its own values. ``None``
+        records "no Run-specific ceiling", and the caller's value then governs;
+        that keeps callers that do not issue per-Run ceilings working unchanged
+        while giving the ones that do a durable floor.
+        """
         with self.transaction() as conn:
             row = conn.execute(
                 "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
@@ -326,8 +342,16 @@ class DurableStore:
             if inserted is None:
                 return
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
-                (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,tool_max_operations,tool_max_seconds) VALUES(%s,%s,'queued',0,%s,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    tool_max_operations,
+                    tool_max_seconds,
+                ),
             )
 
     def new_run(
@@ -660,7 +684,7 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.tool_operations_used,r.tool_seconds_used,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.tool_operations_used,r.tool_seconds_used,r.tool_max_operations,r.tool_max_seconds,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
                 (lease.run_id, lease.incident_id),
             ).fetchone()
             # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
@@ -668,6 +692,13 @@ class DurableStore:
             # 锁序（bot review 发现）。renew_lease()/lease_current() 本就是这个写法。
             if not row:
                 raise PersistenceError("CONTROL_DENIED")
+            # 发放值优先，且只会收紧不会放宽：调用方传来的上限与 Run 落库的上限
+            # 取较小者。恢复后的尝试因此无法用全局上限覆盖一个更窄的授权，而
+            # 尚未发放 Run 级上限（NULL）时仍沿用调用方的值。
+            if row["tool_max_operations"] is not None:
+                max_operations = min(max_operations, int(row["tool_max_operations"]))
+            if row["tool_max_seconds"] is not None:
+                max_tool_seconds = min(max_tool_seconds, float(row["tool_max_seconds"]))
             existing = conn.execute(
                 "SELECT reserved,seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
                 (dispatch_id, lease.run_id, lease.epoch, operation_id),

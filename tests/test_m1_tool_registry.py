@@ -353,6 +353,8 @@ def _scope(**overrides):
         "tool_names": frozenset({"metrics.range_query"}),
         "window": Window(WINDOW_START, WINDOW_END),
         "deadline": WINDOW_END + timedelta(hours=1),
+        "global_suspension_generation": 0,
+        "target_suspension_generation": 0,
     }
     fields.update(overrides)
     return QueryScope(**fields)
@@ -1004,3 +1006,28 @@ def test_slice_notation_survives_the_unported_bracket_rule(text):
     two, `[1:2]` has one.
     """
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["https://.", "http://-:443", "https://_", "https://a..b"]
+)
+def test_an_endpoint_whose_host_is_not_resolvable_is_refused(endpoint):
+    """Bot review finding: `urlsplit().hostname` is non-empty for `.`, `-` and
+    `_`, so a non-empty check let unusable targets register and every
+    authorized query for them went to an invalid endpoint.
+    """
+    with pytest.raises(ToolContractError, match="INVALID_ENDPOINT"):
+        target(endpoint=endpoint)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://metrics.internal:9090",
+        "https://localhost:9090",
+        "https://10.0.0.4:9090",
+        "https://[fd00::1]:9090",
+    ],
+)
+def test_dns_names_and_ip_literals_are_still_accepted(endpoint):
+    assert target(endpoint=endpoint).endpoint == endpoint

@@ -211,7 +211,9 @@ def test_a_suspension_during_flight_keeps_the_result_as_history_only():
     # re-check after the ledger charge (call 2) both still see "not
     # suspended" -- the suspension only takes effect during the flight,
     # observed by the post-fetch re-check (call 3).
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([{"value": 1}]))
 
@@ -231,7 +233,9 @@ def test_a_suspension_during_flight_keeps_the_result_as_history_only():
 
 def test_an_uncommitted_in_flight_history_never_reaches_the_outcome():
     # later_after=2: see test_a_suspension_during_flight_keeps_the_result_as_history_only.
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     sink = RecordingSink(fail=True)
     executor, transport, _, _ = build(control=control, sink=sink)
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -451,7 +455,9 @@ def test_a_slow_pre_dispatch_ledger_charge_that_crosses_a_suspension_is_denied()
     """The same slow-ledger race, but discovered via control, not the clock."""
 
     clock = FakeClock()
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=1
+    )
     ledger = SlowLedger(clock, 0.1, charge_on={1})
     executor, transport, sink, _ = build(clock=clock, control=control, ledger=ledger)
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -492,7 +498,12 @@ def test_the_pre_fetch_re_check_denies_when_the_control_generation_changed():
 
     control = FixedControl(
         generation=7,
-        later=ControlSnapshot(control_generation=8, suspended=False),
+        later=ControlSnapshot(
+            control_generation=8,
+            global_suspension_generation=0,
+            target_suspension_generation=0,
+            suspended=False,
+        ),
         later_after=1,
     )
     executor, transport, sink, _ = build(control=control)
@@ -569,7 +580,9 @@ def test_an_in_flight_suspension_is_reported_even_when_the_deadline_also_passed(
     # later_after=2: the pre-dispatch reserve (call 1) and the pre-fetch
     # re-check after the ledger charge (call 2) both still see "not
     # suspended" -- only the post-fetch in-flight re-check (call 3) does.
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, clock = build(
         control=control, scope_overrides={"deadline": NOW + timedelta(seconds=2)}
     )
@@ -1147,7 +1160,9 @@ def test_a_control_denied_settlement_keeps_the_observation_as_history():
 
     # The suspension must land after the pre-dispatch re-check (snapshot 2),
     # so the read really goes out and the denial happens at settlement.
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(ledger=ControlDeniedLedger(), control=control)
     transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
 
@@ -1197,7 +1212,9 @@ def test_a_control_denied_pre_dispatch_charge_never_escapes():
 
     # The pre-dispatch charge runs before this method's own control re-check,
     # so the re-read triggered by the denial is snapshot 2.
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=1
+    )
     executor, transport, sink, _ = build(ledger=DeniedAtDispatch(), control=control)
     transport.response = TransportResponse(body=body([{"value": 1}]))
 
@@ -1231,7 +1248,9 @@ def test_a_human_decision_outranks_a_transport_failure():
     appeared in the outcome or the audit path.
     """
     # snapshot 1 = _reserve, 2 = pre-dispatch re-check, 3 = this failure path.
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.error = TransportUnavailable("source down")
 
@@ -1263,7 +1282,9 @@ def test_a_human_decision_outranks_a_late_response():
     but late still reported ``GATEWAY_TIMEOUT`` and dropped the operator's
     pause from the outcome and the audit path.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, clock = build(control=control)
     transport.clock, transport.duration = clock, 15.0
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -1283,7 +1304,9 @@ def test_a_human_decision_outranks_a_source_error_response():
     """Same precedence for every other normally-returned refusal: a source
     error tag must not hide a newer human decision either.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([]), source_status="503")
 
@@ -1314,7 +1337,9 @@ def test_a_human_decision_outranks_a_settlement_storage_failure():
     ``CONTROL_UNAVAILABLE`` and dropped a pause taken while the read was in
     flight out of the outcome and the audit path.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(
         ledger=RecordingLedger(fail_on={2}), control=control
     )
@@ -1334,7 +1359,9 @@ def test_a_human_decision_outranks_a_settlement_budget_refusal():
     authoritative fact, and the budget refusal is not lost -- it is simply not
     what this outcome reports.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(
         ledger=RecordingLedger(exhausted_on={2}), control=control
     )
@@ -1374,11 +1401,13 @@ def test_authorized_at_records_the_final_check_before_dispatch():
 @pytest.mark.parametrize(
     "snapshot_args",
     [
-        {"control_generation": True, "suspended": False},
-        {"control_generation": 7, "suspended": 0},
-        {"control_generation": 7, "suspended": 1},
-        {"control_generation": -1, "suspended": False},
-        {"control_generation": 7.0, "suspended": False},
+        {"control_generation": True},
+        {"suspended": 0},
+        {"suspended": 1},
+        {"control_generation": -1},
+        {"control_generation": 7.0},
+        {"global_suspension_generation": True},
+        {"target_suspension_generation": -1},
     ],
 )
 def test_a_malformed_control_snapshot_fails_closed(snapshot_args):
@@ -1388,7 +1417,15 @@ def test_a_malformed_control_snapshot_fails_closed(snapshot_args):
     authoritative "not suspended". Malformed controller data must fail closed.
     """
     with pytest.raises(ToolContractError, match="INVALID_CONTROL_SNAPSHOT"):
-        ControlSnapshot(**snapshot_args)
+        ControlSnapshot(
+            **{
+                "control_generation": 7,
+                "global_suspension_generation": 0,
+                "target_suspension_generation": 0,
+                "suspended": False,
+                **snapshot_args,
+            }
+        )
 
 
 def test_a_controller_returning_a_malformed_snapshot_is_control_unavailable():
@@ -1398,7 +1435,12 @@ def test_a_controller_returning_a_malformed_snapshot_is_control_unavailable():
 
     class BadControl:
         def snapshot(self, scope):
-            return ControlSnapshot(control_generation=True, suspended=False)
+            return ControlSnapshot(
+                control_generation=True,
+                global_suspension_generation=0,
+                target_suspension_generation=0,
+                suspended=False,
+            )
 
     executor, transport, sink, _ = build(control=BadControl())
 
@@ -1423,7 +1465,9 @@ def test_a_control_denied_evidence_commit_reports_the_human_decision():
             raise ToolControlDenied("CONTROL_DENIED")
 
     sink = DenyingSink()
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=3)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=3
+    )
     executor, transport, _, _ = build(sink=sink, control=control)
     transport.response = TransportResponse(body=body([{"value": 1}]))
 
@@ -1481,7 +1525,9 @@ def test_a_source_error_body_is_not_kept_as_history_even_under_a_pause():
     model context, and a human decision landing on top does not turn it into
     an observation.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([]), source_status="503")
 
@@ -1492,7 +1538,9 @@ def test_a_source_error_body_is_not_kept_as_history_even_under_a_pause():
 
 
 def test_a_malformed_body_under_a_pause_has_no_history_to_keep():
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=b"{not json")
 
@@ -1507,7 +1555,9 @@ def test_a_paused_oversized_body_is_not_kept_as_history():
     over-limit body was committed because a human paused the Run -- the
     response limits must hold on the history path too.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([{"v": "x" * 5000}]))
 
@@ -1521,7 +1571,9 @@ def test_a_paused_response_with_malformed_metadata_never_escapes():
     """Same gap, worse symptom: malformed `source_start_at` reached `_record()`
     and raised `AttributeError` out of `execute()` on the human-control path.
     """
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=2
+    )
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(
         body=body([{"v": 1}]), source_start_at="bad", source_end_at="bad"
@@ -1540,7 +1592,9 @@ def test_a_suspension_during_the_pre_dispatch_charge_releases_the_reservation():
     repeated control races could falsely exhaust the Run's time budget.
     """
     ledger = RecordingLedger()
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=1
+    )
     executor, transport, sink, _ = build(ledger=ledger, control=control)
 
     outcome = executor.execute(request())
@@ -1563,7 +1617,9 @@ def test_a_ledger_that_cannot_record_the_release_does_not_change_the_reason():
             if len(self.charges) == 2:  # the release
                 raise RuntimeError("ledger down")
 
-    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=1
+    )
     executor, transport, _, _ = build(ledger=FailingRelease(), control=control)
 
     outcome = executor.execute(request())
@@ -1597,7 +1653,10 @@ def test_a_released_global_suspension_invalidates_the_old_authorization():
     versions after a release -- old authorization does not resume by itself.
     """
     released = ControlSnapshot(
-        control_generation=7, suspended=False, global_suspension_generation=1
+        control_generation=7,
+        global_suspension_generation=1,
+        target_suspension_generation=0,
+        suspended=False,
     )
     control = FixedControl(later=released, later_after=0)  # released before we start
     executor, transport, sink, _ = build(control=control)
@@ -1610,7 +1669,10 @@ def test_a_released_global_suspension_invalidates_the_old_authorization():
 
 def test_a_released_target_suspension_invalidates_the_old_authorization():
     released = ControlSnapshot(
-        control_generation=7, suspended=False, target_suspension_generation=3
+        control_generation=7,
+        global_suspension_generation=0,
+        target_suspension_generation=3,
+        suspended=False,
     )
     control = FixedControl(later=released, later_after=0)
     executor, transport, sink, _ = build(control=control)
@@ -1629,7 +1691,9 @@ def test_a_suspension_generation_moving_mid_flight_invalidates_the_result(field)
     post-fetch re-read, so a release that lands while a read is in flight
     invalidates the observation instead of letting it be adopted.
     """
-    moved = ControlSnapshot(control_generation=7, suspended=False, **{field: 2})
+    versions = {"global_suspension_generation": 0, "target_suspension_generation": 0}
+    versions[field] = 2
+    moved = ControlSnapshot(control_generation=7, suspended=False, **versions)
     control = FixedControl(later=moved, later_after=2)  # after the pre-dispatch check
     executor, transport, sink, _ = build(control=control)
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -1647,4 +1711,8 @@ def test_the_scope_rejects_a_malformed_suspension_generation():
     with pytest.raises(ToolContractError, match="INVALID_CONTROL_GENERATION"):
         scope(targets, tool_registry=tools, global_suspension_generation=-1)
     with pytest.raises(ToolContractError, match="INVALID_CONTROL_SNAPSHOT"):
-        ControlSnapshot(control_generation=7, target_suspension_generation=True)
+        ControlSnapshot(
+            control_generation=7,
+            global_suspension_generation=0,
+            target_suspension_generation=True,
+        )

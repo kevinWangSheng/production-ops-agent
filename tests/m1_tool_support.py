@@ -88,8 +88,18 @@ class RecordingSink:
 
 
 class FixedControl:
-    def __init__(self, generation=7, suspended=False, later=None, later_after=1):
+    def __init__(
+        self,
+        generation=7,
+        suspended=False,
+        later=None,
+        later_after=1,
+        global_generation=0,
+        target_generation=0,
+    ):
         self.generation = generation
+        self.global_generation = global_generation
+        self.target_generation = target_generation
         self.suspended = suspended
         self.later = later
         self.later_after = later_after  # 1-based call count before `later` starts
@@ -100,7 +110,10 @@ class FixedControl:
         if self.later is not None and self.calls > self.later_after:
             return self.later
         return ControlSnapshot(
-            control_generation=self.generation, suspended=self.suspended
+            control_generation=self.generation,
+            global_suspension_generation=self.global_generation,
+            target_suspension_generation=self.target_generation,
+            suspended=self.suspended,
         )
 
 
@@ -187,7 +200,12 @@ class UnavailableControl:
         self.calls += 1
         if self.calls >= self.fail_from:
             raise RuntimeError("control database unreachable")
-        return ControlSnapshot(control_generation=self.generation, suspended=False)
+        return ControlSnapshot(
+            control_generation=self.generation,
+            global_suspension_generation=0,
+            target_suspension_generation=0,
+            suspended=False,
+        )
 
 
 def description(**overrides):
@@ -266,6 +284,8 @@ def scope(targets, tools=None, *, tool_registry, **overrides):
         "subject_id": "incident-42",
         "run_id": "run-9",
         "control_generation": 7,
+        "global_suspension_generation": 0,
+        "target_suspension_generation": 0,
         "registry_revision": targets.revision,
         "tool_registry_revision": tool_registry.revision,
         "target_ids": frozenset({"checkout-prod"}),

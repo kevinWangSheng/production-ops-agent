@@ -26,6 +26,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from types import MappingProxyType
 from typing import Literal, TypeVar
 from urllib.parse import urlsplit
@@ -196,6 +197,29 @@ def _endpoint_text(value: str) -> bool:
     )
 
 
+_DNS_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _resolvable_host(host: str) -> bool:
+    """Whether this is a DNS name or an IP literal, not merely non-empty.
+
+    `https://.`, `https://-:443` and `https://_` all have a "hostname" as far
+    as ``urlsplit`` is concerned, so a non-empty check let them register and
+    every authorized query for that target then went to an unusable endpoint
+    (bot review finding).
+    """
+    if ":" in host:  # IPv6 literal, already bracket-stripped by urlsplit
+        try:
+            ip_address(host)
+        except ValueError:
+            return False
+        return True
+    labels = host.split(".")
+    if host.endswith("."):  # a fully qualified name's trailing dot
+        labels = labels[:-1]
+    return bool(labels) and all(_DNS_LABEL.fullmatch(label) for label in labels)
+
+
 def _usable_authority(endpoint: str) -> bool:
     """Whether this endpoint has a real host and, if given, a port in range."""
     try:
@@ -203,7 +227,10 @@ def _usable_authority(endpoint: str) -> bool:
         port = parts.port
     except ValueError:
         return False  # urllib itself rejects an out-of-range port
-    return bool(parts.hostname) and (port is None or 0 < port <= 65535)
+    host = parts.hostname
+    if not host or not _resolvable_host(host):
+        return False
+    return port is None or 0 < port <= 65535
 
 
 def _utf8_text(value: str) -> bool:
