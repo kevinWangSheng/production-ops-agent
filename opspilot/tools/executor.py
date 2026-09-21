@@ -160,10 +160,22 @@ class ControlSnapshot:
 
     control_generation: int
     suspended: bool = False
+    # 全局与目标两层暂停各有自己的版本号（domain 层 ScopeVersions 早已如此建模）。
+    # 只带主体版本时，「全局暂停后又解除」这一序列无法被发现：布尔位已经归零，
+    # 主体版本没变，一份暂停前的旧 scope 于是继续匹配——而 C3 第 4 节 :114 要求
+    # 解除暂停后「新尝试使用当前所有控制版本」，旧授权不自动恢复（bot review 发现）。
+    global_suspension_generation: int = 0
+    target_suspension_generation: int = 0
 
     def __post_init__(self) -> None:
-        if type(self.control_generation) is not int or self.control_generation < 0:
-            raise ToolContractError("INVALID_CONTROL_SNAPSHOT")
+        for name in (
+            "control_generation",
+            "global_suspension_generation",
+            "target_suspension_generation",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ToolContractError("INVALID_CONTROL_SNAPSHOT")
         if type(self.suspended) is not bool:
             raise ToolContractError("INVALID_CONTROL_SNAPSHOT")
 
@@ -190,6 +202,11 @@ class QueryScope:
     deadline: datetime
     max_operations: int = MAX_OPERATIONS_PER_RUN
     max_tool_seconds: float = MAX_TOOL_SECONDS_PER_RUN
+    # 与 ControlSnapshot 相同的三个版本：授权在预留、派发与采纳三处都按当前
+    # 全局/目标/主体版本复核（C3 第 4 节 :112）。默认 0 是为了让既有调用方在
+    # 尚未接线时保持可构造，一旦 Controller 提供真实版本即按值比较。
+    global_suspension_generation: int = 0
+    target_suspension_generation: int = 0
 
     def __post_init__(self) -> None:
         if not all(
@@ -205,8 +222,14 @@ class QueryScope:
             raise ToolContractError("INVALID_SCOPE")
         if self.subject_kind not in ("incident", "release_observation"):
             raise ToolContractError("INVALID_SUBJECT_KIND")
-        if type(self.control_generation) is not int or self.control_generation < 0:
-            raise ToolContractError("INVALID_CONTROL_GENERATION")
+        for name in (
+            "control_generation",
+            "global_suspension_generation",
+            "target_suspension_generation",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ToolContractError("INVALID_CONTROL_GENERATION")
         if not isinstance(self.window, Window):
             raise ToolContractError("INVALID_SCOPE_WINDOW")
         if (
@@ -568,7 +591,7 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         if control.suspended:
             return self._refuse(operation, "denied", "SUSPENDED")
-        if control.control_generation != scope.control_generation:
+        if self._generations_changed(control):
             return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
         if self._operations_used >= scope.max_operations:
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
@@ -601,6 +624,25 @@ class ReadOnlyToolExecutor:
         )
         return operation, timeout
 
+    def _generations_changed(self, control: ControlSnapshot) -> bool:
+        """Whether any control version this scope was authorized under moved.
+
+        All three are compared, at every checkpoint: a global or target
+        suspension that is activated and then released leaves the boolean
+        cleared and the subject version untouched, so comparing only the
+        subject version let a pre-suspension authorization keep issuing
+        queries (bot review finding). C3 section 4 requires a new attempt to
+        use *all* current control versions after a release.
+        """
+        scope = self._scope
+        return (
+            control.control_generation != scope.control_generation
+            or control.global_suspension_generation
+            != scope.global_suspension_generation
+            or control.target_suspension_generation
+            != scope.target_suspension_generation
+        )
+
     def _control_decision(self) -> str:
         """The human/控制 decision that invalidates this operation, or "".
 
@@ -613,7 +655,7 @@ class ReadOnlyToolExecutor:
             return "CONTROL_UNAVAILABLE"
         if control.suspended:
             return "SUSPENDED"
-        if control.control_generation != self._scope.control_generation:
+        if self._generations_changed(control):
             return "CONTROL_GENERATION_CHANGED"
         return ""
 
@@ -736,7 +778,7 @@ class ReadOnlyToolExecutor:
             return deny_before_dispatch("CONTROL_UNAVAILABLE")
         if control.suspended:
             return deny_before_dispatch("SUSPENDED")
-        if control.control_generation != self._scope.control_generation:
+        if self._generations_changed(control):
             return deny_before_dispatch("CONTROL_GENERATION_CHANGED")
         now = self._clock.now()
         # This is the authorization check immediately before dispatch, which is

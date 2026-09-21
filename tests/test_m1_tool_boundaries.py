@@ -1587,3 +1587,64 @@ def test_a_deadline_that_cannot_be_normalized_is_a_contract_error():
             tool_registry=tools,
             deadline=datetime.fromisoformat("0001-01-01T00:00:00+14:00"),
         )
+
+
+def test_a_released_global_suspension_invalidates_the_old_authorization():
+    """Bot review finding: a global suspension that is activated and then
+    released leaves ``suspended`` cleared and the subject generation
+    untouched, so a pre-suspension scope kept matching and could issue new
+    queries. C3 section 4 requires a new attempt to use *all* current control
+    versions after a release -- old authorization does not resume by itself.
+    """
+    released = ControlSnapshot(
+        control_generation=7, suspended=False, global_suspension_generation=1
+    )
+    control = FixedControl(later=released, later_after=0)  # released before we start
+    executor, transport, sink, _ = build(control=control)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert not transport.called and sink.records == []
+
+
+def test_a_released_target_suspension_invalidates_the_old_authorization():
+    released = ControlSnapshot(
+        control_generation=7, suspended=False, target_suspension_generation=3
+    )
+    control = FixedControl(later=released, later_after=0)
+    executor, transport, sink, _ = build(control=control)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert not transport.called
+
+
+@pytest.mark.parametrize(
+    "field", ["global_suspension_generation", "target_suspension_generation"]
+)
+def test_a_suspension_generation_moving_mid_flight_invalidates_the_result(field):
+    """The same three versions are compared at every checkpoint, including the
+    post-fetch re-read, so a release that lands while a read is in flight
+    invalidates the observation instead of letting it be adopted.
+    """
+    moved = ControlSnapshot(control_generation=7, suspended=False, **{field: 2})
+    control = FixedControl(later=moved, later_after=2)  # after the pre-dispatch check
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "CONTROL_GENERATION_CHANGED")
+    assert transport.called  # the read went out before the release landed
+    assert len(sink.records) == 1 and sink.records[0].adopted is False
+
+
+def test_the_scope_rejects_a_malformed_suspension_generation():
+    targets = TargetRegistry([target()])
+    tools = ToolRegistry([registration()])
+    with pytest.raises(ToolContractError, match="INVALID_CONTROL_GENERATION"):
+        scope(targets, tool_registry=tools, global_suspension_generation=-1)
+    with pytest.raises(ToolContractError, match="INVALID_CONTROL_SNAPSHOT"):
+        ControlSnapshot(control_generation=7, target_suspension_generation=True)
