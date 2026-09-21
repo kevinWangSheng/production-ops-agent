@@ -1534,8 +1534,9 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 | 31 | 2 | 2 | 0 | 2（endpoint 规则与 astimezone 同类各漏一处） |
 | 32 | 1 | 1 | 0 | 0（执行器未带全局/目标控制版本） |
 | 33 | 3 | 3 | 0 | 1（第三十二轮的默认值 fail open） |
+| 34 | 2 | 1 | 1 记录交接 | 2（第三十三轮两条各留半） |
 
-累计 76 条 thread 全部有结论。第 9–31 轮共 40 条中有 26 条源自前一轮修复，单轮条数
+累计 78 条 thread 全部有结论。第 9–31 轮共 40 条中有 26 条源自前一轮修复，单轮条数
 8 → 3 → 3 → 1 → 1 → 2 → 1 → 3 → 3 → 2 → 2 → 1 → 2 → 2 → 1 → 2 → 2 → 1 → 1 → 1 → 1 → 2 → 1 → 2 → 1。
 第 9–32 轮共 41 条中有 26 条源自前一轮修复。用户已明确：继续处理，采纳或拒绝由执行者按实际
 情况判断。
@@ -2193,3 +2194,49 @@ M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 105 passed
 
 **方法教训（第七次）**：为「让既有调用方不报错」而给安全字段设默认值，等于把接线缺口变成静默放行。
 默认值的方向必须是 fail closed，否则宁可让调用方报错。
+
+
+## 46. 机器人 code review 第三十四轮两条 thread 处置（2026-09-21）
+
+一条修复，一条**确认成立但按依据记录为交接项**。
+
+### P2 发放上限未覆盖续跑路径（已修）
+
+第 45 节只给 `accept()` 加了发放上限，`new_run()` 没有：被取消的事故以新授权的更窄 scope 继续时
+两列仍为 `NULL`，判定又回到调用方的更宽上限。`new_run()` 一并接收并落库。PG 用例直接走该路径
+（取消 → 续跑发放 1 次上限 → 恢复执行器传 20 → 第二次操作被拒）。又一次「修实例漏整类」。
+
+### P1 耐久事务未按全局/目标暂停代际设栅栏（成立，本 PR 不修）
+
+**缺口真实**：执行器的三版本比较止步于其快照；`Lease` 只带事故代际，`charge_tool()`/`commit_tool()`
+也只比较事故代际，暂停若落在最后快照与耐久事务之间不会被原子拦下。与 C3 第 4 节 `:112` 一致。
+
+**不在本 PR 关闭的依据（已核实）**：
+
+```text
+persistence.py 中 suspension 相关列/表：0
+persistence.py 中 "target" 出现次数：0
+SuspensionState 在 domain 之外的使用：无（从未持久化）
+```
+
+存储层没有任何可比对的权威值——无全局暂停状态、无按目标暂停集合、无目标身份概念。把两个代际塞进
+`Lease` 再与自己比较是形式动作。真正关闭需要持久化 `SuspensionState`（全局/目标代际 + 已解析目标
+身份），并改 `control()`/`claim()`/`_lease_revoked()` 的语义——属 Controller 的暂停模型实现，跨模块，
+按 AGENTS.md 应先设计并独立审查，不应在 Tool Gateway 纯逻辑半部 PR 内就地发明存储模型。
+
+**已做**：在 `DurableToolLedger` docstring 写明该限制与关闭它的前提（写在别人会看的地方）；
+PR thread 中说明依据并请用户裁决是否纳入本 PR；此处登记为交接项。
+
+### 交接项（新增）
+
+耐久层暂停模型：持久化 `opspilot.domain.control.SuspensionState`（全局代际、按目标代际、已解析目标
+身份），`control()` 在全局/目标暂停时推进对应代际，`claim()` 快照三者，`_lease_revoked()` 比较三者，
+并将其纳入 `charge_tool()`/`commit_tool()`/`publish()` 的栅栏。**在此之前，耐久写路径只按事故代际
+设栅栏，这是已知且已记录的限制。**
+
+### 验证
+
+```text
+make check → 1482 passed, 144 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 106 passed, 38 skipped
+```
