@@ -1099,3 +1099,60 @@ review thread（comment 4045569482，P2，`client.py:100`，
   以 5 分钟为间隔复查 reviewThreads，直到连续一次复查 0 新 thread 为止
   （不手动触发 `@codex review`，只处理自动出现的）；具体每轮记录见
   `scratchpad/reports/final-29.md`。
+
+## 追加（2026-09-21：#20/#27/#39 进 main 后解决冲突）
+
+### 起点与决定
+
+- 起点：PR #29 `mergeable=CONFLICTING`/`mergeStateStatus=DIRTY`（HEAD `e4d71c6`）。
+  原因是 base PR #20（工具执行器）、PR #27（discipline 单一来源）与 PR #39
+  （流程审计，ROADMAP 改为状态表）于 2026-09-20/21 先后合并到 `main`，
+  而本分支 stacked 在 #20 上并携带一份 #27 的 2026-09-16 快照。
+- 解决方式：**在本分支内 `git merge origin/main`**（不 rebase 48 个已审提交，
+  不改写历史）；冲突按「main 是权威、#29 只保留自己新增的行为」处理，
+  与本记录 2026-09-17 追加节预先写下的「discipline.py 留给 #27 → #29
+  合并时整体替换」一致。dry-run `git merge-tree --write-tree origin/main
+  origin/feature/m1-01-investigation-loop` 报 7 个文件冲突。
+
+### 逐文件处置
+
+| 文件 | 处置 | 依据 |
+|---|---|---|
+| `opspilot/instructions/__init__.py`、`discipline.py`、`tests/test_instruction_discipline.py` | 整体取 `main` | main 是 #27 单一来源，公开 API 为本分支快照的超集（多 `prompt_face_sha256`）；本分支未改过这三个文件的语义。 |
+| `opspilot/persistence.py` | 模块级：两侧都保留（本分支 `_SETTLEMENTS` + main `_tool_plan`/`_completed_tool_ordinals`）；`commit_step()` 整体取 `main` | main 的 `commit_step` 已通过 `_late_result()` 保留围栏期回复（含 sequence、`late_result:` 保留前缀、`conn.commit()` 后 raise），覆盖本分支 `871e628` 的同一修复且更完整；本分支的 `settle_budget()` 无冲突保留。 |
+| `tests/integration/test_m1_durable_state_postgres.py` | 以 `main` 文件为底，追加本分支独有 5 个测试及其 3 行 import | 冲突是两侧各自在文件尾追加测试造成的交错；本分支对既有共享测试无语义改动（仅空行）。 |
+| `tests/test_m1_tool_outcomes.py` | 两侧 import 都保留 | `FakeClock`/`FakeTransport`/`WINDOW_*` 均在合并后的 `tests/m1_tool_support.py` 中。 |
+| `ROADMAP.md` | 取 `main` 状态表，只改「M1-01 待合并」一行 | #39 规定只替换对应行、不追加段落。 |
+
+配套改动：`opspilot/investigation/loop.py` 的 `prompt_revision_versions()`
+docstring 删除「已知缺口留给 #27 合并」段落（缺口随本次合并消失），改为说明
+合并前记录的 `prompt_revision` 值与现算值不可比。
+
+### 机器人发现 10（P2，`scripts/m1_live_flash_loop.py:182`，thread `PRRT_kwDOUSm_486j9sf7`）
+
+发现：脚本生成 `run_id` 但 `evidence_context` 未带 `run_id`，
+`evidence_context_projection()` 会整体丢弃该 context，`policy-window-1`
+随之消失，引用它的报告会被拒；已入库的真实 Run 证据无法用当前脚本复现。
+**复现属实，已修**：context 补 `run_id`，策略补齐 `eligible_time_policies`
+读取的字段（`historical_window` + 授权窗口 + `reference_rule`
+`response_received_at` + `all_authorized_targets`），与 fixture 视图
+`data_as_of=WINDOW_START` 一致。未重跑真实 DeepSeek Run；
+`docs/evidence/m1-01-investigation-loop/run.md` 仍是 2026-09-16 脚本版本的证据。
+
+### 验证证据（worktree `../production-ops-agent-m1-investigation-loop`）
+
+- `make check`：`uv lock --check`、`ruff check`、`ruff format --check`、
+  `mypy` 通过；`pytest` **1604 passed, 148 skipped, 2 xfailed in 29.82s**。
+- `M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 pytest tests/integration -q`
+  → **110 passed, 38 skipped**。所用 PG lab 为本机 55431 端口上正在运行的实例，
+  其数据目录属于 `../production-ops-agent-m1-human-control`（非本 worktree
+  启动）；测试全部使用新 UUID，不依赖也不清理既有数据。
+- 合并后相对 `origin/main` 的净差异：23 files, +6491/-1（main 内容无被覆盖）。
+- 本 worktree 保留的 `stash@{0}`（`wip-doc-update-srcrange29`）未动，
+  据 2026-09-18 记录其内容已在提交中。
+
+### 未完成 / 后续
+
+- 推送后等待 CI 与一次 `@codex review` 分诊（#39 新流程），机器人发现按
+  AGENTS.md「逐项处置」；PR 仍走用户审核合并。
+- 真实 Run 证据未按修复后的脚本重放。
