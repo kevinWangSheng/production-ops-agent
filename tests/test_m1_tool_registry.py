@@ -784,3 +784,17 @@ def test_non_ascii_prose_with_colons_is_not_mistaken_for_an_endpoint(text):
     repository's own languages, and that rule has no `://` anchor to lean on.
     """
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["https://metrics.internal/api", "prometheus:9090", "10.0.0.4:4317"],
+)
+def test_endpoints_embedded_in_parameter_names_are_refused(name):
+    """Bot review finding: parameter keys become property names in the
+    model-visible schema, so the endpoint prohibition applies to them exactly
+    as it does to the prose beside them -- checking only descriptions left the
+    key itself as an open route.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        registration(parameters={name: ParameterSpec(kind="string")})

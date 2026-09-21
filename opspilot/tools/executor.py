@@ -820,84 +820,12 @@ class ReadOnlyToolExecutor:
         if elapsed > timeout:
             # A result that arrives after its deadline must not update state.
             return refuse_after_fetch("timeout", "GATEWAY_TIMEOUT")
-        if not isinstance(response, TransportResponse) or not isinstance(
-            response.body, bytes
-        ):
-            return refuse_after_fetch("error", "MALFORMED_RESULT")
-        if len(response.body) > plan.registration.max_result_bytes:
-            return refuse_after_fetch("error", "RESULT_TOO_LARGE")
-        if response.source_status is not None:
-            # A source error is not an observation of the target's state, so it
-            # is classified onto a fixed reason and the operation record keeps
-            # the audit trail; the error body itself is not registered as
-            # evidence and its vendor text never reaches model context.
-            source_reason = plan.registration.classify(str(response.source_status))
-            return refuse_after_fetch("error", source_reason)
-        rows, payload = _result_rows(plan.registration, response.body)
-        if rows is None:
-            return refuse_after_fetch("error", "MALFORMED_RESULT")
-        if response.data_as_of is not None and (
-            not isinstance(response.data_as_of, datetime)
-            or response.data_as_of.tzinfo is None
-            or response.data_as_of.utcoffset() is None
-        ):
-            return refuse_after_fetch("error", "MALFORMED_RESULT")
-        source_start_at = response.source_start_at
-        source_end_at = response.source_end_at
-        if (source_start_at is None) != (source_end_at is None) or (
-            source_start_at is not None
-            and (
-                not isinstance(source_start_at, datetime)
-                or source_start_at.tzinfo is None
-                or source_start_at.utcoffset() is None
-                or not isinstance(source_end_at, datetime)
-                or source_end_at.tzinfo is None
-                or source_end_at.utcoffset() is None
-                or source_start_at > source_end_at
-            )
-        ):
-            return refuse_after_fetch("error", "MALFORMED_RESULT")
-        assert operation.finished_at is not None
-        if any(
-            moment is not None and moment > operation.finished_at
-            for moment in (response.data_as_of, source_start_at, source_end_at)
-        ):
-            # No observation may claim source timestamps later than the moment
-            # its own read completed. A future ``data_as_of`` makes
-            # ``freshness_seconds`` negative, i.e. makes impossible metadata
-            # look unusually fresh, and a future source interval claims rows
-            # that cannot exist yet -- both were adopted and shown to the model
-            # (bot review finding; the interval half is the same defect one
-            # field over, found by checking the class rather than the one
-            # reported field).
-            #
-            # Compared strictly against the trusted clock, with no skew
-            # tolerance: any tolerance would be an arbitrary constant, and the
-            # fail-closed direction surfaces a source whose clock is wrong as a
-            # refusal the operator sees, instead of silently recording
-            # corrupt freshness. ``data_as_of == finished_at`` stays valid
-            # (freshness 0).
-            return refuse_after_fetch("error", "MALFORMED_RESULT")
-        if source_start_at is not None:
-            # The adapter's own trusted metadata says which interval these
-            # rows cover. When it lies outside what this Run was authorized to
-            # read, the rows are out-of-scope data and the violation is
-            # detectable here, so fail closed rather than hand them to the
-            # model (bot review finding). The bound is the *scope* window, not
-            # the narrower requested one: a source may legitimately cover a
-            # slightly different interval inside the authorization (bucket
-            # alignment), but never outside it.
-            # Compared as bare bounds, not through ``Window``: a source may
-            # report a single instant (start == end), which ``Window`` refuses.
-            assert source_end_at is not None
-            try:
-                covered_start = source_start_at.astimezone(timezone.utc)
-                covered_end = source_end_at.astimezone(timezone.utc)
-            except (ValueError, OverflowError, OSError):
-                return refuse_after_fetch("error", "MALFORMED_RESULT")
-            scope_window = self._scope.window
-            if covered_start < scope_window.start or covered_end > scope_window.end:
-                return refuse_after_fetch("denied", "WINDOW_OUT_OF_SCOPE")
+        problem, rows, payload = self._inspect(plan, operation, response)
+        if problem is not None:
+            return refuse_after_fetch(*problem)
+        # Narrowing for the type checker: _inspect() returns no problem only
+        # after it has established this.
+        assert isinstance(response, TransportResponse)
         status: ToolStatus = "ok" if rows else "no_data"
         reason: str | None = None if rows else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
@@ -1018,6 +946,104 @@ class ReadOnlyToolExecutor:
             return False
         return True
 
+    def _inspect(
+        self, plan: _Plan, operation: ToolOperation, response: object
+    ) -> tuple[tuple[ToolStatus, str] | None, list[object], object]:
+        """Validate one returned response; the only place these rules live.
+
+        Returns ``(problem, rows, payload)``. ``problem`` is ``None`` when the
+        response may be turned into a record -- adopted or history-only. Both
+        callers go through it, because ``_history()`` originally repeated only
+        the parse step and thereby committed an oversized body and crashed
+        ``execute()`` with an ``AttributeError`` from a malformed
+        ``source_start_at`` (bot review finding).
+        """
+
+        def _problem(
+            status: ToolStatus, reason: str
+        ) -> tuple[tuple[ToolStatus, str], list[object], object]:
+            return (status, reason), [], None
+
+        if not isinstance(response, TransportResponse) or not isinstance(
+            response.body, bytes
+        ):
+            return _problem("error", "MALFORMED_RESULT")
+        if len(response.body) > plan.registration.max_result_bytes:
+            return _problem("error", "RESULT_TOO_LARGE")
+        if response.source_status is not None:
+            # A source error is not an observation of the target's state, so it
+            # is classified onto a fixed reason and the operation record keeps
+            # the audit trail; the error body itself is not registered as
+            # evidence and its vendor text never reaches model context.
+            source_reason = plan.registration.classify(str(response.source_status))
+            return _problem("error", source_reason)
+        rows, payload = _result_rows(plan.registration, response.body)
+        if rows is None:
+            return _problem("error", "MALFORMED_RESULT")
+        if response.data_as_of is not None and (
+            not isinstance(response.data_as_of, datetime)
+            or response.data_as_of.tzinfo is None
+            or response.data_as_of.utcoffset() is None
+        ):
+            return _problem("error", "MALFORMED_RESULT")
+        source_start_at = response.source_start_at
+        source_end_at = response.source_end_at
+        if (source_start_at is None) != (source_end_at is None) or (
+            source_start_at is not None
+            and (
+                not isinstance(source_start_at, datetime)
+                or source_start_at.tzinfo is None
+                or source_start_at.utcoffset() is None
+                or not isinstance(source_end_at, datetime)
+                or source_end_at.tzinfo is None
+                or source_end_at.utcoffset() is None
+                or source_start_at > source_end_at
+            )
+        ):
+            return _problem("error", "MALFORMED_RESULT")
+        assert operation.finished_at is not None
+        if any(
+            moment is not None and moment > operation.finished_at
+            for moment in (response.data_as_of, source_start_at, source_end_at)
+        ):
+            # No observation may claim source timestamps later than the moment
+            # its own read completed. A future ``data_as_of`` makes
+            # ``freshness_seconds`` negative, i.e. makes impossible metadata
+            # look unusually fresh, and a future source interval claims rows
+            # that cannot exist yet -- both were adopted and shown to the model
+            # (bot review finding; the interval half is the same defect one
+            # field over, found by checking the class rather than the one
+            # reported field).
+            #
+            # Compared strictly against the trusted clock, with no skew
+            # tolerance: any tolerance would be an arbitrary constant, and the
+            # fail-closed direction surfaces a source whose clock is wrong as a
+            # refusal the operator sees, instead of silently recording
+            # corrupt freshness. ``data_as_of == finished_at`` stays valid
+            # (freshness 0).
+            return _problem("error", "MALFORMED_RESULT")
+        if source_start_at is not None:
+            # The adapter's own trusted metadata says which interval these
+            # rows cover. When it lies outside what this Run was authorized to
+            # read, the rows are out-of-scope data and the violation is
+            # detectable here, so fail closed rather than hand them to the
+            # model (bot review finding). The bound is the *scope* window, not
+            # the narrower requested one: a source may legitimately cover a
+            # slightly different interval inside the authorization (bucket
+            # alignment), but never outside it.
+            # Compared as bare bounds, not through ``Window``: a source may
+            # report a single instant (start == end), which ``Window`` refuses.
+            assert source_end_at is not None
+            try:
+                covered_start = source_start_at.astimezone(timezone.utc)
+                covered_end = source_end_at.astimezone(timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return _problem("error", "MALFORMED_RESULT")
+            scope_window = self._scope.window
+            if covered_start < scope_window.start or covered_end > scope_window.end:
+                return _problem("denied", "WINDOW_OUT_OF_SCOPE")
+        return None, list(rows), payload
+
     def _history(
         self,
         dispatch_id: UUID,
@@ -1041,8 +1067,11 @@ class ReadOnlyToolExecutor:
             # its vendor text near model context, and a human decision landing
             # on top does not turn it into one.
             return None
-        rows, payload = _result_rows(plan.registration, response.body)
-        if rows is None:
+        problem, rows, payload = self._inspect(plan, operation, response)
+        if problem is not None:
+            # Whatever would have been refused on the adopt path is not
+            # retained on the history path either: an over-limit body must not
+            # slip past ``max_result_bytes`` because a human paused the Run.
             return None
         record = self._record(
             dispatch_id,

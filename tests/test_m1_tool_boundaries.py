@@ -1486,3 +1486,34 @@ def test_a_malformed_body_under_a_pause_has_no_history_to_keep():
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
     assert sink.records == [] and outcome.evidence is None
+
+
+def test_a_paused_oversized_body_is_not_kept_as_history():
+    """Bot review finding: `_history()` repeated only the parse step, so an
+    over-limit body was committed because a human paused the Run -- the
+    response limits must hold on the history path too.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([{"v": "x" * 5000}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == [] and outcome.evidence is None
+
+
+def test_a_paused_response_with_malformed_metadata_never_escapes():
+    """Same gap, worse symptom: malformed `source_start_at` reached `_record()`
+    and raised `AttributeError` out of `execute()` on the human-control path.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(
+        body=body([{"v": 1}]), source_start_at="bad", source_end_at="bad"
+    )
+
+    outcome = executor.execute(request())  # must not raise
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == [] and outcome.evidence is None

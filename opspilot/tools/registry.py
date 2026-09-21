@@ -521,6 +521,16 @@ class ToolRegistration:
             for key, spec in self.parameters.items()
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
+        if any(
+            _MODEL_VISIBLE_URI.search(key) or _SCHEMELESS_ENDPOINT.search(key)
+            for key in self.parameters
+        ):
+            # Parameter keys become property names in the model-visible
+            # schema, so the endpoint prohibition applies to them exactly as it
+            # does to the prose beside them; checking only the descriptions
+            # left `{"prometheus:9090": ...}` as an open route (bot review
+            # finding).
+            raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
         if RESERVED_PARAMETERS & {key.lower() for key in self.parameters} or any(
             _authentication_name(key) for key in self.parameters
         ):
