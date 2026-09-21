@@ -23,7 +23,7 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import WINDOW_START, body, build, registration
+from tests.m1_tool_support import WINDOW_END, WINDOW_START, body, build, registration
 
 LIVE_TOOL = "metrics_range_query"
 TOOL_SCHEMAS = (
@@ -176,9 +176,26 @@ def main() -> int:
         scope=executor.scope,
         tool_schemas=TOOL_SCHEMAS,
         model_requests=2,
+        # The context must carry this Run's own ``run_id`` or the loop's
+        # projection discards it wholesale (bot review finding, PR #29), and
+        # the policy must carry every field ``eligible_time_policies`` reads
+        # for the fixture view (``historical_window`` over the authorized
+        # window, judged against the response-received instant).
         evidence_context={
             "type": "opspilot-evidence-context-v4",
-            "time_policies": [{"id": "policy-window-1"}],
+            "run_id": run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "reference_rule": "response_received_at",
+                    "all_authorized_targets": True,
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": WINDOW_END.isoformat(),
+                    },
+                }
+            ],
         },
     )
     started = clock.now()
