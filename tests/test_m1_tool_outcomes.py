@@ -15,14 +15,18 @@ import pytest
 
 from opspilot.tools import (
     PROJECTION_REVISION,
+    ParameterSpec,
     TransportResponse,
     TransportResultTooLarge,
     TransportTimeout,
     TransportUnavailable,
+    Window,
 )
 from opspilot.tools.registry import canonical, canonical_hash
 from tests.m1_tool_support import (
     NOW,
+    WINDOW_END,
+    WINDOW_START,
     FakeClock,
     FakeTransport,
     RecordingSink,
@@ -59,7 +63,15 @@ def test_ok_outcome_registers_raw_bytes_view_and_both_hashes():
     assert record.view["trust"] == "untrusted-evidence"
     assert record.freshness_seconds == 30.0
     assert record.view["freshness_seconds"] == 30.0
-    assert record.evidence_id == record.operation.operation_id == "step-1-t0"
+    assert record.operation.operation_id == "step-1-t0"
+    # The evidence identity is per dispatched observation, not per stable
+    # operation -- this assertion used to require them equal, which is exactly
+    # what let two dispatches of one operation collide (see
+    # test_two_dispatches_of_one_operation_get_distinct_evidence_ids). The
+    # operation id stays in the view beside it for correlation.
+    assert record.evidence_id.startswith("step-1-t0:")
+    assert record.view["evidence_id"] == record.evidence_id
+    assert record.view["operation_id"] == "step-1-t0"
 
 
 def test_ok_outcome_registers_the_source_coverage_interval():
@@ -256,6 +268,55 @@ def test_missing_required_parameter_is_an_input_error():
     assert not transport.called
 
 
+def test_a_string_parameter_holding_a_lone_surrogate_is_an_input_error():
+    """Independent review finding on top of the source-response-row surrogate
+    fix: a model-supplied string parameter (e.g. ``{"expr": "\\ud800"}``) is a
+    valid Python ``str`` -- ``ParameterSpec.accepts()`` only ``isinstance``
+    checks it -- but is not valid UTF-8. Left unchecked, it reaches
+    ``_record()``'s ``view["query"] = dict(plan.params)`` and crashes
+    ``canonical_hash(view)`` with an uncaught ``UnicodeEncodeError``: the same
+    failure class as the row-level finding, but via the params input, on a
+    currently-reachable dispatch path (no future combination-layer wiring
+    required).
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body(rows=[]))
+
+    outcome = executor.execute(request(params={"expr": "\ud800"}))
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert outcome.source_contact == "none"
+    assert not transport.called and sink.records == []
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_numeric_parameter_is_an_input_error(bad):
+    """Bot review finding: ``NaN``/``Infinity`` are valid Python ``float``
+    values -- ``ParameterSpec.accepts()`` only ``isinstance`` checks a
+    ``number`` parameter -- but ``canonical()`` serializes them as the bare,
+    non-standard JSON tokens ``NaN``/``Infinity`` (``json.dumps``'s default),
+    which a strict transport-side deserializer may reject or a source may
+    interpret inconsistently, letting a model-supplied query value escape
+    the declared JSON contract.
+    """
+
+    custom = registration(
+        parameters={
+            "expr": ParameterSpec("string", required=True),
+            "magnitude": ParameterSpec("number"),
+        }
+    )
+    executor, transport, sink, _ = build(registrations=[custom])
+    transport.response = TransportResponse(body=body(rows=[]))
+
+    outcome = executor.execute(request(params={"expr": "ok", "magnitude": bad}))
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert outcome.source_contact == "none"
+    assert not transport.called and sink.records == []
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -298,6 +359,50 @@ def test_a_json_decoder_limit_is_malformed_not_a_crash(payload):
     executor, transport, sink, _ = build(
         registrations=[registration(max_result_bytes=len(payload) + 1024)]
     )
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
+def test_a_row_with_a_lone_surrogate_is_malformed_not_a_crash():
+    """Bot review finding: a size-compliant body decodes fine (``json.loads``
+    accepts a ``\\uD800``-style escape as a lone surrogate codepoint in a
+    Python ``str``, no error), but ``_fit_rows()`` later calls
+    ``canonical(row).encode("utf-8")``, which raises ``UnicodeEncodeError``
+    -- a fresh failure mode beyond the JSON-decoder-limit fix, since it
+    happens *after* decoding succeeds, during canonical re-encoding. An
+    untrusted source response must not be able to crash ``execute()`` this
+    way either.
+    """
+
+    payload = b'{"data":{"result":["\\ud800"]}}'
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.source_contact == "confirmed"
+    assert outcome.evidence is None and sink.records == []
+
+
+@pytest.mark.parametrize("token", [b"NaN", b"Infinity", b"-Infinity"])
+def test_a_row_holding_a_non_finite_number_is_malformed_not_a_crash(token):
+    """Bot review finding: a bare ``NaN``/``Infinity``/``-Infinity`` token is
+    accepted by ``json.loads()``'s default ``parse_constant`` (a Python
+    extension, not standard JSON) with no error, decoding into a non-finite
+    ``float``. ``canonical()`` then re-emits the same non-standard token
+    rather than raising, so it would otherwise reach the committed view
+    unnoticed -- the row-level mirror of the non-finite *parameter* check
+    added for the same reason.
+    """
+
+    payload = b'{"data":{"result":[' + token + b"]}}"
+    executor, transport, sink, _ = build()
     transport.response = TransportResponse(body=payload)
 
     outcome = executor.execute(request())
@@ -422,6 +527,32 @@ def test_the_model_view_is_detached_from_the_committed_evidence():
     assert outcome.evidence.view_sha256 == canonical_hash(outcome.evidence.view)
 
 
+def test_mutating_a_committed_evidence_view_does_not_corrupt_the_stored_record():
+    """Bot review finding: ``EvidenceRecord.view`` handed out the same mutable
+    dict object on every access, so a consumer that mutated
+    ``outcome.evidence.view`` (or an evidence sink that retained the record
+    and later mutated its own reference) permanently corrupted the committed
+    evidence even though ``view_sha256`` still hashed the original,
+    pre-mutation contents.
+    """
+
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+    record = outcome.evidence
+
+    first_access = record.view
+    first_access["content"].append({"injected": "value"})
+    first_access["extra"] = "mutated"
+
+    second_access = record.view
+    assert "extra" not in second_access
+    assert second_access["content"] == [{"value": 1}]
+    assert sink.records[0].view["content"] == [{"value": 1}]
+    assert record.view_sha256 == canonical_hash(record.view)
+
+
 def test_a_mismatched_evidence_reference_is_not_a_commit():
     executor, transport, _, _ = build(sink=RecordingSink(reference="other-evidence"))
     transport.response = TransportResponse(body=body([{"value": 1}]))
@@ -493,7 +624,14 @@ def test_unknown_source_interval_is_not_filled_from_query_or_freshness():
 
 
 def test_single_source_instant_and_offset_are_preserved():
-    instant = NOW.astimezone(timezone(timedelta(hours=8)))
+    # Inside the authorized scope window, in a non-UTC offset: the offset is
+    # what this test is about. It used to read ``NOW``, which sits past
+    # WINDOW_END and is now refused as out-of-scope source data (see
+    # test_source_timestamps_outside_the_authorized_scope_are_refused); that
+    # value was incidental to preserving the offset.
+    instant = (WINDOW_START + timedelta(minutes=30)).astimezone(
+        timezone(timedelta(hours=8))
+    )
     executor, transport, _, _ = build()
     transport.response = TransportResponse(
         body=body([{"value": 1}]), source_start_at=instant, source_end_at=instant
@@ -503,3 +641,182 @@ def test_single_source_instant_and_offset_are_preserved():
     assert outcome.model_view["source_start_at"] == instant.isoformat()
     assert outcome.model_view["source_end_at"] == instant.isoformat()
     assert outcome.evidence.view_sha256 == canonical_hash(outcome.model_view)
+
+
+def test_source_timestamps_outside_the_authorized_scope_are_refused():
+    """Bot review finding: the reported interval was checked only for type and
+    ordering, so an adapter reporting source timestamps outside the Run's
+    authorized window still had its rows adopted and shown to the model.
+
+    ``TransportResponse``'s own contract says these bounds are "the actual
+    source timestamps represented by this response", so a response claiming
+    data from outside the authorization is out-of-scope data whose violation
+    is detectable from trusted metadata -- fail closed. The bound compared is
+    the *scope* window, not the narrower requested one: a source may cover a
+    different interval inside the authorization, never outside it.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=WINDOW_START - timedelta(minutes=1),
+        source_end_at=WINDOW_END,
+    )
+    outcome = executor.execute(request())
+    assert (outcome.status, outcome.reason) == ("denied", "WINDOW_OUT_OF_SCOPE")
+    assert outcome.source_contact == "confirmed"  # the source really was read
+    assert outcome.model_view["content"] is None  # the rows never reach the model
+    assert sink.records == []  # refused before evidence registration, as a
+    # malformed interval already is
+
+
+def test_a_source_interval_inside_the_scope_but_wider_than_requested_is_kept():
+    """The scope window is the authorization boundary; the requested window is
+    not. A source whose covered interval differs from the request but stays
+    inside the scope (bucket alignment) must still be adopted.
+    """
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=WINDOW_START,
+        source_end_at=WINDOW_END,
+    )
+    outcome = executor.execute(request())
+    assert outcome.status == "ok"
+
+
+def test_two_dispatches_of_one_operation_get_distinct_evidence_ids():
+    """Bot review finding: the per-dispatch charging protocol permits the same
+    stable operation to be dispatched twice (a retry, a duplicate delivery),
+    and those responses can carry different bytes and observation times. With
+    one shared ``evidence_id`` a sink keyed by it would drop or overwrite one
+    observation and return the surviving reference, which ``_register()``
+    accepts as proof the new record was committed -- the model view would then
+    describe bytes its own evidence link does not resolve to.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+    first = executor.execute(request())
+    transport.response = TransportResponse(body=body([{"value": 2}]))
+    second = executor.execute(request())  # same step_id and tool_index
+
+    assert first.operation.operation_id == second.operation.operation_id
+    assert first.evidence.evidence_id != second.evidence.evidence_id
+    assert len(sink.records) == 2
+    assert {record.evidence_id for record in sink.records} == {
+        first.evidence.evidence_id,
+        second.evidence.evidence_id,
+    }
+    # Each view resolves to its own bytes.
+    assert first.model_view["content"] == [{"value": 1}]
+    assert second.model_view["content"] == [{"value": 2}]
+
+
+def test_a_future_data_as_of_is_refused_before_adoption():
+    """Bot review finding: an aware `data_as_of` later than the moment the read
+    completed was accepted, `_record()` computed a negative
+    `freshness_seconds`, and the rows were committed and shown to the model --
+    impossible future-dated metadata reading as unusually fresh.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]), data_as_of=NOW + timedelta(hours=1)
+    )
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.model_view["content"] is None
+    assert sink.records == []
+
+
+def test_a_future_source_interval_is_refused_before_adoption():
+    """The same defect one field over, found by checking the class rather than
+    only the reported field: a source interval claiming rows that cannot exist
+    yet was adopted whenever the scope window reached into the future.
+    """
+    scope_window = Window(NOW - timedelta(minutes=5), NOW + timedelta(minutes=30))
+    executor, transport, sink, _ = build(scope_overrides={"window": scope_window})
+    transport.response = TransportResponse(
+        body=body([{"value": 1}]),
+        source_start_at=NOW + timedelta(minutes=10),
+        source_end_at=NOW + timedelta(minutes=10),
+    )
+
+    outcome = executor.execute(
+        request(
+            window={
+                "start": (NOW - timedelta(minutes=5)).isoformat(),
+                "end": (NOW + timedelta(minutes=5)).isoformat(),
+            }
+        )
+    )
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert sink.records == []
+
+
+def test_a_data_as_of_equal_to_the_read_instant_is_still_valid():
+    """The boundary stays open: zero freshness is a real, ordinary reading."""
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(body=body([{"value": 1}]), data_as_of=NOW)
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    assert outcome.evidence.freshness_seconds == 0.0
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"meta": NaN, "data": {"result": [{"value": 1}]}}',
+        b'{"meta": Infinity, "data": {"result": [{"value": 1}]}}',
+        b'{"data": {"result": [{"value": 1}], "incomplete": -Infinity}}',
+        b'{"data": {"result": [{"value": NaN}]}}',
+    ],
+)
+def test_a_non_finite_constant_anywhere_in_the_body_is_refused(raw):
+    """Bot review finding: the earlier fix validated only the rows under
+    `result_path`, but `json.loads` accepts `NaN`/`Infinity` by default, so a
+    body carrying one outside that subtree was adopted -- and the raw bytes
+    retained as evidence were then not valid JSON, failing a strict evidence
+    reader, while a non-finite incomplete marker can steer projection
+    semantics.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=raw)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert sink.records == []
+
+
+def test_committed_evidence_bytes_always_parse_under_a_strict_reader():
+    """The property the rule exists for: whatever is retained as evidence can
+    be re-read by a decoder that refuses JSON's non-standard constants.
+    """
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}])
+    )
+
+    outcome = executor.execute(request())
+
+    assert outcome.status == "ok"
+    json.loads(
+        sink.records[0].raw.decode("utf-8"),
+        parse_constant=lambda name: pytest.fail(f"non-finite {name} in evidence"),
+    )
+
+
+def test_a_window_bound_that_cannot_be_normalised_to_utc_is_an_invalid_window():
+    """A direct ``Window`` construction with an aware bound at the edge of the
+    datetime range raised a raw ``OverflowError`` from ``astimezone``; the
+    class's documented failure is ``INVALID_WINDOW`` whoever built it.
+    """
+    edge = datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14)))
+    later = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="INVALID_WINDOW"):
+        Window(start=edge, end=later)
+    assert Window.parse({"start": edge.isoformat(), "end": later.isoformat()}) is None

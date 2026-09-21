@@ -78,15 +78,14 @@ def prompt_revision_versions(
     registry, PR #20); a caller building a full ``versions`` dict must merge
     it in separately.
 
-    Known gap, not fixed here: ``discipline.template_projection`` in this
-    branch only hashes ``LAYER_TEMPLATE`` segments, so reordering an L1b/L2
-    slot relative to the L1a segments would change ``render()``'s actual
-    bytes without moving this value (PR #27, not yet merged, already fixes
-    this upstream; porting that fix here would re-copy an un-merged PR's
-    implementation rather than depend on it, so it is deferred to the #27 ->
-    #29 merge, per this branch's dependency convention -- not silently
-    ignored). No known variant in this branch has ever reordered those
-    segments, so this does not affect any revision value recorded so far.
+    ``discipline.template_projection`` (single source on ``main`` since
+    PR #27) hashes every segment in variant order, so reordering an L1b/L2
+    slot relative to the L1a segments moves this value together with
+    ``render()``'s bytes. The earlier snapshot of ``discipline.py`` carried
+    on this branch hashed only ``LAYER_TEMPLATE`` segments; it was replaced
+    wholesale by the merged single source, so values recorded before that
+    merge (see the task record) are not comparable with values computed
+    here.
     """
     return {
         "prompt_revision": prompt_revision(variant_id, report_contract=report_contract)
