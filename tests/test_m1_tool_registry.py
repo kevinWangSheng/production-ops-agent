@@ -756,3 +756,31 @@ def test_an_uncanonicalizable_window_limit_is_refused_at_registration():
     """
     with pytest.raises(ToolContractError, match="INVALID_REGISTRATION_VALUE"):
         ToolRegistry([registration(max_window_seconds=10**4300)])
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["read https://监控.内部/指标", "the collector at grpc://监控.内部:4317"],
+)
+def test_internationalized_uris_in_model_visible_prose_are_refused(text):
+    """Bot review finding: every character after `://` had to come from an
+    ASCII class, so an internationalized endpoint reached the model untouched.
+    The `scheme://` form is unambiguous, so what follows it needs no alphabet
+    restriction.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["按步骤:30 秒聚合", "返回 5xx:2xx 比值", "窗口为 12:30 至 13:00"],
+)
+def test_non_ascii_prose_with_colons_is_not_mistaken_for_an_endpoint(text):
+    """The scheme-less detector deliberately stays ASCII: a non-ASCII label
+    followed by `:` and digits is indistinguishable from ordinary prose in this
+    repository's own languages, and that rule has no `://` anchor to lean on.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text

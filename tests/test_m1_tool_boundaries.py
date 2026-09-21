@@ -1257,7 +1257,12 @@ def test_a_human_decision_outranks_a_late_response():
     outcome = executor.execute(request())
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
-    assert sink.records == []
+    # C3 §4 (:112): a suspension invalidates an in-flight result but keeps it
+    # as history. This assertion used to require `sink.records == []`, which
+    # discarded bytes the read had actually captured.
+    assert len(sink.records) == 1 and sink.records[0].adopted is False
+    assert outcome.evidence is sink.records[0]
+    assert outcome.model_view["content"] is None  # history, not model content
 
 
 def test_a_human_decision_outranks_a_source_error_response():
@@ -1304,7 +1309,10 @@ def test_a_human_decision_outranks_a_settlement_storage_failure():
     outcome = executor.execute(request())
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
-    assert sink.records == []
+    # C3 §4 (:112): a suspension invalidates an in-flight result but keeps it
+    # as history. This assertion used to require `sink.records == []`, which
+    # discarded bytes the read had actually captured.
+    assert len(sink.records) == 1 and sink.records[0].adopted is False
 
 
 def test_a_human_decision_outranks_a_settlement_budget_refusal():
@@ -1321,7 +1329,10 @@ def test_a_human_decision_outranks_a_settlement_budget_refusal():
     outcome = executor.execute(request())
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
-    assert sink.records == []
+    # C3 §4 (:112): a suspension invalidates an in-flight result but keeps it
+    # as history. This assertion used to require `sink.records == []`, which
+    # discarded bytes the read had actually captured.
+    assert len(sink.records) == 1 and sink.records[0].adopted is False
 
 
 def test_authorized_at_records_the_final_check_before_dispatch():
@@ -1448,3 +1459,30 @@ def test_an_ordinary_sink_failure_is_still_an_evidence_error():
     outcome = executor.execute(request())
 
     assert (outcome.status, outcome.reason) == ("error", "EVIDENCE_NOT_COMMITTED")
+
+
+def test_a_source_error_body_is_not_kept_as_history_even_under_a_pause():
+    """History keeps observations, not source errors: this module already
+    refuses to register an error body as evidence or let its vendor text near
+    model context, and a human decision landing on top does not turn it into
+    an observation.
+    """
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=body([]), source_status="503")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == [] and outcome.evidence is None
+
+
+def test_a_malformed_body_under_a_pause_has_no_history_to_keep():
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=2)
+    executor, transport, sink, _ = build(control=control)
+    transport.response = TransportResponse(body=b"{not json")
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert sink.records == [] and outcome.evidence is None

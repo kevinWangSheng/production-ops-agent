@@ -778,7 +778,20 @@ class ReadOnlyToolExecutor:
             """
             decision = self._control_decision()
             if decision:
-                return self._refuse(operation, "denied", decision, contact)
+                # C3 第 4 节（:112）："暂停使相关在途结果失效，仅保留历史"。The
+                # read reached the source and its bytes exist, so a human
+                # decision invalidates the observation without discarding it:
+                # it is committed with ``adopted=False`` and the outcome
+                # carries it as history (bot review finding). A body that never
+                # parsed has no observation to keep, and ``_history`` returns
+                # ``None`` for it.
+                return self._refuse(
+                    operation,
+                    "denied",
+                    decision,
+                    contact,
+                    evidence=self._history(dispatch_id, operation, plan, response),
+                )
             if settlement_denied:
                 return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
             return self._refuse(operation, status, reason, contact)
@@ -1004,6 +1017,50 @@ class ReadOnlyToolExecutor:
             # re-raise it.
             return False
         return True
+
+    def _history(
+        self,
+        dispatch_id: UUID,
+        operation: ToolOperation,
+        plan: _Plan,
+        response: object,
+    ) -> EvidenceRecord | None:
+        """Commit an invalidated but well-formed observation as history.
+
+        Returns ``None`` when there is nothing to keep -- the transport raised,
+        the body never parsed, or the sink refused the commit. Never adopts:
+        the caller is refusing, and the record says so.
+        """
+        if not isinstance(response, TransportResponse) or not isinstance(
+            response.body, bytes
+        ):
+            return None
+        if response.source_status is not None:
+            # A source error is not an observation of the target's state: this
+            # module already refuses to register its body as evidence or let
+            # its vendor text near model context, and a human decision landing
+            # on top does not turn it into one.
+            return None
+        rows, payload = _result_rows(plan.registration, response.body)
+        if rows is None:
+            return None
+        record = self._record(
+            dispatch_id,
+            operation,
+            plan,
+            response,
+            payload,
+            rows,
+            "denied",
+            adopted=False,
+        )
+        try:
+            return record if self._register(record) else None
+        except ToolControlDenied:
+            # The sink refused this commit on control grounds too; there is
+            # then no history to carry, which the outcome reports by carrying
+            # none.
+            return None
 
     def _register(self, record: EvidenceRecord) -> bool:
         try:

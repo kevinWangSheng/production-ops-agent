@@ -269,9 +269,16 @@ _SCHEMELESS_ENDPOINT = re.compile(
     r"):[0-9]{1,5}\b"
 )
 
-_MODEL_VISIBLE_URI = re.compile(
-    r"[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]{1,512}"
-)
+# The ``scheme://`` form is unambiguous, so what follows it is not restricted
+# to an alphabet: `https://监控.内部/指标` is as concrete an endpoint as its
+# ASCII equivalent, and an ASCII-only class let it through (bot review
+# finding). Prose does not accidentally contain ``://``.
+#
+# The scheme-less detector above deliberately stays ASCII: a non-ASCII label
+# followed by ``:`` and digits is indistinguishable from ordinary prose in
+# this repository's own languages ("步骤:30"), and that rule has no ``://``
+# anchor to lean on.
+_MODEL_VISIBLE_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S{1,512}")
 
 # C3 section 8 requires `window_format`/`values_format` to carry a placeholder
 # for the absolute window / value enumeration a future renderer fills in per
