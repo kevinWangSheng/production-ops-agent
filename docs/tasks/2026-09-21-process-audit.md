@@ -2,7 +2,7 @@
 
 - 状态：进行中（PR 待用户审核）
 - 更新日期：2026-09-21
-- 依据：用户 2026-09-21 决定：取消费用逐次审批；开发红线按事实删除；PR 体量按「一个合同条款」不设数字；授权修改 AGENTS.md 并提交 PR。
+- 依据：用户 2026-09-21 决定：取消费用逐次审批；开发红线按事实删除；PR 体量按「一个合同条款」不设数字；授权修改 AGENTS.md 并提交 PR。功能 PR 是否纳入预授权自动合并未决，本 PR 保持用户门。
 - 工作区：`../production-ops-agent-process-v2`，分支 `chore/process-audit-v2`
 
 ## 目标与范围
@@ -16,7 +16,7 @@
 | PR #20 审查 thread / 其中 09-19「最终态」后新增 | 81 / 61 |
 | open feature 分支 fix/bot 类提交占比 | 约 50% |
 | 指向 integration 分支的 PR（#31 #32 #33）CI checks | 0（workflow 只触发 `main`/`chore/m0-*`） |
-| 合并后未清理的 worktree / 本地 main 落后 | 6 / 82 提交 |
+| 已合并分支未清理的 worktree / 本地 main 落后 | 7（#20 合并后）/ 82 提交 |
 | 每任务固定阅读量（AGENTS.md:29 到 31） | 114KB |
 | 全项目真实模型花费（估算，未对账） | 约 1 到 3 CNY，对比 1,000 CNY 参考预算 |
 | 费用/上传/重跑规则实际触发 | 唯一反复触发的开发红线组；其余红线零触发且与宿主全局规则重复 |
@@ -35,10 +35,10 @@
 
 - `make check`：见 PR 描述。
 - Markdown 链接检查：见 PR 描述。
-- 独立审查：全新上下文 Agent 对照本记录审计依据核对 diff，见 PR 描述。
+- 独立审查：全新上下文 Agent 核对 diff，12 条发现（2 P1、5 P2、5 P3）全部采纳修复：功能 PR 收回到用户门、squash 改为合并时执行、就绪顺序明确、SPEC 与 live.py 批准文件口径对齐、验收步骤不削弱条款恢复、红线三项动作保留一句、锚点与开发指南同步。
 
 ## 待决与下一步
 
-- 本 PR 合并后：同步各 worktree，删 6 个已合并分支 worktree，#31/#32/#33 retarget 到 `main`，#29/#21/#37 rebase，关闭 4 个 `integration/m1-01-full*` 变体。
+- 本 PR 合并后：同步各 worktree，删已合并分支的 worktree，#31/#32/#33 retarget 到 `main`，#29/#21/#37 rebase，关闭 4 个 `integration/m1-01-full*` 变体。
 - 把 09-17 简报改为常设「系统现状」页，每次合并后更新。
 - 验收 harness 与 `feature_list.json` 步骤接线，另立任务。
