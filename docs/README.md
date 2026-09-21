@@ -23,7 +23,7 @@
 - `../feature_list.json`: machine-readable acceptance inventory. All passes remain false. Freeze the revised steps after technical review; do not change an approved check to conceal failure.
 - `../ROADMAP.md`: order, decision gates and work status; it is not another feature specification.
 - `../CONTEXT.md`: glossary only.
-- [AGENTS.md](../AGENTS.md): sole shared project instruction source; [CLAUDE.md](../CLAUDE.md) imports it. `.Codex/rules/` holds compatibility pointers only. See [instruction migration](agents/instruction-migration-2026-09-08.md) for preserved rules and loading verification.
+- [AGENTS.md](../AGENTS.md): sole shared project instruction source; [CLAUDE.md](../CLAUDE.md) imports it. Legacy `.Codex/rules/` and `.Codex/skills/` were removed on 2026-09-21; [instruction migration](agents/instruction-migration-2026-09-08.md) is history.
 
 Use explicit Markdown links from the repository entry point. If current sources disagree, resolve the inconsistency before implementation; historical drafts cannot override current SPEC. User instructions remain authoritative.
 
@@ -43,11 +43,11 @@ Use explicit Markdown links from the repository entry point. If current sources 
 - `job-search-brainstorm-2026-09-06.md` and `complete-project-brainstorm-2026-09-06.md`: superseded discussion history; settled conclusions are in SPEC and ADR.
 - [Original draft archive](archive/pre-readonly-scope-2026-09-06/README-ARCHIVE.md): byte-preserved prior specification/acceptance and stable-ID migration. Nested AGENTS/rules are historical copies only.
 - `../issues/0001-initial-production-ops-agent-spec.md`: local tracking pointer to current documents, not a second copy of requirements.
-- `../Codex-progress.txt`: local ignored session log, not the only place durable decisions are recorded. Tracked sources above carry shared decisions.
+- [ROADMAP history](archive/roadmap-history-2026-09-21.md): verbatim archive of the pre-2026-09-21 roadmap narrative; the current roadmap keeps only the status table.
 
 ## Maintenance
 
-Update SPEC when scope, technology selection, verification method or the implementation gate changes; update PRODUCT-CONSTRAINTS when a product runtime constraint changes; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update roadmap when work moves, and append the local progress log. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
+Update SPEC when scope, technology selection, verification method or the implementation gate changes; update PRODUCT-CONSTRAINTS when a product runtime constraint changes; add a small ADR only for a consequential trade-off. Keep PRD and acceptance IDs aligned, update the roadmap status table by replacing rows when work moves. Preserve retired IDs and old baselines when scope changes; never mark removed work complete. Research is version/date-bound: verify current source and actual behavior before adopting claims.
 
 Do not create another plan or ADR for every conversation. Detailed component designs and execution plans should be created only when the capability map and runtime evidence justify them. No documentation framework or wiki service is needed at this stage.
 
