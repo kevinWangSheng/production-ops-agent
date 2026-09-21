@@ -179,6 +179,22 @@ _AUTHENTICATION_TOKENS = frozenset(
 _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 
 
+def _endpoint_text(value: str) -> bool:
+    """Whether this model-visible text carries a concrete endpoint.
+
+    The three detectors live behind one predicate so every model-visible
+    surface -- the five description fields, a parameter description and a
+    parameter name -- applies exactly the same rule. Adding a form here covers
+    all of them at once; adding it at one call site is how the earlier rounds
+    kept leaving one surface behind.
+    """
+    return bool(
+        _MODEL_VISIBLE_URI.search(value)
+        or _PROTOCOL_RELATIVE_URI.search(value)
+        or _SCHEMELESS_ENDPOINT.search(value)
+    )
+
+
 def _utf8_text(value: str) -> bool:
     """Whether this text can be encoded, i.e. can survive fingerprinting.
 
@@ -280,6 +296,23 @@ _SCHEMELESS_ENDPOINT = re.compile(
 # anchor to lean on.
 _MODEL_VISIBLE_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S{1,512}")
 
+# The protocol-relative form `//authority/path` needs neither a scheme nor a
+# port, so it slipped past both detectors above -- including
+# `//reader:secret@metrics.internal/api`, which carries inline credentials as
+# well as the endpoint (bot review finding). `//` plus a *recognisable
+# authority* is the anchor here, the same kind of unambiguous marker that
+# justifies not restricting the alphabet after `://`; an authority is
+# recognised only when it has a dot, a port, brackets or userinfo, so a bare
+# `// TODO` comment or a `//shared/config` path stays ordinary prose.
+_PROTOCOL_RELATIVE_URI = re.compile(
+    r"//(?:[^\s/@]+@)?(?:"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
+    r"|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
+    r"|\[[0-9A-Fa-f:]{2,45}\]"
+    r"|[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*:[0-9]{1,5}"
+    r")"
+)
+
 # C3 section 8 requires `window_format`/`values_format` to carry a placeholder
 # for the absolute window / value enumeration a future renderer fills in per
 # Run (the L3a template / L3b instance split of section 5). The placeholder
@@ -360,9 +393,7 @@ class ParameterSpec:
             raise ToolContractError("INVALID_PARAMETER_SPEC")
         if not _utf8_text(self.description):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if _MODEL_VISIBLE_URI.search(self.description) or _SCHEMELESS_ENDPOINT.search(
-            self.description
-        ):
+        if _endpoint_text(self.description):
             # Parameter prose is part of the same section 8 model-visible
             # face as :class:`ToolDescription`, which refuses a concrete
             # ``scheme://`` URL for the same reason; leaving this field
@@ -456,9 +487,7 @@ class ToolDescription:
             value = getattr(self, name)
             if isinstance(value, str) and not _utf8_text(value):
                 raise ToolContractError("INVALID_DESCRIPTION_TEXT")
-            if isinstance(value, str) and (
-                _MODEL_VISIBLE_URI.search(value) or _SCHEMELESS_ENDPOINT.search(value)
-            ):
+            if isinstance(value, str) and _endpoint_text(value):
                 raise ToolContractError("CREDENTIAL_MATERIAL_FORBIDDEN")
 
 
@@ -521,10 +550,7 @@ class ToolRegistration:
             for key, spec in self.parameters.items()
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if any(
-            _MODEL_VISIBLE_URI.search(key) or _SCHEMELESS_ENDPOINT.search(key)
-            for key in self.parameters
-        ):
+        if any(_endpoint_text(key) for key in self.parameters):
             # Parameter keys become property names in the model-visible
             # schema, so the endpoint prohibition applies to them exactly as it
             # does to the prose beside them; checking only the descriptions

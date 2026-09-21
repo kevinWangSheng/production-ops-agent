@@ -798,3 +798,36 @@ def test_endpoints_embedded_in_parameter_names_are_refused(name):
     """
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         registration(parameters={name: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "fetch //reader:secret@metrics.internal/api",
+        "fetch //metrics.internal/api",
+        "fetch //prometheus:9090/api",
+        "fetch //10.0.0.4/api",
+    ],
+)
+def test_protocol_relative_urls_in_model_visible_prose_are_refused(text):
+    """Bot review finding: `//authority/path` needs neither a scheme nor a
+    port, so it slipped past both detectors -- including the variant carrying
+    inline credentials.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        description(returns=text)
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        registration(parameters={text: ParameterSpec(kind="string")})
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["// TODO: 补充说明", "paths like //shared/config", "see //notes", "a//b 比较"],
+)
+def test_double_slash_prose_is_not_mistaken_for_an_endpoint(text):
+    """An authority is recognised only when it has a dot, a port, brackets or
+    userinfo, so an ordinary `//` in prose survives.
+    """
+    assert ParameterSpec(kind="string", description=text).description == text
