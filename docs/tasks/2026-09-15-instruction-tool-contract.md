@@ -548,6 +548,30 @@ C1/C2 的改动会移动三个变体的 `discipline_revision` 短码（预期且
 PG 持久化集成本次收尾未重跑——本机无 PostgreSQL/Docker，最后一次实际验证结果见上方
 「验证证据」表（`23 passed`，取自本轮更早一次有 PG 环境的提交）。
 
+### 与 main 的合并冲突处置（2026-09-21）
+
+PR #27 在 GitHub 上显示 `mergeable: CONFLICTING`。起点 main `b483a12` 之后，main 合入了
+PR #26/#28/#30/#20/#34/#35/#36，其中 `tests/integration/test_m1_durable_state_postgres.py`
+被大幅重写（+1525/−264 行）；本分支对同一文件只追加了三行 import 和两条测试
+（`test_prompt_revision_change_blocks_resume_without_silent_version_swap`、
+`test_instance_values_alone_do_not_block_resume`）。其余四个本分支文件与 main 无交集。
+
+处置：`merge: update instruction contract onto main`（合并提交）。冲突文件以 main 版本为底，
+把本分支的 import 与两条测试原样叠加回去；`DurableStore.accept/claim` 签名在 main 上未变，
+测试体零改动。唯一的文字改动是 `_prompt_versions` 的 docstring：原文称 `opspilot/tools/registry.py`
+「仍在 PR #20 分支上、未进 main」，PR #20 已合入，改为指向 `tests/test_m1_tool_registry*.py`
+既有的合同覆盖。
+
+合并后复验（本 worktree，本地 PG lab `127.0.0.1:55431` 在线）：
+
+| 检查 | 结果 |
+|---|---|
+| `make check`（uv lock、ruff check/format、mypy、pytest） | `1514 passed, 143 skipped, 2 xfailed` |
+| `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py` | `54 passed`（含本分支两条） |
+
+PR #20 合入意味着上文「`ToolRegistration.description` 待 PR #20 合并后承接」一节的前提已满足；
+该承接是独立的后续工作项，不在本次冲突处置范围内，未动。
+
 ### 本轮未做与限制
 
 - 未改产品运行行为：新模块目前无产品调用方，`ModelProfile.prompt_revision` 的**接线仍未完成**
