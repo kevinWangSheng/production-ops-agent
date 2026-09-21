@@ -379,9 +379,16 @@ def test_a_slow_pre_dispatch_ledger_charge_that_crosses_the_deadline_is_denied()
     assert outcome.source_contact == "none"
     assert outcome.evidence is None and sink.records == []
     assert outcome.model_view["content"] is None
-    # The pre-dispatch charge is not refunded: it already recorded the
-    # operation as spent before the deadline was found to have lapsed.
-    assert len(ledger.charges) == 1
+    # The reservation is settled at zero: the read provably never went out, so
+    # holding the full reserved timeout would consume the Run's time budget for
+    # a query that never happened. (This assertion used to require that the
+    # pre-dispatch charge was never refunded -- true when that charge carried
+    # 0.0 seconds and there was nothing to give back, wrong once it reserves
+    # the whole timeout.) The operation *count* is still not released, which is
+    # why the release is a settlement of the same dispatch rather than a
+    # reversal.
+    assert ledger.charges == [("step-1-t0", 2.0), ("step-1-t0", 0.0)]
+    assert len(set(ledger.dispatches)) == 1
     # _reserve() already computed timeout_seconds before this denial; the
     # audit record must not infer "sent" from that alone.
     assert outcome.operation.audit_json()["sent"] is False
@@ -1521,3 +1528,42 @@ def test_a_paused_response_with_malformed_metadata_never_escapes():
 
     assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
     assert sink.records == [] and outcome.evidence is None
+
+
+def test_a_suspension_during_the_pre_dispatch_charge_releases_the_reservation():
+    """Bot review finding: the pre-dispatch charge reserves the full timeout,
+    but a denial here returned without settling it, so an operation recorded as
+    ``sent=false`` permanently consumed up to the whole reservation and
+    repeated control races could falsely exhaust the Run's time budget.
+    """
+    ledger = RecordingLedger()
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    executor, transport, sink, _ = build(ledger=ledger, control=control)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert not transport.called and sink.records == []
+    # Reserved, then settled at zero -- one dispatch, two charges.
+    assert ledger.charges == [("step-1-t0", 10.0), ("step-1-t0", 0.0)]
+    assert len(set(ledger.dispatches)) == 1
+
+
+def test_a_ledger_that_cannot_record_the_release_does_not_change_the_reason():
+    """The release is best effort: a caller is already being denied, and a
+    ledger failure must not turn a human decision into a storage error.
+    """
+
+    class FailingRelease(RecordingLedger):
+        def charge(self, operation_id, seconds, *, dispatch_id):
+            super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+            if len(self.charges) == 2:  # the release
+                raise RuntimeError("ledger down")
+
+    control = FixedControl(later=ControlSnapshot(7, suspended=True), later_after=1)
+    executor, transport, _, _ = build(ledger=FailingRelease(), control=control)
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert not transport.called

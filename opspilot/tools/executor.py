@@ -692,6 +692,7 @@ class ReadOnlyToolExecutor:
         if not charged:
             return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
         self._operations_used += 1
+
         # The charge above is itself a ledger round trip of unbounded
         # duration, exactly like the Controller lookup ``_reserve()`` already
         # accounts for (see its comment). A slow ledger write can let the
@@ -700,17 +701,34 @@ class ReadOnlyToolExecutor:
         # actually leaving this process. Re-check both -- control first, then
         # the deadline, the same order and priority the post-fetch re-check
         # below uses -- before dispatch: a query must never go out once its
-        # authorization has lapsed. The charge already recorded above is not
-        # refunded on a denial here; once billed it stays spent, the same
-        # "unknown cost stays occupied" rule that justifies charging before
-        # the read goes out at all.
+        # authorization has lapsed.
+        #
+        # A denial here settles the reservation at zero. "Unknown cost stays
+        # occupied" is about a read whose cost nobody can know -- one still in
+        # flight, or one whose process died; here the read provably never left,
+        # and the audit record says so with ``sent: false``. Holding the full
+        # reserved timeout anyway would let a control race permanently consume
+        # the Run's time budget for queries that never happened (bot review
+        # finding; the reservation was introduced two rounds ago and this
+        # comment still described the older behaviour, where the pre-dispatch
+        # charge carried 0.0 seconds and there was nothing to give back).
+        #
+        # The operation *count* deliberately stays: it is recorded before
+        # dispatch precisely so that a crash in this gap cannot hide an attempt,
+        # and releasing it would require telling "denied before dispatch" apart
+        # from "died before dispatch" -- the distinction the durable pre-charge
+        # exists to avoid needing.
+        def deny_before_dispatch(reason: str) -> ToolOutcome:
+            self._release(operation.operation_id, dispatch_id)
+            return self._refuse(operation, "denied", reason)
+
         control = self._read_control()
         if control is None:
-            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
+            return deny_before_dispatch("CONTROL_UNAVAILABLE")
         if control.suspended:
-            return self._refuse(operation, "denied", "SUSPENDED")
+            return deny_before_dispatch("SUSPENDED")
         if control.control_generation != self._scope.control_generation:
-            return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
+            return deny_before_dispatch("CONTROL_GENERATION_CHANGED")
         now = self._clock.now()
         # This is the authorization check immediately before dispatch, which is
         # what ``authorized_at`` documents itself to be. Leaving the earlier
@@ -720,7 +738,7 @@ class ReadOnlyToolExecutor:
         # to derive it (bot review finding).
         operation = replace(operation, authorized_at=now)
         if now >= self._scope.deadline:
-            return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
+            return deny_before_dispatch("DEADLINE_EXCEEDED")
         # The control read and the charge above may themselves have consumed
         # real time without crossing the deadline outright -- rejecting only
         # when it has *fully* passed would still hand the transport the
@@ -950,6 +968,20 @@ class ReadOnlyToolExecutor:
             model_view=record.view,
             evidence=record,
         )
+
+    def _release(self, operation_id: str, dispatch_id: UUID) -> None:
+        """Settle a reservation for a read that never went out, at zero cost.
+
+        Best effort: the caller is already refusing, and a ledger that cannot
+        record the release must not change the reason the caller reports. The
+        reservation then stays held, which is exactly the behaviour this method
+        exists to avoid -- but it is the pre-existing, fail-closed outcome, not
+        a new failure mode.
+        """
+        try:
+            self._charge(operation_id, 0.0, dispatch_id)
+        except Exception:
+            return
 
     def _charge(self, operation_id: str, seconds: float, dispatch_id: UUID) -> bool:
         try:
