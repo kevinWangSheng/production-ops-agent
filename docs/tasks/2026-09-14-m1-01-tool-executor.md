@@ -1534,7 +1534,7 @@ transport 异常路径的返回排在 control 复读之前，飞行中的人工�
 
 ## 38. 机器人 code review 第二十六轮一条 thread 处置（2026-09-20）
 
-P1「Detect Unicode ported protocol-relative hosts」——成立，已修（`1ccdb21`）。
+P1「Detect Unicode ported protocol-relative hosts」——成立，已修（`981047a`）。
 
 `//` 系列里最后一个仍限 ASCII 的分支：带端口的单标签主机。`//监控:4317` 与 `//prometheus:9090`
 是同一件事，锚点是 `//` 加数字端口。
