@@ -1,5 +1,7 @@
 # Roadmap
 
+当前工程交付状态（2026-09-21，M1-01 工具执行器）：PR #20（`feature/m1-01-tool-executor`）经约 44 轮机器人审查后由用户叫停逐轮修复；独立审查后拆分收尾——移除无规范依据的 Run 级工具上限列与同分支主键迁移、endpoint 检测缩减为两条有锚点规则、控制优先级收敛到 `_control_decision()` 并补两条退出路径。81 条 thread 全部有结论。全局/目标 suspension 持久化栅栏仍为 Controller 待办。待用户审核合并。见[任务记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)第 47 节。
+
 当前工程交付状态（2026-09-17，租约续期）：`DurableStore` 新增 `renew_lease(lease, extend_seconds)`（分支 `fix/lease-renewal`，PR 待 CI），栅栏与写路径一致、过期不可续活、封顶于 Run deadline；PR #33 `run_once` 与 PR #30 `Worker` 的接线建议记录在任务记录，不在本 PR 实施。不改冻结上限、验收步骤与 feature `passes`。见[任务记录](docs/tasks/2026-09-17-lease-renewal.md)。
 当前工程交付状态（2026-09-16，M1-01 人工控制）：PR #28（`feature/m1-01-human-control`，stacked 于 PR #26 / `chore/durable-store-hardening`）已完成审查 thread 处置与 `workflow_dispatch` CI。本 PR 补迟到步骤/工具历史、取消后新 Run、迟到身份/时序/幂等；follow-up/correct/cancel 代际语义来自 PR #19。close/reopen、重绑定/合并/拆分、全局/目标 suspension 持久化、follow-up/correction 输入内容、持久化输入水位仍为待决。待最新 `main` retarget 后由用户审核合并。见[任务记录](docs/tasks/2026-09-16-m1-01-human-control.md)。
 

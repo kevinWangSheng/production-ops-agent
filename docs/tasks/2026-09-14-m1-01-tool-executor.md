@@ -2240,3 +2240,48 @@ PR thread 中说明依据并请用户裁决是否纳入本 PR；此处登记为�
 make check → 1482 passed, 144 skipped, 2 xfailed
 M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 106 passed, 38 skipped
 ```
+
+## 47. 终止逐轮修复循环：独立审查与拆分收尾（2026-09-21）
+
+### 问题
+
+第 1 至 46 节记录了约 44 轮机器人审查、100 个提交。用户核查后判定循环无终止条件：每次修复推送
+触发新一轮审查，新发现落在上一轮修出来的代码上（第三十五轮 3 条 P2 中 2 条 blame 到第 14、17 轮的
+修复提交），`executor.py` 由 727 行涨到 1484 行、`registry.py` 由 379 涨到 891。用户决定：停止逐轮
+推送，派全新上下文的独立审查，按其结论拆分后**一次**推送。
+
+### 第三十五轮 3 条 thread 处置（不再推代码）
+
+- P2 复合 key 别名（`registry.py:160`）：**拒绝**。C3 §8 `:275` 规定参数名由运营方登记、注册期校验，
+  不是模型对抗输入；代码已写明 denylist 不可能完备、边界由 `credential_ref` 持有；无越界复现。
+  同类「再补一个别名/一种 URL 形态」的发现此后按本条处置。
+- P2 重复 JSON key（`executor.py:1420`）：**拒绝**。`raw_sha256` 覆盖原始字节，投影是本代码库对同一
+  字节串的确定性函数；「其它消费者可能保留第一个」是对系统外的推测。
+- P2 `Window` 直接构造时 `OverflowError` 未转 `INVALID_WINDOW`（`outcomes.py:118`）：**采纳**，已复现，
+  修于 `9714531`；属原始提交 `cfaf14ec` 引入。
+
+### 独立审查（全新上下文，只读）结论与处置
+
+| 决策点 | 审查结论 | 处置 |
+|---|---|---|
+| A 控制优先级 | 三元判定在 executor 内有 3 份实现，2 条退出路径无 control 复检：预扣费通用失败报 `CONTROL_UNAVAILABLE`、evidence commit 通用失败报 `EVIDENCE_NOT_COMMITTED`，暂停均未进入 outcome | `_reserve()` 与派发前复检改为调用 `_control_decision()`；两条退出路径套用同一优先级；新增 2 个测试钉住（`f79e01f`） |
+| A 持久化暂停栅栏 | 全局/目标 suspension 代际未持久化，sink 无事务内栅栏时快照后的暂停仍会采纳 | 与第 46 节交接项一致，Controller 侧待办，本 PR 不闭合 |
+| B persistence | 用量列、charges 表、原子预留/结算、lease 栅栏有 C3 §13/§7 依据；`tool_max_*` 列（产品代码零调用方）与 `DO $$` 同分支主键就地迁移无规范依据 | 移除 `tool_max_*` 列、参数与取 min 逻辑，移除同分支就地迁移语句，删 3 个只为其存在的 PG 用例（`d3f5a1c`）。第 45、46 节记录的「发放上限随 Run 持久化」修复由此撤回 |
+| C endpoint 检测 | 三条正则加两个校验函数超出 §8 注册期规则的相称度；§8 威胁是运营方误写 | 只保留 `scheme://` 与 `//user@host` 两条有锚点的检测，删除 scheme-less 与协议相对其它分支；裸 `host:port`、`//host/path` 交人工审核；删 7 个、收窄 2 个测试（`3cd48fd`） |
+
+审查顺带发现：无 P1。
+
+### 验证
+
+```text
+make check → 1466 passed, 141 skipped, 2 xfailed
+M0_B_POSTGRES=1 M1_DURABLE_POSTGRES=1 pytest tests/integration -q → 103 passed, 38 skipped
+审查方复现脚本（S1 sink 通用失败 + 暂停、S2 预扣费通用失败 + 暂停）修复后均报 SUSPENDED
+```
+
+PG 集成用例首次运行抓到 `new_run()` INSERT 占位符数与参数数不符（本节移除列时引入），已修并入同一提交。
+
+### 停机规则（本任务内生效）
+
+CI 绿且独立审查完成后，修复推送引发的新一轮机器人发现批量处置：只有能引用 PRODUCT-CONSTRAINTS
+或 C3 原文且有可复现测试的发现才采纳，其余按类回复拒绝并 resolve，不再逐轮推送。
