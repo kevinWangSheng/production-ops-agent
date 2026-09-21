@@ -13,17 +13,24 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
-from opspilot.instructions.discipline import prompt_revision, render
+from opspilot.instructions.discipline import prompt_revision
+from opspilot.investigation.context import (
+    CONCLUSION_KIND,
+    INITIAL_SEGMENT,
+    InvestigationInput,
+    Transcript,
+    delivered_view,
+    initial_messages,
+    step_key,
+)
 from opspilot.investigation.limits import (
-    MAX_HTTP_REQUEST_BYTES,
+    M1_FROZEN_LIMITS,
     MAX_MODEL_REQUESTS_PER_RUN,
-    MAX_OUTPUT_TOKENS,
-    MODEL_REQUEST_TIMEOUT_SECONDS,
-    RUN_WALL_SECONDS,
+    RunLimits,
 )
 from opspilot.investigation.messages import (
     PairingError,
@@ -39,7 +46,6 @@ from opspilot.investigation.reports import (
     context_target_catalog,
     context_time_policy_ids,
     delivered_from_context,
-    eligible_time_policies,
     evidence_context_projection,
     parse_report,
     unsupported_citations,
@@ -91,6 +97,12 @@ def prompt_revision_versions(
         "prompt_revision": prompt_revision(variant_id, report_contract=report_contract)
     }
 
+
+# Halt reasons that mean the store itself refused this attempt's writes; no
+# conclusion step is attempted after them (it would only become late history).
+_STORE_REFUSALS = frozenset(
+    {"CONTROL_DENIED", "INCOMPATIBLE_STATE", "STORAGE_UNAVAILABLE"}
+)
 
 _HANDOFF_FROM_STORE: dict[str, tuple[LoopExecution, str]] = {
     "BUDGET_EXHAUSTED": ("budget_exhausted", "BUDGET_EXHAUSTED"),
@@ -171,6 +183,27 @@ class InvestigationRequest:
     evidence_context: Mapping[str, Any] | None = None
     bound_target_id: str | None = None
     variant_id: str = DISCIPLINE_VARIANT
+    # Per-Run ceilings. The frozen M1 instance is the default; a caller may
+    # pass a smaller or (in tests) larger one -- the product boundary that
+    # admits a Run enforces ``limits.within(M1_FROZEN_LIMITS)``.
+    limits: RunLimits = M1_FROZEN_LIMITS
+
+    def as_input(self) -> InvestigationInput:
+        """The persistable snapshot a later attempt rebuilds this request from."""
+        return InvestigationInput(
+            question=self.question,
+            model_requests=self.model_requests,
+            limits=self.limits,
+            tool_schemas=tuple(dict(item) for item in self.tool_schemas),
+            evidence_context=self.evidence_context,
+            variant_id=self.variant_id,
+            bound_target_id=self.bound_target_id,
+            scope_facts={
+                "target_ids": sorted(self.scope.target_ids),
+                "window": self.scope.window.as_json(),
+                "deadline": self.scope.deadline.isoformat(),
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -189,27 +222,59 @@ class LoopOutcome:
     prompt_face_sha256: str
     question_sha256: str
     steps_committed: int
+    # Terminal ``conclusion`` step committed for this attempt (None when the
+    # store fenced it). The runner publishes ``conclusion`` against it; the
+    # payload carries no private protocol fields.
+    final_step_id: UUID | None = None
+    conclusion: Mapping[str, Any] | None = None
+    model_seconds_used: float = 0.0
+
+
+@dataclass
+class _State:
+    """One attempt's in-memory working set; everything durable is in the store."""
+
+    request: InvestigationRequest
+    messages: list[dict[str, Any]]
+    delivered: list[DeliveredView]
+    evidence_ids: list[str]
+    next_round: int
+    segment: str
+    used: int
+    prior_active: float
+    attempt_started: float
+    revision: str
+    face: str
+    question_sha: str
+    steps_committed: int = 0
+    seconds_used: float = 0.0
+    last_step_id: UUID | None = None
 
 
 @dataclass
 class InvestigationLoop:
-    """One worker-side attempt. Collaborators are injected; none are created here."""
+    """One worker-side attempt. Collaborators are injected; none are created here.
+
+    ``run()`` starts a Run from its request; ``resume()`` continues one from a
+    transcript rebuilt out of committed rows. Both share ``_drive``: the only
+    difference is where the first messages and the used budget come from.
+    """
 
     model: ModelClient
     executor: ReadOnlyToolExecutor
     store: StepCommitter
     clock: Clock
     accepted_response_model: str = ACCEPTED_RESPONSE_MODEL
-    _physical_requests: int = field(default=0, init=False, repr=False)
-    _steps_committed: int = field(default=0, init=False, repr=False)
 
-    def run(self, request: InvestigationRequest) -> LoopOutcome:
+    def _check_identity(self, request: InvestigationRequest) -> None:
         if not isinstance(request, InvestigationRequest):
+            raise ValueError("INVALID_INPUT")
+        if not isinstance(request.limits, RunLimits):
             raise ValueError("INVALID_INPUT")
         if (
             type(request.model_requests) is not int
             or request.model_requests < 1
-            or request.model_requests > MAX_MODEL_REQUESTS_PER_RUN
+            or request.model_requests > request.limits.model_requests
         ):
             raise ValueError("INVALID_INPUT")
         if (
@@ -218,6 +283,40 @@ class InvestigationLoop:
             or request.run_id != self.store.authorized_run_id
         ):
             raise ValueError("INVALID_INPUT")
+
+    def _open_state(
+        self,
+        request: InvestigationRequest,
+        *,
+        messages: list[dict[str, Any]],
+        delivered: list[DeliveredView],
+        evidence_ids: list[str],
+        next_round: int,
+        segment: str,
+        system: str,
+    ) -> _State:
+        usage = self.store.usage()
+        return _State(
+            request=request,
+            messages=messages,
+            delivered=delivered,
+            evidence_ids=evidence_ids,
+            next_round=next_round,
+            segment=segment,
+            used=usage.model_requests_used,
+            # Active time already spent by earlier attempts: model requests
+            # from the reservation ledger, tool time from the tool ledger the
+            # executor was built from (C3 §13: restarts never reset it).
+            prior_active=usage.model_seconds_used + self.executor.tool_seconds_used,
+            attempt_started=self.clock.monotonic(),
+            revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
+            face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
+            question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
+        )
+
+    def run(self, request: InvestigationRequest) -> LoopOutcome:
+        """Start a Run from its request (first attempt, no committed steps)."""
+        self._check_identity(request)
         # Project once, here, before anything else reads it: every later use
         # of ``evidence_context`` (the prompt message and every citation
         # check below) sees only this Run's own, allowlisted v4 fields --
@@ -229,129 +328,119 @@ class InvestigationLoop:
                 request.evidence_context, run_id=request.run_id
             ),
         )
-        started = self.clock.monotonic()
-        system = render(
-            request.variant_id,
-            model_requests=request.model_requests,
-            report_contract=REPORT_CONTRACT,
+        messages, system = initial_messages(
+            request.as_input(), evidence_context=request.evidence_context
         )
-        revision = prompt_revision_versions(request.variant_id)["prompt_revision"]
-        face = hashlib.sha256(system.encode("utf-8")).hexdigest()
-        question_sha = hashlib.sha256(request.question.encode("utf-8")).hexdigest()
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": request.question},
-        ]
-        if request.evidence_context is not None:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": canonical(request.evidence_context),
-                }
-            )
-        evidence_ids: list[str] = []
-        delivered: list[DeliveredView] = delivered_from_context(
+        delivered = delivered_from_context(
             request.evidence_context, run_id=request.run_id
         )
-        evidence_ids.extend(view.evidence_id for view in delivered)
-        self._physical_requests = 0
-        self._steps_committed = 0
+        state = self._open_state(
+            request,
+            messages=messages,
+            delivered=list(delivered),
+            evidence_ids=[view.evidence_id for view in delivered],
+            next_round=1,
+            segment=INITIAL_SEGMENT,
+            system=system,
+        )
+        return self._drive(state)
+
+    def resume(self, transcript: Transcript) -> LoopOutcome:
+        """Continue a Run from a transcript rebuilt out of committed rows.
+
+        The transcript already excludes late results, superseded incomplete
+        groups and revoked evidence; the budget continues from the store.
+        """
+        if not isinstance(transcript, Transcript):
+            raise ValueError("INVALID_INPUT")
+        input = transcript.input
+        request = InvestigationRequest(
+            run_id=transcript.run_id,
+            question=input.question,
+            scope=self.executor.scope,
+            tool_schemas=tuple(input.tool_schemas),
+            model_requests=input.model_requests,
+            evidence_context=transcript.evidence_context,
+            bound_target_id=input.bound_target_id,
+            variant_id=input.variant_id,
+            limits=input.limits,
+        )
+        self._check_identity(request)
+        system = transcript.messages[0]["content"] if transcript.messages else ""
+        if not isinstance(system, str) or not system:
+            raise ValueError("INVALID_INPUT")
+        state = self._open_state(
+            request,
+            messages=list(transcript.messages),
+            delivered=list(transcript.delivered),
+            evidence_ids=list(transcript.evidence_ids),
+            next_round=transcript.next_round,
+            segment=transcript.segment,
+            system=system,
+        )
+        return self._drive(state)
+
+    def _drive(self, state: _State) -> LoopOutcome:
+        request = state.request
         try:
-            for ordinal in range(1, request.model_requests + 1):
-                remaining = request.model_requests - self._physical_requests
+            while True:
+                remaining = request.model_requests - state.used
                 if remaining <= 0:
                     raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
-                final = ordinal == request.model_requests or remaining <= 1
-                outcome = self._round(
-                    request,
-                    messages,
-                    ordinal=ordinal,
-                    final=final,
-                    started=started,
-                    evidence_ids=evidence_ids,
-                    delivered=delivered,
-                )
+                outcome = self._round(state, final=remaining <= 1)
                 if outcome is not None:
                     return self._finish(
+                        state,
                         execution=outcome[0],
                         reasons=outcome[1],
                         report=outcome[2],
                         content=outcome[3],
-                        evidence_ids=evidence_ids,
-                        used=self._physical_requests,
-                        steps=self._steps_committed,
-                        revision=revision,
-                        face=face,
-                        question_sha=question_sha,
                     )
         except _LoopHalt as halt:
             return self._finish(
+                state,
                 execution=halt.execution,
                 reasons=halt.reasons,
                 report=None,
                 content=None,
-                evidence_ids=evidence_ids,
-                used=self._physical_requests,
-                steps=self._steps_committed,
-                revision=revision,
-                face=face,
-                question_sha=question_sha,
             )
-        return self._finish(
-            execution="failed",
-            reasons=("EMPTY_REPORT",),
-            report=None,
-            content=None,
-            evidence_ids=evidence_ids,
-            used=self._physical_requests,
-            steps=self._steps_committed,
-            revision=revision,
-            face=face,
-            question_sha=question_sha,
-        )
 
     def _round(
-        self,
-        request: InvestigationRequest,
-        messages: list[dict[str, Any]],
-        *,
-        ordinal: int,
-        final: bool,
-        started: float,
-        evidence_ids: list[str],
-        delivered: list[DeliveredView],
+        self, state: _State, *, final: bool
     ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
-        timeout = self._remaining_timeout(request, started)
-        outbound = list(messages)
+        request = state.request
+        timeout = self._remaining_timeout(state)
+        outbound = list(state.messages)
         if final:
             outbound.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
         call = ModelCall(
             messages=tuple(outbound),
             tools=None if final else tuple(request.tool_schemas),
             json_mode=final,
-            max_tokens=MAX_OUTPUT_TOKENS,
+            max_tokens=request.limits.output_tokens,
             timeout_seconds=timeout,
             model=self.accepted_response_model,
         )
-        self._reject_oversized(call)
-        logical_key = f"round-{ordinal}"
+        self._reject_oversized(call, request.limits)
+        logical_key = step_key(state.segment, state.next_round)
         try:
             reply, dispatched = self._call_model(
-                call,
-                request=request,
-                started=started,
-                logical_key=logical_key,
-                final=final,
+                call, state=state, logical_key=logical_key, final=final
             )
         except _RoundAborted:
-            # Keep the last physical slot for the final-report request.
+            # Keep the last physical slot for the final-report request. The
+            # logical round is consumed even though no step was committed;
+            # a later attempt that rebuilds from rows may reuse the number,
+            # which is safe because its reservations live in a new epoch.
+            state.next_round += 1
             return None
         assistant = assistant_message(
             content=reply.content,
             reasoning_content=reply.reasoning_content,
             tool_calls=reply.tool_calls,
         )
-        step_id = self._commit_step(logical_key, assistant, reply, dispatched)
+        step_id = self._commit_step(state, logical_key, assistant, reply, dispatched)
+        state.next_round += 1
         try:
             calls = validate_tool_calls(assistant)
         except PairingError as exc:
@@ -371,7 +460,7 @@ class InvestigationLoop:
             )
             if report is not None and unsupported_citations(
                 report,
-                views=delivered,
+                views=state.delivered,
                 authorized_targets=request.scope.target_ids,
                 time_policy_ids=context_time_policy_ids(request.evidence_context),
                 target_catalog=context_target_catalog(
@@ -393,84 +482,45 @@ class InvestigationLoop:
             if final:
                 return "failed", (reason,), None, reply.content
             # Candidate text failed validation; keep the reserved last request.
-            messages.append(assistant)
+            state.messages.append(assistant)
             return None
-        results = self._run_tools(request, step_id, calls, evidence_ids, delivered)
+        results = self._run_tools(state, step_id, calls)
         try:
             group = pair_tool_results(assistant, results, require_reasoning=True)
         except PairingError as exc:
             raise _LoopHalt("failed", (exc.code,)) from exc
-        messages.extend(group)
+        state.messages.extend(group)
         return None
 
     def _run_tools(
         self,
-        request: InvestigationRequest,
+        state: _State,
         step_id: UUID,
         calls: Sequence[Mapping[str, Any]],
-        evidence_ids: list[str],
-        delivered: list[DeliveredView],
     ) -> list[dict[str, Any]]:
+        request = state.request
         results: list[dict[str, Any]] = []
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
-            function = call["function"]
-            params = _parse_arguments(function["arguments"])  # untrusted JSON
-            tool_request = ToolRequest(
-                step_id=str(step_id),
-                tool_index=index,
-                tool_name=function["name"],
-                target_ref=target_id,
-                params=params,
-                window=window,
+            outcome = self.executor.execute(
+                tool_request_for(
+                    step_id, index, call, target_ref=target_id, window=window
+                )
             )
-            outcome = self.executor.execute(tool_request)
             view = dict(outcome.model_view)
             try:
                 self.store.commit_tool(step_id, index, view)
             except StepStoreError as exc:
                 raise _halt_from_store(exc) from exc
-            evidence_id = view.get("evidence_id")
-            if outcome.adopted and isinstance(evidence_id, str) and evidence_id:
-                evidence_ids.append(evidence_id)
-                target = view.get("target_id")
-                registry = target if isinstance(target, str) else None
-                catalog = (
-                    context_target_catalog(
-                        request.evidence_context,
-                        authorized_targets=request.scope.target_ids,
-                    )
-                    or {}
-                )
-                aliases = frozenset(
-                    key for key, mapped in catalog.items() if mapped == registry
-                )
-                target_ids = (
-                    frozenset({registry}) if registry else frozenset()
-                ) | aliases
-                ctx = request.evidence_context
-                delivered.append(
-                    DeliveredView(
-                        evidence_id=evidence_id,
-                        target_ids=target_ids,
-                        status=outcome.status,
-                        time_scope_refs=eligible_time_policies(
-                            ctx.get("time_policies")
-                            if isinstance(ctx, Mapping)
-                            else None,
-                            source=view.get("source"),
-                            tool=view.get("tool"),
-                            target_ids=target_ids,
-                            window=view.get("window"),
-                            freshness_seconds=view.get("freshness_seconds"),
-                            source_start_at=view.get("source_start_at"),
-                            source_end_at=view.get("source_end_at"),
-                            dispatch_started_at=view.get("dispatch_started_at"),
-                            response_received_at=view.get("observed_at"),
-                        ),
-                    )
-                )
+            citation = delivered_view(
+                view,
+                evidence_context=request.evidence_context,
+                authorized_targets=request.scope.target_ids,
+            )
+            if citation is not None:
+                state.evidence_ids.append(citation.evidence_id)
+                state.delivered.append(citation)
             results.append(
                 {
                     "role": "tool",
@@ -480,15 +530,21 @@ class InvestigationLoop:
             )
         return results
 
-    def _reserve(self, run_id: str, logical_key: str) -> None:
+    def _reserve(self, run_id: str, logical_key: str, *, seconds: float) -> None:
         try:
-            self.store.reserve_budget(reservation_id_for(run_id, logical_key), 1)
+            self.store.reserve_budget(
+                reservation_id_for(run_id, logical_key), 1, seconds=seconds
+            )
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
 
-    def _settle(self, run_id: str, logical_key: str, outcome: str) -> None:
+    def _settle(
+        self, run_id: str, logical_key: str, outcome: str, *, seconds: float | None
+    ) -> None:
         try:
-            self.store.settle_budget(reservation_id_for(run_id, logical_key), outcome)
+            self.store.settle_budget(
+                reservation_id_for(run_id, logical_key), outcome, seconds=seconds
+            )
         except StepStoreError as exc:
             if exc.code == "CONTROL_DENIED":
                 # The lease was fenced while the request was in flight. The
@@ -500,6 +556,7 @@ class InvestigationLoop:
 
     def _commit_step(
         self,
+        state: _State,
         logical_key: str,
         assistant: Mapping[str, Any],
         reply: ModelReply,
@@ -515,48 +572,64 @@ class InvestigationLoop:
                 serialized_request(dispatched)
             ).hexdigest(),
             "response_id": response_id if isinstance(response_id, str) else None,
+            # C3 §7 step identity beyond the key: which context representation
+            # this round saw, and a hash of exactly what was sent.
+            "context": {
+                "segment": state.segment,
+                "round": state.next_round,
+                "input_snapshot_hash": hashlib.sha256(
+                    canonical(
+                        [dict(message) for message in dispatched.messages]
+                    ).encode("utf-8")
+                ).hexdigest(),
+            },
         }
         try:
             step_id = self.store.commit_step(logical_key, payload)
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
-        self._steps_committed += 1
+        state.steps_committed += 1
+        state.last_step_id = step_id
         return step_id
 
     def _call_model(
         self,
         call: ModelCall,
         *,
-        request: InvestigationRequest,
-        started: float,
+        state: _State,
         logical_key: str,
         final: bool,
     ) -> tuple[ModelReply, ModelCall]:
+        request = state.request
         last_error: ModelError | None = None
         for attempt in (1, 2):
-            if self._physical_requests >= MAX_MODEL_REQUESTS_PER_RUN:
+            # ``request.model_requests`` bounds the logical rounds this Run
+            # plans; ``limits.model_requests`` is the physical ceiling a
+            # provider retry may still use (the frozen 4 on the product path).
+            if state.used >= request.limits.model_requests:
                 raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
-            timed = replace(
-                call, timeout_seconds=self._remaining_timeout(request, started)
-            )
+            timed = replace(call, timeout_seconds=self._remaining_timeout(state))
             reservation = f"{logical_key}#a{attempt}"
-            self._reserve(request.run_id, reservation)
-            self._physical_requests += 1
+            self._reserve(request.run_id, reservation, seconds=timed.timeout_seconds)
+            state.used += 1
+            started = self.clock.monotonic()
             try:
                 reply = self.model.complete(timed)
             except ModelError as exc:
                 # The request went out and its cost is not known: the
-                # reservation stays occupied as ``unknown`` (C3 §13).
-                self._settle(request.run_id, reservation, "unknown")
+                # reservation stays occupied as ``unknown`` at its reserved
+                # upper bound (C3 §13).
+                self._settle(request.run_id, reservation, "unknown", seconds=None)
+                state.seconds_used += timed.timeout_seconds
                 last_error = exc
-                slots_left = request.model_requests - self._physical_requests
+                slots_left = request.model_requests - state.used
                 preserve_final = not final and slots_left <= 1
                 if preserve_final:
                     raise _RoundAborted() from exc
                 if (
                     exc.code != "MODEL_UNAVAILABLE"
                     or attempt == 2
-                    or self._physical_requests >= MAX_MODEL_REQUESTS_PER_RUN
+                    or state.used >= request.limits.model_requests
                 ):
                     execution: LoopExecution = (
                         "budget_exhausted"
@@ -567,42 +640,44 @@ class InvestigationLoop:
                 continue
             # The provider answered: settle the reservation as real usage
             # before anything else can halt the round.
-            self._settle(request.run_id, reservation, "spent")
+            elapsed = max(0.0, self.clock.monotonic() - started)
+            self._settle(request.run_id, reservation, "spent", seconds=elapsed)
+            state.seconds_used += elapsed
             if reply.response_model != self.accepted_response_model:
                 raise _LoopHalt("failed", ("MODEL_IDENTITY_MISMATCH",))
             return reply, timed
         assert last_error is not None
         raise _LoopHalt("failed", (last_error.code,)) from last_error
 
-    def _remaining_timeout(
-        self, request: InvestigationRequest, started: float
-    ) -> float:
+    def _remaining_timeout(self, state: _State) -> float:
+        request = state.request
         now = self.clock.now()
         remaining_deadline = (request.scope.deadline - now).total_seconds()
-        remaining_wall = RUN_WALL_SECONDS - (self.clock.monotonic() - started)
+        remaining_active = request.limits.active_seconds - (
+            state.prior_active + (self.clock.monotonic() - state.attempt_started)
+        )
         if remaining_deadline <= 0:
             raise _LoopHalt("failed", ("DEADLINE_EXCEEDED",))
-        if remaining_wall <= 0:
+        if remaining_active <= 0:
             raise _LoopHalt("failed", ("WALL_TIME_EXHAUSTED",))
-        return min(MODEL_REQUEST_TIMEOUT_SECONDS, remaining_deadline, remaining_wall)
+        return min(
+            request.limits.model_request_timeout_seconds,
+            remaining_deadline,
+            remaining_active,
+        )
 
-    def _reject_oversized(self, call: ModelCall) -> None:
-        if len(serialized_request(call)) > MAX_HTTP_REQUEST_BYTES:
+    def _reject_oversized(self, call: ModelCall, limits: RunLimits) -> None:
+        if len(serialized_request(call)) > limits.request_bytes:
             raise _LoopHalt("failed", ("REQUEST_TOO_LARGE",))
 
     def _finish(
         self,
+        state: _State,
         *,
         execution: LoopExecution,
         reasons: tuple[str, ...],
         report: ReportV2 | None,
         content: str | None,
-        evidence_ids: Sequence[str],
-        used: int,
-        steps: int,
-        revision: str,
-        face: str,
-        question_sha: str,
     ) -> LoopOutcome:
         # Completed + incomplete finding still handoffs. Budget/pairing
         # failures never look like a completed investigation.
@@ -612,6 +687,46 @@ class InvestigationLoop:
             if content is None
             else hashlib.sha256(content.encode("utf-8")).hexdigest()
         )
+        evidence_ids = tuple(dict.fromkeys(state.evidence_ids))
+        conclusion: dict[str, Any] = {
+            "kind": CONCLUSION_KIND,
+            # Shape a rebuild validates as a tool-free model step; the real
+            # content lives under ``conclusion`` and carries no private
+            # protocol fields, so it can be published and exported as is.
+            "assistant": {"role": "assistant", "content": None},
+            "conclusion": {
+                "execution": execution,
+                "handoff": handoff,
+                "handoff_reasons": list(reasons),
+                "report_schema_version": None
+                if report is None
+                else report.schema_version,
+                "report_content": content,
+                "report_content_sha256": digest,
+                "evidence_ids": list(evidence_ids),
+                "model_requests_used": state.used,
+                "model_seconds_used": state.seconds_used,
+                "prompt_revision": state.revision,
+                "prompt_face_sha256": state.face,
+                "question_sha256": state.question_sha,
+                "source_step_id": None
+                if state.last_step_id is None
+                else str(state.last_step_id),
+                "segment": state.segment,
+                "rounds": state.next_round - 1,
+            },
+        }
+        final_step_id: UUID | None = None
+        if not set(reasons) & _STORE_REFUSALS:
+            try:
+                final_step_id = self.store.commit_step(
+                    f"conclusion:{state.segment}:round-{state.next_round - 1}",
+                    conclusion,
+                )
+            except StepStoreError:
+                # Fenced or storage gone: the outcome still reports truthfully,
+                # the runner just has nothing to publish against.
+                final_step_id = None
         return LoopOutcome(
             execution=execution,
             handoff=handoff,
@@ -619,13 +734,40 @@ class InvestigationLoop:
             report=report,
             report_content=content,
             report_content_sha256=digest,
-            evidence_ids=tuple(dict.fromkeys(evidence_ids)),
-            model_requests_used=used,
-            prompt_revision=revision,
-            prompt_face_sha256=face,
-            question_sha256=question_sha,
-            steps_committed=steps,
+            evidence_ids=evidence_ids,
+            model_requests_used=state.used,
+            prompt_revision=state.revision,
+            prompt_face_sha256=state.face,
+            question_sha256=state.question_sha,
+            steps_committed=state.steps_committed,
+            final_step_id=final_step_id,
+            conclusion=conclusion if final_step_id is not None else None,
+            model_seconds_used=state.seconds_used,
         )
+
+
+def tool_request_for(
+    step_id: UUID | str,
+    index: int,
+    call: Mapping[str, Any],
+    *,
+    target_ref: str | None,
+    window: Mapping[str, Any],
+) -> ToolRequest:
+    """The executor request for one committed tool call.
+
+    Shared by the live loop and the recovery replay so a replayed call is
+    the same operation (same step, same index, same untrusted arguments).
+    """
+    function = call["function"]
+    return ToolRequest(
+        step_id=str(step_id),
+        tool_index=index,
+        tool_name=function["name"],
+        target_ref=target_ref,
+        params=_parse_arguments(function["arguments"]),  # untrusted JSON
+        window=window,
+    )
 
 
 @dataclass

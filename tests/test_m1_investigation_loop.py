@@ -974,10 +974,10 @@ def test_a_foreign_run_context_grants_no_eligibility_to_freshly_collected_eviden
 
 def test_retry_re_reserves_and_rechecks_control():
     class DenyOnSecondReserve(MemoryStepStore):
-        def reserve_budget(self, reservation_id, amount):
+        def reserve_budget(self, reservation_id, amount, **kwargs):
             if self.reservations:
                 raise StepStoreError("CONTROL_DENIED")
-            super().reserve_budget(reservation_id, amount)
+            super().reserve_budget(reservation_id, amount, **kwargs)
 
     loop, request, model, _, store, _ = assemble(
         replies=[
@@ -1093,7 +1093,7 @@ def test_committed_step_records_request_hash_and_response_id():
     )
     outcome = loop.run(request)
     assert outcome.execution == "completed"
-    recorded = store.steps["round-1"]["response"]
+    recorded = store.steps["ctx0:round-1"]["response"]
     assert recorded["response_id"] == "chatcmpl-live-1"
     assert (
         recorded["request_sha256"]
@@ -1174,9 +1174,9 @@ def test_every_physical_request_is_settled_as_spent_or_unknown():
 
 def test_a_fenced_settlement_leaves_the_reservation_occupied_and_records_history():
     class FenceAfterAnswer(MemoryStepStore):
-        def settle_budget(self, reservation_id, outcome):
+        def settle_budget(self, reservation_id, outcome, **kwargs):
             self.deny_control()
-            super().settle_budget(reservation_id, outcome)
+            super().settle_budget(reservation_id, outcome, **kwargs)
 
     loop, request, model, _, store, _ = assemble(
         replies=[reply(content="late", finish="stop")], model_requests=1
@@ -1467,8 +1467,8 @@ def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     assert model.calls[1].tools is None
     assert model.calls[1].json_mode is True
     assert model.calls[1].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
-    assert store.steps["round-1"]["status"] == "tool_result_committed"
-    assert store.steps["round-2"]["status"] == "response_committed"
+    assert store.steps["ctx0:round-1"]["status"] == "tool_result_committed"
+    assert store.steps["ctx0:round-2"]["status"] == "response_committed"
     assert outcome.evidence_ids
     assert (
         outcome.question_sha256 == hashlib.sha256(request.question.encode()).hexdigest()

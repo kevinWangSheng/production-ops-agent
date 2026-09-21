@@ -260,6 +260,14 @@ class DurableStore:
               seconds double precision
             );
             CREATE INDEX IF NOT EXISTS opspilot_tool_charges_run_epoch_idx ON opspilot_tool_charges(run_id, epoch);
+            -- 输入快照（C3 第 5 节：重建输入所需的实际内容或固定持久引用）。新 worker
+            -- 只有这一列和步骤行可读，没有它就无法重建 system/user 消息与工具面。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS input jsonb;
+            -- 模型请求的活跃时间与次数同一套预留/结算（C3 第 13 节「租约状态不明时
+            -- 保守计量」）：预留时按超时上界占用 reserved_seconds，结算时写实测 seconds；
+            -- 请求中崩溃的预留永远没有 seconds，读取时按上界计入。
+            ALTER TABLE opspilot_budget_reservations ADD COLUMN IF NOT EXISTS reserved_seconds double precision NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_budget_reservations ADD COLUMN IF NOT EXISTS seconds double precision;
             """)
 
     def accept(
@@ -271,8 +279,15 @@ class DurableStore:
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
+        input: dict[str, Any] | None = None,
     ) -> None:
-        """Create incident/run atomically. Return only after commit."""
+        """Create incident/run atomically. Return only after commit.
+
+        ``input`` is the Run's input snapshot (question, authorization facts,
+        evidence context, tool face, limits). It is what a later worker
+        rebuilds the model context from; ``None`` keeps callers that never
+        run the investigation loop (M0 harness, control tests) unchanged.
+        """
         with self.transaction() as conn:
             row = conn.execute(
                 "SELECT incident_id,current_run_id FROM opspilot_incidents WHERE intake_key=%s",
@@ -304,8 +319,15 @@ class DurableStore:
             if inserted is None:
                 return
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
-                (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',0,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    None if input is None else Jsonb(input),
+                ),
             )
 
     def new_run(
@@ -318,6 +340,7 @@ class DurableStore:
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
+        input: dict[str, Any] | None = None,
     ) -> int:
         """Continue a cancelled incident with a fresh Run and control generation."""
         if type(expected_generation) is not int or expected_generation < 0:
@@ -358,8 +381,16 @@ class DurableStore:
                 raise PersistenceError("CONTROL_CONFLICT")
             nxt = int(row["control_generation"]) + 1
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',%s,%s,%s,%s)",
-                (run_id, incident_id, nxt, budget_limit, deadline, Jsonb(versions)),
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',%s,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    nxt,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    None if input is None else Jsonb(input),
+                ),
             )
             conn.execute(
                 "UPDATE opspilot_incidents SET state='queued',lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
@@ -511,8 +542,28 @@ class DurableStore:
             )
             return cast(datetime, renewed["lease_until"])
 
-    def reserve_budget(self, lease: Lease, reservation_id: UUID, amount: int) -> None:
+    def reserve_budget(
+        self,
+        lease: Lease,
+        reservation_id: UUID,
+        amount: int,
+        *,
+        seconds: float = 0.0,
+    ) -> None:
+        """Reserve ``amount`` request slots and ``seconds`` of active time.
+
+        ``seconds`` is the upper bound the request may take (its timeout).
+        Until settled it counts in full against the Run's active time, so an
+        attempt killed mid-request never under-reports what it may have used.
+        """
         if amount <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, (int, float))
+            or not seconds >= 0
+            or seconds == float("inf")
+        ):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run：全模块统一这个顺序，避免与 control()/
@@ -545,16 +596,26 @@ class DurableStore:
             ):
                 raise PersistenceError("BUDGET_EXHAUSTED")
             conn.execute(
-                "INSERT INTO opspilot_budget_reservations(reservation_id,run_id,amount) VALUES(%s,%s,%s)",
-                (reservation_id, lease.run_id, amount),
+                "INSERT INTO opspilot_budget_reservations(reservation_id,run_id,amount,reserved_seconds) VALUES(%s,%s,%s,%s)",
+                (reservation_id, lease.run_id, amount, float(seconds)),
             )
             conn.execute(
                 "UPDATE opspilot_runs SET budget_reserved=budget_reserved+%s WHERE run_id=%s",
                 (amount, lease.run_id),
             )
 
-    def settle_budget(self, lease: Lease, reservation_id: UUID, outcome: str) -> None:
+    def settle_budget(
+        self,
+        lease: Lease,
+        reservation_id: UUID,
+        outcome: str,
+        *,
+        seconds: float | None = None,
+    ) -> None:
         """Settle one reservation after the physical request finished (C3 §13).
+
+        ``seconds`` is the measured active time of the request. ``None``
+        keeps the reserved upper bound (the right value for ``unknown``).
 
         ``spent``: the provider answered, the request is real usage.
         ``unknown``: the outcome is not known (timeout, transport failure,
@@ -566,6 +627,13 @@ class DurableStore:
         ``reserved`` -- still counted against the limit.
         """
         if outcome not in _SETTLEMENTS:
+            raise PersistenceError("INVALID_INPUT")
+        if seconds is not None and (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, (int, float))
+            or not seconds >= 0
+            or seconds == float("inf")
+        ):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             # 先锁 incident 再锁 run，与其余写路径同一顺序。
@@ -598,8 +666,8 @@ class DurableStore:
                     return
                 raise PersistenceError("IDENTITY_CONFLICT")
             conn.execute(
-                "UPDATE opspilot_budget_reservations SET state=%s WHERE reservation_id=%s",
-                (outcome, reservation_id),
+                "UPDATE opspilot_budget_reservations SET state=%s,seconds=COALESCE(%s,reserved_seconds) WHERE reservation_id=%s",
+                (outcome, None if seconds is None else float(seconds), reservation_id),
             )
             column = _SETTLEMENTS[outcome]
             conn.execute(
@@ -775,6 +843,56 @@ class DurableStore:
             conn.execute(
                 "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
                 (delta, lease.run_id),
+            )
+
+    def run_usage(self, run_id: UUID) -> dict[str, Any]:
+        """Durable per-Run usage a new attempt continues from (C3 §13).
+
+        Model request slots are the three budget columns; model active seconds
+        sum every reservation, settled ones at their measured value and
+        unsettled ones at their reserved upper bound. Tool usage comes from the
+        tool ledger columns. Read in one snapshot; never fenced, never written.
+        """
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,r.tool_operations_used,r.tool_seconds_used,"
+                "(SELECT COALESCE(SUM(COALESCE(b.seconds,b.reserved_seconds)),0) FROM opspilot_budget_reservations b WHERE b.run_id=r.run_id) AS model_seconds_used "
+                "FROM opspilot_runs r WHERE r.run_id=%s",
+                (run_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            return {
+                "budget_limit": int(row["budget_limit"]),
+                "model_requests_used": int(
+                    row["budget_reserved"] + row["budget_spent"] + row["budget_unknown"]
+                ),
+                "model_seconds_used": float(row["model_seconds_used"]),
+                "tool_operations_used": int(row["tool_operations_used"]),
+                "tool_seconds_used": float(row["tool_seconds_used"]),
+            }
+
+    def block(self, lease: Lease) -> None:
+        """Move this attempt's Run to ``blocked`` (C3 §7 incompatible/malformed state).
+
+        Fenced like every other write: a lease that human control already
+        superseded cannot block the Run it no longer holds. ``claim()`` never
+        silently resumes a blocked Run; a human or an explicit migration does.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                (lease.run_id,),
+            ).fetchone()
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
+                raise PersistenceError("CONTROL_DENIED")
+            conn.execute(
+                "UPDATE opspilot_runs SET state='blocked',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running'",
+                (lease.run_id,),
             )
 
     def lease_current(self, lease: Lease) -> bool:

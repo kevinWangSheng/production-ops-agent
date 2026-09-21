@@ -1,0 +1,429 @@
+"""Durable transcript rebuild and loop resume (C3 §5/§7), without PostgreSQL.
+
+``MemoryStepStore`` keeps the committed rows across loop instances, so a
+"worker restart" is a second ``InvestigationLoop`` over the same store. The
+model is scripted; a ``RuntimeError`` from it stands in for the process
+dying mid-request.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from opspilot.investigation.context import (
+    INITIAL_SEGMENT,
+    ContextError,
+    InvestigationInput,
+    parse_step_key,
+    rebuild_transcript,
+    step_key,
+)
+from opspilot.investigation.limits import M1_FROZEN_LIMITS, RunLimits
+from opspilot.investigation.loop import InvestigationLoop, tool_request_for
+from opspilot.investigation.store import MemoryStepStore
+from tests.m1_investigation_support import (
+    ScriptedModel,
+    assemble,
+    reply,
+    report_from_transcript,
+    tool_call,
+)
+
+WIDE = RunLimits(model_requests=12)
+
+
+class Crash(RuntimeError):
+    """The process died while this model request was in flight."""
+
+
+def _wide(*, replies, model_requests=8, budget_limit=12):
+    loop, request, model, transport, store, sink = assemble(
+        replies=replies, budget_limit=budget_limit, model_requests=model_requests
+    )
+    from dataclasses import replace
+
+    request = replace(request, limits=WIDE)
+    return loop, request, model, transport, store, sink
+
+
+def _tool_rounds(count, *, start=1):
+    return [
+        reply(
+            tool_calls=[tool_call(call_id=f"call-{start + index}")], finish="tool_calls"
+        )
+        for index in range(count)
+    ]
+
+
+def _restart(loop, store, replies):
+    """A new worker: same store and executor, a fresh model client."""
+    model = ScriptedModel(replies)
+    return (
+        InvestigationLoop(
+            model=model, executor=loop.executor, store=store, clock=loop.clock
+        ),
+        model,
+    )
+
+
+def _transcript(store, request):
+    return rebuild_transcript(
+        store.snapshot(),
+        run_id=request.run_id,
+        authorized_targets=request.scope.target_ids,
+        input=request.as_input(),
+    )
+
+
+# --- keys and input snapshot -------------------------------------------
+
+
+def test_step_key_round_trips_and_reads_the_legacy_form():
+    assert step_key("ctx0", 3) == "ctx0:round-3"
+    assert parse_step_key("ctx2:round-10") == ("ctx2", 10)
+    assert parse_step_key("round-4") == (INITIAL_SEGMENT, 4)
+    assert parse_step_key("conclusion:ctx0:round-4") is None
+    assert parse_step_key("ctx0:round-04") is None
+    with pytest.raises(ContextError, match="INVALID_INPUT"):
+        step_key("a:b", 1)
+
+
+def test_input_snapshot_round_trips_and_rejects_a_tampered_tool_face():
+    _, request, _, _, _, _ = _wide(replies=[])
+    snapshot = request.as_input().as_json()
+    restored = InvestigationInput.from_json(json.loads(json.dumps(snapshot)))
+    assert restored == request.as_input()
+    tampered = dict(snapshot)
+    tampered["tool_schemas"] = []
+    with pytest.raises(ContextError, match="INPUT_INVALID"):
+        InvestigationInput.from_json(tampered)
+    with pytest.raises(ContextError, match="INPUT_INVALID"):
+        InvestigationInput.from_json({**snapshot, "model_requests": 99})
+
+
+def test_frozen_limits_are_the_default_and_a_wider_instance_is_not_within_them():
+    _, request, _, _, _, _ = assemble(replies=[])
+    assert request.limits == M1_FROZEN_LIMITS
+    assert WIDE.within(M1_FROZEN_LIMITS) is False
+    assert M1_FROZEN_LIMITS.within(WIDE) is True
+
+
+# --- more logical rounds than the frozen four -----------------------------
+
+
+def test_the_loop_runs_more_than_four_logical_rounds_under_test_limits():
+    loop, request, model, transport, store, _ = _wide(
+        replies=[*_tool_rounds(6), report_from_transcript], model_requests=8
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert len(model.calls) == 7
+    assert outcome.model_requests_used == 7
+    assert len(outcome.evidence_ids) == 6
+    assert [
+        parse_step_key(key) for key in store.steps if not key.startswith("conclusion:")
+    ] == [("ctx0", index) for index in range(1, 8)]
+    assert outcome.final_step_id is not None
+    assert outcome.conclusion["conclusion"]["rounds"] == 7
+    assert outcome.conclusion["conclusion"]["execution"] == "completed"
+    assert "reasoning_content" not in json.dumps(outcome.conclusion)
+
+
+# --- restart at each C3 §7 breakpoint ------------------------------------
+
+
+def test_restart_before_the_model_response_is_committed_continues_from_the_rows():
+    loop, request, _, transport, store, _ = _wide(
+        replies=[*_tool_rounds(2), Crash("killed mid-request")]
+    )
+    with pytest.raises(Crash):
+        loop.run(request)
+    assert store.usage().model_requests_used == 3  # the in-flight slot stays occupied
+    executed_before = len(transport.requests)
+
+    transcript = _transcript(store, request)
+    assert transcript.next_round == 3
+    assert transcript.live_steps == 2
+    assert [m["role"] for m in transcript.messages][-4:] == [
+        "assistant",
+        "tool",
+        "assistant",
+        "tool",
+    ]
+    assert len(transcript.delivered) == 2
+
+    second, model = _restart(
+        loop, store, [*_tool_rounds(1, start=3), report_from_transcript]
+    )
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed"
+    # Round 3 was re-sent with the rebuilt context, round 4 was the report.
+    assert model.calls[0].tools is not None
+    assert [m["role"] for m in model.calls[0].messages][-2:] == ["assistant", "tool"]
+    assert outcome.model_requests_used == 5  # 2 + 1 crashed + 2 new, never reset
+    assert len(outcome.evidence_ids) == 3
+    assert parse_step_key(
+        [k for k in store.steps if not k.startswith("conclusion:")][-1]
+    ) == (
+        "ctx0",
+        4,
+    )
+    assert len(transport.requests) == executed_before + 1  # only round 3's query
+
+
+def test_restart_after_the_response_is_committed_but_before_its_tools_ran():
+    class DieOnce:
+        def __init__(self, inner):
+            self.inner = inner
+            self.armed = True
+            self.dispatched = 0
+
+        @property
+        def scope(self):
+            return self.inner.scope
+
+        @property
+        def tool_seconds_used(self):
+            return self.inner.tool_seconds_used
+
+        def execute(self, request):
+            if self.armed:
+                self.armed = False
+                raise Crash("killed before the tool ran")
+            self.dispatched += 1
+            return self.inner.execute(request)
+
+    loop, request, _, _, store, _ = _wide(replies=[*_tool_rounds(1)])
+    dying = DieOnce(loop.executor)
+    loop.executor = dying
+    with pytest.raises(Crash):
+        loop.run(request)
+    committed = [k for k in store.steps if not k.startswith("conclusion:")]
+    assert committed == ["ctx0:round-1"]
+    step_id = store.step_ids["ctx0:round-1"]
+    assert store.tool_results[step_id] == []
+
+    # A rebuild refuses while the current generation still owes a tool result.
+    with pytest.raises(ContextError, match="PENDING_TOOLS"):
+        _transcript(store, request)
+
+    # The recovery session replays only the outstanding ordinal ...
+    call = store.steps["ctx0:round-1"]["response"]["assistant"]["tool_calls"][0]
+    outcome = dying.inner.execute(
+        tool_request_for(
+            step_id,
+            0,
+            call,
+            target_ref=next(iter(request.scope.target_ids)),
+            window=request.scope.window.as_json(),
+        )
+    )
+    store.commit_tool(step_id, 0, dict(outcome.model_view))
+    # ... after which the transcript is complete and the loop continues.
+    transcript = _transcript(store, request)
+    assert transcript.next_round == 2 and len(transcript.delivered) == 1
+    second, model = _restart(loop, store, [report_from_transcript])
+    second.executor = dying.inner
+    result = second.resume(transcript)
+    assert result.execution == "completed"
+    assert result.evidence_ids == tuple(transcript.evidence_ids)
+    assert dying.dispatched == 0  # the completed tool was never queried again
+
+
+def test_restart_after_tool_results_are_committed_does_not_query_again():
+    loop, request, _, transport, store, _ = _wide(
+        replies=[*_tool_rounds(3), Crash("killed before round 4 went out")]
+    )
+    with pytest.raises(Crash):
+        loop.run(request)
+    queries_before = len(transport.requests)
+    transcript = _transcript(store, request)
+    second, model = _restart(loop, store, [report_from_transcript])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed"
+    assert len(transport.requests) == queries_before
+    # Budget remained (8 planned, 4 used), so round 4 still offered tools; the
+    # scripted model answered with the report anyway. One call, no re-query.
+    assert len(model.calls) == 1
+    assert [m["role"] for m in model.calls[0].messages].count("tool") == 3
+    assert outcome.evidence_ids == tuple(transcript.evidence_ids)
+
+
+def test_a_committed_conclusion_that_was_never_published_is_reported_for_publish():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    outcome = loop.run(request)
+    assert outcome.final_step_id is not None
+    transcript = _transcript(store, request)
+    assert transcript.pending_publish is not None
+    step_id, conclusion = transcript.pending_publish
+    assert step_id == outcome.final_step_id
+    assert conclusion == outcome.conclusion
+    # Once published, nothing is pending.
+    store.publish(conclusion, step_id=step_id)
+    assert _transcript(store, request).pending_publish is None
+
+
+def test_rebuilt_delivered_views_match_the_original_attempt():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(2), report_from_transcript]
+    )
+    outcome = loop.run(request)
+    transcript = _transcript(store, request)
+    assert tuple(transcript.evidence_ids) == outcome.evidence_ids
+    assert [view.time_scope_refs for view in transcript.delivered] == [
+        frozenset({"policy-window-1"})
+    ] * 2
+
+
+# --- generations, authorization and fail-closed rules ----------------------
+
+
+def test_an_incomplete_group_from_a_superseded_generation_is_dropped_whole():
+    loop, request, _, _, store, _ = _wide(replies=[*_tool_rounds(1)])
+
+    class DieBeforeTools:
+        def __init__(self, inner):
+            self.inner = inner
+
+        scope = property(lambda self: self.inner.scope)
+        tool_seconds_used = property(lambda self: self.inner.tool_seconds_used)
+
+        def execute(self, request):
+            raise Crash("killed before the tool ran")
+
+    loop.executor = DieBeforeTools(loop.executor)
+    with pytest.raises(Crash):
+        loop.run(request)
+    orphan = store.step_ids["ctx0:round-1"]
+    # A human follow-up moved the incident on; the old plan can never be finished.
+    store.advance_generation()
+    transcript = _transcript(store, request)
+    assert transcript.dropped_groups == (orphan,)
+    assert all(m["role"] != "tool" for m in transcript.messages)
+    assert transcript.next_round == 2  # the round number is not reused
+    assert transcript.delivered == []
+
+
+def test_a_view_whose_target_is_no_longer_authorized_is_stubbed_and_not_cited():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    loop.run(request)
+    transcript = rebuild_transcript(
+        store.snapshot(),
+        run_id=request.run_id,
+        authorized_targets=frozenset(),
+        input=request.as_input(),
+    )
+    tool_messages = [m for m in transcript.messages if m["role"] == "tool"]
+    assert len(tool_messages) == 1
+    stub = json.loads(tool_messages[0]["content"])
+    assert stub["status"] == "revoked" and stub["reason"] == "TARGET_NOT_AUTHORIZED"
+    assert "content" not in stub
+    assert transcript.delivered == [] and transcript.evidence_ids == []
+
+
+def test_rows_of_another_run_fail_closed():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    loop.run(request)
+    snapshot = store.snapshot()
+    snapshot["steps"][0]["run_id"] = "someone-else"
+    with pytest.raises(ContextError, match="INCONSISTENT_STATE"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )
+    snapshot = store.snapshot()
+    snapshot["run"]["run_id"] = "someone-else"
+    with pytest.raises(ContextError, match="RUN_MISMATCH"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )
+
+
+def test_an_unknown_step_kind_or_missing_input_fails_closed():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    loop.run(request)
+    snapshot = store.snapshot()
+    snapshot["steps"][0]["response"]["kind"] = "summary-v9"
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )
+    with pytest.raises(ContextError, match="INPUT_MISSING"):
+        rebuild_transcript(
+            store.snapshot(),
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+        )
+
+
+def test_a_step_without_reasoning_content_cannot_be_replayed_with_tools():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    loop.run(request)
+    snapshot = store.snapshot()
+    del snapshot["steps"][0]["response"]["assistant"]["reasoning_content"]
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )
+
+
+def test_the_active_time_budget_survives_a_restart():
+    loop, request, _, _, store, _ = _wide(replies=[*_tool_rounds(1), Crash("dead")])
+    with pytest.raises(Crash):
+        loop.run(request)
+    # The crashed request is unsettled: it counts at its reserved upper bound.
+    assert store.usage().model_seconds_used >= WIDE.model_request_timeout_seconds
+    tiny = RunLimits(
+        model_requests=12, active_seconds=WIDE.model_request_timeout_seconds
+    )
+    from dataclasses import replace
+
+    request = replace(request, limits=tiny)
+    store.input = request.as_input().as_json()
+    transcript = rebuild_transcript(
+        store.snapshot(),
+        run_id=request.run_id,
+        authorized_targets=request.scope.target_ids,
+    )
+    second, model = _restart(loop, store, [report_from_transcript])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("WALL_TIME_EXHAUSTED",)
+    assert model.calls == []
+
+
+def test_resume_refuses_a_transcript_for_another_run():
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    loop.run(request)
+    transcript = _transcript(store, request)
+    other = MemoryStepStore(
+        budget_limit=12, deadline=store.deadline, clock=loop.clock, run_id="other-run"
+    )
+    stranger, _ = _restart(loop, other, [report_from_transcript])
+    with pytest.raises(ValueError, match="INVALID_INPUT"):
+        stranger.resume(transcript)
