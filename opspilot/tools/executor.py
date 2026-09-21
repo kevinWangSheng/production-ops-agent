@@ -589,13 +589,9 @@ class ReadOnlyToolExecutor:
         self, operation: ToolOperation, plan: _Plan
     ) -> tuple[ToolOperation, float] | ToolOutcome:
         scope = self._scope
-        control = self._read_control()
-        if control is None:
-            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
-        if control.suspended:
-            return self._refuse(operation, "denied", "SUSPENDED")
-        if self._generations_changed(control):
-            return self._refuse(operation, "denied", "CONTROL_GENERATION_CHANGED")
+        decision = self._control_decision()
+        if decision:
+            return self._refuse(operation, "denied", decision)
         if self._operations_used >= scope.max_operations:
             return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
         # Re-read the trusted clock here rather than reusing ``started_at``.
@@ -744,7 +740,15 @@ class ReadOnlyToolExecutor:
                 self._control_invalid(self._clock.now()) or "CONTROL_UNAVAILABLE",
             )
         if not charged:
-            return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE")
+            # A generic ledger failure before dispatch goes through the same
+            # precedence as the control-denied branch above: a human decision
+            # taken since ``_reserve()`` is reported as such, not hidden
+            # behind the storage outage.
+            return self._refuse(
+                operation,
+                "denied",
+                self._control_invalid(self._clock.now()) or "CONTROL_UNAVAILABLE",
+            )
         self._operations_used += 1
 
         # The charge above is itself a ledger round trip of unbounded
@@ -776,13 +780,9 @@ class ReadOnlyToolExecutor:
             self._release(operation.operation_id, dispatch_id)
             return self._refuse(operation, "denied", reason)
 
-        control = self._read_control()
-        if control is None:
-            return deny_before_dispatch("CONTROL_UNAVAILABLE")
-        if control.suspended:
-            return deny_before_dispatch("SUSPENDED")
-        if self._generations_changed(control):
-            return deny_before_dispatch("CONTROL_GENERATION_CHANGED")
+        decision = self._control_decision()
+        if decision:
+            return deny_before_dispatch(decision)
         now = self._clock.now()
         # This is the authorization check immediately before dispatch, which is
         # what ``authorized_at`` documents itself to be. Leaving the earlier
@@ -1006,7 +1006,19 @@ class ReadOnlyToolExecutor:
                 "confirmed",
             )
         if not committed:
-            # Evidence must be committed before it may be consumed.
+            # Evidence must be committed before it may be consumed. A generic
+            # sink failure is an evidence error -- unless a human decision has
+            # landed since the re-check above, which outranks it and keeps
+            # the observation as history like every other post-fetch refusal.
+            decision = self._control_decision()
+            if decision:
+                return self._refuse(
+                    operation,
+                    "denied",
+                    decision,
+                    "confirmed",
+                    evidence=self._history(dispatch_id, operation, plan, response),
+                )
             return self._refuse(
                 operation, "error", "EVIDENCE_NOT_COMMITTED", "confirmed"
             )

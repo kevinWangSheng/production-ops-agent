@@ -1354,6 +1354,44 @@ def test_a_human_decision_outranks_a_settlement_storage_failure():
     assert len(sink.records) == 1 and sink.records[0].adopted is False
 
 
+def test_a_human_decision_outranks_a_pre_dispatch_ledger_failure():
+    """Independent review: a pause taken between ``_reserve()`` and the
+    pre-dispatch charge was reported as ``CONTROL_UNAVAILABLE`` when the
+    ledger write failed generically, while the same pause with a working
+    ledger was reported as ``SUSPENDED`` by the pre-dispatch re-check.
+    """
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=1
+    )
+    executor, transport, sink, _ = build(
+        ledger=RecordingLedger(fail_on={1}), control=control
+    )
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert transport.requests == [] and sink.records == []
+
+
+def test_a_human_decision_outranks_an_evidence_commit_failure():
+    """Independent review: a pause landing after the post-fetch re-check and
+    a generic sink failure on the adopt commit reported
+    ``EVIDENCE_NOT_COMMITTED`` -- the one post-fetch exit that still did not
+    run the control precedence the settlement-failure exit already had.
+    """
+    control = FixedControl(
+        later=ControlSnapshot(7, 0, 0, suspended=True), later_after=3
+    )
+    executor, transport, _, _ = build(sink=RecordingSink(fail=True), control=control)
+    transport.response = TransportResponse(body=body([{"value": 1}]))
+
+    outcome = executor.execute(request())
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert outcome.evidence is None  # the sink is down; nothing could be kept
+
+
 def test_a_human_decision_outranks_a_settlement_budget_refusal():
     """Same precedence for the durable cap: a newer human decision is the
     authoritative fact, and the budget refusal is not lost -- it is simply not
