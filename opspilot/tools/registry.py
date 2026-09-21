@@ -566,7 +566,13 @@ class ToolRegistration:
             for key, spec in self.parameters.items()
         ):
             raise ToolContractError("INVALID_PARAMETER_SPEC")
-        if any(_endpoint_text(key) for key in self.parameters):
+        if any(_endpoint_text(key) or "//" in key for key in self.parameters):
+            # 参数名不是散文：标识符里没有任何正当理由出现 `//`，因此这一面可以
+            # 无条件拒绝，而不必像描述字段那样区分「endpoint」与「路径」。
+            # 单标签协议相对 endpoint（`//prometheus/api`）在散文里与普通路径
+            # （`//shared/config`）语法上不可区分，故描述字段不采用该规则；名称
+            # 这一面没有这个顾虑，于是在这里收紧（bot review 第 27 轮：其中
+            # 参数名部分采纳，散文部分说明依据后拒绝）。
             # Parameter keys become property names in the model-visible
             # schema, so the endpoint prohibition applies to them exactly as it
             # does to the prose beside them; checking only the descriptions

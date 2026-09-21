@@ -917,3 +917,17 @@ def test_double_slash_prose_with_a_numeric_suffix_is_an_accepted_cost():
     with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
         ParameterSpec(kind="string", description="见 //步骤:30 的说明")
     assert ParameterSpec(kind="string", description="按步骤:30 秒聚合").description
+
+
+@pytest.mark.parametrize("name", ["//prometheus/api", "//监控/指标", "//shared/config"])
+def test_any_double_slash_in_a_parameter_name_is_refused(name):
+    """Bot review finding, partially adopted: a single-label protocol-relative
+    endpoint cannot be told from an ordinary path *in prose*, so the
+    description rule is unchanged (see
+    test_double_slash_prose_is_not_mistaken_for_an_endpoint). A parameter name
+    is not prose -- an identifier has no legitimate reason to contain `//` --
+    so this surface is refused outright, which closes the name half of the
+    report without the false positives the prose half would cause.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        registration(parameters={name: ParameterSpec(kind="string")})
