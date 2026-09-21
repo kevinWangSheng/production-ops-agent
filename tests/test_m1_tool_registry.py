@@ -892,3 +892,28 @@ def test_cjk_prose_with_double_slashes_survives(text):
     own language.
     """
     assert ParameterSpec(kind="string", description=text).description == text
+
+
+@pytest.mark.parametrize("text", ["采集 //监控:4317/api", "//监控:4317"])
+def test_protocol_relative_unicode_ported_hosts_are_refused(text):
+    """Bot review finding: the ported-host alternative was the last ASCII-only
+    branch of the `//` family. `//监控:4317` and `//prometheus:9090` are the
+    same thing -- the anchor is `//` plus a numeric port.
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description=text)
+
+
+def test_double_slash_prose_with_a_numeric_suffix_is_an_accepted_cost():
+    """The accepted cost of the branch above, stated rather than hidden: CJK
+    prose that writes `//词:数字` is refused too. It is a registration-time
+    error the operator sees and can reword; the alternative -- keeping the
+    branch ASCII-only -- would mean `//监控:4317` reaches the model while
+    `//prometheus:9090` does not, which is a worse trade.
+
+    Prose without the `//` anchor is unaffected, which is what keeps this
+    narrow: `按步骤:30 秒聚合` remains legitimate (pinned separately).
+    """
+    with pytest.raises(ToolContractError, match="CREDENTIAL_MATERIAL_FORBIDDEN"):
+        ParameterSpec(kind="string", description="见 //步骤:30 的说明")
+    assert ParameterSpec(kind="string", description="按步骤:30 秒聚合").description
