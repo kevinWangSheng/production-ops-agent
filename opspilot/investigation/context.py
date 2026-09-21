@@ -743,3 +743,143 @@ def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:
     if type(estimated) is not int:
         return factor
     return calibrated(factor, estimated, usage.get("prompt_tokens"))
+
+
+# --- cross-Run continuation (C3 §7 "基于业务事实的新 Run 接续") -----------------
+
+
+@dataclass(frozen=True)
+class Continuation:
+    """What a successor Run receives from a Run that handed off.
+
+    ``evidence_context`` is a v4 evidence context bound to the *new* Run id
+    whose ``view_bindings`` name every adopted, still-authorized view of the
+    previous Run, so the successor can cite them without re-querying;
+    ``handoff_note`` is deterministic text for the successor's question. No
+    private protocol field, model prose or non-adopted result crosses over.
+    Creating the successor Run stays a human/Controller action.
+    """
+
+    previous_run_id: str
+    evidence_context: dict[str, Any]
+    handoff_note: str
+    evidence_ids: tuple[str, ...]
+
+
+def continuation_context(
+    snapshot: Mapping[str, Any],
+    *,
+    new_run_id: str,
+    authorized_targets: frozenset[str],
+) -> Continuation:
+    run = snapshot.get("run")
+    if not isinstance(run, Mapping) or run.get("input") is None:
+        raise ContextError("INPUT_MISSING")
+    if not isinstance(new_run_id, str) or not new_run_id:
+        raise ContextError("INVALID_INPUT")
+    previous_run_id = str(run.get("run_id"))
+    if previous_run_id == new_run_id:
+        raise ContextError("INVALID_INPUT")
+    previous = InvestigationInput.from_json(run["input"])
+    context = evidence_context_projection(
+        previous.evidence_context, run_id=previous_run_id
+    )
+    bindings: dict[str, Any] = {}
+    steps = snapshot.get("steps")
+    if not isinstance(steps, Sequence):
+        raise ContextError("INCONSISTENT_STATE")
+    for step in sorted(
+        (s for s in steps if isinstance(s, Mapping)),
+        key=lambda s: (int(s.get("sequence", 0)), str(s.get("step_id"))),
+    ):
+        if step.get("status") == "late_result":
+            continue
+        response = step.get("response")
+        if not isinstance(response, Mapping) or response.get("kind") is not None:
+            continue
+        results = step.get("tool_results")
+        if not isinstance(results, list):
+            raise ContextError("INCONSISTENT_STATE")
+        for item in results:
+            view = item.get("result") if isinstance(item, Mapping) else None
+            if not isinstance(view, Mapping):
+                raise ContextError("INCONSISTENT_STATE")
+            target = view.get("target_id")
+            if isinstance(target, str) and target not in authorized_targets:
+                continue
+            citation = delivered_view(
+                view, evidence_context=context, authorized_targets=authorized_targets
+            )
+            if citation is None:
+                continue
+            binding: dict[str, Any] = {
+                "status": citation.status,
+                "target_refs": sorted(citation.target_ids),
+                "time_scope_refs": sorted(citation.time_scope_refs),
+            }
+            if isinstance(target, str):
+                binding["target_id"] = target
+            bindings[citation.evidence_id] = binding
+    carried: dict[str, Any] = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": new_run_id,
+        "view_bindings": bindings,
+    }
+    if isinstance(context, Mapping):
+        for key in ("time_policies", "target_catalog", "timing"):
+            if key in context:
+                carried[key] = context[key]
+    projected = evidence_context_projection(carried, run_id=new_run_id)
+    if projected is None:
+        raise ContextError("INCONSISTENT_STATE")
+    conclusion = snapshot.get("conclusion")
+    if not isinstance(conclusion, Mapping):
+        conclusion = next(
+            (
+                s["response"]
+                for s in steps
+                if isinstance(s, Mapping)
+                and isinstance(s.get("response"), Mapping)
+                and s["response"].get("kind") == CONCLUSION_KIND
+                and s.get("status") != "late_result"
+            ),
+            None,
+        )
+    summary = conclusion.get("conclusion") if isinstance(conclusion, Mapping) else None
+    summary = summary if isinstance(summary, Mapping) else {}
+    gaps: list[str] = []
+    next_steps: list[str] = []
+    report_text = summary.get("report_content")
+    if isinstance(report_text, str):
+        try:
+            report = json.loads(report_text)
+        except ValueError:
+            report = None
+        if isinstance(report, Mapping):
+            gaps = [g for g in report.get("gaps") or () if isinstance(g, str)]
+            next_steps = [
+                n for n in report.get("next_steps") or () if isinstance(n, str)
+            ]
+    evidence_ids = tuple(bindings)
+    lines = [
+        f"Continuation of investigation Run {previous_run_id}.",
+        f"Previous outcome: execution={summary.get('execution', 'unknown')}, "
+        f"handoff_reasons={list(summary.get('handoff_reasons') or ())}, "
+        f"rounds={summary.get('rounds', 'unknown')}.",
+        f"Carried evidence ({len(evidence_ids)} adopted views, cite by evidence_id): "
+        + (", ".join(evidence_ids) if evidence_ids else "none"),
+    ]
+    if gaps:
+        lines.append("Previous gaps: " + " | ".join(gaps))
+    if next_steps:
+        lines.append("Previous next steps: " + " | ".join(next_steps))
+    lines.append(
+        "Carried views keep their original observation time; query again for "
+        "current state instead of re-dating them."
+    )
+    return Continuation(
+        previous_run_id=previous_run_id,
+        evidence_context=dict(projected),
+        handoff_note="\n".join(lines),
+        evidence_ids=evidence_ids,
+    )
