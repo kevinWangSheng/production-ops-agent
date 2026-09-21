@@ -1,16 +1,20 @@
 # 调查指令与工具接口合同
 
-- 状态：PR 已就绪，待用户审核合并（PR #24）
-- 更新日期：2026-09-15
+- 状态：第一轮（合同撰写，PR #24）**已合并**；
+  第二轮（DISCIPLINE 收敛 + 确定性测试）**实现完成，三份独立审查与机器人 `@codex` 审查均已
+  逐条处置，PR #27 待用户审核合并**。详见下方「第二轮」的「PR 交付状态」。
+- 更新日期：2026-09-17
 - 依据：[SPEC.md](../../SPEC.md)「Model priority and design ownership」「Verification and delivery」；
   [C3](../design/technical-proposal-2026-09-07.md) 第 5、7、8 节；
   [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md)；[ADR-0002](../adr/0002-context-driven-investigation.md)。
-- 工作区：`chore/prompt-tool-contract` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-prompt-tool-contract`
-- PR：[#24](https://github.com/kevinWangSheng/production-ops-agent/pull/24)。
-  交付状态以 PR 当前 HEAD 为准，不在此复制提交哈希（避免记录随推送失效）。
+- 第一轮工作区：`chore/prompt-tool-contract` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-prompt-tool-contract`，
+  PR [#24](https://github.com/kevinWangSheng/production-ops-agent/pull/24) 已合并进 main。
   收尾时的状态：最新提交的 `checks` 与 `m0-postgres` 均 success，
   机器人审查 thread 全部已回复并 resolve，`mergeStateStatus` 为 `CLEAN`、`mergeable` 为 `MERGEABLE`。
-  **合并由用户审核后执行，本任务不自动合并。**
+- 第二轮工作区：`chore/instruction-contract-impl` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-instruction-contract`，
+  起点 main `b483a12`。进展、验证证据与交接见下方「第二轮：DISCIPLINE 收敛与确定性测试」。
+  交付状态以 PR 当前 HEAD 为准，不在此复制提交哈希（避免记录随推送失效）。
+  **两轮的合并均由用户审核后执行，本任务不自动合并。**
 
 ## 目标与范围
 
@@ -18,8 +22,11 @@
 定义模型可见文字（L1 调查纪律 / L2 报告契约 / L3 工具描述）的归属、版本生成规则、
 必填项与来源索引，并按用户要求核对 DeepSeek 官方文档后写入供应商绑定事实。
 
-范围界限：仅新增设计提案文档与导航/任务记录。
+范围界限（**第一轮**）：仅新增设计提案文档与导航/任务记录。
 不改产品代码、不改实验脚本、不做模型切换、不改 SPEC/ROADMAP/`feature_list.json`/门槛陈述/预算冻结值。
+
+第二轮范围另见下方「第二轮：DISCIPLINE 收敛与确定性测试」——该轮**新增产品模块与测试**，
+仍不改实验脚本记录值、不做模型切换、不改 SPEC 门槛陈述/`passes`/预算冻结值。
 
 ## 前提与完成条件
 
@@ -126,7 +133,7 @@ PR #24 的首次 CI 因此失败（`docs/design/...md:193` 的行内注释缩进
 | 三条落差分析（`prompt_revision` 未接线、`ToolRegistration` 无描述、L1 混入 L3） | 保留在本任务记录 | 是并入的动因，不是合同条款 |
 | L1 来源索引（24/30 句逐条回溯） | **不并入** | 取材自 M0 实验脚手架，用户已明确该批内容无产品参考价值 |
 | 回溯方法学（须覆盖静默失败，不能只检索拒绝码） | 保留在本任务记录 | 方法有效，但属实施经验非合同条款 |
-| 七项确定性检查 | 保留在本任务记录 | 实现时的验证设计，待实现任务承接 |
+| 七项确定性检查 | 保留在本任务记录 | 实现时的验证设计，待实现任务承接；逐项实施状态见下方「C3 第 7 节七项确定性检查的逐项状态」 |
 
 ## 接入点（实施者从哪里会被指到）
 
@@ -145,15 +152,24 @@ PR #24 的首次 CI 因此失败（`docs/design/...md:193` 的行内注释缩进
 
 ## 下一步与交接
 
-1. 用户裁决提案第 5 节 U1（`deepseek-v4-flash` 请求别名的弃用风险如何处置）与
-   U2（并入 C3 还是保持独立文档）。
-   U1 **不影响既有 M0 证据或冻结的校准值**（见提案 4.3 末：分界不落在 ROADMAP B2 校准集内）；
-   待裁决的只是别名何时切换与既有 provider-identity 决定的依据是否按 Change Log 更新。
-   现 §5 表只有 U1、U2 两项。原编号 U2「是否采用 strict tool mode」已整条撤销
-   （C3 第 5 节已定默认关闭 strict beta，不是待决项），原 U3 顺延为现 U2。
-2. 裁决后再实施合同本身（第 2 节的 `ToolRegistration.description`、第 7 节的确定性测试），
-   并按提案第 6 节的方式收敛两份 DISCIPLINE——新建单一来源模块并保留字节完全相同的带版本常量，
-   使 `prompt_sha256` 不变；本任务不执行该收敛。
+1. **两个决策点均已裁定，不再是待办。** 本条原为「待裁决」表述，已过期，此处更正为事实：
+   - **U1**（`deepseek-v4-flash` 请求别名的弃用处置）：用户 2026-09-15 决定
+     **把出站请求名改为 `deepseek-flash`**，随 PR #25 合并进 main。见
+     [模型 profile 任务记录](2026-09-15-model-profile-v41.md)、
+     [C3 第 5 节「模型接入」](../design/technical-proposal-2026-09-07.md)与
+     [SPEC「Model priority and design ownership」](../../SPEC.md)。该裁定
+     **不影响既有 M0 证据或 ROADMAP B2 冻结的校准值**——依据是供应商的退役公告，
+     不是逐 Run 身份覆盖。
+   - **U2**（并入 C3 还是保持独立文档）：裁定为
+     **治理合同并入 C3，模型特性参考保持独立并被 C3 引用**，见上方「归位决定」。
+     独立合同文件已删除，正文在 C3 第 5/8 节。
+   - 原编号 U2「是否采用 strict tool mode」已整条撤销（C3 第 5 节已定默认关闭 strict beta），
+     原 U3 顺延为现 U2。
+   - C3 正文经核查**不含** U1/U2 待决表格，无需同步：
+     `grep -n 'U1\|U2\|待用户决定' docs/design/technical-proposal-2026-09-07.md` 无命中。
+2. 合同实施分两批。**第一批（DISCIPLINE 收敛 + 确定性测试）已完成**，
+   见下方「第二轮：DISCIPLINE 收敛与确定性测试」。
+   **第二批（`ToolRegistration.description`）待 PR #20 合并后承接**，依赖关系见同节。
 3. 独立审查已完成（全新上下文 Agent，未参与撰写），提出 F1–F10 共 10 条发现，
    全部已复核并处置，逐条记录见下方「独立审查与处置」。
 4. 本任务未启动任何进程或服务，无未提交的用户 WIP。
@@ -207,3 +223,363 @@ F4 留下的「权限收紧连带作废在途 Run」链路已由 §1.3 与 §7 �
 
 机器人审查共四轮 5 条，**全部采纳并修复，无拒绝项**。第二轮的 P1-2 与第一轮的 F4 同源——
 模板/实例拆分当时只做在 L3，L1 原地漏掉；机器人复审补上了这个缺口。
+
+## 第二轮：DISCIPLINE 收敛与确定性测试（2026-09-15）
+
+- 工作区：`chore/instruction-contract-impl` @ `/Users/shenghuikevin/dev/AI/production-ops-agent-instruction-contract`，起点 main `b483a12`。
+- 范围：执行上方「下一步 2」里**本轮可做**的部分。不改产品运行行为、不改历史实验脚本的记录值、
+  不做模型切换、不改 SPEC 门槛陈述、`feature_list.json` 的 `passes` 或预算冻结值、不调用模型或任何外部付费服务。
+
+### 收敛前的实测：DISCIPLINE 实际有几份、在哪
+
+`grep -rn 'DISCIPLINE'`（排除 `.venv/` 与 `docs/evidence/`）只有一处具名常量，
+但**按文本算是两处拷贝**，第二处是内联字面量而非常量，所以按名字搜不到：
+
+| 位置 | 形态 | 句数 |
+|---|---|---:|
+| `scripts/m0_lab/round07/candidate_runner.py:47` | 具名常量 `DISCIPLINE`（含 `{steps}`） | 15 |
+| `scripts/m0_environment/holmes_baseline.py:1134–1138,1145` | 三段内联 `addition` 字面量 + 窗口/服务句 | 24（两变体） |
+
+逐段拆解后，上一轮记录里的全部句数结论都被**独立复算证实**：
+基础开场 6 + 证据纪律 7 + 投影语义 8 + 缺失序列 1 + 窗口 1 + 授权服务 1 = 多轮变体 **24 句**；
+final-report 变体换开场（同为 6 句）故亦为 **24 句**，与前者共享 **18 句**，并集 **30 句**；
+候选臂 6+7+1+1 = **15 句**，且逐字节是多轮变体的真子集；标为 L3 的投影语义正好 **8 句**。
+
+### 收敛前先固定住硬约束
+
+先算出收敛前的真实哈希，再作为测试的期望值：
+
+```
+$ .venv/bin/python -c "... DISCIPLINE.format(steps=2) + report_instruction(version=LEGACY_REPORT_VERSION) ..."
+DISCIPLINE template sha256 = 1aa8cec328f0575109b03c93d7982deda3e04b122da4243ca93f7d510442b834
+steps=2  end-to-end prompt_sha256 = 9648c6deda1aa97d8801b9e3f2518ee3f7a022e28ad24c8d2d0af3a143cd4abc
+```
+
+该值与 M0 证据中 `m004-normal-candidate-retry2` 与 `m004-fault-candidate` 两个 Run
+记录的 `prompt_sha256` 一致。**收敛后复算不变**，测试从证据 JSON 读回期望值而不是写死。
+
+### 做了什么
+
+新建 `opspilot/instructions/discipline.py`：按**复用边界**把句子收敛成只声明一次的 segment
+（开场两种、证据纪律、投影语义、缺失序列、窗口句、授权服务前缀），
+再把三个历史变体表述为 segment 的**有序序列**。顺序进结构是必要的——
+baseline 把窗口句拼在报告契约**之后**，候选臂拼在**之前**，这个差异是真实存在的。
+
+按 C3 第 5 节的四条 revision 规则实现 `discipline_revision` 与 `prompt_revision`：
+内容哈希而非人工编号；只覆盖模板字节、`{steps}` 与授权服务列表以占位符留在模板里；
+人类可读前缀加哈希短码；可从代码确定性重算。变体身份进前缀，
+避免 final-report 与多轮调查两条路径共用一个版本号而内容不同。
+
+| 变体 | `discipline_revision` |
+|---|---|
+| `baseline-multi-step` | `l1a-baseline-multi-step-89166c68a0b0` |
+| `baseline-final-report` | `l1a-baseline-final-report-8d87a738d81f` |
+| `replay-candidate` | `l1a-replay-candidate-bc2730f23697` |
+
+### 哪些收敛、哪些冻结为历史，依据是什么
+
+**历史实验脚本一律保留原字面量，不改成 import。** 依据是 ROADMAP 对模型 profile 切换的
+既定做法（「带 allocation id 的历史实验脚本保留原值作为历史记录」），
+以及上一轮记录的理由：这两处的 `prompt_sha256` 已冻结在 M0 证据里，
+把历史脚本改成引用新模块会改变它们的历史语义。
+
+代价是两处仍有字节副本。该代价由确定性测试承担：
+`test_module_constants_still_match_the_historical_script_literals` 断言模块常量与两个脚本里的
+字面量逐字节相同，任一处被改动即转红。`holmes_baseline.py` 的字面量用 **AST 结构定位**
+（按节点类型与出现顺序）而不是关键词匹配——它运行时依赖 `tmp/` 下被 gitignore 的
+HolmesGPT checkout，CI 里不存在；且按内容定位会让「改动被检查的文字」变成
+「采集失败」而不是「字节不符」，正好在该转红的时候失去意义。这一点是变异验证发现的（见下）。
+
+按 C3 第 5 节「换一套工具它还成立吗」的判据，投影字段语义 8 句**属 L3**，
+在模块里被标记 `tool_specific=True` 并只出现在两个历史 baseline 变体中；
+`replay-candidate` 不含任何 `tool_specific` 段。**迁往工具描述本轮不做**——
+目的地 `opspilot/tools/registry.py` 尚未进 main，见下方交接项。
+
+### 验证证据
+
+| 检查 | 命令 | 真实结果 |
+|---|---|---|
+| 开发检查全量 | `make check` | `1079 passed, 77 skipped, 2 xfailed in 30.93s` |
+| 新增确定性测试 | `.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` | `29 passed` |
+| PG 持久化集成 | `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m1_durable_state_postgres.py -q` | `23 passed`（原 21 + 本轮 2） |
+| 冻结哈希复算 | 见上方「收敛前先固定住硬约束」 | 收敛前后同为 `9648c6de…a3cfd4abc`，与 M0 证据一致 |
+
+`make check` 的基线（本分支起点 main `b483a12`）为 `1050 passed, 75 skipped`；
+本轮净增 **29 个通过用例**与 **2 个 skipped**（PG 用例未开 `M1_DURABLE_POSTGRES` 时跳过）。
+
+### 变异验证：每条断言都确认过能转红
+
+不做变异就无法区分「断言成立」与「断言恒真」。**17 个单元变异 + 2 个 PG 变异，各自至少让一条测试转红**（17/17）：
+
+| 变异 | 转红的测试 |
+|---|---|
+| M1 模块里开场改一个词 | 冻结哈希、两处逐字节、漂移检查、revision bump（共 6 条） |
+| M2 `candidate_runner.py` 的 `DISCIPLINE` 改一个词 | 漂移检查、候选臂逐字节 |
+| M3 `holmes_baseline.py` 的投影段改一个词 | 漂移检查、baseline 逐字节（含无 scope 分支，共 4 条） |
+| M4 候选臂窗口句挪到报告契约之后 | 冻结哈希、候选臂逐字节 |
+| M5 哈希投影提前把 `{steps}` 填掉 | 模板字节非渲染字节 |
+| M6 哈希投影漏掉 `tool_specific` 字段 | 投影字段同步 |
+| M7 把 L3 投影段塞进候选臂 | 冻结哈希、逐字节、句数普查、L3 隔离 |
+| M8 `discipline_revision` 不再标识变体 | 变体身份 |
+| M9 纪律文本混入凭据形态 | 凭据形态（两个变体）＋ 5 条字节断言 |
+| M10 `prompt_revision` 不复合 L2 | L2 换版必须 bump |
+| M11 `render` 把预算数字当独立句追加 | 冻结哈希、逐字节、模板字节（共 5 条） |
+| M12 未登记变体静默返回空序列 | fail-closed |
+| M13 候选臂的无条件窗口句被误标为 scoped | 冻结哈希、逐字节、scope 条件性 |
+| M14 `render` 回到静默丢弃服务列表 | 无槽位变体收到服务列表须拒绝 |
+| M15 `render` 不再校验预算为正整数 | 预算校验（5 个参数化用例） |
+| M16 `scoped` 段不再被跳过 | 无 scope 裁剪、scope 条件性 |
+| M17 预算槽位不再校验前一段带占位符 | 槽位错位护栏 |
+| P1 `prompt_revision` 只覆盖 L2 不覆盖 L1a | PG：模板换版必须 blocked |
+| P2 `render` 丢掉授权服务列表槽位 | PG：实例值必须真的改变字节 |
+
+**变异验证自身查出两个真缺陷，都已修：**
+
+1. M3 最初以「collection error」而非断言失败收场——`holmes_baseline.py` 的字面量当时按
+   关键词定位，改动被检查的文字会让提取器先找不到目标。已改为 AST 结构定位，
+   并把提取改为惰性（`functools.cache`），失败落在具体测试而不是整个文件的收集阶段。
+2. 「实例值不移动 revision」当时没有任何断言真正承重——`prompt_revision` 的签名本就不收实例值，
+   结构上不可能失败。补了 `test_projection_carries_template_bytes_not_filled_values`，
+   挡住「把占位符提前填掉」这类真实回归（M5/M11 证明它转红）。
+
+**自测阶段另查出两处 fail-open，已修并补测**（不是审查提出的，是实现者自己探边界发现的）：
+
+1. **给没有授权服务槽位的变体传服务列表会被静默丢掉。** 对 `replay-candidate` 传
+   `authorized_services=("checkoutservice",)` 与不传得到**完全相同的字节**。
+   调用方会以为查询范围已被限定，而模型拿到的是未限定的纪律。查询范围属 Controller 权限
+   （PRODUCT-CONSTRAINTS：*Read identity, exact target resolution, query budgets,
+   cancellation and human control decisions are scoped outside the model's authority*），
+   不能悄悄落空。已改为 `ValueError` fail-closed（变异 M14 证明转红）。
+2. **预算轮次不校验**：`model_requests=0 / -1 / "many"` 都被接受，会拼出
+   `You have at most -1 model requests` 并照常送进模型。已改为「必须是正整数」，
+   并按仓库既有 `validate_max_http` 的写法用 `type(x) is not int` 连 `bool` 一起拒
+   （`True` 会拼出 `at most True model requests`）。变异 M15 证明转红。
+3. **预算槽位假定自己排在带占位符的那段之后**：`render` 是把数字回填进**前一段**，
+   槽位一旦被排到别处（比如报告契约之后），会对那一段调用 `.format`——字节错了却不报错。
+   今天三个变体都把开场排在第一位，所以这是给下一个加变体的人留的护栏
+   （M1-01 的调查 loop 就要加一个）。已加显式校验，变异 M17 证明转红。
+
+同时把「无 scope 时窗口句整段不出现」从**渲染后按后缀裁剪**改为**结构判定**
+（`Segment.scoped`）。原写法只要 segment 顺序一变，裁剪就静默失效，
+失效的表现是送进模型的字节错了却没人报错。改后候选臂那句**无条件**的窗口句不受影响——
+同一段文字在两类变体里条件性不同，这一点必须保住（变异 M13、M16 分别证明两侧都转红）。
+`scoped` 已同步纳入哈希投影，故三个 `discipline_revision` 短码相应变化（上表已是新值）。
+
+另有两个变异（P1、P2）最初没转红，复查确认是**变异构造得不对**而非测试有洞：
+`prompt_revision` 的变体 id 同时出现在前缀与哈希载荷里，只去掉一处不足以让两个变体撞号；
+P2 的两次渲染同时差在预算与服务列表，一个差异掩盖了另一个丢失。
+改成忠实变异后两条均转红，PG 用例也相应改为**两类实例值分别断言**。
+
+### C3 第 7 节七项确定性检查的逐项状态
+
+上一轮记录把七项检查列为「实现时的验证设计，待实现任务承接」。本轮逐项结论：
+
+| # | 检查 | 本轮状态 |
+|---|---|---|
+| 1 | 版本绑定三句（L3a fingerprint / L1a+L2 golden hash / 仅实例值不同须同号） | **部分完成**：后两句已实现（冻结哈希 + 实例不变性 + PG 用例）；L3a fingerprint 一句依赖注册表，未做 |
+| 2 | `ToolRegistry` fingerprint 的工具层与参数层投影须覆盖 `description` | **未做**：依赖 `opspilot/tools/registry.py`（PR #20，未进 main） |
+| 3 | `ToolDescription` 五字段结构完整性，注册期 `ToolContractError` | **未做**：同上 |
+| 4 | 凭据形态正则 + `RESERVED_PARAMETERS` 参数键检查 | **部分完成**：凭据形态正则已对 L1 全部变体实现（形态匹配，非关键词）；参数键检查依赖注册表，未做 |
+| 5 | `versions` 不一致的续跑进 `blocked(INCOMPATIBLE_STATE)`，需补 prompt/tool 维度 | **部分完成**：prompt 维度已补（真实 L1a 模板哈希）；tool 维度依赖注册表，未做 |
+| 6 | 来源索引覆盖 L1 全集每一句且按变体校验 | **不实施，须用户确认**：见下方「发现的合同冲突」 |
+| 7 | 三类变化各走各的机制 | **部分完成**：合同变更与实例变化两行已有 PG 断言；授权收紧一行以 domain 层断言覆盖（`check_scope_versions` 抛 `CONTROL_CONFLICT` 而非 `INCOMPATIBLE_STATE`，且授权范围变化不触动 `prompt_revision`）；目标重新绑定一行未做 |
+
+### 须用户裁定：revision 的两处读法（审查提出，实现者不自选）
+
+**U-a｜`revision` 截断成 12 位十六进制，与 C3「比对仍用完整值」的关系。**
+C3 第 186 行原文：「人类可读前缀 + 哈希短码，便于在 PR 与证据中辨认，**比对仍用完整值**」。
+现实现 `discipline.py` 的 `_short()` 取 `hexdigest()[:12]`，模块只暴露短码，完整摘要无处可取；
+`tests/integration/test_m1_durable_state_postgres.py::_prompt_versions` 把它塞进 `versions`，
+`opspilot/persistence.py:211` 的 `row["versions"] != versions` 比的就是它——
+**进 `INCOMPATIBLE_STATE` 栅栏的是 48 bit 截断值**。
+
+审查对原文有两种读法且都讲得通：(a)「完整值」指完整的 revision **字符串**（前缀+短码）
+而非只看前缀 → 现实现合规；(b) 指**未截断的哈希** → 现实现不合规。
+两种读法改动成本都不高。**请用户裁定取哪一种**，不由实现者选更方便的。
+
+**U-b｜`template_projection()` 把 `key` 与 `tool_specific` 喂进哈希，导致无意义 bump。**
+实测：把 `MISSING_SERIES` 及其 `key` 一致重命名，**模型可见字节完全不变**
+（渲染 sha 仍为 `9648c6de…`），而短码从 `l1a-replay-candidate-e002af2fbbcd` 变成
+`aa8a282161e5`。C3 规则 2 的理由正是避免非语义差异导致互不兼容，而按上一轮记录 F6，
+`blocked(INCOMPATIBLE_STATE)` 的唯一出路是 cancel。`tool_specific` 尤其可疑——
+它是为将来迁 L3 设的**内部标注**，翻一下 bool 就 bump 一次 L1a。
+
+另一面：`test_revision_projection_covers_every_template_field` 反而**要求**新增字段进投影，
+依据是 C3 第 8 节「新增字段必须同步纳入该哈希的投影」。两条要求指向相反方向，
+**请用户裁定投影该只含模型可见字节，还是含结构元数据**。
+
+### 发现的合同冲突（须用户裁定，本轮不自行选择版本）
+
+**第 7 节第 6 项（来源索引静态检查）与已批准的归位决定相冲突。**
+
+- 第 6 项要求：来源索引以结构化数据为载体、与 L1 单一来源模块同处存放，静态检查覆盖
+  L1 全集 30 句每一句的来源字段。
+- 但上方「未并入 C3 的材料及去向」记录的裁定是：L1 来源索引
+  **不并入**，理由为「取材自 M0 实验脚手架，用户已明确该批内容无产品参考价值」。
+
+即：第 6 项要求把来源索引做成产品模块里的结构化数据并加静态检查，而归位决定已判定该批内容
+不进产品。七项检查所在的独立提案文件已删除，其第 6 项**未随 C3 第 5/8 节并入**，
+因此在当前权威来源（C3 正文）里没有对应条款。
+
+本轮按 AGENTS.md「权威来源冲突时指出具体冲突，在有意义的决策边界暂停依赖工作，
+不选择更方便实施的版本」**暂停该项**，不实施也不删除要求，交用户裁定：
+是承接第 6 项（需推翻「不并入」的裁定），还是确认第 6 项随独立文件一并作废。
+
+### 交接：`ToolRegistration.description` 待 PR #20 合并后承接
+
+C3 第 8 节「模型可见面」的五字段结构体（`returns` / `window_format` / `values_format` /
+`limits` / `cannot_prove`）与第 7 节第 2、3、4（参数键）项，
+依赖 `opspilot/tools/registry.py` 的 `ToolRegistration` 与 fingerprint 投影。
+该文件在 **PR #20（`feature/m1-01-tool-executor`，经 `gh pr list` 核实仍为 OPEN）分支上，未进 main**。
+
+本轮**不动 PR #20 的分支，也不在 main 上另建竞争的 registry**。承接条件与内容：
+
+1. 前置：PR #20 合并进 main。
+2. 在 `opspilot/tools/registry.py` 的 `ToolRegistration` 上增加 `ToolDescription` 结构体字段，
+   注册期断言结构完整性（`returns`/`limits`/`cannot_prove` 非空，
+   `window_format`/`values_format` 含占位符），失败抛 `ToolContractError`。
+3. 把 `description` 与 `ParameterSpec.description` 纳入 fingerprint 的**工具层与参数层两处投影**
+   （上一轮记录的落差 2：两处投影都会静默丢弃新字段），并分别断言。
+4. 把本模块里标记 `tool_specific=True` 的投影语义 8 句迁往对应工具描述。
+   **迁移会改变未来 Run 的 L1a 模板字节，须 bump `discipline_revision`**；
+   历史脚本与其冻结哈希不受影响（历史变体常量不动）。
+5. 补第 7 节第 1 项的 L3a fingerprint 一句、第 5 项的 tool 维度用例、
+   第 7 项的「目标重新绑定」一行。
+
+### 独立审查与处置（三份，全部已逐条复现后处置）
+
+三份独立审查最终都交回了结论（前两份经 SubagentHandback 失败后改由消息通道送达）。
+**每条发现都自己复现过再判**，不因为是审查说的就照单全收。
+
+| # | 发现 | 判定 | 处置 |
+|---|---|---|---|
+| F10 | 凭据检查是恒真断言 | **成立** | 把四条正则整体换成永不匹配的 `ZZZ_NEVER_MATCHES_ANYTHING_ZZZ`，整个文件仍 `29 passed`——正则写错、写漏、被删都不会被发现。加阳性对照后同一变异 `5 failed`。**阳性对照当场又查出一个真漏洞**：`SERVICE_TOKEN: hunter2` 命不中，因为 key=value 那条没开 `IGNORECASE`，已修 |
+| F4 | 漂移检查静默漏检 | **成立** | `sorted(appended)[:2]` 只取前两个 `addition +=` 节点。在 Prometheus 句后插入第三句纪律，两处已分叉而测试仍 `29 passed`。改为断言**恰好两段**后同一变异 `4 failed`。`window_scope` 的 BinOp 分支同补唯一性断言（原注释写「唯一一处」但代码是后写覆盖先写） |
+| F14 | 未识别槽位被静默丢弃 | **成立** | if/elif 链无 `else`，加一个 `render` 不认识的槽位，渲染与不含该槽位**逐字节相同**、无异常。补 `else` 抛错 |
+| — | `authorized_services` 无类型护栏（第二轮新发现） | **成立** | `str` 也可迭代，`", ".join("cartservice")` 逐字符展开成 `c, a, r, t, …`；`("",)` 是真值、渲染出前缀后空无一物。同一函数对 `model_requests` 严格到连 `bool` 都挡，对服务列表只判真值——不对称已补平 |
+| R2 | C3 §5 的 L1b `prompt_face_sha256` 全仓零实现 | **成立** | 核对 C3 第 170 行层表与第 176 行「L1b 与 L3b 不进 `versions` 比对，**只记录**」——只记录是要求记录。已补 `prompt_face_sha256()`，取**完整**摘要不截断（证据字段，不是给人看的标签） |
+| F11 / R5 | 实例值测试含恒真断言 | **成立** | 三条「同实参调同一纯函数两次」断言已删。留着比没有更糟：该命题由 `prompt_revision` 的签名保证（它不收实例值），不由断言保证 |
+| F19 | `VARIANTS` 是可变公开 dict | **成立** | 改 `MappingProxyType`——`Final` 只锁绑定不锁内容 |
+| F15 / F17 / F18 | `render` 三处 fail-open | **成立，本轮此前已修** | 审查基线是推送前的 4 文件状态；这三条在 `86bc99c` / `ad7b623` 已修，已对当前 HEAD 复验确认拒绝生效 |
+| F16 | 槽位错位以 `IndexError` / `KeyError` 崩溃 | **部分成立** | 响亮失败不是静默错字节；`{steps}` 那条已有清晰报错。其余保持崩溃，不再加包装 |
+| — | `('a,b',)` 与两个服务「无法区分」 | **不成立** | 实测 `", ".join(("a,b",))` = `"a,b"`，`", ".join(("a","b"))` = `"a, b"`，**逐字节不同**（复现输出 `相同: False`）。服务名内含逗号对模型读者仍有歧义，但不是静默碰撞 |
+| F2 / R1 | 冻结覆盖面被夸大 | **成立，表述已按 R1 更正** | 见下方「冻结证据的覆盖面」 |
+| F3 | 「历史脚本保留原值」的 ROADMAP 依据属类比外推 | **部分成立** | ROADMAP 那句上下文确是模型请求名。但「不改已产出证据的实验脚本」另有直接依据（上一轮记录「本任务明确不做」首条：改写文本会使已记录 Run 不可复现）。已在测试 docstring 改引后者 |
+| F5 / F6 / R3 | revision 截断 12 位；投影含非模型可见元数据 | **不自行裁定** | 见下方「须用户裁定」 |
+| F8 / F9 | L2 唯一来源仍在 M0 脚手架；`prompt_revision` 未接线 | **成立** | 已列为未完成项，见「本轮未做与限制」 |
+| F13 | 未建/更新任务记录 | **不成立（时点差）** | 审查基线是推送前状态；本记录与 ROADMAP 链接在 `59cafba` 起已随 PR 提交 |
+
+三份审查均未发现越界：`git diff --name-status b483a12..HEAD` 只动 `opspilot/instructions/`、
+两个测试文件与本记录；SPEC、ROADMAP、`feature_list.json`、`scripts/`、`docs/evidence/`、
+预算冻结值一律未动，无新依赖/平台/框架。
+
+审查明确未查的项（如实记录，不当作已覆盖）：`PRODUCT-CONSTRAINTS.md` 未逐字比对（第二份）、
+`make check` 全量未跑（第二份）、6 个 commit 未逐个审（第二份）、
+`deepseek-flash-prompt-tool-reference.md` 的撰写规则是否被遵守（第一份，不在待审范围）、
+`holmes_baseline.py` 中 `scope` 为真但 `scope["services"]` 为空是否历史可达（第一份标为**未确认**）。
+
+### 第四份独立审查（本次收尾新派，全新上下文 sonnet subagent，只读）
+
+按 AGENTS.md「独立审查使用未参与该方案或实现的 Agent，并以全新上下文启动」，本次收尾另派一个
+全新上下文的 sonnet subagent，只给它 PR 目标、C3 第 5/8 节、当时的 diff 范围与既有发现清单，
+要求对「字节不变 / 冻结哈希覆盖面 / fail-closed」三点逐条给 file:line 证据的结论，
+不继承本记录的结论。
+
+结果：三点均 **CONFIRMED**，且每条都直接复现（跑测试、构造反例、读证据 JSON 原文），不是转述本记录。
+另发现一条本记录未提及的新问题：`render()` 里 `authorized_services` 被迭代两次
+（校验一遍、拼接一遍），一次性迭代器（生成器、`map()`）会在第一遍校验后被耗尽，
+第二遍拿到空的——校验通过但送进模型的授权列表悄悄变空。
+
+| 发现 | 判定 | 处置 |
+|---|---|---|
+| `authorized_services` 传一次性迭代器会被静默耗尽为空列表 | **成立** | `render()` 先 `tuple(authorized_services)` 物化一次再校验/使用，不再多次迭代同一入参。新增回归测试，`git stash` 复验：改动前失败、改动后通过 |
+
+U-a、U-b 经独立复现确认仍是代码里真实存在、未被悄悄了结的状态
+（U-a：`opspilot/persistence.py:211` 比对的就是 12 位截断短码，没有任何 API 暴露未截断的完整摘要；
+U-b：改 `MISSING_SERIES` 的 `key`、其余不变，`discipline_revision` 短码确实变了）。
+
+范围核查：`git diff origin/main...HEAD --name-status` 只动 5 个既定文件，`SPEC.md`/`ROADMAP.md`/
+`feature_list.json`/`opspilot/tools/registry.py` 均无差异，与前三份审查的结论一致。
+
+### 冻结证据的覆盖面：1/12 条路径，且 baseline 结构上不可能有
+
+12 条渲染路径（3 变体 × 2 报告契约版本 × 有/无 scope）中，**只有 1 条有冻结哈希背书**
+（`replay-candidate`，`9648c6de…`）。其余不是「缺证据锚」而是**结构上不可能有**：
+`holmes_baseline.py:1206` 哈希的是 `prompt`，而 `prompt` 来自 `:1141` 的
+`build_system_prompt(...)`，即 **HolmesGPT 模板包裹后**的完整 system prompt；
+本模块只产出传给它的 `addition` **参数片段**。两个 upstream 证据（`023dae70…`）
+更是连纪律文字都不含（其 `system_prompt_source` 写明 `default template, no additions`）。
+
+因此准确表述是：**冻结证据背书 1/3 变体；baseline 两变体由漂移断言锚定源码字面量，
+其 `prompt_sha256` 含 Holmes 模板，不在本模块的重建范围内**。
+模块 docstring 「`render()` 必须逐字节重建出当初送进模型的字符串」对 baseline 不准确，已限定。
+**不得**在别处升级成「baseline 已被冻结哈希保护」。
+
+### PR 交付状态（2026-09-17 收尾更新）
+
+此前记录（`090a63c`）称「未达可合并，三项阻塞：`checks` 因他人分支 secret-scan 命中而红、
+独立审查未拿到结论、机器人 code review 执行失败」。三项均已变化，逐条更正：
+
+| # | 此前阻塞 | 现状 |
+|---|---|---|
+| 1 | `checks` = FAILURE（他人分支 secret-scan 命中） | 收尾时重新拉取，`checks` 与 `m0-postgres` 均 SUCCESS——命中已不在当前结果里，不确定是对方分支修复还是该次扫描本身是瞬时的（`--log-opts=--all` 扫共享对象库全部 ref），未继续深挖，因为已不影响本 PR |
+| 2 | 独立审查未完成 | 三份独立审查最终都交回结论（见上方「独立审查与处置（三份」），且机器人 `@codex` 在本轮收尾又发现三条新问题，均已复现、处置，见下表 |
+| 3 | 机器人 code review 执行失败，只覆盖过时提交 | 收尾时用 `@codex review` 手动重新触发，覆盖了当前变更范围，见下表四条 review thread |
+
+**机器人 `@codex` 本轮四条 review thread，逐条处置：**
+
+| # | 位置 | 发现 | 判定 | 处置 |
+|---|---|---|---|---|
+| C1 | `discipline.py:264` | `template_projection()` 只筛 `LAYER_TEMPLATE` 段，挪动一个 L1b/L2 槽位（如 `report_contract`）会改变 `render()` 字节但不 bump `discipline_revision`，一个被重新领取的在途 Run 因此绕过 `blocked(INCOMPATIBLE_STATE)` | **成立** | 投影改为覆盖全部 segment（槽位 `text` 恒为空，不泄漏实例值）。新增回归测试，`git stash` 复验：改动前失败、改动后通过 |
+| C2 | `discipline.py:201` | `baseline-final-report` 没有预算槽位，`render(model_requests=2)` 与 `=1` 逐字节相同、`prompt_face_sha256` 也相同，非 1 的预算被静默吞掉 | **成立** | 没有预算槽位的变体，`model_requests != 1` 直接拒绝，对称于既有的 `authorized_services` 无槽位护栏。新增回归测试，`git stash` 复验同上 |
+| C3 | `discipline.py:272` | `_short()` 截断成 12 位十六进制，`versions` 栅栏比对的是这个截断值，与 C3「比对仍用完整值」的关系不明确时不应径行实现 | **不采纳（维持现状），有依据** | 与任务记录已有的 U-a 是同一件事：两种读法都讲得通，改动成本都不高，但**该由用户裁定**，不是实现者的选择——采纳建议会正是 AGENTS.md 禁止的「选更方便实施的版本」。已在 thread 回复引用 U-a 原文，未改代码 |
+| C4 | 本文件（旧）第 504 行 | 「独立审查未完成」与同文件「独立审查与处置（三份」段自相矛盾，顶部状态行同样过期 | **成立** | 即本节改写；顶部状态行（第 3–5 行）与本节一并更正 |
+
+C1/C2 的改动会移动三个变体的 `discipline_revision` 短码（预期且正确——它们关的是「该 bump 而没 bump」的真实漏洞）；
+`render()` 的输出字节、冻结的 `prompt_sha256`（`9648c6de…`）不受影响，`make check` 复跑见下方验证证据。
+
+`checks`、`m0-postgres` 状态、`mergeable`、`mergeStateStatus` 见 PR #27 页面当前值（不在此记录快照，避免随后续推送失效）。
+
+**收尾复验**：`.venv/bin/python -m pytest tests/test_instruction_discipline.py -q` → `48 passed`；
+`make check` → `1098 passed, 77 skipped, 2 xfailed`（基线仍为起点 main `b483a12` 的
+`1050 passed, 75 skipped`；整个分支相对起点净增 48 个通过用例，其中本次收尾的三个提交
+——一次性迭代器护栏、投影覆盖全部 segment、final-report 预算护栏——各带一条新回归测试，
+均按「`git stash` 掉修复、确认测试转红、恢复修复」的方式逐条复验过）。
+PG 持久化集成本次收尾未重跑——本机无 PostgreSQL/Docker，最后一次实际验证结果见上方
+「验证证据」表（`23 passed`，取自本轮更早一次有 PG 环境的提交）。
+
+### 与 main 的合并冲突处置（2026-09-21）
+
+PR #27 在 GitHub 上显示 `mergeable: CONFLICTING`。起点 main `b483a12` 之后，main 合入了
+PR #26/#28/#30/#20/#34/#35/#36，其中 `tests/integration/test_m1_durable_state_postgres.py`
+被大幅重写（+1525/−264 行）；本分支对同一文件只追加了三行 import 和两条测试
+（`test_prompt_revision_change_blocks_resume_without_silent_version_swap`、
+`test_instance_values_alone_do_not_block_resume`）。其余四个本分支文件与 main 无交集。
+
+处置：`merge: update instruction contract onto main`（合并提交）。冲突文件以 main 版本为底，
+把本分支的 import 与两条测试原样叠加回去；`DurableStore.accept/claim` 签名在 main 上未变，
+测试体零改动。唯一的文字改动是 `_prompt_versions` 的 docstring：原文称 `opspilot/tools/registry.py`
+「仍在 PR #20 分支上、未进 main」，PR #20 已合入，改为指向 `tests/test_m1_tool_registry*.py`
+既有的合同覆盖。
+
+合并后复验（本 worktree，本地 PG lab `127.0.0.1:55431` 在线）：
+
+| 检查 | 结果 |
+|---|---|
+| `make check`（uv lock、ruff check/format、mypy、pytest） | `1514 passed, 143 skipped, 2 xfailed` |
+| `M1_DURABLE_POSTGRES=1 pytest tests/integration/test_m1_durable_state_postgres.py` | `54 passed`（含本分支两条） |
+
+PR #20 合入意味着上文「`ToolRegistration.description` 待 PR #20 合并后承接」一节的前提已满足；
+该承接是独立的后续工作项，不在本次冲突处置范围内，未动。
+
+### 本轮未做与限制
+
+- 未改产品运行行为：新模块目前无产品调用方，`ModelProfile.prompt_revision` 的**接线仍未完成**
+  （上一轮记录的落差 1）。接线属 M1-01「Flash 调查 loop」子任务，本轮只提供可确定性重算的来源。
+- 未改历史实验脚本的任何字节，未改 SPEC 门槛陈述、ROADMAP 状态判断、
+  `feature_list.json` 的 `passes`、预算冻结值。
+- `holmes_baseline.py` 的端到端 `prompt_sha256`（`023dae70…`）**无法在 CI 复算**：
+  它覆盖 HolmesGPT 外层模板，依赖 `tmp/` 下被 gitignore 的固定 checkout。
+  本轮冻结的是该脚本的 L1/L2 拼装字节（AST 提取比对），不是它的端到端哈希。
+  可端到端复算并已冻结的是候选臂的 `9648c6de…`。
+- 本轮未启动任何长期进程或服务，未发起任何模型调用或外部付费调用，未知费用为 0。
