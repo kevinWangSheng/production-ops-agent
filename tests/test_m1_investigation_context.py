@@ -427,3 +427,104 @@ def test_resume_refuses_a_transcript_for_another_run():
     stranger, _ = _restart(loop, other, [report_from_transcript])
     with pytest.raises(ValueError, match="INVALID_INPUT"):
         stranger.resume(transcript)
+
+
+# --- independent review findings (2026-09-21) -------------------------------
+
+
+def test_an_accepted_report_whose_conclusion_was_never_committed_finishes_on_resume():
+    """C3 §7 row 5: report step committed, process died before the conclusion."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+
+    class DieOnConclusion(MemoryStepStore):
+        armed = True
+
+        def commit_step(self, logical_key, response):
+            if self.armed and logical_key.startswith("conclusion:"):
+                self.armed = False  # the next attempt is a different process
+                raise Crash("killed before the conclusion row")
+            return super().commit_step(logical_key, response)
+
+    dying = DieOnConclusion(
+        budget_limit=12,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+    )
+    loop.store = dying
+    with pytest.raises(Crash):
+        loop.run(request)
+    assert [k for k in dying.steps] == ["ctx0:round-1", "ctx0:round-2"]
+    transcript = _transcript(dying, request)
+    assert transcript.messages[-1]["role"] == "assistant"
+    assert transcript.pending_publish is None
+    second, model = _restart(loop, dying, [])  # any model call would raise
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed" and model.calls == []
+    assert outcome.model_requests_used == 2  # nothing new was spent
+    assert outcome.final_step_id is not None
+    assert outcome.evidence_ids == tuple(transcript.evidence_ids)
+
+
+def test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work():
+    from opspilot.persistence import _tool_plan
+
+    loop, request, _, _, store, _ = _wide(
+        replies=[reply(tool_calls=[tool_call()], finish="stop")]
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("TOOL_PAIRING_INVALID",)
+    row = store.steps["ctx0:round-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["reason"] == "TOOL_PAIRING_INVALID"
+    assert row["rejected_plan"]["tool_calls"][0]["id"] == "call-1"
+    assert _tool_plan(row) == []
+    transcript = _transcript(store, request)
+    assert transcript.pending_publish is not None  # the handoff conclusion
+    assert all(m["role"] != "tool" for m in transcript.messages)
+
+
+def test_a_conclusion_from_a_superseded_generation_is_not_republished():
+    from opspilot.investigation.context import pending_conclusion
+
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    outcome = loop.run(request)
+    assert pending_conclusion(store.snapshot()) == (
+        outcome.final_step_id,
+        outcome.conclusion,
+    )
+    store.advance_generation()  # operator follow-up before the publish landed
+    assert pending_conclusion(store.snapshot()) is None
+    transcript = _transcript(store, request)
+    assert transcript.pending_publish is None
+    assert transcript.next_round == 3  # the loop continues instead of republishing
+
+
+def test_a_rebuild_whose_bytes_differ_from_what_was_sent_fails_closed():
+    from opspilot.investigation.context import messages_hash
+
+    loop, request, model, _, store, _ = _wide(
+        replies=[*_tool_rounds(2), report_from_transcript]
+    )
+    loop.run(request)
+    # Positive path: the recorded hash of round 2 is the hash of the rebuilt
+    # transcript up to (not including) round 2.
+    transcript = _transcript(store, request)
+    round_two = store.steps["ctx0:round-2"]["response"]["context"]
+    sent = list(model.calls[1].messages)
+    assert round_two["input_snapshot_hash"] == messages_hash(sent)
+    assert transcript.messages[: len(sent)] == sent
+    # Tampering with round 1's persisted reply changes what round 2 "sent".
+    snapshot = store.snapshot()
+    snapshot["steps"][0]["response"]["assistant"]["content"] = "edited after the fact"
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )

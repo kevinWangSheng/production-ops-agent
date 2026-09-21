@@ -405,3 +405,57 @@ def test_context_errors_are_fixed_codes():
         step_key("", 1)
     with pytest.raises(PersistenceError):
         DurableStore(DSN).run_usage(UUID(int=0))
+
+
+def test_a_follow_up_after_an_unpublished_conclusion_lets_the_run_continue():
+    """Review P2-D: an old-generation conclusion row must not block publish forever."""
+    h = Harness()
+    worker = Worker.create(h.store, dict(VERSIONS))
+    session = worker.resume(h.incident, lease_seconds=30, renew_seconds=30)
+    executor = h.executor_factory(session.lease, None)
+    from opspilot.investigation.context import InvestigationInput, rebuild_transcript
+
+    input = InvestigationInput.from_json(h.rows()["run"]["input"])
+    transcript = rebuild_transcript(
+        h.rows(),
+        run_id=str(h.run),
+        authorized_targets=executor.scope.target_ids,
+        input=input,
+    )
+    loop = InvestigationLoop(
+        # One tool round, then a malformed plan: the Run hands off after two
+        # slots, leaving budget for the continuation.
+        model=ScriptedModel(
+            [*_tool_rounds(1), reply(tool_calls=[tool_call()], finish="stop")]
+        ),
+        executor=executor,
+        store=DurableStepStore(h.store, session.lease),
+        clock=h.clock,
+    )
+    first = loop.resume(transcript)
+    assert first.execution == "failed" and first.final_step_id is not None
+    assert first.model_requests_used == 2
+    h.store.abandon(session.lease)
+    h.store.control(h.incident, 0, "follow_up", "operator")
+    outcome = h.runner([*_tool_rounds(1, start=2), report_from_transcript]).resume(
+        h.incident
+    )
+    assert outcome.status == "published", outcome
+    assert outcome.loop.execution == "completed"
+    kinds = [s["response"].get("kind") for s in h.rows()["steps"]]
+    assert kinds.count("conclusion") == 2  # the old one stays as history
+
+
+def test_a_rejected_plan_is_never_replayed_by_recovery():
+    """Review P2-B: a plan the loop refused must not surface as pending work."""
+    h = Harness()
+    outcome = h.runner([reply(tool_calls=[tool_call()], finish="stop")]).resume(
+        h.incident
+    )
+    assert outcome.status == "published"
+    assert outcome.loop.handoff_reasons == ("TOOL_PAIRING_INVALID",)
+    assert h.transport_requests == 0
+    rows = h.rows()
+    assert rows["pending_tools"] == []
+    step = next(s for s in rows["steps"] if s["response"].get("kind") is None)
+    assert step["response"]["rejected_plan"]["reason"] == "TOOL_PAIRING_INVALID"

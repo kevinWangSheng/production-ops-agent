@@ -25,6 +25,7 @@ from uuid import UUID
 from opspilot.investigation.context import (
     ContextError,
     InvestigationInput,
+    pending_conclusion,
     rebuild_transcript,
 )
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
@@ -130,6 +131,17 @@ class InvestigationRunner:
             )
             return dict(outcome.model_view)
 
+        # Breakpoint 4 first: a Run that already concluded must not execute
+        # anything it left behind, whatever ``pending_tools`` says.
+        concluded = pending_conclusion(self.store.rebuild(incident_id))
+        if concluded is not None:
+            step_id, conclusion = concluded
+            published = self._publish(session, conclusion, step_id)
+            return RunnerOutcome(
+                "published" if published else "unpublished",
+                reason=None if published else "PUBLISH_REFUSED",
+                epoch=lease.epoch,
+            )
         # Breakpoint 2: finish the committed plan first (only still-pending
         # ordinals are dispatched; the session re-checks the fence per item).
         replayed = session.execute_pending(execute)

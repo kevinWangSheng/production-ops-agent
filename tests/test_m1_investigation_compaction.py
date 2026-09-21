@@ -319,3 +319,52 @@ def test_the_estimator_counts_the_tools_array_and_the_context_policy_is_content_
     assert "prompt_revision" in investigation_versions()
     monkeypatch.setattr(ctx, "COMPACTION_INSTRUCTION", "different words")
     assert context_policy_revision() != before
+
+
+def test_a_compaction_never_takes_the_reserved_final_report_slot():
+    """Frozen four: two tool rounds, a compaction, then the report -- never a
+    fourth tool round that leaves no slot for the report (review P1-A)."""
+    loop, request, model, _, store = _compacting_run(model_requests=4)
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    assert len(model.calls) == 4 and outcome.model_requests_used == 4
+    assert model.calls[2].messages[-1]["content"] == COMPACTION_INSTRUCTION
+    assert model.calls[3].tools is None and model.calls[3].json_mode is True
+    assert model.calls[3].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
+
+
+def test_a_rejected_summary_keeps_its_tool_calls_out_of_the_executable_plan():
+    from opspilot.persistence import _tool_plan
+
+    loop, request, model, _, store = _compacting_run()
+    loop.model = ScriptedModel(
+        [
+            *_rounds(2),
+            reply(tool_calls=[tool_call(call_id="halluc-1")], finish="tool_calls"),
+        ]
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("COMPACTION_FAILED",)
+    row = store.steps["ctx0:compact-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["tool_calls"][0]["id"] == "halluc-1"
+    assert _tool_plan(row) == []
+
+
+def test_the_digest_lists_only_adopted_evidence_ids():
+    from opspilot.investigation.context import fold_digest, revoked_view
+
+    view = {"evidence_id": "ev-1", "adopted": True, "status": "ok", "target_id": "t"}
+    messages = [
+        {"role": "assistant", "content": None, "tool_calls": [tool_call(call_id="a")]},
+        {"role": "tool", "tool_call_id": "a", "content": json.dumps(view)},
+        {"role": "assistant", "content": None, "tool_calls": [tool_call(call_id="b")]},
+        {
+            "role": "tool",
+            "tool_call_id": "b",
+            "content": json.dumps(revoked_view({**view, "evidence_id": "ev-revoked"})),
+        },
+    ]
+    digest = fold_digest(messages)
+    assert digest["evidence_ids"] == ["ev-1"]
+    assert len(digest["views"]) == 2 and len(digest["tool_calls"]) == 2

@@ -249,7 +249,9 @@ def fold_digest(messages: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "views": views,
         "evidence_ids": list(
             dict.fromkeys(
-                v["evidence_id"] for v in views if isinstance(v.get("evidence_id"), str)
+                v["evidence_id"]
+                for v in views
+                if isinstance(v.get("evidence_id"), str) and v.get("adopted") is True
             )
         ),
         "assistant_text_sha256": texts,
@@ -505,6 +507,7 @@ class Transcript:
     segment: str
     live_steps: int
     prefix_len: int
+    last_step_id: UUID | None = None
     calibration: float = 1.0
     folded_since: tuple[UUID, ...] = ()
     compactions: int = 0
@@ -588,7 +591,9 @@ def rebuild_transcript(
     max_round = 0
     segment = INITIAL_SEGMENT
     live = 0
+    last_step_id: UUID | None = None
     calibration = 1.0
+    diverged = False  # a revoked view changed the visible bytes; hashes no longer apply
     folded_since: list[UUID] = []
     compactions = 0
     dropped: list[UUID] = []
@@ -606,7 +611,13 @@ def rebuild_transcript(
         if not isinstance(step_id, UUID):
             raise ContextError("INCONSISTENT_STATE")
         if kind == CONCLUSION_KIND:
-            if snapshot.get("conclusion") is None:
+            # A conclusion committed under a superseded generation can never be
+            # published (publish fences on the step's generation); a human
+            # follow-up moved the Run on, so the loop continues instead.
+            if (
+                snapshot.get("conclusion") is None
+                and step.get("control_generation") == generation
+            ):
                 pending_publish = (step_id, dict(response))
             continue
         calibration = _calibration_from_row(response, calibration)
@@ -630,6 +641,11 @@ def rebuild_transcript(
             summary = (response.get("assistant") or {}).get("content")
             if not isinstance(summary, str) or not summary.strip():
                 raise ContextError("INCONSISTENT_STATE")
+            if not diverged:
+                _check_snapshot_hash(
+                    response,
+                    [*messages, {"role": "user", "content": COMPACTION_INSTRUCTION}],
+                )
             messages = [
                 *messages[:prefix_len],
                 compaction_message(int(record["revision"]), record["digest"], summary),
@@ -647,6 +663,9 @@ def rebuild_transcript(
             # A round committed under a context representation this rebuild
             # did not reproduce (a lost compaction row, or rows out of order).
             raise ContextError("INCOMPATIBLE_STATE")
+        if not diverged:
+            _check_snapshot_hash(response, messages)
+        last_step_id = step_id
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
             raise ContextError("INCONSISTENT_STATE")
@@ -681,6 +700,7 @@ def rebuild_transcript(
             target = view.get("target_id")
             if isinstance(target, str) and target not in authorized_targets:
                 payload: Mapping[str, Any] = revoked_view(view)
+                diverged = True
             else:
                 payload = visible_view(view, limits=input.limits)
                 citation = delivered_view(
@@ -726,12 +746,71 @@ def rebuild_transcript(
         segment=segment,
         live_steps=live,
         prefix_len=prefix_len,
+        last_step_id=last_step_id,
         calibration=calibration,
         folded_since=tuple(folded_since),
         compactions=compactions,
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
     )
+
+
+def messages_hash(messages: Sequence[Mapping[str, Any]]) -> str:
+    """The hash a step records for exactly the messages it sent."""
+    return hashlib.sha256(
+        canonical([dict(message) for message in messages]).encode("utf-8")
+    ).hexdigest()
+
+
+def _check_snapshot_hash(
+    response: Mapping[str, Any], sent_before: Sequence[Mapping[str, Any]]
+) -> None:
+    """Refuse a rebuild whose bytes differ from what that step actually sent.
+
+    ``sent_before`` is the transcript as rebuilt up to (not including) the
+    step; the step's own extra trailing message (the final-report or the
+    compaction instruction) is added from the recorded ``context.final`` /
+    the row kind. Rows without a recorded hash (pre-segment rows) are not
+    checked.
+    """
+    context = response.get("context")
+    if not isinstance(context, Mapping):
+        return
+    recorded = context.get("input_snapshot_hash")
+    if not isinstance(recorded, str):
+        return
+    sent = list(sent_before)
+    if context.get("final") is True:
+        from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
+
+        sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+    if messages_hash(sent) != recorded:
+        raise ContextError("INCOMPATIBLE_STATE")
+
+
+def pending_conclusion(
+    snapshot: Mapping[str, Any],
+) -> tuple[UUID, dict[str, Any]] | None:
+    """A current-generation conclusion row that was never published, if any.
+
+    Read before replaying pending tools: once a Run has concluded, nothing it
+    left behind (including a rejected plan) may be executed.
+    """
+    if snapshot.get("conclusion") is not None:
+        return None
+    generation = snapshot.get("control_generation")
+    for step in snapshot.get("steps") or ():
+        if not isinstance(step, Mapping) or step.get("status") == "late_result":
+            continue
+        response = step.get("response")
+        if (
+            isinstance(response, Mapping)
+            and response.get("kind") == CONCLUSION_KIND
+            and step.get("control_generation") == generation
+            and isinstance(step.get("step_id"), UUID)
+        ):
+            return step["step_id"], dict(response)
+    return None
 
 
 def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:
@@ -755,9 +834,12 @@ class Continuation:
     ``evidence_context`` is a v4 evidence context bound to the *new* Run id
     whose ``view_bindings`` name every adopted, still-authorized view of the
     previous Run, so the successor can cite them without re-querying;
-    ``handoff_note`` is deterministic text for the successor's question. No
-    private protocol field, model prose or non-adopted result crosses over.
-    Creating the successor Run stays a human/Controller action.
+    ``handoff_note`` is deterministic text for the successor's question: the
+    previous outcome codes, the carried evidence ids and the ``gaps`` /
+    ``next_steps`` of the previous *validated* report (model text that already
+    passed citation checks -- the only model prose that crosses over). No
+    private protocol field or non-adopted result crosses over. Creating the
+    successor Run stays a human/Controller action.
     """
 
     previous_run_id: str
@@ -826,7 +908,7 @@ def continuation_context(
         "view_bindings": bindings,
     }
     if isinstance(context, Mapping):
-        for key in ("time_policies", "target_catalog", "timing"):
+        for key in ("time_policies", "target_catalog"):
             if key in context:
                 carried[key] = context[key]
     projected = evidence_context_projection(carried, run_id=new_run_id)

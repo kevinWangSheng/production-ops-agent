@@ -33,6 +33,7 @@ from opspilot.investigation.context import (
     estimate_tokens,
     fold_digest,
     initial_messages,
+    messages_hash,
     step_key,
     visible_view,
 )
@@ -214,7 +215,10 @@ class InvestigationRequest:
             model_requests=self.model_requests,
             limits=self.limits,
             tool_schemas=tuple(dict(item) for item in self.tool_schemas),
-            evidence_context=self.evidence_context,
+            # Persist what the model may see, never the caller's raw mapping.
+            evidence_context=evidence_context_projection(
+                self.evidence_context, run_id=self.run_id
+            ),
             variant_id=self.variant_id,
             bound_target_id=self.bound_target_id,
             scope_facts={
@@ -414,7 +418,51 @@ class InvestigationLoop:
             folded_since=transcript.folded_since,
             compactions=transcript.compactions,
         )
+        state.last_step_id = transcript.last_step_id
+        accepted = self._already_accepted_report(state)
+        if accepted is not None:
+            # C3 §7 row 5: the report step is committed, only the conclusion
+            # was lost with the process. Re-validate and finish without a
+            # model request; the budget that remains is irrelevant.
+            report, content = accepted
+            reasons = (
+                ("INCOMPLETE_INVESTIGATION",)
+                if report.assessment_status == "incomplete"
+                else ()
+            )
+            return self._finish(
+                state,
+                execution="completed",
+                reasons=reasons,
+                report=report,
+                content=content,
+            )
         return self._drive(state)
+
+    def _already_accepted_report(self, state: _State) -> tuple[ReportV2, str] | None:
+        if len(state.messages) <= state.prefix_len:
+            return None
+        last = state.messages[-1]
+        if last.get("role") != "assistant" or last.get("tool_calls"):
+            return None
+        content = last.get("content")
+        if not isinstance(content, str) or not content:
+            return None
+        report, _reason = parse_report(content, finish_reason="stop")
+        if report is None:
+            return None
+        request = state.request
+        if unsupported_citations(
+            report,
+            views=state.delivered,
+            authorized_targets=request.scope.target_ids,
+            time_policy_ids=context_time_policy_ids(request.evidence_context),
+            target_catalog=context_target_catalog(
+                request.evidence_context, authorized_targets=request.scope.target_ids
+            ),
+        ):
+            return None
+        return report, content
 
     def _drive(self, state: _State) -> LoopOutcome:
         request = state.request
@@ -450,6 +498,12 @@ class InvestigationLoop:
             ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},) if final else ()
         )
         self._manage_context(state, tools=tools, extra=extra)
+        if not final and request.model_requests - state.used <= 1:
+            # The compaction took a slot: what is left is the reserved
+            # final-report request, so this round becomes it.
+            final = True
+            tools = None
+            extra = ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},)
         timeout = self._remaining_timeout(state)
         outbound = [*state.messages, *extra]
         call = ModelCall(
@@ -478,22 +532,43 @@ class InvestigationLoop:
             reasoning_content=reply.reasoning_content,
             tool_calls=reply.tool_calls,
         )
-        step_id = self._commit_step(state, logical_key, assistant, reply, dispatched)
-        state.folded_since.append(step_id)
-        state.next_round += 1
+        # Decide *before* committing whether the plan may ever execute. A
+        # rejected plan is still persisted in full, but under ``rejected_plan``
+        # rather than ``assistant.tool_calls``, so no later attempt can read
+        # it back as pending work (bot/independent review finding).
+        rejection: str | None = None
+        calls: list[dict[str, Any]] = []
         try:
             calls = validate_tool_calls(assistant)
         except PairingError as exc:
-            raise _LoopHalt("failed", (exc.code,)) from exc
-        if final and calls:
-            raise _LoopHalt("failed", ("TOOL_PLAN_ON_FINAL",))
-        if calls and reply.finish_reason != "tool_calls":
-            reason = (
+            rejection = exc.code
+        if rejection is None and final and calls:
+            rejection = "TOOL_PLAN_ON_FINAL"
+        if rejection is None and calls and reply.finish_reason != "tool_calls":
+            rejection = (
                 "OUTPUT_LENGTH"
                 if reply.finish_reason == "length"
                 else "TOOL_PAIRING_INVALID"
             )
-            raise _LoopHalt("failed", (reason,))
+        if rejection is not None:
+            plan = assistant.pop("tool_calls", None)
+            step_id = self._commit_step(
+                state,
+                logical_key,
+                assistant,
+                reply,
+                dispatched,
+                final=final,
+                rejected_plan={"reason": rejection, "tool_calls": plan},
+            )
+            state.folded_since.append(step_id)
+            state.next_round += 1
+            raise _LoopHalt("failed", (rejection,))
+        step_id = self._commit_step(
+            state, logical_key, assistant, reply, dispatched, final=final
+        )
+        state.folded_since.append(step_id)
+        state.next_round += 1
         if not calls:
             report, reason = parse_report(
                 reply.content, finish_reason=reply.finish_reason
@@ -646,13 +721,21 @@ class InvestigationLoop:
         )
         payload = {
             "kind": COMPACTION_KIND,
+            # A summary that called tools is rejected; its calls are kept for
+            # the record but never in an executable position.
             "assistant": dict(
                 assistant_message(
                     content=reply.content,
                     reasoning_content=reply.reasoning_content,
-                    tool_calls=reply.tool_calls,
+                    tool_calls=(),
                 )
             ),
+            "rejected_plan": None
+            if not reply.tool_calls
+            else {
+                "reason": "COMPACTION_FAILED",
+                "tool_calls": [dict(call) for call in reply.tool_calls],
+            },
             "finish_reason": reply.finish_reason,
             "response_model": reply.response_model,
             "usage": dict(reply.usage),
@@ -661,6 +744,8 @@ class InvestigationLoop:
             ).hexdigest(),
             "context": {
                 "segment": state.segment,
+                "input_snapshot_hash": messages_hash(dispatched.messages),
+                "final": False,
                 "estimated_prompt_tokens": estimated,
                 "calibration": state.calibration,
             },
@@ -722,6 +807,9 @@ class InvestigationLoop:
         assistant: Mapping[str, Any],
         reply: ModelReply,
         dispatched: ModelCall,
+        *,
+        final: bool,
+        rejected_plan: Mapping[str, Any] | None = None,
     ) -> UUID:
         response_id = reply.raw.get("id")
         estimated = estimate_tokens(dispatched.messages, dispatched.tools)
@@ -745,15 +833,14 @@ class InvestigationLoop:
             "context": {
                 "segment": state.segment,
                 "round": state.next_round,
-                "input_snapshot_hash": hashlib.sha256(
-                    canonical(
-                        [dict(message) for message in dispatched.messages]
-                    ).encode("utf-8")
-                ).hexdigest(),
+                "input_snapshot_hash": messages_hash(dispatched.messages),
+                "final": final,
                 "estimated_prompt_tokens": estimated,
                 "calibration": state.calibration,
             },
         }
+        if rejected_plan is not None:
+            payload["rejected_plan"] = dict(rejected_plan)
         try:
             step_id = self.store.commit_step(logical_key, payload)
         except StepStoreError as exc:
