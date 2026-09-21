@@ -33,8 +33,9 @@
 
 ## 验证
 
-- `make check`：见 PR 描述。
-- Markdown 链接检查：见 PR 描述。
+- `make check`：1466 passed, 141 skipped, 2 xfailed。PR #39 CI `checks`/`m0-postgres` 均 pass（HEAD `90e83c6`）。
+- 改动文件相对链接与锚点检查：0 broken。
+- 机器人分诊：`@codex review` 触发一次，Code/Security 均返回「unknown error」失败；按新规则不阻塞，不重触发。
 - 独立审查：全新上下文 Agent 核对 diff，12 条发现（2 P1、5 P2、5 P3）全部采纳修复：功能 PR 收回到用户门、squash 改为合并时执行、就绪顺序明确、SPEC 与 live.py 批准文件口径对齐、验收步骤不削弱条款恢复、红线三项动作保留一句、锚点与开发指南同步。
 
 ## 待决与下一步
