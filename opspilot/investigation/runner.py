@@ -35,7 +35,7 @@ from opspilot.investigation.loop import (
     ModelClient,
     tool_request_for,
 )
-from opspilot.investigation.store import DurableStepStore
+from opspilot.investigation.store import DurableStepStore, StepStoreError
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
 from opspilot.tools.registry import ToolContractError
@@ -115,10 +115,11 @@ class InvestigationRunner:
                 reason=code,
                 epoch=lease.epoch,
             )
-        except ToolContractError as exc:
-            # The executor could not be built (its tool ledger unavailable):
-            # nothing ran, so release this exact lease instead of holding it
-            # to expiry, and say so (bot review finding, PR #29).
+        except (ToolContractError, StepStoreError) as exc:
+            # The attempt could not open: the executor's tool ledger or the
+            # step store's usage read was unavailable. Nothing ran, so
+            # release this exact lease instead of holding it to expiry, and
+            # say so (bot review findings, PR #29).
             try:
                 self.store.abandon(lease)
             except PersistenceError:

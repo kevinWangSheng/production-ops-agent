@@ -419,6 +419,23 @@ def test_an_executor_that_cannot_be_built_releases_the_lease():
     assert again.status == "published" and again.epoch == outcome.epoch + 1
 
 
+def test_a_failed_usage_read_after_the_claim_releases_the_lease(monkeypatch):
+    """Bot review (PR #29, comment 4069386104): a StepStoreError while the
+    attempt opens is an explicit outcome and the lease is released."""
+    from opspilot.investigation.store import DurableStepStore, StepStoreError
+
+    def unavailable(self):
+        raise StepStoreError("STORAGE_UNAVAILABLE")
+
+    h = Harness()
+    monkeypatch.setattr(DurableStepStore, "usage", unavailable)
+    outcome = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
+    assert outcome.status == "aborted" and outcome.reason == "STORAGE_UNAVAILABLE"
+    monkeypatch.undo()
+    again = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
+    assert again.status == "published" and again.epoch == outcome.epoch + 1
+
+
 def test_limits_above_the_freeze_are_refused_at_the_product_boundary():
     run = uuid4()
     wide = RunLimits(model_requests=8)
