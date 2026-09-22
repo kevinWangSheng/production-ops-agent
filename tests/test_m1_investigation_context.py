@@ -413,6 +413,12 @@ def test_the_active_time_budget_survives_a_restart():
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("WALL_TIME_EXHAUSTED",)
     assert model.calls == []
+    # The Run-level figures are cumulative across attempts, like
+    # ``model_requests_used`` (bot review, PR #29, comment 4068748992).
+    assert outcome.model_seconds_used >= WIDE.model_request_timeout_seconds
+    assert outcome.conclusion["conclusion"]["model_seconds_used"] == pytest.approx(
+        outcome.model_seconds_used
+    )
 
 
 def test_resume_refuses_a_transcript_for_another_run():

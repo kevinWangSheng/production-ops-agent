@@ -22,6 +22,7 @@ from opspilot.investigation.limits import (
     MAX_TOOL_SECONDS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
     RUN_WALL_SECONDS,
+    RunLimits,
 )
 from opspilot.investigation.loop import (
     ACCEPTED_RESPONSE_MODEL,
@@ -1140,6 +1141,39 @@ def test_unavailable_retry_is_a_second_physical_request():
     assert len(model.calls) == 2
     assert outcome.model_requests_used == 2
     assert outcome.execution == "completed"
+
+
+def test_a_conservatively_charged_failure_shrinks_the_retry_timeout():
+    """Bot review (PR #29, comment 4068748989): a fast ``MODEL_UNAVAILABLE``
+    is charged its full timeout (settled unknown); the retry's timeout must
+    fit under ``active_seconds`` after that charge, not after wall time."""
+    from dataclasses import replace
+
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["Retry recovered enough to close the run."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=1,
+    )
+    request = replace(request, limits=RunLimits(active_seconds=400))
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 2
+    assert model.calls[0].timeout_seconds == pytest.approx(360)
+    assert model.calls[1].timeout_seconds == pytest.approx(40)
+    assert store.usage().model_seconds_used <= 400
+    assert outcome.model_seconds_used == pytest.approx(360)
 
 
 def test_every_physical_request_is_settled_as_spent_or_unknown():

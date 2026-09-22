@@ -275,6 +275,10 @@ class _State:
     compactions: int = 0
     steps_committed: int = 0
     seconds_used: float = 0.0
+    # Model seconds earlier attempts already put in the ledger; the Run-level
+    # figures reported at the end are ``prior_model_seconds + seconds_used``,
+    # cumulative like ``used`` (bot review finding, PR #29).
+    prior_model_seconds: float = 0.0
     last_step_id: UUID | None = None
 
 
@@ -339,6 +343,7 @@ class InvestigationLoop:
             # from the reservation ledger, tool time from the tool ledger the
             # executor was built from (C3 §13: restarts never reset it).
             prior_active=usage.model_seconds_used + self.executor.tool_seconds_used,
+            prior_model_seconds=usage.model_seconds_used,
             attempt_started=self.clock.monotonic(),
             revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
@@ -932,8 +937,16 @@ class InvestigationLoop:
         request = state.request
         now = self.clock.now()
         remaining_deadline = (request.scope.deadline - now).total_seconds()
+        # What this attempt has spent is the larger of its wall time and what
+        # it charged to the ledger: a fast failure is charged its full timeout
+        # (settled unknown), and the next request must fit under the ceiling
+        # after that charge, or the durable usage overshoots ``active_seconds``
+        # (bot review finding, PR #29).
+        attempt_spent = max(
+            self.clock.monotonic() - state.attempt_started, state.seconds_used
+        )
         remaining_active = request.limits.active_seconds - (
-            state.prior_active + (self.clock.monotonic() - state.attempt_started)
+            state.prior_active + attempt_spent
         )
         if remaining_deadline <= 0:
             raise _LoopHalt("failed", ("DEADLINE_EXCEEDED",))
@@ -984,7 +997,7 @@ class InvestigationLoop:
                 "report_content_sha256": digest,
                 "evidence_ids": list(evidence_ids),
                 "model_requests_used": state.used,
-                "model_seconds_used": state.seconds_used,
+                "model_seconds_used": state.prior_model_seconds + state.seconds_used,
                 "prompt_revision": state.revision,
                 "prompt_face_sha256": state.face,
                 "question_sha256": state.question_sha,
@@ -1029,7 +1042,7 @@ class InvestigationLoop:
             steps_committed=state.steps_committed,
             final_step_id=final_step_id,
             conclusion=conclusion if final_step_id is not None else None,
-            model_seconds_used=state.seconds_used,
+            model_seconds_used=state.prior_model_seconds + state.seconds_used,
         )
 
 
