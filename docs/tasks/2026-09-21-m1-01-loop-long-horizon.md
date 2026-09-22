@@ -1,6 +1,6 @@
 # M1-01 调查 loop 长程执行边界改造
 
-- 状态：**实现完成；独立审查 2 P1 / 4 P2、机器人第一轮 4 条 P1、第二轮 1 P1 / 2 P2、第三轮 2 P1 / 1 P2 全部采纳修复并复验；第四轮 3 P2 采纳、1 P1 拒绝（F5）；随后结构收敛 + 全新上下文独立审查（1 P1 / 2 P2 / 6 P3，P1–P2 与 3 条 P3 已修复），待最新提交 CI；PR #29 待最新提交 CI 通过后即「PR 已就绪，待用户审核合并」**
+- 状态：**实现完成；独立审查 2 P1 / 4 P2、机器人第一轮 4 条 P1、第二轮 1 P1 / 2 P2、第三轮 2 P1 / 1 P2 全部采纳修复并复验；第四轮 3 P2 采纳、1 P1 拒绝（F5）；随后结构收敛 + 全新上下文独立审查（1 P1 / 2 P2 / 6 P3，P1–P2 与 3 条 P3 已修复）；机器人第五轮 3 P1 / 1 P2 采纳；按停机规则不再逐轮改码，待最新提交 CI；PR #29 待最新提交 CI 通过后即「PR 已就绪，待用户审核合并」**
 - 更新日期：2026-09-22
 - 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
@@ -30,10 +30,10 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 | 项 | 命令 / 工件 | 结果 |
 |---|---|---|
-| 静态 + 单元 | `make check`（独立审查修复后 HEAD） | `ruff` 全过、`mypy` 31 文件无问题、`1655 passed, 167 skipped, 2 xfailed`；第二轮修复时 1 条 `tests/test_m0_adapters.py::test_physical_timeout_retains_unknown_and_no_tools`（M0 适配器 10ms 物理超时竞态）在本机 main `b483a12` 上同样失败，与本改动无关，以 CI 为准 |
+| 静态 + 单元 | `make check`（机器人第五轮修复后 HEAD） | `ruff` 全过、`mypy` 31 文件无问题、`1659 passed, 167 skipped, 2 xfailed`；第二轮修复时 1 条 `tests/test_m0_adapters.py::test_physical_timeout_retains_unknown_and_no_tools`（M0 适配器 10ms 物理超时竞态）在本机 main `b483a12` 上同样失败，与本改动无关，以 CI 为准 |
 | 确定性恢复 | `tests/test_m1_investigation_context.py`（25 条）+ `test_m1_investigation_compaction.py` 新增被拒压缩行 resume 用例 | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt、截断回复/被拒计划在 resume 上与在线路径同判、follow-up 之后新提交的报告在 resume 上仍完成 |
 | 确定性压缩 | `tests/test_m1_investigation_compaction.py`（13 条） | 阈值触发、字节级重建、压缩后重启、摘要失败 handoff、不足两槽 `CONTEXT_EXHAUSTED`、摘要仍超预算、计费、stub、校准、策略哈希 |
-| 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（7 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、二次交接保留继承证据、opaque target_refs 经 catalog 授权、prompt 升版后 transcript 不可重放仍可接续、旧代际未完成组已提交视图可携带、fail-closed |
+| 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（9 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、二次交接保留继承证据、opaque target_refs 经 catalog 授权、prompt 升版后 transcript 不可重放仍可接续、旧代际未完成组已提交视图可携带、opaque ref 按前 Run 授权解析、current 策略 ref 不跨 Run、fail-closed |
 | PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（18 条）+ 既有 4 个 M1 PG 套件 | `113 passed`（含既有 94 条无回归；新增迟到结果按 epoch 分键、畸形步骤行落库 blocked、跨版本畸形行报 blocked 各 1 条） |
 | 真实 provider 冒烟 | `.venv/bin/python -m scripts.m1_compaction_smoke` | 2 次 HTTP 200、`deepseek-flash`、带 tools + thinking；`prompt 3422 / completion 2147` tokens；费用上界见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json`；估计 vs 实测校准因子已记录 |
 
@@ -114,6 +114,21 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 | 9 | — | F5 拒绝的合理性 | 审查方认定拒绝成立（投影是形状白名单；binding 由同一可信方提供；`eligible_time_policies` 实际已要求 `id/mode` + window/max age）；指出「fixture 改动量」不是理由，开放的 F5 决策才是——已按此修正拒绝依据的表述 |
 
 修复后：`make check` `1655 passed, 167 skipped, 2 xfailed`；PG 全套 `113 passed`；5 条新用例先红后绿（反向应用产品 diff 验证）。
+
+## 机器人分诊第五轮（2026-09-22，机器人对 `86dfccb` 自动复审）与停机
+
+3 P1 + 1 P2，逐条核实后全部采纳（均为本 PR 新增/改动代码中的具体缺陷，修法小且与合同一致），各配先红后绿用例：
+
+| 发现 | 处置 |
+|---|---|
+| P1 `continuation_context` 用后继 Run 的授权解析 opaque ref，未映射的 canonical catalog 条目会被重绑到后继的唯一目标 | `ffeb168`：按前 Run 记录的 `scope_facts.target_ids` 解析，再按后继授权过滤 |
+| P1 `current` 模式策略的 `time_scope_refs` 原样跨 Run，后继可用过期证据发布 current 事实 | 同上提交：携带证据视为历史，`current` 策略 ref 不跨 Run；后继需要 current 事实须重新观测（写入 `Continuation` docstring 与设计文档第 11 节） |
+| P1 在线工具循环不续租，一次接近 360s 的模型请求后 420s 租约剩余不足以完成本轮工具，落为迟到历史并 `CONTROL_DENIED` | `7076073`：`StepCommitter.renew()`；durable store 在每次派发前同栅栏续租，拒绝即派发前停机（与 pending-tool 恢复路径一致） |
+| P2 `except HTTPError` 内部的排空 `exc.read()` 抛 `IncompleteRead` 时，同级 `HTTPException` 分支看不到 | `984352b`：排空分支自行捕获 |
+
+修复后 `make check` `1659 passed, 167 skipped, 2 xfailed`；PG 全套 `113 passed`；4 条新用例先红后绿。
+
+**停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
 ## 未完成 / 后续
 

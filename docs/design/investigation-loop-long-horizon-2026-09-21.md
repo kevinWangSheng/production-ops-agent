@@ -201,6 +201,8 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 | 本 worktree PG lab | 55431 被 `m1-human-control` worktree 实例占用，本任务在 `tmp/m1-lh/postgres` 起 55432 实例，测试经 scratchpad 脚本改写 `DSN` 运行 | 项目约定不共用他人实例；未改仓库脚本 |
 | resume 的「已提交报告零请求完成」单独判定 | `Transcript.last_round: CommittedRound`（finish_reason / final / rejection / tool_round / content / concluded）+ `InvestigationLoop._round_verdict()`，在线 `_round()` 与 `resume()` 调同一个函数 | 三轮机器人审查在 resume 路径连续发现与在线路径的分歧（合成 `finish_reason`、被拒计划、被取代 conclusion 之后的新报告）。分别打补丁后 `Transcript` 积累了 4 个零散尾部字段和一份平行判定代码；改为结构保证「resume 结论 = 在线结论」 |
 | `continuation_context` 自行扫描步骤行并重推授权 | `committed_views()`（只读业务行，含未完成组已提交的 ordinal，不依赖 prompt 字节或 `reasoning_content`）→ 与在线路径同一个 `delivered_view()` 派生引用 → 同一个 `view_targets_authorized()` 过滤 | 两轮补丁（继承 binding、opaque `target_refs`）都是在第二套授权实现里补洞，收敛为复用 `delivered_view`/`view_targets_authorized`。收敛第一版曾直接取 `rebuild_transcript(...).delivered`，独立审查指出这让接续继承了字节哈希与 reasoning 配对检查，而 C3 §7 点名的接续对象正是 prompt/context policy 升版后 `blocked(INCOMPATIBLE_STATE)`、字节已不可重放的 Run，故改为按行读取 |
+| 接续携带「已采纳且仍授权」的视图，未定义时间语义与解析基准 | 携带证据是历史证据：opaque ref 按前 Run 记录的 `scope_facts.target_ids` 解析后再按后继授权过滤；`current` 模式策略的 ref 不跨 Run，后继需要 current 事实须重新观测 | 机器人第五轮发现：按后继授权解析会把旧证据重绑到后继的唯一目标；`current` 策略的新鲜度是交付前 Run 时判定的，跨 Run 复用等于跳过时间资格检查 |
+| 续租只在模型请求前 | `StepCommitter.renew()`，durable store 在每次在线工具派发前同栅栏续租 | 一次接近超时上界的模型请求后，剩余租约不足以完成本轮工具；与 `execute_pending` 的恢复路径对齐 |
 
 ## 12. 独立审查记录（2026-09-21）
 
