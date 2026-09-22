@@ -111,6 +111,63 @@ def test_evidence_outside_the_successors_authorization_is_not_carried():
     assert "none" in cont.handoff_note
 
 
+def test_evidence_inherited_through_one_handoff_survives_the_next():
+    """Bot review (PR #29, comment 4067626641): a successor that itself
+    started from carried evidence hands that evidence on again, under the
+    same authorization filter as views it collected itself."""
+    loop, request, store, outcome = _exhausted_run()
+    first = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    executor, _, _, clock = build(
+        clock=loop.clock, scope_overrides={"run_id": "run-next"}
+    )
+    successor_store = MemoryStepStore(
+        budget_limit=4, deadline=store.deadline, clock=clock, run_id="run-next"
+    )
+    successor = InvestigationLoop(
+        model=ScriptedModel([reply(content="", finish="stop")]),
+        executor=executor,
+        store=successor_store,
+        clock=clock,
+    )
+    successor_request = InvestigationRequest(
+        run_id="run-next",
+        question=f"{request.question}\n\n{first.handoff_note}",
+        scope=executor.scope,
+        tool_schemas=TOOL_SCHEMAS,
+        model_requests=1,
+        evidence_context=first.evidence_context,
+    )
+    result = successor.run(successor_request)
+    assert result.execution == "failed" and result.handoff is True
+    assert set(result.evidence_ids) == set(outcome.evidence_ids)
+    successor_store.input = successor_request.as_input().as_json()
+
+    second = continuation_context(
+        successor_store.snapshot(),
+        new_run_id="run-third",
+        authorized_targets=executor.scope.target_ids,
+    )
+    assert second.previous_run_id == "run-next"
+    assert set(second.evidence_ids) == set(outcome.evidence_ids)
+    assert (
+        second.evidence_context["view_bindings"]
+        == first.evidence_context["view_bindings"]
+    )
+    assert second.evidence_context["run_id"] == "run-third"
+
+    narrowed = continuation_context(
+        successor_store.snapshot(),
+        new_run_id="run-third",
+        authorized_targets=frozenset({"other"}),
+    )
+    assert narrowed.evidence_ids == ()
+    assert narrowed.evidence_context["view_bindings"] == {}
+
+
 def test_continuation_fails_closed_without_an_input_snapshot_or_with_the_same_run():
     _, request, store, _ = _exhausted_run()
     with pytest.raises(ContextError, match="INVALID_INPUT"):

@@ -872,7 +872,34 @@ def continuation_context(
     context = evidence_context_projection(
         previous.evidence_context, run_id=previous_run_id
     )
+    # The previous Run may itself have started from carried evidence; those
+    # bindings are adopted views too and cross over under the same
+    # authorization filter, or a second handoff would silently lose
+    # everything inherited through the first (bot review finding, PR #29).
     bindings: dict[str, Any] = {}
+    inherited = context.get("view_bindings") if isinstance(context, Mapping) else None
+    for carried_view in delivered_from_context(context, run_id=previous_run_id):
+        source = (
+            inherited.get(carried_view.evidence_id)
+            if isinstance(inherited, Mapping)
+            else None
+        )
+        target = source.get("target_id") if isinstance(source, Mapping) else None
+        if isinstance(target, str) and target not in authorized_targets:
+            continue
+        if (
+            carried_view.target_ids
+            and not carried_view.target_ids <= authorized_targets
+        ):
+            continue
+        seed: dict[str, Any] = {
+            "status": carried_view.status,
+            "target_refs": sorted(carried_view.target_ids),
+            "time_scope_refs": sorted(carried_view.time_scope_refs),
+        }
+        if isinstance(target, str):
+            seed["target_id"] = target
+        bindings[carried_view.evidence_id] = seed
     steps = snapshot.get("steps")
     if not isinstance(steps, Sequence):
         raise ContextError("INCONSISTENT_STATE")
