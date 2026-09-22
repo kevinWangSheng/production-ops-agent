@@ -136,7 +136,9 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 第九轮（对仅文档的 `beedf21`）：1 P1 + 2 P2。P1「携带证据只有 binding 没有观测载荷，后继模型可引用它没看过的证据」——这是冻结 v4 `EvidenceContext.view_bindings` 的既有语义（intake 提供的 context 同样如此），修法是携带模型可见视图或新增证据读取工具，属 SPEC/PRD 层决定，拒绝并登记待用户裁定。P2 被拒的最终文本（合法 JSON 但未过校验）的 gaps/next_steps 被带进后继问题——本 PR 新代码明确缺陷，采纳 `4f30a3e`（按 `report_schema_version` 门控）。P2 claim 后 `usage()` 抛 `StepStoreError` 租约悬挂——与第六轮同类，采纳 `d1abe2a`。`make check` `1660 passed, 169 skipped`，PG `115 passed`，两条用例先红后绿。
 
-第十轮（对 `ff340ea`）：2 P1，均为本 PR 新代码的明确缺陷，采纳 `c5d44a2`：旧代际的尾部报告行在其 conclusion 被栅栏挤成 late_result 时仍被新代际采纳（与 conclusion 已落地的被取代情形不一致）——现在旧代际尾部行一律视为历史；携带 catalog 对 `target_id: ""` 未物化映射——与缺失同样处理。`make check` `1661 passed`，PG `115 passed`，用例先红后绿。
+第十轮（对 `ff340ea`）：2 P1，均为本 PR 新代码的明确缺陷，采纳 `c5d44a2`：旧代际的尾部报告行在其 conclusion 被栅栏挤成 late_result 时仍被新代际采纳（与 conclusion 已落地的被取代情形不一致）——现在旧代际尾部行一律视为历史；携带 catalog 对 `target_id: ""` 未物化映射——与缺失同样处理。`make check` `1662 passed, 169 skipped, 2 xfailed`，PG `115 passed`，用例先红后绿。
+
+第十一轮（对 `0d0b6ce`）：1 P1 + 2 P2，全部登记后续并回复依据，不再改码：待重放计划中 `{}` 条目导致 `tool_request_for` KeyError 反复崩溃（需损坏行触发；修法：`execute_pending` 前 `validate_tool_calls` → `INCONSISTENT_STATE` block）；缺 `reasoning_content` 的计划应在派发前拒绝（= 独立审查 P3 #4）；非瞬时 4xx 应归 `MODEL_REJECTED`（客户端既有行为）。
 
 **停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
@@ -152,6 +154,7 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 - 机器人第七轮 P1（拒绝，工具执行器范围）：视图 `dispatch_started_at` 改用 `operation.authorized_at`，随 M1-01 tool executor 任务处理。
 - 机器人第八轮 P1（拒绝）：`DEADLINE_EXCEEDED` 的权威过期转换需 C3/ADR 决定由谁、以何栅栏执行（与既有 P3 后续同一项）；DNS 阶段可终止性（daemon 传输线程 / 解析超时 / 换 HTTP 栈）随客户端加固处理。
 - **待用户裁定**（机器人第九轮 P1）：跨 Run 携带证据是否需要携带模型可见的观测载荷，或为后继 Run 提供受限的证据读取工具；当前沿用冻结 v4 `view_bindings` 语义（只有 id/scope，无载荷）。
+- 机器人第十一轮（登记后续）：`execute_pending` 前校验待重放计划并转 `INCONSISTENT_STATE`；非瞬时 4xx 归 `MODEL_REJECTED`。
 - 独立审查 P3 #8：follow-up 取代未发布 completed conclusion 且无预算时的产品语义，随追问通道工作一起定。
 - **F5 待用户裁定**：v4 `TimePolicy` required 字段（`id/revision/integration_id/interfaces/mode/reference_rule`）的存在性检查放在 intake 边界还是 loop 投影层；当前产品代码没有运行时 v4 schema 校验器，冻结包只在 M0 脚本/测试里按 schema 校验。裁定后在对应边界统一实现，并同步 8 个使用最小 policy 形状的测试 fixture。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
