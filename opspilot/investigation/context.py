@@ -1029,9 +1029,24 @@ def continuation_context(
         "view_bindings": bindings,
     }
     if isinstance(context, Mapping):
-        for key in ("time_policies", "target_catalog"):
-            if key in context:
-                carried[key] = context[key]
+        if "time_policies" in context:
+            carried["time_policies"] = context["time_policies"]
+        if isinstance(context.get("target_catalog"), Mapping):
+            # Carry the catalog with the mapping the previous Run resolved
+            # it under: an entry that bound to the predecessor's sole target
+            # keeps that registry id, so a differently-scoped successor can
+            # neither re-resolve the ref to its own target nor let a fresh
+            # view inherit the old alias (bot review finding, PR #29).
+            carried["target_catalog"] = {
+                key: (
+                    {**entry, "target_id": (catalog or {}).get(key)}
+                    if isinstance(entry, Mapping)
+                    and not isinstance(entry.get("target_id"), str)
+                    and (catalog or {}).get(key)
+                    else entry
+                )
+                for key, entry in context["target_catalog"].items()
+            }
     projected = evidence_context_projection(carried, run_id=new_run_id)
     if projected is None:
         raise ContextError("INCONSISTENT_STATE")

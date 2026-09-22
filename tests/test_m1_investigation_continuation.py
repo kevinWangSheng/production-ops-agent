@@ -309,6 +309,13 @@ def test_opaque_refs_resolve_under_the_previous_runs_authorization_not_the_succe
         store.snapshot(), new_run_id="run-next", authorized_targets=frozenset({"other"})
     )
     assert other.evidence_ids == ()
+    # The carried catalog keeps the predecessor-resolved mapping, so the
+    # successor cannot re-resolve the ref to its own target (bot review,
+    # PR #29, comment 4069259157).
+    for cont in (same, other):
+        assert cont.evidence_context["target_catalog"]["svc-ref"]["target_id"] == (
+            "checkout-prod"
+        )
 
 
 def test_current_policy_refs_are_not_carried_across_runs():
