@@ -103,8 +103,16 @@ class InvestigationRunner:
             # Malformed or incompatible business rows: C3 §7 says block and
             # hand off, never guess. ``block`` is fenced like every write, so
             # a Run that human control already moved on is left alone.
-            self._block_best_effort(lease)
-            return RunnerOutcome("blocked", reason=exc.code, epoch=lease.epoch)
+            return self._blocked(lease, exc.code)
+        except PersistenceError as exc:
+            # A fence or storage refusal met after the claim (a pending tool
+            # commit, a rebuild, a publish): a typed outcome, not a crash.
+            code = str(exc)
+            return RunnerOutcome(
+                "blocked" if code == "INCOMPATIBLE_STATE" else "control_denied",
+                reason=code,
+                epoch=lease.epoch,
+            )
 
     def _continue(
         self, incident_id: UUID, session: RecoverySession, snapshot: Mapping[str, Any]
@@ -236,12 +244,23 @@ class InvestigationRunner:
                 incident_id, metadata["run_id"], lease_seconds=self.lease_seconds
             )
         except PersistenceError as exc:
-            return RunnerOutcome("control_denied", reason=str(exc))
-        self._block_best_effort(lease)
-        return RunnerOutcome("blocked", reason="INCONSISTENT_STATE", epoch=lease.epoch)
+            code = str(exc)
+            # ``claim`` itself blocks a version-incompatible Run durably.
+            return RunnerOutcome(
+                "blocked" if code == "INCOMPATIBLE_STATE" else "control_denied",
+                reason=code,
+            )
+        return self._blocked(lease, "INCONSISTENT_STATE")
 
-    def _block_best_effort(self, lease: Lease) -> None:
+    def _blocked(self, lease: Lease, reason: str) -> RunnerOutcome:
+        """Block under ``lease`` and report what actually landed.
+
+        The outcome is evidence of state: ``blocked`` only when the fenced
+        write succeeded; a refusal (human control moved the Run on, or
+        storage failed) is reported as such, and the next attempt converges.
+        """
         try:
             self.store.block(lease)
-        except PersistenceError:
-            pass
+        except PersistenceError as exc:
+            return RunnerOutcome("control_denied", reason=str(exc), epoch=lease.epoch)
+        return RunnerOutcome("blocked", reason=reason, epoch=lease.epoch)

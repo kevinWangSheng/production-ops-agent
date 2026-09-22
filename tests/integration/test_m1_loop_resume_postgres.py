@@ -379,6 +379,25 @@ def test_a_malformed_committed_step_blocks_the_run_durably_instead_of_crashing()
     assert again.status == "control_denied"
 
 
+def test_an_undecodable_run_of_another_version_is_reported_as_blocked():
+    """Independent review (PR #29): when the claim inside the undecodable path
+    blocks the Run for a version mismatch, the outcome says ``blocked``, which
+    is what the durable state is."""
+    h = Harness()
+    with h.store.transaction() as conn:
+        from psycopg.types.json import Jsonb
+
+        conn.execute(
+            "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,0,'ctx0:round-1','response_committed',%s,0)",
+            (uuid4(), h.run, Jsonb({"assistant": "corrupt"})),
+        )
+    runner = h.runner([report_from_transcript])
+    runner.worker = Worker.create(h.store, {**VERSIONS, "prompt_revision": "other"})
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "blocked" and outcome.reason == "INCOMPATIBLE_STATE"
+    assert h.store.recovery_metadata(h.incident)["run_state"] == "blocked"
+
+
 def test_limits_above_the_freeze_are_refused_at_the_product_boundary():
     run = uuid4()
     wide = RunLimits(model_requests=8)
