@@ -508,9 +508,12 @@ class Transcript:
     live_steps: int
     prefix_len: int
     last_step_id: UUID | None = None
-    # A conclusion row exists under a superseded generation: the Run was
-    # concluded once and a human moved it on, so an accepted report at the
-    # end of the transcript is history, not something to republish.
+    # A conclusion row under a superseded generation follows the last
+    # replayed round: the Run was concluded once and a human moved it on, so
+    # the trailing candidate is history, not something to republish. Cleared
+    # again once a later round is replayed after that conclusion -- the new
+    # generation's own trailing report is judged like any other (bot review
+    # finding, PR #29).
     superseded_conclusion: bool = False
     calibration: float = 1.0
     folded_since: tuple[UUID, ...] = ()
@@ -713,6 +716,7 @@ def rebuild_transcript(
                 isinstance(row_context, Mapping) and row_context.get("final") is True
             )
             last_rejection = rejection if isinstance(rejection, str) else None
+            superseded_conclusion = False
             continue
         results = _ordered_results(step, len(calls))
         if results is None:
@@ -723,6 +727,7 @@ def rebuild_transcript(
         last_finish_reason = finish if isinstance(finish, str) else None
         last_final = False
         last_rejection = None
+        superseded_conclusion = False
         tool_messages: list[dict[str, Any]] = []
         for call, view in zip(calls, results, strict=True):
             target = view.get("target_id")

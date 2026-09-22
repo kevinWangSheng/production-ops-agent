@@ -468,8 +468,9 @@ def test_an_accepted_report_whose_conclusion_was_never_committed_finishes_on_res
     assert outcome.evidence_ids == tuple(transcript.evidence_ids)
 
 
-def _die_on_conclusion(loop, store, request):
-    """A store whose process dies on the first conclusion row; the loop uses it."""
+def _die_on_conclusion(loop, store, request, *, armed=True):
+    """A store whose process dies on the next conclusion row once ``armed``;
+    the loop uses it."""
 
     class DieOnConclusion(MemoryStepStore):
         armed = True
@@ -486,6 +487,7 @@ def _die_on_conclusion(loop, store, request):
         clock=loop.clock,
         run_id=request.run_id,
     )
+    dying.armed = armed
     loop.store = dying
     return dying
 
@@ -555,6 +557,33 @@ def test_a_refused_plan_ends_the_resumed_attempt_the_way_it_ended_the_live_one()
     assert outcome.execution == "failed" and model.calls == []
     assert outcome.handoff_reasons == ("TOOL_PAIRING_INVALID",)
     assert outcome.final_step_id is not None
+
+
+def test_a_report_committed_after_a_follow_up_still_finishes_on_resume():
+    """Bot review (PR #29, comment 4068683860): the superseded-conclusion
+    guard covers the report that predates the follow-up, not a report the new
+    generation committed afterwards and died before concluding."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    dying = _die_on_conclusion(loop, store, request, armed=False)
+    assert loop.run(request).execution == "completed"
+    dying.advance_generation()  # operator follow-up before the publish landed
+    transcript = _transcript(dying, request)
+    assert transcript.superseded_conclusion  # the old report is history
+    second, _ = _restart(
+        loop, dying, [*_tool_rounds(1, start=2), report_from_transcript]
+    )
+    dying.armed = True
+    with pytest.raises(Crash):
+        second.resume(transcript)
+    again = _transcript(dying, request)
+    assert not again.superseded_conclusion
+    assert again.messages[-1]["role"] == "assistant" and again.next_round == 5
+    third, model = _restart(loop, dying, [])  # any model call would raise
+    outcome = third.resume(again)
+    assert outcome.execution == "completed" and model.calls == []
+    assert outcome.model_requests_used == 4 and outcome.final_step_id is not None
 
 
 def test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work():
