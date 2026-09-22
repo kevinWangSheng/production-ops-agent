@@ -367,3 +367,56 @@ def test_a_sub_100ms_deadline_is_not_extended_past_the_authorized_budget():
     with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
         client.complete(_call(0.02))
     assert time.monotonic() - started < 0.08
+
+
+def test_a_timed_out_transport_is_shut_down_not_orphaned(monkeypatch):
+    """Bot review (PR #29, comment 4067523571): ``future.result(timeout=...)``
+    bounded only the caller; the transport thread and its socket kept running.
+    At the deadline the client now shuts the connection down, which unblocks
+    the transport thread instead of leaving a live request behind."""
+    import threading
+
+    from opspilot.investigation import client as client_module
+
+    released = threading.Event()
+    closed = threading.Event()
+
+    class HangingConnection:
+        """Stands in for ``HTTPSConnection`` against a peer that never answers."""
+
+        def __init__(self, host, **kwargs):
+            self.sock = None
+            self.timeout = kwargs.get("timeout")
+
+        def set_debuglevel(self, level):
+            pass
+
+        def request(self, method, url, body=None, headers=None, **kwargs):
+            released.wait(5)  # blocked in the handshake/headers phase
+
+        def getresponse(self):
+            raise OSError("connection was shut down")
+
+        def close(self):
+            closed.set()
+            released.set()
+
+    monkeypatch.setattr(client_module, "HTTPSConnection", HangingConnection)
+    before = {t.ident for t in threading.enumerate()}
+    client = DeepSeekClient("test-key", endpoint="https://provider.invalid/v1")
+    started = time.monotonic()
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client._post(b"{}", 0.3)
+    assert time.monotonic() - started < 2.0
+    assert closed.wait(1.0)  # the deadline tore the connection down
+    deadline = time.monotonic() + 2.0
+    lingering = []
+    while time.monotonic() < deadline:
+        lingering = [
+            t for t in threading.enumerate() if t.ident not in before and t.is_alive()
+        ]
+        if not lingering:
+            break
+        time.sleep(0.05)
+    assert lingering == []
+    assert client._https is not None and client._https.current is None

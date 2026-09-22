@@ -9,12 +9,20 @@ and re-check the deadline before any retry.
 from __future__ import annotations
 
 import json
+import socket
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol
+from http.client import HTTPSConnection
+from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import (
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 from opspilot.investigation.limits import MAX_HTTP_RESPONSE_BYTES
 from opspilot.investigation.loop import (
@@ -38,6 +46,56 @@ class _Opener(Protocol):
     """The one method this client uses from ``urllib``'s ``OpenerDirector``."""
 
     def open(self, request: Request, timeout: float) -> Any: ...
+
+
+class _RecordingHTTPSHandler(HTTPSHandler):
+    """``HTTPSHandler`` that keeps a handle on the connection it opens.
+
+    ``urllib`` hides the ``HTTPSConnection`` it creates, so once
+    ``opener.open()`` is blocked inside the transport thread (TLS
+    handshake, status line, headers) nothing on the calling thread can
+    reach the socket to stop it. Recording the connection lets ``_post``
+    shut the socket down at the deadline, which unblocks the transport
+    thread with an ``OSError`` instead of leaving it -- and a live request
+    to the provider -- running until the peer decides to stop (bot review
+    finding, PR #29). One client serves one loop thread, so a single
+    ``current`` slot is enough.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.current: HTTPSConnection | None = None
+
+    def https_open(self, req: Request) -> Any:
+        # Same call the stdlib handler makes, with our recording factory in
+        # place of ``HTTPSConnection``; ``_context`` is the handler's SSL
+        # context attribute, absent from the typeshed stub.
+        return self.do_open(
+            self._connect,
+            req,
+            context=getattr(self, "_context", None),
+        )
+
+    def _connect(self, host: str, **kwargs: Any) -> HTTPSConnection:
+        connection = HTTPSConnection(host, **kwargs)
+        self.current = connection
+        return connection
+
+    def abort(self) -> None:
+        """Best-effort: tear down the connection in flight, from any thread."""
+        connection, self.current = self.current, None
+        if connection is None:
+            return
+        sock = getattr(connection, "sock", None)
+        try:
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+            connection.close()
+        except Exception:
+            pass
 
 
 class MonotonicClock(Protocol):
@@ -81,11 +139,14 @@ class DeepSeekClient:
         self._endpoint = endpoint
         self._model = model
         self._clock = clock if clock is not None else _SystemClock()
-        self._opener = (
-            opener
-            if opener is not None
-            else build_opener(ProxyHandler({}), _NoRedirect())
-        )
+        self._https: _RecordingHTTPSHandler | None = None
+        if opener is None:
+            self._https = _RecordingHTTPSHandler()
+            self._opener: _Opener = cast(
+                _Opener, build_opener(ProxyHandler({}), _NoRedirect(), self._https)
+            )
+        else:
+            self._opener = opener
 
     def complete(self, call: ModelCall) -> ModelReply:
         """One physical HTTPS request. Retries are the loop's budget decision."""
@@ -166,7 +227,13 @@ class DeepSeekClient:
         pool = ThreadPoolExecutor(max_workers=1)
         try:
             future = pool.submit(_fetch)
-            return future.result(timeout=budget)
+            try:
+                return future.result(timeout=budget)
+            except TimeoutError:
+                # The caller's wait is over; do not leave the transport
+                # thread (and the provider-side request) running on its own.
+                self._abort_transport()
+                raise
         except HTTPError as exc:
             # ``exc.read()`` is a raw, untimed blocking call (bot review
             # finding, PR #29): a 429/500/503 whose error body trickles
@@ -183,7 +250,9 @@ class DeepSeekClient:
                         timeout=remaining
                     )
                 except OSError:
-                    pass
+                    self._abort_transport()
+            else:
+                self._abort_transport()
             return b"", int(exc.code)
         except (URLError, TimeoutError, OSError) as exc:
             # ``concurrent.futures.TimeoutError`` (``future.result``'s own
@@ -192,12 +261,15 @@ class DeepSeekClient:
             # Python version -- no separate branch needed.
             raise ModelError("MODEL_UNAVAILABLE") from exc
         finally:
-            # Never wait for an orphaned, still-stalled fetch: the point of
-            # the timeout above is that this call returns within ``budget``
-            # regardless of what the background thread is still doing. It
-            # finishes (and is garbage-collected) on its own once the peer
-            # actually responds or its own socket timeout fires.
+            # Never wait for the fetch here: this call returns within
+            # ``budget`` regardless. On a timeout the socket has already been
+            # shut down above, so the transport thread is unblocked and
+            # exits on its own rather than lingering with a live request.
             pool.shutdown(wait=False)
+
+    def _abort_transport(self) -> None:
+        if self._https is not None:
+            self._https.abort()
 
 
 def _tighten_socket_deadline(response: Any, remaining: float) -> None:
