@@ -208,6 +208,77 @@ def test_inherited_bindings_with_opaque_target_refs_are_authorized_via_the_catal
     assert narrowed.evidence_ids == ()
 
 
+def test_continuation_reads_business_rows_even_when_the_transcript_no_longer_replays(
+    monkeypatch,
+):
+    """Independent review (PR #29): a Run blocked by a prompt/context-policy
+    revision bump is C3 §7's named case for a business-fact successor, and
+    exactly the Run whose transcript bytes no longer replay. Continuation
+    must not depend on ``rebuild_transcript``."""
+    from opspilot.investigation import context as ctx
+
+    loop, request, store, outcome = _exhausted_run()
+    original = ctx.render
+
+    def bumped(*args, **kwargs):
+        return original(*args, **kwargs) + "\n(revised discipline text)"
+
+    monkeypatch.setattr(ctx, "render", bumped)
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        ctx.rebuild_transcript(
+            store.snapshot(),
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+        )
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert set(cont.evidence_ids) == set(outcome.evidence_ids)
+
+
+def test_committed_views_of_a_partial_superseded_group_are_carried():
+    """Independent review (PR #29): two calls in one round, ordinal 0
+    committed and adopted, the process died before ordinal 1, then a human
+    follow-up superseded the generation. The group can never be replayed to
+    the model, but its committed view is reusable history (C3 §7)."""
+    loop, request, _, _, store, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call("c1"), tool_call("c2")], finish="tool_calls")
+        ],
+        budget_limit=4,
+        model_requests=2,
+    )
+
+    class Crash(RuntimeError):
+        pass
+
+    class DieOnSecondTool(MemoryStepStore):
+        def commit_tool(self, step_id, ordinal, result):
+            if ordinal == 1:
+                raise Crash("died before the second tool result")
+            return super().commit_tool(step_id, ordinal, result)
+
+    dying = DieOnSecondTool(
+        budget_limit=4, deadline=store.deadline, clock=loop.clock, run_id=request.run_id
+    )
+    loop.store = dying
+    with pytest.raises(Crash):
+        loop.run(request)
+    dying.input = request.as_input().as_json()
+    step_id = dying.steps["ctx0:round-1"]["step_id"]
+    committed = dying.tool_results[step_id]
+    assert [item["ordinal"] for item in committed] == [0]
+    dying.advance_generation()  # follow_up: the group is now old-generation
+    cont = continuation_context(
+        dying.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert cont.evidence_ids == (committed[0]["result"]["evidence_id"],)
+
+
 def test_continuation_fails_closed_without_an_input_snapshot_or_with_the_same_run():
     _, request, store, _ = _exhausted_run()
     with pytest.raises(ContextError, match="INVALID_INPUT"):

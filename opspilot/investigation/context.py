@@ -863,6 +863,55 @@ def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:
     return calibrated(factor, estimated, usage.get("prompt_tokens"))
 
 
+def committed_views(
+    snapshot: Mapping[str, Any], *, run_id: str
+) -> list[Mapping[str, Any]]:
+    """Every tool view this Run committed, in step/ordinal order.
+
+    Business facts only (C3 §7): late results are skipped, terminal and
+    compaction rows carry no views, and a group that never completed still
+    contributes the ordinals it did commit -- those views were adopted and
+    remain reusable history even though the group can no longer be replayed
+    to the model. Nothing here depends on prompt bytes or on
+    ``reasoning_content``, which is why cross-Run continuation reads views
+    from this walk rather than from ``rebuild_transcript``: the Run that
+    hands off is often exactly the one whose transcript can no longer be
+    replayed (a prompt/context-policy revision bump blocked it).
+    """
+    steps = snapshot.get("steps")
+    if not isinstance(steps, Sequence):
+        raise ContextError("INCONSISTENT_STATE")
+    ordered = sorted(
+        (step for step in steps if isinstance(step, Mapping)),
+        key=lambda step: (int(step.get("sequence", 0)), str(step.get("step_id"))),
+    )
+    views: list[Mapping[str, Any]] = []
+    for step in ordered:
+        if step.get("status") == "late_result":
+            continue
+        if str(step.get("run_id")) != run_id:
+            raise ContextError("INCONSISTENT_STATE")
+        response = step.get("response")
+        if not isinstance(response, Mapping):
+            raise ContextError("INCONSISTENT_STATE")
+        if response.get("kind") is not None:
+            continue
+        raw = step.get("tool_results")
+        if not isinstance(raw, list):
+            raise ContextError("INCONSISTENT_STATE")
+        by_ordinal: dict[int, Mapping[str, Any]] = {}
+        for item in raw:
+            if not isinstance(item, Mapping):
+                raise ContextError("INCONSISTENT_STATE")
+            ordinal = item.get("ordinal")
+            result = item.get("result")
+            if type(ordinal) is not int or not isinstance(result, Mapping):
+                raise ContextError("INCONSISTENT_STATE")
+            by_ordinal[ordinal] = result
+        views.extend(by_ordinal[o] for o in sorted(by_ordinal))
+    return views
+
+
 # --- cross-Run continuation (C3 §7 "基于业务事实的新 Run 接续") -----------------
 
 
@@ -901,29 +950,39 @@ def continuation_context(
     previous_run_id = str(run.get("run_id"))
     if previous_run_id == new_run_id:
         raise ContextError("INVALID_INPUT")
-    # The adopted, still-authorized views of the previous Run are exactly
-    # what ``rebuild_transcript`` computes for a resume: views the Run
-    # inherited through its own input context plus the ones it collected,
-    # with revoked targets stubbed out. One authority for "what may be
-    # cited", not a second scan of the rows (review consolidation, PR #29).
-    transcript = rebuild_transcript(
-        snapshot, run_id=previous_run_id, authorized_targets=authorized_targets
+    previous = InvestigationInput.from_json(run["input"])
+    context = evidence_context_projection(
+        previous.evidence_context, run_id=previous_run_id
     )
-    context = transcript.evidence_context
     steps = snapshot.get("steps")
     if not isinstance(steps, Sequence):
         raise ContextError("INCONSISTENT_STATE")
+    # What the successor may cite: the views the previous Run inherited
+    # through its own input context plus every view it committed, each
+    # deriving its citation through ``delivered_view`` exactly as a live
+    # attempt does, then filtered once by ``view_targets_authorized``. Read
+    # from business rows, never by replaying the transcript (see
+    # ``committed_views``).
     catalog = context_target_catalog(context, authorized_targets=authorized_targets)
+    adopted: list[DeliveredView] = list(
+        delivered_from_context(context, run_id=previous_run_id)
+    )
+    for view in committed_views(snapshot, run_id=previous_run_id):
+        citation = delivered_view(
+            view, evidence_context=context, authorized_targets=authorized_targets
+        )
+        if citation is not None:
+            adopted.append(citation)
     bindings: dict[str, Any] = {}
-    for view in transcript.delivered:
+    for citation in adopted:
         if not view_targets_authorized(
-            view, authorized_targets=authorized_targets, target_catalog=catalog
+            citation, authorized_targets=authorized_targets, target_catalog=catalog
         ):
             continue
-        bindings[view.evidence_id] = {
-            "status": view.status,
-            "target_refs": sorted(view.target_ids),
-            "time_scope_refs": sorted(view.time_scope_refs),
+        bindings[citation.evidence_id] = {
+            "status": citation.status,
+            "target_refs": sorted(citation.target_ids),
+            "time_scope_refs": sorted(citation.time_scope_refs),
         }
     carried: dict[str, Any] = {
         "type": "opspilot-evidence-context-v4",
@@ -939,12 +998,18 @@ def continuation_context(
         raise ContextError("INCONSISTENT_STATE")
     conclusion = snapshot.get("conclusion")
     if not isinstance(conclusion, Mapping):
+        # The latest conclusion row: after a follow-up superseded an earlier
+        # one, the handoff note describes the outcome the Run actually ended
+        # on (independent review, PR #29).
         conclusion = next(
             (
                 s["response"]
-                for s in steps
-                if isinstance(s, Mapping)
-                and isinstance(s.get("response"), Mapping)
+                for s in sorted(
+                    (s for s in steps if isinstance(s, Mapping)),
+                    key=lambda s: (int(s.get("sequence", 0)), str(s.get("step_id"))),
+                    reverse=True,
+                )
+                if isinstance(s.get("response"), Mapping)
                 and s["response"].get("kind") == CONCLUSION_KIND
                 and s.get("status") != "late_result"
             ),

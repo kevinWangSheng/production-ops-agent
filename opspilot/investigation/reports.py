@@ -692,6 +692,13 @@ def view_targets_authorized(
     through the catalog when it is a catalog key, as ``unsupported_citations``
     resolves claim refs, and the resolved set must lie inside the
     authorization. A view naming no target is not target-bound and passes.
+
+    Deliberately stricter than ``unsupported_citations`` in one case: a
+    catalog key that maps to no registry id (``None``) is kept as the opaque
+    key itself and therefore fails the subset test, so such a view is not
+    carried into a successor Run even though the previous Run's report
+    could cite it. Carrying evidence across Runs is a new authorization;
+    an unresolvable target is not re-granted by default.
     """
     resolved = frozenset(
         (target_catalog or {}).get(ref) or ref for ref in view.target_ids
