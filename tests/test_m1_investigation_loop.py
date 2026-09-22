@@ -1176,6 +1176,39 @@ def test_a_conservatively_charged_failure_shrinks_the_retry_timeout():
     assert outcome.model_seconds_used == pytest.approx(360)
 
 
+def test_this_attempts_tool_time_counts_toward_the_active_budget():
+    """Independent review (PR #29): ``prior_active`` froze the tool ledger at
+    open; tool time this attempt added must also bound the next timeout."""
+    from dataclasses import replace
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            ModelError("MODEL_UNAVAILABLE"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    real = loop.executor
+
+    class SlowTools:
+        scope = real.scope
+        tool_seconds_used = 0.0
+
+        def execute(self, tool_request):
+            outcome = real.execute(tool_request)
+            self.tool_seconds_used += 100.0
+            return outcome
+
+    loop.executor = SlowTools()
+    request = replace(request, limits=RunLimits(active_seconds=500))
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 3
+    # 500 - (100 tool + 360 charged to the fast failure) = 40 left.
+    assert model.calls[2].timeout_seconds == pytest.approx(40)
+    assert store.usage().model_seconds_used + 100 <= 500
+
+
 def test_every_physical_request_is_settled_as_spent_or_unknown():
     """C3 §13: reservations are settled in the store; unknown cost stays occupied."""
     payload = json.dumps(

@@ -280,6 +280,9 @@ class _State:
     # figures reported at the end are ``prior_model_seconds + seconds_used``,
     # cumulative like ``used`` (bot review finding, PR #29).
     prior_model_seconds: float = 0.0
+    # The tool ledger's reading when this attempt opened; the live reading
+    # minus it is the tool time this attempt has added.
+    tool_seconds_at_open: float = 0.0
     last_step_id: UUID | None = None
 
 
@@ -346,6 +349,7 @@ class InvestigationLoop:
             # executor was built from (C3 §13: restarts never reset it).
             prior_active=usage.model_seconds_used + self.executor.tool_seconds_used,
             prior_model_seconds=usage.model_seconds_used,
+            tool_seconds_at_open=self.executor.tool_seconds_used,
             attempt_started=self.clock.monotonic(),
             revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
@@ -943,9 +947,10 @@ class InvestigationLoop:
         # (settled unknown), and the next request must fit under the ceiling
         # after that charge, or the durable usage overshoots ``active_seconds``
         # (bot review finding, PR #29).
-        attempt_spent = max(
-            self.clock.monotonic() - state.attempt_started, state.seconds_used
+        charged = state.seconds_used + (
+            self.executor.tool_seconds_used - state.tool_seconds_at_open
         )
+        attempt_spent = max(self.clock.monotonic() - state.attempt_started, charged)
         remaining_active = request.limits.active_seconds - (
             state.prior_active + attempt_spent
         )
