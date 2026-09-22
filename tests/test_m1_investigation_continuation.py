@@ -357,6 +357,48 @@ def test_current_policy_refs_are_not_carried_across_runs():
     )
 
 
+def test_a_rejected_final_text_does_not_cross_into_the_successors_question():
+    """Bot review (PR #29, comment 4069386097): a final text that is valid
+    JSON but failed report/citation validation is recorded with no schema
+    version; its gaps/next_steps are model output that never passed
+    validation and must not be carried."""
+    import json
+
+    rejected = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "completed",
+            "conclusion": "supported",
+            "summary": "Cites evidence that was never delivered.",
+            "claims": [
+                {
+                    "kind": "fact",
+                    "text": "Fabricated.",
+                    "evidence_ids": ["never-delivered"],
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_ref": "policy-window-1",
+                }
+            ],
+            "gaps": ["LEAKED GAP"],
+            "next_steps": ["LEAKED STEP"],
+        }
+    )
+    loop, request, _, _, store, _ = assemble(
+        replies=[reply(content=rejected, finish="stop")], model_requests=1
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed" and outcome.report is None
+    assert outcome.report_content == rejected
+    store.input = request.as_input().as_json()
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert "LEAKED" not in cont.handoff_note
+    assert "REPORT_INVALID" in cont.handoff_note
+
+
 def test_continuation_fails_closed_without_an_input_snapshot_or_with_the_same_run():
     _, request, store, _ = _exhausted_run()
     with pytest.raises(ContextError, match="INVALID_INPUT"):

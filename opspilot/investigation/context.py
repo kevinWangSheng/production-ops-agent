@@ -1074,6 +1074,12 @@ def continuation_context(
     gaps: list[str] = []
     next_steps: list[str] = []
     report_text = summary.get("report_content")
+    # Only a *validated* report's text crosses over: ``_finish`` records the
+    # final text of a failed attempt too (schema version ``None``), and that
+    # candidate never passed schema or citation checks (bot review finding,
+    # PR #29).
+    if not isinstance(summary.get("report_schema_version"), str):
+        report_text = None
     if isinstance(report_text, str):
         try:
             report = json.loads(report_text)
