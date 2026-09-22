@@ -168,6 +168,46 @@ def test_evidence_inherited_through_one_handoff_survives_the_next():
     assert narrowed.evidence_context["view_bindings"] == {}
 
 
+def test_inherited_bindings_with_opaque_target_refs_are_authorized_via_the_catalog():
+    """Bot review (PR #29, comment 4068683865): a schema-valid v4 binding names
+    opaque ``target_refs`` and no registry id; the catalog, not a raw
+    registry-id subset test, decides whether it is still authorized."""
+    loop, request, _, _, store, _ = assemble(
+        replies=[reply(content="", finish="stop")], model_requests=1
+    )
+    context = dict(request.evidence_context)
+    context["target_catalog"] = {"checkout-ref": {"target_id": "checkout-prod"}}
+    context["view_bindings"] = {
+        "ev-prior": {
+            "status": "ok",
+            "target_refs": ["checkout-ref"],
+            "time_scope_refs": ["policy-window-1"],
+            "view_hash": "sha256:prior",
+        }
+    }
+    request = replace(request, evidence_context=context)
+    outcome = loop.run(request)
+    assert outcome.execution == "failed" and "ev-prior" in outcome.evidence_ids
+    store.input = request.as_input().as_json()
+
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert cont.evidence_ids == ("ev-prior",)
+    binding = cont.evidence_context["view_bindings"]["ev-prior"]
+    assert binding["target_refs"] == ["checkout-ref"] and "target_id" not in binding
+    assert cont.evidence_context["target_catalog"] == context["target_catalog"]
+    views = delivered_from_context(cont.evidence_context, run_id="run-next")
+    assert [v.evidence_id for v in views] == ["ev-prior"]
+
+    narrowed = continuation_context(
+        store.snapshot(), new_run_id="run-next", authorized_targets=frozenset({"other"})
+    )
+    assert narrowed.evidence_ids == ()
+
+
 def test_continuation_fails_closed_without_an_input_snapshot_or_with_the_same_run():
     _, request, store, _ = _exhausted_run()
     with pytest.raises(ContextError, match="INVALID_INPUT"):

@@ -904,6 +904,10 @@ def continuation_context(
     # everything inherited through the first (bot review finding, PR #29).
     bindings: dict[str, Any] = {}
     inherited = context.get("view_bindings") if isinstance(context, Mapping) else None
+    # A schema-valid v4 binding names opaque ``target_refs`` and no registry
+    # ``target_id``; authorize them through the catalog, as citation checks
+    # do, or every such inherited view would fail the registry-id test.
+    catalog = context_target_catalog(context, authorized_targets=authorized_targets)
     for carried_view in delivered_from_context(context, run_id=previous_run_id):
         source = (
             inherited.get(carried_view.evidence_id)
@@ -913,10 +917,10 @@ def continuation_context(
         target = source.get("target_id") if isinstance(source, Mapping) else None
         if isinstance(target, str) and target not in authorized_targets:
             continue
-        if (
-            carried_view.target_ids
-            and not carried_view.target_ids <= authorized_targets
-        ):
+        resolved = frozenset(
+            (catalog or {}).get(ref) or ref for ref in carried_view.target_ids
+        )
+        if resolved and not resolved <= authorized_targets:
             continue
         seed: dict[str, Any] = {
             "status": carried_view.status,
