@@ -71,7 +71,12 @@ class InvestigationRunner:
 
     def resume(self, incident_id: UUID) -> RunnerOutcome:
         """Continue (or start) the incident's current Run from committed rows."""
-        snapshot = self.store.rebuild(incident_id)
+        try:
+            snapshot = self.store.rebuild(incident_id)
+        except PersistenceError as exc:
+            if str(exc) != "INCONSISTENT_STATE":
+                raise
+            return self._block_undecodable(incident_id)
         if snapshot["conclusion"] is not None or snapshot["run"]["state"] in {
             "completed",
             "cancelled",
@@ -85,6 +90,8 @@ class InvestigationRunner:
             )
         except PersistenceError as exc:
             code = str(exc)
+            if code == "INCONSISTENT_STATE":
+                return self._block_undecodable(incident_id)
             return RunnerOutcome(
                 "blocked" if code == "INCOMPATIBLE_STATE" else "control_denied",
                 reason=code,
@@ -107,7 +114,14 @@ class InvestigationRunner:
         # ``rebuild()`` and ``Worker.resume()`` replaces the current Run, and
         # the leased Run's own input snapshot -- never the earlier Run's --
         # is what this attempt may run with (bot review finding, PR #29).
-        snapshot = self.store.rebuild(incident_id)
+        try:
+            snapshot = self.store.rebuild(incident_id)
+        except PersistenceError as exc:
+            if str(exc) != "INCONSISTENT_STATE":
+                raise
+            # Rows this version cannot decode, met after the claim: the
+            # fenced block path below is the C3 §7 handoff for them.
+            raise ContextError("INCONSISTENT_STATE") from exc
         if str(snapshot["run"]["run_id"]) != str(lease.run_id):
             raise ContextError("RUN_MISMATCH")
         recorded = snapshot["run"].get("input")
@@ -204,6 +218,27 @@ class InvestigationRunner:
             # The session already released its lease; the conclusion step is
             # still in the rows, so the next attempt republishes it.
             return False
+
+    def _block_undecodable(self, incident_id: UUID) -> RunnerOutcome:
+        """Malformed committed rows met before any lease was held.
+
+        ``rebuild()`` refuses to decode them, so the Run can never be run
+        again by this version; without a durable ``blocked`` state every
+        retry would crash at the same read instead of handing off (bot
+        review finding, PR #29). Claim through the metadata read -- which
+        decodes nothing -- then block under that lease, fenced like every
+        other write. A claim refused by human control or another holder
+        leaves the Run as it is.
+        """
+        try:
+            metadata = self.store.recovery_metadata(incident_id)
+            lease = self.worker.claim(
+                incident_id, metadata["run_id"], lease_seconds=self.lease_seconds
+            )
+        except PersistenceError as exc:
+            return RunnerOutcome("control_denied", reason=str(exc))
+        self._block_best_effort(lease)
+        return RunnerOutcome("blocked", reason="INCONSISTENT_STATE", epoch=lease.epoch)
 
     def _block_best_effort(self, lease: Lease) -> None:
         try:

@@ -360,6 +360,25 @@ def test_a_malformed_input_snapshot_blocks_the_run_durably():
     assert again.status == "control_denied"
 
 
+def test_a_malformed_committed_step_blocks_the_run_durably_instead_of_crashing():
+    """Bot review (PR #29, comment 4068683858): rows this version cannot decode
+    are met before any lease exists; the Run must still reach ``blocked``."""
+    h = Harness()
+    with h.store.transaction() as conn:
+        from psycopg.types.json import Jsonb
+
+        conn.execute(
+            "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,0,'ctx0:round-1','response_committed',%s,0)",
+            (uuid4(), h.run, Jsonb({"assistant": "corrupt"})),
+        )
+    outcome = h.runner([report_from_transcript]).resume(h.incident)
+    assert outcome.status == "blocked" and outcome.reason == "INCONSISTENT_STATE"
+    assert outcome.epoch is not None and h.transport_requests == 0
+    assert h.store.recovery_metadata(h.incident)["run_state"] == "blocked"
+    again = h.runner([report_from_transcript]).resume(h.incident)
+    assert again.status == "control_denied"
+
+
 def test_limits_above_the_freeze_are_refused_at_the_product_boundary():
     run = uuid4()
     wide = RunLimits(model_requests=8)
