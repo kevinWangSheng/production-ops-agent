@@ -199,6 +199,8 @@ Worker.resume(incident)                      # 已有：版本门 → claim → 
 | P2 前置真实冒烟 | 已执行：`scripts/m1_compaction_smoke.py`，2 次请求均 200，见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json` | 第 9 节第 3 项关闭；估计器首轮校准因子见该文件 |
 | runner 对 blocked 的落库 | 新增 `DurableStore.block(lease)`（同栅栏），`claim()` 不静默恢复 blocked | 草案第 7 节 fail-closed 行需要一条写路径 |
 | 本 worktree PG lab | 55431 被 `m1-human-control` worktree 实例占用，本任务在 `tmp/m1-lh/postgres` 起 55432 实例，测试经 scratchpad 脚本改写 `DSN` 运行 | 项目约定不共用他人实例；未改仓库脚本 |
+| resume 的「已提交报告零请求完成」单独判定 | `Transcript.last_round: CommittedRound`（finish_reason / final / rejection / tool_round / content / concluded）+ `InvestigationLoop._round_verdict()`，在线 `_round()` 与 `resume()` 调同一个函数 | 三轮机器人审查在 resume 路径连续发现与在线路径的分歧（合成 `finish_reason`、被拒计划、被取代 conclusion 之后的新报告）。分别打补丁后 `Transcript` 积累了 4 个零散尾部字段和一份平行判定代码；改为结构保证「resume 结论 = 在线结论」 |
+| `continuation_context` 自行扫描步骤行并重推授权 | `committed_views()`（只读业务行，含未完成组已提交的 ordinal，不依赖 prompt 字节或 `reasoning_content`）→ 与在线路径同一个 `delivered_view()` 派生引用 → 同一个 `view_targets_authorized()` 过滤 | 两轮补丁（继承 binding、opaque `target_refs`）都是在第二套授权实现里补洞，收敛为复用 `delivered_view`/`view_targets_authorized`。收敛第一版曾直接取 `rebuild_transcript(...).delivered`，独立审查指出这让接续继承了字节哈希与 reasoning 配对检查，而 C3 §7 点名的接续对象正是 prompt/context policy 升版后 `blocked(INCOMPATIBLE_STATE)`、字节已不可重放的 Run，故改为按行读取 |
 
 ## 12. 独立审查记录（2026-09-21）
 
