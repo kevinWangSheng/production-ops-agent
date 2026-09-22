@@ -29,6 +29,7 @@ from opspilot.investigation.loop import (
     InvestigationLoop,
     investigation_versions,
 )
+from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
 from opspilot.tools.registry import canonical
 from tests.m1_investigation_support import (
@@ -213,6 +214,64 @@ def test_a_summary_that_calls_tools_or_says_nothing_hands_off_and_keeps_the_cont
         assert transcript.segment == "ctx0" and transcript.compactions == 0
         assert [m["role"] for m in transcript.messages].count("tool") == 2
         assert outcome.final_step_id is not None
+
+
+def test_a_refused_compaction_row_hands_off_on_resume_and_never_reuses_its_key():
+    """Independent review (PR #29): the live attempt handed off on the refused
+    summary; a restart before the conclusion row must reach the same verdict,
+    and a later attempt (after a follow-up) must not commit a new summary
+    under the refused row's key, which the store would silently hand back."""
+
+    class Crash(RuntimeError):
+        pass
+
+    class DieOnConclusion(MemoryStepStore):
+        armed = True
+
+        def commit_step(self, logical_key, response):
+            if self.armed and logical_key.startswith("conclusion:"):
+                self.armed = False
+                raise Crash("killed before the conclusion row")
+            return super().commit_step(logical_key, response)
+
+    loop, request, _, _, store = _compacting_run()
+    dying = DieOnConclusion(
+        budget_limit=16,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+    )
+    loop.store = dying
+    loop.model = ScriptedModel([*_rounds(2), reply(content="  ")])
+    with pytest.raises(Crash):
+        loop.run(request)
+    refused = dying.steps["ctx0:compact-1"]
+    assert refused["response"]["compaction"]["accepted"] is False
+
+    transcript = _transcript(dying, request)
+    assert transcript.last_round.rejection == "COMPACTION_FAILED"
+    assert transcript.compaction_attempts == 1 and transcript.compactions == 0
+    second = InvestigationLoop(
+        model=ScriptedModel([]), executor=loop.executor, store=dying, clock=loop.clock
+    )
+    outcome = second.resume(transcript)
+    assert outcome.execution == "failed" and second.model.calls == []
+    assert outcome.handoff_reasons == ("COMPACTION_FAILED",)
+
+    dying.advance_generation()  # operator follow-up: the loop may go on
+    again = _transcript(dying, request)
+    assert again.last_round.concluded
+    third = InvestigationLoop(
+        model=ScriptedModel([_summary(), _cite_first(dying)]),
+        executor=loop.executor,
+        store=dying,
+        clock=loop.clock,
+    )
+    result = third.resume(again)
+    assert result.execution == "completed", result.handoff_reasons
+    assert dying.steps["ctx0:compact-1"]["step_id"] == refused["step_id"]
+    assert dying.steps["ctx0:compact-2"]["response"]["compaction"]["accepted"] is True
+    assert _transcript(dying, request).segment == "ctx1"  # rows still replay
 
 
 def test_compaction_needs_two_remaining_slots_or_the_run_hands_off():

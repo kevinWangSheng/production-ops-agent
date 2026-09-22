@@ -273,6 +273,7 @@ class _State:
     calibration: float = 1.0
     folded_since: list[UUID] = field(default_factory=list)
     compactions: int = 0
+    compaction_attempts: int = 0
     steps_committed: int = 0
     seconds_used: float = 0.0
     # Model seconds earlier attempts already put in the ledger; the Run-level
@@ -329,6 +330,7 @@ class InvestigationLoop:
         calibration: float = 1.0,
         folded_since: Sequence[UUID] = (),
         compactions: int = 0,
+        compaction_attempts: int = 0,
     ) -> _State:
         usage = self.store.usage()
         return _State(
@@ -352,6 +354,7 @@ class InvestigationLoop:
             calibration=calibration,
             folded_since=list(folded_since),
             compactions=compactions,
+            compaction_attempts=compaction_attempts,
         )
 
     def run(self, request: InvestigationRequest) -> LoopOutcome:
@@ -422,6 +425,7 @@ class InvestigationLoop:
             calibration=transcript.calibration,
             folded_since=transcript.folded_since,
             compactions=transcript.compactions,
+            compaction_attempts=transcript.compaction_attempts,
         )
         state.last_step_id = transcript.last_step_id
         last = transcript.last_round
@@ -704,7 +708,10 @@ class InvestigationLoop:
     def _compact(self, state: _State) -> None:
         request = state.request
         revision = state.compactions + 1
-        logical_key = f"{state.segment}:compact-{revision}"
+        # Keyed by attempt, not by accepted revision: a refused row keeps its
+        # key, and ``commit_step`` would hand that old row back for a reused
+        # key while the in-memory context moved on (independent review).
+        logical_key = f"{state.segment}:compact-{state.compaction_attempts + 1}"
         outbound = [
             *state.messages,
             {"role": "user", "content": COMPACTION_INSTRUCTION},
@@ -784,6 +791,7 @@ class InvestigationLoop:
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
         state.steps_committed += 1
+        state.compaction_attempts += 1
         if not accepted:
             # Keep the old context untouched and hand off; never continue on
             # a summary that is missing or tried to call tools.

@@ -534,6 +534,9 @@ class Transcript:
     calibration: float = 1.0
     folded_since: tuple[UUID, ...] = ()
     compactions: int = 0
+    # Every compaction row, accepted or refused: the next attempt's key must
+    # not collide with a refused row that ``commit_step`` would hand back.
+    compaction_attempts: int = 0
     dropped_groups: tuple[UUID, ...] = ()
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
     last_round: CommittedRound | None = None
@@ -621,6 +624,7 @@ def rebuild_transcript(
     diverged = False  # a revoked view changed the visible bytes; hashes no longer apply
     folded_since: list[UUID] = []
     compactions = 0
+    compaction_attempts = 0
     dropped: list[UUID] = []
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
     for step in ordered:
@@ -650,7 +654,18 @@ def rebuild_transcript(
             record = response.get("compaction")
             if not isinstance(record, Mapping):
                 raise ContextError("INCONSISTENT_STATE")
+            compaction_attempts += 1
             if record.get("accepted") is not True:
+                # The live attempt handed off on this row (COMPACTION_FAILED);
+                # a resume must reach the same verdict instead of compacting
+                # again onto the same key (independent review, PR #29).
+                last_round = CommittedRound(
+                    finish_reason=None,
+                    final=False,
+                    rejection="COMPACTION_FAILED",
+                    tool_round=False,
+                    content=None,
+                )
                 continue
             if (
                 record.get("from_segment") != segment
@@ -788,6 +803,7 @@ def rebuild_transcript(
         calibration=calibration,
         folded_since=tuple(folded_since),
         compactions=compactions,
+        compaction_attempts=compaction_attempts,
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
         last_round=last_round,
