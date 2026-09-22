@@ -1,6 +1,6 @@
 # M1-01 调查 loop 长程执行边界改造
 
-- 状态：**实现完成；独立审查 2 P1 / 4 P2、机器人第一轮 4 条 P1、第二轮 1 P1 / 2 P2 全部采纳修复并复验；PR #29 待最新提交 CI 通过后即「PR 已就绪，待用户审核合并」**
+- 状态：**实现完成；独立审查 2 P1 / 4 P2、机器人第一轮 4 条 P1、第二轮 1 P1 / 2 P2、第三轮 2 P1 / 1 P2 全部采纳修复并复验；PR #29 待最新提交 CI 通过后即「PR 已就绪，待用户审核合并」**
 - 更新日期：2026-09-22
 - 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
@@ -30,11 +30,11 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 | 项 | 命令 / 工件 | 结果 |
 |---|---|---|
-| 静态 + 单元 | `make check`（机器人第二轮修复后 HEAD） | `ruff` 全过、`mypy` 31 文件无问题、`1646 passed, 165 skipped, 2 xfailed`，另 1 条 `tests/test_m0_adapters.py::test_physical_timeout_retains_unknown_and_no_tools`（M0 适配器 10ms 物理超时竞态）在本机 main `b483a12` 上同样失败，与本改动无关，以 CI 为准 |
-| 确定性恢复 | `tests/test_m1_investigation_context.py`（24 条） | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt、截断回复/被拒计划在 resume 上与在线路径同判 |
+| 静态 + 单元 | `make check`（机器人第三轮修复后 HEAD） | `ruff` 全过、`mypy` 31 文件无问题、`1649 passed, 166 skipped, 2 xfailed`；第二轮修复时 1 条 `tests/test_m0_adapters.py::test_physical_timeout_retains_unknown_and_no_tools`（M0 适配器 10ms 物理超时竞态）在本机 main `b483a12` 上同样失败，与本改动无关，以 CI 为准 |
+| 确定性恢复 | `tests/test_m1_investigation_context.py`（25 条） | 超 4 逻辑轮、5 个断点重启、代际丢弃、撤权 stub、malformed fail-closed、活跃时间跨 attempt、截断回复/被拒计划在 resume 上与在线路径同判、follow-up 之后新提交的报告在 resume 上仍完成 |
 | 确定性压缩 | `tests/test_m1_investigation_compaction.py`（13 条） | 阈值触发、字节级重建、压缩后重启、摘要失败 handoff、不足两槽 `CONTEXT_EXHAUSTED`、摘要仍超预算、计费、stub、校准、策略哈希 |
-| 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（4 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、二次交接保留继承证据、fail-closed |
-| PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（16 条）+ 既有 4 个 M1 PG 套件 | `111 passed`（含既有 94 条无回归；新增迟到结果按 epoch 分键 1 条） |
+| 跨 Run 续接 | `tests/test_m1_investigation_continuation.py`（5 条） | 后继 Run 引用前 Run 证据并完成、越权证据不携带、二次交接保留继承证据、opaque target_refs 经 catalog 授权、fail-closed |
+| PG 集成 | `M1_DURABLE_POSTGRES=1`，DSN 改写到 55432：`test_m1_loop_resume_postgres.py`（17 条）+ 既有 4 个 M1 PG 套件 | `112 passed`（含既有 94 条无回归；新增迟到结果按 epoch 分键、畸形步骤行落库 blocked 各 1 条） |
 | 真实 provider 冒烟 | `.venv/bin/python -m scripts.m1_compaction_smoke` | 2 次 HTTP 200、`deepseek-flash`、带 tools + thinking；`prompt 3422 / completion 2147` tokens；费用上界见 `docs/evidence/m1-01-loop-long-horizon/compaction-smoke.json`；估计 vs 实测校准因子已记录 |
 
 不是产品验收：11 个 `passes` 未改；未做真实 Run 全链路；worker 进程级 kill 只在既有 `test_worker_subprocess_kill_then_resume_from_business_rows` 覆盖 claim 后一点，其余断点用进程内异常 + 租约过期等价模拟。
@@ -64,11 +64,23 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 修复后 `make check` `1646 passed, 165 skipped, 2 xfailed`（另 1 条 M0 适配器超时竞态本机环境失败，见验证表）；PG 全套 `111 passed`。
 
+## 机器人分诊第三轮（2026-09-22，机器人对 `7a55ec9` 自动复审）
+
+2 P1 + 1 P2 全部采纳修复，一条发现一个提交，各配先红后绿用例（提交前以反向应用产品 diff 验证三条用例确实先红），thread 已回复并 resolve：
+
+| 发现 | 核实 | 处置 |
+|---|---|---|
+| P1 `runner.py:74` 首次 `rebuild()` 在任何 handler 之外，畸形已提交步骤行触发 `INCONSISTENT_STATE` 时 worker 每次重试都崩溃，Run 到不了 `blocked` | 属实：`rebuild()` 解码 `_tool_plan` 失败即抛 `PersistenceError`，此时没有租约可供 `block()`；claim 后的第二次 `rebuild()` 同样未包 | `afc4a25`：经 `recovery_metadata()`（不解码步骤）取 run_id → `worker.claim` → 栅栏内 `block()`；claim 后的解码失败转 `ContextError` 走既有 block 路径；再次 resume 得 `control_denied` |
+| P1 `loop.py:422` `superseded_conclusion` 是 Run 级布尔：follow-up 之后新代际提交了合法报告、崩溃于 conclusion 前，重启后被跳过，多花一次请求或误判 `BUDGET_EXHAUSTED` | 属实 | `ca79e4f`：该标志改为描述尾部候选——遇被取代 conclusion 行置位，其后任一轮重放即清除 |
+| P2 `context.py:919` 继承 binding 只有 opaque `target_refs`、无 `target_id` 时，registry id 子集测试一律拒绝 | 属实：v4 schema 合法 binding 正是这种形状 | `7140228`：先经 `context_target_catalog()` 解析 ref 再做授权判断，与引用校验一致 |
+
+修复后 `make check` `1649 passed, 166 skipped, 2 xfailed`；PG 全套 `112 passed`。机器人自动复审至此三轮（第一轮为显式 `@codex review`），发现数逐轮 4 → 3 → 3 且均为真实缺陷，继续按发现逐条处置；若再出现同量级发现，改派独立审查一次性覆盖 resume / continuation 路径而非继续逐轮推送。
+
 ## 未完成 / 后续
 
 - 审查 P3 后续项：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；`DEADLINE_EXCEEDED` 后无可落库终态；
   runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；
   `executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
-- PR #29 描述已重写；两轮机器人分诊已逐项处置；等待最新提交 CI；合并仍走用户门。main 分支保护开启 required conversation resolution，未 resolve 的 thread 会使 `mergeStateStatus=BLOCKED`。
+- PR #29 描述已重写；三轮机器人分诊已逐项处置；等待最新提交 CI；合并仍走用户门。main 分支保护开启 required conversation resolution，未 resolve 的 thread 会使 `mergeStateStatus=BLOCKED`。
 - 供应商余额差记账（2 次冒烟请求）。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
