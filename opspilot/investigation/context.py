@@ -938,6 +938,9 @@ class Continuation:
     ``evidence_context`` is a v4 evidence context bound to the *new* Run id
     whose ``view_bindings`` name every adopted, still-authorized view of the
     previous Run, so the successor can cite them without re-querying;
+    Carried views are historical evidence: their ``current``-mode policy refs
+    are not carried, and opaque target refs are resolved under the previous
+    Run's own authorization before the successor's filter applies.
     ``handoff_note`` is deterministic text for the successor's question: the
     previous outcome codes, the carried evidence ids and the ``gaps`` /
     ``next_steps`` of the previous *validated* report (model text that already
@@ -979,16 +982,36 @@ def continuation_context(
     # attempt does, then filtered once by ``view_targets_authorized``. Read
     # from business rows, never by replaying the transcript (see
     # ``committed_views``).
-    catalog = context_target_catalog(context, authorized_targets=authorized_targets)
+    # Resolve opaque refs the way the *previous* Run resolved them (its own
+    # recorded authorization decides which sole target an unmapped catalog
+    # entry bound to); only then filter that stable mapping against the
+    # successor's authorization. Resolving against the successor would let a
+    # differently-scoped successor re-bind old evidence to its own target.
+    previous_targets = frozenset(
+        t
+        for t in (previous.scope_facts.get("target_ids") or ())
+        if isinstance(t, str) and t
+    )
+    catalog = context_target_catalog(context, authorized_targets=previous_targets)
     adopted: list[DeliveredView] = list(
         delivered_from_context(context, run_id=previous_run_id)
     )
     for view in committed_views(snapshot, run_id=previous_run_id):
         citation = delivered_view(
-            view, evidence_context=context, authorized_targets=authorized_targets
+            view, evidence_context=context, authorized_targets=previous_targets
         )
         if citation is not None:
             adopted.append(citation)
+    # Carried evidence is historical: a ``current``-mode policy's eligibility
+    # (freshness against ``max_source_age_seconds``) was judged when the view
+    # was delivered to the previous Run and is not re-judged here, so its
+    # refs do not cross over. A successor that needs a current fact
+    # re-observes it.
+    current_policies = frozenset(
+        str(policy.get("id"))
+        for policy in (context or {}).get("time_policies") or ()
+        if isinstance(policy, Mapping) and policy.get("mode") == "current"
+    )
     bindings: dict[str, Any] = {}
     for citation in adopted:
         if not view_targets_authorized(
@@ -998,7 +1021,7 @@ def continuation_context(
         bindings[citation.evidence_id] = {
             "status": citation.status,
             "target_refs": sorted(citation.target_ids),
-            "time_scope_refs": sorted(citation.time_scope_refs),
+            "time_scope_refs": sorted(citation.time_scope_refs - current_policies),
         }
     carried: dict[str, Any] = {
         "type": "opspilot-evidence-context-v4",

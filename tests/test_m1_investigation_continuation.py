@@ -279,6 +279,77 @@ def test_committed_views_of_a_partial_superseded_group_are_carried():
     assert cont.evidence_ids == (committed[0]["result"]["evidence_id"],)
 
 
+def test_opaque_refs_resolve_under_the_previous_runs_authorization_not_the_successors():
+    """Bot review (PR #29, comment 4069127774): an unmapped canonical catalog
+    entry binds to the *previous* Run's sole target; a successor authorized
+    for a different sole target must not have old evidence re-bound to it."""
+    loop, request, _, _, store, _ = assemble(
+        replies=[reply(content="", finish="stop")], model_requests=1
+    )
+    context = dict(request.evidence_context)
+    context["target_catalog"] = {"svc-ref": {"kind": "kubernetes"}}  # no target_id
+    context["view_bindings"] = {
+        "ev-prior": {
+            "status": "ok",
+            "target_refs": ["svc-ref"],
+            "time_scope_refs": ["policy-window-1"],
+            "view_hash": "sha256:prior",
+        }
+    }
+    request = replace(request, evidence_context=context)
+    assert loop.run(request).execution == "failed"
+    store.input = request.as_input().as_json()
+    same = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert same.evidence_ids == ("ev-prior",)
+    other = continuation_context(
+        store.snapshot(), new_run_id="run-next", authorized_targets=frozenset({"other"})
+    )
+    assert other.evidence_ids == ()
+
+
+def test_current_policy_refs_are_not_carried_across_runs():
+    """Bot review (PR #29, comment 4069127780): a ``current`` policy's
+    freshness was judged when the view reached the previous Run; carried
+    evidence is historical, so those refs stay behind."""
+    loop, request, store, outcome = _exhausted_run()
+    context = dict(request.evidence_context)
+    context["time_policies"] = [
+        *context["time_policies"],
+        {
+            "id": "policy-now",
+            "mode": "current",
+            "all_authorized_targets": True,
+            "max_source_age_seconds": 60,
+        },
+    ]
+    context["view_bindings"] = {
+        "ev-now": {
+            "status": "ok",
+            "target_refs": ["checkout-prod"],
+            "time_scope_refs": ["policy-now", "policy-window-1"],
+            "view_hash": "sha256:now",
+        }
+    }
+    store.input = replace(request, evidence_context=context).as_input().as_json()
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+    assert "ev-now" in cont.evidence_ids
+    assert cont.evidence_context["view_bindings"]["ev-now"]["time_scope_refs"] == [
+        "policy-window-1"
+    ]
+    assert all(
+        "policy-now" not in cont.evidence_context["view_bindings"][e]["time_scope_refs"]
+        for e in outcome.evidence_ids
+    )
+
+
 def test_continuation_fails_closed_without_an_input_snapshot_or_with_the_same_run():
     _, request, store, _ = _exhausted_run()
     with pytest.raises(ContextError, match="INVALID_INPUT"):
