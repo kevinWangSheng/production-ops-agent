@@ -410,7 +410,13 @@ class DurableStore:
         payload: dict[str, Any],
         generation: int,
     ) -> None:
-        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。"""
+        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。
+
+        键里带上租约 epoch：同一逻辑轮次可能被多个先后被围栏的尝试各自
+        回复一次，每个物理回复（不同 response id / usage / 内容）都是应保留
+        的历史；只有同一尝试对同一身份的重放才会撞键而被 DO NOTHING 吞掉
+        （机器人审查发现，PR #29）。
+        """
         if (
             conn.execute(
                 "SELECT 1 FROM opspilot_runs WHERE run_id=%s",
@@ -933,7 +939,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}",
+                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}:e{lease.epoch}",
                     response,
                     lease.control_generation,
                 )
@@ -1007,7 +1013,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}",
+                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}:e{lease.epoch}",
                     result,
                     lease.control_generation,
                 )
@@ -1143,7 +1149,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}",
+                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}:e{lease.epoch}",
                     conclusion,
                     lease.control_generation,
                 )

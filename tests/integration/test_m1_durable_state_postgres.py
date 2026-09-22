@@ -312,7 +312,7 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     assert rebuilt["conclusion"] is None
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
     assert len(late) == 1
-    assert late[0]["logical_key"] == f"late_result:publish:{step}"
+    assert late[0]["logical_key"] == f"late_result:publish:{step}:e{stale.epoch}"
     assert late[0]["response"] == {"result": "old"}
 
 
@@ -346,12 +346,53 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     late = [item for item in steps if item["status"] == "late_result"]
     assert len(late) == 2
     assert {item["logical_key"] for item in late} == {
-        "late_result:step:late-round",
-        f"late_result:tool:{step}:0",
+        f"late_result:step:late-round:e{stale.epoch}",
+        f"late_result:tool:{step}:0:e{fresh.epoch}",
     }
     assert all(item["sequence"] > original["sequence"] for item in late)
     assert late[0]["response"] == {"result": "late"}
     assert late[1]["response"] == {"result": "late-tool"}
+
+
+def test_each_fenced_attempts_late_response_is_kept_under_its_own_key():
+    """Bot review (PR #29, review 5273217581): two attempts fenced in turn may
+    each answer the same logical round; both physical responses are history.
+    Only a replay by the *same* attempt collapses onto one row."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-epochs-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    first = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    second = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert second.epoch != first.epoch
+    assert store.control(incident, 1, "follow_up", "operator") == 2
+    for lease, payload in (
+        (first, {"response_id": "resp-a"}),
+        (second, {"response_id": "resp-b"}),
+        (second, {"response_id": "resp-b-replay"}),
+    ):
+        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+            store.commit_step(lease, "ctx0:round-1", payload)
+    late = [
+        item
+        for item in store.rebuild(incident)["steps"]
+        if item["status"] == "late_result"
+    ]
+    assert [item["logical_key"] for item in late] == [
+        f"late_result:step:ctx0:round-1:e{first.epoch}",
+        f"late_result:step:ctx0:round-1:e{second.epoch}",
+    ]
+    assert [item["response"] for item in late] == [
+        {"response_id": "resp-a"},
+        {"response_id": "resp-b"},
+    ]
 
 
 def test_commit_tool_rejects_unknown_step_without_history():
@@ -429,7 +470,9 @@ def test_live_steps_cannot_use_the_late_result_key_namespace():
         live["logical_key"] == "late-step:foo"
         and live["status"] == "response_committed"
     )
-    assert [item["logical_key"] for item in late] == ["late_result:step:foo"]
+    assert [item["logical_key"] for item in late] == [
+        f"late_result:step:foo:e{stale.epoch}"
+    ]
 
 
 def test_new_run_is_refused_until_the_incident_is_cancelled():
