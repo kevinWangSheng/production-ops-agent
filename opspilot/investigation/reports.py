@@ -324,11 +324,28 @@ def _project_target_catalog_entry(entry: object) -> dict[str, Any]:
 
 
 def _project_time_policy(policy: object) -> dict[str, Any]:
+    """Project one time policy, or drop it whole when any field is malformed.
+
+    Dropping only the malformed field would *widen* the policy: an
+    ``interfaces`` value like ``[{"token": "..."}]`` projected to "no
+    interfaces" and ``eligible_time_policies`` then applied no interface
+    restriction at all (bot review finding, PR #29). A policy whose author
+    got a field wrong authorizes nothing. (Whether every v4-required field
+    must also be *present* is the open F5 decision and is not settled here.)
+    """
     if not isinstance(policy, Mapping):
         return {}
+    for key, is_valid in _TIME_POLICY_FIELDS.items():
+        if key in policy and not is_valid(policy[key]):
+            return {}
     projected = _project_fields(policy, _TIME_POLICY_FIELDS)
     window = policy.get("window")
-    if isinstance(window, Mapping):
+    if "window" in policy:
+        if not isinstance(window, Mapping) or any(
+            key in window and not is_valid(window[key])
+            for key, is_valid in _TIME_WINDOW_FIELDS.items()
+        ):
+            return {}
         projected["window"] = _project_fields(window, _TIME_WINDOW_FIELDS)
     return projected
 
@@ -385,7 +402,9 @@ def evidence_context_projection(
     policies = context.get("time_policies")
     if isinstance(policies, list):
         projected["time_policies"] = [
-            _project_time_policy(policy) for policy in policies
+            entry
+            for entry in (_project_time_policy(policy) for policy in policies)
+            if entry
         ]
     return projected
 

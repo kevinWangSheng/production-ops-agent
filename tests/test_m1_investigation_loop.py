@@ -1702,11 +1702,13 @@ def test_evidence_context_projection_rejects_a_nested_object_under_a_scalar_fiel
     ):
         assert leaked not in serialized
     assert projected["run_id"] == "run-9"
-    assert "interfaces" not in projected["time_policies"][0]
+    # A time policy with a malformed field is dropped whole rather than kept
+    # without its restriction (later bot review finding: dropping only
+    # ``interfaces`` widened the policy to every tool/source).
+    assert projected["time_policies"] == []
     assert "observed_services" not in projected["target_catalog"]["target:deadbeef"]
     assert "target_refs" not in projected["view_bindings"][evidence_id]
     # The legitimate, correctly-shaped fields survive unaffected.
-    assert projected["time_policies"][0]["max_source_age_seconds"] == 60
     assert projected["target_catalog"]["target:deadbeef"]["namespace"] == "checkout"
     assert projected["view_bindings"][evidence_id]["status"] == "ok"
 
@@ -1860,3 +1862,46 @@ def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
     sent = json.dumps([dict(message) for message in model.calls[0].messages])
     assert "leak-policy" not in sent
     assert "leak-view" not in sent
+
+
+def test_a_time_policy_with_a_malformed_field_is_dropped_whole_not_widened():
+    """Bot review (PR #29, comment 4067523569): ``interfaces: [{"token": ..}]``
+    must not project to a policy with no interface restriction."""
+    from opspilot.investigation.reports import (
+        context_time_policy_ids,
+        evidence_context_projection,
+    )
+
+    good = {
+        "id": "p-good",
+        "mode": "historical_window",
+        "all_authorized_targets": True,
+        "interfaces": ["prometheus"],
+        "window": {"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+    }
+    bad = {**good, "id": "p-bad", "interfaces": [{"token": "hunter2"}]}
+    bad_window = {**good, "id": "p-bad-window", "window": {"start": 5, "end": "x"}}
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": "run-9",
+        "time_policies": [good, bad, bad_window],
+    }
+    projected = evidence_context_projection(context, run_id="run-9")
+    assert [p["id"] for p in projected["time_policies"]] == ["p-good"]
+    assert context_time_policy_ids(projected) == ("p-good",)
+    assert "hunter2" not in json.dumps(projected)
+    # Through the loop: a report citing the dropped policy is not published.
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            lambda call: report_from_transcript(call),
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request, evidence_context={**request.evidence_context, "time_policies": [bad]}
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed" and outcome.handoff_reasons == (
+        "REPORT_INVALID",
+    )
