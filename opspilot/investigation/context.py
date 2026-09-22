@@ -732,6 +732,11 @@ def rebuild_transcript(
             rejection=rejection if isinstance(rejection, str) else None,
             tool_round=bool(calls),
             content=content,
+            # A row from an older control generation predates a human
+            # decision (follow_up / correct) whether or not its conclusion
+            # row landed before the fence: history, not a verdict to redo
+            # (bot review finding, PR #29).
+            concluded=step.get("control_generation") != generation,
         )
         if not calls:
             messages.append(
@@ -1041,7 +1046,7 @@ def continuation_context(
                 key: (
                     {**entry, "target_id": (catalog or {}).get(key)}
                     if isinstance(entry, Mapping)
-                    and not isinstance(entry.get("target_id"), str)
+                    and not entry.get("target_id")  # absent or "": unmapped
                     and (catalog or {}).get(key)
                     else entry
                 )

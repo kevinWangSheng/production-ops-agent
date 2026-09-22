@@ -279,15 +279,26 @@ def test_committed_views_of_a_partial_superseded_group_are_carried():
     assert cont.evidence_ids == (committed[0]["result"]["evidence_id"],)
 
 
-def test_opaque_refs_resolve_under_the_previous_runs_authorization_not_the_successors():
-    """Bot review (PR #29, comment 4069127774): an unmapped canonical catalog
-    entry binds to the *previous* Run's sole target; a successor authorized
-    for a different sole target must not have old evidence re-bound to it."""
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"kind": "kubernetes"},  # canonical v4 target: no target_id
+        {"kind": "kubernetes", "target_id": ""},  # empty id: unmapped as well
+    ],
+)
+def test_opaque_refs_resolve_under_the_previous_runs_authorization_not_the_successors(
+    entry,
+):
+    """Bot review (PR #29, comments 4069127774 / 4069259157 / 4069466076): an
+    unmapped canonical catalog entry binds to the *previous* Run's sole
+    target; a successor authorized for a different sole target must not have
+    old evidence re-bound to it, and the carried catalog records the
+    predecessor-resolved id so the successor cannot re-resolve the ref."""
     loop, request, _, _, store, _ = assemble(
         replies=[reply(content="", finish="stop")], model_requests=1
     )
     context = dict(request.evidence_context)
-    context["target_catalog"] = {"svc-ref": {"kind": "kubernetes"}}  # no target_id
+    context["target_catalog"] = {"svc-ref": entry}
     context["view_bindings"] = {
         "ev-prior": {
             "status": "ok",
@@ -309,9 +320,6 @@ def test_opaque_refs_resolve_under_the_previous_runs_authorization_not_the_succe
         store.snapshot(), new_run_id="run-next", authorized_targets=frozenset({"other"})
     )
     assert other.evidence_ids == ()
-    # The carried catalog keeps the predecessor-resolved mapping, so the
-    # successor cannot re-resolve the ref to its own target (bot review,
-    # PR #29, comment 4069259157).
     for cont in (same, other):
         assert cont.evidence_context["target_catalog"]["svc-ref"]["target_id"] == (
             "checkout-prod"

@@ -597,6 +597,26 @@ def test_a_report_committed_after_a_follow_up_still_finishes_on_resume():
     assert outcome.model_requests_used == 4 and outcome.final_step_id is not None
 
 
+def test_a_report_row_from_an_older_generation_is_history_even_without_its_conclusion():
+    """Bot review (PR #29, comment 4069466067): a follow-up that lands between
+    the report row and its conclusion row fences the conclusion into
+    late_result; the report row itself is then older than the current
+    generation and is not re-adopted, exactly as when the conclusion row had
+    landed under the superseded generation."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    dying = _die_on_conclusion(loop, store, request)
+    with pytest.raises(Crash):
+        loop.run(request)
+    dying.advance_generation()  # operator follow-up before the conclusion row
+    transcript = _transcript(dying, request)
+    assert transcript.last_round is not None and transcript.last_round.concluded
+    second, model = _restart(loop, dying, [report_from_transcript])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed" and len(model.calls) == 1
+
+
 def test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work():
     from opspilot.persistence import _tool_plan
 
