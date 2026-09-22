@@ -345,6 +345,31 @@ def test_a_deeply_nested_response_body_is_unavailable_not_a_crash():
         client.complete(_call(5.0))
 
 
+class _TruncatedResponse(_FixedResponse):
+    """A 2xx whose chunked body ends early: ``http.client`` raises
+    ``IncompleteRead`` (an ``HTTPException``, not an ``OSError``)."""
+
+    def read(self, size: int = -1) -> bytes:
+        from http.client import IncompleteRead
+
+        raise IncompleteRead(b"partial")
+
+
+class _TruncatedOpener:
+    def open(self, request: object, timeout: float) -> _TruncatedResponse:
+        return _TruncatedResponse(b"", status=200)
+
+
+def test_a_truncated_chunked_body_is_unavailable_not_a_crash():
+    """Bot review (PR #29, comment 4068748982): ``IncompleteRead`` escaped
+    the ``(URLError, TimeoutError, OSError)`` handler and the loop's
+    ``ModelError``-only handler, crashing the Run after the request was
+    reserved. It is a transport failure like the others."""
+    client = DeepSeekClient("test-key", opener=_TruncatedOpener())
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(5.0))
+
+
 def test_a_sub_100ms_deadline_is_not_extended_past_the_authorized_budget():
     """Bot review finding (comment 4044987306, P1): ``budget = max(timeout,
     0.1)`` silently extended an authorized sub-100ms remaining budget

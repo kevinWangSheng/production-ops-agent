@@ -13,7 +13,7 @@ import socket
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from http.client import HTTPSConnection
+from http.client import HTTPException, HTTPSConnection
 from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import (
@@ -254,11 +254,15 @@ class DeepSeekClient:
             else:
                 self._abort_transport()
             return b"", int(exc.code)
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, OSError, HTTPException) as exc:
             # ``concurrent.futures.TimeoutError`` (``future.result``'s own
             # timeout, i.e. ``_fetch`` did not finish within ``budget`` at
             # all) is ``TimeoutError`` itself as of this project's pinned
-            # Python version -- no separate branch needed.
+            # Python version -- no separate branch needed. ``HTTPException``
+            # (``IncompleteRead`` on a truncated chunked 2xx body,
+            # ``BadStatusLine``, ...) is not an ``OSError``; it is the same
+            # transport failure and must not escape as a crash after the
+            # request was reserved (bot review finding, PR #29).
             raise ModelError("MODEL_UNAVAILABLE") from exc
         finally:
             # Never wait for the fetch here: this call returns within
