@@ -40,6 +40,9 @@ class StepCommitter(Protocol):
     @property
     def authorized_run_id(self) -> str: ...
 
+    @property
+    def control_generation(self) -> int: ...
+
     def usage(self) -> BudgetUsage: ...
 
     def reserve_budget(
@@ -285,6 +288,10 @@ class DurableStepStore:
     @property
     def authorized_run_id(self) -> str:
         return str(self._lease.run_id)
+
+    @property
+    def control_generation(self) -> int:
+        return self._lease.control_generation
 
     def _attempt_reservation(self, reservation_id: UUID) -> UUID:
         """Namespace the loop's reservation id by this attempt's epoch.

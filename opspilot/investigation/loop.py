@@ -419,7 +419,11 @@ class InvestigationLoop:
             compactions=transcript.compactions,
         )
         state.last_step_id = transcript.last_step_id
-        accepted = self._already_accepted_report(state)
+        accepted = (
+            None
+            if transcript.superseded_conclusion
+            else self._already_accepted_report(state)
+        )
         if accepted is not None:
             # C3 §7 row 5: the report step is committed, only the conclusion
             # was lost with the process. Re-validate and finish without a
@@ -977,11 +981,17 @@ class InvestigationLoop:
         }
         final_step_id: UUID | None = None
         if not set(reasons) & _STORE_REFUSALS:
+            # The key carries the control generation: after a follow-up
+            # supersedes an unpublished conclusion, a resumed attempt that
+            # halts before dispatch lands on the same segment/round, and
+            # ``commit_step`` would otherwise hand back the old-generation
+            # row, which can never be published (bot review finding).
+            key = (
+                f"conclusion:g{self.store.control_generation}:"
+                f"{state.segment}:round-{state.next_round - 1}"
+            )
             try:
-                final_step_id = self.store.commit_step(
-                    f"conclusion:{state.segment}:round-{state.next_round - 1}",
-                    conclusion,
-                )
+                final_step_id = self.store.commit_step(key, conclusion)
             except StepStoreError:
                 # Fenced or storage gone: the outcome still reports truthfully,
                 # the runner just has nothing to publish against.

@@ -528,3 +528,36 @@ def test_a_rebuild_whose_bytes_differ_from_what_was_sent_fails_closed():
             authorized_targets=request.scope.target_ids,
             input=request.as_input(),
         )
+
+
+def test_a_conclusion_after_a_follow_up_gets_its_own_key_and_can_be_published():
+    """Bot review (PR #29, comment 4067523565): after a follow-up supersedes an
+    unpublished conclusion, a pre-dispatch halt must not land on the old key."""
+    from opspilot.investigation.context import pending_conclusion
+
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), report_from_transcript]
+    )
+    first = loop.run(request)
+    old_key = next(k for k in store.steps if k.startswith("conclusion:"))
+    store.advance_generation()
+    tiny = RunLimits(model_requests=12, request_bytes=1)  # halts before dispatch
+    from dataclasses import replace
+
+    store.input = replace(request, limits=tiny).as_input().as_json()
+    transcript = rebuild_transcript(
+        store.snapshot(),
+        run_id=request.run_id,
+        authorized_targets=request.scope.target_ids,
+    )
+    second, model = _restart(loop, store, [])
+    outcome = second.resume(transcript)
+    assert outcome.handoff_reasons == ("REQUEST_TOO_LARGE",) and model.calls == []
+    new_key = [k for k in store.steps if k.startswith("conclusion:") and k != old_key]
+    assert len(new_key) == 1 and new_key[0].startswith("conclusion:g1:")
+    assert outcome.final_step_id == store.step_ids[new_key[0]]
+    assert outcome.final_step_id != first.final_step_id
+    assert pending_conclusion(store.snapshot()) == (
+        outcome.final_step_id,
+        outcome.conclusion,
+    )

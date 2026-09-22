@@ -508,6 +508,10 @@ class Transcript:
     live_steps: int
     prefix_len: int
     last_step_id: UUID | None = None
+    # A conclusion row exists under a superseded generation: the Run was
+    # concluded once and a human moved it on, so an accepted report at the
+    # end of the transcript is history, not something to republish.
+    superseded_conclusion: bool = False
     calibration: float = 1.0
     folded_since: tuple[UUID, ...] = ()
     compactions: int = 0
@@ -592,6 +596,7 @@ def rebuild_transcript(
     segment = INITIAL_SEGMENT
     live = 0
     last_step_id: UUID | None = None
+    superseded_conclusion = False
     calibration = 1.0
     diverged = False  # a revoked view changed the visible bytes; hashes no longer apply
     folded_since: list[UUID] = []
@@ -614,11 +619,11 @@ def rebuild_transcript(
             # A conclusion committed under a superseded generation can never be
             # published (publish fences on the step's generation); a human
             # follow-up moved the Run on, so the loop continues instead.
-            if (
-                snapshot.get("conclusion") is None
-                and step.get("control_generation") == generation
-            ):
-                pending_publish = (step_id, dict(response))
+            if snapshot.get("conclusion") is None:
+                if step.get("control_generation") == generation:
+                    pending_publish = (step_id, dict(response))
+                else:
+                    superseded_conclusion = True
             continue
         calibration = _calibration_from_row(response, calibration)
         if kind == COMPACTION_KIND:
@@ -747,6 +752,7 @@ def rebuild_transcript(
         live_steps=live,
         prefix_len=prefix_len,
         last_step_id=last_step_id,
+        superseded_conclusion=superseded_conclusion,
         calibration=calibration,
         folded_since=tuple(folded_since),
         compactions=compactions,
