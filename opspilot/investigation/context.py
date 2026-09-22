@@ -517,6 +517,14 @@ class Transcript:
     compactions: int = 0
     dropped_groups: tuple[UUID, ...] = ()
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
+    # How the last replayed round actually ended, from its committed row:
+    # the provider's ``finish_reason``, whether it was the reserved final
+    # request, and the reason the loop refused its tool plan (if it did).
+    # Resume judges the trailing candidate with these, never with a
+    # synthesized ``"stop"`` (bot review finding, PR #29).
+    last_finish_reason: str | None = None
+    last_final: bool = False
+    last_rejection: str | None = None
 
 
 def _ordered_results(
@@ -603,6 +611,9 @@ def rebuild_transcript(
     compactions = 0
     dropped: list[UUID] = []
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
+    last_finish_reason: str | None = None
+    last_final = False
+    last_rejection: str | None = None
     for step in ordered:
         if step.get("status") == "late_result":
             continue
@@ -687,12 +698,21 @@ def rebuild_transcript(
             raise ContextError("INCONSISTENT_STATE")
         if reasoning is not None and not isinstance(reasoning, str):
             raise ContextError("INCONSISTENT_STATE")
+        finish = response.get("finish_reason")
+        row_context = response.get("context")
+        rejected = response.get("rejected_plan")
+        rejection = rejected.get("reason") if isinstance(rejected, Mapping) else None
         if not calls:
             messages.append(
                 assistant_message(
                     content=content, reasoning_content=reasoning, tool_calls=()
                 )
             )
+            last_finish_reason = finish if isinstance(finish, str) else None
+            last_final = (
+                isinstance(row_context, Mapping) and row_context.get("final") is True
+            )
+            last_rejection = rejection if isinstance(rejection, str) else None
             continue
         results = _ordered_results(step, len(calls))
         if results is None:
@@ -700,6 +720,9 @@ def rebuild_transcript(
                 dropped.append(step_id)
                 continue
             raise ContextError("PENDING_TOOLS")
+        last_finish_reason = finish if isinstance(finish, str) else None
+        last_final = False
+        last_rejection = None
         tool_messages: list[dict[str, Any]] = []
         for call, view in zip(calls, results, strict=True):
             target = view.get("target_id")
@@ -758,6 +781,9 @@ def rebuild_transcript(
         compactions=compactions,
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
+        last_finish_reason=last_finish_reason,
+        last_final=last_final,
+        last_rejection=last_rejection,
     )
 
 

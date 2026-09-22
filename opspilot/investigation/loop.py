@@ -419,42 +419,71 @@ class InvestigationLoop:
             compactions=transcript.compactions,
         )
         state.last_step_id = transcript.last_step_id
-        accepted = (
-            None
-            if transcript.superseded_conclusion
-            else self._already_accepted_report(state)
-        )
-        if accepted is not None:
-            # C3 §7 row 5: the report step is committed, only the conclusion
-            # was lost with the process. Re-validate and finish without a
-            # model request; the budget that remains is irrelevant.
-            report, content = accepted
-            reasons = (
-                ("INCOMPLETE_INVESTIGATION",)
-                if report.assessment_status == "incomplete"
-                else ()
-            )
-            return self._finish(
-                state,
-                execution="completed",
-                reasons=reasons,
-                report=report,
-                content=content,
-            )
+        if not transcript.superseded_conclusion:
+            # The last committed round already decided how this attempt ends;
+            # a restart between that row and the conclusion row must reach
+            # the same verdict the live path did, from the persisted
+            # ``finish_reason`` / ``rejected_plan`` / ``context.final``,
+            # never from a synthesized one (bot review finding, PR #29).
+            if transcript.last_rejection is not None:
+                return self._finish(
+                    state,
+                    execution="failed",
+                    reasons=(transcript.last_rejection,),
+                    report=None,
+                    content=None,
+                )
+            trailing = self._trailing_candidate(state)
+            if trailing is not None:
+                report, reason = self._validated_report(
+                    state, trailing, finish_reason=transcript.last_finish_reason
+                )
+                if report is not None:
+                    # C3 §7 row 5: the report step is committed, only the
+                    # conclusion was lost with the process. Finish without a
+                    # model request; the budget that remains is irrelevant.
+                    reasons = (
+                        ("INCOMPLETE_INVESTIGATION",)
+                        if report.assessment_status == "incomplete"
+                        else ()
+                    )
+                    return self._finish(
+                        state,
+                        execution="completed",
+                        reasons=reasons,
+                        report=report,
+                        content=trailing,
+                    )
+                if transcript.last_final:
+                    return self._finish(
+                        state,
+                        execution="failed",
+                        reasons=(reason,),
+                        report=None,
+                        content=trailing,
+                    )
         return self._drive(state)
 
-    def _already_accepted_report(self, state: _State) -> tuple[ReportV2, str] | None:
+    @staticmethod
+    def _trailing_candidate(state: _State) -> str | None:
+        """The last round's tool-free text, when the transcript ends with one."""
         if len(state.messages) <= state.prefix_len:
             return None
         last = state.messages[-1]
         if last.get("role") != "assistant" or last.get("tool_calls"):
             return None
         content = last.get("content")
-        if not isinstance(content, str) or not content:
-            return None
-        report, _reason = parse_report(content, finish_reason="stop")
+        return content if isinstance(content, str) else ""
+
+    def _validated_report(
+        self, state: _State, content: str, *, finish_reason: str | None
+    ) -> tuple[ReportV2 | None, str]:
+        """``parse_report`` plus the citation check, as the live round applies them."""
+        report, reason = parse_report(
+            content, finish_reason=finish_reason if finish_reason else "unknown"
+        )
         if report is None:
-            return None
+            return None, reason
         request = state.request
         if unsupported_citations(
             report,
@@ -465,8 +494,8 @@ class InvestigationLoop:
                 request.evidence_context, authorized_targets=request.scope.target_ids
             ),
         ):
-            return None
-        return report, content
+            return None, "REPORT_INVALID"
+        return report, ""
 
     def _drive(self, state: _State) -> LoopOutcome:
         request = state.request
@@ -574,20 +603,9 @@ class InvestigationLoop:
         state.folded_since.append(step_id)
         state.next_round += 1
         if not calls:
-            report, reason = parse_report(
-                reply.content, finish_reason=reply.finish_reason
+            report, reason = self._validated_report(
+                state, reply.content or "", finish_reason=reply.finish_reason
             )
-            if report is not None and unsupported_citations(
-                report,
-                views=state.delivered,
-                authorized_targets=request.scope.target_ids,
-                time_policy_ids=context_time_policy_ids(request.evidence_context),
-                target_catalog=context_target_catalog(
-                    request.evidence_context,
-                    authorized_targets=request.scope.target_ids,
-                ),
-            ):
-                report, reason = None, "REPORT_INVALID"
             if report is not None:
                 content = reply.content or ""
                 if report.assessment_status == "incomplete":

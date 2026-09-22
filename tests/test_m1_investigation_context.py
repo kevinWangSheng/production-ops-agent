@@ -468,6 +468,95 @@ def test_an_accepted_report_whose_conclusion_was_never_committed_finishes_on_res
     assert outcome.evidence_ids == tuple(transcript.evidence_ids)
 
 
+def _die_on_conclusion(loop, store, request):
+    """A store whose process dies on the first conclusion row; the loop uses it."""
+
+    class DieOnConclusion(MemoryStepStore):
+        armed = True
+
+        def commit_step(self, logical_key, response):
+            if self.armed and logical_key.startswith("conclusion:"):
+                self.armed = False  # the next attempt is a different process
+                raise Crash("killed before the conclusion row")
+            return super().commit_step(logical_key, response)
+
+    dying = DieOnConclusion(
+        budget_limit=12,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+    )
+    loop.store = dying
+    return dying
+
+
+def _truncated_report(call):
+    """A final answer the provider cut off (``finish_reason=length``) whose
+    text nevertheless still parses as a complete report."""
+    from dataclasses import replace
+
+    return replace(report_from_transcript(call), finish_reason="length")
+
+
+def test_a_truncated_final_answer_is_not_accepted_on_resume():
+    """Bot review (PR #29, comment 4067626637): the live round refuses a
+    ``length`` reply as ``OUTPUT_LENGTH``; a restart between that committed
+    row and the conclusion must reach the same verdict from the persisted
+    finish reason, not accept the text under a synthesized ``stop``."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), _truncated_report], model_requests=2
+    )
+    dying = _die_on_conclusion(loop, store, request)
+    with pytest.raises(Crash):
+        loop.run(request)
+    assert dying.steps["ctx0:round-2"]["response"]["finish_reason"] == "length"
+    transcript = _transcript(dying, request)
+    assert transcript.last_finish_reason == "length" and transcript.last_final
+    second, model = _restart(loop, dying, [])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "failed" and model.calls == []
+    assert outcome.handoff_reasons == ("OUTPUT_LENGTH",)
+    assert outcome.report is None and outcome.model_requests_used == 2
+
+
+def test_a_truncated_answer_before_the_final_round_is_retried_on_resume():
+    """Same row, but the round was not the reserved final one: the live loop
+    would have gone on to another request, and so does the resumed one."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), _truncated_report, Crash("died in flight")]
+    )
+    with pytest.raises(Crash):
+        loop.run(request)
+    transcript = _transcript(store, request)
+    assert transcript.last_finish_reason == "length" and not transcript.last_final
+    second, model = _restart(loop, store, [report_from_transcript])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed" and len(model.calls) == 1
+    # Three committed rounds plus the request that died in flight, which
+    # stays reserved as unknown spend (C3 §13: budgets never reset).
+    assert outcome.model_requests_used == 4
+    assert outcome.conclusion["conclusion"]["rounds"] == 3
+
+
+def test_a_refused_plan_ends_the_resumed_attempt_the_way_it_ended_the_live_one():
+    """A rejected plan is committed with its reason; dying before the
+    conclusion must not turn it into a fresh round (or, when its text happens
+    to parse, into an accepted report)."""
+    loop, request, _, _, store, _ = _wide(
+        replies=[reply(tool_calls=[tool_call()], finish="stop")]
+    )
+    dying = _die_on_conclusion(loop, store, request)
+    with pytest.raises(Crash):
+        loop.run(request)
+    transcript = _transcript(dying, request)
+    assert transcript.last_rejection == "TOOL_PAIRING_INVALID"
+    second, model = _restart(loop, dying, [])
+    outcome = second.resume(transcript)
+    assert outcome.execution == "failed" and model.calls == []
+    assert outcome.handoff_reasons == ("TOOL_PAIRING_INVALID",)
+    assert outcome.final_step_id is not None
+
+
 def test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work():
     from opspilot.persistence import _tool_plan
 
