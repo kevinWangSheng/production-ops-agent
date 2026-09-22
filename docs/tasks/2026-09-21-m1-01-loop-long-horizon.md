@@ -136,6 +136,8 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 第九轮（对仅文档的 `beedf21`）：1 P1 + 2 P2。P1「携带证据只有 binding 没有观测载荷，后继模型可引用它没看过的证据」——这是冻结 v4 `EvidenceContext.view_bindings` 的既有语义（intake 提供的 context 同样如此），修法是携带模型可见视图或新增证据读取工具，属 SPEC/PRD 层决定，拒绝并登记待用户裁定。P2 被拒的最终文本（合法 JSON 但未过校验）的 gaps/next_steps 被带进后继问题——本 PR 新代码明确缺陷，采纳 `4f30a3e`（按 `report_schema_version` 门控）。P2 claim 后 `usage()` 抛 `StepStoreError` 租约悬挂——与第六轮同类，采纳 `d1abe2a`。`make check` `1660 passed, 169 skipped`，PG `115 passed`，两条用例先红后绿。
 
+第十轮（对 `ff340ea`）：2 P1，均为本 PR 新代码的明确缺陷，采纳 `c5d44a2`：旧代际的尾部报告行在其 conclusion 被栅栏挤成 late_result 时仍被新代际采纳（与 conclusion 已落地的被取代情形不一致）——现在旧代际尾部行一律视为历史；携带 catalog 对 `target_id: ""` 未物化映射——与缺失同样处理。`make check` `1661 passed`，PG `115 passed`，用例先红后绿。
+
 **停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
 ## 未完成 / 后续
