@@ -130,6 +130,8 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 第六轮（对 `0c1ae81`）：2 P2。`runner.py` claim 后 executor 工厂抛 `ToolContractError` 导致租约悬挂至过期——本次新写路径的明确缺陷，采纳 `ebfa3a0`（新增 `aborted` 结果并释放该租约，PG 用例先红后绿；`make check` `1659 passed, 168 skipped`，PG `114 passed`）。`messages.py` `assistant_message` 对约 500 层嵌套工具调用 `deepcopy` 触发 `RecursionError`——原有界 loop 旧代码、对抗性输入、不落行且已由崩溃恢复路径覆盖，拒绝并登记后续。
 
+第七轮（对 `d921c5d`）：2 P1。携带 `target_catalog` 未物化前 Run 解析出的映射，后继可把未映射 canonical 条目重解析到自己的唯一目标——第五轮同一根因的残留，采纳 `dbe0217`（携带条目写入前 Run 解析的 `target_id`；用例先红后绿；`make check` `1659 passed, 168 skipped`，PG `114 passed`）。`tools/executor.py` 的 `dispatch_started_at` 取 `operation.started_at` 而非 `authorized_at`——该文件不属本 PR 改动范围（本 PR 仅 3 行且不含此处），差值为毫秒级控制/账本检查耗时，拒绝并登记后续。
+
 **停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
 ## 未完成 / 后续
@@ -141,6 +143,7 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 - 供应商余额差记账（2 次冒烟请求）。
 - 独立审查 P3 #4：无 `reasoning_content` 的工具计划应在派发前拒绝（在线与重建同判）。
 - 机器人第六轮 P2（拒绝）：`assistant_message` 先投影工具调用字段再复制，或把 `RecursionError` 映射为固定模型失败码，与 `client.complete()` 对超深响应体的处理对齐。
+- 机器人第七轮 P1（拒绝，工具执行器范围）：视图 `dispatch_started_at` 改用 `operation.authorized_at`，随 M1-01 tool executor 任务处理。
 - 独立审查 P3 #8：follow-up 取代未发布 completed conclusion 且无预算时的产品语义，随追问通道工作一起定。
 - **F5 待用户裁定**：v4 `TimePolicy` required 字段（`id/revision/integration_id/interfaces/mode/reference_rule`）的存在性检查放在 intake 边界还是 loop 投影层；当前产品代码没有运行时 v4 schema 校验器，冻结包只在 M0 脚本/测试里按 schema 校验。裁定后在对应边界统一实现，并同步 8 个使用最小 policy 形状的测试 fixture。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
