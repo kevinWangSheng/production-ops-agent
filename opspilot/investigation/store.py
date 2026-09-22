@@ -53,6 +53,12 @@ class StepCommitter(Protocol):
         self, reservation_id: UUID, outcome: str, *, seconds: float | None = None
     ) -> None: ...
 
+    def renew(self) -> None:
+        """Extend the execution lease (durable stores) before a long operation;
+        a no-op where there is no lease. Raises ``StepStoreError`` when the
+        fence refuses, so the caller halts before dispatching."""
+        ...
+
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID: ...
 
     def commit_tool(
@@ -192,6 +198,9 @@ class MemoryStepStore:
         else:
             self.budget_unknown += amount
 
+    def renew(self) -> None:
+        return None
+
     def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID:
         if self._control_denied or self._clock.now() >= self.deadline:
             # Fenced: this reply is no longer authorized to become the
@@ -314,12 +323,21 @@ class DurableStepStore:
             model_seconds_used=float(row["model_seconds_used"]),
         )
 
+    def renew(self) -> None:
+        # Same fence as every write: a lease another worker took over, or a
+        # Run human control moved on, refuses here, before the dispatch.
+        if self._renew_seconds is None:
+            return
+        try:
+            self._store.renew_lease(self._lease, self._renew_seconds)
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
+
     def reserve_budget(
         self, reservation_id: UUID, amount: int, *, seconds: float = 0.0
     ) -> None:
+        self.renew()
         try:
-            if self._renew_seconds is not None:
-                self._store.renew_lease(self._lease, self._renew_seconds)
             self._store.reserve_budget(
                 self._lease,
                 self._attempt_reservation(reservation_id),

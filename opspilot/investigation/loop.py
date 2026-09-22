@@ -646,6 +646,14 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
+            # A model request may have used most of the lease renewed before
+            # it; renew again under the same fence before each dispatch, as
+            # the pending-tool recovery path does, so a round within its
+            # limits is not fenced off mid-way (bot review finding, PR #29).
+            try:
+                self.store.renew()
+            except StepStoreError as exc:
+                raise _halt_from_store(exc) from exc
             outcome = self.executor.execute(
                 tool_request_for(
                     step_id, index, call, target_ref=target_id, window=window

@@ -1209,6 +1209,54 @@ def test_this_attempts_tool_time_counts_toward_the_active_budget():
     assert store.usage().model_seconds_used + 100 <= 500
 
 
+def test_the_lease_is_renewed_before_every_live_tool_dispatch():
+    """Bot review (PR #29, comment 4069127788): a model request may use most
+    of the lease renewed before it; each tool dispatch renews again under the
+    same fence, and a refusal halts before the dispatch."""
+    from opspilot.investigation.store import StepStoreError
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            reply(
+                tool_calls=[
+                    tool_call("c1"),
+                    tool_call("c2", arguments='{"expr":"up"}'),
+                ],
+                finish="tool_calls",
+            ),
+            report_from_transcript,
+        ],
+    )
+
+    class Renewing(type(store)):
+        renewals = 0
+        refuse_at = None
+
+        def renew(self):
+            self.renewals += 1
+            if self.refuse_at is not None and self.renewals >= self.refuse_at:
+                raise StepStoreError("CONTROL_DENIED")
+
+    store.__class__ = Renewing
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert store.renewals == 2  # once per dispatched tool (memory store never reserves)
+    executed = len(loop.executor.scope.target_ids) and store.tool_results
+    assert sum(len(v) for v in executed.values()) == 2
+
+    loop2, request2, _, _, store2, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call("c1"), tool_call("c2")], finish="tool_calls")
+        ]
+    )
+    store2.__class__ = Renewing
+    store2.refuse_at = 2
+    outcome2 = loop2.run(request2)
+    assert outcome2.execution == "failed"
+    assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
+    assert sum(len(v) for v in store2.tool_results.values()) == 1  # halted before c2
+
+
 def test_every_physical_request_is_settled_as_spent_or_unknown():
     """C3 §13: reservations are settled in the store; unknown cost stays occupied."""
     payload = json.dumps(
