@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +39,7 @@ from opspilot.investigation.reports import (
     delivered_from_context,
     eligible_time_policies,
     evidence_context_projection,
+    view_targets_authorized,
 )
 from opspilot.tools.registry import canonical
 
@@ -493,6 +494,28 @@ def revoked_view(view: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class CommittedRound:
+    """How the last replayed round ended, read from its committed row.
+
+    The loop judges a round from exactly these facts -- on the live path
+    straight from the provider reply, on resume from the row -- through one
+    function, so a restart between the row and its conclusion reaches the
+    verdict the live attempt would have (bot review findings, PR #29).
+    """
+
+    finish_reason: str | None
+    final: bool
+    rejection: str | None
+    tool_round: bool
+    content: str | None
+    # A conclusion under a superseded generation followed this round: the
+    # Run was concluded once and a human moved it on, so this round is
+    # history, not a verdict to redo. A round replayed after that conclusion
+    # starts a fresh record.
+    concluded: bool = False
+
+
 @dataclass
 class Transcript:
     """Ordered messages and citation state rebuilt from committed rows."""
@@ -508,26 +531,12 @@ class Transcript:
     live_steps: int
     prefix_len: int
     last_step_id: UUID | None = None
-    # A conclusion row under a superseded generation follows the last
-    # replayed round: the Run was concluded once and a human moved it on, so
-    # the trailing candidate is history, not something to republish. Cleared
-    # again once a later round is replayed after that conclusion -- the new
-    # generation's own trailing report is judged like any other (bot review
-    # finding, PR #29).
-    superseded_conclusion: bool = False
     calibration: float = 1.0
     folded_since: tuple[UUID, ...] = ()
     compactions: int = 0
     dropped_groups: tuple[UUID, ...] = ()
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
-    # How the last replayed round actually ended, from its committed row:
-    # the provider's ``finish_reason``, whether it was the reserved final
-    # request, and the reason the loop refused its tool plan (if it did).
-    # Resume judges the trailing candidate with these, never with a
-    # synthesized ``"stop"`` (bot review finding, PR #29).
-    last_finish_reason: str | None = None
-    last_final: bool = False
-    last_rejection: str | None = None
+    last_round: CommittedRound | None = None
 
 
 def _ordered_results(
@@ -607,16 +616,13 @@ def rebuild_transcript(
     segment = INITIAL_SEGMENT
     live = 0
     last_step_id: UUID | None = None
-    superseded_conclusion = False
+    last_round: CommittedRound | None = None
     calibration = 1.0
     diverged = False  # a revoked view changed the visible bytes; hashes no longer apply
     folded_since: list[UUID] = []
     compactions = 0
     dropped: list[UUID] = []
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
-    last_finish_reason: str | None = None
-    last_final = False
-    last_rejection: str | None = None
     for step in ordered:
         if step.get("status") == "late_result":
             continue
@@ -636,8 +642,8 @@ def rebuild_transcript(
             if snapshot.get("conclusion") is None:
                 if step.get("control_generation") == generation:
                     pending_publish = (step_id, dict(response))
-                else:
-                    superseded_conclusion = True
+                elif last_round is not None:
+                    last_round = replace(last_round, concluded=True)
             continue
         calibration = _calibration_from_row(response, calibration)
         if kind == COMPACTION_KIND:
@@ -705,18 +711,20 @@ def rebuild_transcript(
         row_context = response.get("context")
         rejected = response.get("rejected_plan")
         rejection = rejected.get("reason") if isinstance(rejected, Mapping) else None
+        committed = CommittedRound(
+            finish_reason=finish if isinstance(finish, str) else None,
+            final=isinstance(row_context, Mapping) and row_context.get("final") is True,
+            rejection=rejection if isinstance(rejection, str) else None,
+            tool_round=bool(calls),
+            content=content,
+        )
         if not calls:
             messages.append(
                 assistant_message(
                     content=content, reasoning_content=reasoning, tool_calls=()
                 )
             )
-            last_finish_reason = finish if isinstance(finish, str) else None
-            last_final = (
-                isinstance(row_context, Mapping) and row_context.get("final") is True
-            )
-            last_rejection = rejection if isinstance(rejection, str) else None
-            superseded_conclusion = False
+            last_round = committed
             continue
         results = _ordered_results(step, len(calls))
         if results is None:
@@ -724,10 +732,7 @@ def rebuild_transcript(
                 dropped.append(step_id)
                 continue
             raise ContextError("PENDING_TOOLS")
-        last_finish_reason = finish if isinstance(finish, str) else None
-        last_final = False
-        last_rejection = None
-        superseded_conclusion = False
+        last_round = committed
         tool_messages: list[dict[str, Any]] = []
         for call, view in zip(calls, results, strict=True):
             target = view.get("target_id")
@@ -780,15 +785,12 @@ def rebuild_transcript(
         live_steps=live,
         prefix_len=prefix_len,
         last_step_id=last_step_id,
-        superseded_conclusion=superseded_conclusion,
         calibration=calibration,
         folded_since=tuple(folded_since),
         compactions=compactions,
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
-        last_finish_reason=last_finish_reason,
-        last_final=last_final,
-        last_rejection=last_rejection,
+        last_round=last_round,
     )
 
 
@@ -899,77 +901,30 @@ def continuation_context(
     previous_run_id = str(run.get("run_id"))
     if previous_run_id == new_run_id:
         raise ContextError("INVALID_INPUT")
-    previous = InvestigationInput.from_json(run["input"])
-    context = evidence_context_projection(
-        previous.evidence_context, run_id=previous_run_id
+    # The adopted, still-authorized views of the previous Run are exactly
+    # what ``rebuild_transcript`` computes for a resume: views the Run
+    # inherited through its own input context plus the ones it collected,
+    # with revoked targets stubbed out. One authority for "what may be
+    # cited", not a second scan of the rows (review consolidation, PR #29).
+    transcript = rebuild_transcript(
+        snapshot, run_id=previous_run_id, authorized_targets=authorized_targets
     )
-    # The previous Run may itself have started from carried evidence; those
-    # bindings are adopted views too and cross over under the same
-    # authorization filter, or a second handoff would silently lose
-    # everything inherited through the first (bot review finding, PR #29).
-    bindings: dict[str, Any] = {}
-    inherited = context.get("view_bindings") if isinstance(context, Mapping) else None
-    # A schema-valid v4 binding names opaque ``target_refs`` and no registry
-    # ``target_id``; authorize them through the catalog, as citation checks
-    # do, or every such inherited view would fail the registry-id test.
-    catalog = context_target_catalog(context, authorized_targets=authorized_targets)
-    for carried_view in delivered_from_context(context, run_id=previous_run_id):
-        source = (
-            inherited.get(carried_view.evidence_id)
-            if isinstance(inherited, Mapping)
-            else None
-        )
-        target = source.get("target_id") if isinstance(source, Mapping) else None
-        if isinstance(target, str) and target not in authorized_targets:
-            continue
-        resolved = frozenset(
-            (catalog or {}).get(ref) or ref for ref in carried_view.target_ids
-        )
-        if resolved and not resolved <= authorized_targets:
-            continue
-        seed: dict[str, Any] = {
-            "status": carried_view.status,
-            "target_refs": sorted(carried_view.target_ids),
-            "time_scope_refs": sorted(carried_view.time_scope_refs),
-        }
-        if isinstance(target, str):
-            seed["target_id"] = target
-        bindings[carried_view.evidence_id] = seed
+    context = transcript.evidence_context
     steps = snapshot.get("steps")
     if not isinstance(steps, Sequence):
         raise ContextError("INCONSISTENT_STATE")
-    for step in sorted(
-        (s for s in steps if isinstance(s, Mapping)),
-        key=lambda s: (int(s.get("sequence", 0)), str(s.get("step_id"))),
-    ):
-        if step.get("status") == "late_result":
+    catalog = context_target_catalog(context, authorized_targets=authorized_targets)
+    bindings: dict[str, Any] = {}
+    for view in transcript.delivered:
+        if not view_targets_authorized(
+            view, authorized_targets=authorized_targets, target_catalog=catalog
+        ):
             continue
-        response = step.get("response")
-        if not isinstance(response, Mapping) or response.get("kind") is not None:
-            continue
-        results = step.get("tool_results")
-        if not isinstance(results, list):
-            raise ContextError("INCONSISTENT_STATE")
-        for item in results:
-            view = item.get("result") if isinstance(item, Mapping) else None
-            if not isinstance(view, Mapping):
-                raise ContextError("INCONSISTENT_STATE")
-            target = view.get("target_id")
-            if isinstance(target, str) and target not in authorized_targets:
-                continue
-            citation = delivered_view(
-                view, evidence_context=context, authorized_targets=authorized_targets
-            )
-            if citation is None:
-                continue
-            binding: dict[str, Any] = {
-                "status": citation.status,
-                "target_refs": sorted(citation.target_ids),
-                "time_scope_refs": sorted(citation.time_scope_refs),
-            }
-            if isinstance(target, str):
-                binding["target_id"] = target
-            bindings[citation.evidence_id] = binding
+        bindings[view.evidence_id] = {
+            "status": view.status,
+            "target_refs": sorted(view.target_ids),
+            "time_scope_refs": sorted(view.time_scope_refs),
+        }
     carried: dict[str, Any] = {
         "type": "opspilot-evidence-context-v4",
         "run_id": new_run_id,

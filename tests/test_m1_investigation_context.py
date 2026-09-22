@@ -519,7 +519,9 @@ def test_a_truncated_final_answer_is_not_accepted_on_resume():
         loop.run(request)
     assert dying.steps["ctx0:round-2"]["response"]["finish_reason"] == "length"
     transcript = _transcript(dying, request)
-    assert transcript.last_finish_reason == "length" and transcript.last_final
+    assert (
+        transcript.last_round.finish_reason == "length" and transcript.last_round.final
+    )
     second, model = _restart(loop, dying, [])
     outcome = second.resume(transcript)
     assert outcome.execution == "failed" and model.calls == []
@@ -536,7 +538,10 @@ def test_a_truncated_answer_before_the_final_round_is_retried_on_resume():
     with pytest.raises(Crash):
         loop.run(request)
     transcript = _transcript(store, request)
-    assert transcript.last_finish_reason == "length" and not transcript.last_final
+    assert (
+        transcript.last_round.finish_reason == "length"
+        and not transcript.last_round.final
+    )
     second, model = _restart(loop, store, [report_from_transcript])
     outcome = second.resume(transcript)
     assert outcome.execution == "completed" and len(model.calls) == 1
@@ -557,7 +562,7 @@ def test_a_refused_plan_ends_the_resumed_attempt_the_way_it_ended_the_live_one()
     with pytest.raises(Crash):
         loop.run(request)
     transcript = _transcript(dying, request)
-    assert transcript.last_rejection == "TOOL_PAIRING_INVALID"
+    assert transcript.last_round.rejection == "TOOL_PAIRING_INVALID"
     second, model = _restart(loop, dying, [])
     outcome = second.resume(transcript)
     assert outcome.execution == "failed" and model.calls == []
@@ -576,7 +581,7 @@ def test_a_report_committed_after_a_follow_up_still_finishes_on_resume():
     assert loop.run(request).execution == "completed"
     dying.advance_generation()  # operator follow-up before the publish landed
     transcript = _transcript(dying, request)
-    assert transcript.superseded_conclusion  # the old report is history
+    assert transcript.last_round.concluded  # the old report is history
     second, _ = _restart(
         loop, dying, [*_tool_rounds(1, start=2), report_from_transcript]
     )
@@ -584,7 +589,7 @@ def test_a_report_committed_after_a_follow_up_still_finishes_on_resume():
     with pytest.raises(Crash):
         second.resume(transcript)
     again = _transcript(dying, request)
-    assert not again.superseded_conclusion
+    assert not again.last_round.concluded
     assert again.messages[-1]["role"] == "assistant" and again.next_round == 5
     third, model = _restart(loop, dying, [])  # any model call would raise
     outcome = third.resume(again)

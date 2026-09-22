@@ -7,6 +7,7 @@ adapters. Instruction text for L1 lives in ``opspilot.instructions``.
 
 from .client import DeepSeekClient
 from .context import (
+    CommittedRound,
     ContextError,
     InvestigationInput,
     Transcript,
@@ -57,6 +58,7 @@ __all__ = [
     "M1_FROZEN_LIMITS",
     "RunLimits",
     "RunnerOutcome",
+    "CommittedRound",
     "Transcript",
     "rebuild_transcript",
     "step_key",

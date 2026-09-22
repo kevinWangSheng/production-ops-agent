@@ -679,6 +679,26 @@ def unsupported_citations(
     return False
 
 
+def view_targets_authorized(
+    view: DeliveredView,
+    *,
+    authorized_targets: frozenset[str],
+    target_catalog: Mapping[str, str | None] | None,
+) -> bool:
+    """Whether every target a delivered view names is still authorized.
+
+    A view's ``target_ids`` mix registry ids (from the tool result) and
+    opaque v4 ``target_refs`` (from a supplied binding); each is resolved
+    through the catalog when it is a catalog key, as ``unsupported_citations``
+    resolves claim refs, and the resolved set must lie inside the
+    authorization. A view naming no target is not target-bound and passes.
+    """
+    resolved = frozenset(
+        (target_catalog or {}).get(ref) or ref for ref in view.target_ids
+    )
+    return not resolved or resolved <= authorized_targets
+
+
 def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredView]:
     """Seed trusted views from a v4 evidence context's view_bindings.
 

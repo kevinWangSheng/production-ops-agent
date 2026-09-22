@@ -424,61 +424,61 @@ class InvestigationLoop:
             compactions=transcript.compactions,
         )
         state.last_step_id = transcript.last_step_id
-        if not transcript.superseded_conclusion:
-            # The last committed round already decided how this attempt ends;
-            # a restart between that row and the conclusion row must reach
-            # the same verdict the live path did, from the persisted
-            # ``finish_reason`` / ``rejected_plan`` / ``context.final``,
-            # never from a synthesized one (bot review finding, PR #29).
-            if transcript.last_rejection is not None:
+        last = transcript.last_round
+        if last is not None and not last.concluded:
+            # C3 §7 row 5: the last committed round already settles how this
+            # attempt ends (an accepted report, a refused plan, a failed
+            # final request); a restart between that row and the conclusion
+            # row reaches the same verdict through the same rule as the live
+            # round, without spending a request.
+            verdict = self._round_verdict(
+                state,
+                tool_round=last.tool_round,
+                content=last.content,
+                finish_reason=last.finish_reason,
+                final=last.final,
+                rejection=last.rejection,
+            )
+            if verdict is not None:
                 return self._finish(
                     state,
-                    execution="failed",
-                    reasons=(transcript.last_rejection,),
-                    report=None,
-                    content=None,
+                    execution=verdict[0],
+                    reasons=verdict[1],
+                    report=verdict[2],
+                    content=verdict[3],
                 )
-            trailing = self._trailing_candidate(state)
-            if trailing is not None:
-                report, reason = self._validated_report(
-                    state, trailing, finish_reason=transcript.last_finish_reason
-                )
-                if report is not None:
-                    # C3 §7 row 5: the report step is committed, only the
-                    # conclusion was lost with the process. Finish without a
-                    # model request; the budget that remains is irrelevant.
-                    reasons = (
-                        ("INCOMPLETE_INVESTIGATION",)
-                        if report.assessment_status == "incomplete"
-                        else ()
-                    )
-                    return self._finish(
-                        state,
-                        execution="completed",
-                        reasons=reasons,
-                        report=report,
-                        content=trailing,
-                    )
-                if transcript.last_final:
-                    return self._finish(
-                        state,
-                        execution="failed",
-                        reasons=(reason,),
-                        report=None,
-                        content=trailing,
-                    )
         return self._drive(state)
 
-    @staticmethod
-    def _trailing_candidate(state: _State) -> str | None:
-        """The last round's tool-free text, when the transcript ends with one."""
-        if len(state.messages) <= state.prefix_len:
+    def _round_verdict(
+        self,
+        state: _State,
+        *,
+        tool_round: bool,
+        content: str | None,
+        finish_reason: str | None,
+        final: bool,
+        rejection: str | None,
+    ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
+        """What one committed round settles for the attempt, or ``None`` when
+        the loop goes on. The single rule for the live round and for a resume
+        over that round's row."""
+        if rejection is not None:
+            return "failed", (rejection,), None, None
+        if tool_round:
             return None
-        last = state.messages[-1]
-        if last.get("role") != "assistant" or last.get("tool_calls"):
-            return None
-        content = last.get("content")
-        return content if isinstance(content, str) else ""
+        report, reason = self._validated_report(
+            state, content or "", finish_reason=finish_reason
+        )
+        if report is not None:
+            reasons: tuple[str, ...] = (
+                ("INCOMPLETE_INVESTIGATION",)
+                if report.assessment_status == "incomplete"
+                else ()
+            )
+            return "completed", reasons, report, content or ""
+        if final:
+            return "failed", (reason,), None, content
+        return None
 
     def _validated_report(
         self, state: _State, content: str, *, finish_reason: str | None
@@ -588,41 +588,34 @@ class InvestigationLoop:
                 if reply.finish_reason == "length"
                 else "TOOL_PAIRING_INVALID"
             )
+        rejected_plan = None
         if rejection is not None:
-            plan = assistant.pop("tool_calls", None)
-            step_id = self._commit_step(
-                state,
-                logical_key,
-                assistant,
-                reply,
-                dispatched,
-                final=final,
-                rejected_plan={"reason": rejection, "tool_calls": plan},
-            )
-            state.folded_since.append(step_id)
-            state.next_round += 1
-            raise _LoopHalt("failed", (rejection,))
+            rejected_plan = {
+                "reason": rejection,
+                "tool_calls": assistant.pop("tool_calls", None),
+            }
         step_id = self._commit_step(
-            state, logical_key, assistant, reply, dispatched, final=final
+            state,
+            logical_key,
+            assistant,
+            reply,
+            dispatched,
+            final=final,
+            rejected_plan=rejected_plan,
         )
         state.folded_since.append(step_id)
         state.next_round += 1
+        verdict = self._round_verdict(
+            state,
+            tool_round=bool(calls),
+            content=reply.content,
+            finish_reason=reply.finish_reason,
+            final=final,
+            rejection=rejection,
+        )
+        if verdict is not None:
+            return verdict
         if not calls:
-            report, reason = self._validated_report(
-                state, reply.content or "", finish_reason=reply.finish_reason
-            )
-            if report is not None:
-                content = reply.content or ""
-                if report.assessment_status == "incomplete":
-                    return (
-                        "completed",
-                        ("INCOMPLETE_INVESTIGATION",),
-                        report,
-                        content,
-                    )
-                return "completed", (), report, content
-            if final:
-                return "failed", (reason,), None, reply.content
             # Candidate text failed validation; keep the reserved last request.
             state.messages.append(assistant)
             return None
