@@ -1,14 +1,14 @@
 # M1-01 调查 loop 长程执行边界改造
 
-- 状态：**实现完成，独立实现审查的 2 个 P1 / 4 个 P2 已全部修复并复验；分支已推送，PR 待 #29 合并后 rebase 到 main 创建**
+- 状态：**实现完成，独立实现审查的 2 个 P1 / 4 个 P2 已全部修复并复验；已快进推送到 PR #29 分支，PR #29 即本改造的 PR，待 CI / 机器人分诊 / 用户审核**
 - 更新日期：2026-09-21
 - 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
   v4 冻结包 B2 段；[上游对标调研](../research/upstream-agent-loop-benchmark-2026-09-21.md)；
   [设计草案（含独立审查与实施差异）](../design/investigation-loop-long-horizon-2026-09-21.md)
-- 用户决定（2026-09-21）：PR 策略 A（合并 #29 后新 PR）；压缩「按参考的来」→ HolmesGPT 两段式（单结果 stub + LLM 摘要 compaction）
+- 用户决定（2026-09-21）：改造直接算在 #29 内（一个 PR，整体完成后合并；此前的 A 方案作废）；压缩「按参考的来」→ HolmesGPT 两段式（单结果 stub + LLM 摘要 compaction）
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-loop-long-horizon`，
-  分支 `feature/m1-01-loop-long-horizon`，起点 #29 头 `9f3506f`；本任务专属 PG：`tmp/m1-lh/postgres`，端口 55432
+  实现在 `feature/m1-01-loop-long-horizon`（起点 #29 头 `9f3506f`）完成后快进到 `feature/m1-01-investigation-loop`；本任务专属 PG：`../production-ops-agent-loop-long-horizon/tmp/m1-lh/postgres`，端口 55432
 
 ## 目标与范围
 
@@ -50,6 +50,6 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 - 审查 P3 后续项：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；`DEADLINE_EXCEEDED` 后无可落库终态；
   runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；
   `executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
-- #29 合并后：rebase 到 main、推送、开 PR（含 PR 描述：覆盖/未覆盖、权限/费用/兼容性）。
+- PR #29 描述已重写；等待 CI 与一次 `@codex review` 分诊，发现逐项处置；合并仍走用户门。
 - 供应商余额差记账（2 次冒烟请求）。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
