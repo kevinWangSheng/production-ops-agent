@@ -140,6 +140,8 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 第十一轮（对 `0d0b6ce`）：1 P1 + 2 P2，全部登记后续并回复依据，不再改码：待重放计划中 `{}` 条目导致 `tool_request_for` KeyError 反复崩溃（需损坏行触发；修法：`execute_pending` 前 `validate_tool_calls` → `INCONSISTENT_STATE` block）；缺 `reasoning_content` 的计划应在派发前拒绝（= 独立审查 P3 #4）；非瞬时 4xx 应归 `MODEL_REJECTED`（客户端既有行为）。
 
+第十二轮（对 `c3c48ea`）：1 P1——被拒压缩行重建为 `COMPACTION_FAILED` 裁决时未按 `control_generation` 判定是否已被 follow-up 取代，与第十轮对模型行的规则不一致；本 PR 新代码的明确缺陷，采纳 `bdf43ed`（用例先红后绿；`make check` `1663 passed, 169 skipped, 2 xfailed`，PG `115 passed`）。
+
 **停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
 ## 未完成 / 后续
