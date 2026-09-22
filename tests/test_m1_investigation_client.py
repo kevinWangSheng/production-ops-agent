@@ -280,6 +280,36 @@ class _ErroringOpener:
         )
 
 
+class _TruncatedErrorBody:
+    def read(self, size: int = -1) -> bytes:
+        from http.client import IncompleteRead
+
+        raise IncompleteRead(b"partial")
+
+    def close(self) -> None:  # ``HTTPError.close()`` reaches the body
+        return None
+
+
+class _TruncatedErrorOpener:
+    def open(self, request: object, timeout: float):
+        raise HTTPError(
+            "https://api.deepseek.com/v1/chat/completions",
+            503,
+            "error",
+            {},
+            _TruncatedErrorBody(),
+        )
+
+
+def test_a_truncated_http_error_body_is_unavailable_not_a_crash():
+    """Bot review (PR #29, comment 4069127792): ``IncompleteRead`` raised by
+    the error-body drain inside the ``except HTTPError`` suite is not seen by
+    the sibling handler; it must be contained in the drain itself."""
+    client = DeepSeekClient("test-key", opener=_TruncatedErrorOpener())
+    with pytest.raises(ModelError):
+        client.complete(_call(5.0))
+
+
 def test_a_stalled_http_error_body_drain_is_also_bounded():
     """Bot review finding (comment 4044473894): the ``except HTTPError``
     branch drains the error body with a raw, untimed ``HTTPError.read()``

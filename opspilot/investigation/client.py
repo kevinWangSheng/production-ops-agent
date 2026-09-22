@@ -249,7 +249,10 @@ class DeepSeekClient:
                     pool.submit(exc.read, MAX_HTTP_RESPONSE_BYTES + 1).result(
                         timeout=remaining
                     )
-                except OSError:
+                except (OSError, HTTPException):
+                    # A truncated chunked error body raises IncompleteRead
+                    # here, inside this suite, where the sibling handler
+                    # below cannot see it (bot review finding, PR #29).
                     self._abort_transport()
             else:
                 self._abort_transport()
