@@ -398,6 +398,27 @@ def test_an_undecodable_run_of_another_version_is_reported_as_blocked():
     assert h.store.recovery_metadata(h.incident)["run_state"] == "blocked"
 
 
+def test_an_executor_that_cannot_be_built_releases_the_lease():
+    """Bot review (PR #29, comment 4069202731): a typed factory failure after
+    the claim is an explicit outcome, and the lease is released rather than
+    held to expiry."""
+    from opspilot.tools.registry import ToolContractError
+
+    h = Harness()
+    runner = h.runner([*_tool_rounds(1), report_from_transcript])
+
+    def broken_factory(lease, input):
+        raise ToolContractError("LEDGER_UNAVAILABLE")
+
+    runner.executor_factory = broken_factory
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "aborted" and outcome.reason == "LEDGER_UNAVAILABLE"
+    assert h.live_keys() == []
+    # Released: the next attempt claims at once, without waiting the lease out.
+    again = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
+    assert again.status == "published" and again.epoch == outcome.epoch + 1
+
+
 def test_limits_above_the_freeze_are_refused_at_the_product_boundary():
     run = uuid4()
     wide = RunLimits(model_requests=8)

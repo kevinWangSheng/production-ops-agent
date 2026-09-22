@@ -38,6 +38,7 @@ from opspilot.investigation.loop import (
 from opspilot.investigation.store import DurableStepStore
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
+from opspilot.tools.registry import ToolContractError
 from opspilot.worker import DEFAULT_LEASE_SECONDS, RecoverySession, Worker
 
 RunnerStatus = Literal[
@@ -46,6 +47,7 @@ RunnerStatus = Literal[
     "already_completed",
     "control_denied",
     "blocked",
+    "aborted",  # the attempt could not start; its lease was released
 ]
 
 ExecutorFactory = Callable[[Lease, InvestigationInput], ReadOnlyToolExecutor]
@@ -113,6 +115,15 @@ class InvestigationRunner:
                 reason=code,
                 epoch=lease.epoch,
             )
+        except ToolContractError as exc:
+            # The executor could not be built (its tool ledger unavailable):
+            # nothing ran, so release this exact lease instead of holding it
+            # to expiry, and say so (bot review finding, PR #29).
+            try:
+                self.store.abandon(lease)
+            except PersistenceError:
+                pass
+            return RunnerOutcome("aborted", reason=str(exc), epoch=lease.epoch)
 
     def _continue(
         self, incident_id: UUID, session: RecoverySession, snapshot: Mapping[str, Any]
