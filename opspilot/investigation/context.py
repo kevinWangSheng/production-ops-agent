@@ -665,6 +665,10 @@ def rebuild_transcript(
                     rejection="COMPACTION_FAILED",
                     tool_round=False,
                     content=None,
+                    # Older than the current generation: a human decision
+                    # (follow_up / correct) came after it, so it is history
+                    # here too, exactly as for model rows.
+                    concluded=step.get("control_generation") != generation,
                 )
                 continue
             if (

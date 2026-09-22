@@ -274,6 +274,49 @@ def test_a_refused_compaction_row_hands_off_on_resume_and_never_reuses_its_key()
     assert _transcript(dying, request).segment == "ctx1"  # rows still replay
 
 
+def test_a_refused_compaction_older_than_the_generation_is_history_on_resume():
+    """Bot review (PR #29, comment 4069601647): a follow-up that lands after
+    the refused compaction row but before its conclusion row supersedes the
+    refusal, as it does for any model row; the new generation goes on."""
+
+    class Crash(RuntimeError):
+        pass
+
+    class DieOnConclusion(MemoryStepStore):
+        armed = True
+
+        def commit_step(self, logical_key, response):
+            if self.armed and logical_key.startswith("conclusion:"):
+                self.armed = False
+                raise Crash("killed before the conclusion row")
+            return super().commit_step(logical_key, response)
+
+    loop, request, _, _, store = _compacting_run()
+    dying = DieOnConclusion(
+        budget_limit=16,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+    )
+    loop.store = dying
+    loop.model = ScriptedModel([*_rounds(2), reply(content="  ")])
+    with pytest.raises(Crash):
+        loop.run(request)
+    dying.advance_generation()  # operator follow-up before the conclusion row
+    transcript = _transcript(dying, request)
+    assert transcript.last_round.rejection == "COMPACTION_FAILED"
+    assert transcript.last_round.concluded
+    second = InvestigationLoop(
+        model=ScriptedModel([_summary(), _cite_first(dying)]),
+        executor=loop.executor,
+        store=dying,
+        clock=loop.clock,
+    )
+    outcome = second.resume(transcript)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    assert len(second.model.calls) == 2 and "ctx0:compact-2" in dying.steps
+
+
 def test_compaction_needs_two_remaining_slots_or_the_run_hands_off():
     loop, request, model, _, store = _compacting_run(model_requests=3)
     outcome = loop.run(request)
