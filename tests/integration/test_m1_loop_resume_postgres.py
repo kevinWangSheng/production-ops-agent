@@ -459,3 +459,37 @@ def test_a_rejected_plan_is_never_replayed_by_recovery():
     assert rows["pending_tools"] == []
     step = next(s for s in rows["steps"] if s["response"].get("kind") is None)
     assert step["response"]["rejected_plan"]["reason"] == "TOOL_PAIRING_INVALID"
+
+
+def test_a_run_replaced_between_rebuild_and_claim_runs_with_its_own_input():
+    """Bot review (PR #29, comment 4067523562): the leased Run's input, never the
+    earlier snapshot's, is what the attempt runs with."""
+    h = Harness()
+    replacement = uuid4()
+    replaced_input = _input(replacement)
+    replaced_input["question"] = "REPLACEMENT QUESTION: what changed in checkout?"
+    runner = h.runner([*_tool_rounds(1), report_from_transcript])
+    real_resume = runner.worker.resume
+
+    def resume_after_swap(incident_id, **kwargs):
+        h.store.control(incident_id, 0, "cancel", "operator")
+        h.store.new_run(
+            incident_id,
+            replacement,
+            expected_generation=1,
+            deadline=h.deadline,
+            budget_limit=4,
+            versions=VERSIONS,
+            actor="operator",
+            input=replaced_input,
+        )
+        return real_resume(incident_id, **kwargs)
+
+    runner.worker.resume = resume_after_swap  # type: ignore[method-assign]
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "published", outcome
+    sent = runner.model.calls[0].messages
+    assert sent[1]["content"] == replaced_input["question"]
+    rows = h.rows()
+    assert str(rows["run"]["run_id"]) == str(replacement)
+    assert all(str(s["run_id"]) == str(replacement) for s in rows["steps"])

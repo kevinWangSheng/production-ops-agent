@@ -103,6 +103,13 @@ class InvestigationRunner:
         self, incident_id: UUID, session: RecoverySession, snapshot: Mapping[str, Any]
     ) -> RunnerOutcome:
         lease = session.lease
+        # Re-read after the claim: a cancel + new_run between the first
+        # ``rebuild()`` and ``Worker.resume()`` replaces the current Run, and
+        # the leased Run's own input snapshot -- never the earlier Run's --
+        # is what this attempt may run with (bot review finding, PR #29).
+        snapshot = self.store.rebuild(incident_id)
+        if str(snapshot["run"]["run_id"]) != str(lease.run_id):
+            raise ContextError("RUN_MISMATCH")
         recorded = snapshot["run"].get("input")
         if recorded is None:
             raise ContextError("INPUT_MISSING")
