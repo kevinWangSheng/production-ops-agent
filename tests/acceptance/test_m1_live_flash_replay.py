@@ -16,7 +16,7 @@ from pathlib import Path
 from opspilot.acceptance import IncidentScenario, outcome_from_loop
 from opspilot.investigation.loop import ModelReply
 from opspilot.investigation.reports import parse_report
-from scripts.m1_live_flash_loop import EVIDENCE_CONTEXT, LIVE_TOOL, build_run
+from scripts.m1_live_flash_loop import LIVE_TOOL, build_run, live_evidence_context
 from tests.m1_tool_support import NOW, FakeClock
 
 EVIDENCE = Path(__file__).parents[2] / "docs/evidence/m1-01-acceptance"
@@ -25,6 +25,10 @@ RECORDED_EVIDENCE_ID = re.compile(r"[0-9a-f-]{36}-t0")
 # body. eligible_time_policies() skips it, so the bind fails closed.
 UNBOUND_CONTEXT = {
     "type": "opspilot-evidence-context-v4",
+    # Keyed to the replay Run so the projection keeps the context (a foreign
+    # ``run_id`` is discarded wholesale) and the bind fails for the stated
+    # reason: a policy with no body.
+    "run_id": "replay-run",
     "time_policies": [{"id": "policy-window-1"}],
 }
 
@@ -115,9 +119,13 @@ def test_second_real_report_was_rejected_only_by_the_unbound_policy_id():
 
 
 def test_live_context_policy_is_a_bindable_historical_window():
-    (policy,) = EVIDENCE_CONTEXT["time_policies"]
+    context = live_evidence_context("replay-run")
+    assert context["run_id"] == "replay-run"
+    (policy,) = context["time_policies"]
     assert policy["id"] == "policy-window-1"
     assert policy["mode"] == "historical_window"
+    assert policy["all_authorized_targets"] is True
+    assert policy["reference_rule"] == "response_received_at"
     assert policy["window"] == {
         "start": "2026-09-14T00:00:00+00:00",
         "end": "2026-09-14T01:00:00+00:00",

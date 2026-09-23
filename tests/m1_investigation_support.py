@@ -162,6 +162,6 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
         scope=executor.scope,
         tool_schemas=TOOL_SCHEMAS,
         model_requests=model_requests,
-        evidence_context=historical_window_context(),
+        evidence_context=historical_window_context(executor.scope.run_id),
     )
     return loop, request, model, transport, store, sink

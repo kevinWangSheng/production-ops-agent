@@ -15,9 +15,12 @@ from opspilot.tools import (
     ReadOnlyToolExecutor,
     RegisteredTarget,
     TargetRegistry,
+    ToolBudgetExhausted,
+    ToolDescription,
     ToolRegistration,
     ToolRegistry,
     ToolRequest,
+    ToolUsage,
     Window,
 )
 
@@ -31,7 +34,7 @@ NOW = datetime(2026, 9, 14, 1, 5, tzinfo=timezone.utc)
 TRANSPORT_ONLY_MARKER = "transport-only-marker-not-a-real-value"
 
 
-def historical_window_context():
+def historical_window_context(run_id, *, reference_rule=None):
     """The v4 evidence context every fixture Run hands the loop.
 
     One historical_window policy over the authorized fixture window, so a
@@ -47,20 +50,28 @@ def historical_window_context():
     no targets must cover none, not all, of them (bot review finding, PR
     #29). Without this field every fact citing ``policy-window-1`` fails to
     bind and the Run ends REPORT_INVALID.
+
+    ``run_id`` must be the Run's own: ``evidence_context_projection`` discards
+    a context whose ``run_id`` is not this Run's wholesale (bot review
+    finding, PR #29). ``reference_rule`` is passed through only when given, so
+    the loop doubles keep main's context shape and the live script can name
+    the instant a verified interval is judged against.
     """
+    policy = {
+        "id": "policy-window-1",
+        "mode": "historical_window",
+        "all_authorized_targets": True,
+        "window": {
+            "start": WINDOW_START.isoformat(),
+            "end": WINDOW_END.isoformat(),
+        },
+    }
+    if reference_rule is not None:
+        policy["reference_rule"] = reference_rule
     return {
         "type": "opspilot-evidence-context-v4",
-        "time_policies": [
-            {
-                "id": "policy-window-1",
-                "mode": "historical_window",
-                "all_authorized_targets": True,
-                "window": {
-                    "start": WINDOW_START.isoformat(),
-                    "end": WINDOW_END.isoformat(),
-                },
-            }
-        ],
+        "run_id": run_id,
+        "time_policies": [policy],
     }
 
 
@@ -118,18 +129,32 @@ class RecordingSink:
 
 
 class FixedControl:
-    def __init__(self, generation=7, suspended=False, later=None):
+    def __init__(
+        self,
+        generation=7,
+        suspended=False,
+        later=None,
+        later_after=1,
+        global_generation=0,
+        target_generation=0,
+    ):
         self.generation = generation
+        self.global_generation = global_generation
+        self.target_generation = target_generation
         self.suspended = suspended
         self.later = later
+        self.later_after = later_after  # 1-based call count before `later` starts
         self.calls = 0
 
     def snapshot(self, scope):
         self.calls += 1
-        if self.later is not None and self.calls > 1:
+        if self.later is not None and self.calls > self.later_after:
             return self.later
         return ControlSnapshot(
-            control_generation=self.generation, suspended=self.suspended
+            control_generation=self.generation,
+            global_suspension_generation=self.global_generation,
+            target_suspension_generation=self.target_generation,
+            suspended=self.suspended,
         )
 
 
@@ -154,13 +179,99 @@ class SlowControl(FixedControl):
         return super().snapshot(scope)
 
 
+class RecordingLedger:
+    """In-memory tool budget ledger; ``usage`` seeds what earlier attempts spent."""
+
+    def __init__(self, usage=None, fail_on=None, exhausted_on=None):
+        self.usage_value = usage if usage is not None else ToolUsage()
+        self.fail_on = fail_on  # 1-based charge call numbers that raise
+        self.exhausted_on = exhausted_on  # 1-based calls that raise the cap
+        self.charges = []
+        self.dispatches = []
+
+    def usage(self):
+        return self.usage_value
+
+    def charge(self, operation_id, seconds, *, dispatch_id):
+        # dispatch_id is the charge key (one per real read); a test asserting
+        # on pairing reads ``dispatches``, the recorded order stays the same.
+        self.charges.append((operation_id, seconds))
+        self.dispatches.append(dispatch_id)
+        call = len(self.charges)
+        if self.exhausted_on is not None and call in self.exhausted_on:
+            raise ToolBudgetExhausted("OPERATION_BUDGET_EXHAUSTED")
+        if self.fail_on is not None and call in self.fail_on:
+            raise RuntimeError("budget ledger unavailable")
+
+
+class SlowLedger(RecordingLedger):
+    """A tool-usage ledger whose ``charge`` burns fake wall time, as a slow
+    PostgreSQL write would (mirrors :class:`SlowControl`).
+
+    ``charge_on`` limits the cost to specific 1-based charge call numbers, so
+    a test can make only the pre-dispatch charge (call 1) slow without also
+    slowing the post-fetch settlement charge (call 2).
+    """
+
+    def __init__(self, clock, duration, charge_on=None, **overrides):
+        super().__init__(**overrides)
+        self.clock = clock
+        self.duration = duration
+        self.charge_on = charge_on
+
+    def charge(self, operation_id, seconds, *, dispatch_id):
+        if self.charge_on is None or (len(self.charges) + 1) in self.charge_on:
+            self.clock.advance(self.duration)
+        super().charge(operation_id, seconds, dispatch_id=dispatch_id)
+
+
 class UnavailableControl:
-    def __init__(self):
+    """Raises from the ``fail_from``-th call onward; earlier calls succeed.
+
+    ``fail_from=1`` (the default) fails immediately, as every existing caller
+    of this class expects.
+    """
+
+    def __init__(self, fail_from=1, generation=7):
         self.calls = 0
+        self.fail_from = fail_from
+        self.generation = generation
 
     def snapshot(self, scope):
         self.calls += 1
-        raise RuntimeError("control database unreachable")
+        if self.calls >= self.fail_from:
+            raise RuntimeError("control database unreachable")
+        return ControlSnapshot(
+            control_generation=self.generation,
+            global_suspension_generation=0,
+            target_suspension_generation=0,
+            suspended=False,
+        )
+
+
+def description(**overrides):
+    fields = {
+        "returns": (
+            "The evaluated Prometheus range-query series: one point series per "
+            "returned label set, from the range_query source."
+        ),
+        "window_format": "The authorized absolute query window, appended as {window}.",
+        "values_format": (
+            "The authorized target label enumeration for this Run, appended as "
+            "{values}; any other label value is refused."
+        ),
+        "limits": (
+            "Truncated at the registered max_view_bytes; excess points are "
+            "dropped, not summarized or averaged."
+        ),
+        "cannot_prove": (
+            "A non-zero rate over this window does not by itself prove a "
+            "user-visible error; it must be compared against the alert "
+            "threshold and the service's normal baseline separately."
+        ),
+    }
+    fields.update(overrides)
+    return ToolDescription(**fields)
 
 
 def registration(**overrides):
@@ -169,9 +280,18 @@ def registration(**overrides):
         "version": "v1",
         "source": "prometheus",
         "verb": "query",
+        "description": description(),
+        "may_contain_secrets": False,
         "parameters": {
-            "expr": ParameterSpec("string", required=True),
-            "step_seconds": ParameterSpec("integer"),
+            "expr": ParameterSpec(
+                "string",
+                required=True,
+                description="The PromQL expression to evaluate.",
+            ),
+            "step_seconds": ParameterSpec(
+                "integer",
+                description="The resolution step, in seconds, between returned points.",
+            ),
         },
         "result_path": ("data", "result"),
         "request_timeout_seconds": 10.0,
@@ -205,6 +325,8 @@ def scope(targets, tools=None, *, tool_registry, **overrides):
         "subject_id": "incident-42",
         "run_id": "run-9",
         "control_generation": 7,
+        "global_suspension_generation": 0,
+        "target_suspension_generation": 0,
         "registry_revision": targets.revision,
         "tool_registry_revision": tool_registry.revision,
         "target_ids": frozenset({"checkout-prod"}),
@@ -252,6 +374,7 @@ def build(
     control=None,
     clock=None,
     scope_overrides=None,
+    ledger=None,
 ):
     """Assemble an executor plus the doubles the test will assert on."""
 
@@ -261,6 +384,7 @@ def build(
     transport = transport if transport is not None else FakeTransport(clock=clock)
     sink = sink if sink is not None else RecordingSink()
     control = control if control is not None else FixedControl()
+    ledger = ledger if ledger is not None else RecordingLedger()
     executor = ReadOnlyToolExecutor(
         scope=scope(
             target_registry, tool_registry=tool_registry, **(scope_overrides or {})
@@ -271,5 +395,6 @@ def build(
         evidence=sink,
         control=control,
         clock=clock,
+        ledger=ledger,
     )
     return executor, transport, sink, clock

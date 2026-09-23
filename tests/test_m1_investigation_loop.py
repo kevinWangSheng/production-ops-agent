@@ -8,6 +8,7 @@ execution with an explicit handoff, not a rewritten success.
 import hashlib
 import json
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -21,6 +22,7 @@ from opspilot.investigation.limits import (
     MAX_TOOL_SECONDS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
     RUN_WALL_SECONDS,
+    RunLimits,
 )
 from opspilot.investigation.loop import (
     ACCEPTED_RESPONSE_MODEL,
@@ -28,12 +30,17 @@ from opspilot.investigation.loop import (
     ModelError,
     serialized_request,
 )
-from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION, parse_report
+from opspilot.investigation.reports import (
+    FINAL_REPORT_INSTRUCTION,
+    eligible_time_policies,
+    parse_report,
+)
 from opspilot.investigation.store import (
     MemoryStepStore,
     StepStoreError,
     reservation_id_for,
 )
+from opspilot.tools import TransportResponse
 from tests.m1_investigation_support import (
     assemble,
     reply,
@@ -41,7 +48,7 @@ from tests.m1_investigation_support import (
     report_json,
     tool_call,
 )
-from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, FakeClock
+from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, FakeClock, body
 
 
 def test_reservation_ids_are_scoped_to_the_run():
@@ -87,10 +94,12 @@ def test_canonical_catalog_target_maps_onto_the_sole_authorized_target():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
                     "mode": "historical_window",
+                    "all_authorized_targets": True,
                     "window": {
                         "start": WINDOW_START.isoformat(),
                         "end": WINDOW_END.isoformat(),
@@ -124,6 +133,7 @@ def test_stale_view_is_not_bound_to_a_current_policy():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
@@ -136,6 +146,85 @@ def test_stale_view_is_not_bound_to_a_current_policy():
     outcome = loop.run(request)
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_source_interval_older_than_max_age_is_rejected_through_the_loop():
+    """End-to-end: PR #20 wires ``source_start_at``/``source_end_at`` onto
+    the tool-delivered view; the loop must actually pass them into
+    ``eligible_time_policies`` rather than only checking
+    ``freshness_seconds`` (the newest point) as before."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]),
+        data_as_of=NOW - timedelta(seconds=1),  # the newest point looks fresh
+        # Both ends sit inside the authorized query window (WINDOW_START..
+        # WINDOW_END), isolating the rejection to the max-age check below
+        # rather than the query-window containment check.
+        source_start_at=WINDOW_START,  # but the interval actually starts 65m ago
+        source_end_at=WINDOW_END,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    "max_source_age_seconds": 60,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_well_formed_source_interval_still_permits_citation_through_the_loop():
+    """Regression: a view whose interval genuinely fits inside both the
+    authorized query window (``WINDOW_START``..``WINDOW_END``, the fixture's
+    scope) and the policy's max age is unaffected by the new check."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "checkout", "value": 3}]),
+        data_as_of=NOW - timedelta(seconds=1),
+        source_start_at=WINDOW_END - timedelta(seconds=30),
+        source_end_at=WINDOW_END,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    "max_source_age_seconds": 3600,
+                    "reference_rule": "response_received_at",
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.handoff is False
 
 
 def test_mismatched_request_run_id_is_rejected():
@@ -164,6 +253,7 @@ def test_v4_opaque_target_refs_are_validated_via_catalog():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "target_catalog": {opaque: {"target_id": "checkout-prod"}},
             "view_bindings": {
@@ -199,6 +289,7 @@ def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "target_catalog": {opaque: {"target_id": "checkout-prod"}},
             "view_bindings": {
@@ -211,6 +302,53 @@ def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
         },
     )
     outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_an_empty_v4_catalog_fails_closed_for_a_freshly_collected_view():
+    """Bot review finding (comment 4045327020, P1): ``target_catalog: {}``
+    is a v4 context that genuinely supplies zero opaque catalog keys --
+    every ``claim.target_refs`` must therefore fail to resolve against it,
+    the same as any other v4-catalog-present case (see
+    ``test_registry_id_is_rejected_when_a_v4_catalog_is_present`` above,
+    for a *nonempty* catalog). ``catalog = dict(target_catalog) if
+    target_catalog else {}`` in ``unsupported_citations`` could not tell a
+    genuinely empty catalog apart from no catalog at all -- both are
+    falsy -- so it fell back to accepting a fact that cites the raw
+    registry ``target_id`` directly, the exact thing an opaque v4 catalog
+    exists to prevent. A freshly tool-collected view (not a pre-supplied
+    ``view_bindings`` entry) still records its registry target in
+    ``DeliveredView.target_ids``, so this reaches the same gap through the
+    live citation path, not just the seeded one."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "all_authorized_targets": True,
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": WINDOW_END.isoformat(),
+                    },
+                }
+            ],
+            "target_catalog": {},
+        },
+    )
+    outcome = loop.run(request)
+    assert transport.called is True
     assert outcome.execution == "failed"
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
@@ -232,6 +370,7 @@ def test_fact_time_scope_must_match_the_cited_view():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}, {"id": "policy-other"}],
             "view_bindings": {
                 evidence_id: {
@@ -247,6 +386,471 @@ def test_fact_time_scope_must_match_the_cited_view():
     assert outcome.handoff_reasons == ("REPORT_INVALID",)
 
 
+def test_current_policy_with_empty_target_refs_covers_no_target():
+    """Bot review finding #2: a valid v4 policy with ``target_refs: []`` and
+    ``all_authorized_targets: false`` covers no targets. The old check only
+    rejected a *nonempty* disjoint list -- ``named and named.isdisjoint(...)``
+    is vacuously false for an empty ``named`` -- so an explicitly-scoped-to-
+    nothing policy was silently attached to every target instead."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "target_refs": [],
+                "all_authorized_targets": False,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_with_no_target_refs_key_covers_no_target():
+    """Same gap, ``target_refs`` absent entirely rather than an empty list."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": False,
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_with_disjoint_target_refs_is_still_rejected():
+    """Regression: a nonempty but disjoint ``target_refs`` was already
+    rejected before the fix and must stay rejected."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "target_refs": ["other-service"],
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert eligible == frozenset()
+
+
+def test_policy_with_all_authorized_targets_still_covers_everything():
+    """Regression: an explicit ``all_authorized_targets: true`` is unaffected
+    by the empty-``target_refs`` fix."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-any",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset({"policy-any"})
+
+
+def test_policy_with_an_intersecting_target_ref_is_still_eligible():
+    """Regression: an explicit, intersecting ``target_refs`` entry is
+    unaffected by the fix."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-named",
+                "mode": "current",
+                "target_refs": ["checkout-prod"],
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,
+    )
+    assert eligible == frozenset({"policy-named"})
+
+
+def test_current_policy_rejects_a_future_dated_freshness():
+    """Bot review finding #3 (partial -- see task record for the part not
+    fixed here): ``float(freshness_seconds) > max_age`` is false for a
+    negative ``freshness_seconds``, so a future-dated ``data_as_of`` (which
+    produces a negative age) passed the staleness check as if it were
+    perfectly fresh. Only the executor can ever report a negative age, so
+    this can only be reached by an already-untrustworthy source; it must be
+    rejected, not accepted as the freshest possible reading."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=-30,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_still_accepts_a_fresh_nonnegative_reading():
+    """Regression: an ordinary, nonnegative fresh reading is unaffected."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+    )
+    assert eligible == frozenset({"policy-current"})
+
+
+def test_current_policy_rejects_a_source_interval_older_than_max_age():
+    """Bot review finding #3, second half (PR #20 srcrange.md): a view whose
+    ``source_start_at`` is old and ``source_end_at`` is fresh must not pass
+    on ``freshness_seconds`` (the newest point) alone -- the age must be
+    measured from the *older* end of the actual source interval."""
+    reference = NOW.isoformat()
+    stale_start = WINDOW_START.isoformat()  # 65 minutes before NOW
+    fresh_end = (NOW - timedelta(seconds=1)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+                "reference_rule": "response_received_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=1,  # the newest sample alone looks perfectly fresh
+        source_start_at=stale_start,
+        source_end_at=fresh_end,
+        response_received_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_rejects_a_future_dated_source_end():
+    """A ``source_end_at`` after the trusted reference instant is never
+    valid evidence, for any policy in the list -- whichever of the two
+    delivery instants that policy's own ``reference_rule`` names, since
+    dispatch never happens after the response is received (bot review
+    finding, PR #29: eligibility is resolved per policy, but a claim this
+    far in the future is still untrustworthy under every policy)."""
+    dispatch = (NOW - timedelta(minutes=10)).isoformat()
+    reference = NOW.isoformat()
+    future_end = (NOW + timedelta(seconds=1)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current-response",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "response_received_at",
+            },
+            {
+                "id": "policy-current-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "dispatch_started_at",
+            },
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": True,
+                "reference_rule": "response_received_at",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            },
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=0,
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=future_end,
+        dispatch_started_at=dispatch,
+        response_received_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_rejects_a_source_interval_outside_the_query_window():
+    """PR #20 srcrange.md: current-mode eligibility requires the full source
+    interval to fall inside the query/authorized window, not just inside
+    the max-age budget."""
+    reference = NOW.isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "response_received_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=0,
+        # Starts an hour before the authorized query window even opened.
+        source_start_at=(WINDOW_START - timedelta(hours=1)).isoformat(),
+        source_end_at=WINDOW_END.isoformat(),
+        response_received_at=reference,
+    )
+    assert eligible == frozenset()
+
+
+def test_historical_policy_rejects_a_source_interval_outside_the_policy_window():
+    """PR #20 srcrange.md: historical-window eligibility requires
+    policy.window.start <= source_start_at <= source_end_at <=
+    policy.window.end directly -- not just that the query window (which
+    the source interval might not actually fill) sits inside it."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "reference_rule": "response_received_at",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+        # The source data actually returned reaches past the policy's own
+        # window, even though the authorized query window does not.
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=(WINDOW_END + timedelta(minutes=1)).isoformat(),
+        response_received_at=(WINDOW_END + timedelta(minutes=5)).isoformat(),
+    )
+    assert eligible == frozenset()
+
+
+def test_missing_source_interval_falls_back_to_existing_behaviour():
+    """PR #20's source_start_at/source_end_at default to None when unknown
+    -- a legitimate, common state, not malformed input. A view that omits
+    them entirely must keep exactly its pre-existing eligibility (both
+    modes), or every view recorded before this field existed would go
+    ineligible for no reason."""
+    current_eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 60,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+    )
+    assert current_eligible == frozenset({"policy-current"})
+    historical_eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-hist",
+                "mode": "historical_window",
+                "all_authorized_targets": True,
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window={"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+        freshness_seconds=None,
+    )
+    assert historical_eligible == frozenset({"policy-hist"})
+
+
+def test_a_one_sided_source_interval_is_rejected_universally():
+    """Present-but-malformed is not the same as "unknown": PR #20 guarantees
+    a real adapter never delivers only one end (MALFORMED_RESULT catches
+    that before evidence registration), so a view claiming just one is
+    actively inconsistent, not merely missing data -- reject every policy,
+    the same as a future-dated end."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-current",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=WINDOW_START.isoformat(),
+        source_end_at=None,
+        response_received_at=NOW.isoformat(),
+    )
+    assert eligible == frozenset()
+
+
+def test_current_policy_honors_its_own_dispatch_reference_rule():
+    """Bot review finding (comment 4052348800, ``loop.py:471``): the call
+    site passed only the view's ``observed_at`` (the tool call's own
+    response-received instant) as the single reference for every policy,
+    even though the v4 contract lets each ``TimePolicy`` pick either
+    ``dispatch_started_at`` or ``response_received_at`` via its
+    ``reference_rule``. A policy that names ``dispatch_started_at`` must be
+    judged against when the tool call went out, not against a slow
+    response's completion time -- otherwise a perfectly fresh reading (zero
+    age at dispatch) is wrongly marked stale just because the round trip
+    took a while."""
+    dispatch = NOW.isoformat()
+    slow_response = (NOW + timedelta(seconds=50)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 10,
+                "reference_rule": "dispatch_started_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=NOW.isoformat(),
+        dispatch_started_at=dispatch,
+        response_received_at=slow_response,
+    )
+    assert eligible == frozenset({"policy-dispatch"})
+
+
+def test_current_policy_rejects_a_claim_future_dated_relative_to_dispatch():
+    """The mirror failure of the test above: a source interval that ends
+    after dispatch but before the (slow) response looks perfectly
+    unremarkable if the reference is taken from ``response_received_at``,
+    but is a future-dated claim relative to the ``dispatch_started_at`` a
+    policy actually declared -- and must be rejected for that policy, not
+    silently accepted because the wrong instant was used to judge it."""
+    dispatch = NOW.isoformat()
+    interval_end = (NOW + timedelta(seconds=5)).isoformat()
+    slow_response = (NOW + timedelta(seconds=10)).isoformat()
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-dispatch",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+                "reference_rule": "dispatch_started_at",
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=interval_end,
+        dispatch_started_at=dispatch,
+        response_received_at=slow_response,
+    )
+    assert eligible == frozenset()
+
+
+def test_policy_with_an_unrecognized_reference_rule_is_rejected_closed():
+    """Missing facts fail closed: a policy whose ``reference_rule`` is
+    absent or not one of the two contract values can never be resolved to
+    an instant, so it must not silently fall back to either delivery
+    timestamp."""
+    eligible = eligible_time_policies(
+        [
+            {
+                "id": "policy-no-rule",
+                "mode": "current",
+                "all_authorized_targets": True,
+                "max_source_age_seconds": 3600,
+            }
+        ],
+        source="prometheus",
+        tool="metrics.range_query",
+        target_ids=frozenset({"checkout-prod"}),
+        window=None,
+        freshness_seconds=0,
+        source_start_at=NOW.isoformat(),
+        source_end_at=NOW.isoformat(),
+        dispatch_started_at=NOW.isoformat(),
+        response_received_at=NOW.isoformat(),
+    )
+    assert eligible == frozenset()
+
+
 def test_supplied_context_views_can_be_cited_without_new_tools():
     evidence_id = "ev-supplied"
     loop, request, _, transport, _, _ = assemble(
@@ -257,6 +861,7 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
         request,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": request.run_id,
             "time_policies": [{"id": "policy-window-1"}],
             "view_bindings": {
                 evidence_id: {
@@ -274,12 +879,106 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
     assert evidence_id in outcome.evidence_ids
 
 
+def test_evidence_context_from_a_different_run_is_not_trusted():
+    """Bot review finding #1: ``delivered_from_context`` must bind the
+    supplied context to this Run's own identity. Without it, a context
+    copied from another Run -- or a fabricated mapping with no run identity
+    at all -- would seed delivered citations as if this Run had produced
+    them, letting a report claim ``supported`` from unbound provenance."""
+    evidence_id = "ev-foreign"
+    loop, request, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    foreign = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": "some-other-run",
+            "time_policies": [{"id": "policy-window-1"}],
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(foreign)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_evidence_context_missing_run_id_entirely_is_not_trusted():
+    """The same gap for a fabricated mapping with no run identity at all."""
+    evidence_id = "ev-no-identity"
+    loop, request, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    no_identity = replace(
+        request,
+        evidence_context={
+            "time_policies": [{"id": "policy-window-1"}],
+            "view_bindings": {
+                evidence_id: {
+                    "status": "ok",
+                    "target_refs": ["checkout-prod"],
+                    "time_scope_refs": ["policy-window-1"],
+                },
+            },
+        },
+    )
+    outcome = loop.run(no_identity)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
+def test_a_foreign_run_context_grants_no_eligibility_to_freshly_collected_evidence():
+    """Bot review finding: the run_id/type binding in ``82218ae`` only
+    covers ``delivered_from_context()`` (pre-supplied evidence). A context
+    stamped with someone else's run_id was still consumed as-is by
+    ``context_target_catalog()``/``eligible_time_policies()`` for evidence
+    the tool executor freshly collected during *this* Run -- letting a
+    foreign context's target aliases and time policies apply to it."""
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request,
+        evidence_context={
+            "type": "opspilot-evidence-context-v4",
+            "run_id": "some-other-run",
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "current",
+                    "all_authorized_targets": True,
+                    # Comfortably wide: if the foreign context's policy is
+                    # (incorrectly) honoured, this freshly-collected view
+                    # passes the freshness check and the report completes.
+                    "max_source_age_seconds": 7200,
+                }
+            ],
+        },
+    )
+    outcome = loop.run(request)
+    assert transport.called is True
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+
+
 def test_retry_re_reserves_and_rechecks_control():
     class DenyOnSecondReserve(MemoryStepStore):
-        def reserve_budget(self, reservation_id, amount):
+        def reserve_budget(self, reservation_id, amount, **kwargs):
             if self.reservations:
                 raise StepStoreError("CONTROL_DENIED")
-            super().reserve_budget(reservation_id, amount)
+            super().reserve_budget(reservation_id, amount, **kwargs)
 
     loop, request, model, _, store, _ = assemble(
         replies=[
@@ -298,6 +997,56 @@ def test_retry_re_reserves_and_rechecks_control():
     assert len(model.calls) == 1
     assert outcome.handoff_reasons == ("CONTROL_DENIED",)
     assert outcome.execution == "failed"
+
+
+def test_a_fenced_reply_after_settlement_is_retained_as_late_history():
+    """Bot review finding #4: a pause/cancel/lease-expiry that fences the
+    lease between settling a physical request and committing its step must
+    not silently drop the model's reply. It becomes non-adopted history,
+    the same way ``DurableStore.publish()`` already retains a late
+    conclusion instead of discarding it."""
+    box: dict[str, MemoryStepStore] = {}
+
+    def deny_then_reply(call):
+        box["store"].deny_control()
+        return reply(content=report_json(evidence_id="ev-fenced"), finish="stop")
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[deny_then_reply],
+        model_requests=1,
+    )
+    box["store"] = store
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    # settle_budget() was fenced too: the reservation stays occupied rather
+    # than being recorded as spent (C3 §13, "unknown cost stays occupied").
+    assert store.budget_reserved == 1
+    assert store.budget_spent == 0
+    assert len(store.late_results) == 1
+    assert store.late_results[0]["response"]["finish_reason"] == "stop"
+
+
+def test_a_slow_trickling_model_response_settles_as_unknown_through_the_loop():
+    """Model-request wall clamp (lease-wire-33 report §6), end to end: a
+    real ``DeepSeekClient`` whose transport trickles data forever must not
+    hang the loop or look like a free retry -- every physical attempt it
+    burns is settled as ``unknown`` cost, the same as any other
+    ``MODEL_UNAVAILABLE``."""
+    from opspilot.investigation.client import DeepSeekClient
+    from tests.test_m1_investigation_client import _SlowOpener
+
+    clock = FakeClock()
+    loop, request, _, _, store, _ = assemble(replies=[], model_requests=1, clock=clock)
+    loop.model = DeepSeekClient(
+        "test-key", clock=clock, opener=_SlowOpener(clock, advance_per_read=100)
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
+    assert store.budget_spent == 0
+    assert store.budget_unknown > 0
+    assert set(store.settled.values()) == {"unknown"}
 
 
 def test_exploration_retry_does_not_consume_the_final_slot():
@@ -345,7 +1094,7 @@ def test_committed_step_records_request_hash_and_response_id():
     )
     outcome = loop.run(request)
     assert outcome.execution == "completed"
-    recorded = store.steps["round-1"]["response"]
+    recorded = store.steps["ctx0:round-1"]["response"]
     assert recorded["response_id"] == "chatcmpl-live-1"
     assert (
         recorded["request_sha256"]
@@ -392,6 +1141,190 @@ def test_unavailable_retry_is_a_second_physical_request():
     assert len(model.calls) == 2
     assert outcome.model_requests_used == 2
     assert outcome.execution == "completed"
+
+
+def test_a_model_rejected_error_is_not_retried_unlike_unavailable():
+    """Unlike ``MODEL_UNAVAILABLE`` (see the retry test above), a permanent
+    rejection -- what the client now reports for a non-retryable 4xx such as
+    403/404 (bot review finding) -- must halt on the first attempt: a second
+    scripted reply sitting behind it is never consumed."""
+    loop, request, model, _, _, _ = assemble(
+        replies=[
+            ModelError("MODEL_REJECTED"),
+            reply(content="unused, would only be read by a retry", finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("MODEL_REJECTED",)
+
+
+def test_a_conservatively_charged_failure_shrinks_the_retry_timeout():
+    """Bot review (PR #29, comment 4068748989): a fast ``MODEL_UNAVAILABLE``
+    is charged its full timeout (settled unknown); the retry's timeout must
+    fit under ``active_seconds`` after that charge, not after wall time."""
+    from dataclasses import replace
+
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["Retry recovered enough to close the run."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=1,
+    )
+    request = replace(request, limits=RunLimits(active_seconds=400))
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 2
+    assert model.calls[0].timeout_seconds == pytest.approx(360)
+    assert model.calls[1].timeout_seconds == pytest.approx(40)
+    assert store.usage().model_seconds_used <= 400
+    assert outcome.model_seconds_used == pytest.approx(360)
+
+
+def test_this_attempts_tool_time_counts_toward_the_active_budget():
+    """Independent review (PR #29): ``prior_active`` froze the tool ledger at
+    open; tool time this attempt added must also bound the next timeout."""
+    from dataclasses import replace
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            ModelError("MODEL_UNAVAILABLE"),
+            report_from_transcript,
+        ],
+        model_requests=2,
+    )
+    real = loop.executor
+
+    class SlowTools:
+        scope = real.scope
+        tool_seconds_used = 0.0
+
+        def execute(self, tool_request):
+            outcome = real.execute(tool_request)
+            self.tool_seconds_used += 100.0
+            return outcome
+
+    loop.executor = SlowTools()
+    request = replace(request, limits=RunLimits(active_seconds=500))
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 3
+    # 500 - (100 tool + 360 charged to the fast failure) = 40 left.
+    assert model.calls[2].timeout_seconds == pytest.approx(40)
+    assert store.usage().model_seconds_used + 100 <= 500
+
+
+def test_the_lease_is_renewed_before_every_live_tool_dispatch():
+    """Bot review (PR #29, comment 4069127788): a model request may use most
+    of the lease renewed before it; each tool dispatch renews again under the
+    same fence, and a refusal halts before the dispatch."""
+    from opspilot.investigation.store import StepStoreError
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            reply(
+                tool_calls=[
+                    tool_call("c1"),
+                    tool_call("c2", arguments='{"expr":"up"}'),
+                ],
+                finish="tool_calls",
+            ),
+            report_from_transcript,
+        ],
+    )
+
+    class Renewing(type(store)):
+        renewals = 0
+        refuse_at = None
+
+        def renew(self):
+            self.renewals += 1
+            if self.refuse_at is not None and self.renewals >= self.refuse_at:
+                raise StepStoreError("CONTROL_DENIED")
+
+    store.__class__ = Renewing
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert store.renewals == 2  # once per dispatched tool (memory store never reserves)
+    executed = len(loop.executor.scope.target_ids) and store.tool_results
+    assert sum(len(v) for v in executed.values()) == 2
+
+    loop2, request2, _, _, store2, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call("c1"), tool_call("c2")], finish="tool_calls")
+        ]
+    )
+    store2.__class__ = Renewing
+    store2.refuse_at = 2
+    outcome2 = loop2.run(request2)
+    assert outcome2.execution == "failed"
+    assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
+    assert sum(len(v) for v in store2.tool_results.values()) == 1  # halted before c2
+
+
+def test_every_physical_request_is_settled_as_spent_or_unknown():
+    """C3 §13: reservations are settled in the store; unknown cost stays occupied."""
+    payload = json.dumps(
+        {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "incomplete",
+            "conclusion": "inconclusive",
+            "summary": "Visible evidence is insufficient to support a cause.",
+            "claims": [],
+            "gaps": ["Retry recovered enough to close the run."],
+            "next_steps": ["Have a human inspect the remaining gaps."],
+        }
+    )
+    loop, request, model, _, store, _ = assemble(
+        replies=[
+            ModelError("MODEL_UNAVAILABLE"),
+            reply(content=payload, finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed" and len(model.calls) == 2
+    assert (store.budget_reserved, store.budget_spent, store.budget_unknown) == (
+        0,
+        1,
+        1,
+    )
+    assert sorted(store.settled.values()) == ["spent", "unknown"]
+
+
+def test_a_fenced_settlement_leaves_the_reservation_occupied_and_records_history():
+    class FenceAfterAnswer(MemoryStepStore):
+        def settle_budget(self, reservation_id, outcome, **kwargs):
+            self.deny_control()
+            super().settle_budget(reservation_id, outcome, **kwargs)
+
+    loop, request, model, _, store, _ = assemble(
+        replies=[reply(content="late", finish="stop")], model_requests=1
+    )
+    loop.store = FenceAfterAnswer(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    # Not settled, not released: still counted against the limit.
+    assert (loop.store.budget_reserved, loop.store.budget_spent) == (1, 0)
 
 
 def test_frozen_ceilings_match_the_v4_b2_values():
@@ -667,8 +1600,8 @@ def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     assert model.calls[1].tools is None
     assert model.calls[1].json_mode is True
     assert model.calls[1].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
-    assert store.steps["round-1"]["status"] == "tool_result_committed"
-    assert store.steps["round-2"]["status"] == "response_committed"
+    assert store.steps["ctx0:round-1"]["status"] == "tool_result_committed"
+    assert store.steps["ctx0:round-2"]["status"] == "response_committed"
     assert outcome.evidence_ids
     assert (
         outcome.question_sha256 == hashlib.sha256(request.question.encode()).hexdigest()
@@ -709,6 +1642,27 @@ def test_tool_plan_on_the_final_request_is_a_handoff():
     assert outcome.execution == "failed"
 
 
+def test_a_tool_plan_missing_reasoning_content_is_rejected_before_dispatch():
+    """Bot review finding: ``pair_tool_results(..., require_reasoning=True)``
+    only rejects a missing ``reasoning_content`` *after* the tools already
+    ran and were committed, so tool budget and external queries were spent
+    on a plan that could never replay, and a restart then blocked on the
+    same missing field. The round must reject it before commit/dispatch, the
+    same as any other malformed plan -- no tool call may reach the
+    executor."""
+    loop, request, _, transport, store, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("PRIVATE_PROTOCOL_MISSING",)
+    assert outcome.execution == "failed"
+    assert transport.called is False
+    row = store.steps["ctx0:round-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["reason"] == "PRIVATE_PROTOCOL_MISSING"
+
+
 def test_prompt_revision_is_stable_across_instance_budgets():
     from opspilot.instructions.discipline import prompt_revision, render
     from opspilot.investigation.reports import REPORT_CONTRACT
@@ -727,3 +1681,381 @@ def test_prompt_revision_is_stable_across_instance_budgets():
         ).encode()
     ).hexdigest()
     assert face_one != face_four
+
+
+def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
+    """Two real loop runs that differ only in ``model_requests`` (an L1b
+    instance value) must report the same ``ModelProfile.prompt_revision`` --
+    the exact value ``prompt_revision_versions`` would put in ``versions`` --
+    even though their rendered L1 face genuinely differs (C3 §5)."""
+    from opspilot.investigation.loop import prompt_revision_versions
+
+    def with_supplied_view(request, evidence_id):
+        return replace(
+            request,
+            evidence_context={
+                **request.evidence_context,
+                "run_id": request.run_id,
+                "view_bindings": {
+                    evidence_id: {
+                        "status": "ok",
+                        "target_refs": ["checkout-prod"],
+                        "time_scope_refs": ["policy-window-1"],
+                    },
+                },
+            },
+        )
+
+    loop_one, request_one, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id="ev-a"), finish="stop")],
+        model_requests=1,
+    )
+    outcome_one = loop_one.run(with_supplied_view(request_one, "ev-a"))
+    loop_four, request_four, _, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id="ev-b"), finish="stop")],
+        model_requests=4,
+    )
+    outcome_four = loop_four.run(with_supplied_view(request_four, "ev-b"))
+    assert outcome_one.execution == "completed"
+    assert outcome_four.execution == "completed"
+    expected = prompt_revision_versions()["prompt_revision"]
+    assert outcome_one.prompt_revision == expected
+    assert outcome_four.prompt_revision == expected
+    assert outcome_one.prompt_face_sha256 != outcome_four.prompt_face_sha256
+
+
+def test_prompt_revision_versions_moves_with_the_l2_report_contract_text():
+    """A real L2 content edit (not a hand-typed stand-in) must move the value
+    a caller would compare in ``versions`` (C3 §5 revision rule 1)."""
+    from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
+    from opspilot.investigation.reports import REPORT_CONTRACT
+
+    original = prompt_revision_versions(DISCIPLINE_VARIANT)
+    edited = prompt_revision_versions(
+        DISCIPLINE_VARIANT,
+        report_contract=REPORT_CONTRACT + " New required field: severity.",
+    )
+    assert original != edited
+
+
+def test_evidence_context_projection_strips_nested_unlisted_keys():
+    """Redline P3-4: the old top-level ``password``/``secret``/``token``
+    blocklist misses nested values entirely. An allowlist projection must
+    drop an unexpected key at any depth -- inside ``view_bindings``,
+    ``target_catalog`` and a ``time_policies`` entry, including its own
+    nested ``window`` -- before the context reaches the model prompt."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    evidence_id = "ev-nested"
+    opaque = "target:deadbeef"
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": "run-9",
+        "followup_text": {"password": "leak-top-level"},
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                    "authorization": "leak-window",
+                },
+                "secret": "leak-policy",
+            }
+        ],
+        "target_catalog": {
+            opaque: {
+                "namespace": "checkout",
+                "resource_uid": "svc-checkout",
+                "cluster_uid": "cluster-a",
+                "token": "leak-catalog",
+            }
+        },
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                "target_refs": [opaque],
+                "time_scope_refs": ["policy-window-1"],
+                "authorization": "leak-view",
+            },
+        },
+    }
+    projected = evidence_context_projection(context, run_id="run-9")
+    serialized = json.dumps(projected)
+    for leaked in (
+        "leak-top-level",
+        "leak-window",
+        "leak-policy",
+        "leak-catalog",
+        "leak-view",
+    ):
+        assert leaked not in serialized
+    assert "followup_text" not in projected
+    assert "secret" not in projected["time_policies"][0]
+    assert "authorization" not in projected["time_policies"][0]["window"]
+    assert "token" not in projected["target_catalog"][opaque]
+    assert "authorization" not in projected["view_bindings"][evidence_id]
+    # The legitimate fields the loop and the citation checks actually use
+    # must survive the projection unchanged.
+    assert projected["time_policies"][0]["window"]["start"] == WINDOW_START.isoformat()
+    assert projected["target_catalog"][opaque]["namespace"] == "checkout"
+    assert projected["view_bindings"][evidence_id]["status"] == "ok"
+
+
+def test_evidence_context_projection_rejects_a_nested_object_under_a_scalar_field():
+    """Bot review finding: a key-name allowlist alone is not enough. An
+    allowlisted field whose value is the *wrong shape* -- a nested object
+    where the schema expects a scalar, or a list of objects where it
+    expects a list of strings -- was copied verbatim, letting unexpected
+    nested keys (and secrets) leave the process despite the "any depth"
+    claim. A malformed-shaped value must be dropped, not forwarded."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    evidence_id = "ev-shape"
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        # A matching, valid run_id: the identity gate (a separate finding,
+        # tested elsewhere) would otherwise reject any mismatched-or-
+        # malformed run_id before this shape validation ever ran.
+        "run_id": "run-9",
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "current",
+                "max_source_age_seconds": 60,
+                # A schema-compliant TimePolicy.interfaces is a list of
+                # strings; this smuggles an object instead.
+                "interfaces": [{"token": "leak-interfaces"}],
+            }
+        ],
+        "target_catalog": {
+            "target:deadbeef": {
+                "namespace": "checkout",
+                # A schema-compliant IntegrationTarget.observed_services is
+                # a list of strings.
+                "observed_services": [{"secret": "leak-observed-services"}],
+            }
+        },
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                # A schema-compliant ViewBinding.target_refs is a list of
+                # strings.
+                "target_refs": [{"authorization": "leak-target-refs"}],
+                "time_scope_refs": ["policy-window-1"],
+            },
+        },
+    }
+    projected = evidence_context_projection(context, run_id="run-9")
+    serialized = json.dumps(projected)
+    for leaked in (
+        "leak-interfaces",
+        "leak-observed-services",
+        "leak-target-refs",
+    ):
+        assert leaked not in serialized
+    assert projected["run_id"] == "run-9"
+    # A time policy with a malformed field is dropped whole rather than kept
+    # without its restriction (later bot review finding: dropping only
+    # ``interfaces`` widened the policy to every tool/source).
+    assert projected["time_policies"] == []
+    assert "observed_services" not in projected["target_catalog"]["target:deadbeef"]
+    assert "target_refs" not in projected["view_bindings"][evidence_id]
+    # The legitimate, correctly-shaped fields survive unaffected.
+    assert projected["target_catalog"]["target:deadbeef"]["namespace"] == "checkout"
+    assert projected["view_bindings"][evidence_id]["status"] == "ok"
+
+
+def test_evidence_context_projection_preserves_every_schema_required_field():
+    """An allowlist that is narrower than the frozen v4 contract silently
+    truncates a fully-compliant caller's context instead of only stripping
+    what should not be there (an independent review of this change caught
+    exactly that: ``run_id``, ``ViewBinding.view_hash``/``timing`` and
+    ``TimePolicy.revision``/``integration_id``/``reference_rule`` were
+    missing, and ``target_catalog`` only matched
+    ``opspilot.domain.intake.Target``'s Kubernetes shape, not the schema's
+    Compose/Integration variants). This test is a full round-trip against
+    the actual frozen schema
+    (``docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json``,
+    ``$defs.EvidenceContext``), every required field of every referenced
+    ``$def``, populated once per discriminated ``target_catalog`` kind."""
+    from opspilot.investigation.reports import evidence_context_projection
+
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": "run-schema-check",
+        "target_catalog": {
+            "target:kube": {
+                "kind": "kubernetes",
+                "integration_id": "int-1",
+                "cluster_uid": "cluster-a",
+                "namespace": "checkout",
+                "resource_uid": "svc-checkout",
+                "revision": "rev-1",
+            },
+            "target:compose": {
+                "kind": "compose",
+                "integration_id": "int-2",
+                "deployment_instance": "host-1",
+                "service": "checkout",
+                "container_id": "c-1",
+                "image_digest": "sha256:deadbeef",
+                "telemetry_instance": "otel-1",
+                "mapping_revision": "map-1",
+                "config_revision": "cfg-1",
+            },
+            "target:integration": {
+                "kind": "integration",
+                "integration_id": "int-3",
+                "deployment_instance": "host-2",
+                "mapping_revision": "map-2",
+                "service_identity": "unknown",
+                "observed_services": ["checkout"],
+            },
+        },
+        "view_bindings": {
+            "ev-schema": {
+                "view_hash": "a" * 64,
+                "target_refs": ["target:kube"],
+                "time_scope_refs": ["policy-1"],
+                "timing": {
+                    "operation_started_at": WINDOW_START.isoformat(),
+                    "collection_completed_at": WINDOW_END.isoformat(),
+                    "source_start_at": WINDOW_START.isoformat(),
+                    "source_end_at": WINDOW_END.isoformat(),
+                    "source_time_basis": "event_time",
+                },
+                "status": "ok",
+            },
+        },
+        "time_policies": [
+            {
+                "id": "policy-1",
+                "revision": "policy-rev-1",
+                "integration_id": "int-1",
+                "interfaces": ["metrics.range_query"],
+                "mode": "historical_window",
+                "reference_rule": "dispatch_started_at",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+                "max_source_age_seconds": None,
+                "target_refs": [],
+                "all_authorized_targets": False,
+                "scope_revision": None,
+            }
+        ],
+    }
+    assert evidence_context_projection(context, run_id="run-schema-check") == context
+
+
+def test_a_deeply_nested_tool_call_argument_does_not_crash_the_loop():
+    """Bot review finding (comment 4042176058): ``json.loads()`` on
+    adversarial model-supplied JSON can raise ``RecursionError`` (a deeply
+    nested container) rather than ``ValueError``/``json.JSONDecodeError`` --
+    ``RecursionError`` is not a ``ValueError`` subclass, so the existing
+    ``except ValueError`` in ``_parse_arguments`` let it escape uncaught and
+    crash ``InvestigationLoop.run()`` entirely, after the assistant step was
+    already durably committed. PR #20's ``46cbf3e`` hit the identical gotcha
+    parsing tool *response* bodies and widened its own except clause the
+    same way; this is the model-supplied tool-call *arguments* side of the
+    same bug. ``params=None`` (the existing outcome for ordinary malformed
+    JSON) is already refused gracefully by the executor's
+    ``_accept_params``/``_refuse`` before any transport call, so widening
+    the except clause alone is a complete fix -- no new handling needed."""
+    poison = "[" * 20_000 + "]" * 20_000
+    loop, request, _, transport, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call(arguments=poison)], finish="tool_calls"),
+            reply(content="not-json", finish="stop"),
+        ],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert transport.called is False
+
+
+def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
+    """End-to-end version of the projection test above: run the real loop
+    with a poisoned ``evidence_context`` and inspect every byte actually
+    handed to the ``ModelClient`` double."""
+    evidence_id = "ev-nested-loop"
+    loop, request, model, _, _, _ = assemble(
+        replies=[reply(content=report_json(evidence_id=evidence_id), finish="stop")],
+        model_requests=1,
+    )
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": request.run_id,
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "window": {
+                    "start": WINDOW_START.isoformat(),
+                    "end": WINDOW_END.isoformat(),
+                },
+                "authorization": "leak-policy",
+            }
+        ],
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                "target_refs": ["checkout-prod"],
+                "time_scope_refs": ["policy-window-1"],
+                "token": "leak-view",
+            },
+        },
+    }
+    request = replace(request, evidence_context=context)
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    sent = json.dumps([dict(message) for message in model.calls[0].messages])
+    assert "leak-policy" not in sent
+    assert "leak-view" not in sent
+
+
+def test_a_time_policy_with_a_malformed_field_is_dropped_whole_not_widened():
+    """Bot review (PR #29, comment 4067523569): ``interfaces: [{"token": ..}]``
+    must not project to a policy with no interface restriction."""
+    from opspilot.investigation.reports import (
+        context_time_policy_ids,
+        evidence_context_projection,
+    )
+
+    good = {
+        "id": "p-good",
+        "mode": "historical_window",
+        "all_authorized_targets": True,
+        "interfaces": ["prometheus"],
+        "window": {"start": WINDOW_START.isoformat(), "end": WINDOW_END.isoformat()},
+    }
+    bad = {**good, "id": "p-bad", "interfaces": [{"token": "hunter2"}]}
+    bad_window = {**good, "id": "p-bad-window", "window": {"start": 5, "end": "x"}}
+    context = {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": "run-9",
+        "time_policies": [good, bad, bad_window],
+    }
+    projected = evidence_context_projection(context, run_id="run-9")
+    assert [p["id"] for p in projected["time_policies"]] == ["p-good"]
+    assert context_time_policy_ids(projected) == ("p-good",)
+    assert "hunter2" not in json.dumps(projected)
+    # Through the loop: a report citing the dropped policy is not published.
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            lambda call: report_from_transcript(call),
+        ],
+        model_requests=2,
+    )
+    request = replace(
+        request, evidence_context={**request.evidence_context, "time_policies": [bad]}
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed" and outcome.handoff_reasons == (
+        "REPORT_INVALID",
+    )

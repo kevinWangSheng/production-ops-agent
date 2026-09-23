@@ -1,0 +1,67 @@
+{
+  "experiment": "m1-01-flash-loop",
+  "run_id": "1f098dd3-7e42-4b97-840e-fccdef3c4e63",
+  "ledger_id": "c782a33e-1623-448b-a0f0-b7d5f4ea6fa2",
+  "started": "2026-09-23T09:25:25.912070+00:00",
+  "ended": "2026-09-23T09:25:37.152098+00:00",
+  "model": "deepseek-flash",
+  "http_count": 2,
+  "attempts": [
+    {
+      "elapsed_seconds": 1.098,
+      "finish_reason": "tool_calls",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1128,
+        "completion_tokens": 100,
+        "total_tokens": 1228,
+        "prompt_tokens_details": {
+          "cached_tokens": 768
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 44
+        },
+        "prompt_cache_hit_tokens": 768,
+        "prompt_cache_miss_tokens": 360
+      },
+      "tool_call_count": 1,
+      "json_mode": false
+    },
+    {
+      "elapsed_seconds": 10.135,
+      "finish_reason": "stop",
+      "response_model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1358,
+        "completion_tokens": 2291,
+        "total_tokens": 3649,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 863
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 846
+      },
+      "tool_call_count": 0,
+      "json_mode": true
+    }
+  ],
+  "known_cost_cny_upper": 0.026389,
+  "prompt_tokens": 2486,
+  "completion_tokens": 2391,
+  "execution": "completed",
+  "handoff": true,
+  "handoff_reasons": [
+    "INCOMPLETE_INVESTIGATION"
+  ],
+  "report_schema_version": "m0-report-v2",
+  "report_content_sha256": "09d065d2af14827eaf36afbd6e6de7eec187c67d8b6549ecca78c792d71dbe93",
+  "evidence_ids": [
+    "b8dfb5d1-e780-4720-8bd3-c67a67d07b89-t0:8df86d53-8433-4c2b-8115-3ec2ca452a0c"
+  ],
+  "steps_committed": 2,
+  "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+  "question_sha256": "f80e06ae3d43b9e57e3c7e82edc9006c86ca07d7f39c8b62872f362451e92bbe"
+}

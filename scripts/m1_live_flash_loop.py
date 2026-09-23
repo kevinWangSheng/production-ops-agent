@@ -62,12 +62,6 @@ TOOL_SCHEMAS = (
     },
 )
 
-# The loop binds each delivered view to the time policies it is eligible for
-# (``eligible_time_policies``) and fails closed: a policy without ``mode`` and
-# ``window`` is never worn by a view, so every fact citing it is REPORT_INVALID
-# even when the model followed the report contract. Share the fixture builder
-# with the loop doubles instead of hand-writing the context here.
-EVIDENCE_CONTEXT = historical_window_context()
 QUESTION = (
     "Checkout appears to show elevated HTTP errors. Query the authorized "
     "metrics and return a json investigation report for the authorized window."
@@ -157,40 +151,19 @@ def cost_cny(usage: dict) -> float:
     return round(usd * CNY_PER_USD, 6)
 
 
-def build_run(model, *, clock, deadline, run_id, evidence_context=None):
-    """The product loop over the fixture Prometheus tool, exactly as a live Run.
+def live_evidence_context(run_id: str) -> dict:
+    """The context a live Run cites, keyed to that Run's own ``run_id``.
 
-    Shared with the offline replay tests so the evidence context the model is
-    asked to cite is the same one the loop binds reports against.
+    The loop binds each delivered view to the time policies it is eligible
+    for (``eligible_time_policies``) and fails closed: a policy without
+    ``mode`` and ``window`` is never worn by a view, so every fact citing it
+    is REPORT_INVALID even when the model followed the report contract. The
+    context must carry this Run's own ``run_id`` or the loop's projection
+    discards it wholesale (bot review finding, PR #29), and the fixture view
+    is judged against the response-received instant. Share the fixture
+    builder with the loop doubles instead of hand-writing the context here.
     """
-    executor, transport, _sink, _ = build(
-        clock=clock,
-        registrations=[registration(name=LIVE_TOOL)],
-        scope_overrides={
-            "deadline": deadline,
-            "tool_names": frozenset({LIVE_TOOL}),
-            "run_id": run_id,
-        },
-    )
-    transport.response = TransportResponse(
-        body=body([{"metric": "http_errors_rate", "value": 0.042}]),
-        data_as_of=WINDOW_START,
-    )
-    store = MemoryStepStore(
-        budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
-    )
-    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
-    request = InvestigationRequest(
-        run_id=executor.scope.run_id,
-        question=QUESTION,
-        scope=executor.scope,
-        tool_schemas=TOOL_SCHEMAS,
-        model_requests=2,
-        evidence_context=(
-            EVIDENCE_CONTEXT if evidence_context is None else evidence_context
-        ),
-    )
-    return loop, request
+    return historical_window_context(run_id, reference_rule="response_received_at")
 
 
 def main() -> int:
@@ -206,7 +179,7 @@ def main() -> int:
     clock = SystemClock()
     deadline = clock.now() + timedelta(minutes=12)
     run_id = str(uuid4())
-    recorder = RecordingClient(DeepSeekClient(key))
+    recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     del key
     loop, request = build_run(recorder, clock=clock, deadline=deadline, run_id=run_id)
     started = clock.now()
@@ -292,3 +265,41 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def build_run(model, *, clock, deadline, run_id, evidence_context=None):
+    """The product loop over the fixture Prometheus tool, exactly as a live Run.
+
+    Shared with the offline replay tests so the evidence context the model is
+    asked to cite is the same one the loop binds reports against.
+    """
+    executor, transport, _sink, _ = build(
+        clock=clock,
+        registrations=[registration(name=LIVE_TOOL)],
+        scope_overrides={
+            "deadline": deadline,
+            "tool_names": frozenset({LIVE_TOOL}),
+            "run_id": run_id,
+        },
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "http_errors_rate", "value": 0.042}]),
+        data_as_of=WINDOW_START,
+    )
+    store = MemoryStepStore(
+        budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
+    )
+    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
+    request = InvestigationRequest(
+        run_id=executor.scope.run_id,
+        question=QUESTION,
+        scope=executor.scope,
+        tool_schemas=TOOL_SCHEMAS,
+        model_requests=2,
+        evidence_context=(
+            live_evidence_context(run_id)
+            if evidence_context is None
+            else evidence_context
+        ),
+    )
+    return loop, request
