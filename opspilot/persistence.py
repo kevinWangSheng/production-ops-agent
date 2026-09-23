@@ -1326,6 +1326,12 @@ class DurableStore:
         actor: str,
         payload: dict[str, Any] | None = None,
     ) -> int:
+        # payload 只接受 JSON 对象：列表/标量虽是合法 JSON，落库后模型侧投影
+        # （非 Mapping 一律丢弃）会把操作者的文字静默吞掉，而 control() 却已报告
+        # 成功（codex review，PR #31）。在任何写入之前拒绝，代际不推进，不留审计行；
+        # 与 append_input() 对事件内容的同一条规则一致。
+        if payload is not None and not isinstance(payload, dict):
+            raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
             # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」

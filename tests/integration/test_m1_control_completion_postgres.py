@@ -268,3 +268,31 @@ def test_a_redundant_pause_with_a_payload_is_still_refused_on_a_paused_incident(
     rebuilt = s.rebuild(i)
     assert rebuilt["state"] == "paused" and rebuilt["run"]["state"] == "paused"
     assert [x["kind"] for x in rebuilt["inputs"]] == ["follow_up"]
+
+
+def test_a_non_object_follow_up_payload_is_refused_before_anything_is_written():
+    """codex review (PR #31, P1): a payload that is valid JSON but not an
+    object (a list, a scalar) was persisted and reported as success, and the
+    model-facing projection later dropped the non-mapping content -- the
+    operator's text silently vanished. control() must refuse it up front:
+    no audit row, no input row, generation untouched. append_input() already
+    refuses the same shape for events."""
+    s = _store()
+    i, r = _accept(s)
+    for bad in ([], ["why"], "why", 7, True):
+        with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+            s.control(i, 0, "follow_up", "operator", bad)  # type: ignore[arg-type]
+        with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+            s.control(i, 0, "correct", "operator", bad)  # type: ignore[arg-type]
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        s.append_input(i, uuid4(), ["event"])  # type: ignore[arg-type]
+    rebuilt = s.rebuild(i)
+    assert rebuilt["control_generation"] == 0 and rebuilt["state"] == "queued"
+    assert s.read_inputs(i) == [] and rebuilt["inputs"] == []
+    with s.transaction() as conn:
+        audits = conn.execute(
+            "SELECT count(*) AS n FROM opspilot_controls WHERE incident_id=%s", (i,)
+        ).fetchone()["n"]
+    assert audits == 0
+    # The well-formed shape still goes through at the same generation.
+    assert s.control(i, 0, "follow_up", "operator", {"question": "why"}) == 1
