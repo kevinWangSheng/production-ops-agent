@@ -19,3 +19,12 @@ M0 计划要求验证 LangGraph 对当前 PostgreSQL 业务恢复、取消和步
 - 正面：保持主依赖、锁文件和运行时边界稳定，避免为比较建设第二套平台。
 - 负面：本 ADR 只有最小离线图实现，不能声称真实 provider/恢复性能收益已验证。
 - 安全/费用：脚本不读凭据、不访问模型/工具、不采购；后续 extra 安装和任何实验仍需独立审查。
+
+## 2026-09-21 复核（长程 loop 改造）
+
+[长程 loop 设计草案](../design/investigation-loop-long-horizon-2026-09-21.md)第 3 节按 main 已有能力逐项对照了
+LangGraph 的 checkpoint / pending writes / replay / `thread_id`：`commit_step`、`commit_tool`、`rebuild()` 与
+lease/epoch/人工代际栅栏已提供业务键粒度的等价物，而 C3 §7「每次执行尝试创建新的 Graph 执行身份」与
+ADR-0003 禁止把 checkpoint 作为跨尝试恢复依据，因此消息重建无论如何都要从业务行做。结论：**维持推迟**，
+改造以手写 loop 完成（`opspilot/investigation/context.py`、`runner.py`），不引入 LangGraph 或 Agents SDK。
+反转条件：需要多节点并行 fan-out 且每节点独立持久时另立合同重新比较。本节是复核记录，不是新的选型决定。
