@@ -1143,6 +1143,24 @@ def test_unavailable_retry_is_a_second_physical_request():
     assert outcome.execution == "completed"
 
 
+def test_a_model_rejected_error_is_not_retried_unlike_unavailable():
+    """Unlike ``MODEL_UNAVAILABLE`` (see the retry test above), a permanent
+    rejection -- what the client now reports for a non-retryable 4xx such as
+    403/404 (bot review finding) -- must halt on the first attempt: a second
+    scripted reply sitting behind it is never consumed."""
+    loop, request, model, _, _, _ = assemble(
+        replies=[
+            ModelError("MODEL_REJECTED"),
+            reply(content="unused, would only be read by a retry", finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("MODEL_REJECTED",)
+
+
 def test_a_conservatively_charged_failure_shrinks_the_retry_timeout():
     """Bot review (PR #29, comment 4068748989): a fast ``MODEL_UNAVAILABLE``
     is charged its full timeout (settled unknown); the retry's timeout must
@@ -1622,6 +1640,27 @@ def test_tool_plan_on_the_final_request_is_a_handoff():
     outcome = loop.run(request)
     assert outcome.handoff_reasons == ("TOOL_PLAN_ON_FINAL",)
     assert outcome.execution == "failed"
+
+
+def test_a_tool_plan_missing_reasoning_content_is_rejected_before_dispatch():
+    """Bot review finding: ``pair_tool_results(..., require_reasoning=True)``
+    only rejects a missing ``reasoning_content`` *after* the tools already
+    ran and were committed, so tool budget and external queries were spent
+    on a plan that could never replay, and a restart then blocked on the
+    same missing field. The round must reject it before commit/dispatch, the
+    same as any other malformed plan -- no tool call may reach the
+    executor."""
+    loop, request, _, transport, store, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("PRIVATE_PROTOCOL_MISSING",)
+    assert outcome.execution == "failed"
+    assert transport.called is False
+    row = store.steps["ctx0:round-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["reason"] == "PRIVATE_PROTOCOL_MISSING"
 
 
 def test_prompt_revision_is_stable_across_instance_budgets():

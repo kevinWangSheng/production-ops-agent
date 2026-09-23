@@ -162,6 +162,30 @@ def test_a_response_finishing_inside_the_wall_budget_still_completes():
     assert reply.finish_reason == "stop"
 
 
+@pytest.mark.parametrize(
+    "status", [400, 401, 402, 403, 404, 405, 408, 409, 410, 422, 425]
+)
+def test_a_permanent_4xx_is_rejected_not_reported_as_unavailable(status):
+    """Bot review finding: a non-retryable 4xx (most notably 403/404, an
+    unauthorized or invalid endpoint/model request) used to fall through to
+    ``MODEL_UNAVAILABLE``, so the loop retried the same doomed request and
+    charged a second full timeout before reporting an availability failure
+    instead of the actionable rejection."""
+    client = DeepSeekClient("test-key", opener=_FixedOpener(b"", status=status))
+    with pytest.raises(ModelError, match="MODEL_REJECTED"):
+        client.complete(_call(5))
+
+
+def test_429_is_the_only_4xx_reported_unavailable_for_retry():
+    """DeepSeek documents 429 as the only retryable 4xx (reference table,
+    ``deepseek-flash-prompt-tool-reference.md``); 408/409/425 are generic
+    HTTP/OpenAI conventions the provider does not document (user decision
+    2026-09-23), so they are rejected like any other 4xx."""
+    client = DeepSeekClient("test-key", opener=_FixedOpener(b"", status=429))
+    with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+        client.complete(_call(5))
+
+
 def test_wall_clamp_also_shrinks_the_underlying_socket_timeout_per_read():
     """Independent review finding: the per-iteration deadline check alone
     cannot stop a *single* already-in-flight ``read()`` call from outlasting

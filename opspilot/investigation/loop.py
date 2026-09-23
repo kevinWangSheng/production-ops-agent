@@ -596,6 +596,15 @@ class InvestigationLoop:
                 if reply.finish_reason == "length"
                 else "TOOL_PAIRING_INVALID"
             )
+        if rejection is None and calls and not isinstance(reply.reasoning_content, str):
+            # DeepSeek Flash requires this turn's ``reasoning_content`` to be
+            # echoed back on the later request that carries these tool
+            # results (``pair_tool_results(..., require_reasoning=True)``).
+            # Deciding this only after commit/dispatch spent tool budget and
+            # external queries on a plan that could never replay, and a
+            # restart would then block on the very same missing field (bot
+            # review finding). Same code ``pair_tool_results`` would raise.
+            rejection = "PRIVATE_PROTOCOL_MISSING"
         rejected_plan = None
         if rejection is not None:
             rejected_plan = {

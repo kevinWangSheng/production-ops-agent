@@ -1,9 +1,11 @@
 """Thin DeepSeek Chat Completions client for the investigation loop.
 
 Credentials travel only on the Authorization header and never enter
-``ModelCall`` or ``ModelReply``. 400/422 are not retried. 429 and network
-errors surface as ``MODEL_UNAVAILABLE`` so the loop can count, re-reserve
-and re-check the deadline before any retry.
+``ModelCall`` or ``ModelReply``. A permanent 4xx (401/403/404/422/... --
+anything client-side that a retry cannot fix) is not retried and surfaces as
+``MODEL_REJECTED``. 429 (the only 4xx DeepSeek documents as retryable),
+5xx and network errors surface as ``MODEL_UNAVAILABLE`` so
+the loop can count, re-reserve and re-check the deadline before any retry.
 """
 
 from __future__ import annotations
@@ -34,7 +36,15 @@ from opspilot.investigation.loop import (
 )
 
 _ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
-_RETRYABLE_STATUS = frozenset({429, 500, 503})
+# The only 4xx DeepSeek documents as retryable (rate limit; reference table in
+# ``docs/design/deepseek-flash-prompt-tool-reference.md``). Every other 4xx,
+# including generic-HTTP "transient" 408/409/425 the provider never documents,
+# is the provider refusing this request/credential/endpoint, so retrying it
+# only repeats the rejection at full timeout cost -- it must report the
+# actionable ``MODEL_REJECTED`` instead (bot review finding; user decision
+# 2026-09-23).
+_TRANSIENT_CLIENT_STATUS = frozenset({429})
+_RETRYABLE_STATUS = _TRANSIENT_CLIENT_STATUS | frozenset({500, 503})
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -152,7 +162,7 @@ class DeepSeekClient:
         """One physical HTTPS request. Retries are the loop's budget decision."""
         body = serialized_request(call)
         raw, status = self._post(body, call.timeout_seconds)
-        if status in {400, 401, 402, 422}:
+        if 400 <= status < 500 and status not in _TRANSIENT_CLIENT_STATUS:
             raise ModelError("MODEL_REJECTED")
         if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
             raise ModelError("MODEL_UNAVAILABLE")

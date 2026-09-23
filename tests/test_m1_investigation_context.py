@@ -635,6 +635,35 @@ def test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work():
     assert all(m["role"] != "tool" for m in transcript.messages)
 
 
+def test_a_tool_plan_missing_reasoning_content_is_rejected_and_never_replayed():
+    """Bot review finding: online and resume must judge a tool plan missing
+    ``reasoning_content`` the same way -- rejected before any tool runs, not
+    only when a later ``pair_tool_results`` call notices. This mirrors
+    ``test_a_rejected_tool_plan_is_persisted_but_never_becomes_pending_work``
+    above for that rejection reason; the resume side is the same
+    ``_round_verdict`` rule both paths already share (see the assembled
+    ``transcript`` below, which is exactly what a resumed attempt rebuilds
+    from)."""
+    from opspilot.persistence import _tool_plan
+
+    loop, request, _, transport, store, _ = _wide(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)]
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("PRIVATE_PROTOCOL_MISSING",)
+    assert transport.called is False  # no tool ever dispatched
+    row = store.steps["ctx0:round-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["reason"] == "PRIVATE_PROTOCOL_MISSING"
+    assert row["rejected_plan"]["tool_calls"][0]["id"] == "call-1"
+    assert _tool_plan(row) == []
+    transcript = _transcript(store, request)
+    assert transcript.pending_publish is not None  # the handoff conclusion
+    assert all(m["role"] != "tool" for m in transcript.messages)
+    assert transcript.last_round is not None
+    assert transcript.last_round.rejection == "PRIVATE_PROTOCOL_MISSING"
+
+
 def test_a_conclusion_from_a_superseded_generation_is_not_republished():
     from opspilot.investigation.context import pending_conclusion
 
