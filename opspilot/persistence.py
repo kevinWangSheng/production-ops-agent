@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -52,6 +52,77 @@ class Lease:
     control_generation: int
     global_suspension_generation: int = 0
     target_suspension_generation: int = 0
+
+
+# 预留结算的两种去向：列名由结算结果决定，不由调用方拼 SQL。
+_SETTLEMENTS: dict[str, str] = {"spent": "budget_spent", "unknown": "budget_unknown"}
+
+
+def _tool_plan(response: Any) -> Any:
+    """The tool plan a committed ModelStep carries (C3 §4/§7).
+
+    The investigation loop commits the complete model response as
+    ``{"assistant": {..., "tool_calls": [...]}, "finish_reason": ..., ...}``;
+    the M0 harness and older tests commit the assistant message itself, with
+    ``tool_calls`` at the top level. Recovery must see the plan in both
+    shapes, otherwise ``pending_tools`` is empty and a new attempt re-runs
+    the round instead of finishing the committed tools.
+    """
+    if not isinstance(response, dict):
+        # A committed model response is always an object. A scalar, list or
+        # null here is corrupted/legacy business data, so hand back the same
+        # non-list sentinel used for a corrupt ``assistant`` rather than an
+        # empty plan the caller would accept as "this step had no tools".
+        return None
+    if "assistant" in response:
+        assistant = response["assistant"]
+        if not isinstance(assistant, dict):
+            # A loop-shaped step whose assistant message is corrupt: hand back
+            # a non-list so the caller's validation fails closed.
+            return None
+        return _tool_calls(assistant)
+    return _tool_calls(response)
+
+
+def _tool_calls(container: dict[str, Any]) -> Any:
+    """``tool_calls`` absent or ``None`` means no tools; any other non-list
+    value (``{}``, ``""``, ``0``, ...) is corrupted business data, not an
+    empty plan -- ``value or []`` would silently swallow a falsey one of
+    those into a valid-looking empty list, so check the type explicitly and
+    hand back a non-list for the caller to fail closed on.
+    """
+    calls = container.get("tool_calls")
+    if calls is None:
+        return []
+    return calls if isinstance(calls, list) else None
+
+
+def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
+    """Validate and index durable tool-result checkpoints.
+
+    Recovery must fail closed on corrupted business rows: treating a falsey
+    mapping as an empty result list would replay an already-executed query,
+    while malformed records could otherwise crash with an incidental
+    ``AttributeError``.  ``commit_tool`` writes mapping results with a unique,
+    in-range integer ordinal, so anything else is inconsistent state.
+    """
+    if not isinstance(tool_results, list):
+        raise PersistenceError("INCONSISTENT_STATE")
+    completed: set[int] = set()
+    for item in tool_results:
+        if not isinstance(item, Mapping):
+            raise PersistenceError("INCONSISTENT_STATE")
+        ordinal = item.get("ordinal")
+        if (
+            type(ordinal) is not int
+            or ordinal < 0
+            or ordinal >= call_count
+            or ordinal in completed
+            or not isinstance(item.get("result"), Mapping)
+        ):
+            raise PersistenceError("INCONSISTENT_STATE")
+        completed.add(ordinal)
+    return completed
 
 
 class DurableStore:
@@ -220,6 +291,32 @@ class DurableStore:
               reservation_id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES opspilot_runs,
               amount bigint NOT NULL, state text NOT NULL DEFAULT 'reserved', UNIQUE(run_id, reservation_id)
             );
+            -- 工具次数/秒数是每 Run 的冻结上限（C3 第 13 节：重启不能重置预算）。
+            -- 累计值落在 run 行；**每一次真实派发**记一行，主键是 dispatch_id，
+            -- 同一次派发重复结算只更新秒数，不重复计次。键不是 operation_id：
+            -- 后者由步骤 ID 和工具序号稳定生成（C3 第 7 节），而 C3 第 13 节要求
+            -- 「重试计入次数和费用」、第 4 节明确不承诺外部查询 exactly-once，
+            -- 所以同一 operation 的第二次真实读取必须再计一次，不能被去重掉。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_operations_used integer NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS tool_seconds_used double precision NOT NULL DEFAULT 0;
+            CREATE TABLE IF NOT EXISTS opspilot_tool_charges (
+              dispatch_id uuid PRIMARY KEY,
+              run_id uuid NOT NULL REFERENCES opspilot_runs, epoch integer NOT NULL,
+              operation_id text NOT NULL,
+              -- 预留的授权秒数（C3 第 13 节：预算原子预留和结算）。seconds 为 NULL
+              -- 表示尚未结算，此时该次派发按 reserved 占用预算——「未知费用保持占用」。
+              reserved double precision NOT NULL DEFAULT 0,
+              seconds double precision
+            );
+            CREATE INDEX IF NOT EXISTS opspilot_tool_charges_run_epoch_idx ON opspilot_tool_charges(run_id, epoch);
+            -- 输入快照（C3 第 5 节：重建输入所需的实际内容或固定持久引用）。新 worker
+            -- 只有这一列和步骤行可读，没有它就无法重建 system/user 消息与工具面。
+            ALTER TABLE opspilot_runs ADD COLUMN IF NOT EXISTS input jsonb;
+            -- 模型请求的活跃时间与次数同一套预留/结算（C3 第 13 节「租约状态不明时
+            -- 保守计量」）：预留时按超时上界占用 reserved_seconds，结算时写实测 seconds；
+            -- 请求中崩溃的预留永远没有 seconds，读取时按上界计入。
+            ALTER TABLE opspilot_budget_reservations ADD COLUMN IF NOT EXISTS reserved_seconds double precision NOT NULL DEFAULT 0;
+            ALTER TABLE opspilot_budget_reservations ADD COLUMN IF NOT EXISTS seconds double precision;
             """)
 
     def accept(
@@ -231,9 +328,16 @@ class DurableStore:
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
+        input: dict[str, Any] | None = None,
         target_id: UUID | None = None,
     ) -> None:
-        """Create incident/run atomically. Return only after commit."""
+        """Create incident/run atomically. Return only after commit.
+
+        ``input`` is the Run's input snapshot (question, authorization facts,
+        evidence context, tool face, limits). It is what a later worker
+        rebuilds the model context from; ``None`` keeps callers that never
+        run the investigation loop (M0 harness, control tests) unchanged.
+        """
         with self.transaction() as conn:
             scope = self._lock_scope(conn, None)
             if (
@@ -286,8 +390,15 @@ class DurableStore:
             if inserted is None:
                 return
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,'queued',0,%s,%s,%s)",
-                (run_id, incident_id, budget_limit, deadline, Jsonb(versions)),
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',0,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    None if input is None else Jsonb(input),
+                ),
             )
             if scope["global_suspended"] or scope["target_suspended"]:
                 conn.execute(
@@ -484,12 +595,16 @@ class DurableStore:
         incident_id: UUID,
         run_id: UUID,
         *,
+        expected_generation: int,
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
+        input: dict[str, Any] | None = None,
     ) -> int:
         """Continue a cancelled incident with a fresh Run and control generation."""
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
             row = conn.execute(
@@ -515,6 +630,7 @@ class DurableStore:
                     and row["state"] in {"queued", "paused"}
                     and row["current_run_id"] == run_id
                     and int(row["control_generation"]) == generation
+                    and expected_generation == generation - 1
                 ):
                     return generation
                 if row["current_run_id"] == run_id and row["state"] != "cancelled":
@@ -522,6 +638,8 @@ class DurableStore:
                 raise PersistenceError("IDENTITY_CONFLICT")
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
+            if int(row["control_generation"]) != expected_generation:
+                raise PersistenceError("CONTROL_CONFLICT")
             nxt = int(row["control_generation"]) + 1
             next_state = (
                 "paused"
@@ -529,7 +647,7 @@ class DurableStore:
                 else "queued"
             )
             conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     run_id,
                     incident_id,
@@ -538,6 +656,7 @@ class DurableStore:
                     budget_limit,
                     deadline,
                     Jsonb(versions),
+                    None if input is None else Jsonb(input),
                 ),
             )
             conn.execute(
@@ -558,7 +677,13 @@ class DurableStore:
         payload: dict[str, Any],
         generation: int,
     ) -> None:
-        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。"""
+        """登记迟到结果。logical_key 必须落在保留前缀下，重放不得另写一行。
+
+        键里带上租约 epoch：同一逻辑轮次可能被多个先后被围栏的尝试各自
+        回复一次，每个物理回复（不同 response id / usage / 内容）都是应保留
+        的历史；只有同一尝试对同一身份的重放才会撞键而被 DO NOTHING 吞掉
+        （机器人审查发现，PR #29）。
+        """
         if (
             conn.execute(
                 "SELECT 1 FROM opspilot_runs WHERE run_id=%s",
@@ -606,17 +731,22 @@ class DurableStore:
                 raise PersistenceError("LEASE_ACTIVE")
             if row["deadline"] <= now:
                 raise PersistenceError("DEADLINE_EXCEEDED")
+            # Human control takes precedence over version incompatibility. A
+            # claim must not rewrite a paused or terminal run as blocked.
+            if row["incident_state"] in {"completed", "cancelled", "paused"}:
+                raise PersistenceError("CONTROL_DENIED")
+            if row["run_state"] not in {"queued", "running", "blocked"}:
+                raise PersistenceError("CONTROL_DENIED")
             if row["global_suspended"] or row["target_suspended"]:
                 raise PersistenceError("CONTROL_DENIED")
             if row["versions"] != versions:
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s AND state IN ('queued','running')",
                     (run_id,),
                 )
                 incompatible = True
-            elif row["incident_state"] in {"completed", "cancelled", "paused"}:
-                raise PersistenceError("CONTROL_DENIED")
-            elif row["run_state"] not in ("queued", "running"):
+            elif row["run_state"] == "blocked":
+                # A blocked run is not silently resumed by a matching version.
                 raise PersistenceError("CONTROL_DENIED")
             elif (
                 row["run_state"] == "running"
@@ -627,7 +757,7 @@ class DurableStore:
             else:
                 epoch = int(row["epoch"]) + 1
                 conn.execute(
-                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=clock_timestamp()+make_interval(secs=>%s) WHERE run_id=%s",
+                    "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=LEAST(clock_timestamp()+make_interval(secs=>%s),deadline) WHERE run_id=%s",
                     (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
                 lease = Lease(
@@ -644,8 +774,78 @@ class DurableStore:
         assert lease is not None
         return lease
 
-    def reserve_budget(self, lease: Lease, reservation_id: UUID, amount: int) -> None:
+    def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime:
+        """把持有中的租约延至 `now + extend_seconds`，返回新的 `lease_until`。
+
+        C3 第 6 节：续租与提交同样校验执行身份与租约。因此本方法过的是与
+        写路径完全相同的栅栏：owner / epoch / 事故代际相符、run 仍 running、
+        租约未过期、未过 deadline；任一不满足即 `CONTROL_DENIED`，且不改动
+        `lease_until`。过期租约只能重新 `claim()` 得到新 epoch，不能续活——
+        否则被硬杀的 worker 若晚些恢复，会夺回已由别的 worker 领走的 Run。
+
+        续期不换身份：owner/epoch/generation 都不变，调用方继续用同一个
+        `Lease`；返回值是数据库时钟下的新到期时间，供调用方安排下一次续期。
+        新值取 `LEAST(GREATEST(lease_until, now + extend), deadline)`：
+        除封顶到 deadline 外不缩短仍然更长的剩余租约，也永远不越过 Run deadline。
+        """
+        if extend_seconds <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run：与 reserve_budget()/commit_*() 同序，
+            # 避免与 control()/publish() 交叉形成 ABBA 死锁。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            # 代际以事故行为准：人工决定只递增 opspilot_incidents.control_generation，
+            # run 行上的同名列是 claim()/control() 盖下的副本。
+            row = conn.execute(
+                "SELECT r.state AS run_state,r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            now = self._db_now(conn)
+            if (
+                not row
+                or row["run_state"] != "running"
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["incident_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= now
+                or row["deadline"] <= now
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            renewed = self._require_row(
+                conn.execute(
+                    # 检查与写入用同一个时钟值，返回值不会超过已校验的 now + extend。
+                    "UPDATE opspilot_runs SET lease_until=LEAST(GREATEST(lease_until,%s+make_interval(secs=>%s)),deadline) WHERE run_id=%s RETURNING lease_until",
+                    (now, extend_seconds, lease.run_id),
+                )
+            )
+            return cast(datetime, renewed["lease_until"])
+
+    def reserve_budget(
+        self,
+        lease: Lease,
+        reservation_id: UUID,
+        amount: int,
+        *,
+        seconds: float = 0.0,
+    ) -> None:
+        """Reserve ``amount`` request slots and ``seconds`` of active time.
+
+        ``seconds`` is the upper bound the request may take (its timeout).
+        Until settled it counts in full against the Run's active time, so an
+        attempt killed mid-request never under-reports what it may have used.
+        """
         if amount <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, (int, float))
+            or not seconds >= 0
+            or seconds == float("inf")
+        ):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             self._lock_scope(conn, lease.incident_id)
@@ -679,12 +879,305 @@ class DurableStore:
             ):
                 raise PersistenceError("BUDGET_EXHAUSTED")
             conn.execute(
-                "INSERT INTO opspilot_budget_reservations(reservation_id,run_id,amount) VALUES(%s,%s,%s)",
-                (reservation_id, lease.run_id, amount),
+                "INSERT INTO opspilot_budget_reservations(reservation_id,run_id,amount,reserved_seconds) VALUES(%s,%s,%s,%s)",
+                (reservation_id, lease.run_id, amount, float(seconds)),
             )
             conn.execute(
                 "UPDATE opspilot_runs SET budget_reserved=budget_reserved+%s WHERE run_id=%s",
                 (amount, lease.run_id),
+            )
+
+    def settle_budget(
+        self,
+        lease: Lease,
+        reservation_id: UUID,
+        outcome: str,
+        *,
+        seconds: float | None = None,
+    ) -> None:
+        """Settle one reservation after the physical request finished (C3 §13).
+
+        ``seconds`` is the measured active time of the request. ``None``
+        keeps the reserved upper bound (the right value for ``unknown``).
+
+        ``spent``: the provider answered, the request is real usage.
+        ``unknown``: the outcome is not known (timeout, transport failure,
+        rejected request); the reserved amount stays occupied under
+        ``budget_unknown`` and is never released. Settling the same
+        reservation twice with the same outcome is a no-op; a different
+        outcome is an identity conflict. Fenced by the lease like every
+        other write path, so a revoked attempt leaves its reservation as
+        ``reserved`` -- still counted against the limit.
+        """
+        if outcome not in _SETTLEMENTS:
+            raise PersistenceError("INVALID_INPUT")
+        if seconds is not None and (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, (int, float))
+            or not seconds >= 0
+            or seconds == float("inf")
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id WHERE r.run_id=%s FOR UPDATE",
+                (lease.run_id,),
+            ).fetchone()
+            if (
+                not row
+                or row["owner"] != lease.owner
+                or row["epoch"] != lease.epoch
+                or row["control_generation"] != lease.control_generation
+                or row["lease_until"] is None
+                or row["lease_until"] <= self._db_now(conn)
+                or row["deadline"] <= self._db_now(conn)
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            reservation = conn.execute(
+                "SELECT amount,run_id,state FROM opspilot_budget_reservations WHERE reservation_id=%s FOR UPDATE",
+                (reservation_id,),
+            ).fetchone()
+            if not reservation or reservation["run_id"] != lease.run_id:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            if reservation["state"] != "reserved":
+                if reservation["state"] == outcome:
+                    return
+                raise PersistenceError("IDENTITY_CONFLICT")
+            conn.execute(
+                "UPDATE opspilot_budget_reservations SET state=%s,seconds=COALESCE(%s,reserved_seconds) WHERE reservation_id=%s",
+                (outcome, None if seconds is None else float(seconds), reservation_id),
+            )
+            column = _SETTLEMENTS[outcome]
+            conn.execute(
+                f"UPDATE opspilot_runs SET budget_reserved=budget_reserved-%s,{column}={column}+%s WHERE run_id=%s",
+                (reservation["amount"], reservation["amount"], lease.run_id),
+            )
+
+    def charge_tool(
+        self,
+        lease: Lease,
+        operation_id: str,
+        seconds: float,
+        *,
+        max_operations: int,
+        max_tool_seconds: float,
+        dispatch_id: UUID,
+    ) -> None:
+        """Charge one tool dispatch to the Run's durable tool budget.
+
+        The first charge for ``dispatch_id`` counts one operation; later
+        charges with the same ``dispatch_id`` only raise its recorded seconds,
+        so an executor may charge once before its read goes out and once after
+        it with the measured wall time.
+
+        The first charge for a ``dispatch_id`` is a **reservation**: its
+        ``seconds`` is the longest this dispatch is authorized to take, and the
+        whole of it is held against the Run's time ceiling until the dispatch
+        settles (C3 section 13: 预算在 PostgreSQL 原子预留和结算，未知费用保持
+        占用). Both ceilings gate that one atomic UPDATE -- a new dispatch is
+        refused unless the Run still has an operation left *and* room for the
+        full reservation. Settling is never refused: it releases the
+        reservation and records what the read actually cost, which may be less
+        than reserved and, for a transport that overran its bound, more. The
+        ceiling governs what may be started; the record tells the truth about
+        what was spent.
+
+        ``dispatch_id`` is the key, not ``operation_id``, and it is required
+        rather than derived here: ``operation_id`` is stable by construction
+        (technical plan section 7 -- step id plus tool ordinal), so keying on
+        it silently collapsed *two real reads* of the same tool call into one
+        charge whenever a duplicate delivery or a same-epoch retry occurred --
+        the Run was charged one operation and ``max(seconds)`` instead of the
+        sum, and could exceed both frozen ceilings with real queries (bot
+        review finding). Section 13 settles the semantics -- "重试计入次数和
+        费用" -- and section 4 explicitly declines to promise exactly-once
+        external queries, so the second dispatch is charged, not refused. A
+        new attempt that re-dispatches an uncommitted operation likewise
+        issues a real second query and is charged again; the per-Run total
+        only ever grows. Fenced by the lease like every other write path.
+
+        ``max_operations`` is required, not defaulted: this module does not
+        import the frozen ceiling from ``opspilot.tools.executor`` (that
+        would invert the existing one-way dependency, ``opspilot.tools``
+        already imports from here), so every caller must supply the same
+        value the executor is enforcing. Counting a *new* operation is
+        refused, atomically under the same row lock as everything else in
+        this transaction, once the Run is already at the cap -- two
+        executors racing from the same stale ``operations_used`` snapshot
+        serialize on this lock, and only the one that arrives first may
+        still increment (bot review finding: the increment used to be
+        unconditional once past application-level checks, so both could
+        succeed and the durable count could exceed the frozen cap).
+        Settling an *already-counted* dispatch's seconds is never subject
+        to this check -- it does not add a new operation.
+        """
+        if not isinstance(operation_id, str) or not operation_id:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            type(seconds) not in (int, float)
+            or seconds != seconds
+            or seconds in (float("inf"), float("-inf"))
+            or seconds < 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        if type(max_operations) is not int or max_operations <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        if (
+            type(max_tool_seconds) not in (int, float)
+            or max_tool_seconds != max_tool_seconds
+            or max_tool_seconds in (float("inf"), float("-inf"))
+            or max_tool_seconds <= 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        if not isinstance(dispatch_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
+            # 先锁 incident 再锁 run，与其余写路径同一顺序。
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.tool_operations_used,r.tool_seconds_used,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND i.incident_id=%s FOR UPDATE OF i,r",
+                (lease.run_id, lease.incident_id),
+            ).fetchone()
+            # 事故与 Run 两个身份都要绑定：只按 run_id 查会让「事故 A + 事故 B 的 Run」
+            # 这种 Lease 锁住 A 却改 B 的业务记录，同时绕开上面刚建立的 incident→run
+            # 锁序（bot review 发现）。renew_lease()/lease_current() 本就是这个写法。
+            if not row:
+                raise PersistenceError("CONTROL_DENIED")
+            existing = conn.execute(
+                "SELECT reserved,seconds FROM opspilot_tool_charges WHERE dispatch_id=%s AND run_id=%s AND epoch=%s AND operation_id=%s FOR UPDATE",
+                (dispatch_id, lease.run_id, lease.epoch, operation_id),
+            ).fetchone()
+            # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
+            # 唯一的例外是**结算一个本租约已经预留过的派发**：栅栏若连它也拒，
+            # 预留的整段超时就永远占着 tool_seconds_used，恢复后的尝试继承这个
+            # 虚高总量，可能因为根本没花掉的秒数而 TIME_BUDGET_EXHAUSTED
+            # （bot review 发现）。结算只是把已知的实际耗时写回本租约自己建立的
+            # 那一行：它不新建预留、不采纳任何结果，人工决定仍由执行器取回后的
+            # control 复读上报并按 history-only 登记。
+            if existing is None and self._lease_revoked(row, lease, self._db_now(conn)):
+                raise PersistenceError("CONTROL_DENIED")
+            if existing is None:
+                # 首次出现该 dispatch_id 即预留：`seconds` 是本次派发被授权的最长
+                # 时间，整段先占住预算，结算时再核减为实际耗时。此前这里记的是
+                # 调用方传来的 0.0，于是两个执行器都能通过「已用 < 上限」这道门、
+                # 各自派发，再各自无条件结算，把 Run 推过冻结上限（bot review 发现：
+                # 上一轮只判已用量，并没有真的关掉这个竞态）。
+                conn.execute(
+                    "INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id,reserved,seconds) VALUES(%s,%s,%s,%s,%s,NULL)",
+                    (
+                        dispatch_id,
+                        lease.run_id,
+                        lease.epoch,
+                        operation_id,
+                        float(seconds),
+                    ),
+                )
+                cursor = conn.execute(
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used+%s<=%s",
+                    (
+                        float(seconds),
+                        lease.run_id,
+                        max_operations,
+                        float(seconds),
+                        float(max_tool_seconds),
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    # The row is already locked (``FOR UPDATE`` above), so this
+                    # is not a lost-update race with another writer -- a cap
+                    # was already reached when we got here. Raising rolls back
+                    # the INSERT above too, so no orphaned charge row survives
+                    # for an operation that was never actually counted.
+                    #
+                    # 两个上限都在这一条 UPDATE 里判定。秒数此前只在进程内把关：
+                    # 两个执行器各自读到 239 秒，就会各自按「还剩 1 秒」派发并成功结算，
+                    # 把 Run 留在 241 秒，而两次观察都被采纳（bot review 发现）。
+                    # 行锁下读到的计数用来区分是哪一个上限触发，报告与进程内同一个
+                    # 原因码。
+                    raise PersistenceError(
+                        "OPERATION_BUDGET_EXHAUSTED"
+                        if int(row["tool_operations_used"]) >= max_operations
+                        else "TIME_BUDGET_EXHAUSTED"
+                    )
+                return
+            if existing["seconds"] is None:
+                # 第一次结算：释放预留，按实际耗时记账。差值可以为负——预留本就是
+                # 上界，这正是 C3「原子预留和结算」里的结算那一半。
+                settled = float(seconds)
+                delta = settled - float(existing["reserved"])
+            else:
+                # 重复结算只允许向上修正，不允许把已记录的实际耗时改小。
+                settled = max(float(existing["seconds"]), float(seconds))
+                delta = settled - float(existing["seconds"])
+            conn.execute(
+                "UPDATE opspilot_tool_charges SET seconds=%s WHERE dispatch_id=%s",
+                (settled, dispatch_id),
+            )
+            if delta == 0.0:
+                return
+            conn.execute(
+                "UPDATE opspilot_runs SET tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
+                (delta, lease.run_id),
+            )
+
+    def run_usage(self, run_id: UUID) -> dict[str, Any]:
+        """Durable per-Run usage a new attempt continues from (C3 §13).
+
+        Model request slots are the three budget columns; model active seconds
+        sum every reservation, settled ones at their measured value and
+        unsettled ones at their reserved upper bound. Tool usage comes from the
+        tool ledger columns. Read in one snapshot; never fenced, never written.
+        """
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.budget_limit,r.budget_reserved,r.budget_spent,r.budget_unknown,r.tool_operations_used,r.tool_seconds_used,"
+                "(SELECT COALESCE(SUM(COALESCE(b.seconds,b.reserved_seconds)),0) FROM opspilot_budget_reservations b WHERE b.run_id=r.run_id) AS model_seconds_used "
+                "FROM opspilot_runs r WHERE r.run_id=%s",
+                (run_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            return {
+                "budget_limit": int(row["budget_limit"]),
+                "model_requests_used": int(
+                    row["budget_reserved"] + row["budget_spent"] + row["budget_unknown"]
+                ),
+                "model_seconds_used": float(row["model_seconds_used"]),
+                "tool_operations_used": int(row["tool_operations_used"]),
+                "tool_seconds_used": float(row["tool_seconds_used"]),
+            }
+
+    def block(self, lease: Lease) -> None:
+        """Move this attempt's Run to ``blocked`` (C3 §7 incompatible/malformed state).
+
+        Fenced like every other write: a lease that human control already
+        superseded cannot block the Run it no longer holds. ``claim()`` never
+        silently resumes a blocked Run; a human or an explicit migration does.
+        """
+        with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
+                (lease.run_id,),
+            ).fetchone()
+            if not row or self._lease_revoked(row, lease, self._db_now(conn)):
+                raise PersistenceError("CONTROL_DENIED")
+            conn.execute(
+                "UPDATE opspilot_runs SET state='blocked',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running'",
+                (lease.run_id,),
             )
 
     def lease_current(self, lease: Lease) -> bool:
@@ -726,7 +1219,7 @@ class DurableStore:
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}",
+                    f"{_LATE_RESULT_KEY_PREFIX}step:{logical_key}:e{lease.epoch}",
                     response,
                     lease.control_generation,
                 )
@@ -781,20 +1274,36 @@ class DurableStore:
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.tool_results,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE OF i,r,s",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.response,s.tool_results,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE OF i,r,s",
                 (lease.run_id, step_id),
             ).fetchone()
             if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            tool_calls = _tool_plan(row["response"])
+            if (
+                type(ordinal) is not int
+                or ordinal < 0
+                or not isinstance(tool_calls, list)
+                or ordinal >= len(tool_calls)
+            ):
                 raise PersistenceError("UNKNOWN_IDENTITY")
             if (
                 row["step_generation"] != lease.control_generation
                 or row["step_status"] == "late_result"
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}",
+                    f"{_LATE_RESULT_KEY_PREFIX}tool:{step_id}:{ordinal}:e{lease.epoch}",
                     result,
                     lease.control_generation,
                 )
@@ -1006,7 +1515,18 @@ class DurableStore:
                 (lease.run_id, logical_key),
             ).fetchone()
             if frozen and frozen["control_generation"] != lease.control_generation:
-                raise PersistenceError("CONTROL_DENIED")
+                # The step key (``segment:round-N``) is stable across
+                # control generations: the transcript rebuild parses it, so
+                # it cannot carry the generation. A boundary frozen under a
+                # superseded generation whose round never committed belongs
+                # to a dead attempt (e.g. a provider retry that aborted); the
+                # human decision that moved the generation on is exactly what
+                # this round must now see, so it is re-frozen at the current
+                # watermark. A *committed* round under another generation is
+                # a real conflict and stays refused.
+                if frozen["committed"]:
+                    raise PersistenceError("CONTROL_DENIED")
+                frozen = None
             if frozen is None:
                 watermark = self._require_row(
                     conn.execute(
@@ -1016,7 +1536,7 @@ class DurableStore:
                 )["watermark"]
                 frozen = self._require_row(
                     conn.execute(
-                        "INSERT INTO opspilot_input_rounds(run_id,logical_key,control_generation,input_watermark) VALUES(%s,%s,%s,%s) RETURNING *",
+                        "INSERT INTO opspilot_input_rounds(run_id,logical_key,control_generation,input_watermark) VALUES(%s,%s,%s,%s) ON CONFLICT (run_id,logical_key) DO UPDATE SET control_generation=EXCLUDED.control_generation,input_watermark=EXCLUDED.input_watermark,committed=false RETURNING *",
                         (
                             lease.run_id,
                             logical_key,
@@ -1069,10 +1589,18 @@ class DurableStore:
                 or row["incident_state"] in {"completed", "cancelled", "paused"}
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM opspilot_steps WHERE step_id=%s AND run_id=%s",
+                        (step_id, lease.run_id),
+                    ).fetchone()
+                    is None
+                ):
+                    raise PersistenceError("UNKNOWN_IDENTITY")
                 self._late_result(
                     conn,
                     lease.run_id,
-                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}",
+                    f"{_LATE_RESULT_KEY_PREFIX}publish:{step_id}:e{lease.epoch}",
                     conclusion,
                     lease.control_generation,
                 )
@@ -1121,11 +1649,43 @@ class DurableStore:
                 (row["current_run_id"],),
             ).fetchall()
             for step in steps:
-                calls = (step["response"] or {}).get("tool_calls", [])
+                # Late tool/step results are immutable history payloads, not
+                # model responses. They may have any JSON shape and must not
+                # make a later rebuild fail model-plan validation.
+                if step["status"] == "late_result":
+                    continue
+                calls = _tool_plan(step["response"])
                 if not isinstance(calls, list) or any(
                     not isinstance(call, dict) for call in calls
                 ):
                     raise PersistenceError("INCONSISTENT_STATE")
+                _completed_tool_ordinals(step["tool_results"], len(calls))
+            pending_tools: list[dict[str, Any]] = []
+            for step in steps:
+                if step["control_generation"] != incident_generation or step[
+                    "status"
+                ] not in {"response_committed", "tool_result_committed"}:
+                    continue
+                calls = _tool_plan(step["response"])
+                completed = _completed_tool_ordinals(step["tool_results"], len(calls))
+                for ordinal, call in enumerate(calls):
+                    if ordinal not in completed:
+                        # No operation id here: its canonical format lives in
+                        # opspilot.domain.tool_operation_id, and whether this
+                        # module may depend on the domain layer is still an
+                        # open decision (tests/test_architecture.py records it
+                        # as a strict xfail). Reaching for the helper here
+                        # would settle that decision in passing, so
+                        # recovery.rebuild_plan stamps it instead -- one
+                        # definition of the format executors and the evidence
+                        # store deduplicate by, with the decision left open.
+                        pending_tools.append(
+                            {
+                                "step_id": step["step_id"],
+                                "ordinal": ordinal,
+                                "tool_call": call,
+                            }
+                        )
             inputs = conn.execute(
                 "SELECT * FROM opspilot_inputs WHERE incident_id=%s ORDER BY sequence",
                 (incident_id,),
@@ -1148,26 +1708,17 @@ class DurableStore:
                 # 只列出当前代际、且仍是活步骤的待办工具调用。late_result 即使
                 # 代际未变（只是租约过期）也只是历史；列进 pending_tools 会让新
                 # 租约把迟到响应写回成可发布步骤。
-                "pending_tools": [
-                    {
-                        "step_id": step["step_id"],
-                        "ordinal": ordinal,
-                        "operation_id": f"{step['step_id']}:{ordinal}",
-                        "tool_call": (step["response"] or {}).get("tool_calls", [])[
-                            ordinal
-                        ],
-                    }
-                    for step in steps
-                    if step["control_generation"] == incident_generation
-                    and step["status"]
-                    in {"response_committed", "tool_result_committed"}
-                    for ordinal in range(
-                        len((step["response"] or {}).get("tool_calls", []))
-                    )
-                    if ordinal
-                    not in {
-                        item.get("ordinal") for item in (step["tool_results"] or [])
-                    }
-                ],
+                "pending_tools": pending_tools,
                 "conclusion": row["conclusion"],
             }
+
+    def recovery_metadata(self, incident_id: UUID) -> dict[str, Any]:
+        """Read identity/version fields without decoding versioned step payloads."""
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT i.state AS incident_state,i.control_generation,r.run_id,r.state AS run_state,r.versions FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            return row

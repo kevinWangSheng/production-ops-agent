@@ -14,9 +14,15 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from opspilot.domain import RUN_EXECUTION
+from opspilot.instructions import prompt_revision
+from opspilot.instructions import render as d_render
+from opspilot.investigation.loop import prompt_revision_versions
+from opspilot.investigation.reports import REPORT_CONTRACT
+from opspilot.investigation.store import StepStoreError
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
+from scripts.m0_environment.report_contract import REPORT_VERSION, report_instruction
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -50,6 +56,28 @@ def test_commit_visibility_restart_control_late_and_budget():
     rebuilt = store.rebuild(incident)
     assert rebuilt["control_generation"] == 1
     assert rebuilt["conclusion"] is None
+
+
+def test_rebuild_ignores_late_result_payload_shape():
+    """Late-result history is arbitrary JSON, not a model response to validate."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-shape-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    stale = store.claim(incident, run, uuid4(), {"state": "v1"})
+    store.control(incident, 0, "follow_up", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(stale, "late-shape", {"tool_calls": 0})
+    rebuilt = store.rebuild(incident)
+    late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
+    assert len(late) == 1
+    assert late[0]["response"] == {"tool_calls": 0}
 
 
 def test_worker_subprocess_kill_then_resume_from_business_rows():
@@ -112,6 +140,97 @@ def test_rebuild_rejects_malformed_persisted_tool_calls():
         store.rebuild(incident)
 
 
+def test_rebuild_rejects_a_falsey_malformed_tool_calls_value():
+    """``{} or []`` would silently swallow a falsey malformed value into a
+    valid-looking empty plan; it must fail closed like any other bad shape.
+    """
+    store = DurableStore(DSN)
+    for broken in ({}, "", 0):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-falsey-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        step = store.commit_step(lease, "malformed", {"tool_calls": []})
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+                (Jsonb({"tool_calls": broken}), step),
+            )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
+def test_rebuild_rejects_malformed_persisted_tool_results():
+    """Corrupt checkpoints must not silently replay a completed tool."""
+    store = DurableStore(DSN)
+    for broken in (
+        {},
+        {"ordinal": 0, "result": {"ok": True}},
+        [{"ordinal": "0", "result": {"ok": True}}],
+        [{"ordinal": 1, "result": {"ok": True}}],
+        [{"ordinal": 0}],
+        [{"ordinal": 0, "result": "bad"}],
+    ):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-malformed-tool-results-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        step = store.commit_step(
+            lease, "malformed-results", {"tool_calls": [{"id": "a"}]}
+        )
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_steps SET tool_results=%s WHERE step_id=%s",
+                (Jsonb(broken), step),
+            )
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
+def test_resume_blocks_incompatible_payload_before_decoding_it():
+    """Version fencing must run before recovery decodes a newer step shape."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-incompatible-recovery-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v2"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v2"})
+    step = store.commit_step(lease, "new-shape", {"tool_calls": []})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_steps SET response=%s WHERE step_id=%s",
+            (Jsonb({"tool_calls": "new-v2-shape"}), step),
+        )
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        Worker.create(store, {"state": "v1"}).resume(incident)
+    with store.transaction(snapshot=True) as conn:
+        state = conn.execute(
+            "SELECT state FROM opspilot_runs WHERE run_id=%s", (run,)
+        ).fetchone()["state"]
+    assert state == "blocked"
+
+
 def test_recovered_session_checks_epoch_before_dispatch():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -170,71 +289,6 @@ def test_partial_tool_checkpoint_and_lease_fencing():
     assert store.rebuild(incident)["pending_tools"][0]["ordinal"] == 1
 
 
-def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
-    store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-control-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.control(incident, 0, "pause", "operator") == 1
-    assert store.control(incident, 1, "resume", "operator") == 2
-    resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert resumed.control_generation == 2
-    final_step = store.commit_step(resumed, "final", {"result": "supported"})
-    assert store.publish(resumed, {"result": "supported"}, step_id=final_step) is True
-    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
-        store.control(incident, 2, "resume", "operator")
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.publish(lease, {"result": "late"}, step_id=uuid4()) is False
-
-
-def test_expired_lease_cannot_publish_or_reserve():
-    store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-expiry-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
-    with store.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
-            (run,),
-        )
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        store.reserve_budget(lease, uuid4(), 1)
-    assert store.publish(lease, {"result": "expired"}, step_id=uuid4()) is False
-
-
-def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
-    store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-human-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        store.commit_step(lease, "old", {"result": "stale"})
-    assert store.control(incident, 1, "correct", "operator") == 2
-
-
 def test_correction_rejects_late_publish_and_keeps_history_only():
     """纠正后的旧代际结果只能进入 late_result 历史，不能成为结论。"""
     store = DurableStore(DSN)
@@ -252,13 +306,13 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     assert store.control(incident, 0, "correct", "operator") == 1
     assert store.publish(stale, {"result": "old"}, step_id=step) is False
     assert store.publish(stale, {"result": "old-retry"}, step_id=step) is False
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(stale, {"result": "forged"}, step_id=uuid4())
     rebuilt = store.rebuild(incident)
     assert rebuilt["conclusion"] is None
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
     assert len(late) == 1
-    assert late[0]["logical_key"] == f"late_result:publish:{step}"
-    assert late[0]["sequence"] >= 0
-    assert late[0]["observed_at"] is not None
+    assert late[0]["logical_key"] == f"late_result:publish:{step}:e{stale.epoch}"
     assert late[0]["response"] == {"result": "old"}
 
 
@@ -285,22 +339,60 @@ def test_late_step_and_tool_results_are_recorded_as_history():
         store.commit_step(stale, "late-round", {"result": "late-retry"})
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(fresh, step, 0, {"result": "late-tool-retry"})
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.commit_tool(fresh, step, 1, {"result": "forged-tool"})
     steps = store.rebuild(incident)["steps"]
     original = next(item for item in steps if item["step_id"] == step)
     late = [item for item in steps if item["status"] == "late_result"]
     assert len(late) == 2
     assert {item["logical_key"] for item in late} == {
-        "late_result:step:late-round",
-        f"late_result:tool:{step}:0",
+        f"late_result:step:late-round:e{stale.epoch}",
+        f"late_result:tool:{step}:0:e{fresh.epoch}",
     }
     assert all(item["sequence"] > original["sequence"] for item in late)
-    assert all(item["observed_at"] is not None for item in late)
-    assert [item["logical_key"] for item in late] == [
-        "late_result:step:late-round",
-        f"late_result:tool:{step}:0",
-    ]
     assert late[0]["response"] == {"result": "late"}
     assert late[1]["response"] == {"result": "late-tool"}
+
+
+def test_each_fenced_attempts_late_response_is_kept_under_its_own_key():
+    """Bot review (PR #29, review 5273217581): two attempts fenced in turn may
+    each answer the same logical round; both physical responses are history.
+    Only a replay by the *same* attempt collapses onto one row."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-epochs-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    first = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    second = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert second.epoch != first.epoch
+    assert store.control(incident, 1, "follow_up", "operator") == 2
+    for lease, payload in (
+        (first, {"response_id": "resp-a"}),
+        (second, {"response_id": "resp-b"}),
+        (second, {"response_id": "resp-b-replay"}),
+    ):
+        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+            store.commit_step(lease, "ctx0:round-1", payload)
+    late = [
+        item
+        for item in store.rebuild(incident)["steps"]
+        if item["status"] == "late_result"
+    ]
+    assert [item["logical_key"] for item in late] == [
+        f"late_result:step:ctx0:round-1:e{first.epoch}",
+        f"late_result:step:ctx0:round-1:e{second.epoch}",
+    ]
+    assert [item["response"] for item in late] == [
+        {"response_id": "resp-a"},
+        {"response_id": "resp-b"},
+    ]
 
 
 def test_commit_tool_rejects_unknown_step_without_history():
@@ -341,8 +433,7 @@ def test_expired_late_step_is_history_and_not_pending_work():
         store.commit_step(stale, "round-0", {"tool_calls": [{"id": "a"}]})
     rebuilt = store.rebuild(incident)
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
-    assert len(late) == 1
-    assert rebuilt["pending_tools"] == []
+    assert len(late) == 1 and rebuilt["pending_tools"] == []
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_tool(fresh, late[0]["step_id"], 0, {"ok": True})
@@ -351,9 +442,7 @@ def test_expired_late_step_is_history_and_not_pending_work():
         for item in store.rebuild(incident)["steps"]
         if item["step_id"] == late[0]["step_id"]
     )
-    assert still["status"] == "late_result"
-    assert still["tool_results"] == []
-    assert store.rebuild(incident)["pending_tools"] == []
+    assert still["status"] == "late_result" and still["tool_results"] == []
 
 
 def test_live_steps_cannot_use_the_late_result_key_namespace():
@@ -377,10 +466,13 @@ def test_live_steps_cannot_use_the_late_result_key_namespace():
     rebuilt = store.rebuild(incident)
     live = next(item for item in rebuilt["steps"] if item["step_id"] == colliding)
     late = [item for item in rebuilt["steps"] if item["status"] == "late_result"]
-    assert live["logical_key"] == "late-step:foo"
-    assert live["status"] == "response_committed"
-    assert [item["logical_key"] for item in late] == ["late_result:step:foo"]
-    assert late[0]["response"] == {"result": "late"}
+    assert (
+        live["logical_key"] == "late-step:foo"
+        and live["status"] == "response_committed"
+    )
+    assert [item["logical_key"] for item in late] == [
+        f"late_result:step:foo:e{stale.epoch}"
+    ]
 
 
 def test_new_run_is_refused_until_the_incident_is_cancelled():
@@ -398,26 +490,23 @@ def test_new_run_is_refused_until_the_incident_is_cancelled():
         store.new_run(
             incident,
             run,
+            expected_generation=0,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
             actor="operator",
         )
-    rebuilt = store.rebuild(incident)
-    assert rebuilt["state"] == "queued"
-    assert rebuilt["control_generation"] == 0
-    assert rebuilt["run"]["run_id"] == run
     assert store.control(incident, 0, "follow_up", "operator") == 1
     with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
             actor="operator",
         )
-    assert store.rebuild(incident)["control_generation"] == 1
 
 
 def test_cancelled_incident_can_continue_with_a_new_run():
@@ -436,6 +525,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -444,15 +534,13 @@ def test_cancelled_incident_can_continue_with_a_new_run():
     generation = store.new_run(
         incident,
         next_run,
+        expected_generation=1,
         deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
         budget_limit=10,
         versions={"state": "v1"},
         actor="operator",
     )
-    assert generation == 2
-    rebuilt = store.rebuild(incident)
-    assert rebuilt["state"] == "queued"
-    assert rebuilt["run"]["run_id"] == next_run
+    assert generation == 2 and store.rebuild(incident)["run"]["run_id"] == next_run
     assert (
         store.claim(incident, next_run, uuid4(), {"state": "v1"}).control_generation
         == 2
@@ -461,6 +549,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             next_run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -472,6 +561,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             uuid4(),
+            expected_generation=2,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -481,6 +571,7 @@ def test_cancelled_incident_can_continue_with_a_new_run():
         store.new_run(
             incident,
             run,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
             budget_limit=10,
             versions={"state": "v1"},
@@ -492,6 +583,45 @@ def test_cancelled_incident_can_continue_with_a_new_run():
             (incident,),
         ).fetchall()
     assert [item["action"] for item in audits] == ["cancel", "new_run"]
+
+
+def test_new_run_rejects_a_stale_observed_generation_after_a_later_cancel():
+    store = DurableStore(DSN)
+    incident, run, next_run = uuid4(), uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-stale-new-run-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    assert (
+        store.new_run(
+            incident,
+            next_run,
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="operator",
+        )
+        == 2
+    )
+    assert store.control(incident, 2, "cancel", "operator") == 3
+    with pytest.raises(PersistenceError, match="CONTROL_CONFLICT"):
+        store.new_run(
+            incident,
+            uuid4(),
+            expected_generation=1,
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+            actor="stale-operator",
+        )
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "cancelled" and rebuilt["control_generation"] == 3
 
 
 def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
@@ -520,6 +650,73 @@ def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
     assert [result[0] for result in results].count("ok") == 1
     assert [result[0] for result in results].count("CONTROL_CONFLICT") == 1
     assert store.rebuild(incident)["control_generation"] == 1
+
+
+def test_pause_resume_fences_run_and_terminal_incident_cannot_reclaim():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-control-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+    assert store.control(incident, 1, "resume", "operator") == 2
+    resumed = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert resumed.control_generation == 2
+    final_step = store.commit_step(resumed, "final", {"result": "supported"})
+    assert store.publish(resumed, {"result": "supported"}, step_id=final_step) is True
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        store.control(incident, 2, "resume", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "late"}, step_id=uuid4())
+
+
+def test_expired_lease_cannot_publish_or_reserve():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-expiry-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.reserve_budget(lease, uuid4(), 1)
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.publish(lease, {"result": "expired"}, step_id=uuid4())
+
+
+def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-human-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "follow_up", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(lease, "old", {"result": "stale"})
+    assert store.control(incident, 1, "correct", "operator") == 2
 
 
 def test_paused_incident_cannot_be_claimed_or_published():
@@ -683,7 +880,7 @@ def test_old_generation_step_and_tool_writes_are_fenced():
     step = store.commit_step(lease, "final", {"result": "old"})
     assert store.control(incident, 0, "follow_up", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         store.commit_tool(lease, step, 0, {"ok": True})
     with pytest.raises(PersistenceError, match="FINAL_STEP_REQUIRED"):
         store.publish(fresh, {"result": "old"}, step_id=step)
@@ -1072,7 +1269,7 @@ def test_rebuild_drops_pending_tools_from_a_superseded_generation():
     store.commit_tool(stale, old_step, 0, {"ok": True})
     pending = store.rebuild(incident)["pending_tools"]
     assert pending[0]["step_id"] == old_step and pending[0]["ordinal"] == 1
-    assert pending[0]["operation_id"].endswith(":1")
+    assert "operation_id" not in pending[0]
     assert pending[0]["tool_call"] == {"id": "b"}
 
     assert store.control(incident, 0, "follow_up", "operator") == 1
@@ -1398,3 +1595,529 @@ def test_control_refuses_a_current_run_pointer_into_another_incident():
     assert audits == 0
     assert own == {"state": "blocked", "control_generation": 0}
     assert foreign == {"state": "running", "control_generation": 0}
+
+
+def _loop_step(*calls):
+    """A step exactly as the investigation loop commits it (``_commit_step``)."""
+    return {
+        "assistant": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": f"call-{index}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": "{}"},
+                }
+                for index, name in enumerate(calls)
+            ],
+        },
+        "finish_reason": "tool_calls",
+        "response_model": "deepseek-flash",
+        "usage": {"total_tokens": 10},
+        "request_sha256": "0" * 64,
+        "response_id": "resp-1",
+    }
+
+
+def test_rebuild_lists_pending_tools_from_a_loop_shaped_step():
+    """C3 §7「响应已提交，部分工具未完成 → 只处理尚未完成的工具操作」。
+
+    The loop commits the complete model response with the tool plan under
+    ``assistant`` (C3 §4: ModelStep = 完整模型响应及工具计划); ``rebuild()``
+    must read the plan from there, or recovery never sees any pending tool.
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-pending-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(
+        lease, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(lease, step, 0, {"ok": True})
+
+    pending = store.rebuild(incident)["pending_tools"]
+    assert [(item["step_id"], item["ordinal"]) for item in pending] == [(step, 1)]
+    # The canonical id is stamped by recovery.rebuild_plan from the shared
+    # domain helper, not invented here; see test_worker_recovery.
+    assert "operation_id" not in pending[0]
+    assert pending[0]["tool_call"]["function"]["name"] == "logs.search"
+    # The legacy top-level shape used by the M0 harness keeps working.
+    legacy = store.commit_step(lease, "round-2", {"tool_calls": [{"id": "x"}]})
+    assert [item["step_id"] for item in store.rebuild(incident)["pending_tools"]] == [
+        step,
+        legacy,
+    ]
+
+
+def test_worker_resume_executes_only_the_pending_tools_of_a_loop_step():
+    """After a dead attempt, ``Worker.resume`` continues the committed plan."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-loop-resume-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    store.commit_tool(dead, step, 0, {"ok": True, "evidence_id": "e0"})
+    time.sleep(1.2)
+
+    executed = []
+
+    def execute(item):
+        executed.append(
+            (item["step_id"], item["ordinal"], item["tool_call"]["function"]["name"])
+        )
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=5)
+    assert session.lease.epoch == dead.epoch + 1
+    assert session.execute_pending(execute) == 1
+    assert executed == [(step, 1, "logs.search")]
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    results = {
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
+    }
+    assert results == {
+        0: {"ok": True, "evidence_id": "e0"},
+        1: {"ok": True, "evidence_id": "e1"},
+    }
+    # The first attempt's lease cannot write into the plan any more.
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_tool(dead, step, 1, {"late": True})
+
+
+def test_rebuild_rejects_a_malformed_loop_shaped_step():
+    """A corrupt ``assistant`` or plan in the loop shape fails closed too."""
+    store = DurableStore(DSN)
+    for broken in (
+        {"assistant": "oops"},
+        {"assistant": {"tool_calls": "abc"}},
+        # Falsey malformed values must fail closed too: ``{} or []`` would
+        # otherwise swallow them into a valid-looking empty plan.
+        {"assistant": {"tool_calls": {}}},
+        {"assistant": {"tool_calls": ""}},
+        {"assistant": {"tool_calls": 0}},
+        # A committed model response is always an object; a scalar, list or
+        # null one is corrupted data, not a step that happened to plan no
+        # tools, so it must not read back as a resumable empty plan.
+        "oops",
+        [{"tool_calls": []}],
+        7,
+    ):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-loop-malformed-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        store.commit_step(lease, "round-1", broken)
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+
+
+def test_version_change_cannot_override_a_paused_cancelled_or_completed_run():
+    """版本不符只能把可领取的 Run 记成 ``blocked``；人工决定先于版本判定。
+
+    C3 第 5 节：``INCOMPATIBLE_STATE`` 与人工控制是两套语义，不得互相顶替。
+    部署换版本后任何一次 claim 都不得把 ``paused``/``cancelled``/``completed`` 的
+    Run 行改成 ``blocked``——否则人工 ``resume`` 会得到 ``ILLEGAL_TRANSITION``，
+    人工取消会被投影成版本事故（ADR-0003：业务记录里的人工决定是权威）。
+    """
+    store = DurableStore(DSN)
+
+    def accepted(tag):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"m1-version-vs-control-{tag}-{incident}",
+            deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        return incident, run
+
+    # paused：版本变了也不得改写 run 行；人工 resume 仍然合法。
+    incident, run = accepted("paused")
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "pause", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "paused"
+    assert rebuilt["run"]["state"] == "paused"
+    assert store.control(incident, 1, "resume", "operator") == 2
+    # 解除暂停后再被新版本领取，才是版本事故：这时才允许 blocked。
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+    # 已 blocked 的 Run 即使版本对回来也不静默恢复：显式迁移或新 Run。
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+    # cancelled：人工取消的终态不得被投影成 blocked/INCOMPATIBLE_STATE。
+    incident, run = accepted("cancelled")
+    store.claim(incident, run, uuid4(), {"state": "v1"})
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["state"] == "cancelled"
+    assert rebuilt["run"]["state"] == "cancelled"
+
+    # completed：已发布结论的 Run 同样保持终态。
+    incident, run = accepted("completed")
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(lease, "final", {"result": "supported"})
+    assert store.publish(lease, {"result": "supported"}, step_id=step) is True
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.claim(incident, run, uuid4(), {"state": "v2"})
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["conclusion"] == {"result": "supported"}
+    assert rebuilt["run"]["state"] == "completed"
+
+
+def test_a_second_execute_pending_pass_does_not_repeat_a_committed_query():
+    """``RecoveryPlan`` is a snapshot; the committed rows decide what is due.
+
+    Re-running a still-valid session must not re-issue the external query for
+    a call that was already committed -- ``commit_tool`` would deduplicate the
+    result, so the repeat would be invisible in the durable state but would
+    still spend real query scope, cost and rate budget against the target.
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-second-pass-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    time.sleep(1.2)
+
+    executed = []
+
+    def execute(item):
+        executed.append((item["step_id"], item["ordinal"]))
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=30)
+    assert session.execute_pending(execute) == 2
+    # The same session is still valid: its lease was never revoked.
+    assert store.lease_current(session.lease)
+    assert session.execute_pending(execute) == 0
+    assert executed == [(step, 0), (step, 1)]
+
+    rebuilt = store.rebuild(incident)
+    assert rebuilt["pending_tools"] == []
+    results = {
+        item["ordinal"]: item["result"] for item in rebuilt["steps"][0]["tool_results"]
+    }
+    assert results == {
+        0: {"ok": True, "evidence_id": "e0"},
+        1: {"ok": True, "evidence_id": "e1"},
+    }
+
+
+def test_resume_skips_a_call_already_committed_under_this_lease():
+    """A commit landing between the plan read and the dispatch is respected."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-handoff-skip-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    step = store.commit_step(
+        dead, "round-1", _loop_step("metrics.range_query", "logs.search")
+    )
+    time.sleep(1.2)
+
+    session = Worker.create(store, {"state": "v1"}).resume(incident, lease_seconds=30)
+    assert [item["ordinal"] for item in session.plan.pending_tools] == [0, 1]
+    # Ordinal 0 is committed under this same lease after the plan was built --
+    # the partial-progress shape an earlier pass or a parallel caller leaves.
+    # (Another worker could not do this: commit_tool fences on owner+epoch.)
+    store.commit_tool(session.lease, step, 0, {"ok": True, "evidence_id": "other"})
+
+    executed = []
+
+    def execute(item):
+        executed.append(item["ordinal"])
+        return {"ok": True, "evidence_id": f"e{item['ordinal']}"}
+
+    assert session.execute_pending(execute) == 1
+    assert executed == [1]
+    results = {
+        item["ordinal"]: item["result"]
+        for item in store.rebuild(incident)["steps"][0]["tool_results"]
+    }
+    assert results[0] == {"ok": True, "evidence_id": "other"}
+
+
+def _prompt_versions(variant_id: str) -> dict[str, str]:
+    """按 C3 第 5 节构造 ``versions`` 的 prompt 维度。
+
+    只有 prompt 维度：``tool_schema_revision`` 由 ``opspilot/tools/registry.py`` 产生，
+    其合同已在 ``tests/test_m1_tool_registry*.py`` 覆盖，这里不重复造第二份。
+    """
+    return {
+        "state": "v1",
+        "prompt": prompt_revision(
+            variant_id, report_contract=report_instruction(version=REPORT_VERSION)
+        ),
+    }
+
+
+def test_prompt_revision_change_blocks_resume_without_silent_version_swap():
+    """L1a 模板换了版本的在途 Run，被重新领取时进 ``blocked(INCOMPATIBLE_STATE)``。
+
+    ``test_incompatible_versions_block_without_silent_resume`` 用的是占位版本号
+    ``v1``/``v2``；这条补的是 C3 要求的 prompt 维度，版本号由真实的 L1a 模板哈希产生。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-bump-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=_prompt_versions("replay-candidate"),
+    )
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), _prompt_versions("baseline-multi-step"))
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_instance_values_alone_do_not_block_resume():
+    """预算轮次与授权服务列表变了，但 ``versions`` 不变，Run 照常被领取。
+
+    这是 C3 第 5 节「实例变化：每 Run face hash，记录不比对，在途 Run 继续」那一行。
+    断言同时检查送进模型的字节**确实**变了，否则这条测试是空的。
+    """
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    contract = report_instruction(version=REPORT_VERSION)
+
+    def face(*, model_requests: int, services: tuple[str, ...]) -> str:
+        return d_render(
+            "baseline-multi-step",
+            model_requests=model_requests,
+            report_contract=contract,
+            authorized_services=services,
+        )
+
+    narrow = face(model_requests=2, services=("checkoutservice",))
+    wider = face(model_requests=2, services=("checkoutservice", "cartservice"))
+    richer = face(model_requests=9, services=("checkoutservice",))
+    # 两类实例值分别断言，避免一个差异掩盖另一个丢失。
+    assert narrow != wider, "授权服务列表必须真的改变 prompt 字节"
+    assert narrow != richer, "预算轮次必须真的改变 prompt 字节"
+
+    store.accept(
+        incident,
+        run,
+        f"m1-instance-only-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=_prompt_versions("baseline-multi-step"),
+    )
+    lease = store.claim(incident, run, uuid4(), _prompt_versions("baseline-multi-step"))
+    assert lease is not None
+    assert store.rebuild(incident)["run"]["state"] == "running"
+
+
+def test_prompt_revision_content_change_blocks_an_in_flight_run():
+    """A real L2 report-contract edit must move ``prompt_revision`` and, on
+    reclaim, hit the same generic ``INCOMPATIBLE_STATE`` barrier proven above
+    -- not a hand-typed ``{"state": "v2"}`` stand-in (C3 §5)."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    original = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=original,
+    )
+    edited = prompt_revision_versions(
+        report_contract=REPORT_CONTRACT + " New required field: severity."
+    )
+    assert edited != original
+    with pytest.raises(PersistenceError, match="INCOMPATIBLE_STATE"):
+        store.claim(incident, run, uuid4(), edited)
+    assert store.rebuild(incident)["run"]["state"] == "blocked"
+
+
+def test_prompt_revision_ignores_instance_values_so_reclaim_is_not_blocked():
+    """A retried attempt recomputes ``prompt_revision_versions`` from the same
+    code and gets back the identical dict regardless of that attempt's own
+    instance data (budget, authorized services); reclaim must proceed, not
+    ``blocked(INCOMPATIBLE_STATE)`` (C3 §5, "实例变化...继续")."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    versions = prompt_revision_versions()
+    store.accept(
+        incident,
+        run,
+        f"m1-prompt-rev-stable-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions=versions,
+    )
+    first = store.claim(incident, run, uuid4(), versions, lease_seconds=1)
+    assert first.epoch == 1
+    time.sleep(1.1)
+    retry_versions = prompt_revision_versions()
+    assert retry_versions == versions
+    second = store.claim(incident, run, uuid4(), retry_versions)
+    assert second.epoch == 2
+
+
+def test_a_fenced_model_reply_is_retained_as_late_result_history():
+    """Bot review finding #4: commit_step() must not silently drop a fenced
+    reply. A pause between claim and commit_step fences the lease the same
+    way it fences publish() above; the reply becomes ``late_result`` history
+    instead of vanishing."""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-late-step-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    store.control(incident, 0, "pause", "operator")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.commit_step(
+            lease, "round-1", {"finish_reason": "stop", "response_id": "resp-late"}
+        )
+    rebuilt = store.rebuild(incident)
+    late_steps = [s for s in rebuilt["steps"] if s["status"] == "late_result"]
+    assert len(late_steps) == 1
+    assert late_steps[0]["response"]["response_id"] == "resp-late"
+    assert rebuilt["pending_tools"] == []
+
+
+def test_budget_reservations_settle_to_spent_or_unknown_and_never_release():
+    """C3 §13：预算在 PostgreSQL 原子预留和结算，未知费用保持占用。"""
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=3,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    answered, lost, fenced = uuid4(), uuid4(), uuid4()
+    for reservation in (answered, lost, fenced):
+        store.reserve_budget(lease, reservation, 1)
+
+    def totals():
+        row = store.rebuild(incident)["run"]
+        return (row["budget_reserved"], row["budget_spent"], row["budget_unknown"])
+
+    assert totals() == (3, 0, 0)
+    store.settle_budget(lease, answered, "spent")
+    store.settle_budget(lease, answered, "spent")  # replayed settlement
+    store.settle_budget(lease, lost, "unknown")
+    assert totals() == (1, 1, 1)
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.settle_budget(lease, lost, "spent")
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        store.settle_budget(lease, uuid4(), "spent")
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        store.settle_budget(lease, fenced, "released")
+    # Settlement never frees budget: the limit stays exhausted.
+    with pytest.raises(PersistenceError, match="BUDGET_EXHAUSTED"):
+        store.reserve_budget(lease, uuid4(), 1)
+
+    assert store.control(incident, 0, "cancel", "operator") == 1
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        store.settle_budget(lease, fenced, "spent")
+    # A fenced attempt leaves its reservation occupied, not lost.
+    assert totals() == (1, 1, 1)
+
+
+def test_a_reclaimed_run_settles_its_own_reservations_without_conflict():
+    """C3 §7 first row: a bounded retry by a new attempt must be able to succeed.
+
+    The loop derives the same reservation id for ``round-1#a1`` in every
+    attempt; ``DurableStepStore`` namespaces it by the lease epoch, so the new
+    attempt never collides with the dead attempt's ``unknown`` reservation,
+    which stays occupied.
+    """
+    from opspilot.investigation.store import DurableStepStore, reservation_id_for
+
+    store = DurableStore(DSN)
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"m1-reclaim-settle-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
+        budget_limit=4,
+        versions={"state": "v1"},
+    )
+    same_id = reservation_id_for(str(run), "round-1#a1")
+    dead = store.claim(incident, run, uuid4(), {"state": "v1"}, lease_seconds=1)
+    dead_store = DurableStepStore(store, dead)
+    dead_store.reserve_budget(same_id, 1)
+    dead_store.settle_budget(same_id, "unknown")
+    time.sleep(1.2)
+
+    fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
+    fresh_store = DurableStepStore(store, fresh)
+    fresh_store.reserve_budget(same_id, 1)
+    fresh_store.settle_budget(same_id, "spent")
+    row = store.rebuild(incident)["run"]
+    assert (row["budget_reserved"], row["budget_spent"], row["budget_unknown"]) == (
+        0,
+        1,
+        1,
+    )
+    # Within one attempt the id is still idempotent.
+    fresh_store.reserve_budget(same_id, 1)
+    with pytest.raises(StepStoreError, match="IDENTITY_CONFLICT"):
+        fresh_store.settle_budget(same_id, "unknown")

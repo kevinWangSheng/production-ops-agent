@@ -167,6 +167,7 @@ def test_new_run_created_while_suspended_persists_paused_on_the_run_row_too():
     generation = s.new_run(
         i,
         next_run,
+        expected_generation=1,
         deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
         budget_limit=5,
         versions={"v": "1"},
