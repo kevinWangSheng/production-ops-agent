@@ -1694,3 +1694,37 @@ def test_a_completion_lost_after_the_stream_opened_is_repaired_while_following()
     assert workbench.ledger.get("completion", completed[0].payload["run_id"]) == {
         "sequence": completed[0].sequence
     }
+
+
+# -- codex security review on PR #33 -----------------------------------------------
+
+
+def test_every_response_forbids_framing_so_human_controls_cannot_be_clickjacked():
+    """Security P2: a framed workbench page submits control forms with the
+    workbench's own Origin, which ``check_origin()`` rightly accepts; the
+    defence is to refuse being framed at all, on every response."""
+    app, workbench, _ = build_workbench()
+    incident = submit_incident(app, key="frame").json()["incident_id"]
+    responses = {
+        "page": call(app, "GET", f"/incidents/{incident}", headers=basic()),
+        "control": _control(
+            app,
+            incident,
+            {"action": "pause", "expected_generation": "0", "idempotency_key": "x"},
+        ),
+        "auth_refused": call(app, "GET", f"/incidents/{incident}"),
+        "sse": call(
+            app, "GET", f"/incidents/{incident}/events?cursor=0", headers=basic()
+        ),
+        "not_found": call(app, "GET", "/no-such-route", headers=basic()),
+    }
+    assert responses["page"].status == 200
+    assert responses["control"].status in (200, 303)
+    assert responses["auth_refused"].status == 401
+    assert responses["sse"].status == 200
+    assert responses["not_found"].status == 404
+    for name, response in responses.items():
+        assert response.headers.get("x-frame-options") == "DENY", name
+        assert (
+            response.headers.get("content-security-policy") == "frame-ancestors 'none'"
+        ), name

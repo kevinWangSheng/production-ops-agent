@@ -46,6 +46,42 @@ from opspilot.web.service import CONTROL_ACTIONS, Workbench, WorkbenchError
 MAX_BODY_BYTES = 64 * 1024
 _TEMPLATES = Path(__file__).with_name("templates")
 _FORM = "application/x-www-form-urlencoded"
+#: Refuse to be framed, on every response. A framed page submits the control
+#: forms with the workbench's own Origin, which ``check_origin()`` rightly
+#: accepts, so UI redressing would reach pause/cancel/follow-up (codex security
+#: review, PR #33). Only ``frame-ancestors``: the templates use inline script.
+_ANTI_FRAMING_HEADERS = (
+    (b"x-frame-options", b"DENY"),
+    (b"content-security-policy", b"frame-ancestors 'none'"),
+)
+
+
+class _AntiFraming:
+    """Raw ASGI middleware: adds the headers to every ``http.response.start``.
+
+    Raw rather than ``BaseHTTPMiddleware`` so the SSE stream is passed through
+    unbuffered and Starlette's own 404/405 and the exception handlers are
+    covered alike.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                names = {name.lower() for name, _ in headers}
+                headers.extend(h for h in _ANTI_FRAMING_HEADERS if h[0] not in names)
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self._app(scope, receive, send_with_headers)
+
 
 _AUTH_STATUS = {
     "MISSING_CREDENTIALS": 401,
@@ -91,6 +127,7 @@ def create_app(
     app = FastAPI(
         title="OpsPilot workbench", docs_url=None, redoc_url=None, openapi_url=None
     )
+    app.add_middleware(_AntiFraming)
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES)),
         autoescape=select_autoescape(default=True, default_for_string=True),
