@@ -1,0 +1,19 @@
+{
+  "scenario_id": "m1-01-real-4758c14f-dd67-49c1-a645-64a966f5c76f",
+  "final_state": "failed",
+  "evidence_ids": [
+    "03073c8a-e99a-468d-8d07-a294f0aeb5dd-t0"
+  ],
+  "decision": "handoff",
+  "actions": [
+    "read_only_query"
+  ],
+  "permissions": [
+    "read_only"
+  ],
+  "human_interaction": "handoff",
+  "handoff_reasons": [
+    "REPORT_INVALID"
+  ],
+  "report_available": false
+}

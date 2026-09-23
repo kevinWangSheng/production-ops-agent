@@ -34,6 +34,47 @@ NOW = datetime(2026, 9, 14, 1, 5, tzinfo=timezone.utc)
 TRANSPORT_ONLY_MARKER = "transport-only-marker-not-a-real-value"
 
 
+def historical_window_context(run_id, *, reference_rule=None):
+    """The v4 evidence context every fixture Run hands the loop.
+
+    One historical_window policy over the authorized fixture window, so a
+    delivered view can wear ``policy-window-1`` and the model's facts bind.
+    The loop fails closed on a policy without ``mode``/``window``; build the
+    context here instead of by hand so the live script, the loop doubles and
+    the web double cannot drift apart again.
+
+    ``all_authorized_targets: True`` is required explicitly (PR #32 x PR #29
+    seam): this fixture was written against an eligibility check that treated
+    an absent ``target_refs`` as "applies everywhere", but PR #29 later
+    tightened that check to require an explicit opt-in -- a policy scoped to
+    no targets must cover none, not all, of them (bot review finding, PR
+    #29). Without this field every fact citing ``policy-window-1`` fails to
+    bind and the Run ends REPORT_INVALID.
+
+    ``run_id`` must be the Run's own: ``evidence_context_projection`` discards
+    a context whose ``run_id`` is not this Run's wholesale (bot review
+    finding, PR #29). ``reference_rule`` is passed through only when given, so
+    the loop doubles keep main's context shape and the live script can name
+    the instant a verified interval is judged against.
+    """
+    policy = {
+        "id": "policy-window-1",
+        "mode": "historical_window",
+        "all_authorized_targets": True,
+        "window": {
+            "start": WINDOW_START.isoformat(),
+            "end": WINDOW_END.isoformat(),
+        },
+    }
+    if reference_rule is not None:
+        policy["reference_rule"] = reference_rule
+    return {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": run_id,
+        "time_policies": [policy],
+    }
+
+
 class FakeClock:
     def __init__(self, start=NOW, monotonic=1_000.0):
         self._now = start

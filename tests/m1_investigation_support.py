@@ -12,7 +12,13 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
-from tests.m1_tool_support import NOW, WINDOW_END, WINDOW_START, body, build
+from tests.m1_tool_support import (
+    NOW,
+    WINDOW_START,
+    body,
+    build,
+    historical_window_context,
+)
 
 TOOL_SCHEMAS = (
     {
@@ -156,20 +162,6 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
         scope=executor.scope,
         tool_schemas=TOOL_SCHEMAS,
         model_requests=model_requests,
-        evidence_context={
-            "type": "opspilot-evidence-context-v4",
-            "run_id": executor.scope.run_id,
-            "time_policies": [
-                {
-                    "id": "policy-window-1",
-                    "mode": "historical_window",
-                    "all_authorized_targets": True,
-                    "window": {
-                        "start": WINDOW_START.isoformat(),
-                        "end": WINDOW_END.isoformat(),
-                    },
-                }
-            ],
-        },
+        evidence_context=historical_window_context(executor.scope.run_id),
     )
     return loop, request, model, transport, store, sink

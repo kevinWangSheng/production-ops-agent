@@ -1,0 +1,19 @@
+# make acceptance on the tree of the commit following HEAD c8f3158 (feature/m1-01-acceptance, outcome_from_durable reads the committed conclusion payload), 2026-09-23T11:18Z
+.venv/bin/python scripts/m1_acceptance.py
+| scenario | feature | evidence level | result |
+|---|---|---|---|
+| normal-report | F3 | deterministic loop + read-only evidence | PASS |
+| fault-report | F3 | deterministic provider failure handoff | PASS |
+| budget-refusal | F2 | deterministic budget refusal | PASS |
+| deadline-refusal | F2 | deterministic deadline refusal | PASS |
+| durable-completed | F3/F8 | real loop Run published through MemoryStepStore: conclusion payload read | PASS |
+| durable-handoff | F3/F8 | real handoff Run published: row says completed, seam reports failed | PASS |
+| pause-cancel | F2/F12 | seam projection of hand-set paused/cancelled row states | PASS |
+| late-result | F2/F12 | real committed tool_result rows + hand-set cancelled state and marker | PASS |
+| worker-restart | F2/F8 | real committed conclusion + hand-set worker_resumed marker | PASS |
+| incompatible-state | F2/F8 | seam projection of a hand-set blocked row state | PASS |
+| real-deepseek-records | F3 | recorded real Runs: projection equals ledger | PASS |
+| real-deepseek-report | F3 | one recorded real Run: bound report, no handoff | PASS |
+test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
+python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
+SECRET_SCAN_PASSED

@@ -33,6 +33,8 @@ from opspilot.investigation.context import (
     estimate_tokens,
     fold_digest,
     initial_messages,
+    input_watermark,
+    inputs_message,
     messages_hash,
     step_key,
     visible_view,
@@ -543,7 +545,39 @@ class InvestigationLoop:
         extra = (
             ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},) if final else ()
         )
-        self._manage_context(state, tools=tools, extra=extra)
+        # Freeze the human-input boundary for this round before anything is
+        # estimated or sent: the follow-up/correction/event rows up to the
+        # frozen watermark reach the model as one projected trailing message
+        # (``inputs_message``: allowlisted fields only). The watermark is
+        # recorded on the step row so the rebuild re-inserts the same
+        # message and reproduces the recorded hash.
+        logical_key, inputs = self._begin_round(state)
+        trailing = inputs_message(inputs)
+        # The inputs message is part of the request, so it counts toward the
+        # context estimate that decides whether to compact (codex review,
+        # PR #31): a large or long-accumulated set of inputs must trigger a
+        # compaction the same way one more tool group would, instead of
+        # slipping past the estimate and failing on the byte guard.
+        if self._manage_context(
+            state, tools=tools, extra=_with_trailing(trailing, extra)
+        ):
+            # The compaction moved the context to a new segment: this round's
+            # key changed, so freeze its boundary again under the new key
+            # (the old key's uncommitted row is history, as after a
+            # ``_RoundAborted``).
+            before = input_watermark(inputs)
+            logical_key, inputs = self._begin_round(state)
+            trailing = inputs_message(inputs)
+            if input_watermark(inputs) != before:
+                # An ``event`` landed during the compaction request (a
+                # follow_up/correct would have fenced this lease instead):
+                # the second freeze carries it, the post-compaction check
+                # above did not see it. Re-check the budget for the request
+                # as it will now be sent; never compact twice in one round
+                # (independent review of 6e12b6a, PR #31).
+                self._require_fit(
+                    state, tools=tools, extra=_with_trailing(trailing, extra)
+                )
         if not final and request.model_requests - state.used <= 1:
             # The compaction took a slot: what is left is the reserved
             # final-report request, so this round becomes it.
@@ -551,7 +585,8 @@ class InvestigationLoop:
             tools = None
             extra = ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},)
         timeout = self._remaining_timeout(state)
-        outbound = [*state.messages, *extra]
+        watermark = input_watermark(inputs)
+        outbound = [*state.messages, *_with_trailing(trailing, extra)]
         call = ModelCall(
             messages=tuple(outbound),
             tools=tools,
@@ -561,7 +596,6 @@ class InvestigationLoop:
             model=self.accepted_response_model,
         )
         self._reject_oversized(call, request.limits)
-        logical_key = step_key(state.segment, state.next_round)
         try:
             reply, dispatched = self._call_model(
                 call, state=state, logical_key=logical_key, final=final
@@ -619,6 +653,7 @@ class InvestigationLoop:
             dispatched,
             final=final,
             rejected_plan=rejected_plan,
+            input_watermark=watermark,
         )
         state.folded_since.append(step_id)
         state.next_round += 1
@@ -661,6 +696,7 @@ class InvestigationLoop:
             # limits is not fenced off mid-way (bot review finding, PR #29).
             try:
                 self.store.renew()
+                self.store.assert_current()
             except StepStoreError as exc:
                 raise _halt_from_store(exc) from exc
             outcome = self.executor.execute(
@@ -700,8 +736,13 @@ class InvestigationLoop:
         *,
         tools: tuple[Mapping[str, Any], ...] | None,
         extra: Sequence[Mapping[str, Any]],
-    ) -> None:
+    ) -> bool:
         """Compact the history before a call that would not fit the budget.
+
+        ``extra`` is every message the round appends after the transcript
+        (the inputs message and the round's instruction), so the estimate is
+        of the request as sent. Returns whether a compaction happened, which
+        moves the context to a new segment.
 
         Threshold and insufficiency rule follow Holmes: compact when
         ``estimate + output allowance > budget * pct``; if the compacted
@@ -716,15 +757,36 @@ class InvestigationLoop:
             estimate_tokens(state.messages, tools, extra=extra) * state.calibration
         )
         if projected <= budget * CONTEXT_POLICY.compaction_pct:
-            return
+            return False
         if state.request.model_requests - state.used < 2:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
         self._compact(state)
+        self._require_fit(state, tools=tools, extra=extra)
+        return True
+
+    def _require_fit(
+        self,
+        state: _State,
+        *,
+        tools: tuple[Mapping[str, Any], ...] | None,
+        extra: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Halt with ``CONTEXT_EXHAUSTED`` when the request as it would be
+        sent does not fit the context budget even after compaction."""
+        limits = state.request.limits
+        budget = limits.context_tokens - limits.output_tokens
         projected = (
             estimate_tokens(state.messages, tools, extra=extra) * state.calibration
         )
         if projected > budget:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+
+    def _begin_round(self, state: _State) -> tuple[str, list[dict[str, Any]]]:
+        """Freeze this round's input boundary under its current step key."""
+        try:
+            return self.store.begin_round(step_key(state.segment, state.next_round))
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
 
     def _compact(self, state: _State) -> None:
         request = state.request
@@ -859,6 +921,7 @@ class InvestigationLoop:
         *,
         final: bool,
         rejected_plan: Mapping[str, Any] | None = None,
+        input_watermark: int = 0,
     ) -> UUID:
         response_id = reply.raw.get("id")
         estimated = estimate_tokens(dispatched.messages, dispatched.tools)
@@ -884,6 +947,9 @@ class InvestigationLoop:
                 "round": state.next_round,
                 "input_snapshot_hash": messages_hash(dispatched.messages),
                 "final": final,
+                # The frozen human-input boundary this round saw; the rebuild
+                # re-inserts the inputs up to it before checking the hash.
+                "input_watermark": input_watermark,
                 "estimated_prompt_tokens": estimated,
                 "calibration": state.calibration,
             },
@@ -917,6 +983,13 @@ class InvestigationLoop:
             timed = replace(call, timeout_seconds=self._remaining_timeout(state))
             reservation = f"{logical_key}#a{attempt}"
             self._reserve(request.run_id, reservation, seconds=timed.timeout_seconds)
+            # The reservation went through the write fence; re-read the lease
+            # (global/target suspension included) right before the request
+            # itself leaves, so a human decision between the two is honoured.
+            try:
+                self.store.assert_current()
+            except StepStoreError as exc:
+                raise _halt_from_store(exc) from exc
             state.used += 1
             started = self.clock.monotonic()
             try:
@@ -1108,6 +1181,14 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
     if mapped is None:
         return _LoopHalt("failed", (exc.code,))
     return _LoopHalt(mapped[0], (mapped[1],))
+
+
+def _with_trailing(
+    trailing: Mapping[str, Any] | None, extra: Sequence[Mapping[str, Any]]
+) -> tuple[Mapping[str, Any], ...]:
+    """The messages appended after the transcript, in send order: the inputs
+    message (when the round saw any input), then the round's instruction."""
+    return (*(() if trailing is None else (trailing,)), *extra)
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:
