@@ -181,3 +181,71 @@ def test_new_run_created_while_suspended_persists_paused_on_the_run_row_too():
     assert rebuild_plan(rebuilt).candidate is False
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         s.claim(i, next_run, uuid4(), {"v": "1"})
+
+
+def _step(content="x"):
+    return {"role": "assistant", "content": content, "tool_calls": []}
+
+
+def test_begin_round_freezes_the_watermark_and_commit_step_writes_it_back():
+    """Independent review (PR #31, P2a): the boundary frozen before the
+    request is what the round saw; a retry reads the same boundary, and the
+    Run's ``input_watermark`` only advances when the round commits."""
+    s = _store()
+    i, r = _accept(s)
+    assert s.control(i, 0, "follow_up", "operator", {"question": "why"}) == 1
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    frozen = s.begin_round(lease, "ctx0:round-1")
+    assert frozen["input_watermark"] == 1 and frozen["committed"] is False
+    assert [(x["sequence"], x["kind"]) for x in frozen["inputs"]] == [(1, "follow_up")]
+    assert s.begin_round(lease, "ctx0:round-1")["input_watermark"] == 1  # retry
+    before = s.rebuild(i)
+    assert before["run"]["input_watermark"] == 0
+    assert [x["sequence"] for x in before["pending_inputs"]] == [1]
+    s.commit_step(lease, "ctx0:round-1", _step())
+    after = s.rebuild(i)
+    assert after["run"]["input_watermark"] == 1
+    assert after["pending_inputs"] == []
+    assert [(x["logical_key"], x["committed"]) for x in after["input_rounds"]] == [
+        ("ctx0:round-1", True)
+    ]
+
+
+def test_a_follow_up_after_a_frozen_round_refreezes_that_round_for_the_new_generation():
+    """Independent review (PR #31, P2b): a round frozen under generation G
+    that never committed, followed by a human follow_up (G+1) and a re-claim,
+    is re-frozen on the same key at the new watermark -- the new generation
+    must see the very input that moved it on."""
+    s = _store()
+    i, r = _accept(s)
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    assert s.begin_round(lease, "ctx0:round-1")["input_watermark"] == 0
+    g = lease.control_generation
+    assert (
+        s.control(i, g, "follow_up", "operator", {"question": "and payments?"}) == g + 1
+    )
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.begin_round(lease, "ctx0:round-1")  # the superseded lease is fenced
+    fresh = s.claim(i, r, uuid4(), {"v": "1"})
+    assert fresh.control_generation == g + 1
+    frozen = s.begin_round(fresh, "ctx0:round-1")
+    assert frozen["control_generation"] == g + 1
+    assert frozen["input_watermark"] == 1 and frozen["committed"] is False
+    assert frozen["inputs"][0]["content"] == {"question": "and payments?"}
+
+
+def test_a_round_committed_under_another_generation_is_refused_not_refrozen():
+    """Independent review (PR #31, P2c): a *committed* round key from another
+    generation is a real conflict; only an uncommitted boundary is re-frozen."""
+    s = _store()
+    i, r = _accept(s)
+    lease = s.claim(i, r, uuid4(), {"v": "1"})
+    s.begin_round(lease, "ctx0:round-1")
+    s.commit_step(lease, "ctx0:round-1", _step())
+    g = lease.control_generation
+    assert s.control(i, g, "follow_up", "operator", {"question": "why"}) == g + 1
+    fresh = s.claim(i, r, uuid4(), {"v": "1"})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.begin_round(fresh, "ctx0:round-1")
+    assert s.begin_round(fresh, "ctx0:round-2")["input_watermark"] == 1
+
