@@ -117,6 +117,46 @@ def test_control_action_vocabulary_has_one_source() -> None:
     assert declared == _ACTIONS, f"两处定义不一致：{sorted(declared ^ _ACTIONS)}"
 
 
+OPSPILOT = REPO_ROOT / "opspilot"
+#: `sanitized_errors` is the one place allowed to touch the raw accessor.
+_SANITIZER = ("opspilot/domain/base.py", "sanitized_errors")
+
+
+def test_product_code_renders_validation_errors_through_the_sanitizer() -> None:
+    """凭据不得经由校验失败的结构化表示导出。
+
+    `hide_input_in_errors=True` 只遮蔽 `str(exc)`；`exc.errors()` 与
+    `exc.json()` 仍然原样带着被拒绝的输入，而结构化日志走的正是后两条路径。
+    这条约束对应一个真实缺陷：提交 b2c03d3 以为已经闭合该约束，独立审查
+    实测 `e.json()` 仍输出 `"input":"s3cr3t-password"`。
+    """
+    offenders: list[str] = []
+    for path in sorted(OPSPILOT.rglob("*.py")):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(path.read_text())
+        enclosing: dict[ast.AST, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for child in ast.walk(node):
+                    enclosing.setdefault(child, node.name)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute) or func.attr not in {
+                "errors",
+                "json",
+            }:
+                continue
+            if (relative, enclosing.get(node)) == _SANITIZER:
+                continue
+            offenders.append(f"{relative}:{node.lineno} .{func.attr}()")
+    assert not offenders, (
+        "产品代码不得直接调用 ValidationError 的 .errors()/.json()，"
+        f"请改用 opspilot.domain.base.sanitized_errors：{offenders}"
+    )
+
+
 def test_persistence_sql_never_selects_a_qualified_star() -> None:
     """联表 SELECT 里的 `r.*` 会让同名列在结果集里出现两次。
 
