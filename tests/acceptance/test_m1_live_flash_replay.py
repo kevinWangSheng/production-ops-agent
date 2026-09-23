@@ -109,6 +109,13 @@ def test_second_real_report_is_a_usable_report_under_the_live_context():
 
 
 def test_second_real_report_was_rejected_only_by_the_unbound_policy_id():
+    """Same report, same Run, policy id without a body -> REPORT_INVALID.
+
+    The observable outcome is identical to a context dropped at the
+    ``run_id`` gate; this test tells the two apart only by construction
+    (``UNBOUND_CONTEXT`` carries the replay Run's id), not by the reason
+    the loop reports.
+    """
     text = (EVIDENCE / "real-run-report-2.json").read_text()
     assert parse_report(text, finish_reason="stop")[0] is not None
     outcome, accepted = replay(text, evidence_context=UNBOUND_CONTEXT)
