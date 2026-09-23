@@ -79,6 +79,9 @@ def _string_list(value: object) -> tuple[str, ...]:
     return tuple(value)
 
 
+_MISSING = object()
+
+
 def _committed_conclusion(
     snapshot: Mapping[str, object],
 ) -> Mapping[str, object] | None:
@@ -97,6 +100,16 @@ def _committed_conclusion(
         raise ValueError("INVALID_DURABLE_SNAPSHOT")
     payload = row.get("conclusion")
     if not isinstance(payload, Mapping) or payload.get("execution") not in _LOOP_STATES:
+        raise ValueError("INVALID_DURABLE_SNAPSHOT")
+    # Every field ``_finish`` always writes must be present with its type;
+    # a partial payload is refused, never projected as a guessed decision.
+    schema = payload.get("report_schema_version", _MISSING)
+    if (
+        type(payload.get("handoff")) is not bool
+        or not isinstance(payload.get("handoff_reasons"), list)
+        or not isinstance(payload.get("evidence_ids"), list)
+        or not (schema is None or isinstance(schema, str))
+    ):
         raise ValueError("INVALID_DURABLE_SNAPSHOT")
     return payload
 
@@ -231,7 +244,9 @@ def outcome_from_live_record(
         permissions=("read_only",),
         human_interaction="handoff" if handoff else None,
         handoff_reasons=tuple(reasons),
-        report_available=report is not None and isinstance(report, Mapping),
+        # A report is visible only when the ledger itself recorded one.
+        report_available=isinstance(report, Mapping)
+        and isinstance(ledger.get("report_schema_version"), str),
     )
 
 

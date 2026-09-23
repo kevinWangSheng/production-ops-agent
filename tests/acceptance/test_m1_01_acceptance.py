@@ -140,6 +140,59 @@ def test_durable_snapshot_with_a_malformed_conclusion_is_refused():
         )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"execution": "completed"},
+        {
+            "execution": "completed",
+            "handoff": False,
+            "handoff_reasons": [],
+            "evidence_ids": [],
+        },
+        {
+            "execution": "failed",
+            "handoff": "yes",
+            "handoff_reasons": [],
+            "report_schema_version": None,
+            "evidence_ids": [],
+        },
+        {
+            "execution": "failed",
+            "handoff": True,
+            "handoff_reasons": "BUDGET",
+            "report_schema_version": None,
+            "evidence_ids": [],
+        },
+        {
+            "execution": "completed",
+            "handoff": False,
+            "handoff_reasons": [],
+            "report_schema_version": 2,
+            "evidence_ids": [],
+        },
+        {
+            "execution": "completed",
+            "handoff": False,
+            "handoff_reasons": [],
+            "report_schema_version": "m0-report-v2",
+            "evidence_ids": "e1",
+        },
+    ],
+)
+def test_durable_conclusion_missing_or_mistyped_fields_is_refused(payload):
+    """Codex review: an incomplete committed conclusion must not be turned
+    into an invented ``report_available`` decision."""
+    with pytest.raises(ValueError, match="INVALID_DURABLE_SNAPSHOT"):
+        outcome_from_durable(
+            scenario("durable-incomplete"),
+            {
+                "run": {"state": "completed"},
+                "conclusion": {"kind": "conclusion", "conclusion": payload},
+            },
+        )
+
+
 def test_human_pause_and_cancel_are_the_observable_final_authority():
     paused = outcome_from_durable(
         scenario("pause"),
@@ -265,3 +318,16 @@ def test_a_real_deepseek_run_has_produced_a_bound_report_without_handoff():
     assert outcome.report_available is True
     assert report is not None and report["schema_version"] == "m0-report-v2"
     assert report["assessment_status"] == "completed"
+
+
+def test_a_live_record_without_a_recorded_schema_exposes_no_report():
+    """Codex review: a parsed report passed alongside a ledger whose
+    ``report_schema_version`` is null must not be reported as available."""
+    ledger_path = EVIDENCE_DIR / "live-runs" / POSITIVE_LIVE_RUN / "ledger.json"
+    ledger, report = _live_record(
+        ledger_path, ledger_path.with_name("report-parsed.json")
+    )
+    assert report is not None
+    ledger = {**ledger, "report_schema_version": None}
+    outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
+    assert outcome.report_available is False
