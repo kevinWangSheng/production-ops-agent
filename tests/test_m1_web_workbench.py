@@ -1170,7 +1170,7 @@ def test_reregistering_committed_evidence_after_a_restart_reuses_it():
     again = replace(
         record,
         observed_at=record.observed_at + timedelta(seconds=60),
-        view=later_view,
+        _view=later_view,
         view_sha256=canonical_hash(later_view),
     )
     assert store.register(again) == record.evidence_id
@@ -1364,7 +1364,7 @@ def test_a_committed_evidence_projection_is_not_replaced_by_a_stale_replay():
         observed = record.observed_at + timedelta(minutes=minutes)
         view = dict(record.view, observed_at=observed.isoformat())
         return replace(
-            record, observed_at=observed, view=view, view_sha256=canonical_hash(view)
+            record, observed_at=observed, _view=view, view_sha256=canonical_hash(view)
         )
 
     store = MemoryEvidenceStore()

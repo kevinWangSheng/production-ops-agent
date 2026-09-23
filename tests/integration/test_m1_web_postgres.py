@@ -488,7 +488,7 @@ def test_durable_evidence_reregistration_reuses_the_first_observation():
     again = replace(
         record,
         observed_at=record.observed_at + timedelta(seconds=60),
-        view=later_view,
+        _view=later_view,
         view_sha256=canonical_hash(later_view),
     )
     assert evidence.register(again) == record.evidence_id
@@ -522,7 +522,7 @@ def test_durable_evidence_commit_fences_stale_replacement():
     stale = replace(
         record,
         observed_at=record.observed_at + timedelta(minutes=2),
-        view=view2,
+        _view=view2,
         view_sha256=canonical_hash(view2),
     )
     evidence = DurableEvidenceStore(DurableStore(DSN))

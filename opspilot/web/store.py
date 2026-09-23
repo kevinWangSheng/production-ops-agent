@@ -77,6 +77,7 @@ class IncidentStore(Protocol):
         incident_id: UUID,
         run_id: UUID,
         *,
+        expected_generation: int,
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
@@ -324,6 +325,7 @@ class DurableIncidentStore:
         incident_id: UUID,
         run_id: UUID,
         *,
+        expected_generation: int,
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
@@ -332,6 +334,7 @@ class DurableIncidentStore:
         return self._store.new_run(
             incident_id,
             run_id,
+            expected_generation=expected_generation,
             deadline=deadline,
             budget_limit=budget_limit,
             versions=versions,

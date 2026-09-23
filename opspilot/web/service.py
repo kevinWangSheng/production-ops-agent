@@ -30,6 +30,7 @@ from opspilot.intake import (
     _reject_ambiguous_text,
     classify_intake_delivery,
 )
+from opspilot.investigation.context import CONCLUSION_KIND
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -37,7 +38,7 @@ from opspilot.investigation.limits import (
 )
 from opspilot.investigation.loop import LoopOutcome
 from opspilot.investigation.reports import ReportV2, parse_report
-from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.investigation.store import BudgetUsage, StepCommitter, StepStoreError
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.events import EventLog, SubjectEvent
@@ -147,6 +148,23 @@ class _EmittingCommitter:
     def authorized_run_id(self) -> str:
         return self._base.authorized_run_id
 
+    @property
+    def control_generation(self) -> int:
+        return self._base.control_generation
+
+    def usage(self) -> BudgetUsage:
+        return self._base.usage()
+
+    def renew(self) -> None:
+        """The loop's pre-dispatch renewal (PR #29 / #35 on main).
+
+        The base committer is built without ``renew_seconds`` so the lease is
+        renewed here, once, under this wrapper's rules: a refusal is recorded
+        and the call still goes through, so the store's fence is what stops
+        the attempt and the late result is kept as history.
+        """
+        self._renew()
+
     def _renew(self) -> None:
         """Extend the lease before touching the store (C3 section 6).
 
@@ -167,15 +185,17 @@ class _EmittingCommitter:
             raise StepStoreError(str(exc)) from None
         self.renewals += 1
 
-    def reserve_budget(self, reservation_id: UUID, amount: int) -> None:
+    def reserve_budget(
+        self, reservation_id: UUID, amount: int, *, seconds: float = 0.0
+    ) -> None:
         self._renew()
-        self._base.reserve_budget(reservation_id, amount)
+        self._base.reserve_budget(reservation_id, amount, seconds=seconds)
 
-    # PR #29 adds ``settle_budget`` to the committer seam; forwarded the same
-    # way as the PR #31 methods above until that protocol lands on this base.
-    def settle_budget(self, reservation_id: UUID, outcome: str) -> None:
+    def settle_budget(
+        self, reservation_id: UUID, outcome: str, *, seconds: float | None = None
+    ) -> None:
         self._renew()
-        getattr(self._base, "settle_budget")(reservation_id, outcome)
+        self._base.settle_budget(reservation_id, outcome, seconds=seconds)
 
     # PR #31 extends the committer seam with ``begin_round``/``assert_current``.
     # Forward them when the base has them so this wrapper stays transparent
@@ -194,6 +214,11 @@ class _EmittingCommitter:
         self._renew()
         step_id = self._base.commit_step(logical_key, response)
         self.last_step = (step_id, dict(response))
+        if response.get("kind") == CONCLUSION_KIND:
+            # The loop's terminal record (main), not a model round: the
+            # ``run_completed``/``run_handoff`` event that follows announces
+            # it together with the outcome, so it is not a progress step.
+            return step_id
         self.steps_seen += 1
         assistant = response.get("assistant")
         calls = assistant.get("tool_calls") if isinstance(assistant, Mapping) else None
@@ -451,9 +476,9 @@ class Workbench:
             return self.incidents.control(
                 summary.incident_id, expected, action, actor_id, payload
             ), None
-        # DurableStore.new_run takes no expected version; the run id is
-        # derived from ``expected + 1`` so a stale form either conflicts on
-        # identity or replays the very run it already created.
+        # The run id is derived from ``expected + 1`` so a stale form either
+        # conflicts on identity or replays the very run it already created;
+        # DurableStore.new_run on main fences on ``expected`` as well.
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
         run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{expected + 1}")
@@ -461,6 +486,7 @@ class Workbench:
         generation = self.incidents.new_run(
             summary.incident_id,
             run_id,
+            expected_generation=expected,
             deadline=now + timedelta(seconds=self.run_seconds),
             budget_limit=self.budget_limit,
             versions=dict(self.run_versions),
@@ -886,7 +912,15 @@ class Workbench:
         # published as the conclusion: publishing would freeze human control
         # (DurableStore.control refuses once a conclusion exists) exactly
         # when a follow-up is needed. The committed step stays readable.
-        if outcome.report is None or outcome.handoff or committer.last_step is None:
+        # ``final_step_id``/``conclusion`` is the terminal step the loop on
+        # main committed for this attempt; None means the store fenced it and
+        # there is nothing this attempt may publish (as in the runner).
+        if (
+            outcome.report is None
+            or outcome.handoff
+            or outcome.final_step_id is None
+            or outcome.conclusion is None
+        ):
             self._handoff(
                 incident_id,
                 lease,
@@ -897,8 +931,9 @@ class Workbench:
                 evidence_ids=outcome.evidence_ids,
             )
             return outcome
-        step_id, payload = committer.last_step
-        published = self.incidents.publish(lease, payload, step_id=step_id)
+        published = self.incidents.publish(
+            lease, dict(outcome.conclusion), step_id=outcome.final_step_id
+        )
         if not published:
             self._handoff(
                 incident_id,
@@ -1052,12 +1087,38 @@ def _event_view(event: SubjectEvent) -> dict[str, Any]:
     }
 
 
+def _committed_report(payload: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """The report text and finish reason a committed step payload carries.
+
+    The loop on main ends an attempt with a ``conclusion`` step whose text
+    sits under ``conclusion.report_content`` (published as is); a model
+    round carries it as the assistant content with its finish reason.
+    """
+    if payload.get("kind") == CONCLUSION_KIND:
+        inner = payload.get("conclusion")
+        if not isinstance(inner, Mapping):
+            return None, None
+        content = inner.get("report_content")
+        reasons = inner.get("handoff_reasons")
+        truncated = isinstance(reasons, list) and "OUTPUT_LENGTH" in reasons
+        return (
+            content if isinstance(content, str) else None,
+            "length" if truncated else "stop",
+        )
+    assistant = payload.get("assistant")
+    content = assistant.get("content") if isinstance(assistant, Mapping) else None
+    finish = payload.get("finish_reason")
+    return (
+        content if isinstance(content, str) else None,
+        finish if isinstance(finish, str) else None,
+    )
+
+
 def _content_sha256(conclusion: object) -> str | None:
     if not isinstance(conclusion, Mapping):
         return None
-    assistant = conclusion.get("assistant")
-    content = assistant.get("content") if isinstance(assistant, Mapping) else None
-    if not isinstance(content, str):
+    content, _ = _committed_report(conclusion)
+    if content is None:
         return None
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -1071,13 +1132,8 @@ def _report_view(conclusion: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """
     if not isinstance(conclusion, Mapping):
         return None
-    assistant = conclusion.get("assistant")
-    content = assistant.get("content") if isinstance(assistant, Mapping) else None
-    finish = conclusion.get("finish_reason")
-    report, reason = parse_report(
-        content if isinstance(content, str) else None,
-        finish_reason=finish if isinstance(finish, str) else "unknown",
-    )
+    content, finish = _committed_report(conclusion)
+    report, reason = parse_report(content, finish_reason=finish or "unknown")
     digest = (
         hashlib.sha256(content.encode("utf-8")).hexdigest()
         if isinstance(content, str)

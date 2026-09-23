@@ -22,7 +22,7 @@ from opspilot.investigation.loop import (
     InvestigationRequest,
     LoopOutcome,
 )
-from opspilot.investigation.store import MemoryStepStore, StepStoreError
+from opspilot.investigation.store import BudgetUsage, MemoryStepStore, StepStoreError
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools import TransportResponse
 from opspilot.tools.outcomes import Window
@@ -249,7 +249,17 @@ class MemoryIncidentStore:
             )
         return nxt
 
-    def new_run(self, incident_id, run_id, *, deadline, budget_limit, versions, actor):
+    def new_run(
+        self,
+        incident_id,
+        run_id,
+        *,
+        expected_generation,
+        deadline,
+        budget_limit,
+        versions,
+        actor,
+    ):
         row = self.incidents.get(incident_id)
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
@@ -259,11 +269,16 @@ class MemoryIncidentStore:
                 row["state"] == "queued"
                 and row["current_run_id"] == run_id
                 and row["control_generation"] == generation
+                and expected_generation == generation - 1
             ):
                 return generation
             raise PersistenceError("IDENTITY_CONFLICT")
         if row["state"] != "cancelled":
             raise PersistenceError("ILLEGAL_TRANSITION")
+        # Mirror DurableStore.new_run on main: the continuation is fenced on
+        # the generation the operator saw.
+        if row["control_generation"] != expected_generation:
+            raise PersistenceError("CONTROL_CONFLICT")
         nxt = row["control_generation"] + 1
         self.runs[run_id] = self._run(
             run_id, incident_id, nxt, deadline, budget_limit, versions
@@ -455,11 +470,33 @@ class _MemoryCommitter:
     def authorized_run_id(self):
         return str(self._lease.run_id)
 
+    @property
+    def control_generation(self):
+        return self._lease.control_generation
+
     def _run(self):
         run = self._store.runs[self._lease.run_id]
         if self._store._revoked(run, self._lease):
             raise StepStoreError("CONTROL_DENIED")
         return run
+
+    # Mirror MemoryStepStore on main: the loop reads prior consumption when it
+    # opens an attempt, and renews before each dispatch (a no-op here; the
+    # workbench's wrapper does the real renewal).
+    def usage(self):
+        run = self._store.runs[self._lease.run_id]
+        seconds = 0.0
+        for reservation_id, upper in run.setdefault("reserved_seconds", {}).items():
+            seconds += run.setdefault("settled_seconds", {}).get(reservation_id, upper)
+        return BudgetUsage(
+            model_requests_used=run["budget_reserved"]
+            + run["budget_spent"]
+            + run["budget_unknown"],
+            model_seconds_used=seconds,
+        )
+
+    def renew(self):
+        return None
 
     def begin_round(self, logical_key):
         run = self._run()
@@ -476,8 +513,8 @@ class _MemoryCommitter:
     def assert_current(self) -> None:
         self._run()
 
-    def reserve_budget(self, reservation_id, amount):
-        if amount <= 0:
+    def reserve_budget(self, reservation_id, amount, *, seconds=0.0):
+        if amount <= 0 or not seconds >= 0:
             raise StepStoreError("INVALID_INPUT")
         run = self._run()
         if reservation_id in run["reservations"]:
@@ -493,9 +530,12 @@ class _MemoryCommitter:
         ):
             raise StepStoreError("BUDGET_EXHAUSTED")
         run["reservations"][reservation_id] = amount
+        run.setdefault("reserved_seconds", {})[reservation_id] = float(seconds)
         run["budget_reserved"] += amount
 
-    def settle_budget(self, reservation_id, outcome):
+    def settle_budget(self, reservation_id, outcome, *, seconds=None):
+        if seconds is not None and not seconds >= 0:
+            raise StepStoreError("INVALID_INPUT")
         run = self._run()
         if reservation_id not in run["reservations"]:
             raise StepStoreError("UNKNOWN_IDENTITY")
@@ -505,6 +545,11 @@ class _MemoryCommitter:
                 raise StepStoreError("IDENTITY_CONFLICT")
             return
         settled[reservation_id] = outcome
+        run.setdefault("settled_seconds", {})[reservation_id] = (
+            run.setdefault("reserved_seconds", {}).get(reservation_id, 0.0)
+            if seconds is None
+            else float(seconds)
+        )
         amount = run["reservations"][reservation_id]
         run["budget_reserved"] -= amount
         run["budget_spent" if outcome == "spent" else "budget_unknown"] += amount
@@ -610,6 +655,9 @@ class ScriptedInvestigator:
             model_requests=self.model_requests,
             evidence_context={
                 "type": "opspilot-evidence-context-v4",
+                # The loop discards a context that does not name this Run
+                # (evidence_context_projection); same as assemble() on main.
+                "run_id": str(context.run_id),
                 "time_policies": [
                     {
                         "id": "policy-window-1",
