@@ -647,9 +647,7 @@ def test_a_tool_plan_missing_reasoning_content_is_rejected_and_never_replayed():
     from opspilot.persistence import _tool_plan
 
     loop, request, _, transport, store, _ = _wide(
-        replies=[
-            reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)
-        ]
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)]
     )
     outcome = loop.run(request)
     assert outcome.handoff_reasons == ("PRIVATE_PROTOCOL_MISSING",)
