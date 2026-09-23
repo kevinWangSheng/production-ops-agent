@@ -2,21 +2,20 @@
 
 只保留当前状态表；更新时替换对应行，不追加段落。历史叙述见 [ROADMAP 历史归档](docs/archive/roadmap-history-2026-09-21.md)。
 
-## 当前状态（2026-09-21）
+## 当前状态（2026-09-23）
 
 | 项目 | 状态 | 证据 / 下一步 |
 |---|---|---|
 | 实施门槛 | 有界开放 M1-01（2026-09-13 用户决策 B） | [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；M0 未完成项转为 M1 入口条件，见 SPEC 第 6 行。 |
 | feature passes | 0 / 11 | [feature_list.json](feature_list.json)；验收 harness 场景覆盖某 feature 全部步骤时翻转，接线为独立任务。 |
-| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36） | main `e45208b`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
-| M1-01 待合并 | #21 intake auth、#27 discipline、#29 调查 loop、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录、#38 adapter flake | #29 已在分支内合并 `main` 并解决冲突（待 CI/审查）；#21/#37 与 main 冲突待处理；#31/#32/#33 目标为 `integration/m1-01`，按新流程 retarget 到 `main`。 |
-| M1-01 长程 loop 改造 | 已并入 PR #29（实现、独立审查与修复完成，待 CI / 分诊 / 用户审核） | [任务记录](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
+| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39） | main `1415c02`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
+| M1-01 待合并 | #21 intake auth、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录、#38 adapter flake | #21/#37 与 main 冲突待处理；#31/#32/#33 目标为 `integration/m1-01`，按新流程 retarget 到 `main`。 |
+| M1-01 调查 loop 后续 | #29 已合并；已知偏离 C3 §5「按 ID 和片段读取」待证据读取工具；小缺陷修复 PR（待重放计划校验、派发前 reasoning 校验、4xx 分类）进行中 | [任务记录「用户审核裁定」](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
 | M1-01 缺项 | worker 组合层未接 DurableToolLedger；suspension 持久化栅栏为 Controller 待办 | 见 [集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) 与 [工具执行器记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)。 |
 | DurableStore 加固 | A 类已合并（#26）；B/C 类待决 | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md)；运行时依赖声明按 AGENTS.md 由 Agent 自行处理。 |
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
 | LangGraph（ADR-0004） | 推迟，视为已决 | [ADR-0004](docs/adr/0004-langgraph-orchestration.md)；需要扩大比较时另立合同。 |
 | M0 遗留入口条件 | K8s RBAC/OS 隔离、正式保留集与 judge 校准、产品级 streaming/PG 审计/压缩器接入 | [M0 退出矩阵](docs/evidence/m0-real-investigation/m0-exit-matrix.md)；供应商账单对账改为余额差记账，不再是入口条件。 |
-| 流程审计 | PR 待审 | [任务记录](docs/tasks/2026-09-21-process-audit.md)。 |
 
 ## 交付顺序
 
