@@ -8,9 +8,9 @@
 |---|---|---|
 | 实施门槛 | 有界开放 M1-01（2026-09-13 用户决策 B） | [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；M0 未完成项转为 M1 入口条件，见 SPEC 第 6 行。 |
 | feature passes | 0 / 11 | [feature_list.json](feature_list.json)；验收 harness 场景覆盖某 feature 全部步骤时翻转，接线为独立任务。 |
-| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39） | main `1415c02`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
-| M1-01 待合并 | #21 intake auth、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录、#38 adapter flake | #21/#37 与 main 冲突待处理；#31/#32/#33 目标为 `integration/m1-01`，按新流程 retarget 到 `main`。 |
-| M1-01 调查 loop 后续 | #29 已合并；已知偏离 C3 §5「按 ID 和片段读取」待证据读取工具；小缺陷修复 PR（待重放计划校验、派发前 reasoning 校验、4xx 分类）已完成实现与独立审查，待用户审核合并 | [任务记录「用户审核裁定」](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
+| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39）、loop 小缺陷修复（#41）、adapter flake（#38） | main `c6fd889`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
+| M1-01 待合并 | #21 intake auth、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录（09-17 集成分支的历史验证证据） | #21 同步 main 中；#31/#32/#33 待 #21 同步后 retarget 到 `main` 并同步。 |
+| M1-01 调查 loop 后续 | #29 已合并；已知偏离 C3 §5「按 ID 和片段读取」待证据读取工具；小缺陷修复（待重放计划校验、派发前 reasoning 校验、4xx 仅 429 重试）已合并 #41 | [任务记录「用户审核裁定」](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
 | M1-01 缺项 | worker 组合层未接 DurableToolLedger；suspension 持久化栅栏为 Controller 待办 | 见 [集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) 与 [工具执行器记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)。 |
 | DurableStore 加固 | A 类已合并（#26）；B/C 类待决 | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md)；运行时依赖声明按 AGENTS.md 由 Agent 自行处理。 |
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
