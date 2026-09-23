@@ -420,3 +420,10 @@
   （按估算器动态选取输入长度，使「仅历史」低于阈值、「历史 + follow_up」高于阈值）修复前第 2 次调用是带 inputs 的第 2 轮而非
   compaction 请求（断言 `COMPACTION_INSTRUCTION` 失败），修复后绿，且 compaction 后重建 `segment == "ctx1"`。
   重建哈希相关测试（context/compaction/continuation/loop 四个套件）全部通过。
+- **6e12b6a 独立复审 P2（2026-09-23）**：compaction 后的 `CONTEXT_EXHAUSTED` 判断只看第一次冻结的 inputs，而新键下的第二次冻结
+  可能带上 compaction 请求期间经 `append_input` 写入的 `event`（不改代际/租约，不会被栅栏）。修复：第二次 `_begin_round()` 后若
+  `input_watermark` 变化，仅用新的尾随消息复跑一次预算充足性检查（`_require_fit()`，与 `_manage_context()` 共用），不再二次
+  compaction。红→绿：`tests/test_m1_investigation_compaction.py::test_an_event_landing_during_the_compaction_is_re_estimated_before_the_round`
+  修复前 `execution == "completed"`（超预算的 ctx1 轮次照常发出），修复后 `CONTEXT_EXHAUSTED` 且只发 3 次调用；
+  `..._a_small_event_landing_during_the_compaction_is_sent_with_the_round` 保证小事件仍随轮次发送、`input_watermark == 1`、重建正常。
+  `context_policy_revision` 不变；`make check` 1842 passed, 182 skipped, 2 xfailed。
