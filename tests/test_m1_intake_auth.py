@@ -354,8 +354,33 @@ def test_a_subclass_without_extras_is_narrowed_to_the_declared_type():
 
 def test_a_blank_question_is_not_a_question():
     for blank in (" ", "  \n\t "):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="QUESTION_IS_BLANK"):
             IntakeRequest(**{**REQUEST, "question": blank})
+
+
+@pytest.mark.parametrize(
+    "blank",
+    ["​", "⁠", "  ​ \t", "​⁠‍"],
+    ids=["zero_width_space", "word_joiner", "spaces_and_zero_width_space", "joiners"],
+)
+def test_a_question_made_only_of_invisible_format_characters_is_blank(blank):
+    """`Cf` characters survive `str.strip()` but render as nothing at all.
+
+    A question that is only zero-width spaces or word joiners would pass the
+    blank check while showing an operator an empty line.
+    """
+
+    with pytest.raises(ValidationError, match="QUESTION_IS_BLANK"):
+        IntakeRequest(**{**REQUEST, "question": blank})
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["zero​width between words", "👨‍👩 joined", "​leading joiner"],
+    ids=["inner_zero_width_space", "zero_width_joiner", "leading_zero_width_space"],
+)
+def test_invisible_format_characters_inside_real_text_stay_accepted(text):
+    assert IntakeRequest(**{**REQUEST, "question": text}).question == text
 
 
 def test_every_request_field_is_accounted_for_in_the_delivery_comparison():
