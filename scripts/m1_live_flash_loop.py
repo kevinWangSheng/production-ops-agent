@@ -166,6 +166,44 @@ def live_evidence_context(run_id: str) -> dict:
     return historical_window_context(run_id, reference_rule="response_received_at")
 
 
+def build_run(model, *, clock, deadline, run_id, evidence_context=None):
+    """The product loop over the fixture Prometheus tool, exactly as a live Run.
+
+    Shared with the offline replay tests so the evidence context the model is
+    asked to cite is the same one the loop binds reports against.
+    """
+    executor, transport, _sink, _ = build(
+        clock=clock,
+        registrations=[registration(name=LIVE_TOOL)],
+        scope_overrides={
+            "deadline": deadline,
+            "tool_names": frozenset({LIVE_TOOL}),
+            "run_id": run_id,
+        },
+    )
+    transport.response = TransportResponse(
+        body=body([{"metric": "http_errors_rate", "value": 0.042}]),
+        data_as_of=WINDOW_START,
+    )
+    store = MemoryStepStore(
+        budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
+    )
+    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
+    request = InvestigationRequest(
+        run_id=executor.scope.run_id,
+        question=QUESTION,
+        scope=executor.scope,
+        tool_schemas=TOOL_SCHEMAS,
+        model_requests=2,
+        evidence_context=(
+            live_evidence_context(run_id)
+            if evidence_context is None
+            else evidence_context
+        ),
+    )
+    return loop, request
+
+
 def main() -> int:
     env_file = resolve_env_file()
     key = read_key(env_file)
@@ -265,41 +303,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-def build_run(model, *, clock, deadline, run_id, evidence_context=None):
-    """The product loop over the fixture Prometheus tool, exactly as a live Run.
-
-    Shared with the offline replay tests so the evidence context the model is
-    asked to cite is the same one the loop binds reports against.
-    """
-    executor, transport, _sink, _ = build(
-        clock=clock,
-        registrations=[registration(name=LIVE_TOOL)],
-        scope_overrides={
-            "deadline": deadline,
-            "tool_names": frozenset({LIVE_TOOL}),
-            "run_id": run_id,
-        },
-    )
-    transport.response = TransportResponse(
-        body=body([{"metric": "http_errors_rate", "value": 0.042}]),
-        data_as_of=WINDOW_START,
-    )
-    store = MemoryStepStore(
-        budget_limit=4, deadline=deadline, clock=clock, run_id=run_id
-    )
-    loop = InvestigationLoop(model=model, executor=executor, store=store, clock=clock)
-    request = InvestigationRequest(
-        run_id=executor.scope.run_id,
-        question=QUESTION,
-        scope=executor.scope,
-        tool_schemas=TOOL_SCHEMAS,
-        model_requests=2,
-        evidence_context=(
-            live_evidence_context(run_id)
-            if evidence_context is None
-            else evidence_context
-        ),
-    )
-    return loop, request
