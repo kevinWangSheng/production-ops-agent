@@ -2180,3 +2180,62 @@ def test_a_time_policy_with_a_malformed_field_is_dropped_whole_not_widened():
     assert outcome.execution == "failed" and outcome.handoff_reasons == (
         "REPORT_INVALID",
     )
+
+
+def test_control_denied_after_the_reservation_stops_the_model_request_before_it_leaves():
+    """Independent review (PR #31, P2): the lease is re-read between the
+    budget reservation and the physical request. A human decision that
+    lands exactly there (pause, cancel, scope suspension) must keep the
+    request from leaving; the reservation stays occupied, nothing is spent."""
+
+    class DenyAfterReserve(MemoryStepStore):
+        def reserve_budget(self, reservation_id, amount, *, seconds=0.0):
+            super().reserve_budget(reservation_id, amount, seconds=seconds)
+            self.deny_control()
+
+    loop, request, model, transport, store, _ = assemble(
+        replies=[reply(content="never sent")], model_requests=1
+    )
+    loop.store = denied = DenyAfterReserve(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert model.calls == []
+    assert transport.called is False
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    assert denied.budget_reserved == 1 and denied.budget_spent == 0
+    assert denied.steps == {}
+
+
+def test_control_denied_after_the_lease_renewal_stops_the_tool_dispatch():
+    """Independent review (PR #31, P2): before each tool dispatch the loop
+    renews the lease and re-reads the fence. A denial that lands exactly
+    after the renewal must stop the dispatch: the committed plan stays
+    ``response_committed`` (pending work for a later attempt), no external
+    query is issued."""
+
+    class DenyAfterRenew(MemoryStepStore):
+        def renew(self):
+            self.deny_control()
+
+    loop, request, model, transport, store, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls")],
+        model_requests=2,
+    )
+    loop.store = denied = DenyAfterRenew(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert transport.called is False
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    assert denied.steps["ctx0:round-1"]["status"] == "response_committed"
+    assert denied.tool_results[denied.step_ids["ctx0:round-1"]] == []
