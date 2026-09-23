@@ -89,6 +89,57 @@ def test_deadline_refusal_never_dispatches_a_model_request():
     assert model.calls == []
 
 
+def durable_snapshot(replies, *, publish=True):
+    """A ``DurableStore.rebuild``-shaped snapshot from a real loop attempt.
+
+    The loop runs against ``MemoryStepStore`` (documented as rendering the
+    same shape ``rebuild`` returns); the committed conclusion row and the
+    tool_result rows are the product's own, not hand-written.
+    """
+    loop, request, _model, _transport, store, _sink = assemble(replies=replies)
+    result = loop.run(request)
+    if publish:
+        assert store.publish(result.conclusion, step_id=result.final_step_id)
+    return result, store.snapshot()
+
+
+def test_durable_completed_run_projects_its_committed_conclusion():
+    result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
+    )
+    assert snapshot["run"]["state"] == "completed"
+    outcome = outcome_from_durable(scenario("durable-completed"), snapshot)
+    assert outcome.final_state == "completed"
+    assert outcome.evidence_ids == result.evidence_ids != ()
+    assert outcome.decision == "report_available"
+    assert outcome.report_available is True
+    assert outcome.handoff_reasons == ()
+
+
+def test_durable_handoff_run_is_not_reported_as_a_completed_report():
+    result, snapshot = durable_snapshot(
+        [ModelError("MODEL_UNAVAILABLE"), ModelError("MODEL_UNAVAILABLE")]
+    )
+    # publish() marks the Run row completed even for a handoff conclusion;
+    # the seam must read the conclusion the loop committed, not the row.
+    assert snapshot["run"]["state"] == "completed"
+    assert result.execution == "failed"
+    outcome = outcome_from_durable(scenario("durable-handoff"), snapshot)
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff"
+    assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
+    assert outcome.evidence_ids == ()
+    assert outcome.report_available is False
+
+
+def test_durable_snapshot_with_a_malformed_conclusion_is_refused():
+    with pytest.raises(ValueError, match="INVALID_DURABLE_SNAPSHOT"):
+        outcome_from_durable(
+            scenario("durable-malformed"),
+            {"run": {"state": "completed"}, "conclusion": {"summary": "ok"}},
+        )
+
+
 def test_human_pause_and_cancel_are_the_observable_final_authority():
     paused = outcome_from_durable(
         scenario("pause"),
@@ -115,35 +166,34 @@ def test_incompatible_state_is_a_blocked_handoff():
 
 
 def test_late_result_is_rejected_after_newer_human_decision():
-    outcome = outcome_from_durable(
-        scenario("late-result"),
-        {
-            "run": {"state": "cancelled"},
-            "conclusion": None,
-            "late_result_rejected": True,
-            "evidence_ids": ["ev-before-cancel"],
-        },
-        action="cancel",
+    # Real committed tool_result rows from a Run whose conclusion was never
+    # published. MemoryStepStore has no control endpoint, so the cancelled
+    # state and the ``late_result_rejected`` marker are set by the test.
+    result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript],
+        publish=False,
     )
+    assert snapshot["conclusion"] is None
+    snapshot["run"]["state"] = "cancelled"
+    snapshot["late_result_rejected"] = True
+    outcome = outcome_from_durable(scenario("late-result"), snapshot, action="cancel")
     assert outcome.final_state == "cancelled"
-    assert outcome.evidence_ids == ("ev-before-cancel",)
+    assert outcome.evidence_ids == result.evidence_ids != ()
     assert "late_result_rejected" in outcome.actions
     assert "STALE_CONTROL_GENERATION" in outcome.handoff_reasons
     assert outcome.report_available is False
 
 
 def test_worker_restart_resumes_from_committed_evidence():
-    outcome = outcome_from_durable(
-        scenario("worker-restart"),
-        {
-            "run": {"state": "completed"},
-            "conclusion": {"summary": "ok"},
-            "worker_resumed": True,
-            "evidence_ids": ["ev-1", "ev-2"],
-        },
+    # Real committed conclusion; only the ``worker_resumed`` marker is
+    # hand-set (no product path emits it yet).
+    result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
     )
+    snapshot["worker_resumed"] = True
+    outcome = outcome_from_durable(scenario("worker-restart"), snapshot)
     assert outcome.final_state == "completed"
-    assert outcome.evidence_ids == ("ev-1", "ev-2")
+    assert outcome.evidence_ids == result.evidence_ids != ()
     assert "worker_resumed" in outcome.actions
     assert outcome.report_available is True
 

@@ -65,31 +65,105 @@ def outcome_from_loop(
     )
 
 
+_LOOP_STATES = frozenset({"completed", "failed", "blocked", "budget_exhausted"})
+# Human control and an incompatible rebuild are the final authority over a
+# Run row; a committed conclusion never overrides them.
+_HUMAN_OR_BLOCKED = frozenset({"paused", "cancelled", "blocked"})
+
+
+def _string_list(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (tuple, list)) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise ValueError("INVALID_DURABLE_SNAPSHOT")
+    return tuple(value)
+
+
+def _committed_conclusion(
+    snapshot: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """The payload the loop committed in ``_finish`` and ``publish()`` stored.
+
+    ``DurableStore.rebuild`` (and ``MemoryStepStore.snapshot``) place the
+    published row under ``snapshot["conclusion"]`` as
+    ``{"kind": "conclusion", "assistant": ..., "conclusion": {...}}``; the
+    observable result lives in the inner mapping. Anything else under that
+    key is not a product conclusion and is refused rather than guessed at.
+    """
+    row = snapshot.get("conclusion")
+    if row is None:
+        return None
+    if not isinstance(row, Mapping) or row.get("kind") != "conclusion":
+        raise ValueError("INVALID_DURABLE_SNAPSHOT")
+    payload = row.get("conclusion")
+    if not isinstance(payload, Mapping) or payload.get("execution") not in _LOOP_STATES:
+        raise ValueError("INVALID_DURABLE_SNAPSHOT")
+    return payload
+
+
+def _committed_evidence(snapshot: Mapping[str, object]) -> tuple[str, ...]:
+    """Evidence ids from committed tool_result rows of adopted steps."""
+    ids: list[str] = []
+    steps = snapshot.get("steps") or ()
+    if not isinstance(steps, (tuple, list)):
+        raise ValueError("INVALID_DURABLE_SNAPSHOT")
+    for step in steps:
+        if not isinstance(step, Mapping) or step.get("status") == "late_result":
+            continue
+        for item in step.get("tool_results") or ():
+            result = item.get("result") if isinstance(item, Mapping) else None
+            evidence_id = (
+                result.get("evidence_id") if isinstance(result, Mapping) else None
+            )
+            if isinstance(evidence_id, str) and evidence_id not in ids:
+                ids.append(evidence_id)
+    return tuple(ids)
+
+
 def outcome_from_durable(
     scenario: IncidentScenario,
     snapshot: Mapping[str, object],
     *,
     action: str | None = None,
 ) -> IncidentOutcome:
-    """Project committed DurableStore rows, including human-control outcomes."""
+    """Project a ``DurableStore.rebuild`` snapshot, including human control.
+
+    ``publish()`` marks the Run row ``completed`` for every published
+    conclusion, handoff or not, so the loop's own ``execution``,
+    ``handoff_reasons``, ``evidence_ids`` and report presence are read from
+    the committed conclusion payload, never from the row state alone. A Run
+    without a conclusion projects its committed tool_result evidence.
+
+    ``late_result_rejected`` and ``worker_resumed`` are optional markers no
+    product path emits yet; acceptance tests set them by hand to name the
+    action they simulated. They add observable actions/reasons only.
+    """
     run = snapshot.get("run")
     if not isinstance(run, Mapping) or not isinstance(run.get("state"), str):
         raise ValueError("INVALID_DURABLE_SNAPSHOT")
-    state = run["state"]
-    if state not in {
-        "completed",
-        "failed",
-        "blocked",
-        "budget_exhausted",
-        "cancelled",
-        "paused",
-    }:
+    row_state = run["state"]
+    if row_state not in _LOOP_STATES | _HUMAN_OR_BLOCKED:
         raise ValueError("UNKNOWN_DURABLE_STATE")
-    evidence = snapshot.get("evidence_ids", ())
-    if not isinstance(evidence, (tuple, list)) or not all(
-        isinstance(x, str) for x in evidence
-    ):
-        raise ValueError("INVALID_DURABLE_EVIDENCE")
+    conclusion = _committed_conclusion(snapshot)
+
+    handoff = False
+    reasons: list[str] = []
+    report_available = False
+    if conclusion is not None:
+        loop_state = conclusion["execution"]
+        evidence = _string_list(conclusion.get("evidence_ids", ()))
+        handoff = conclusion.get("handoff") is True
+        reasons = list(_string_list(conclusion.get("handoff_reasons", ())))
+        report_available = loop_state == "completed" and isinstance(
+            conclusion.get("report_schema_version"), str
+        )
+        state: OutcomeState = (
+            row_state if row_state in _HUMAN_OR_BLOCKED else loop_state  # type: ignore[assignment]
+        )
+    else:
+        evidence = _committed_evidence(snapshot)
+        state = row_state
+
     late_rejected = snapshot.get("late_result_rejected") is True
     resumed = snapshot.get("worker_resumed") is True
     actions = [action] if action else []
@@ -97,19 +171,26 @@ def outcome_from_durable(
         actions.append("late_result_rejected")
     if resumed:
         actions.append("worker_resumed")
-    reasons = ["INCOMPATIBLE_STATE"] if state == "blocked" else []
+    if state == "blocked" and "INCOMPATIBLE_STATE" not in reasons:
+        reasons.append("INCOMPATIBLE_STATE")
     if late_rejected:
         reasons.append("STALE_CONTROL_GENERATION")
+    if action:
+        decision = "human_control"
+    elif conclusion is not None:
+        decision = "handoff" if handoff else "report_available"
+    else:
+        decision = "durable_state"
     return IncidentOutcome(
         scenario_id=scenario.scenario_id,
         final_state=state,
-        evidence_ids=tuple(evidence),
-        decision="human_control" if action else "durable_state",
+        evidence_ids=evidence,
+        decision=decision,
         actions=tuple(actions),
         permissions=("read_only", "human_control"),
         human_interaction=action,
         handoff_reasons=tuple(reasons),
-        report_available=snapshot.get("conclusion") is not None,
+        report_available=report_available,
     )
 
 
