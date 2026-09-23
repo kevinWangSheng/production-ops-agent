@@ -830,12 +830,23 @@ def test_a_follow_up_row_missing_from_the_snapshot_fails_the_rebuild_closed():
     loop.store = seeded
     with pytest.raises(Crash):
         loop.run(request)
-    snapshot = seeded.snapshot()
-    snapshot["inputs"] = []
-    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
-        rebuild_transcript(
+
+    def rebuild(snapshot):
+        return rebuild_transcript(
             snapshot,
             run_id=request.run_id,
             authorized_targets=request.scope.target_ids,
             input=request.as_input(),
         )
+
+    # With the inputs present the rebuild reproduces round 1's bytes; the
+    # same snapshot minus its inputs cannot, and refuses. Asserting both on
+    # one snapshot is what makes this test discriminate (independent review,
+    # PR #31 P3-1): a rebuild that ignored inputs altogether would fail the
+    # first half, one that fabricated them would fail the second.
+    snapshot = seeded.snapshot()
+    assert [row["sequence"] for row in snapshot["inputs"]] == [1]
+    assert rebuild(snapshot).next_round == 2
+    snapshot["inputs"] = []
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        rebuild(snapshot)
