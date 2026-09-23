@@ -96,7 +96,10 @@ class IntakeRequest(DTO):
     @field_validator("question")
     @classmethod
     def reject_ambiguous_text(cls, value: str) -> str:
-        if not value.strip():
+        # `str.strip()` leaves `Cf` characters (zero width space, word joiner)
+        # in place, and they render as nothing: a question made only of them
+        # would pass as non-blank while showing the operator an empty line.
+        if all(char.isspace() or category(char) == "Cf" for char in value):
             raise ValueError("QUESTION_IS_BLANK")
         return _reject_ambiguous_text(value)
 
