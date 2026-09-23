@@ -8,8 +8,9 @@
 |---|---|---|
 | 实施门槛 | 有界开放 M1-01（2026-09-13 用户决策 B） | [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；M0 未完成项转为 M1 入口条件，见 SPEC 第 6 行。 |
 | feature passes | 0 / 11 | [feature_list.json](feature_list.json)；验收 harness 场景覆盖某 feature 全部步骤时翻转，接线为独立任务。 |
-| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39）、loop 小缺陷修复（#41）、adapter flake（#38） | main `c6fd889`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
-| M1-01 待合并 | #21 intake auth、#31 控制补全、#32 验收 harness、#33 workbench UI、#37 集成记录（09-17 集成分支的历史验证证据） | #21 同步 main 中；#31/#32/#33 待 #21 同步后 retarget 到 `main` 并同步。 |
+| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39）、loop 小缺陷修复（#41）、adapter flake（#38）、集成记录（#37）、intake 认证合同（#21）、人工控制补全（#31）、外部验收入口（#32）、workbench UI（#33） | main `d035bb0`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
+| M1-01 待用户决定 | ① handoff 结论是否发布（main runner 发布并封闭事故 vs 工作台不发布保持可追问，`publish()` 把失败/handoff Run 也标为 completed）→ ADR；② 追问每轮累计重发 vs 折叠/引用（关系到输入总量上限）；③ 追问长度 8192（#31 截断）与网页 16384 对齐；④ `web` 依赖组是否默认安装；⑤ 是否按事故授权；⑥ 事故关闭/重开、目标重绑定、合并/拆分的输入与暂停迁移语义；⑦ `DEADLINE_EXCEEDED` 终态写入者与栅栏 | 各 PR 描述「未完成项 / 待用户决定」；[#31 任务记录](docs/tasks/2026-09-16-m1-01-control-completion.md)、[#33 任务记录](docs/tasks/2026-09-16-m1-01-progress-ui.md)。 |
+| M1-01 已知缺口 | 工作台实时进度未接真实驱动器（`runner.py` 不发工作台事件，`Workbench.run_once` 仅测试使用）；验收入口 4 个持久化场景的状态/标记为手工设置 | [#33 PR](https://github.com/kevinWangSheng/production-ops-agent/pull/33)、[#32 任务记录](docs/tasks/2026-09-16-m1-01-acceptance.md)。 |
 | M1-01 调查 loop 后续 | #29 已合并；已知偏离 C3 §5「按 ID 和片段读取」待证据读取工具；小缺陷修复（待重放计划校验、派发前 reasoning 校验、4xx 仅 429 重试）已合并 #41 | [任务记录「用户审核裁定」](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
 | M1-01 缺项 | worker 组合层未接 DurableToolLedger；suspension 持久化栅栏为 Controller 待办 | 见 [集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) 与 [工具执行器记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)。 |
 | DurableStore 加固 | A 类已合并（#26）；B/C 类待决 | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md)；运行时依赖声明按 AGENTS.md 由 Agent 自行处理。 |
