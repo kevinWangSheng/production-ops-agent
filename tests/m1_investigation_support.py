@@ -158,10 +158,12 @@ def assemble(*, replies, budget_limit=4, deadline=None, model_requests=2, clock=
         model_requests=model_requests,
         evidence_context={
             "type": "opspilot-evidence-context-v4",
+            "run_id": executor.scope.run_id,
             "time_policies": [
                 {
                     "id": "policy-window-1",
                     "mode": "historical_window",
+                    "all_authorized_targets": True,
                     "window": {
                         "start": WINDOW_START.isoformat(),
                         "end": WINDOW_END.isoformat(),

@@ -6,7 +6,16 @@ adapters. Instruction text for L1 lives in ``opspilot.instructions``.
 """
 
 from .client import DeepSeekClient
+from .context import (
+    CommittedRound,
+    ContextError,
+    InvestigationInput,
+    Transcript,
+    rebuild_transcript,
+    step_key,
+)
 from .limits import (
+    M1_FROZEN_LIMITS,
     MAX_CONTEXT_TOKENS,
     MAX_HTTP_REQUEST_BYTES,
     MAX_HTTP_RESPONSE_BYTES,
@@ -16,6 +25,7 @@ from .limits import (
     MAX_TOOL_SECONDS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
     RUN_WALL_SECONDS,
+    RunLimits,
 )
 from .loop import (
     ACCEPTED_RESPONSE_MODEL,
@@ -27,6 +37,7 @@ from .loop import (
     ModelClient,
     ModelError,
     ModelReply,
+    prompt_revision_versions,
     serialized_request,
 )
 from .messages import PairingError, pair_tool_results, validate_tool_calls
@@ -37,9 +48,20 @@ from .reports import (
     ReportV2,
     parse_report,
 )
+from .runner import InvestigationRunner, RunnerOutcome
 from .store import DurableStepStore, MemoryStepStore, StepCommitter, StepStoreError
 
 __all__ = [
+    "ContextError",
+    "InvestigationInput",
+    "InvestigationRunner",
+    "M1_FROZEN_LIMITS",
+    "RunLimits",
+    "RunnerOutcome",
+    "CommittedRound",
+    "Transcript",
+    "rebuild_transcript",
+    "step_key",
     "ACCEPTED_RESPONSE_MODEL",
     "DISCIPLINE_VARIANT",
     "FINAL_REPORT_INSTRUCTION",
@@ -70,6 +92,7 @@ __all__ = [
     "StepStoreError",
     "pair_tool_results",
     "parse_report",
+    "prompt_revision_versions",
     "serialized_request",
     "validate_tool_calls",
 ]

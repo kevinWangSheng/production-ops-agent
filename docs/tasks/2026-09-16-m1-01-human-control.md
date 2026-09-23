@@ -25,7 +25,7 @@
 
 - `DurableStore.commit_step()` / `commit_tool()`：代际或租约拒绝前把迟到结果写入 `late_result` 历史，并提交该历史事务。
 - `DurableStore._late_result()`：`logical_key` 绑定原步骤/工具身份（保留前缀 `late_result:step:` / `late_result:tool:` / `late_result:publish:`）；写入单调 `sequence` 与 `observed_at`；同一身份重放 `ON CONFLICT DO NOTHING`。业务 `commit_step` 不得使用该前缀。
-- `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；同一 `run_id` 在已接续的 queued 事故上重试返回既有代际。
+- `DurableStore.new_run()`：仅允许 cancelled 事故创建新 Run，要求匹配调用方观察到的 `expected_generation`，递增控制代际、替换 current_run、清除旧结论并写入 `new_run` 审计；同一 `run_id` 在已接续的 queued 事故上重试返回既有代际。
 - PG 回归：`test_late_step_and_tool_results_are_recorded_as_history`、`test_expired_late_step_is_history_and_not_pending_work`、`test_live_steps_cannot_use_the_late_result_key_namespace`、`test_cancelled_incident_can_continue_with_a_new_run`、`test_new_run_is_refused_until_the_incident_is_cancelled`、`test_concurrent_follow_up_and_cancel_have_one_winner_generation`；纠正后迟到 `publish` 的身份/幂等断言。
 
 ## PR #19 既有并在本 PR 验证
@@ -46,6 +46,13 @@
 - `follow_up` / `correct` 的输入内容（问题、事实、纠正）持久化。`control()` 只接受 incident、generation、action、actor，`opspilot_controls` 无载荷列。
 - 持久化输入水位：`opspilot_runs.input_watermark` 初始化为 0，没有更新/纳入路径。领域层 `test_the_input_watermark_only_moves_forward_and_only_while_running` 不是 DurableStore 证据。
 - 事故级历史视图：`rebuild()` 只重建 `current_run_id` 的断点。取消 Run 的步骤与 `late_result` 仍留在 `opspilot_steps`，但不经 `rebuild()` 返回。本子任务不把 `rebuild()` 扩成全量审计接口。
+
+### 当前 HEAD 新增审查处置（2026-09-20）
+
+- 采纳并修复：`new_run()` 增加 `expected_generation`，拒绝旧观察代际在更晚控制后重新创建 Run；重复确认仅在原代际关系仍匹配时幂等返回。
+- 采纳并修复：失效 `publish()` 在写入 `late_result` 前验证 `step_id` 属于该 Run；随机或跨 Run 的 step 返回 `UNKNOWN_IDENTITY`，不制造伪历史。
+- 采纳并修复：失效 `commit_tool()` 在写入 `late_result` 前验证 `ordinal` 确实对应该 step 的 `tool_calls`，不存在的工具序号返回 `UNKNOWN_IDENTITY`。
+- PG 定向测试：`40 passed`；全量 `make check`：`1051 passed, 111 skipped, 2 xfailed`。
 
 ## C3 第 4 节逐条映射
 

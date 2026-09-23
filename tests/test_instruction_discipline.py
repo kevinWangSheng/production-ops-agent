@@ -84,8 +84,19 @@ def baseline_literals() -> dict[str, str]:
             and node.right.func.attr == "join"
         ):
             # 唯一一处「字面量 + 分隔符.join(...)」，即窗口句加授权服务列表。
+            # 后写覆盖先写，所以这里要断唯一，否则多出来的一处会被悄悄吃掉。
+            assert "window_scope" not in found, (
+                "holmes_baseline.py 出现了多处「字面量 + join(...)」拼接，"
+                "窗口句的提取不再唯一"
+            )
             found["window_scope"] = node.left.value
-    for index, (_, text) in enumerate(sorted(appended)[:2]):
+    # 恰好两段，不是「前两段」。只取前两段的话，有人在后面再 append 一句纪律，
+    # 提取器视而不见，漂移检查全绿——而它是「两处不得分叉」的唯一守门人。
+    assert len(appended) == 2, (
+        f"holmes_baseline.py 的 addition 追加段数变成了 {len(appended)}（原为 2）；"
+        "新增或删除纪律文字必须同步到 opspilot/instructions/discipline.py"
+    )
+    for index, (_, text) in enumerate(sorted(appended)):
         found[("evidence", "projection")[index]] = text
     missing = {
         "multi_open",
@@ -122,6 +133,18 @@ def scoped_services(variant_id: str, services: tuple[str, ...]) -> tuple[str, ..
     if any(s.key == "authorized_services" for s in d.VARIANTS[variant_id]):
         return services
     return ()
+
+
+def budget_for(variant_id: str, requested: int) -> int:
+    """只给带预算槽位的变体传非 1 的预算。
+
+    final-report 没有 ``model_request_budget`` 槽位，开场文字硬编码
+    「one model request」；对它传非 1 现在是 ``ValueError``（fail-closed）。
+    这个 helper 让参数化测试覆盖全部变体而不触发那条拒绝。
+    """
+    if any(s.key == "model_request_budget" for s in d.VARIANTS[variant_id]):
+        return requested
+    return 1
 
 
 # --- 硬约束：冻结的 prompt_sha256 -------------------------------------------
@@ -256,24 +279,21 @@ def test_instance_values_do_not_move_the_revision(variant_id: str) -> None:
 
     这条直接防住「仅因预算不同就 blocked(INCOMPATIBLE_STATE)」。
     """
-    assert d.discipline_revision(variant_id) == d.discipline_revision(variant_id)
-    one = d.prompt_revision(variant_id, report_contract=LEGACY_REPORT_CONTRACT)
-    other = d.prompt_revision(variant_id, report_contract=LEGACY_REPORT_CONTRACT)
-    assert one == other
-
+    # 这里**不**断言「同参数两次调用结果相同」——那是拿相同实参调同一个纯函数
+    # 两次，怎么写都不会红。实例值不进 revision 这件事由 prompt_revision 的签名
+    # 保证（它根本不收实例值）；这条测试真正承重的是下面「实例值确实改变了字节」。
     cheap = d.render(
         variant_id,
-        model_requests=2,
+        model_requests=budget_for(variant_id, 2),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, ("checkoutservice",)),
     )
     rich = d.render(
         variant_id,
-        model_requests=9,
+        model_requests=budget_for(variant_id, 9),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, SERVICES),
     )
-    assert one == d.prompt_revision(variant_id, report_contract=LEGACY_REPORT_CONTRACT)
     if "{steps}" in "".join(
         s.text for s in d.VARIANTS[variant_id] if s.layer == d.LAYER_TEMPLATE
     ):
@@ -331,7 +351,7 @@ def test_template_byte_change_bumps_the_revision(
         else s
         for s in d.VARIANTS["replay-candidate"]
     )
-    monkeypatch.setitem(d.VARIANTS, "replay-candidate", mutated)
+    monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "replay-candidate": mutated})
     assert d.discipline_revision("replay-candidate") != before
 
 
@@ -339,11 +359,45 @@ def test_revision_projection_covers_every_template_field() -> None:
     """新增 ``Segment`` 字段必须同步进哈希投影，否则模板变了而 revision 不变。
 
     与 C3 第 8 节对工具注册表哈希的要求同理：静默丢弃新字段是已经发生过的缺陷类型。
+    ``layer`` 不再排除在外：投影现在覆盖全部 segment（含 L1b/L2 槽位），
+    ``layer`` 在这份列表里不是常量了，同样必须能查出改动。
     """
     projected = set(d.template_projection("baseline-multi-step")[0])
-    declared = set(d.Segment._fields) - {"layer"}
+    declared = set(d.Segment._fields)
     assert declared <= projected, (
         f"这些 Segment 字段没进哈希投影：{sorted(declared - projected)}"
+    )
+
+
+def test_reordering_a_report_or_instance_slot_bumps_the_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """机器人审查（P2）：挪动一个 L1b/L2 槽位的位置必须 bump revision。
+
+    早先的投影只筛 ``LAYER_TEMPLATE`` 段，槽位（自身 ``text`` 恒为空）挪到哪里
+    都不影响筛出来的模板段相对顺序，``discipline_revision`` 因此原地不动——
+    但 ``render()`` 拼出的字节顺序**确实变了**（``report_contract`` 挪到末尾后，
+    "Missing metric series…" 与报告契约文本的相对位置互换）。被重新领取的在途
+    Run 本该因此触发 ``blocked(INCOMPATIBLE_STATE)``，原实现会静默放行。
+    """
+    before_revision = d.discipline_revision("baseline-multi-step")
+    original = d.VARIANTS["baseline-multi-step"]
+    report_slot = next(s for s in original if s.key == "report_contract")
+    reordered = tuple(s for s in original if s.key != "report_contract") + (
+        report_slot,
+    )
+    monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "baseline-multi-step": reordered})
+
+    assert d.discipline_revision("baseline-multi-step") != before_revision
+
+    rendered = d.render(
+        "baseline-multi-step",
+        model_requests=2,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=("checkoutservice",),
+    )
+    assert rendered.endswith(LEGACY_REPORT_CONTRACT), (
+        "确认这次挪动确实改变了 render() 输出的字节顺序，不是个没有效果的变异"
     )
 
 
@@ -366,8 +420,34 @@ CREDENTIAL_SHAPES = (
     re.compile(r"\bsk-[A-Za-z0-9]{8,}"),
     re.compile(r"\bBearer\s+\S+"),
     re.compile(r"https?://[^\s/]*:[^\s/]*@"),
-    re.compile(r"\b[A-Za-z0-9_]*(?:api[_-]?key|secret|token|password)\b\s*[=:]\s*\S+"),
+    re.compile(
+        r"\b[A-Za-z0-9_]*(?:api[_-]?key|secret|token|password)\b\s*[=:]\s*\S+",
+        re.IGNORECASE,
+    ),
 )
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "token sk-abcd1234efgh5678",
+        "Authorization: Bearer abc.def.ghi",
+        "https://user:pw@metrics.internal/api",
+        "api_key = swordfish",
+        "SERVICE_TOKEN: hunter2",
+    ],
+)
+def test_credential_patterns_actually_match_something(sample: str) -> None:
+    """阳性对照：没有它，上一条断言是恒真的。
+
+    实测过：把 ``CREDENTIAL_SHAPES`` 四条正则整体换成永不匹配的
+    ``ZZZ_NEVER_MATCHES_ANYTHING_ZZZ``，整个文件仍然全绿——正则写错、写漏、
+    被删都不会有任何测试发现。所以先钉住「这些正则确实会命中凭据形态」，
+    再让下一条断言「纪律文本命不中」才有意义。
+    """
+    assert any(pattern.search(sample) for pattern in CREDENTIAL_SHAPES), (
+        f"没有任何凭据形态正则命中 {sample!r}；正则可能已被改坏"
+    )
 
 
 @pytest.mark.parametrize("variant_id", sorted(d.VARIANTS))
@@ -379,7 +459,7 @@ def test_no_credential_shaped_text_reaches_the_prompt(variant_id: str) -> None:
     """
     rendered = d.render(
         variant_id,
-        model_requests=4,
+        model_requests=budget_for(variant_id, 4),
         report_contract=LEGACY_REPORT_CONTRACT,
         authorized_services=scoped_services(variant_id, SERVICES),
     )
@@ -406,6 +486,26 @@ def test_non_positive_budget_is_refused(value: object) -> None:
         d.render(
             "replay-candidate",
             model_requests=value,  # type: ignore[arg-type]
+            report_contract=LEGACY_REPORT_CONTRACT,
+        )
+
+
+@pytest.mark.parametrize("model_requests", [2, 99])
+def test_budgets_for_a_variant_without_the_slot_are_refused_not_dropped(
+    model_requests: int,
+) -> None:
+    """机器人审查：final-report 没有预算槽位，非 1 的预算 → 拒绝，不是静默忽略。
+
+    ``baseline-final-report`` 的开场硬编码「one model request」，没有
+    ``model_request_budget`` 槽位可以回填。放行前，传 ``model_requests=2`` 与
+    ``model_requests=1`` 渲染出逐字节相同的结果，``prompt_face_sha256`` 也相同——
+    调用方以为记录了一个更大的预算，实际送进模型（和记录下来）的字节里根本没有
+    这个数字，是本 PR 一直在关的那类静默丢失实例值。
+    """
+    with pytest.raises(ValueError, match="model_requests must be 1"):
+        d.render(
+            "baseline-final-report",
+            model_requests=model_requests,
             report_contract=LEGACY_REPORT_CONTRACT,
         )
 
@@ -445,7 +545,7 @@ def test_budget_slot_must_follow_its_placeholder(
         d.VARIANTS["replay-candidate"][2],  # 证据纪律段，不含 {steps}
         d.VARIANTS["replay-candidate"][1],  # 预算槽位被排到它后面
     )
-    monkeypatch.setitem(d.VARIANTS, "broken", broken)
+    monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "broken": broken})
     with pytest.raises(ValueError, match="budget slot must follow"):
         d.render("broken", model_requests=2, report_contract=LEGACY_REPORT_CONTRACT)
 
@@ -513,4 +613,130 @@ def test_scope_tightening_does_not_travel_through_versions() -> None:
         "baseline-multi-step", report_contract=LEGACY_REPORT_CONTRACT
     ) == d.prompt_revision(
         "baseline-multi-step", report_contract=LEGACY_REPORT_CONTRACT
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["cartservice", ("",), ("cartservice", ""), ("cartservice", None), (b"svc",)],
+)
+def test_malformed_service_lists_are_refused(bad: object) -> None:
+    """``authorized_services`` 必须是非空服务名的元组。
+
+    ``str`` 也是可迭代的，所以传 ``"cartservice"`` 时 ``", ".join()`` 会逐字符展开成
+    ``c, a, r, t, …``——不报错，但送进模型的授权清单已经烂了。空服务名同理：
+    渲染出前缀后空无一物，读起来像「没授权任何服务」。两种都是静默损坏授权范围，
+    而授权范围属 Controller 权限，不能悄悄落空。
+
+    这条也补上了原先的不对称：同一个函数对 ``model_requests`` 严格到连 ``bool``
+    都挡，对服务列表却只判真值。
+    """
+    with pytest.raises(ValueError, match="non-empty service names"):
+        d.render(
+            "baseline-multi-step",
+            model_requests=2,
+            report_contract=LEGACY_REPORT_CONTRACT,
+            authorized_services=bad,  # type: ignore[arg-type]
+        )
+
+
+def test_a_string_service_list_would_have_been_shredded_character_by_character() -> (
+    None
+):
+    """钉住上一条防的到底是什么：正常元组与逐字符展开的结果截然不同。"""
+    proper = d.render(
+        "baseline-multi-step",
+        model_requests=2,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=("cartservice",),
+    )
+    assert proper.endswith("cartservice")
+    assert ", ".join("cartservice") == "c, a, r, t, s, e, r, v, i, c, e"
+
+
+def test_a_one_shot_iterator_does_not_get_silently_drained_to_nothing() -> None:
+    """独立审查发现：一次性迭代器会被校验那遍 ``all(...)`` 先耗尽。
+
+    ``authorized_services`` 的类型注解是 ``tuple[str, ...]``，但运行时不强制。
+    如果调用方传一个生成器，校验用 ``all(... for name in authorized_services)``
+    迭代一遍，渲染再用 ``", ".join(authorized_services)`` 迭代第二遍——生成器
+    只能走一遍，第二遍拿到的是空的。校验通过，但送进模型的授权清单悄悄变空，
+    和 F14/`authorized_services` 那批「静默丢失」是同一类失效，只是换了个不
+    触发字符串/空值护栏的入参形状。``render`` 现在先把入参物化成 tuple 再校验。
+    """
+
+    def services() -> object:
+        yield "checkoutservice"
+        yield "cartservice"
+
+    rendered = d.render(
+        "baseline-multi-step",
+        model_requests=2,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=services(),  # type: ignore[arg-type]
+    )
+    assert rendered.endswith("checkoutservice, cartservice")
+
+
+def test_unknown_slot_is_refused_not_silently_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``render`` 不认识的槽位 → 拒绝，而不是当成一个什么都不填的空位。
+
+    没有这条，加一个新槽位而忘了在 ``render`` 里接上，渲染照常成功，
+    那段内容从 prompt 里整条消失——正是本模块自己声明要防的失效模式。
+    """
+    broken = d.VARIANTS["replay-candidate"] + (
+        d.Segment("time_window", d.LAYER_INSTANCE, ""),
+    )
+    monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "broken": broken})
+    with pytest.raises(ValueError, match="unknown slot 'time_window'"):
+        d.render("broken", model_requests=2, report_contract=LEGACY_REPORT_CONTRACT)
+
+
+def test_variants_mapping_is_read_only() -> None:
+    """「单一来源」不能被任意调用方在运行时改掉。"""
+    with pytest.raises(TypeError):
+        d.VARIANTS["replay-candidate"] = ()  # type: ignore[index]
+
+
+# --- C3 第 5 节 L1b 行：prompt_face_sha256 ------------------------------------
+
+
+def test_face_hash_moves_with_instance_values_while_the_revision_holds() -> None:
+    """C3 第 5 节 L1b：实例值变，face 就得变。
+
+    这是「L1b 只记录」的落点。另一半（实例值**不**移动 `versions` 里的 revision）
+    由 `prompt_revision` 的签名保证，并在 PG 用例里走过一遍真实 claim 路径，
+    不在这里重复断言。
+    """
+
+    def face(*, model_requests: int, services: tuple[str, ...]) -> str:
+        return d.prompt_face_sha256(
+            "baseline-multi-step",
+            model_requests=model_requests,
+            report_contract=LEGACY_REPORT_CONTRACT,
+            authorized_services=services,
+        )
+
+    base = face(model_requests=2, services=("checkoutservice",))
+    richer_budget = face(model_requests=9, services=("checkoutservice",))
+    wider_scope = face(model_requests=2, services=("checkoutservice", "cartservice"))
+
+    assert len({base, richer_budget, wider_scope}) == 3, "两类实例值都必须移动 face"
+    assert all(len(value) == 64 for value in (base, richer_budget, wider_scope)), (
+        "face 是证据字段，取完整摘要而不是给人看的短码"
+    )
+
+
+def test_face_hash_equals_the_sha256_of_what_was_rendered() -> None:
+    """face 就是实际送出字节的摘要，不是另算一套。"""
+    kwargs = {
+        "model_requests": 2,
+        "report_contract": LEGACY_REPORT_CONTRACT,
+    }
+    rendered = d.render("replay-candidate", **kwargs)  # type: ignore[arg-type]
+    assert (
+        d.prompt_face_sha256("replay-candidate", **kwargs)  # type: ignore[arg-type]
+        == hashlib.sha256(rendered.encode()).hexdigest()
     )

@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 from uuid import UUID
 
+from .domain import tool_operation_id
 from .persistence import DurableStore
 
 
@@ -36,8 +37,27 @@ def rebuild_plan(snapshot: Mapping[str, Any]) -> RecoveryPlan:
         int(data["control_generation"]),
         run,
         tuple(data.get("steps", ())),
-        tuple(data.get("pending_tools", ())),
+        tuple(_identified(item) for item in data.get("pending_tools", ())),
         data.get("conclusion"),
+    )
+
+
+def _identified(pending: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Stamp the canonical operation id on a recovered call.
+
+    A restart replays a call that may already have reached the outside world,
+    so the id a gateway or the evidence store deduplicates by has to be the
+    same one the original dispatch used. ``tool_operation_id`` is that single
+    definition; deriving a second format here would make a replay look like a
+    new operation and split its evidence history.
+    """
+    return MappingProxyType(
+        {
+            **pending,
+            "operation_id": tool_operation_id(
+                str(pending["step_id"]), int(pending["ordinal"])
+            ),
+        }
     )
 
 

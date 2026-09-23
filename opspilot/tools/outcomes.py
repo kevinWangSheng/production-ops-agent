@@ -32,6 +32,7 @@ cancellation cannot recall a read-only request that already reached the source.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -50,7 +51,7 @@ __all__ = [
 
 # Version of the raw -> view projection. Stored with every evidence record so a
 # later reader can tell which projection produced the view it is reading.
-PROJECTION_REVISION = "m1-01-tool-view-v2"
+PROJECTION_REVISION = "m1-01-tool-view-v4"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -113,8 +114,17 @@ class Window:
     def __post_init__(self) -> None:
         if not (_aware(self.start) and _aware(self.end)) or self.start >= self.end:
             raise ValueError("INVALID_WINDOW")
-        object.__setattr__(self, "start", self.start.astimezone(timezone.utc))
-        object.__setattr__(self, "end", self.end.astimezone(timezone.utc))
+        try:
+            start = self.start.astimezone(timezone.utc)
+            end = self.end.astimezone(timezone.utc)
+        except OverflowError as error:
+            # An aware bound at the edge of the datetime range, such as
+            # ``0001-01-01T00:00:00+14:00``, cannot be normalised to UTC. It is
+            # an invalid window whichever caller built it, not a crash: the
+            # class's documented failure is ``INVALID_WINDOW``.
+            raise ValueError("INVALID_WINDOW") from error
+        object.__setattr__(self, "start", start)
+        object.__setattr__(self, "end", end)
 
     @property
     def seconds(self) -> float:
@@ -151,6 +161,8 @@ class Window:
         try:
             return cls(*bounds)
         except ValueError:
+            # Includes a bound that cannot be normalised to UTC, which
+            # ``__post_init__`` reports as ``INVALID_WINDOW`` like any other.
             return None
 
 
@@ -189,6 +201,14 @@ class ToolOperation:
     # when the expiry was observed, and nothing else in the record can be used
     # to derive it.
     authorized_at: datetime | None = None
+    # Set only immediately before ``transport.fetch()`` is actually called,
+    # never inferred from ``timeout_seconds`` being populated: ``_reserve()``
+    # computes ``timeout_seconds`` before the pre-dispatch ledger charge and
+    # the new pre-fetch control/deadline re-check run, so a denial from
+    # either of those (or the charge itself) would otherwise leave
+    # ``timeout_seconds`` set on an operation that never reached the
+    # transport, making ``sent`` claim dispatch that never happened.
+    dispatched: bool = False
     finished_at: datetime | None = None
     elapsed_seconds: float | None = None
     timeout_seconds: float | None = None
@@ -198,7 +218,7 @@ class ToolOperation:
     def sent(self) -> bool:
         """Whether the gateway handed this operation to the transport."""
 
-        return self.timeout_seconds is not None
+        return self.dispatched
 
     def audit_json(self) -> dict[str, object]:
         """Audit-facing record. Not the model-facing view."""
@@ -252,17 +272,32 @@ class EvidenceRecord:
     status: ToolStatus
     raw: bytes
     raw_sha256: str
-    view: Mapping[str, object]
+    _view: Mapping[str, object]
     view_sha256: str
     projection_revision: str
     observed_at: datetime
     data_as_of: datetime | None
+    source_start_at: datetime | None
+    source_end_at: datetime | None
     result_count: int
     incomplete: bool
     truncated: bool
     omitted_rows: int
     omitted_bytes: int
     adopted: bool
+
+    @property
+    def view(self) -> Mapping[str, object]:
+        """A detached copy: mutating it can never change committed evidence.
+
+        ``EvidenceRecord`` is otherwise frozen, but a ``dict``/``list`` value is
+        still mutable through any reference to it. Handing out the same object
+        on every access let a consumer -- or an evidence sink that retained the
+        record -- mutate "committed" evidence in place while ``view_sha256``
+        kept hashing the original contents (bot review finding).
+        """
+
+        return deepcopy(self._view)
 
     @property
     def freshness_seconds(self) -> float | None:

@@ -13,9 +13,11 @@ from tests.m1_tool_support import (
     FakeClock,
     FakeTransport,
     FixedControl,
+    RecordingLedger,
     RecordingSink,
     body,
     build,
+    description,
     registration,
     request,
     target,
@@ -26,6 +28,26 @@ from tests.m1_tool_support import (
 CONTRACT_CHANGES = [
     {"parameters": {"expr": ParameterSpec("string", required=False)}},
     {"parameters": {"expr": ParameterSpec("number", required=True)}},
+    # C3 section 7 check 2: the model-visible face is part of the registration
+    # contract, so a parameter description edit alone (kind/required, and the
+    # rest of the parameter set, held fixed) must also invalidate an old
+    # scope, same as a schema edit. `step_seconds` is kept unchanged here —
+    # overriding `parameters` replaces the whole mapping, so dropping it would
+    # confound "description changed" with "a parameter was removed".
+    {
+        "parameters": {
+            "expr": ParameterSpec(
+                "string",
+                required=True,
+                description="A different rendering of the same query parameter.",
+            ),
+            "step_seconds": ParameterSpec(
+                "integer",
+                description="The resolution step, in seconds, between returned points.",
+            ),
+        }
+    },
+    {"description": description(cannot_prove="A different cannot_prove sentence.")},
     {"result_path": ("other", "result")},
     {"request_timeout_seconds": 20.0},
     {"max_result_bytes": 8192},
@@ -55,6 +77,7 @@ def test_old_scope_is_denied_before_transport_after_contract_change(change):
         evidence=sink,
         control=FixedControl(),
         clock=FakeClock(),
+        ledger=RecordingLedger(),
     )
 
     outcome = executor.execute(request())
