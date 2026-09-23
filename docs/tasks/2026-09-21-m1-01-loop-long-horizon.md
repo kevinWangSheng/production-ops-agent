@@ -1,14 +1,13 @@
 # M1-01 调查 loop 长程执行边界改造
 
-- 状态：**实现完成；独立审查 2 P1 / 4 P2、机器人第一轮 4 条 P1、第二轮 1 P1 / 2 P2、第三轮 2 P1 / 1 P2 全部采纳修复并复验；第四轮 3 P2 采纳、1 P1 拒绝（F5）；随后结构收敛 + 全新上下文独立审查（1 P1 / 2 P2 / 6 P3，P1–P2 与 3 条 P3 已修复）；机器人第五轮 3 P1 / 1 P2 采纳；按停机规则不再逐轮改码，待最新提交 CI；PR #29 待最新提交 CI 通过后即「PR 已就绪，待用户审核合并」**
-- 更新日期：2026-09-22
-- 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（`9f3506f`，`CLEAN`，待用户审核合并）
+- 状态：**已完成**——随 PR #29 合并入 `main`（merge `1415c02`，2026-09-23 用户合并，main CI 成功）；后续项见文末
+- 更新日期：2026-09-23
+- 前序：[Flash 调查 loop 任务记录](2026-09-16-m1-01-investigation-loop.md)、PR #29（已合并）
 - 依据：SPEC 有界开放 M1-01；PRODUCT-CONSTRAINTS；C3 §5/§7/§13；ADR-0002/0003/0004；
   v4 冻结包 B2 段；[上游对标调研](../research/upstream-agent-loop-benchmark-2026-09-21.md)；
   [设计草案（含独立审查与实施差异）](../design/investigation-loop-long-horizon-2026-09-21.md)
 - 用户决定（2026-09-21）：改造直接算在 #29 内（一个 PR，整体完成后合并；此前的 A 方案作废）；压缩「按参考的来」→ HolmesGPT 两段式（单结果 stub + LLM 摘要 compaction）
-- 工作区：worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-loop-long-horizon`，
-  实现在 `feature/m1-01-loop-long-horizon`（起点 #29 头 `9f3506f`）完成后快进到 `feature/m1-01-investigation-loop`；本任务专属 PG：`../production-ops-agent-loop-long-horizon/tmp/m1-lh/postgres`，端口 55432
+- 工作区（历史，worktree 与本地分支已于 2026-09-23 合并后清理）：实现在 `feature/m1-01-loop-long-horizon`（起点 #29 头 `9f3506f`）完成后快进到 `feature/m1-01-investigation-loop`；本任务专属 PG 数据目录随 worktree 一并删除
 
 ## 目标与范围
 
@@ -144,19 +143,21 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 
 **停机决定**：本 PR 改造部分已经过 5 轮机器人自动复审（4 → 3 → 3 → 4 → 4，未收敛）、1 次结构收敛、1 次全新上下文独立审查。按任务记录前文与项目经验规则，自此不再为机器人新一轮发现逐轮改码：新发现按类别核实后，属本 PR 新增代码的明确缺陷才修，其余以回复给出依据并登记后续；并向用户汇报由用户决定是否合并或继续。
 
-## 未完成 / 后续
+## 用户审核裁定（2026-09-23，合并前）
 
-- 审查 P3 后续项：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；`DEADLINE_EXCEEDED` 后无可落库终态；
-  runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；
-  `executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
-- PR #29 描述已重写；三轮机器人分诊已逐项处置；等待最新提交 CI；合并仍走用户门。main 分支保护开启 required conversation resolution，未 resolve 的 thread 会使 `mergeStateStatus=BLOCKED`。
-- 供应商余额差记账（2 次冒烟请求）。
-- 独立审查 P3 #4：无 `reasoning_content` 的工具计划应在派发前拒绝（在线与重建同判）。
-- 机器人第六轮 P2（拒绝）：`assistant_message` 先投影工具调用字段再复制，或把 `RecursionError` 映射为固定模型失败码，与 `client.complete()` 对超深响应体的处理对齐。
-- 机器人第七轮 P1（拒绝，工具执行器范围）：视图 `dispatch_started_at` 改用 `operation.authorized_at`，随 M1-01 tool executor 任务处理。
-- 机器人第八轮 P1（拒绝）：`DEADLINE_EXCEEDED` 的权威过期转换需 C3/ADR 决定由谁、以何栅栏执行（与既有 P3 后续同一项）；DNS 阶段可终止性（daemon 传输线程 / 解析超时 / 换 HTTP 栈）随客户端加固处理。
-- **待用户裁定**（机器人第九轮 P1）：跨 Run 携带证据是否需要携带模型可见的观测载荷，或为后继 Run 提供受限的证据读取工具；当前沿用冻结 v4 `view_bindings` 语义（只有 id/scope，无载荷）。
-- 机器人第十一轮（登记后续）：`execute_pending` 前校验待重放计划并转 `INCONSISTENT_STATE`；非瞬时 4xx 归 `MODEL_REJECTED`。
+见 [PR #29 裁定评论](https://github.com/kevinWangSheng/production-ops-agent/pull/29#issuecomment-5791866971)。#29 内不再改码，以下全部作为后续：
+
+1. **已知偏离 C3 §5「大结果保存为持久证据，通过 ID 和片段读取」**：单结果 stub 与压缩后模型无法回读完整 view，压缩指令又要求不重复查询。后续新增受限只读证据读取工具（本 Run + 已授权前序 Run，计入工具预算）并调整压缩指令；机器人第九轮「后继 Run 携带证据无观测载荷」并入此项。
+2. **LLM 摘要式压缩**：摘要请求出站含带 `reasoning_content` 的历史，摘要成为模型可见记忆（设计草案第 3 节表已记代价）；后续优化。
+3. **F5**：v4 `TimePolicy` required 字段在 intake 入口统一做 schema 校验，loop 投影层维持形状白名单。
+4. **`DEADLINE_EXCEEDED` 无可落库终态**（第八轮 P1 / 审查 P3）：写入者与栅栏在控制面 / 进度 UI 子任务中决定（C3/ADR 级）。
+5. **小缺陷修复 PR**（合并后单独一个）：待重放计划先校验再转 `INCONSISTENT_STATE`（第十一轮 P1）；派发前校验 `reasoning_content`（审查 P3 #4 / 第十一轮 P2）；非瞬时 4xx 归 `MODEL_REJECTED`（第十一轮 P2）。
+6. `dispatch_started_at` 改用 `operation.authorized_at` 随工具执行器任务；DNS 阶段可终止性随 DeepSeek 客户端加固。
+
+## 其余后续（未裁定）
+
+- 审查 P3：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；`executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
 - 独立审查 P3 #8：follow-up 取代未发布 completed conclusion 且无预算时的产品语义，随追问通道工作一起定。
-- **F5 待用户裁定**：v4 `TimePolicy` required 字段（`id/revision/integration_id/interfaces/mode/reference_rule`）的存在性检查放在 intake 边界还是 loop 投影层；当前产品代码没有运行时 v4 schema 校验器，冻结包只在 M0 脚本/测试里按 schema 校验。裁定后在对应边界统一实现，并同步 8 个使用最小 policy 形状的测试 fixture。
-- 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript 均不在本 PR。
+- 机器人第六轮 P2：`assistant_message` 先投影工具调用字段再复制，或把 `RecursionError` 映射为固定模型失败码。
+- 供应商余额差记账（2 次冒烟请求）。
+- 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript、产品组合层（`accept(input=)` 调用方、`ExecutorFactory` 构造）均不在本任务。

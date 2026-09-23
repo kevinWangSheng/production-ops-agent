@@ -1,7 +1,7 @@
 # M1-01 子任务「Flash 调查 loop」
 
-- 状态：`facb64d` 推送后机器人先后共追加 9 条新发现，已逐条先红后绿修复并提交（`7eea577`/`bab8941`/`8f9688c`/`0c648fe`/`bad4ab6`/`b89d10d`/`929ee54`/`4af8348`/`00cd6ce`），全部独立审查均确认「正确、最小」；`make check`/PG 定向全绿，已推送、CI 通过、32 条 review thread 全部回复处置并 resolve，`mergeStateStatus=CLEAN`；base 分支 PR #20 持续前进但未变 DIRTY/CONFLICTING，未执行合并；不手动触发 `@codex review`；等待用户审核合并（[PR #29](https://github.com/kevinWangSheng/production-ops-agent/pull/29)）
-- 更新日期：2026-09-19
+- 状态：**已完成**——PR #29 于 2026-09-23 由用户合并入 `main`（merge `1415c02`，main CI 成功）；2026-09-21 起的长程改造与后续项见 [长程改造任务记录](2026-09-21-m1-01-loop-long-horizon.md)。以下为历史过程
+- 更新日期：2026-09-23
 - PR：https://github.com/kevinWangSheng/production-ops-agent/pull/29
   （stacked，base = `feature/m1-01-tool-executor` / PR #20）
 - 依据：[M1-01 拆分](../evidence/m0-real-investigation/m0-exit-matrix.md)「Flash 调查 loop」；
