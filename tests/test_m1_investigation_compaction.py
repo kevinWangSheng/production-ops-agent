@@ -496,3 +496,59 @@ def test_a_follow_up_never_enters_the_folded_history_and_the_rebuild_still_match
     assert all(
         "investigation_inputs" not in str(m.get("content")) for m in transcript.messages
     )
+
+
+def test_a_large_follow_up_counts_toward_the_compaction_threshold():
+    """codex review (PR #31, thread PRRT_kwDOUSm_486lIfEu): the trailing
+    ``investigation_inputs`` message is part of the request, so it must count
+    toward the context estimate that decides whether to compact. History
+    alone is under the threshold here; history plus a large follow_up is
+    over it, so the loop must compact *before* round 2 goes out -- exactly
+    as it would for one more tool group of history."""
+    from opspilot.investigation.context import inputs_message
+
+    limits = _limits_between_rounds(2)
+    threshold = (
+        limits.context_tokens - limits.output_tokens
+    ) * ctx.CONTEXT_POLICY.compaction_pct
+    # Dry run under wide limits to measure the prefix (call 0) and the
+    # history with one complete tool group (call 1).
+    dry_loop, dry_request, dry_model, _, _, _ = assemble(
+        replies=[*_rounds(2)], budget_limit=16, model_requests=4
+    )
+    dry_loop.run(replace(dry_request, limits=RunLimits(model_requests=16)))
+    prefix, one_group = dry_model.calls[0].messages, dry_model.calls[1].messages
+    tools = tuple(TOOL_SCHEMAS)
+
+    def sized(chars):
+        return {"sequence": 1, "kind": "follow_up", "content": {"text": "x" * chars}}
+
+    chars = 64
+    while True:
+        trailing = inputs_message([sized(chars)])
+        under_at_round_1 = estimate_tokens(prefix, tools, extra=[trailing]) < threshold
+        over_at_round_2 = (
+            estimate_tokens(one_group, tools, extra=[trailing]) > threshold
+        )
+        if under_at_round_1 and over_at_round_2:
+            break
+        assert chars < 8192, "could not size the input between the two rounds"
+        chars += 64
+
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    store.append_input("follow_up", {"text": "x" * chars})
+    loop.model = model = ScriptedModel([*_rounds(1), _summary(), _cite_first(store)])
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    # Call 0: round 1 (inputs trailing). Call 1: the compaction, triggered by
+    # history + inputs although history alone is under the threshold.
+    # Call 2: round 2 on the compacted context, inputs trailing again.
+    assert model.calls[1].messages[-1]["content"] == COMPACTION_INSTRUCTION
+    assert "ctx0:compact-1" in store.steps
+    assert model.calls[0].messages[-1] == model.calls[2].messages[-1]
+    assert "investigation_inputs" in model.calls[2].messages[-1]["content"]
+    assert store.steps["ctx1:round-2"]["response"]["context"]["input_watermark"] == 1
+    assert outcome.conclusion["conclusion"]["compactions"] == 1
+    # The rows still rebuild byte-for-byte across the compaction.
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.next_round == 3

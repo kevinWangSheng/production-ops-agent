@@ -545,7 +545,28 @@ class InvestigationLoop:
         extra = (
             ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},) if final else ()
         )
-        self._manage_context(state, tools=tools, extra=extra)
+        # Freeze the human-input boundary for this round before anything is
+        # estimated or sent: the follow-up/correction/event rows up to the
+        # frozen watermark reach the model as one projected trailing message
+        # (``inputs_message``: allowlisted fields only). The watermark is
+        # recorded on the step row so the rebuild re-inserts the same
+        # message and reproduces the recorded hash.
+        logical_key, inputs = self._begin_round(state)
+        trailing = inputs_message(inputs)
+        # The inputs message is part of the request, so it counts toward the
+        # context estimate that decides whether to compact (codex review,
+        # PR #31): a large or long-accumulated set of inputs must trigger a
+        # compaction the same way one more tool group would, instead of
+        # slipping past the estimate and failing on the byte guard.
+        if self._manage_context(
+            state, tools=tools, extra=_with_trailing(trailing, extra)
+        ):
+            # The compaction moved the context to a new segment: this round's
+            # key changed, so freeze its boundary again under the new key
+            # (the old key's uncommitted row is history, as after a
+            # ``_RoundAborted``). Newer inputs, if any, are sent as they are.
+            logical_key, inputs = self._begin_round(state)
+            trailing = inputs_message(inputs)
         if not final and request.model_requests - state.used <= 1:
             # The compaction took a slot: what is left is the reserved
             # final-report request, so this round becomes it.
@@ -553,23 +574,8 @@ class InvestigationLoop:
             tools = None
             extra = ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},)
         timeout = self._remaining_timeout(state)
-        logical_key = step_key(state.segment, state.next_round)
-        # Freeze the human-input boundary for this round before the request
-        # goes out: the follow-up/correction/event rows up to the frozen
-        # watermark reach the model as one projected trailing message
-        # (``inputs_message``: allowlisted fields only). The watermark is
-        # recorded on the step row so the rebuild re-inserts the same
-        # message and reproduces the recorded hash.
-        try:
-            logical_key, inputs = self.store.begin_round(logical_key)
-        except StepStoreError as exc:
-            raise _halt_from_store(exc) from exc
         watermark = input_watermark(inputs)
-        trailing = inputs_message(inputs)
-        outbound = [*state.messages]
-        if trailing is not None:
-            outbound.append(trailing)
-        outbound.extend(extra)
+        outbound = [*state.messages, *_with_trailing(trailing, extra)]
         call = ModelCall(
             messages=tuple(outbound),
             tools=tools,
@@ -719,8 +725,13 @@ class InvestigationLoop:
         *,
         tools: tuple[Mapping[str, Any], ...] | None,
         extra: Sequence[Mapping[str, Any]],
-    ) -> None:
+    ) -> bool:
         """Compact the history before a call that would not fit the budget.
+
+        ``extra`` is every message the round appends after the transcript
+        (the inputs message and the round's instruction), so the estimate is
+        of the request as sent. Returns whether a compaction happened, which
+        moves the context to a new segment.
 
         Threshold and insufficiency rule follow Holmes: compact when
         ``estimate + output allowance > budget * pct``; if the compacted
@@ -735,7 +746,7 @@ class InvestigationLoop:
             estimate_tokens(state.messages, tools, extra=extra) * state.calibration
         )
         if projected <= budget * CONTEXT_POLICY.compaction_pct:
-            return
+            return False
         if state.request.model_requests - state.used < 2:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
         self._compact(state)
@@ -744,6 +755,14 @@ class InvestigationLoop:
         )
         if projected > budget:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+        return True
+
+    def _begin_round(self, state: _State) -> tuple[str, list[dict[str, Any]]]:
+        """Freeze this round's input boundary under its current step key."""
+        try:
+            return self.store.begin_round(step_key(state.segment, state.next_round))
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
 
     def _compact(self, state: _State) -> None:
         request = state.request
@@ -1138,6 +1157,14 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
     if mapped is None:
         return _LoopHalt("failed", (exc.code,))
     return _LoopHalt(mapped[0], (mapped[1],))
+
+
+def _with_trailing(
+    trailing: Mapping[str, Any] | None, extra: Sequence[Mapping[str, Any]]
+) -> tuple[Mapping[str, Any], ...]:
+    """The messages appended after the transcript, in send order: the inputs
+    message (when the round saw any input), then the round's instruction."""
+    return (*(() if trailing is None else (trailing,)), *extra)
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:
