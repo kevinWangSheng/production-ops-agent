@@ -35,6 +35,7 @@ from opspilot.investigation.loop import (
     ModelClient,
     tool_request_for,
 )
+from opspilot.investigation.messages import PairingError, validate_tool_calls
 from opspilot.investigation.store import DurableStepStore, StepStoreError
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
@@ -185,6 +186,25 @@ class InvestigationRunner:
             )
         # Breakpoint 2: finish the committed plan first (only still-pending
         # ordinals are dispatched; the session re-checks the fence per item).
+        # ``DurableStore.rebuild()`` only checks that a committed tool plan is
+        # a list of dicts (INCONSISTENT_STATE otherwise); it accepts a call
+        # shaped like ``{}``, which reaches this replay before
+        # ``rebuild_transcript()`` gets a chance to run the same
+        # ``validate_tool_calls()`` the live loop uses. Unvalidated, that call
+        # would reach ``tool_request_for()`` and crash on a bare ``KeyError``
+        # instead of a durable handoff (bot review finding). Validate every
+        # pending call's shape first, one at a time so calls recovered from
+        # different steps are never compared against each other's ids.
+        # ``recovery.rebuild_plan`` freezes every nested dict into a
+        # ``MappingProxyType``, which ``validate_tool_calls`` -- built for a
+        # freshly parsed provider message -- rejects with its literal
+        # ``isinstance(call, dict)`` check even when the call is well formed;
+        # unfreeze the one level it inspects that way before validating.
+        for item in session.plan.pending_tools:
+            try:
+                validate_tool_calls({"tool_calls": [dict(item["tool_call"])]})
+            except PairingError as exc:
+                raise ContextError("INCONSISTENT_STATE") from exc
         replayed = session.execute_pending(execute)
         current = self.store.rebuild(incident_id)
         transcript = rebuild_transcript(
