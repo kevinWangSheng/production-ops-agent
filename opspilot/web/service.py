@@ -159,11 +159,15 @@ class _EmittingCommitter:
         """The loop's pre-dispatch renewal (PR #29 / #35 on main).
 
         The base committer is built without ``renew_seconds`` so the lease is
-        renewed here, once, under this wrapper's rules: a refusal is recorded
-        and the call still goes through, so the store's fence is what stops
-        the attempt and the late result is kept as history.
+        renewed here. Unlike the commit paths below, a refusal must surface:
+        the loop calls this right before reading production again and relies
+        on ``StepStoreError`` to halt first (``StepCommitter.renew``), or a
+        fenced attempt performs one duplicate read whose result is then only
+        recorded as history (independent review of PR #33, P3-1).
         """
         self._renew()
+        if self.renewal_refused:
+            raise StepStoreError("CONTROL_DENIED")
 
     def _renew(self) -> None:
         """Extend the lease before touching the store (C3 section 6).

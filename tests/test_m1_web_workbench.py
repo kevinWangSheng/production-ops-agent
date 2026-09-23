@@ -1027,6 +1027,51 @@ def test_renewal_before_each_commit_keeps_a_long_attempt_alive(monkeypatch):
     assert outcome2.handoff_reasons == ("CONTROL_DENIED",)
 
 
+def test_a_refused_renewal_before_a_tool_dispatch_stops_the_tool_from_running(
+    monkeypatch,
+):
+    """Independent review of PR #33 (P3-1): ``StepCommitter.renew()`` must raise.
+
+    The loop renews before each tool dispatch so a fenced attempt halts
+    *before* reading production again. A wrapper that swallows the refusal
+    lets one duplicate read happen and only then records it as history.
+    """
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="refused-pre-dispatch")
+    subject = workbench.list_incidents()[0].incident_id
+    original = MemoryIncidentStore.renew_lease
+    paused: list = []
+
+    def pause_before_dispatch(self, lease, seconds):
+        run = self.runs[lease.run_id]
+        # The step carrying the tool plan is committed and no tool has run:
+        # this is the loop's pre-dispatch renewal.
+        if not paused and run["steps"] and not run["steps"][-1]["tool_results"]:
+            paused.append(True)
+            workbench.control(
+                subject,
+                actor_id="alice",
+                action="pause",
+                expected_generation=0,
+                idempotency_key="pre-dispatch",
+            )
+        return original(self, lease, seconds)
+
+    monkeypatch.setattr(MemoryIncidentStore, "renew_lease", pause_before_dispatch)
+    outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert paused and outcome is not None
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    # No read happened after the refusal: nothing was registered as evidence
+    # and no late tool result exists; only the planned step is on record.
+    assert outcome.evidence_ids == ()
+    assert not workbench.evidence._records
+    snapshot = workbench.snapshot(subject)
+    assert [s["status"] for s in snapshot["steps"]] == ["response_committed"]
+    assert snapshot["incident"].state == "paused"
+    assert workbench.events.read_after(subject, 0)[-1].kind == "run_handoff"
+
+
 def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
     app, workbench, clock = build_workbench()
     submit_incident(app, key="refused")
