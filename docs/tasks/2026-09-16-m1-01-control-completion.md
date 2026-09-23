@@ -348,3 +348,43 @@
 - 已知局限：`_manage_context()` 的上下文预算估算不含随后追加的 `investigation_inputs` 消息（与合并前一致）。
 - 验证：`make check`：**1833 passed, 177 skipped, 2 xfailed**，ruff check/format、mypy 通过。PostgreSQL 集成套件
   （DSN 固定 55431，属另一 worktree）本地未运行，由 push 后 CI `m0-postgres` 覆盖。
+
+## 独立审查处置（2026-09-23，PR #31 retarget main 后）
+
+先合并 `origin/main`（`6649a69`，仅新增 M1-01 集成验证证据文件，无冲突）。未 rebase、未 force-push、未改 PR/机器人/合并状态；未移动任何 `prompt_revision`/`context_policy_revision`/tool 版本值（`context_policy_revision` 只哈希 compaction 策略与指令文本，本次未触及）。
+
+- **P1（必须修复）收到过 follow_up/correct/event 输入的 Run 无法恢复** — 提交 `e61216b`。
+  - 根因：`_round()` 把 `investigation_inputs` 投影消息追加进出站请求，步骤行的 `input_snapshot_hash` 因此包含它；
+    `rebuild_transcript()` 只从 `initial_messages` + 步骤行重建，`_check_snapshot_hash()` 失配 → `INCOMPATIBLE_STATE`，
+    runner 把 Run 置为 blocked。
+  - 修复：投影（字段白名单、单字段上限）与消息形状迁入 `opspilot/investigation/context.py`
+    （`project_input_content`/`inputs_message`/`input_watermark`），loop 与 rebuild 共用一个函数；步骤行 `context`
+    新增 `input_watermark`（`begin_round()` 返回的边界）；`rebuild_transcript()` 读取快照 `inputs`，在校验哈希前把
+    ≤ 水位的输入按同一位置（transcript 之后、最终报告指令之前）重新插入；快照缺少对应输入时仍 fail closed。
+    `MemoryStepStore` 新增 `append_input()`、`snapshot()` 输出 `inputs`。
+  - 红→绿：`tests/test_m1_investigation_context.py::test_a_run_that_received_a_follow_up_between_rounds_rebuilds_and_resumes`、
+    `::test_a_run_with_a_follow_up_present_from_the_start_rebuilds_its_first_round`、
+    `tests/test_m1_investigation_compaction.py::test_a_follow_up_never_enters_the_folded_history_and_the_rebuild_still_matches`
+    在仅去掉 rebuild 的 `inputs=inputs` 传递时均 `ContextError: INCOMPATIBLE_STATE`（临时文件替换后复原，非 checkout/stash），
+    修复后绿。compaction 一致性：inputs 消息不进 `state.messages`、不被折叠、compaction 请求不携带（同一测试断言）。
+  - PG：`tests/integration/test_m1_loop_resume_postgres.py::test_a_follow_up_between_rounds_then_a_restart_resumes_and_publishes`
+    （follow_up 在第 1 轮请求在途时落地并栅栏该尝试；第 2 次尝试重新冻结同键边界并发送输入后崩溃；第 3 次尝试按行重建
+    并发布；共 4 次物理请求）。**本地未运行**（55431 属另一 worktree），由 CI `m0-postgres` 执行。
+- **P2 begin_round/水位回写/重新冻结无 PG 测试** — 提交 `5e0dbf0`，
+  `tests/integration/test_m1_control_completion_postgres.py` 新增 (a) 冻结→重试同边界→commit 后 `run.input_watermark`
+  推进且 `input_rounds.committed`；(b) G 代冻结未提交 + follow_up(G+1) + 重新 claim 后同键返回含 follow_up 的新水位；
+  (c) 另一代已提交的键 `CONTROL_DENIED`、下一键正常冻结。本地未运行，CI 执行。
+- **P2 loop 层 `assert_current()` 拒绝点无测试** — 提交 `a3b9b04`，`tests/test_m1_investigation_loop.py` 新增
+  `test_control_denied_after_the_reservation_stops_the_model_request_before_it_leaves`、
+  `test_control_denied_after_the_lease_renewal_stops_the_tool_dispatch`。红→绿：临时把两处 `self.store.assert_current()`
+  换成 `pass` 时，模型请求发出（`model.calls != []`）、工具被派发（`transport.called is True`）；恢复后绿。
+- **P3（修复）paused 事故的重复 pause 因带 payload 被放行** — 提交 `2a92c89`，`opspilot/persistence.py::control()` 守卫改为
+  `action == "pause" or payload is None`；新增 PG 测试
+  `test_a_redundant_pause_with_a_payload_is_still_refused_on_a_paused_incident`（含带 payload 的 follow_up 仍被记录且保持暂停）。
+  本地未运行，CI 执行。
+- **P3（不改，登记为待产品决策的开放项）**：
+  1. 输入每轮以尾随消息累计重发（`begin_round()` 水位累积，`sequence <= watermark` 全量选取）；
+  2. `INPUT_CONTENT_FIELD_MAX_CHARS = 8192` 与字段白名单 `{text, channel, question}` 为本地自选，未走冻结上限审批；
+  3. `_manage_context()` 的上下文预算估算不含随后追加的 inputs 消息。
+
+验证：`make check`：**1839 passed, 182 skipped, 2 xfailed**，ruff check/format、mypy 通过。
