@@ -35,15 +35,15 @@ Docker 不可用不影响默认基础检查；等对应实验获得准备授权�
 
 ## GitHub CI
 
-PR 到 main、push main 或手动触发 `.github/workflows/ci.yml`；Ubuntu 24.04、uv 0.10.8 与 Python 3.12.13，执行相同 make setup/check。CI 无业务 Secrets、dataset eval 或部署。setup 尊重 UV_PYTHON，避免安装与后续锁检查选择不同解释器。
+任何 PR、push main 或手动触发 `.github/workflows/ci.yml`；Ubuntu 24.04、uv 0.10.8 与 Python 3.12.13，执行相同 make setup/check。CI 无业务 Secrets、dataset eval 或部署。setup 尊重 UV_PYTHON，避免安装与后续锁检查选择不同解释器。
 
-PR须通过最新checks、等待已触发的review返回并处置发现，再按用户授权合并；平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
+PR 须通过最新 checks，按 AGENTS.md「PR 与合并」的就绪顺序处置审查，再按预授权类自动合并或交用户合并；平台保护与审查机器人接入状态见[交付与资源规划](plans/delivery-and-resources-2026-09-08.md)。
 
 ## 项目 LangChain 文档 MCP
 
 从有本批变更的任务分支执行 `.venv/bin/python scripts/setup_docs_mcp.py`；默认配置当前目录，可用 `--project /绝对/项目目录` 安装到本仓库另一 worktree。脚本只修改三个项目文件：`.codex/config.toml`、`.mcp.json`、`.claude/settings.local.json`，无用户级服务器注册、模型调用、业务 key 或全量工具自动授权。未知同名配置冲突时拒绝覆盖，保留其他服务器和设置；可重复执行。
 
-版本管理保存安装脚本，生成配置被忽略。原因是本仓库保留 `.Codex/` 旧资料，而 Codex 运行入口为小写 `.codex/`：macOS 大小写不敏感时两者落入同一目录，Linux 则不同；安装时按宿主正确路径生成，避免 Git 同时保存仅目录大小写不同的树。Claude 同步生成本项目 `.mcp.json` 和两个具名服务器的本地启用设置；不修改共享 AGENTS 规则或复制 skills。
+版本管理保存安装脚本，生成配置被忽略。原因是 Codex 运行入口为小写 `.codex/`，而仓库历史上曾保留大写 `.Codex/`（2026-09-21 已删除）：macOS 大小写不敏感时两者落入同一目录，Linux 则不同；安装时按宿主正确路径生成，避免 Git 同时保存仅目录大小写不同的树。Claude 同步生成本项目 `.mcp.json` 和两个具名服务器的本地启用设置；不修改共享 AGENTS 规则或复制 skills。
 
 Codex 仅启用文档搜索/虚拟文档读取、API 搜索/符号读取四项工具；不设 required，断连时回退官方网页及源码。Claude 明确 deny 已知 `submit_feedback`，其余工具仍受宿主权限机制；不是对未来未知工具的完整白名单保证。文档服务不需要 DeepSeek/LangSmith key，不读取 `.env`；虚拟文档文件系统在远端官方资料内，不是本机文件访问。
 
@@ -69,7 +69,7 @@ make check
 
 `check-config` 是纯本地校验，显式绝对路径或 `--process-env` 二选一；无默认 dotenv 发现。文件必须为当前用户持有、普通文件且无 group/other 权限，拒绝最终符号链接、重复/未知键与 shell 插值，不执行配置。只输出固定错误码或布尔状态；文件与同名环境变量不一致即拒绝，不回显键值。日期要求带时区且在未来。有效性/区域归属/多 workspace 权限仍需后续实际验证，字段存在不算通过。
 
-本节不带批准文件的命令：offline成功退出0、异常退出1；check-config退出2表示仅核查配置而未批准执行；live缺少批准文件时退出3（LIVE_NOT_ENABLED）。当前live并非无条件禁用：完整配置和独立有效批准合同满足条件时可执行，见下方“受批准合同约束的真实入口”。预算数字本身不能打开入口。
+本节不带批准文件的命令：offline成功退出0、异常退出1；check-config退出2表示仅核查配置而未批准执行；live缺少批准文件时退出3（LIVE_NOT_ENABLED）。当前live并非无条件禁用：完整配置和独立有效批准合同满足条件时可执行，见下方“受批准合同约束的真实入口”。预算数字本身不能打开入口。2026-09-21 起真实调用为常设授权：批准文件由执行 Agent 按 SPEC「Operating constraints」自行填写，不再等待用户逐次批准。
 
 仅offline/check-config不启动服务或数据库，CLI客户端随上下文关闭；本地真实实验的专属PostgreSQL由其所属worktree显式启停。stdout 可保存到任务专用 `tmp/m0-01/`；审核后无秘密证据写入 `docs/evidence/m0-01/`。清理遵循 AGENTS，不自动删除证据或其他任务卷。真实实验的用例合同、版本来源、资源限制和缺项见 [M0-01](tasks/2026-09-08-m0-01-preflight.md)。
 
@@ -89,7 +89,7 @@ CI 的checks增加同一扫描与自检；m0-postgres使用官方17.9固定diges
 
 2026-09-09原Pro单次实验已获批并执行，原退出1/trace unknown及后续只读确认均保留在[执行记录](evidence/m0-01-live/execution.md)。默认已改Flash；此变更不是新的付费执行授权，原已使用v1批准文件不迁移。以下描述当前v2入口使用条件。
 
-[具体方案](evidence/m0-01-live/plan.md)和[当前任务](tasks/2026-09-08-m0-01-preflight.md)是范围及授权依据。`live` 默认仍退出3；只有显式 `--env-file /absolute/private.env --approval-file /absolute/private-approval.json` 才进入批准合同校验。缺字段、未批准、错误hash/身份、非正预算、过期均在外部请求前拒绝。批准文件是工程操作者根据真实人工授权填写的0600本地记录，不是授予模型的权限，不承诺抵御可修改本机代码/数据库的恶意操作者。
+[具体方案](evidence/m0-01-live/plan.md)和[当前任务](tasks/2026-09-08-m0-01-preflight.md)是范围及授权依据。`live` 默认仍退出3；只有显式 `--env-file /absolute/private.env --approval-file /absolute/private-approval.json` 才进入批准合同校验。缺字段、未批准、错误hash/身份、非正预算、过期均在外部请求前拒绝。批准文件是执行 Agent 在常设授权下填写的0600本地技术记录（2026-09-21 起不再逐次请求用户批准），不是授予模型的权限，不承诺抵御可修改本机代码/数据库的恶意操作者。
 
 助手在获批后完成私有记录，不要求用户手写JSON。记录字段以 `live.validate` 为准；审批引用与experiment/run UUID不可重复，绑定代码/lock/fixture digest、两key的SHA256、区域/现有workspace/project UUID、2.00元及绝对deadline。`approved` 和 `billing_checked` 仅在对应依据齐全后填写true；不能将草案预算当授权。修改源码后重新核对digest与审查范围。
 

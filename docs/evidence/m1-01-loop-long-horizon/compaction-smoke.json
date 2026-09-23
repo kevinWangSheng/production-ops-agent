@@ -1,0 +1,76 @@
+{
+  "experiment": "m1-01-loop-long-horizon-compaction-smoke",
+  "started": "2026-09-21T23:18:46.310775+00:00",
+  "compaction_instruction_sha256": "c60cf45c86662ade2c5ce767e8f7adcb43d1b9e6070b6e635c0f9e2ad743184a",
+  "requests": [
+    {
+      "name": "compacted+tools",
+      "request_sha256": "bd10e4bdd61c32bf01a5c339005b51d4b1b8fe5f9979189e4ce8d78ce9b50eb7",
+      "request_bytes": 5143,
+      "messages": [
+        "system",
+        "user",
+        "user"
+      ],
+      "tools_attached": true,
+      "http": "200",
+      "response_model": "deepseek-flash",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 1312,
+        "completion_tokens": 645,
+        "total_tokens": 1957,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 599
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1312
+      },
+      "tool_call_count": 1,
+      "content_chars": 0,
+      "reasoning_chars": 2457,
+      "estimated_prompt_tokens": 1245,
+      "calibration_after": 1.0538
+    },
+    {
+      "name": "compacted+retained-turn+tools",
+      "request_sha256": "074c062d0d720e3e50ed286341b3d240140cf0886c702af3b3f3219b4a8a55c3",
+      "request_bytes": 8431,
+      "messages": [
+        "system",
+        "user",
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "tools_attached": true,
+      "http": "200",
+      "response_model": "deepseek-flash",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 2110,
+        "completion_tokens": 1502,
+        "total_tokens": 3612,
+        "prompt_tokens_details": {
+          "cached_tokens": 1920
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 289
+        },
+        "prompt_cache_hit_tokens": 1920,
+        "prompt_cache_miss_tokens": 190
+      },
+      "tool_call_count": 0,
+      "content_chars": 4620,
+      "reasoning_chars": 1331
+    }
+  ],
+  "ended": "2026-09-21T23:18:56.796240+00:00",
+  "prompt_tokens": 3422,
+  "completion_tokens": 2147,
+  "known_cost_cny_upper": 0.026301,
+  "note": "Both requests returned HTTP 200 from deepseek-flash with tools attached and thinking enabled: request 1 sent the compacted transcript (prefix + compaction user message), request 2 added a retained assistant turn carrying its real reasoning_content plus its tool result. Synthetic question and view; no business data; prompt/response text not retained."
+}
