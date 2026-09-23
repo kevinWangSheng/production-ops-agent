@@ -739,3 +739,103 @@ def test_a_conclusion_after_a_follow_up_gets_its_own_key_and_can_be_published():
         outcome.final_step_id,
         outcome.conclusion,
     )
+
+
+# --- human inputs (follow_up / correct / event) and the rebuild ---------------
+
+
+def test_a_run_that_received_a_follow_up_between_rounds_rebuilds_and_resumes():
+    """Independent review (PR #31, P1): the projected ``investigation_inputs``
+    message is part of what a round sends, so the recorded
+    ``input_snapshot_hash`` covers it; the rebuild must re-insert the same
+    message at the same position from the persisted inputs and the frozen
+    watermark, or every Run that ever received an input blocks on resume."""
+    from opspilot.investigation.context import messages_hash
+
+    loop, request, model, _, store, _ = _wide(replies=[])
+
+    def tool_round_then_follow_up(call):
+        # A human follow-up lands after round 1 went out and before round 2.
+        store.append_input("follow_up", {"question": "check payments too"})
+        return _tool_rounds(1)[0]
+
+    loop.model = model = ScriptedModel(
+        [tool_round_then_follow_up, *_tool_rounds(1, start=2), Crash("in flight")]
+    )
+    with pytest.raises(Crash):
+        loop.run(request)
+    assert list(store.steps) == ["ctx0:round-1", "ctx0:round-2"]
+    first = store.steps["ctx0:round-1"]["response"]["context"]
+    second = store.steps["ctx0:round-2"]["response"]["context"]
+    assert first["input_watermark"] == 0 and second["input_watermark"] == 1
+    # Round 1 saw no input; round 2 saw the follow-up as its trailing message.
+    assert all(
+        "investigation_inputs" not in m["content"] for m in model.calls[0].messages
+    )
+    trailing = model.calls[1].messages[-1]
+    assert trailing["role"] == "user" and "investigation_inputs" in trailing["content"]
+    assert '"question":"check payments too"' in trailing["content"]
+    assert second["input_snapshot_hash"] == messages_hash(model.calls[1].messages)
+
+    transcript = _transcript(store, request)  # used to raise INCOMPATIBLE_STATE
+    # The inputs are a per-round trailing message, never durable transcript.
+    assert all(
+        "investigation_inputs" not in str(m.get("content")) for m in transcript.messages
+    )
+    assert transcript.next_round == 3
+    third, model3 = _restart(loop, store, [report_from_transcript])
+    outcome = third.resume(transcript)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    # The resumed round sends the same follow-up again, in the same position.
+    assert model3.calls[0].messages[-1] == trailing
+
+
+def test_a_run_with_a_follow_up_present_from_the_start_rebuilds_its_first_round():
+    """Same finding, the reviewer's reproduction: one follow_up row present
+    before round 1 -- ``rebuild_transcript(store.snapshot())`` must reproduce
+    round 1's recorded hash instead of failing closed."""
+    loop, request, model, _, store, _ = _wide(
+        replies=[*_tool_rounds(1), Crash("in flight")]
+    )
+    seeded = MemoryStepStore(
+        budget_limit=12,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+        inputs=[{"sequence": 1, "kind": "follow_up", "content": {"text": "hi"}}],
+    )
+    loop.store = seeded
+    with pytest.raises(Crash):
+        loop.run(request)
+    assert seeded.steps["ctx0:round-1"]["response"]["context"]["input_watermark"] == 1
+    transcript = _transcript(seeded, request)
+    assert transcript.next_round == 2 and transcript.messages[-1]["role"] == "tool"
+    second, model2 = _restart(loop, seeded, [report_from_transcript])
+    assert second.resume(transcript).execution == "completed"
+    assert model2.calls[0].messages[-1] == model.calls[0].messages[-1]
+
+
+def test_a_follow_up_row_missing_from_the_snapshot_fails_the_rebuild_closed():
+    """The recorded hash names an input the snapshot no longer carries: the
+    bytes cannot be reproduced, so the rebuild refuses (C3 §5), it does not
+    guess."""
+    loop, request, _, _, store, _ = _wide(replies=[*_tool_rounds(1), Crash("x")])
+    seeded = MemoryStepStore(
+        budget_limit=12,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=request.run_id,
+        inputs=[{"sequence": 1, "kind": "follow_up", "content": {"text": "hi"}}],
+    )
+    loop.store = seeded
+    with pytest.raises(Crash):
+        loop.run(request)
+    snapshot = seeded.snapshot()
+    snapshot["inputs"] = []
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        rebuild_transcript(
+            snapshot,
+            run_id=request.run_id,
+            authorized_targets=request.scope.target_ids,
+            input=request.as_input(),
+        )

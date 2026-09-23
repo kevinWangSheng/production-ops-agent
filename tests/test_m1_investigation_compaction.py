@@ -470,3 +470,29 @@ def test_the_digest_lists_only_adopted_evidence_ids():
     digest = fold_digest(messages)
     assert digest["evidence_ids"] == ["ev-1"]
     assert len(digest["views"]) == 2 and len(digest["tool_calls"]) == 2
+
+
+def test_a_follow_up_never_enters_the_folded_history_and_the_rebuild_still_matches():
+    """Independent review (PR #31, P1): the ``investigation_inputs`` message
+    is a per-round trailing message, not history. Compaction must fold only
+    the committed rounds (never the inputs message), the compaction request
+    itself must not carry it, and a rebuild after a compaction must still
+    reproduce every recorded hash."""
+    loop, request, model, _, store = _compacting_run()
+    store.append_input("follow_up", {"question": "and the payments pod?"})
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    compaction = model.calls[2]
+    assert compaction.messages[-1]["content"] == COMPACTION_INSTRUCTION
+    assert all(
+        "investigation_inputs" not in str(m.get("content")) for m in compaction.messages
+    )
+    for index in (0, 1, 3):  # the three model rounds each end with the inputs
+        assert "investigation_inputs" in model.calls[index].messages[-1]["content"]
+    digest = store.steps["ctx0:compact-1"]["response"]["compaction"]["digest"]
+    assert "investigation_inputs" not in str(digest)
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.compactions == 1
+    assert all(
+        "investigation_inputs" not in str(m.get("content")) for m in transcript.messages
+    )

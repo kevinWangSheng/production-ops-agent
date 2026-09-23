@@ -149,6 +149,16 @@ class MemoryStepStore:
         self._guard()
         return logical_key, list(self._inputs)
 
+    def append_input(self, kind: str, content: Mapping[str, Any]) -> int:
+        """Receive one human input (``DurableStore.append_input``/``control``
+        analog): the next round's ``begin_round()`` sees it, earlier rounds'
+        rows do not."""
+        sequence = max((int(row["sequence"]) for row in self._inputs), default=0) + 1
+        self._inputs.append(
+            {"sequence": sequence, "kind": kind, "content": dict(content)}
+        )
+        return sequence
+
     def assert_current(self) -> None:
         self._guard()
 
@@ -303,6 +313,7 @@ class MemoryStepStore:
             "steps": steps,
             "pending_tools": [],
             "conclusion": None if self.conclusion is None else dict(self.conclusion),
+            "inputs": [dict(row) for row in self._inputs],
         }
 
 

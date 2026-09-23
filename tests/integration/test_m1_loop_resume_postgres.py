@@ -608,3 +608,69 @@ def test_a_run_replaced_between_rebuild_and_claim_runs_with_its_own_input():
     rows = h.rows()
     assert str(rows["run"]["run_id"]) == str(replacement)
     assert all(str(s["run_id"]) == str(replacement) for s in rows["steps"])
+
+
+def test_a_follow_up_between_rounds_then_a_restart_resumes_and_publishes():
+    """Independent review (PR #31, P1) on real rows: a human follow_up lands
+    after round 1 committed (it fences the running attempt), the next attempt
+    sends it as the round's trailing message and dies, and the attempt after
+    that must rebuild the exact bytes round 2 sent -- inputs included -- and
+    finish. Also exercises the stale-boundary re-freeze: attempt 1 had already
+    frozen ``ctx0:round-1`` under the old generation with no input. Four
+    physical requests in total, the frozen ceiling."""
+    h = Harness()
+
+    def follow_up_then_die(call):
+        # Round 1's request is in flight (its boundary is frozen at watermark
+        # 0 under generation 0); the operator asks a follow-up question.
+        assert (
+            h.store.control(
+                h.incident, 0, "follow_up", "operator", {"question": "and payments?"}
+            )
+            == 1
+        )
+        raise Crash("in flight while the follow-up landed")
+
+    with pytest.raises(Crash):
+        h.runner([follow_up_then_die]).resume(h.incident)
+    assert h.live_keys() == []
+    rows = h.rows()
+    assert [x["sequence"] for x in rows["pending_inputs"]] == [1]
+    assert [
+        (x["logical_key"], x["control_generation"], x["input_watermark"])
+        for x in rows["input_rounds"]
+    ] == [("ctx0:round-1", 0, 0)]
+    # The follow_up released the lease (owner cleared): no wait needed.
+    sent: list = []
+
+    def record_then_tool_round(call):
+        sent.append(list(call.messages))
+        return _tool_rounds(1)[0]
+
+    with pytest.raises(Crash):
+        h.runner([record_then_tool_round, Crash("again")]).resume(h.incident)
+    assert h.live_keys() == ["ctx0:round-1"]
+    trailing = sent[0][-1]
+    assert trailing["role"] == "user"
+    assert '"question":"and payments?"' in trailing["content"]
+    rows = h.rows()
+    round_one = next(s for s in rows["steps"] if s["logical_key"] == "ctx0:round-1")
+    assert round_one["control_generation"] == 1
+    assert round_one["response"]["context"]["input_watermark"] == 1
+    assert rows["run"]["input_watermark"] == 1 and rows["pending_inputs"] == []
+    assert [
+        (
+            x["logical_key"],
+            x["control_generation"],
+            x["input_watermark"],
+            x["committed"],
+        )
+        for x in rows["input_rounds"]
+    ] == [("ctx0:round-1", 1, 1, True), ("ctx0:round-2", 1, 1, False)]
+    h.wait_lease()
+    outcome = h.runner([report_from_transcript]).resume(h.incident)
+    assert outcome.status == "published", outcome
+    assert outcome.loop.execution == "completed"
+    assert h.rows()["run"]["state"] == "completed"
+    assert len(outcome.loop.evidence_ids) == 1
+    assert h.transport_requests == 1  # round 1's query ran once, never replayed

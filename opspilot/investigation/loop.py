@@ -33,6 +33,8 @@ from opspilot.investigation.context import (
     estimate_tokens,
     fold_digest,
     initial_messages,
+    input_watermark,
+    inputs_message,
     messages_hash,
     step_key,
     visible_view,
@@ -554,31 +556,19 @@ class InvestigationLoop:
         logical_key = step_key(state.segment, state.next_round)
         # Freeze the human-input boundary for this round before the request
         # goes out: the follow-up/correction/event rows up to the frozen
-        # watermark reach the model as one projected message (allowlisted
-        # fields only, see ``_project_input_content``).
+        # watermark reach the model as one projected trailing message
+        # (``inputs_message``: allowlisted fields only). The watermark is
+        # recorded on the step row so the rebuild re-inserts the same
+        # message and reproduces the recorded hash.
         try:
             logical_key, inputs = self.store.begin_round(logical_key)
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
+        watermark = input_watermark(inputs)
+        trailing = inputs_message(inputs)
         outbound = [*state.messages]
-        if inputs:
-            outbound.append(
-                {
-                    "role": "user",
-                    "content": canonical(
-                        {
-                            "investigation_inputs": [
-                                {
-                                    "sequence": i["sequence"],
-                                    "kind": i["kind"],
-                                    "content": _project_input_content(i["content"]),
-                                }
-                                for i in inputs
-                            ]
-                        }
-                    ),
-                }
-            )
+        if trailing is not None:
+            outbound.append(trailing)
         outbound.extend(extra)
         call = ModelCall(
             messages=tuple(outbound),
@@ -646,6 +636,7 @@ class InvestigationLoop:
             dispatched,
             final=final,
             rejected_plan=rejected_plan,
+            input_watermark=watermark,
         )
         state.folded_since.append(step_id)
         state.next_round += 1
@@ -887,6 +878,7 @@ class InvestigationLoop:
         *,
         final: bool,
         rejected_plan: Mapping[str, Any] | None = None,
+        input_watermark: int = 0,
     ) -> UUID:
         response_id = reply.raw.get("id")
         estimated = estimate_tokens(dispatched.messages, dispatched.tools)
@@ -912,6 +904,9 @@ class InvestigationLoop:
                 "round": state.next_round,
                 "input_snapshot_hash": messages_hash(dispatched.messages),
                 "final": final,
+                # The frozen human-input boundary this round saw; the rebuild
+                # re-inserts the inputs up to it before checking the hash.
+                "input_watermark": input_watermark,
                 "estimated_prompt_tokens": estimated,
                 "calibration": state.calibration,
             },
@@ -1143,56 +1138,6 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
     if mapped is None:
         return _LoopHalt("failed", (exc.code,))
     return _LoopHalt(mapped[0], (mapped[1],))
-
-
-# Field allowlist for ``opspilot_inputs.content`` (human follow-up/correction
-# text and intake events) before it reaches the model prompt in ``_round``.
-# ``opspilot_inputs.content`` has no reviewed schema -- it is whatever a
-# caller (e.g. the web control layer) passed to ``DurableStore.control``/
-# ``append_input`` -- so a key-name blocklist only catches names someone
-# thought of in advance and never protects a nested value or an unlisted
-# credential-shaped key (redline P3-4/P3-5 analog for the input channel, not
-# just ``evidence_context``). An allowlist drops everything else, including
-# a dict/list value smuggled under an allowed key, before it can reach the
-# outbound prompt. ``read_inputs()`` (human playback, not the model path)
-# intentionally stays unfiltered -- this projection only guards what the loop
-# sends to the model. Known limit, not a gap this projection can close: a
-# credential pasted directly into the ``text`` free-text string itself still
-# reaches the model -- only structured-field smuggling is in scope here.
-# ``question`` is included alongside ``text``/``channel`` because it is the
-# payload shape this PR's own follow_up test already persists and reads back
-# (tests/integration/test_m1_control_completion_postgres.py); dropping it
-# would silently empty out a real follow-up's content instead of blocking a
-# credential.
-_INPUT_CONTENT_FIELDS = frozenset({"text", "channel", "question"})
-
-# Defensive per-field cap on the allowlisted free-text values, not one of
-# the frozen resource ceilings in investigation/limits.py (that table
-# tracks the *whole* serialized request against the 2026-09-13 freeze, not
-# any one field -- this is a locally-chosen default, flagged for the user
-# to confirm or replace with a formally frozen number). Without a bound, a
-# single oversized value persisted through control()/append_input() would
-# be stuck forever: begin_round()'s watermark is cumulative, so the same
-# entry is re-selected on every future round, _reject_oversized() halts
-# with REQUEST_TOO_LARGE each time, and nothing in the current control()
-# surface can remove or replace one bad input -- only a direct database
-# repair would recover the incident.
-_INPUT_CONTENT_FIELD_MAX_CHARS = 8192
-
-
-def _project_input_content(content: object) -> dict[str, Any]:
-    if not isinstance(content, Mapping):
-        return {}
-    projected: dict[str, Any] = {}
-    for key, value in content.items():
-        if key not in _INPUT_CONTENT_FIELDS or isinstance(
-            value, (Mapping, list, tuple)
-        ):
-            continue
-        if isinstance(value, str) and len(value) > _INPUT_CONTENT_FIELD_MAX_CHARS:
-            value = value[:_INPUT_CONTENT_FIELD_MAX_CHARS] + " …[truncated]"
-        projected[key] = value
-    return projected
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:
