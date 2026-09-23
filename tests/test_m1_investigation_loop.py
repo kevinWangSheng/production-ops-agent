@@ -1642,6 +1642,27 @@ def test_tool_plan_on_the_final_request_is_a_handoff():
     assert outcome.execution == "failed"
 
 
+def test_a_tool_plan_missing_reasoning_content_is_rejected_before_dispatch():
+    """Bot review finding: ``pair_tool_results(..., require_reasoning=True)``
+    only rejects a missing ``reasoning_content`` *after* the tools already
+    ran and were committed, so tool budget and external queries were spent
+    on a plan that could never replay, and a restart then blocked on the
+    same missing field. The round must reject it before commit/dispatch, the
+    same as any other malformed plan -- no tool call may reach the
+    executor."""
+    loop, request, _, transport, store, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls", reasoning=None)],
+        model_requests=2,
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons == ("PRIVATE_PROTOCOL_MISSING",)
+    assert outcome.execution == "failed"
+    assert transport.called is False
+    row = store.steps["ctx0:round-1"]["response"]
+    assert "tool_calls" not in row["assistant"]
+    assert row["rejected_plan"]["reason"] == "PRIVATE_PROTOCOL_MISSING"
+
+
 def test_prompt_revision_is_stable_across_instance_budgets():
     from opspilot.instructions.discipline import prompt_revision, render
     from opspilot.investigation.reports import REPORT_CONTRACT
