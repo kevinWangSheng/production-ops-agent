@@ -1143,6 +1143,24 @@ def test_unavailable_retry_is_a_second_physical_request():
     assert outcome.execution == "completed"
 
 
+def test_a_model_rejected_error_is_not_retried_unlike_unavailable():
+    """Unlike ``MODEL_UNAVAILABLE`` (see the retry test above), a permanent
+    rejection -- what the client now reports for a non-retryable 4xx such as
+    403/404 (bot review finding) -- must halt on the first attempt: a second
+    scripted reply sitting behind it is never consumed."""
+    loop, request, model, _, _, _ = assemble(
+        replies=[
+            ModelError("MODEL_REJECTED"),
+            reply(content="unused, would only be read by a retry", finish="stop"),
+        ],
+        model_requests=1,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("MODEL_REJECTED",)
+
+
 def test_a_conservatively_charged_failure_shrinks_the_retry_timeout():
     """Bot review (PR #29, comment 4068748989): a fast ``MODEL_UNAVAILABLE``
     is charged its full timeout (settled unknown); the retry's timeout must
