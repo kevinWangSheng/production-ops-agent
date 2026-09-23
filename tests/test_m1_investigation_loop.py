@@ -1585,6 +1585,127 @@ def test_model_error_does_not_look_like_completion():
     assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
 
 
+def test_investigation_inputs_only_send_the_allowlisted_text_and_channel_fields():
+    """A nested/differently-cased credential-shaped key in a follow_up payload
+    must never reach the model, even though a key-name blocklist would have
+    let ``api_key``/``Api-Key``/nested values through (digest3.md PR #31 §5.1)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {
+                    "text": "please check the payments pod",
+                    "channel": "web",
+                    "api_key": "sk-leak-flat",
+                    "Api-Key": "sk-leak-title",
+                    "AUTHORIZATION": "sk-leak-upper",
+                    "nested": {"api_key": "sk-leak-nested"},
+                },
+            }
+        ],
+    )
+    loop.run(request)
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert outbound == (
+        '{"investigation_inputs":[{"content":{"channel":"web",'
+        '"text":"please check the payments pod"},"kind":"follow_up","sequence":1}]}'
+    )
+    for leaked in (
+        "sk-leak-flat",
+        "sk-leak-title",
+        "sk-leak-upper",
+        "sk-leak-nested",
+    ):
+        assert leaked not in outbound
+    for dropped_key in ("api_key", "Api-Key", "AUTHORIZATION", "nested"):
+        assert dropped_key not in outbound
+
+
+def test_investigation_inputs_preserve_the_question_field_follow_up_payloads_use():
+    """The follow_up payload shape this PR's own PG test persists and reads
+    back (``{"question": "why"}``) must still reach the model -- the
+    allowlist must not silently empty a real follow-up's content just
+    because it used a field name other than ``text`` (chatgpt-codex-connector
+    review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"question": "why", "api_key": "sk-leak"},
+            }
+        ],
+    )
+    loop.run(request)
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert outbound == (
+        '{"investigation_inputs":[{"content":{"question":"why"},'
+        '"kind":"follow_up","sequence":1}]}'
+    )
+    assert "sk-leak" not in outbound
+
+
+def test_investigation_inputs_truncate_an_oversized_free_text_field():
+    """An arbitrarily large persisted text/question value must not be able
+    to strand the incident forever: begin_round()'s watermark is cumulative,
+    so an unbounded value would be re-selected on every future round and
+    _reject_oversized() would halt with REQUEST_TOO_LARGE every time, with
+    no control() action able to remove or replace a single bad input
+    (chatgpt-codex-connector review, PR #31)."""
+    loop, request, model, _, store, _ = assemble(
+        replies=[ModelError("MODEL_UNAVAILABLE")],
+        model_requests=1,
+    )
+    loop.store = MemoryStepStore(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+        inputs=[
+            {
+                "sequence": 1,
+                "kind": "follow_up",
+                "content": {"text": "x" * (MAX_HTTP_REQUEST_BYTES + 1)},
+            }
+        ],
+    )
+    outcome = loop.run(request)
+    assert outcome.handoff_reasons != ("REQUEST_TOO_LARGE",)
+    assert model.calls
+    outbound = next(
+        message["content"]
+        for message in model.calls[0].messages
+        if "investigation_inputs" in message.get("content", "")
+    )
+    assert len(outbound) < MAX_HTTP_REQUEST_BYTES
+    assert outbound.endswith('…[truncated]"},"kind":"follow_up","sequence":1}]}')
+
+
 def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     loop, request, model, _, store, _ = assemble(
         replies=[
@@ -2059,3 +2180,62 @@ def test_a_time_policy_with_a_malformed_field_is_dropped_whole_not_widened():
     assert outcome.execution == "failed" and outcome.handoff_reasons == (
         "REPORT_INVALID",
     )
+
+
+def test_control_denied_after_the_reservation_stops_the_model_request_before_it_leaves():
+    """Independent review (PR #31, P2): the lease is re-read between the
+    budget reservation and the physical request. A human decision that
+    lands exactly there (pause, cancel, scope suspension) must keep the
+    request from leaving; the reservation stays occupied, nothing is spent."""
+
+    class DenyAfterReserve(MemoryStepStore):
+        def reserve_budget(self, reservation_id, amount, *, seconds=0.0):
+            super().reserve_budget(reservation_id, amount, seconds=seconds)
+            self.deny_control()
+
+    loop, request, model, transport, store, _ = assemble(
+        replies=[reply(content="never sent")], model_requests=1
+    )
+    loop.store = denied = DenyAfterReserve(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert model.calls == []
+    assert transport.called is False
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    assert denied.budget_reserved == 1 and denied.budget_spent == 0
+    assert denied.steps == {}
+
+
+def test_control_denied_after_the_lease_renewal_stops_the_tool_dispatch():
+    """Independent review (PR #31, P2): before each tool dispatch the loop
+    renews the lease and re-reads the fence. A denial that lands exactly
+    after the renewal must stop the dispatch: the committed plan stays
+    ``response_committed`` (pending work for a later attempt), no external
+    query is issued."""
+
+    class DenyAfterRenew(MemoryStepStore):
+        def renew(self):
+            self.deny_control()
+
+    loop, request, model, transport, store, _ = assemble(
+        replies=[reply(tool_calls=[tool_call()], finish="tool_calls")],
+        model_requests=2,
+    )
+    loop.store = denied = DenyAfterRenew(
+        budget_limit=store.budget_limit,
+        deadline=store.deadline,
+        clock=loop.clock,
+        run_id=store.authorized_run_id,
+    )
+    outcome = loop.run(request)
+    assert len(model.calls) == 1
+    assert transport.called is False
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
+    assert denied.steps["ctx0:round-1"]["status"] == "response_committed"
+    assert denied.tool_results[denied.step_ids["ctx0:round-1"]] == []

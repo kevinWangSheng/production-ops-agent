@@ -41,7 +41,7 @@ from opspilot.investigation.reports import (
     evidence_context_projection,
     view_targets_authorized,
 )
-from opspilot.tools.registry import canonical
+from opspilot.tools.registry import canonical, redact_credentials
 
 INITIAL_SEGMENT = "ctx0"
 CONCLUSION_KIND = "conclusion"
@@ -609,6 +609,11 @@ def rebuild_transcript(
     steps = snapshot.get("steps")
     if not isinstance(steps, Sequence):
         raise ContextError("INCONSISTENT_STATE")
+    # Human inputs the Run received; a rebuild that omits them for a round
+    # that saw them cannot reproduce its bytes and fails closed below.
+    inputs = snapshot.get("inputs") or ()
+    if not isinstance(inputs, Sequence):
+        raise ContextError("INCONSISTENT_STATE")
     ordered = sorted(
         (step for step in steps if isinstance(step, Mapping)),
         key=lambda step: (int(step.get("sequence", 0)), str(step.get("step_id"))),
@@ -708,7 +713,7 @@ def rebuild_transcript(
             # did not reproduce (a lost compaction row, or rows out of order).
             raise ContextError("INCOMPATIBLE_STATE")
         if not diverged:
-            _check_snapshot_hash(response, messages)
+            _check_snapshot_hash(response, messages, inputs=inputs)
         last_step_id = step_id
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
@@ -826,16 +831,131 @@ def messages_hash(messages: Sequence[Mapping[str, Any]]) -> str:
     ).hexdigest()
 
 
+# --- human inputs (follow_up / correct / event) shown to the model -----------
+#
+# Field allowlist for ``opspilot_inputs.content`` (human follow-up/correction
+# text and intake events) before it reaches the model prompt. That column has
+# no reviewed schema -- it is whatever a caller (e.g. the web control layer)
+# passed to ``DurableStore.control``/``append_input`` -- so a key-name
+# blocklist only catches names someone thought of in advance and never
+# protects a nested value or an unlisted credential-shaped key (redline
+# P3-4/P3-5 analog for the input channel, not just ``evidence_context``). An
+# allowlist drops everything else, including a dict/list value smuggled under
+# an allowed key, before it can reach the outbound prompt. ``read_inputs()``
+# (human playback, not the model path) intentionally stays unfiltered -- this
+# projection only guards what the loop sends to the model. Known limit, not a
+# gap this projection can close: a credential pasted directly into the
+# ``text`` free-text string itself still reaches the model -- only
+# structured-field smuggling is in scope here. ``question`` is included
+# alongside ``text``/``channel`` because it is the payload shape the
+# follow_up path persists and reads back (``IntakeRequest.question``);
+# dropping it would silently empty out a real follow-up's content instead of
+# blocking a credential.
+INPUT_CONTENT_FIELDS = frozenset({"text", "channel", "question"})
+
+# Defensive per-field cap on the allowlisted free-text values, not one of the
+# frozen resource ceilings in investigation/limits.py (that table tracks the
+# *whole* serialized request against the 2026-09-13 freeze, not any one field
+# -- this is a locally-chosen default, flagged for the user to confirm or
+# replace with a formally frozen number). Without a bound, a single oversized
+# value persisted through control()/append_input() would be stuck forever:
+# begin_round()'s watermark is cumulative, so the same entry is re-selected on
+# every future round, _reject_oversized() halts with REQUEST_TOO_LARGE each
+# time, and nothing in the current control() surface can remove or replace
+# one bad input -- only a direct database repair would recover the incident.
+INPUT_CONTENT_FIELD_MAX_CHARS = 8192
+
+INPUTS_MESSAGE_KEY = "investigation_inputs"
+
+
+def project_input_content(content: object) -> dict[str, Any]:
+    """The allowlisted, bounded, credential-redacted projection of one input
+    row's ``content``.
+
+    Free text in the allowlisted fields is redacted with the registry's
+    credential rules (``redact_credentials``) before it can reach the model:
+    PRODUCT-CONSTRAINTS, "Credentials and secret-bearing raw inputs must not
+    enter prompts or exported traces". Model-facing only -- the stored row
+    keeps the operator's raw text for human playback (``read_inputs``).
+    Redaction runs before truncation so a cut never exposes a partial secret.
+    """
+    if not isinstance(content, Mapping):
+        return {}
+    projected: dict[str, Any] = {}
+    for key, value in content.items():
+        if key not in INPUT_CONTENT_FIELDS or isinstance(value, (Mapping, list, tuple)):
+            continue
+        if isinstance(value, str):
+            value = redact_credentials(value)
+            if len(value) > INPUT_CONTENT_FIELD_MAX_CHARS:
+                value = value[:INPUT_CONTENT_FIELD_MAX_CHARS] + " …[truncated]"
+        projected[key] = value
+    return projected
+
+
+def input_watermark(inputs: Sequence[Mapping[str, Any]]) -> int:
+    """The highest input ``sequence`` a round saw (0 when it saw none)."""
+    return max(
+        (int(row["sequence"]) for row in inputs if type(row.get("sequence")) is int),
+        default=0,
+    )
+
+
+def inputs_message(
+    inputs: Sequence[Mapping[str, Any]], *, watermark: int | None = None
+) -> dict[str, Any] | None:
+    """The one trailing user message carrying the inputs a round may see.
+
+    The live round (``InvestigationLoop._round``) builds it from what
+    ``begin_round()`` returned; the rebuild builds it from the persisted
+    ``inputs`` up to the step row's recorded ``context.input_watermark``.
+    Both go through this function, so the bytes -- and therefore the
+    recorded ``input_snapshot_hash`` -- agree. It is a per-round trailing
+    message, never part of the durable transcript or of a compaction fold.
+    """
+    rows = sorted(
+        (
+            row
+            for row in inputs
+            if isinstance(row, Mapping)
+            and type(row.get("sequence")) is int
+            and (watermark is None or row["sequence"] <= watermark)
+        ),
+        key=lambda row: int(row["sequence"]),
+    )
+    if not rows:
+        return None
+    return {
+        "role": "user",
+        "content": canonical(
+            {
+                INPUTS_MESSAGE_KEY: [
+                    {
+                        "sequence": row["sequence"],
+                        "kind": row.get("kind"),
+                        "content": project_input_content(row.get("content")),
+                    }
+                    for row in rows
+                ]
+            }
+        ),
+    }
+
+
 def _check_snapshot_hash(
-    response: Mapping[str, Any], sent_before: Sequence[Mapping[str, Any]]
+    response: Mapping[str, Any],
+    sent_before: Sequence[Mapping[str, Any]],
+    *,
+    inputs: Sequence[Mapping[str, Any]] = (),
 ) -> None:
     """Refuse a rebuild whose bytes differ from what that step actually sent.
 
     ``sent_before`` is the transcript as rebuilt up to (not including) the
-    step; the step's own extra trailing message (the final-report or the
-    compaction instruction) is added from the recorded ``context.final`` /
-    the row kind. Rows without a recorded hash (pre-segment rows) are not
-    checked.
+    step; the step's own trailing messages -- the inputs message up to the
+    recorded ``context.input_watermark`` (from ``inputs``), then the
+    final-report or the compaction instruction -- are added from the
+    recorded ``context`` / the row kind, in the order ``_round`` sends them.
+    Rows without a recorded hash (pre-segment rows) are not checked.
     """
     context = response.get("context")
     if not isinstance(context, Mapping):
@@ -844,6 +964,11 @@ def _check_snapshot_hash(
     if not isinstance(recorded, str):
         return
     sent = list(sent_before)
+    watermark = context.get("input_watermark")
+    if type(watermark) is int and watermark > 0:
+        message = inputs_message(inputs, watermark=watermark)
+        if message is not None:
+            sent.append(message)
     if context.get("final") is True:
         from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 
