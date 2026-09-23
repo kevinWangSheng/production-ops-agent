@@ -1364,11 +1364,13 @@ class DurableStore:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 暂停态只接受 resume 与 cancel，与 opspilot/domain/runs.py 的
             # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
-            # 追问与纠正不得静默解除人工暂停。
+            # 追问与纠正不得静默解除人工暂停：带 payload 的 follow_up/correct
+            # 只是被记录（下方 keep_paused 保持暂停），不带 payload 的一律拒绝；
+            # 对已暂停事故再次 pause 无论是否带 payload 都是非法迁移。
             if (
                 row["state"] == "paused"
                 and action in {"pause", "follow_up", "correct"}
-                and payload is None
+                and (action == "pause" or payload is None)
             ):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个

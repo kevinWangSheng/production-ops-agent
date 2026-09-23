@@ -249,3 +249,22 @@ def test_a_round_committed_under_another_generation_is_refused_not_refrozen():
         s.begin_round(fresh, "ctx0:round-1")
     assert s.begin_round(fresh, "ctx0:round-2")["input_watermark"] == 1
 
+
+def test_a_redundant_pause_with_a_payload_is_still_refused_on_a_paused_incident():
+    """Independent review (PR #31, P3): the paused-state guard let a second
+    ``pause`` through whenever it carried a payload. Only follow_up/correct
+    may be *recorded* on a paused incident (without lifting the pause);
+    ``pause`` on an already paused incident is an illegal transition
+    regardless of payload."""
+    s = _store()
+    i, r = _accept(s)
+    s.claim(i, r, uuid4(), {"v": "1"})
+    assert s.control(i, 0, "pause", "operator") == 1
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        s.control(i, 1, "pause", "operator", {"reason": "again"})
+    assert s.rebuild(i)["control_generation"] == 1
+    # Recording a follow_up while paused is still allowed and keeps the pause.
+    assert s.control(i, 1, "follow_up", "operator", {"question": "why"}) == 2
+    rebuilt = s.rebuild(i)
+    assert rebuilt["state"] == "paused" and rebuilt["run"]["state"] == "paused"
+    assert [x["kind"] for x in rebuilt["inputs"]] == ["follow_up"]
