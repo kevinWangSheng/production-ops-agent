@@ -152,7 +152,7 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 3. **F5**：v4 `TimePolicy` required 字段在 intake 入口统一做 schema 校验，loop 投影层维持形状白名单。
 4. **`DEADLINE_EXCEEDED` 无可落库终态**（第八轮 P1 / 审查 P3）：写入者与栅栏在控制面 / 进度 UI 子任务中决定（C3/ADR 级）。
 5. **小缺陷修复 PR**（合并后单独一个）：待重放计划先校验再转 `INCONSISTENT_STATE`（第十一轮 P1）；派发前校验 `reasoning_content`（审查 P3 #4 / 第十一轮 P2）；非瞬时 4xx 归 `MODEL_REJECTED`（第十一轮 P2）。
-   执行：分支 `fix/m1-01-loop-followups`（worktree `../production-ops-agent-loop-followups`），拒绝码分别为 `INCONSISTENT_STATE`（blocked）、`PRIVATE_PROTOCOL_MISSING`、`MODEL_REJECTED`（408/409/425/429 仍按瞬时重试）；每条先红后绿，`make check` `1678 passed`，本任务 PG 17.9（55433）五个 M1 套件 `116 passed`；有界真实 Run 见 [证据](../evidence/m1-01-loop-followups/run.md)（2 次 HTTP，未触发三条修复分支，仅作 loop 主路径合规证据）；全新上下文独立审查无 P1/P2，3 条 P3 不改。
+   执行：分支 `fix/m1-01-loop-followups`（worktree `../production-ops-agent-loop-followups`），拒绝码分别为 `INCONSISTENT_STATE`（blocked）、`PRIVATE_PROTOCOL_MISSING`、`MODEL_REJECTED`（4xx 仅 429 按瞬时重试，与 DeepSeek 文档一致，2026-09-23 用户决定）；每条先红后绿，`make check` `1678 passed`，本任务 PG 17.9（55433）五个 M1 套件 `116 passed`；有界真实 Run 见 [证据](../evidence/m1-01-loop-followups/run.md)（2 次 HTTP，未触发三条修复分支，仅作 loop 主路径合规证据）；全新上下文独立审查无 P1/P2，3 条 P3：408/409/425 一条按用户决定改为拒绝，其余两条不改。
 6. `dispatch_started_at` 改用 `operation.authorized_at` 随工具执行器任务；DNS 阶段可终止性随 DeepSeek 客户端加固。
 
 ## 其余后续（未裁定）
