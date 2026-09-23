@@ -1,9 +1,12 @@
 """Run the deterministic external M1-01 acceptance scenarios and print a table.
 
-Evidence levels are labels for what each row actually exercises. The four
-``hand-built ... snapshot`` rows feed ``outcome_from_durable`` literal dicts:
-they prove the seam's projection, not DurableStore or worker behaviour --
-no product path emits ``late_result_rejected``/``worker_resumed`` yet.
+Evidence levels are labels for what each row actually exercises. The
+``durable`` rows read snapshots in the ``DurableStore.rebuild`` shape rendered
+by ``MemoryStepStore.snapshot()`` after a real loop attempt; PostgreSQL itself
+is not touched here. Rows that say ``hand-set`` add a state or marker the
+product has no path to emit yet (``late_result_rejected``, ``worker_resumed``,
+a cancelled/paused/blocked row state), so they prove the seam's projection of
+that state, not DurableStore or worker behaviour.
 """
 
 from __future__ import annotations
@@ -37,27 +40,39 @@ SCENARIOS = (
         "test_deadline_refusal_never_dispatches_a_model_request",
     ),
     (
+        "durable-completed",
+        "F3/F8",
+        "real loop Run published through MemoryStepStore: conclusion payload read",
+        "test_durable_completed_run_projects_its_committed_conclusion",
+    ),
+    (
+        "durable-handoff",
+        "F3/F8",
+        "real handoff Run published: row says completed, seam reports failed",
+        "test_durable_handoff_run_is_not_reported_as_a_completed_report",
+    ),
+    (
         "pause-cancel",
         "F2/F12",
-        "seam projection of a hand-built paused/cancelled snapshot",
+        "seam projection of hand-set paused/cancelled row states",
         "test_human_pause_and_cancel_are_the_observable_final_authority",
     ),
     (
         "late-result",
         "F2/F12",
-        "seam projection of a hand-built late-result snapshot",
+        "real committed tool_result rows + hand-set cancelled state and marker",
         "test_late_result_is_rejected_after_newer_human_decision",
     ),
     (
         "worker-restart",
         "F2/F8",
-        "seam projection of a hand-built worker-restart snapshot",
+        "real committed conclusion + hand-set worker_resumed marker",
         "test_worker_restart_resumes_from_committed_evidence",
     ),
     (
         "incompatible-state",
         "F2/F8",
-        "seam projection of a hand-built blocked snapshot",
+        "seam projection of a hand-set blocked row state",
         "test_incompatible_state_is_a_blocked_handoff",
     ),
     (
