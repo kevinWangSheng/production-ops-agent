@@ -384,8 +384,8 @@
   本地未运行，CI 执行。
 - **P3（不改，登记为待产品决策的开放项）**：
   1. 输入每轮以尾随消息累计重发（`begin_round()` 水位累积，`sequence <= watermark` 全量选取）；
-  2. `INPUT_CONTENT_FIELD_MAX_CHARS = 8192` 与字段白名单 `{text, channel, question}` 为本地自选，未走冻结上限审批；
-  3. `_manage_context()` 的上下文预算估算不含随后追加的 inputs 消息。
+  2. `INPUT_CONTENT_FIELD_MAX_CHARS = 8192` 与字段白名单 `{text, channel, question}` 为本地自选，未走冻结上限审批。
+  （原第 3 项「`_manage_context()` 估算不含 inputs 消息」已由 codex 复审列为 P1 并于 2026-09-23 修复，见下节。）
 
 验证：`make check`：**1839 passed, 182 skipped, 2 xfailed**，ruff check/format、mypy 通过。
 
@@ -404,3 +404,19 @@
   `report.json`、`report-parsed.json`、`run.md`）；脚本覆盖的 `docs/evidence/m1-01-investigation-loop/` 跟踪文件已
   `git restore` 并 `git diff --quiet` 核对。新文件 grep 凭据形态无命中。**该 Run 不含 follow_up 输入**
   （`input_watermark=0`），只作本分支 loop 主路径的合规证据，不覆盖 P1 的输入回放路径（见 `run.md`）。
+
+## codex 复审 P1（2026-09-23）：inputs 消息计入上下文估算
+
+- 线程 `PRRT_kwDOUSm_486lIfEu`（loop.py:581）。问题：`_manage_context()` 只估算 `state.messages` + tools + 最终报告指令，
+  而 `investigation_inputs` 尾随消息在其后追加，大量/超长持久化输入可使请求在 compaction 后仍超出 `limits.context_tokens`，
+  只剩字节守卫 `_reject_oversized()` 兜底，Run 直接失败而不是先 compaction。即本记录此前登记的开放项第 3 条；修复是机械的，
+  不涉及产品决策。
+- 修复（`opspilot/investigation/loop.py`）：`_round()` 先冻结输入边界（`_begin_round()`），把 `inputs_message()` 产物与最终
+  报告指令一起作为 `extra` 传入 `_manage_context()`，使 compaction 触发判断与 compaction 后的不足判断都按实际发送的请求估算；
+  发送顺序不变（transcript → inputs → 指令）。`_manage_context()` 改为返回是否发生了 compaction；发生时 segment 已变，
+  在新键下再次 `begin_round()`，保证步骤行的 `input_watermark`/哈希与实际发送一致（旧键的未提交行如同 `_RoundAborted` 后的遗留）。
+  未改累计重发行为、8192 上限；`context_policy_revision` 与 origin/main 相同（`ctx-ctx-policy-v1-156004a224ba`）。
+- 红→绿：`tests/test_m1_investigation_compaction.py::test_a_large_follow_up_counts_toward_the_compaction_threshold`
+  （按估算器动态选取输入长度，使「仅历史」低于阈值、「历史 + follow_up」高于阈值）修复前第 2 次调用是带 inputs 的第 2 轮而非
+  compaction 请求（断言 `COMPACTION_INSTRUCTION` 失败），修复后绿，且 compaction 后重建 `segment == "ctx1"`。
+  重建哈希相关测试（context/compaction/continuation/loop 四个套件）全部通过。
