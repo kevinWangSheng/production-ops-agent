@@ -1,4 +1,4 @@
-# make acceptance on clean tree (git status empty) at HEAD 295bd0a (feature/m1-01-acceptance), 2026-09-17T15:19Z
+# make acceptance on the tree of commit following HEAD 9616de5 (feature/m1-01-acceptance, entry-point fix + relabel applied), 2026-09-23T11:03Z
 .venv/bin/python scripts/m1_acceptance.py
 | scenario | feature | evidence level | result |
 |---|---|---|---|
@@ -6,10 +6,10 @@
 | fault-report | F3 | deterministic provider failure handoff | PASS |
 | budget-refusal | F2 | deterministic budget refusal | PASS |
 | deadline-refusal | F2 | deterministic deadline refusal | PASS |
-| pause-cancel | F2/F12 | durable human control projection | PASS |
-| late-result | F2/F12 | stale completion rejection | PASS |
-| worker-restart | F2/F8 | committed evidence survives worker restart | PASS |
-| incompatible-state | F2/F8 | incompatible state blocked handoff | PASS |
+| pause-cancel | F2/F12 | seam projection of a hand-built paused/cancelled snapshot | PASS |
+| late-result | F2/F12 | seam projection of a hand-built late-result snapshot | PASS |
+| worker-restart | F2/F8 | seam projection of a hand-built worker-restart snapshot | PASS |
+| incompatible-state | F2/F8 | seam projection of a hand-built blocked snapshot | PASS |
 | real-deepseek-records | F3 | recorded real Runs: projection equals ledger | PASS |
 | real-deepseek-report | F3 | one recorded real Run: bound report, no handoff | PASS |
 test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks

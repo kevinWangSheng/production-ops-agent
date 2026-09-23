@@ -1,4 +1,10 @@
-"""Run the deterministic external M1-01 acceptance scenarios and print a table."""
+"""Run the deterministic external M1-01 acceptance scenarios and print a table.
+
+Evidence levels are labels for what each row actually exercises. The four
+``hand-built ... snapshot`` rows feed ``outcome_from_durable`` literal dicts:
+they prove the seam's projection, not DurableStore or worker behaviour --
+no product path emits ``late_result_rejected``/``worker_resumed`` yet.
+"""
 
 from __future__ import annotations
 
@@ -33,25 +39,25 @@ SCENARIOS = (
     (
         "pause-cancel",
         "F2/F12",
-        "durable human control projection",
+        "seam projection of a hand-built paused/cancelled snapshot",
         "test_human_pause_and_cancel_are_the_observable_final_authority",
     ),
     (
         "late-result",
         "F2/F12",
-        "stale completion rejection",
+        "seam projection of a hand-built late-result snapshot",
         "test_late_result_is_rejected_after_newer_human_decision",
     ),
     (
         "worker-restart",
         "F2/F8",
-        "committed evidence survives worker restart",
+        "seam projection of a hand-built worker-restart snapshot",
         "test_worker_restart_resumes_from_committed_evidence",
     ),
     (
         "incompatible-state",
         "F2/F8",
-        "incompatible state blocked handoff",
+        "seam projection of a hand-built blocked snapshot",
         "test_incompatible_state_is_a_blocked_handoff",
     ),
     (
