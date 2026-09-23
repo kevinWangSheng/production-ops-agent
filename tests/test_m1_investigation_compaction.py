@@ -552,3 +552,55 @@ def test_a_large_follow_up_counts_toward_the_compaction_threshold():
     # The rows still rebuild byte-for-byte across the compaction.
     transcript = _transcript(store, request)
     assert transcript.segment == "ctx1" and transcript.next_round == 3
+
+
+def _event_during_compaction(store, chars):
+    """A compaction reply that first lands an ``event`` input -- an
+    ``append_input`` needs no lease or generation change, so the round's
+    second freeze (under the new segment key) picks it up."""
+
+    def summary(call):
+        assert call.messages[-1]["content"] == COMPACTION_INSTRUCTION
+        store.append_input("event", {"text": "e" * chars})
+        return _summary()
+
+    return summary
+
+
+def test_an_event_landing_during_the_compaction_is_re_estimated_before_the_round():
+    """Independent review of 6e12b6a (PR #31, P2): the post-compaction
+    insufficiency check ran on the first freeze's inputs, but the re-freeze
+    under the new key can pick up an event written during the compaction
+    request. A large one must halt with CONTEXT_EXHAUSTED before any round
+    goes out on the compacted context, not slip past the estimate."""
+    limits = _limits_between_rounds(2)
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    # Well over the whole context budget on its own (0.25 tokens/byte).
+    chars = (limits.context_tokens - limits.output_tokens) * 4 + 4096
+    loop.model = model = ScriptedModel(
+        [*_rounds(2), _event_during_compaction(store, chars), _cite_first(store)]
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTEXT_EXHAUSTED",)
+    # Round 1, round 2, the compaction -- and nothing on ctx1.
+    assert len(model.calls) == 3
+    assert "ctx0:compact-1" in store.steps and "ctx1:round-3" not in store.steps
+
+
+def test_a_small_event_landing_during_the_compaction_is_sent_with_the_round():
+    """Same seam, an event that fits: the round on the compacted context
+    carries it, its row records the new watermark, and the rows rebuild."""
+    limits = _limits_between_rounds(2)
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    loop.model = model = ScriptedModel(
+        [*_rounds(2), _event_during_compaction(store, 16), _cite_first(store)]
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    assert len(model.calls) == 4
+    trailing = model.calls[3].messages[-1]
+    assert trailing["role"] == "user" and '"kind":"event"' in trailing["content"]
+    assert store.steps["ctx1:round-3"]["response"]["context"]["input_watermark"] == 1
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.next_round == 4

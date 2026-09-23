@@ -564,9 +564,20 @@ class InvestigationLoop:
             # The compaction moved the context to a new segment: this round's
             # key changed, so freeze its boundary again under the new key
             # (the old key's uncommitted row is history, as after a
-            # ``_RoundAborted``). Newer inputs, if any, are sent as they are.
+            # ``_RoundAborted``).
+            before = input_watermark(inputs)
             logical_key, inputs = self._begin_round(state)
             trailing = inputs_message(inputs)
+            if input_watermark(inputs) != before:
+                # An ``event`` landed during the compaction request (a
+                # follow_up/correct would have fenced this lease instead):
+                # the second freeze carries it, the post-compaction check
+                # above did not see it. Re-check the budget for the request
+                # as it will now be sent; never compact twice in one round
+                # (independent review of 6e12b6a, PR #31).
+                self._require_fit(
+                    state, tools=tools, extra=_with_trailing(trailing, extra)
+                )
         if not final and request.model_requests - state.used <= 1:
             # The compaction took a slot: what is left is the reserved
             # final-report request, so this round becomes it.
@@ -750,12 +761,25 @@ class InvestigationLoop:
         if state.request.model_requests - state.used < 2:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
         self._compact(state)
+        self._require_fit(state, tools=tools, extra=extra)
+        return True
+
+    def _require_fit(
+        self,
+        state: _State,
+        *,
+        tools: tuple[Mapping[str, Any], ...] | None,
+        extra: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Halt with ``CONTEXT_EXHAUSTED`` when the request as it would be
+        sent does not fit the context budget even after compaction."""
+        limits = state.request.limits
+        budget = limits.context_tokens - limits.output_tokens
         projected = (
             estimate_tokens(state.messages, tools, extra=extra) * state.calibration
         )
         if projected > budget:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
-        return True
 
     def _begin_round(self, state: _State) -> tuple[str, list[dict[str, Any]]]:
         """Freeze this round's input boundary under its current step key."""
