@@ -470,3 +470,137 @@ def test_the_digest_lists_only_adopted_evidence_ids():
     digest = fold_digest(messages)
     assert digest["evidence_ids"] == ["ev-1"]
     assert len(digest["views"]) == 2 and len(digest["tool_calls"]) == 2
+
+
+def test_a_follow_up_never_enters_the_folded_history_and_the_rebuild_still_matches():
+    """Independent review (PR #31, P1): the ``investigation_inputs`` message
+    is a per-round trailing message, not history. Compaction must fold only
+    the committed rounds (never the inputs message), the compaction request
+    itself must not carry it, and a rebuild after a compaction must still
+    reproduce every recorded hash."""
+    loop, request, model, _, store = _compacting_run()
+    store.append_input("follow_up", {"question": "and the payments pod?"})
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    compaction = model.calls[2]
+    assert compaction.messages[-1]["content"] == COMPACTION_INSTRUCTION
+    assert all(
+        "investigation_inputs" not in str(m.get("content")) for m in compaction.messages
+    )
+    for index in (0, 1, 3):  # the three model rounds each end with the inputs
+        assert "investigation_inputs" in model.calls[index].messages[-1]["content"]
+    digest = store.steps["ctx0:compact-1"]["response"]["compaction"]["digest"]
+    assert "investigation_inputs" not in str(digest)
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.compactions == 1
+    assert all(
+        "investigation_inputs" not in str(m.get("content")) for m in transcript.messages
+    )
+
+
+def test_a_large_follow_up_counts_toward_the_compaction_threshold():
+    """codex review (PR #31, thread PRRT_kwDOUSm_486lIfEu): the trailing
+    ``investigation_inputs`` message is part of the request, so it must count
+    toward the context estimate that decides whether to compact. History
+    alone is under the threshold here; history plus a large follow_up is
+    over it, so the loop must compact *before* round 2 goes out -- exactly
+    as it would for one more tool group of history."""
+    from opspilot.investigation.context import inputs_message
+
+    limits = _limits_between_rounds(2)
+    threshold = (
+        limits.context_tokens - limits.output_tokens
+    ) * ctx.CONTEXT_POLICY.compaction_pct
+    # Dry run under wide limits to measure the prefix (call 0) and the
+    # history with one complete tool group (call 1).
+    dry_loop, dry_request, dry_model, _, _, _ = assemble(
+        replies=[*_rounds(2)], budget_limit=16, model_requests=4
+    )
+    dry_loop.run(replace(dry_request, limits=RunLimits(model_requests=16)))
+    prefix, one_group = dry_model.calls[0].messages, dry_model.calls[1].messages
+    tools = tuple(TOOL_SCHEMAS)
+
+    def sized(chars):
+        return {"sequence": 1, "kind": "follow_up", "content": {"text": "x" * chars}}
+
+    chars = 64
+    while True:
+        trailing = inputs_message([sized(chars)])
+        under_at_round_1 = estimate_tokens(prefix, tools, extra=[trailing]) < threshold
+        over_at_round_2 = (
+            estimate_tokens(one_group, tools, extra=[trailing]) > threshold
+        )
+        if under_at_round_1 and over_at_round_2:
+            break
+        assert chars < 8192, "could not size the input between the two rounds"
+        chars += 64
+
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    store.append_input("follow_up", {"text": "x" * chars})
+    loop.model = model = ScriptedModel([*_rounds(1), _summary(), _cite_first(store)])
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    # Call 0: round 1 (inputs trailing). Call 1: the compaction, triggered by
+    # history + inputs although history alone is under the threshold.
+    # Call 2: round 2 on the compacted context, inputs trailing again.
+    assert model.calls[1].messages[-1]["content"] == COMPACTION_INSTRUCTION
+    assert "ctx0:compact-1" in store.steps
+    assert model.calls[0].messages[-1] == model.calls[2].messages[-1]
+    assert "investigation_inputs" in model.calls[2].messages[-1]["content"]
+    assert store.steps["ctx1:round-2"]["response"]["context"]["input_watermark"] == 1
+    assert outcome.conclusion["conclusion"]["compactions"] == 1
+    # The rows still rebuild byte-for-byte across the compaction.
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.next_round == 3
+
+
+def _event_during_compaction(store, chars):
+    """A compaction reply that first lands an ``event`` input -- an
+    ``append_input`` needs no lease or generation change, so the round's
+    second freeze (under the new segment key) picks it up."""
+
+    def summary(call):
+        assert call.messages[-1]["content"] == COMPACTION_INSTRUCTION
+        store.append_input("event", {"text": "e" * chars})
+        return _summary()
+
+    return summary
+
+
+def test_an_event_landing_during_the_compaction_is_re_estimated_before_the_round():
+    """Independent review of 6e12b6a (PR #31, P2): the post-compaction
+    insufficiency check ran on the first freeze's inputs, but the re-freeze
+    under the new key can pick up an event written during the compaction
+    request. A large one must halt with CONTEXT_EXHAUSTED before any round
+    goes out on the compacted context, not slip past the estimate."""
+    limits = _limits_between_rounds(2)
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    # Well over the whole context budget on its own (0.25 tokens/byte).
+    chars = (limits.context_tokens - limits.output_tokens) * 4 + 4096
+    loop.model = model = ScriptedModel(
+        [*_rounds(2), _event_during_compaction(store, chars), _cite_first(store)]
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("CONTEXT_EXHAUSTED",)
+    # Round 1, round 2, the compaction -- and nothing on ctx1.
+    assert len(model.calls) == 3
+    assert "ctx0:compact-1" in store.steps and "ctx1:round-3" not in store.steps
+
+
+def test_a_small_event_landing_during_the_compaction_is_sent_with_the_round():
+    """Same seam, an event that fits: the round on the compacted context
+    carries it, its row records the new watermark, and the rows rebuild."""
+    limits = _limits_between_rounds(2)
+    loop, request, _, _, store = _compacting_run(limits=limits)
+    loop.model = model = ScriptedModel(
+        [*_rounds(2), _event_during_compaction(store, 16), _cite_first(store)]
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    assert len(model.calls) == 4
+    trailing = model.calls[3].messages[-1]
+    assert trailing["role"] == "user" and '"kind":"event"' in trailing["content"]
+    assert store.steps["ctx1:round-3"]["response"]["context"]["input_watermark"] == 1
+    transcript = _transcript(store, request)
+    assert transcript.segment == "ctx1" and transcript.next_round == 4

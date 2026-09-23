@@ -270,6 +270,57 @@ def _authentication_name(name: str) -> bool:
     return bool(words & _AUTHENTICATION_TOKENS)
 
 
+# Prose redaction for free text that is about to become model input (human
+# follow-up/correction/event text). Same rule set as the parameter-name
+# refusals above -- one definition of "what names a credential" -- applied
+# to the three shapes credential material takes in prose: ``name: value`` /
+# ``name=value`` where the name is an authentication name, a ``Bearer``/
+# ``Basic`` scheme followed by its token, and userinfo in a URL authority
+# (the form ToolRegistration refuses in an endpoint). The value is replaced
+# by a fixed marker and the surrounding text is kept, so the operator's note
+# still reads and the output is deterministic (a rebuild reproduces it).
+# Known limit, same as everywhere in this module: a bare secret string with
+# no naming context is not decidable here.
+REDACTED_CREDENTIAL = "[REDACTED_CREDENTIAL]"
+#
+# Linear-time by construction: a name is only tried at a token start (the
+# lookbehind) and is matched possessively, so a very long token (an 8 KiB
+# note, a 512 KiB pathological input) is scanned once, never re-scanned per
+# start position (an earlier draft backtracked quadratically and hung the
+# oversized-input test). A value stops at ``?``/``#`` as well as at
+# separators, so a URL's scheme (``https:``) does not swallow the query
+# string and ``?api_key=…`` is examined on its own.
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<sep>\s*[:=]\s*)"
+    r"(?P<value>(?:(?:bearer|basic|digest|token)\s+)?[^\s&;,?#\"']+)",
+    re.IGNORECASE,
+)
+_CREDENTIAL_SCHEME = re.compile(
+    r"\b(?P<scheme>bearer|basic)\s+(?P<value>[A-Za-z0-9._~+/=\-]{8,})", re.IGNORECASE
+)
+_AUTHORITY_USERINFO = re.compile(
+    r"(?P<prefix>//)(?P<userinfo>[^\s/@]++)@(?P<host>[^\s/:?#]+)"
+)
+
+
+def redact_credentials(text: str) -> str:
+    """Replace credential-bearing spans in prose with ``REDACTED_CREDENTIAL``."""
+
+    def assignment(match: re.Match[str]) -> str:
+        name = match.group("name")
+        if name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name):
+            return f"{name}{match.group('sep')}{REDACTED_CREDENTIAL}"
+        return match.group(0)
+
+    redacted = _AUTHORITY_USERINFO.sub(
+        lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}", text
+    )
+    redacted = _CREDENTIAL_ASSIGNMENT.sub(assignment, redacted)
+    return _CREDENTIAL_SCHEME.sub(
+        lambda m: f"{m.group('scheme')} {REDACTED_CREDENTIAL}", redacted
+    )
+
+
 # Outcome reasons a registration may map a source-reported status onto. The
 # vocabulary is fixed so a data source cannot invent its own outcome class.
 SOURCE_ERROR_REASONS = frozenset(

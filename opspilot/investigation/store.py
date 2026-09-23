@@ -8,7 +8,7 @@ asserted without PostgreSQL.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -44,6 +44,20 @@ class StepCommitter(Protocol):
     def control_generation(self) -> int: ...
 
     def usage(self) -> BudgetUsage: ...
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        """Freeze this round's human-input boundary before the model request
+        and return ``(logical_key, inputs)``: the follow-up/correction/event
+        rows the round may see. A retry of the same key reads the same
+        boundary; the durable store refuses when the lease is no longer
+        current."""
+        ...
+
+    def assert_current(self) -> None:
+        """Re-read the lease fence (including global/target suspension)
+        right before a model or tool request goes out; a no-op where there
+        is no lease. Raises ``StepStoreError`` when the fence refuses."""
+        ...
 
     def reserve_budget(
         self, reservation_id: UUID, amount: int, *, seconds: float = 0.0
@@ -101,6 +115,7 @@ class MemoryStepStore:
         control_denied: bool = False,
         control_generation: int = 0,
         input: Mapping[str, Any] | None = None,
+        inputs: Sequence[dict[str, Any]] = (),
     ) -> None:
         if type(budget_limit) is not int or budget_limit < 0:
             raise StepStoreError("INVALID_INPUT")
@@ -113,6 +128,9 @@ class MemoryStepStore:
         self._control_denied = control_denied
         self.control_generation = control_generation
         self.input = None if input is None else dict(input)
+        # Pre-seeded ``opspilot_inputs`` rows ``begin_round()`` hands to the
+        # loop, so the input projection can be tested without PostgreSQL.
+        self._inputs = list(inputs)
         self.budget_reserved = 0
         self.budget_spent = 0
         self.budget_unknown = 0
@@ -126,6 +144,23 @@ class MemoryStepStore:
         self.late_results: list[dict[str, Any]] = []
         self.conclusion: dict[str, Any] | None = None
         self.state = "running"
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        self._guard()
+        return logical_key, list(self._inputs)
+
+    def append_input(self, kind: str, content: Mapping[str, Any]) -> int:
+        """Receive one human input (``DurableStore.append_input``/``control``
+        analog): the next round's ``begin_round()`` sees it, earlier rounds'
+        rows do not."""
+        sequence = max((int(row["sequence"]) for row in self._inputs), default=0) + 1
+        self._inputs.append(
+            {"sequence": sequence, "kind": kind, "content": dict(content)}
+        )
+        return sequence
+
+    def assert_current(self) -> None:
+        self._guard()
 
     def deny_control(self) -> None:
         self._control_denied = True
@@ -278,6 +313,7 @@ class MemoryStepStore:
             "steps": steps,
             "pending_tools": [],
             "conclusion": None if self.conclusion is None else dict(self.conclusion),
+            "inputs": [dict(row) for row in self._inputs],
         }
 
 
@@ -301,6 +337,29 @@ class DurableStepStore:
     @property
     def control_generation(self) -> int:
         return self._lease.control_generation
+
+    def assert_current(self) -> None:
+        try:
+            if not self._store.lease_current(self._lease):
+                raise PersistenceError("CONTROL_DENIED")
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
+
+    def begin_round(self, logical_key: str) -> tuple[str, list[dict[str, Any]]]:
+        # The step key is the loop's ``step_key(segment, round)`` and is kept
+        # as-is: the transcript rebuild parses it (``parse_step_key``) and a
+        # ``g<gen>:e<epoch>:`` prefix would read as a foreign segment. The
+        # input-round row is keyed by the same plain key; a boundary frozen
+        # under a superseded control generation is re-frozen by the store
+        # (``DurableStore.begin_round``), which is what a per-generation key
+        # used to achieve.
+        try:
+            frozen = self._store.begin_round(self._lease, logical_key)
+            if frozen["committed"]:
+                raise PersistenceError("ROUND_ALREADY_COMMITTED")
+            return logical_key, list(frozen["inputs"])
+        except PersistenceError as exc:
+            raise StepStoreError(str(exc)) from None
 
     def _attempt_reservation(self, reservation_id: UUID) -> UUID:
         """Namespace the loop's reservation id by this attempt's epoch.
