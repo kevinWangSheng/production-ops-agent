@@ -41,7 +41,7 @@ from opspilot.investigation.reports import (
     evidence_context_projection,
     view_targets_authorized,
 )
-from opspilot.tools.registry import canonical
+from opspilot.tools.registry import canonical, redact_credentials
 
 INITIAL_SEGMENT = "ctx0"
 CONCLUSION_KIND = "conclusion"
@@ -869,15 +869,26 @@ INPUTS_MESSAGE_KEY = "investigation_inputs"
 
 
 def project_input_content(content: object) -> dict[str, Any]:
-    """The allowlisted, bounded projection of one input row's ``content``."""
+    """The allowlisted, bounded, credential-redacted projection of one input
+    row's ``content``.
+
+    Free text in the allowlisted fields is redacted with the registry's
+    credential rules (``redact_credentials``) before it can reach the model:
+    PRODUCT-CONSTRAINTS, "Credentials and secret-bearing raw inputs must not
+    enter prompts or exported traces". Model-facing only -- the stored row
+    keeps the operator's raw text for human playback (``read_inputs``).
+    Redaction runs before truncation so a cut never exposes a partial secret.
+    """
     if not isinstance(content, Mapping):
         return {}
     projected: dict[str, Any] = {}
     for key, value in content.items():
         if key not in INPUT_CONTENT_FIELDS or isinstance(value, (Mapping, list, tuple)):
             continue
-        if isinstance(value, str) and len(value) > INPUT_CONTENT_FIELD_MAX_CHARS:
-            value = value[:INPUT_CONTENT_FIELD_MAX_CHARS] + " …[truncated]"
+        if isinstance(value, str):
+            value = redact_credentials(value)
+            if len(value) > INPUT_CONTENT_FIELD_MAX_CHARS:
+                value = value[:INPUT_CONTENT_FIELD_MAX_CHARS] + " …[truncated]"
         projected[key] = value
     return projected
 

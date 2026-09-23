@@ -850,3 +850,93 @@ def test_a_follow_up_row_missing_from_the_snapshot_fails_the_rebuild_closed():
     snapshot["inputs"] = []
     with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
         rebuild(snapshot)
+
+
+# --- credential redaction on the model-facing input projection ---------------
+
+
+def test_the_input_projection_redacts_credential_bearing_spans_before_the_model():
+    """codex review (PR #31, security P2): allowlisted free text reached the
+    model unchanged, so ``Authorization: Bearer …``, ``api_key=…`` or a URL
+    with userinfo crossed the credential boundary (PRODUCT-CONSTRAINTS
+    "Credentials and secret-bearing raw inputs must not enter prompts").
+    The projection redacts such spans with a fixed marker and keeps the rest
+    of the note; the stored row is not touched."""
+    from opspilot.investigation.context import inputs_message, project_input_content
+
+    content = {
+        "text": (
+            "retry with Authorization: Bearer eyJhbGciOi.sk-secret-1 against "
+            "https://ops:hunter2@metrics.internal/api?api_key=AKIA1234SECRET&q=1 "
+            "then check the payments pod"
+        ),
+        "question": "why does token=tok_live_99 still fail?",
+        "channel": "web",
+    }
+    projected = project_input_content(content)
+    for secret in (
+        "eyJhbGciOi.sk-secret-1",
+        "hunter2",
+        "AKIA1234SECRET",
+        "tok_live_99",
+    ):
+        assert secret not in str(projected), (secret, projected)
+    assert "check the payments pod" in projected["text"]
+    assert projected["text"].startswith("retry with Authorization: ")
+    assert "metrics.internal/api" in projected["text"]
+    assert projected["question"].startswith("why does token=")
+    assert projected["question"].endswith(" still fail?")
+    assert projected["channel"] == "web"
+    message = inputs_message([{"sequence": 1, "kind": "follow_up", "content": content}])
+    assert message is not None and "hunter2" not in message["content"]
+
+
+def test_the_input_projection_leaves_an_ordinary_note_unchanged():
+    from opspilot.investigation.context import project_input_content
+
+    note = "please check the payments pod after 10:30; error: connection refused"
+    assert project_input_content({"text": note, "question": "why?"}) == {
+        "text": note,
+        "question": "why?",
+    }
+
+
+def test_a_redacted_follow_up_still_rebuilds_byte_for_byte():
+    """The redaction is part of the shared projection, so the bytes the round
+    sent and the bytes the rebuild reproduces agree -- and neither carries
+    the secret."""
+    loop, request, model, _, store, _ = _wide(replies=[*_tool_rounds(1), Crash("x")])
+    store.append_input("follow_up", {"text": "use api_key=sk-live-42 for the probe"})
+    with pytest.raises(Crash):
+        loop.run(request)
+    sent = model.calls[0].messages[-1]["content"]
+    assert "investigation_inputs" in sent and "sk-live-42" not in sent
+    assert "for the probe" in sent
+    transcript = _transcript(store, request)  # hash check passes
+    assert transcript.next_round == 2
+    second, model2 = _restart(loop, store, [report_from_transcript])
+    assert second.resume(transcript).execution == "completed"
+    assert model2.calls[0].messages[-1]["content"] == sent
+    # The business record keeps the operator's raw text.
+    assert store.snapshot()["inputs"][0]["content"]["text"].endswith("for the probe")
+    assert "sk-live-42" in store.snapshot()["inputs"][0]["content"]["text"]
+
+
+def test_redact_credentials_reuses_the_registry_rules_and_is_deterministic():
+    from opspilot.tools.registry import redact_credentials
+
+    cases = {
+        "Authorization: Bearer abc.def.ghi": "Authorization: [REDACTED_CREDENTIAL]",
+        "x-api-key=sk-123 rest": "x-api-key=[REDACTED_CREDENTIAL] rest",
+        "password: hunter2": "password: [REDACTED_CREDENTIAL]",
+        "https://user:pw@host/p?token=t1&q=2": (
+            "https://[REDACTED_CREDENTIAL]@host/p?token=[REDACTED_CREDENTIAL]&q=2"
+        ),
+        "bearer AbCdEf0123456789": "bearer [REDACTED_CREDENTIAL]",
+        "the author_filter=alice option": "the author_filter=alice option",
+        "label_key=env and group_by_key=pod": "label_key=env and group_by_key=pod",
+        "no secrets here": "no secrets here",
+    }
+    for text, expected in cases.items():
+        assert redact_credentials(text) == expected, text
+        assert redact_credentials(redact_credentials(text)) == expected  # idempotent
