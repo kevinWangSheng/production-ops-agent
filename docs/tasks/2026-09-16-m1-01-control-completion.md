@@ -427,3 +427,26 @@
   修复前 `execution == "completed"`（超预算的 ctx1 轮次照常发出），修复后 `CONTEXT_EXHAUSTED` 且只发 3 次调用；
   `..._a_small_event_landing_during_the_compaction_is_sent_with_the_round` 保证小事件仍随轮次发送、`input_watermark == 1`、重建正常。
   `context_policy_revision` 不变；`make check` 1842 passed, 182 skipped, 2 xfailed。
+
+## codex 分诊（2026-09-23，基于 4459731）：两项采纳
+
+- **P1 非对象 payload 被静默吞掉**：`control()` 对 follow_up/correct 接受合法 JSON 但非对象的 payload（`[]`、标量），落库并报告成功，
+  而模型侧投影 `project_input_content()` 丢弃非 Mapping 内容，操作者文字消失。修复：`control()` 在任何写入之前拒绝
+  `payload is not None and not isinstance(payload, dict)` → `INVALID_INPUT`（与 `append_input()` 对事件内容的既有规则一致），
+  不推进代际、不留审计行。PG 测试 `test_a_non_object_follow_up_payload_is_refused_before_anything_is_written`
+  （list/标量 × follow_up/correct，`append_input` 同形拒绝，代际/输入/审计计数均为 0，随后合法 payload 仍成功）。
+  本地未运行，CI `m0-postgres` 执行。
+- **安全 P2 白名单自由文本携带凭据进入 prompt**（PRODUCT-CONSTRAINTS「Credentials and secret-bearing raw inputs must not
+  enter prompts or exported traces」）：在共享投影里加凭据 redaction，只影响模型侧，库中原文不变。复用
+  `opspilot/tools/registry.py` 既有的 `_AUTHENTICATION_KEYS`/`_AUTHENTICATION_SUBSTRINGS`/`_AUTHENTICATION_TOKENS`/
+  `_authentication_name()` 与 userinfo 规则，新增公开函数 `redact_credentials(text)`（固定标记 `[REDACTED_CREDENTIAL]`，
+  三种形态：`name: value`/`name=value` 且 name 为认证名、`Bearer/Basic <token>`、URL authority 中的 userinfo），
+  `project_input_content()` 先 redaction 后截断。正则按 token 起点 + 占有量词构造为线性时间（初稿在 512 KiB 单 token
+  上二次回溯挂起，已修正；512 KiB 单 token 8.4 ms）。`context_policy_revision` 不变（`ctx-ctx-policy-v1-156004a224ba`）。
+  红→绿：`tests/test_m1_investigation_context.py::test_the_input_projection_redacts_credential_bearing_spans_before_the_model`
+  修复前 Bearer token/`api_key=`/userinfo/`token=` 原样出现在投影里，修复后全部替换为标记且其余文字保留；
+  `..._leaves_an_ordinary_note_unchanged`、`..._a_redacted_follow_up_still_rebuilds_byte_for_byte`（发送字节与重建一致且不含密钥，
+  库中原文仍含）、`..._redact_credentials_reuses_the_registry_rules_and_is_deterministic`（含 `author_filter=`/`label_key=`
+  不误伤、幂等）。已知边界：无命名上下文的裸密钥串不可判定（与 registry 同一限制）。
+- 未采纳（由协调者在线程回复）：累计重发的聚合上限 P2——依赖累计重发的 owner 决策，且当前失败是 fail-closed。
+- 验证：`make check` 1846 passed, 183 skipped, 2 xfailed；ruff check/format、mypy 通过。
