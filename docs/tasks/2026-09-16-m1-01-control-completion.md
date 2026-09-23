@@ -317,3 +317,34 @@
   `opspilot/domain/control.py` 更大动作集合未接线这一潜在恢复路径，确认不存在）；独立验证截断不影响非
   字符串标量、不切割多字节字符；独立发现 JSON 转义膨胀的字节界与「累积多条正常输入」的开放风险两点补充；
   用 diff+apply -R 独立复现红绿；全量回归复核一致。结论：修复安全、依据充分，可以合并。
+
+## 与 main 同步（2026-09-23，PR #31 改为 target main 前置）
+
+- 起点 `bf11401`（=origin）。`git merge origin/feature/m1-01-intake-auth`（`610ccb1`，已含 main `d9afdf1`），
+  合并提交 `e376747`；`origin/main` 已被该分支包含，无需再合并。未 rebase、未改写历史。
+- 冲突与处置：
+  - `ROADMAP.md`、`tests/test_architecture.py`：取 main 版本（本分支 23 个提交未改这两处；
+    `test_persistence_sql_never_selects_a_qualified_star` 两侧相同）。
+  - `opspilot/persistence.py`：`accept()` 同时保留 main 的 `input` 与本分支的 `target_id`；`new_run()`
+    INSERT 带 main 的 `input` 列并用本分支的 `next_state`（paused/queued）；`claim()` 保留 main 的
+    incident/run 状态优先判定，再加本分支的 scope 暂停拒绝；`commit_tool()` SELECT 同时带 main 的
+    `s.response` 与暂停列；`rebuild()` 保留 main 的 `pending_tools`，追加 `inputs`/`input_rounds`/`pending_inputs`。
+  - `opspilot/investigation/store.py`：以 main 的 `StepCommitter`（usage/settle/renew/control_generation）为底，
+    加回 `begin_round()`/`assert_current()`；`MemoryStepStore` 保留 main 的 `control_generation`/`input`，加 `inputs=`。
+  - `opspilot/investigation/loop.py`：在 main 的 `_State` 版 `_round()` 内重新接入 `begin_round()` 与
+    `investigation_inputs` 投影消息（位于 `state.messages` 之后、最终报告指令之前）；`assert_current()` 分别
+    加在每次工具派发前（`renew()` 之后）与每次模型请求前（预留之后），保留 main 的 `reservation`/`_settle` 记账
+    ——即本记录「合并顺序提醒」一节预告的形态。
+- 为适配 main 而做的改动（非本分支原有语义变化的部分已注明）：
+  1. `DurableStepStore.begin_round()` 不再给步骤键加 `g<gen>:e<epoch>:` 前缀：main 的 `step_key()`/`parse_step_key()`
+     禁止 segment 含 `:`，transcript 重建会把前缀读成外来 segment。改为在 `DurableStore.begin_round()` 内处理
+     「同键、旧代际、未提交」的输入边界：按当前水位重新冻结（`ON CONFLICT DO UPDATE`），已提交的旧代际边界仍拒绝。
+     main 的重建让 `next_round` 跨代际单调递增，因此正常路径不会复用已提交轮次键；复用只发生在 `_RoundAborted`
+     未提交轮次。
+  2. main 新增的 `charge_tool()`/`block()` 走 `_lease_revoked()`，其 SELECT 补上 scope 暂停列并先取 `_lock_scope()`；
+     否则 claim 时捕获的 suspension generation 非零的租约会在每次工具计费时被误判撤销。`renew_lease()`/
+     `settle_budget()` 为 main 的内联栅栏，未改动（暂停时 `owner=NULL` 已使其拒绝）。
+  3. `tests/integration/test_m1_control_completion_postgres.py` 的 `new_run()` 传入 main 必填的 `expected_generation=1`。
+- 已知局限：`_manage_context()` 的上下文预算估算不含随后追加的 `investigation_inputs` 消息（与合并前一致）。
+- 验证：`make check`：**1833 passed, 177 skipped, 2 xfailed**，ruff check/format、mypy 通过。PostgreSQL 集成套件
+  （DSN 固定 55431，属另一 worktree）本地未运行，由 push 后 CI `m0-postgres` 覆盖。
