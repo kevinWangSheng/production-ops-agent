@@ -388,3 +388,19 @@
   3. `_manage_context()` 的上下文预算估算不含随后追加的 inputs 消息。
 
 验证：`make check`：**1839 passed, 182 skipped, 2 xfailed**，ruff check/format、mypy 通过。
+
+## 复审收尾（2026-09-23）：P3-1 测试判别力 + 有界真实 Run
+
+- 复审（fc21685..5d790cb）结论：无 P1/P2；CI `m0-postgres` 已运行 5 条新增 PG 测试（139→144 passed）。
+- **P3-1**：`tests/test_m1_investigation_context.py::test_a_follow_up_row_missing_from_the_snapshot_fails_the_rebuild_closed`
+  原先在修复关闭时也通过（只断言了拒绝一侧）。改为同一快照上先断言 `inputs` 在场时 `rebuild_transcript()` 成功
+  （`next_round == 2`），再清空 `inputs` 断言 `INCOMPATIBLE_STATE`。红→绿：临时去掉 rebuild 的 `inputs=inputs`
+  传递（scratch 副本替换 context.py，随后复原并 `git diff --quiet` 核对，非 checkout/stash）时该测试红
+  （`ContextError: INCOMPATIBLE_STATE` 出现在第一段），恢复后绿。
+- **有界真实 Run**（AGENTS.md「验证与汇报」对触及 loop/恢复路径 PR 的要求，真实 DeepSeek 调用在用户既有授权内）：
+  `.venv/bin/python -m scripts.m1_live_flash_loop` 执行一次，`{"status":"completed","handoff":false,"http_count":2,
+  "known_cost_cny_upper":0.024988,"report_schema_version":"m0-report-v2","handoff_reasons":[]}`；prompt 2466 /
+  completion 2236 tokens。产物移至 `docs/evidence/m1-01-control-completion/live-run-2026-09-23/`（`ledger.json`、
+  `report.json`、`report-parsed.json`、`run.md`）；脚本覆盖的 `docs/evidence/m1-01-investigation-loop/` 跟踪文件已
+  `git restore` 并 `git diff --quiet` 核对。新文件 grep 凭据形态无命中。**该 Run 不含 follow_up 输入**
+  （`input_watermark=0`），只作本分支 loop 主路径的合规证据，不覆盖 P1 的输入回放路径（见 `run.md`）。
