@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}OpsPilot · incidents{% endblock %}
+{% block body %}
+<h1>Incidents</h1>
+
+<h2>Submit an incident</h2>
+<form method="post" action="/intake/ui">
+  <p><label>Target <input name="target_id" required maxlength="256"></label></p>
+  <p><label>Question<br><textarea name="question" required rows="4" cols="80" maxlength="16384"></textarea></label></p>
+  <p><label>Idempotency key <input name="idempotency_key" required maxlength="256"></label>
+     <span class="muted">Reuse the same key to retry the same submission; a different question under the same key is refused.</span></p>
+  <p><button type="submit">Submit (read-only investigation)</button></p>
+</form>
+
+<h2>Known incidents</h2>
+{% if incidents %}
+<table>
+  <thead><tr><th>Incident</th><th>State</th><th>Lifecycle</th><th>Generation</th><th>Concluded</th><th>Created</th></tr></thead>
+  <tbody>
+  {% for item in incidents %}
+    <tr>
+      <td><a href="/incidents/{{ item.incident_id }}"><code>{{ item.incident_id }}</code></a></td>
+      <td><span class="badge">{{ item.state }}</span></td>
+      <td>{{ item.lifecycle }}</td>
+      <td>{{ item.control_generation }}</td>
+      <td>{{ "yes" if item.concluded else "no" }}</td>
+      <td>{{ item.created_at or "" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No incidents yet.</p>
+{% endif %}
+{% endblock %}
