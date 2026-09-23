@@ -1,0 +1,66 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "One authorized metrics query was executed against checkout-prod for window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z: rate(http_errors[5m]) returned a single value of 0.042. This is the only evidence obtained. No baseline, comparison window, per-error-code or per-endpoint breakdown, traffic/latency context, or log/trace evidence was delivered, so the claim that checkout shows elevated HTTP errors is neither confirmed nor refuted. The evidence snapshot itself is stale (freshness ≈ 819,050 s ≈ 9.5 days; data_as_of equals the window start; observed_at is 2026-09-23, well after the window end), and the returned series is a single aggregate value rather than a labeled series set, so the value cannot be attributed to a specific service instance, endpoint, or error class. Because histogram/series context and baseline are missing, the observation is recorded as partial: a numeric HTTP error-rate reading exists, but elevation cannot be established and the investigation is not certified.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "The authorized metrics query rate(http_errors[5m]) against target checkout-prod returned result_count 1 and returned_count 1, status ok, incomplete false, truncated false, with a single value of 0.042 for metric http_errors_rate.",
+      "evidence_ids": [
+        "cfb42a11-d19a-44a3-87d8-76fe87bee4ab-t0:4140994e-b6a4-4d33-855d-1d00e7939440"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "The same evidence record reports data_as_of 2026-09-14T00:00:00+00:00 (the window start, not the window end), freshness_seconds 819050.4 (≈9.5 days) and observed_at 2026-09-23T11:30:50Z (after the authorized window), so the returned value is a stale snapshot relative to the queried window and cannot by itself establish the error condition at any point inside the window.",
+      "evidence_ids": [
+        "cfb42a11-d19a-44a3-87d8-76fe87bee4ab-t0:4140994e-b6a4-4d33-855d-1d00e7939440"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "The query returned a single unlabeled aggregate value (result_count 1, omitted_rows 0, omitted_bytes 0) with no service, endpoint, status-code or instance labels and no comparison/baseline series in the delivered context, so it does not demonstrate a rise relative to normal behavior and cannot support an elevation claim.",
+      "evidence_ids": [
+        "cfb42a11-d19a-44a3-87d8-76fe87bee4ab-t0:4140994e-b6a4-4d33-855d-1d00e7939440"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "If recent HTTP error rate is compared against a comparable prior baseline for checkout-prod with per-endpoint/label granularity, the 0.042 reading may or may not reflect elevated errors; this remains unverified because no baseline or labeled series was supplied.",
+      "evidence_ids": [
+        "cfb42a11-d19a-44a3-87d8-76fe87bee4ab-t0:4140994e-b6a4-4d33-855d-1d00e7939440"
+      ],
+      "target_refs": [
+        "checkout-prod"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No baseline or comparison window for http_errors_rate was delivered, so elevation cannot be inferred without violating the no-trend-without-baseline rule.",
+    "No per-service, per-endpoint, per-instance or per-status-code label breakdown was returned; error attribution is unknown.",
+    "No ERROR metric series or log/event evidence was delivered; missing error series remain unknown rather than zero.",
+    "No trace/span evidence was delivered, so no call edges, dependency paths, or sampled chain can be asserted.",
+    "The single evidence snapshot is stale (data_as_of at window start; freshness ≈ 819,050 s; observed 2026-09-23), so it does not describe metric state continuously across the authorized window.",
+    "No traffic, throughput, saturation or latency series was delivered, so error-rate context and any latency claims are unavailable."
+  ],
+  "next_steps": [
+    "Advisory only: compare http_errors_rate for checkout-prod against an equivalent prior baseline window of the same length and traffic pattern to test whether 0.042 is elevated.",
+    "Advisory only: request labeled error series (by service, endpoint, instance, status code) for the authorized and baseline windows.",
+    "Advisory only: check whether an ERROR-level metric or alert series for checkout-prod exists before concluding absence of errors.",
+    "Advisory only: correlate any confirmed error-rate movement with traces and deployment/change events, using visible parent references only for call edges."
+  ]
+}
