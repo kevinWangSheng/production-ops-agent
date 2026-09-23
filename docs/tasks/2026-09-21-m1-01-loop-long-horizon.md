@@ -152,6 +152,7 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 3. **F5**：v4 `TimePolicy` required 字段在 intake 入口统一做 schema 校验，loop 投影层维持形状白名单。
 4. **`DEADLINE_EXCEEDED` 无可落库终态**（第八轮 P1 / 审查 P3）：写入者与栅栏在控制面 / 进度 UI 子任务中决定（C3/ADR 级）。
 5. **小缺陷修复 PR**（合并后单独一个）：待重放计划先校验再转 `INCONSISTENT_STATE`（第十一轮 P1）；派发前校验 `reasoning_content`（审查 P3 #4 / 第十一轮 P2）；非瞬时 4xx 归 `MODEL_REJECTED`（第十一轮 P2）。
+   执行：分支 `fix/m1-01-loop-followups`（worktree `../production-ops-agent-loop-followups`），拒绝码分别为 `INCONSISTENT_STATE`（blocked）、`PRIVATE_PROTOCOL_MISSING`、`MODEL_REJECTED`（408/409/425/429 仍按瞬时重试）；每条先红后绿，`make check` `1678 passed`，本任务 PG 17.9（55433）五个 M1 套件 `116 passed`；有界真实 Run 见 [证据](../evidence/m1-01-loop-followups/run.md)（2 次 HTTP，未触发三条修复分支，仅作 loop 主路径合规证据）；全新上下文独立审查无 P1/P2，3 条 P3 不改。
 6. `dispatch_started_at` 改用 `operation.authorized_at` 随工具执行器任务；DNS 阶段可终止性随 DeepSeek 客户端加固。
 
 ## 其余后续（未裁定）
@@ -159,5 +160,6 @@ Holmes 式压缩、模型/工具/活跃时间/上下文预算分离且重启不�
 - 审查 P3：`MODEL_REJECTED` 按超时上界计活跃时间（过保守）；runner 不校验 `Worker.versions` 是否含 `context_policy_revision`；dropped 组只在内存 `Transcript`；`executor_factory` 合同未写明须从工具 ledger 回填 `tool_seconds_used`。
 - 独立审查 P3 #8：follow-up 取代未发布 completed conclusion 且无预算时的产品语义，随追问通道工作一起定。
 - 机器人第六轮 P2：`assistant_message` 先投影工具调用字段再复制，或把 `RecursionError` 映射为固定模型失败码。
-- 供应商余额差记账（2 次冒烟请求）。
+- 供应商余额差记账（2 次冒烟请求；B1–B3 真实 Run 2 次请求）。
+- `scripts/m1_live_flash_loop.py` 输出目录写死为 `docs/evidence/m1-01-investigation-loop/`，重跑会覆盖 09-16 已入库证据（B1–B3 执行时发生并已恢复）；应改为按 Run 或参数指定目录。
 - 跨 Run 自动接续、UI 展示 compaction/handoff、`opspilot_inputs` 追问通道接入 transcript、产品组合层（`accept(input=)` 调用方、`ExecutorFactory` 构造）均不在本任务。
