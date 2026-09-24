@@ -886,6 +886,47 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
     assert _kinds(log, h.incident)[-1] == "run_handoff"
 
 
+def test_a_recovered_tool_result_is_announced_and_its_evidence_readable():
+    """Bot review (PR #44): breakpoint-2 replays must reach the live stream."""
+    from opspilot.web import DurableEvidenceStore
+
+    h = Harness()
+    log = _event_log(h.store)
+    evidence = DurableEvidenceStore(h.store)
+    evidence.install()
+    h.sink = evidence
+
+    def die(request):
+        h.executor_hook = None
+        raise Crash("before the tool ran")
+
+    h.executor_hook = die
+    first = h.runner([*_tool_rounds(1)])
+    first.events, first.evidence = log, evidence
+    with pytest.raises(Crash):
+        first.resume(h.incident)
+    assert _kinds(log, h.incident) == ["run_claimed", "step_committed"]
+    h.wait_lease()
+    second = h.runner([report_from_transcript])
+    second.events, second.evidence = log, evidence
+    outcome = second.resume(h.incident)
+    assert outcome.status == "published" and outcome.replayed_tools == 1
+    events = log.read_after(h.incident, 0, limit=1000)
+    assert [e.kind for e in events] == [
+        "run_claimed",
+        "step_committed",
+        "run_claimed",
+        "tool_committed",
+        "step_committed",
+        "run_completed",
+    ]
+    recovered = events[3].payload
+    assert recovered["ordinal"] == 0 and recovered["run_id"] == str(h.run)
+    stored = evidence.get(recovered["evidence_id"])
+    assert stored is not None and stored.committed is True
+    assert events[-1].payload["evidence_ids"] == [recovered["evidence_id"]]
+
+
 def test_a_refused_claim_of_a_runnable_run_is_one_event_not_an_attempt():
     # A queued Run whose deadline already passed looks runnable in the rows
     # but the claim refuses it: that refusal is news for the page.

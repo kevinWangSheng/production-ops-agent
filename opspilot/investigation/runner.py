@@ -28,8 +28,8 @@ page consumes (``opspilot.investigation.progress``): ``run_claimed``, one
 crashes (an exception out of the model client or the executor) announces no
 terminal event and keeps its lease to expiry, exactly like a killed worker;
 the next attempt resumes from the rows. Tool results replayed by breakpoint
-2 are committed by the session, not the loop, and are not announced; the
-page reads them from the rows.
+2 are committed by the session, not the loop, and are announced right after
+the replay from the committed rows (``announce_recovered_tools``).
 """
 
 from __future__ import annotations
@@ -62,6 +62,7 @@ from opspilot.investigation.progress import (
     announce_claimed,
     announce_completed,
     announce_handoff,
+    announce_recovered_tools,
 )
 from opspilot.investigation.store import (
     DurableStepStore,
@@ -262,6 +263,28 @@ class InvestigationRunner:
                 raise ContextError("INCONSISTENT_STATE") from exc
         replayed = session.execute_pending(execute)
         current = self.store.rebuild(incident_id)
+        if self.events is not None and replayed:
+            try:
+                announce_recovered_tools(
+                    self.events,
+                    incident_id,
+                    lease.run_id,
+                    current["steps"],
+                    session.plan.pending_tools,
+                    evidence=self.evidence,
+                )
+            except StepStoreError as exc:
+                # Same disposition as the loop path: the rows are committed,
+                # the projection is not, and that is a visible handoff.
+                return self._hand_off(
+                    lease,
+                    "failed",
+                    (exc.code,),
+                    report_sha256=None,
+                    evidence_ids=(),
+                    loop=None,
+                    replayed=replayed,
+                )
         transcript = rebuild_transcript(
             current,
             run_id=str(lease.run_id),

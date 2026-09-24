@@ -120,6 +120,90 @@ def announce_handoff(
     )
 
 
+def _tool_committed_payload(
+    run_id: UUID, step_id: UUID, ordinal: int, result: Mapping[str, Any]
+) -> dict[str, Any]:
+    return {
+        "run_id": str(run_id),
+        "step_id": str(step_id),
+        "ordinal": ordinal,
+        "evidence_id": result.get("evidence_id"),
+        "status": result.get("status"),
+        "adopted": result.get("adopted"),
+        "tool": result.get("tool"),
+        "target_id": result.get("target_id"),
+    }
+
+
+def _pin_evidence(
+    evidence: EvidenceProjection | None, result: Mapping[str, Any]
+) -> None:
+    """Pin the projection to the committed tool result (the authority).
+
+    A projection that cannot find the row is a visible gap, not something to
+    run past: ``StepStoreError("EVIDENCE_PROJECTION_FAILED")`` makes the
+    caller hand off with a fixed reason. The usual cause is an executor that
+    registered into another evidence store (independent review, P2-2).
+    """
+    evidence_id = result.get("evidence_id")
+    if evidence is None or not isinstance(evidence_id, str):
+        return
+    try:
+        evidence.commit(evidence_id, result)
+    except PersistenceError as exc:
+        raise StepStoreError(
+            "EVIDENCE_PROJECTION_FAILED:" + str(exc)
+            if str(exc) != "UNKNOWN_IDENTITY"
+            else "EVIDENCE_PROJECTION_FAILED"
+        ) from None
+
+
+def announce_recovered_tools(
+    log: ProgressLog,
+    subject_id: UUID,
+    run_id: UUID,
+    steps: Any,
+    pending: Any,
+    *,
+    evidence: EvidenceProjection | None = None,
+) -> int:
+    """Announce tool results a recovery replay committed outside the loop.
+
+    ``RecoverySession.execute_pending`` commits through the store, not the
+    committer, so the page would never see those results live (bot review,
+    PR #44). ``pending`` is the plan the session replayed and ``steps`` the
+    rows read after it: every planned ordinal that is committed now is
+    announced with the same payload the loop path uses, and its evidence is
+    pinned the same way. Returns how many were announced.
+    """
+    by_step: dict[Any, Mapping[str, Any]] = {
+        step["step_id"]: step for step in steps if isinstance(step, Mapping)
+    }
+    count = 0
+    for item in pending:
+        step = by_step.get(item["step_id"])
+        if step is None or step.get("status") == "late_result":
+            continue
+        for entry in step.get("tool_results") or ():
+            if not isinstance(entry, Mapping) or entry.get("ordinal") != int(
+                item["ordinal"]
+            ):
+                continue
+            result = entry.get("result")
+            if not isinstance(result, Mapping):
+                continue
+            _pin_evidence(evidence, result)
+            log.append(
+                subject_id,
+                "tool_committed",
+                _tool_committed_payload(
+                    run_id, item["step_id"], int(item["ordinal"]), result
+                ),
+            )
+            count += 1
+    return count
+
+
 class EmittingCommitter:
     """Wrap the loop's committer so each committed step/tool becomes an event.
 
@@ -252,34 +336,9 @@ class EmittingCommitter:
         # The committed tool result is the authority for what was consumed:
         # pin the evidence projection to it so a stale replay (an expired
         # worker returning the same bytes later) cannot replace it.
-        evidence_id = result.get("evidence_id")
-        if self._evidence is not None and isinstance(evidence_id, str):
-            try:
-                self._evidence.commit(evidence_id, result)
-            except PersistenceError as exc:
-                # The projection is not the authority (the tool row above
-                # is), but a page that cannot resolve a cited evidence id is
-                # a visible gap, not something to run past: hand off with a
-                # fixed reason the loop records in its conclusion step. The
-                # usual cause is an executor that registered into another
-                # evidence store than the one given here (independent
-                # review, P2-2).
-                raise StepStoreError(
-                    "EVIDENCE_PROJECTION_FAILED:" + str(exc)
-                    if str(exc) != "UNKNOWN_IDENTITY"
-                    else "EVIDENCE_PROJECTION_FAILED"
-                ) from None
+        _pin_evidence(self._evidence, result)
         self._events.append(
             self._subject_id,
             "tool_committed",
-            {
-                "run_id": str(self._run_id),
-                "step_id": str(step_id),
-                "ordinal": ordinal,
-                "evidence_id": result.get("evidence_id"),
-                "status": result.get("status"),
-                "adopted": result.get("adopted"),
-                "tool": result.get("tool"),
-                "target_id": result.get("target_id"),
-            },
+            _tool_committed_payload(self._run_id, step_id, ordinal, result),
         )
