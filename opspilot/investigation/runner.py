@@ -480,7 +480,14 @@ class InvestigationRunner:
         except PersistenceError as exc:
             return RunnerOutcome("control_denied", reason=str(exc), epoch=lease.epoch)
         if self.events is not None:
+            # ``blocked`` is durable but not ``waiting_human``: control does
+            # not re-queue it, so the event must not claim a park.
             announce_handoff(
-                self.events, lease.incident_id, lease.run_id, "blocked", (reason,)
+                self.events,
+                lease.incident_id,
+                lease.run_id,
+                "blocked",
+                (reason,),
+                parked=False,
             )
         return RunnerOutcome("blocked", reason=reason, epoch=lease.epoch)

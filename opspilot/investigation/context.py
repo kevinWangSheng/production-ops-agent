@@ -39,6 +39,7 @@ from opspilot.investigation.reports import (
     delivered_from_context,
     eligible_time_policies,
     evidence_context_projection,
+    parse_report,
     view_targets_authorized,
 )
 from opspilot.tools.registry import canonical, redact_credentials
@@ -1016,17 +1017,23 @@ def conclusion_publishable(response: Mapping[str, Any]) -> bool:
         return False
     content = body.get("report_content")
     # A recovered row is only as trustworthy as its own shape: the report
-    # must be present as text and match its recorded digest, else the row is
-    # a handoff to a human rather than something to publish (bot review,
-    # PR #44). ``publish()`` still compares the row to the conclusion.
-    return (
-        body.get("execution") == "completed"
-        and body.get("handoff") is False
-        and isinstance(body.get("report_schema_version"), str)
-        and bool(body.get("report_schema_version"))
-        and isinstance(content, str)
-        and hashlib.sha256(content.encode("utf-8")).hexdigest()
-        == body.get("report_content_sha256")
+    # must be present as text, match its recorded digest and still parse as
+    # the report the live path validated (same ``parse_report``), else the
+    # row is a handoff to a human rather than something to publish (bot
+    # review, PR #44). ``publish()`` still compares the row to the
+    # conclusion. Citations are not re-checked here: they were checked
+    # against the delivered views when the row was written.
+    if (
+        body.get("execution") != "completed"
+        or body.get("handoff") is not False
+        or not isinstance(content, str)
+        or hashlib.sha256(content.encode("utf-8")).hexdigest()
+        != body.get("report_content_sha256")
+    ):
+        return False
+    report, _reason = parse_report(content, finish_reason="stop")
+    return report is not None and report.schema_version == body.get(
+        "report_schema_version"
     )
 
 

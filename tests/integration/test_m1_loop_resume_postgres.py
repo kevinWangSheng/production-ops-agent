@@ -465,9 +465,17 @@ def test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript():
 
 def test_a_malformed_input_snapshot_blocks_the_run_durably():
     h = Harness(input={"version": "bogus"})
-    outcome = h.runner([report_from_transcript]).resume(h.incident)
+    log = _event_log(h.store)
+    runner = h.runner([report_from_transcript])
+    runner.events = log
+    outcome = runner.resume(h.incident)
     assert outcome.status == "blocked" and outcome.reason == "INPUT_INVALID"
     assert h.rows()["run"]["state"] == "blocked"
+    # Announced as a handoff the page can show, but never as a park: a
+    # blocked Run is not waiting_human and control does not re-queue it.
+    last = log.read_after(h.incident, 0, limit=1000)[-1]
+    assert last.kind == "run_handoff" and last.payload["parked"] is False
+    assert last.payload["reasons"] == ["INPUT_INVALID"]
     again = h.runner([report_from_transcript]).resume(h.incident)
     assert again.status == "control_denied"
 

@@ -3,8 +3,9 @@
 import hashlib
 
 from opspilot.investigation.context import conclusion_publishable
+from tests.m1_investigation_support import report_json
 
-CONTENT = '{"schema_version": "m0-report-v2"}'
+CONTENT = report_json(evidence_id="ev-1")
 
 
 def _row(**overrides):
@@ -40,3 +41,19 @@ def test_a_malformed_recovered_row_is_not_published():
     assert conclusion_publishable(_row(report_content_sha256="0" * 64)) is False
     assert conclusion_publishable({"kind": "conclusion"}) is False
     assert conclusion_publishable({"kind": "conclusion", "conclusion": []}) is False
+
+
+def test_a_recovered_report_must_still_parse_as_the_validated_report():
+    # Bot review (PR #44): a digest-consistent row whose content is not a
+    # ReportV2 (or names another schema) is a handoff, not a conclusion.
+    bad = "not JSON"
+    assert (
+        conclusion_publishable(
+            _row(
+                report_content=bad,
+                report_content_sha256=hashlib.sha256(bad.encode()).hexdigest(),
+            )
+        )
+        is False
+    )
+    assert conclusion_publishable(_row(report_schema_version="anything")) is False

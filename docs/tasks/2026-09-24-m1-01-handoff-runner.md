@@ -46,6 +46,10 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 - lab PostgreSQL：端口 55431 原被 `production-ops-agent-m1-human-control`（已合并分支）遗留实例占用；lead 会话确认无客户端后在该 worktree 用 `postgres_lab stop` 停止（数据目录保留，worktree 未删）。上面的首轮集成结果（160 passed）跑在该遗留实例上；随后本 worktree 用 `postgres_lab start` 起自己的实例（`tmp/m0-b/postgres`），重跑 `tests/integration`：第 1 次 `2 failed, 158 passed`（失败用例名未捕获，仅有汇总行），第 2、3 次均 `160 passed, 38 skipped`；记为未定位的偶发，待 CI 的 m0-postgres 作业对照。
 - 真实 Run（2026-09-24，DeepSeek Flash，经 `InvestigationRunner` + 本 worktree PG）：4 次，合计 0.080403 CNY 上界。两次合格报告发布（`3a7dee13`、`325642ca`）、两次交接不发布（`b127b23a` 含 follow_up 后再 claim、`f987b4b6` 为脚本配置错误导致工具被拒）。结论与账本见 [`docs/evidence/m1-01-handoff-runner/run.md`](../evidence/m1-01-handoff-runner/run.md)。
 
+## 后续项（不在本 PR）
+
+- 交接事件的修复：`hand_off()` 落库成功但事件追加失败时，`resume()` 对 `waiting_human` 直接返回、`reconcile()` 只补 `run_completed`，页面会缺该 Run 的 `run_handoff`。事件日志是投影、Run 行是权威（ADR-0003），补投影属 `reconcile()` 的扩展，单列处理（机器人审查 PR #44 P2，lead 裁定不在本 PR 采纳）。
+
 ## 下一步与交接
 
 - PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44)：CI 成功后已做一次 `@codex review` 分诊，2 个 P2 均采纳并修复（`ba9a306` 断点 2 重放的工具结果发 `tool_committed` 并钉证据；`a811b9e` `conclusion_publishable` 对恢复行 fail-closed：版本为非空字符串、正文为字符串且摘要一致），thread 已回复并 resolve；lead 合入 main（`0b304a3`，含 #43 ADR）后机器人第 3 个 P2「hand_off 被拒仍发 run_handoff」：可复现（人工控制在尝试中推进代际），但 #33 的三条既有用例要求页面把被围栏尝试的结果记为历史，故采「区分事件」方案——`run_handoff` 载荷新增 `parked`（真实停放为 true，被拒/崩溃为 false），runner 被拒时仍不发；并按 lead 要求让 `snapshot()` 在 run 行仍为 queued/running 时不把 `parked: false` 的事件当作终态（`outcome`/`handoff_report` 为空，事件列表保留），行不可运行后（cancel/停放）再显示；修复后 `make check` 1931 passed、PG 161 passed。集成套件在本实例上此后连续 6 次全过，首跑的 2 个失败未复现、用例名未捕获，不断言无害。用户门，待用户合并。
