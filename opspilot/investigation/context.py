@@ -1002,6 +1002,24 @@ def pending_conclusion(
     return None
 
 
+def conclusion_publishable(response: Mapping[str, Any]) -> bool:
+    """ADR-0005: only a qualified report with no handoff becomes the conclusion.
+
+    ``response`` is a committed ``conclusion`` step (``LoopOutcome.conclusion``
+    or the row ``pending_conclusion`` found). Anything else -- a budget or
+    pairing failure, an incomplete report, a fenced attempt -- is a handoff:
+    the row stays readable, the Run is parked for a human, nothing is
+    published. Both drivers (runner and workbench) decide with this one rule.
+    """
+    body = response.get("conclusion")
+    return (
+        isinstance(body, Mapping)
+        and body.get("execution") == "completed"
+        and body.get("handoff") is False
+        and body.get("report_schema_version") is not None
+    )
+
+
 def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:
     context = response.get("context")
     usage = response.get("usage")

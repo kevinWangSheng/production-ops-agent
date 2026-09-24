@@ -409,6 +409,13 @@ class MemoryIncidentStore:
         self.renewals = getattr(self, "renewals", 0) + 1
         return run["lease_until"]
 
+    def hand_off(self, lease):
+        """Mirror DurableStore.hand_off (ADR-0005): fenced, running -> waiting_human."""
+        run = self.runs[lease.run_id]
+        if run["state"] != "running" or self._revoked(run, lease):
+            raise PersistenceError("CONTROL_DENIED")
+        run.update(state="waiting_human", owner=None, lease_until=None)
+
     def abandon(self, lease):
         run = self.runs[lease.run_id]
         if (

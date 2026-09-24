@@ -679,6 +679,86 @@ def test_snapshot_survives_event_retention_and_unmapped_storage_errors():
     assert down.status == 503 and down.json() == {"code": "STORAGE_UNAVAILABLE"}
 
 
+def test_a_handoff_parks_the_run_for_a_human_and_keeps_control_open():
+    """ADR-0005: a handoff is a durable terminal state of the attempt, not a
+    conclusion. The Run waits for a human, no worker re-claims it on its own,
+    and follow_up / cancel + new_run stay accepted."""
+    app, workbench, clock = build_workbench()
+    incident = submit_incident(app, key="park-1").json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    # One tool round, then a malformed plan: the loop hands off (failed).
+    # Four slots per Run, so the continuation after the note still has two.
+    investigator = ScriptedInvestigator(
+        clock,
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            reply(tool_calls=[tool_call()], finish="stop"),
+        ],
+        model_requests=4,
+    )
+    outcome = workbench.run_once(subject, investigator)
+    assert outcome is not None and outcome.handoff is True
+    run = workbench.incidents.runs[run_id]
+    assert run["state"] == "waiting_human"
+    assert run["owner"] is None and run["lease_until"] is None
+    assert workbench.incidents.incidents[subject]["conclusion"] is None
+    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
+    assert kinds[-1] == "run_handoff"
+    # The committed conclusion step stays readable: the page shows the
+    # incomplete outcome and its reasons.
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["run"]["state"] == "waiting_human"
+    assert snapshot["outcome"]["handoff"] is True
+    assert snapshot["outcome"]["reasons"] == ["TOOL_PAIRING_INVALID"]
+    # Nothing runs until a human acts: a poll is refused, and the refusal is
+    # visible on the page as one event, not as a new attempt.
+    assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
+    assert workbench.events.read_after(subject, 0)[-1].kind == "run_claim_refused"
+    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
+    # follow_up re-queues the same Run under the next generation.
+    follow = _control(
+        app,
+        incident,
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "after-handoff",
+            "text": "Check the dependency too.",
+        },
+    )
+    assert follow.status == 200 and follow.json()["generation"] == 1
+    assert workbench.incidents.runs[run_id]["state"] == "queued"
+    again = ScriptedInvestigator(clock, model_requests=4)
+    outcome = workbench.run_once(subject, again)
+    assert outcome is not None and outcome.execution == "completed"
+    assert note_reached_investigation(workbench, again, "Check the dependency too.")
+    assert workbench.snapshot(subject)["report"]["facts"]
+
+
+def test_cancel_and_new_run_are_accepted_after_a_handoff():
+    app, workbench, clock = build_workbench()
+    incident = submit_incident(app, key="park-2").json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    first_run = workbench.list_incidents()[0].current_run_id
+    investigator = ScriptedInvestigator(
+        clock,
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            reply(tool_calls=[tool_call()], finish="stop"),
+        ],
+    )
+    assert workbench.run_once(subject, investigator).handoff is True
+    assert workbench.incidents.runs[first_run]["state"] == "waiting_human"
+    generation = _renew(app, incident, generation=0)
+    assert generation == 2
+    assert workbench.incidents.runs[first_run]["state"] == "cancelled"
+    assert workbench.list_incidents()[0].current_run_id != first_run
+    outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
+    assert outcome is not None and outcome.execution == "completed"
+    assert workbench.snapshot(subject)["report"] is not None
+
+
 def test_an_unexpected_investigator_error_releases_the_lease_and_hands_off():
     app, workbench, clock = build_workbench()
     submit_incident(app, key="boom")

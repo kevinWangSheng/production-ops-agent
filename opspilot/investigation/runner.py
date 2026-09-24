@@ -11,8 +11,22 @@ C3 §7 breakpoints, in the order this module walks them:
 1. conclusion already published  -> report ``already_completed``;
 2. response committed, tools pending -> ``RecoverySession.execute_pending``;
 3. tool results complete            -> ``rebuild_transcript`` + ``loop.resume``;
-4. conclusion step committed, publish unconfirmed -> ``publish`` only;
+4. conclusion step committed, not settled -> ``publish`` or ``hand_off`` only;
 5. malformed / incompatible rows    -> durable ``blocked`` handoff.
+
+Settling (ADR-0005): only a qualified report with no handoff is published
+(``conclusion_publishable``). Every other ending parks the Run for a human
+(``DurableStore.hand_off`` -> ``waiting_human``); the incident stays open,
+the committed conclusion step stays readable, and ``control()`` still takes
+follow_up / correct / cancel (then ``new_run``). A parked Run is never
+claimed again by this runner until a human acts.
+
+With ``events`` set, the attempt announces the same progress the workbench
+page consumes (``opspilot.investigation.progress``): ``run_claimed``, one
+``step_committed``/``tool_committed`` per committed row, then exactly one
+``run_completed`` or ``run_handoff``. Tool results replayed by breakpoint 2
+are committed by the session, not the loop, and are not announced; the page
+reads them from the rows.
 """
 
 from __future__ import annotations
@@ -25,6 +39,7 @@ from uuid import UUID
 from opspilot.investigation.context import (
     ContextError,
     InvestigationInput,
+    conclusion_publishable,
     pending_conclusion,
     rebuild_transcript,
 )
@@ -36,15 +51,29 @@ from opspilot.investigation.loop import (
     tool_request_for,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
-from opspilot.investigation.store import DurableStepStore, StepStoreError
+from opspilot.investigation.progress import (
+    EmittingCommitter,
+    EvidenceProjection,
+    ProgressLog,
+    announce_claim_refused,
+    announce_claimed,
+    announce_completed,
+    announce_handoff,
+)
+from opspilot.investigation.store import (
+    DurableStepStore,
+    StepCommitter,
+    StepStoreError,
+)
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
 from opspilot.tools.registry import ToolContractError
 from opspilot.worker import DEFAULT_LEASE_SECONDS, RecoverySession, Worker
 
 RunnerStatus = Literal[
-    "published",  # a conclusion step was committed and published
-    "unpublished",  # the loop ended but nothing could be published
+    "published",  # a qualified conclusion step was committed and published
+    "handed_off",  # the Run is parked for a human (this attempt, or already)
+    "unpublished",  # a publishable conclusion was refused (late result)
     "already_completed",
     "control_denied",
     "blocked",
@@ -71,6 +100,9 @@ class InvestigationRunner:
     executor_factory: ExecutorFactory
     clock: Clock
     lease_seconds: int = DEFAULT_LEASE_SECONDS
+    # Workbench projections (C3 section 9). ``None`` runs silently.
+    events: ProgressLog | None = None
+    evidence: EvidenceProjection | None = None
 
     def resume(self, incident_id: UUID) -> RunnerOutcome:
         """Continue (or start) the incident's current Run from committed rows."""
@@ -85,6 +117,11 @@ class InvestigationRunner:
             "cancelled",
         }:
             return RunnerOutcome("already_completed")
+        if snapshot["run"]["state"] == "waiting_human":
+            # Parked by a handoff: a human re-queues (follow_up/correct) or
+            # cancels it. Neither a claim nor an event -- the page already
+            # holds the ``run_handoff`` that parked it.
+            return RunnerOutcome("handed_off", reason="AWAITING_HUMAN")
         try:
             session = self.worker.resume(
                 incident_id,
@@ -95,11 +132,19 @@ class InvestigationRunner:
             code = str(exc)
             if code == "INCONSISTENT_STATE":
                 return self._block_undecodable(incident_id)
+            if self.events is not None and code != "LEASE_ACTIVE":
+                # A live lease elsewhere is the normal state while another
+                # worker runs; announcing it per poll would flood the page.
+                announce_claim_refused(
+                    self.events, incident_id, snapshot["run"]["run_id"], code
+                )
             return RunnerOutcome(
                 "blocked" if code == "INCOMPATIBLE_STATE" else "control_denied",
                 reason=code,
             )
         lease = session.lease
+        if self.events is not None:
+            announce_claimed(self.events, lease)
         try:
             return self._continue(incident_id, session, snapshot)
         except ContextError as exc:
@@ -178,12 +223,7 @@ class InvestigationRunner:
         concluded = pending_conclusion(self.store.rebuild(incident_id))
         if concluded is not None:
             step_id, conclusion = concluded
-            published = self._publish(session, conclusion, step_id)
-            return RunnerOutcome(
-                "published" if published else "unpublished",
-                reason=None if published else "PUBLISH_REFUSED",
-                epoch=lease.epoch,
-            )
+            return self._settle(session, step_id, conclusion)
         # Breakpoint 2: finish the committed plan first (only still-pending
         # ordinals are dispatched; the session re-checks the fence per item).
         # ``DurableStore.rebuild()`` only checks that a committed tool plan is
@@ -213,51 +253,157 @@ class InvestigationRunner:
             authorized_targets=executor.scope.target_ids,
             input=input,
         )
-        # Breakpoint 4: a conclusion was committed but never published.
+        # Breakpoint 4: a conclusion was committed but never settled.
         if transcript.pending_publish is not None:
             step_id, conclusion = transcript.pending_publish
-            published = self._publish(session, conclusion, step_id)
-            return RunnerOutcome(
-                "published" if published else "unpublished",
-                reason=None if published else "PUBLISH_REFUSED",
-                epoch=lease.epoch,
-                replayed_tools=replayed,
-            )
+            return self._settle(session, step_id, conclusion, replayed=replayed)
         # Breakpoint 3: continue the model/tool loop from the rebuilt context.
+        committer: StepCommitter = DurableStepStore(
+            self.store, lease, renew_seconds=self.lease_seconds
+        )
+        if self.events is not None:
+            committer = EmittingCommitter(
+                committer,
+                self.events,
+                incident_id,
+                lease.run_id,
+                evidence=self.evidence,
+            )
         loop = InvestigationLoop(
-            model=self.model,
-            executor=executor,
-            store=DurableStepStore(self.store, lease, renew_seconds=self.lease_seconds),
-            clock=self.clock,
+            model=self.model, executor=executor, store=committer, clock=self.clock
         )
         outcome = loop.resume(transcript)
         if outcome.final_step_id is None or outcome.conclusion is None:
-            return RunnerOutcome(
-                "unpublished",
-                reason=outcome.handoff_reasons[0] if outcome.handoff_reasons else None,
+            # The store fenced the terminal step (or refused it): there is no
+            # row to publish, and what the loop saw is still a handoff.
+            return self._hand_off(
+                lease,
+                outcome.execution,
+                outcome.handoff_reasons,
+                report_sha256=outcome.report_content_sha256,
+                evidence_ids=outcome.evidence_ids,
                 loop=outcome,
-                epoch=lease.epoch,
-                replayed_tools=replayed,
+                replayed=replayed,
             )
-        published = self._publish(session, outcome.conclusion, outcome.final_step_id)
-        return RunnerOutcome(
-            "published" if published else "unpublished",
-            reason=None if published else "PUBLISH_REFUSED",
+        return self._settle(
+            session,
+            outcome.final_step_id,
+            outcome.conclusion,
             loop=outcome,
-            epoch=lease.epoch,
-            replayed_tools=replayed,
+            replayed=replayed,
         )
 
-    @staticmethod
-    def _publish(
-        session: RecoverySession, conclusion: Mapping[str, Any], step_id: UUID
-    ) -> bool:
+    def _settle(
+        self,
+        session: RecoverySession,
+        step_id: UUID,
+        conclusion: Mapping[str, Any],
+        *,
+        loop: LoopOutcome | None = None,
+        replayed: int = 0,
+    ) -> RunnerOutcome:
+        """Publish a qualified conclusion row, or park the Run on a handoff row.
+
+        ``conclusion`` is the committed terminal step (from the loop just now
+        or from the rows after a restart); ``conclusion_publishable`` is the
+        one rule both drivers apply to it.
+        """
+        lease = session.lease
+        body = conclusion.get("conclusion")
+        body = body if isinstance(body, Mapping) else {}
+        if not conclusion_publishable(conclusion):
+            reasons = tuple(
+                str(item) for item in (body.get("handoff_reasons") or ()) if item
+            )
+            evidence_ids = tuple(
+                str(item) for item in (body.get("evidence_ids") or ()) if item
+            )
+            return self._hand_off(
+                lease,
+                str(body.get("execution") or "failed"),
+                reasons,
+                report_sha256=body.get("report_content_sha256"),
+                evidence_ids=evidence_ids,
+                loop=loop,
+                replayed=replayed,
+            )
         try:
-            return session.publish(dict(conclusion), step_id=step_id)
+            published = session.publish(dict(conclusion), step_id=step_id)
         except PersistenceError:
             # The session already released its lease; the conclusion step is
             # still in the rows, so the next attempt republishes it.
-            return False
+            published = False
+        if not published:
+            return RunnerOutcome(
+                "unpublished",
+                reason="PUBLISH_REFUSED",
+                loop=loop,
+                epoch=lease.epoch,
+                replayed_tools=replayed,
+            )
+        if self.events is not None:
+            announce_completed(
+                self.events,
+                lease.incident_id,
+                lease.run_id,
+                execution=str(body.get("execution")),
+                report_sha256=body.get("report_content_sha256"),
+                evidence_ids=tuple(
+                    str(item) for item in (body.get("evidence_ids") or ()) if item
+                ),
+                model_requests_used=body.get("model_requests_used"),
+                prompt_revision=body.get("prompt_revision"),
+            )
+        return RunnerOutcome(
+            "published", loop=loop, epoch=lease.epoch, replayed_tools=replayed
+        )
+
+    def _hand_off(
+        self,
+        lease: Lease,
+        execution: str,
+        reasons: tuple[str, ...],
+        *,
+        report_sha256: str | None,
+        evidence_ids: tuple[str, ...],
+        loop: LoopOutcome | None,
+        replayed: int,
+    ) -> RunnerOutcome:
+        """Park the Run under ``lease`` and report what actually landed.
+
+        Like ``_blocked``: ``handed_off`` only when the fenced write
+        succeeded. A refusal (human control moved the Run on, the lease
+        lapsed, storage failed) is ``control_denied`` and nothing is
+        announced -- the Run is someone else's now, or the next attempt
+        converges on the same rows.
+        """
+        try:
+            self.store.hand_off(lease)
+        except PersistenceError as exc:
+            return RunnerOutcome(
+                "control_denied",
+                reason=str(exc),
+                loop=loop,
+                epoch=lease.epoch,
+                replayed_tools=replayed,
+            )
+        if self.events is not None:
+            announce_handoff(
+                self.events,
+                lease.incident_id,
+                lease.run_id,
+                execution,
+                reasons,
+                report_sha256=report_sha256,
+                evidence_ids=evidence_ids,
+            )
+        return RunnerOutcome(
+            "handed_off",
+            reason=reasons[0] if reasons else None,
+            loop=loop,
+            epoch=lease.epoch,
+            replayed_tools=replayed,
+        )
 
     def _block_undecodable(self, incident_id: UUID) -> RunnerOutcome:
         """Malformed committed rows met before any lease was held.
@@ -295,4 +441,8 @@ class InvestigationRunner:
             self.store.block(lease)
         except PersistenceError as exc:
             return RunnerOutcome("control_denied", reason=str(exc), epoch=lease.epoch)
+        if self.events is not None:
+            announce_handoff(
+                self.events, lease.incident_id, lease.run_id, "blocked", (reason,)
+            )
         return RunnerOutcome("blocked", reason=reason, epoch=lease.epoch)

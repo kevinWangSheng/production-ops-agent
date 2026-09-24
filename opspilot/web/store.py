@@ -101,6 +101,10 @@ class IncidentStore(Protocol):
 
     def abandon(self, lease: Lease) -> None: ...
 
+    def hand_off(self, lease: Lease) -> None:
+        """Park the leased Run for a human (ADR-0005); ``CONTROL_DENIED`` if fenced."""
+        ...
+
     def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
         """Extend a held lease under the write-path fence (PR #35).
 
@@ -361,6 +365,9 @@ class DurableIncidentStore:
 
     def abandon(self, lease: Lease) -> None:
         self._store.abandon(lease)
+
+    def hand_off(self, lease: Lease) -> None:
+        self._store.hand_off(lease)
 
     def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
         # PR #35 adds DurableStore.renew_lease; without it the lease simply
