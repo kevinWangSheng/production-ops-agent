@@ -338,8 +338,10 @@ def test_an_exhausted_budget_after_restart_is_a_handoff_not_a_completion():
 
 def test_cancel_and_new_run_are_accepted_after_a_handoff():
     h = Harness(budget_limit=1, model_requests=1)
+    # A tool plan on the last slot: the loop hands off (failed).
     outcome = h.runner([*_tool_rounds(1)]).resume(h.incident)
-    assert outcome.status == "handed_off" and outcome.reason == "BUDGET_EXHAUSTED"
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
+    assert outcome.loop.execution == "failed"
     assert h.rows()["run"]["state"] == "waiting_human"
     assert h.store.control(h.incident, 0, "cancel", "operator") == 1
     assert h.rows()["run"]["state"] == "cancelled"
@@ -388,7 +390,8 @@ def test_a_handoff_conclusion_committed_before_a_crash_is_not_published_on_resum
     h.store.abandon(session.lease)  # the process died before it could settle
     assert h.rows()["run"]["state"] == "running"
     outcome = h.runner([]).resume(h.incident)  # a model call here would raise
-    assert outcome.status == "handed_off" and outcome.reason == "BUDGET_EXHAUSTED"
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
+    assert outcome.loop is None  # settled from the rows, not by a new attempt
     assert h.rows()["conclusion"] is None
     assert h.rows()["run"]["state"] == "waiting_human"
 
@@ -447,9 +450,12 @@ def test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript():
         return _tool_rounds(1)[0]
 
     outcome = h.runner([slow_reply]).resume(h.incident)
-    assert outcome.status == "unpublished" and outcome.loop.handoff_reasons == (
+    # The fenced attempt can neither publish nor park the Run it no longer
+    # holds: a control outcome, and the Run stays claimable.
+    assert outcome.status == "control_denied" and outcome.loop.handoff_reasons == (
         "CONTROL_DENIED",
     )
+    assert h.rows()["run"]["state"] == "running"
     statuses = [s["status"] for s in h.rows()["steps"]]
     assert statuses == ["late_result"]
     second = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
@@ -793,14 +799,6 @@ def _event_log(store):
     return log
 
 
-def _global_generation(store):
-    with store.transaction(snapshot=True) as conn:
-        row = conn.execute(
-            "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
-        ).fetchone()
-    return int(row["global_generation"])
-
-
 def _kinds(log, incident):
     return [e.kind for e in log.read_after(incident, 0, limit=1000)]
 
@@ -855,14 +853,16 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
     runner.events = log
     runner.evidence = evidence
     outcome = runner.resume(h.incident)
-    assert outcome.status == "handed_off" and outcome.reason == "BUDGET_EXHAUSTED"
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
     kinds = _kinds(log, h.incident)
     assert kinds[0] == "run_claimed" and kinds[-1] == "run_handoff"
-    assert kinds.count("step_committed") == 2 and kinds.count("tool_committed") == 2
+    # Round 1 ran its tool; round 2's plan was rejected (final slot), so it
+    # committed a step but no tool result.
+    assert kinds.count("step_committed") == 2 and kinds.count("tool_committed") == 1
     last = log.read_after(h.incident, 0, limit=1000)[-1]
-    assert last.payload["reasons"] == ["BUDGET_EXHAUSTED"]
+    assert last.payload["reasons"] == ["TOOL_PLAN_ON_FINAL"]
     assert last.payload["published"] is False
-    assert len(last.payload["evidence_ids"]) == 2
+    assert len(last.payload["evidence_ids"]) == 1
     workbench = Workbench(
         incidents=DurableIncidentStore(h.store),
         events=log,
@@ -874,7 +874,7 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
     assert snapshot["run"]["state"] == "waiting_human"
     assert snapshot["report"] is None
     assert snapshot["outcome"]["handoff"] is True
-    assert snapshot["outcome"]["reasons"] == ["BUDGET_EXHAUSTED"]
+    assert snapshot["outcome"]["reasons"] == ["TOOL_PLAN_ON_FINAL"]
     assert len(snapshot["steps"]) == 3  # two rounds + the conclusion step
     # Evidence committed through the runner is readable from the page.
     for evidence_id in last.payload["evidence_ids"]:
@@ -887,24 +887,21 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
 
 
 def test_a_refused_claim_of_a_runnable_run_is_one_event_not_an_attempt():
-    h = Harness()
+    # A queued Run whose deadline already passed looks runnable in the rows
+    # but the claim refuses it: that refusal is news for the page.
+    h = Harness(deadline_minutes=0)
     log = _event_log(h.store)
-    generation = h.store.set_global_suspension(
-        True, expected_generation=_global_generation(h.store), actor="operator"
-    )
-    try:
-        runner = h.runner([])
-        runner.events = log
-        assert runner.resume(h.incident).status == "control_denied"
-    finally:
-        h.store.set_global_suspension(
-            False, expected_generation=generation, actor="operator"
-        )
+    runner = h.runner([])
+    runner.events = log
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "control_denied" and outcome.reason == "DEADLINE_EXCEEDED"
     events = log.read_after(h.incident, 0, limit=1000)
     assert [e.kind for e in events] == ["run_claim_refused"]
-    assert events[0].payload == {"run_id": str(h.run), "code": "CONTROL_DENIED"}
-    # A paused Run is refused on every poll by design: no event per poll.
+    assert events[0].payload == {"run_id": str(h.run), "code": "DEADLINE_EXCEEDED"}
+    # A paused incident is refused on every poll by design: no event per
+    # poll (the queued Run row itself is left as is by ``control()``).
     h.store.control(h.incident, 0, "pause", "operator")
+    assert h.rows()["state"] == "paused" and h.rows()["run"]["state"] == "queued"
     for _ in range(3):
         assert runner.resume(h.incident).status == "control_denied"
     assert _kinds(log, h.incident) == ["run_claim_refused"]

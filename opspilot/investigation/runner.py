@@ -141,13 +141,15 @@ class InvestigationRunner:
             if (
                 self.events is not None
                 and code != "LEASE_ACTIVE"
+                and snapshot["state"] not in {"paused", "cancelled", "completed"}
                 and snapshot["run"]["state"] in {"queued", "running"}
             ):
                 # A live lease elsewhere is the normal state while another
-                # worker runs, and a paused or blocked Run is refused on every
-                # poll by design; announcing those would flood the page and
-                # push the terminal event out of its newest page. Only a
-                # refusal of a Run that looked runnable is news.
+                # worker runs, and a paused incident or a paused/blocked Run
+                # is refused on every poll by design; announcing those would
+                # flood the page and push the terminal event out of its
+                # newest page. Only a refusal of a Run that looked runnable
+                # is news.
                 announce_claim_refused(
                     self.events, incident_id, snapshot["run"]["run_id"], code
                 )
