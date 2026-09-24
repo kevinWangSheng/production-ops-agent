@@ -254,7 +254,21 @@ class EmittingCommitter:
         # worker returning the same bytes later) cannot replace it.
         evidence_id = result.get("evidence_id")
         if self._evidence is not None and isinstance(evidence_id, str):
-            self._evidence.commit(evidence_id, result)
+            try:
+                self._evidence.commit(evidence_id, result)
+            except PersistenceError as exc:
+                # The projection is not the authority (the tool row above
+                # is), but a page that cannot resolve a cited evidence id is
+                # a visible gap, not something to run past: hand off with a
+                # fixed reason the loop records in its conclusion step. The
+                # usual cause is an executor that registered into another
+                # evidence store than the one given here (independent
+                # review, P2-2).
+                raise StepStoreError(
+                    "EVIDENCE_PROJECTION_FAILED:" + str(exc)
+                    if str(exc) != "UNKNOWN_IDENTITY"
+                    else "EVIDENCE_PROJECTION_FAILED"
+                ) from None
         self._events.append(
             self._subject_id,
             "tool_committed",

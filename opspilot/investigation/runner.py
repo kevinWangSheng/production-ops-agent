@@ -24,9 +24,12 @@ claimed again by this runner until a human acts.
 With ``events`` set, the attempt announces the same progress the workbench
 page consumes (``opspilot.investigation.progress``): ``run_claimed``, one
 ``step_committed``/``tool_committed`` per committed row, then exactly one
-``run_completed`` or ``run_handoff``. Tool results replayed by breakpoint 2
-are committed by the session, not the loop, and are not announced; the page
-reads them from the rows.
+``run_completed`` or ``run_handoff`` per *settled* attempt. An attempt that
+crashes (an exception out of the model client or the executor) announces no
+terminal event and keeps its lease to expiry, exactly like a killed worker;
+the next attempt resumes from the rows. Tool results replayed by breakpoint
+2 are committed by the session, not the loop, and are not announced; the
+page reads them from the rows.
 """
 
 from __future__ import annotations
@@ -101,6 +104,9 @@ class InvestigationRunner:
     clock: Clock
     lease_seconds: int = DEFAULT_LEASE_SECONDS
     # Workbench projections (C3 section 9). ``None`` runs silently.
+    # ``evidence`` must be the same store the executor built by
+    # ``executor_factory`` registers evidence into: it pins rows that already
+    # exist, and a missing row is an ``EVIDENCE_PROJECTION_FAILED`` handoff.
     events: ProgressLog | None = None
     evidence: EvidenceProjection | None = None
 
@@ -132,9 +138,16 @@ class InvestigationRunner:
             code = str(exc)
             if code == "INCONSISTENT_STATE":
                 return self._block_undecodable(incident_id)
-            if self.events is not None and code != "LEASE_ACTIVE":
+            if (
+                self.events is not None
+                and code != "LEASE_ACTIVE"
+                and snapshot["run"]["state"] in {"queued", "running"}
+            ):
                 # A live lease elsewhere is the normal state while another
-                # worker runs; announcing it per poll would flood the page.
+                # worker runs, and a paused or blocked Run is refused on every
+                # poll by design; announcing those would flood the page and
+                # push the terminal event out of its newest page. Only a
+                # refusal of a Run that looked runnable is news.
                 announce_claim_refused(
                     self.events, incident_id, snapshot["run"]["run_id"], code
                 )

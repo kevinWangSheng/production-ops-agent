@@ -398,13 +398,23 @@ def test_a_stale_publish_cannot_land_on_a_parked_run():
     h = Harness(budget_limit=1, model_requests=1)
     worker = Worker.create(h.store, dict(VERSIONS))
     session = worker.resume(h.incident, lease_seconds=30, renew_seconds=30)
+    conclusion = {
+        "kind": "conclusion",
+        "assistant": {"role": "assistant", "content": None},
+        "conclusion": {"execution": "completed", "handoff": False},
+    }
+    step_id = DurableStepStore(h.store, session.lease).commit_step(
+        "conclusion:g0:ctx0:round-1", conclusion
+    )
     h.store.hand_off(session.lease)
     assert h.rows()["run"]["state"] == "waiting_human"
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         h.store.hand_off(session.lease)
-    conclusion = {"kind": "conclusion", "conclusion": {"handoff": False}}
-    assert h.store.publish(session.lease, conclusion, step_id=uuid4()) is False
-    assert h.rows()["conclusion"] is None
+    assert h.store.publish(session.lease, conclusion, step_id=step_id) is False
+    rows = h.rows()
+    assert rows["conclusion"] is None and rows["run"]["state"] == "waiting_human"
+    late = [s for s in rows["steps"] if s["status"] == "late_result"]
+    assert len(late) == 1 and late[0]["logical_key"].startswith("late_result:publish:")
 
 
 def test_a_follow_up_drops_the_orphaned_plan_and_the_run_continues():
@@ -783,6 +793,14 @@ def _event_log(store):
     return log
 
 
+def _global_generation(store):
+    with store.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+        ).fetchone()
+    return int(row["global_generation"])
+
+
 def _kinds(log, incident):
     return [e.kind for e in log.read_after(incident, 0, limit=1000)]
 
@@ -868,13 +886,45 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
     assert _kinds(log, h.incident)[-1] == "run_handoff"
 
 
-def test_a_refused_claim_is_one_event_not_an_attempt():
+def test_a_refused_claim_of_a_runnable_run_is_one_event_not_an_attempt():
     h = Harness()
     log = _event_log(h.store)
-    h.store.control(h.incident, 0, "pause", "operator")
-    runner = h.runner([])
-    runner.events = log
-    assert runner.resume(h.incident).status == "control_denied"
+    generation = h.store.set_global_suspension(
+        True, expected_generation=_global_generation(h.store), actor="operator"
+    )
+    try:
+        runner = h.runner([])
+        runner.events = log
+        assert runner.resume(h.incident).status == "control_denied"
+    finally:
+        h.store.set_global_suspension(
+            False, expected_generation=generation, actor="operator"
+        )
     events = log.read_after(h.incident, 0, limit=1000)
     assert [e.kind for e in events] == ["run_claim_refused"]
     assert events[0].payload == {"run_id": str(h.run), "code": "CONTROL_DENIED"}
+    # A paused Run is refused on every poll by design: no event per poll.
+    h.store.control(h.incident, 0, "pause", "operator")
+    for _ in range(3):
+        assert runner.resume(h.incident).status == "control_denied"
+    assert _kinds(log, h.incident) == ["run_claim_refused"]
+
+
+def test_an_evidence_projection_the_executor_did_not_register_into_hands_off():
+    """Independent review P2-2: a projection mismatch is a visible handoff."""
+    from opspilot.web import DurableEvidenceStore
+
+    h = Harness()
+    log = _event_log(h.store)
+    other = DurableEvidenceStore(h.store)
+    other.install()
+    # ``h.sink`` stays the transport double's own sink: the runner's
+    # projection cannot find the rows the executor registered.
+    runner = h.runner([*_tool_rounds(1), report_from_transcript])
+    runner.events = log
+    runner.evidence = other
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "handed_off"
+    assert outcome.reason == "EVIDENCE_PROJECTION_FAILED"
+    assert h.rows()["run"]["state"] == "waiting_human"
+    assert _kinds(log, h.incident)[-1] == "run_handoff"
