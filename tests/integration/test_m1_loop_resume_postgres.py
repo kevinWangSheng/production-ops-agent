@@ -127,10 +127,14 @@ class Harness:
         )
         self.transport_requests = 0
         self.executor_hook = None
+        # The evidence store the executor registers into; the runner's
+        # ``evidence`` projection pins the same rows, so both must agree.
+        self.sink = None
 
     def executor_factory(self, lease, input):
         executor, transport, _sink, _clock = build(
             clock=self.clock,
+            sink=self.sink,
             # The control generation stays the double's default: the tool
             # gateway checks it against its own control snapshot, not the
             # incident row (that fence is the store's).
@@ -828,6 +832,7 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
     evidence.install()
     ledger = DurableWebLedger(h.store)
     ledger.install()
+    h.sink = evidence
     runner = h.runner(_tool_rounds(2))
     runner.events = log
     runner.evidence = evidence
