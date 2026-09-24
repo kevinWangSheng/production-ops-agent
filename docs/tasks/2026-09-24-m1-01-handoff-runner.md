@@ -50,4 +50,4 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 
 - PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44) 已开；等 CI 成功后做一次 `@codex review` 分诊；用户门，不自动合并。
 - 本 worktree 的 PostgreSQL 实例由本任务停止（`postgres_lab stop`，数据保留）；合并后按 AGENTS.md 清理 worktree。
-- 用户裁定点：交接终态用 `waiting_human` 还是新增/改造 `failed`（见上「决定 1」）。
+- 用户已裁定（2026-09-24，经 lead 转达）：交接终态保持 `waiting_human`，不改为 `failed`。
