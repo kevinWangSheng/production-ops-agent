@@ -1206,10 +1206,65 @@ class DurableStore:
                 or self._lease_revoked(row, lease, self._db_now(conn))
             ):
                 raise PersistenceError("CONTROL_DENIED")
-            conn.execute(
-                "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running'",
-                (lease.run_id,),
-            )
+            self._park(conn, lease.run_id)
+
+    @staticmethod
+    def _park(conn: Connection, run_id: UUID) -> bool:
+        """The one ``running -> waiting_human`` write (``hand_off`` and the sweep)."""
+        parked = conn.execute(
+            "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running' RETURNING run_id",
+            (run_id,),
+        ).fetchone()
+        return parked is not None
+
+    def sweep_expired_runs(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID], ...]:
+        """Park every ``running`` Run whose ``deadline`` has passed (ADR-0005 §2).
+
+        A Run past its deadline can never settle itself: the deadline fences
+        every worker write, so without this sweep the row stays ``running``
+        for ever. Each overdue Run is parked exactly as ``hand_off`` parks a
+        loop handoff (``_park``): ``waiting_human``, lease released, incident
+        open, conclusion untouched; the reason (``DEADLINE_EXCEEDED``) is the
+        caller's to announce.
+
+        No lease is involved, so the guard is the state and the deadline,
+        re-checked under row locks in the transaction that writes: a human
+        decision that landed first (cancelled, paused, re-queued, or a newer
+        Run) has already moved the row off ``running`` and is left alone.
+        Candidates are read by the database clock; each is then parked in its
+        own transaction, locking the incident before the Run in the same order
+        as every other write path, so two sweeps (or a sweep and a worker)
+        never deadlock and only one of them parks a given Run. Returns the
+        ``(incident_id, run_id)`` pairs this call parked; ``incident_id``
+        narrows the scan to one incident (the per-poll / per-page-load use).
+        """
+        with self.transaction(snapshot=True) as conn:
+            candidates = conn.execute(
+                "SELECT incident_id,run_id FROM opspilot_runs WHERE state='running' AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
+                (incident_id, incident_id, limit),
+            ).fetchall()
+        parked: list[tuple[UUID, UUID]] = []
+        for candidate in candidates:
+            with self.transaction() as conn:
+                conn.execute(
+                    "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                    (candidate["incident_id"],),
+                )
+                row = conn.execute(
+                    "SELECT state,deadline FROM opspilot_runs WHERE run_id=%s FOR UPDATE",
+                    (candidate["run_id"],),
+                ).fetchone()
+                if (
+                    row is None
+                    or row["state"] != "running"
+                    or row["deadline"] > self._db_now(conn)
+                ):
+                    continue
+                if self._park(conn, candidate["run_id"]):
+                    parked.append((candidate["incident_id"], candidate["run_id"]))
+        return tuple(parked)
 
     def lease_current(self, lease: Lease) -> bool:
         """Read the authoritative owner/epoch/generation/expiry fence."""

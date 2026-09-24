@@ -55,6 +55,7 @@ from opspilot.investigation.loop import (
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
 from opspilot.investigation.progress import (
+    DEADLINE_EXCEEDED,
     EmittingCommitter,
     EvidenceProjection,
     ProgressLog,
@@ -63,6 +64,7 @@ from opspilot.investigation.progress import (
     announce_completed,
     announce_handoff,
     announce_recovered_tools,
+    sweep_expired,
 )
 from opspilot.investigation.store import (
     DurableStepStore,
@@ -113,6 +115,16 @@ class InvestigationRunner:
 
     def resume(self, incident_id: UUID) -> RunnerOutcome:
         """Continue (or start) the incident's current Run from committed rows."""
+        # ADR-0005 decision 2: the poll is where an overdue Run gets swept.
+        # Its deadline fences every worker write, so nothing else can settle
+        # it; parking it here (and announcing it once) is what lets the page
+        # stop showing "investigating" for ever.
+        swept = {
+            run_id
+            for _, run_id in sweep_expired(
+                self.store, self.events, incident_id=incident_id
+            )
+        }
         try:
             snapshot = self.store.rebuild(incident_id)
         except PersistenceError as exc:
@@ -124,6 +136,8 @@ class InvestigationRunner:
             "cancelled",
         }:
             return RunnerOutcome("already_completed")
+        if snapshot["run"]["run_id"] in swept:
+            return RunnerOutcome("handed_off", reason=DEADLINE_EXCEEDED)
         if snapshot["run"]["state"] == "waiting_human":
             # Parked by a handoff: a human re-queues (follow_up/correct) or
             # cancels it. Neither a claim nor an event -- the page already
