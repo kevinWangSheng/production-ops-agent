@@ -601,12 +601,24 @@ class Workbench:
         steps = [_step_view(step) for step in rebuilt["steps"]]
         # A published conclusion is terminal: a ``run_handoff`` the crashed
         # worker's exit path appended after it is history, not the outcome.
+        # A ``run_handoff`` that did not park (``parked: false``: the attempt
+        # was fenced by human control or crashed) is only the outcome while
+        # the Run row itself is not runnable; a queued/running row means the
+        # next attempt owns the state and the page must not show the Run as
+        # handed off (bot review, PR #44). The event stays in the list.
+        runnable = run["state"] in {"queued", "running"}
         outcome = next(
             (
                 e
                 for kind in ("run_completed", "run_handoff")
                 for e in reversed(events)
-                if e.kind == kind and e.payload.get("run_id") == str(run["run_id"])
+                if e.kind == kind
+                and e.payload.get("run_id") == str(run["run_id"])
+                and not (
+                    kind == "run_handoff"
+                    and runnable
+                    and e.payload.get("parked") is False
+                )
             ),
             None,
         )

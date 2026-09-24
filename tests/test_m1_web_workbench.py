@@ -791,7 +791,16 @@ def test_a_handoff_fenced_by_human_control_is_not_announced_as_a_handoff():
     # claims a durable park the Run row does not show.
     last = workbench.events.read_after(subject, 0)[-1]
     assert last.kind == "run_handoff" and last.payload["parked"] is False
-    assert workbench.snapshot(subject)["run"]["state"] == "queued"
+    # The page shows the row's real state, not a handoff that never landed.
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["run"]["state"] == "queued"
+    assert snapshot["outcome"] is None and snapshot["handoff_report"] is None
+    assert [e["kind"] for e in snapshot["events"]][-1] == "run_handoff"
+    # Once a human cancels the Run, the fenced attempt's result is history
+    # the page may show again (the row is no longer runnable).
+    workbench.incidents.control(subject, 1, "cancel", "op")
+    assert workbench.snapshot(subject)["run"]["state"] == "cancelled"
+    assert workbench.snapshot(subject)["outcome"]["execution"] == outcome.execution
 
 
 def test_an_unexpected_investigator_error_releases_the_lease_and_hands_off():
