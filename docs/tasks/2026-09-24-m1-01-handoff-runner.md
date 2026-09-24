@@ -40,7 +40,10 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 - 红/绿：新增单测 `tests/test_m1_web_workbench.py::test_a_handoff_parks_the_run_for_a_human_and_keeps_control_open`、`::test_cancel_and_new_run_are_accepted_after_a_handoff` 在实现前失败（`'running' != 'waiting_human'`），实现后通过；`tests/test_m1_web_workbench.py` 44 passed。
 - `make check`（dirty 工作区，实现提交前）：ruff / format / mypy 通过，pytest `1927 passed, 197 skipped, 2 xfailed`。
 - 修改的既有断言（按 ADR-0005 收紧，不是放宽）：`tests/integration/test_m1_loop_resume_postgres.py` 中 `test_an_exhausted_budget_after_restart_is_a_handoff_not_a_completion` 与 `test_a_rejected_plan_is_never_replayed_by_recovery` 原断言 handoff 也 `published`，现断言 `handed_off`、结论为空、run `waiting_human`。
-- PG 集成、真实 Run、独立审查：待执行（见下一步）。
+- PG 集成（2026-09-24，在共用的 55431 实例上，未启停）：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q` → `160 passed, 38 skipped`（跳过为 `M0_B_RESTART` 等另行 opt-in 的用例）。新增 PG 用例：交接后 `waiting_human` + follow_up/correct 重新排队、cancel + new_run、断点 4 的交接行不发布、停放后迟到发布落 `late_result`、runner 事件顺序（完成 / 交接 / 拒绝 claim）、页面快照回读、证据投影错配交接。既有 `test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript` 由 `unpublished` 改断 `control_denied`（被围栏的尝试既不能发布也不能停放它已不持有的 Run）。
+- `make check`（HEAD `744a084`）：`1927 passed, 198 skipped, 2 xfailed`。
+- 独立审查第 1 轮（全新上下文 Agent，拿 diff/ADR/约束，不拿结论）：P1-1 runner 路径尚无执行证据 → PG 套件已跑，见上；P2-1 `test_a_stale_publish_cannot_land_on_a_parked_run` 断言了存储没有的行为（随机 step_id 抛 `UNKNOWN_IDENTITY`）→ 改为先提交真实结论步骤再停放，并断言 `late_result` 行；P2-2 runner 的 `evidence` 投影与 executor sink 不一致时抛 `PersistenceError` 被记成 `control_denied` 且无终态事件、每租约周期重复 → `EmittingCommitter.commit_tool` 把投影失败转成 `StepStoreError("EVIDENCE_PROJECTION_FAILED")`，loop 以该原因交接（PG 用例覆盖），runner 字段加说明；P3-1 已停放/暂停的 Run 每次轮询都追加 `run_claim_refused` → runner 只在快照看起来可运行（事故非 paused/cancelled/completed 且 run 为 queued/running）时才发；P3-2 文档串改为「每个已结算的尝试恰一个终态事件，崩溃不发」；P3-3/P3-4/P3-5 记为观察（loop 级 `STORAGE_UNAVAILABLE` 会停放；claim 时版本不兼容只发 `run_claim_refused`；`publish()` 本身不强制发布规则）。复验：待第 2 轮。
+- 真实 Run：待执行（见下一步）。
 
 ## 下一步与交接
 
