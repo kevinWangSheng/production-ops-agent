@@ -48,6 +48,6 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 
 ## 下一步与交接
 
-- PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44)：CI 成功后已做一次 `@codex review` 分诊，2 个 P2 均采纳并修复（`ba9a306` 断点 2 重放的工具结果发 `tool_committed` 并钉证据；`a811b9e` `conclusion_publishable` 对恢复行 fail-closed：版本为非空字符串、正文为字符串且摘要一致），thread 已回复并 resolve；修复后 `make check` 1930 passed、PG 161 passed。集成套件在本实例上此后连续 6 次全过，首跑的 2 个失败未复现、用例名未捕获，不断言无害。用户门，待用户合并。
+- PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44)：CI 成功后已做一次 `@codex review` 分诊，2 个 P2 均采纳并修复（`ba9a306` 断点 2 重放的工具结果发 `tool_committed` 并钉证据；`a811b9e` `conclusion_publishable` 对恢复行 fail-closed：版本为非空字符串、正文为字符串且摘要一致），thread 已回复并 resolve；lead 合入 main（`0b304a3`，含 #43 ADR）后机器人第 3 个 P2「hand_off 被拒仍发 run_handoff」：可复现（人工控制在尝试中推进代际），但 #33 的三条既有用例要求页面把被围栏尝试的结果记为历史，故采「区分事件」方案——`run_handoff` 载荷新增 `parked`（真实停放为 true，被拒/崩溃为 false），runner 被拒时仍不发；修复后 `make check` 1931 passed、PG 161 passed。集成套件在本实例上此后连续 6 次全过，首跑的 2 个失败未复现、用例名未捕获，不断言无害。用户门，待用户合并。
 - 本 worktree 的 PostgreSQL 实例由本任务停止（`postgres_lab stop`，数据保留）；合并后按 AGENTS.md 清理 worktree。
 - 用户已裁定（2026-09-24，经 lead 转达）：交接终态保持 `waiting_human`，不改为 `failed`。

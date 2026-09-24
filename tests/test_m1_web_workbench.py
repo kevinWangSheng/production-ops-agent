@@ -703,8 +703,8 @@ def test_a_handoff_parks_the_run_for_a_human_and_keeps_control_open():
     assert run["state"] == "waiting_human"
     assert run["owner"] is None and run["lease_until"] is None
     assert workbench.incidents.incidents[subject]["conclusion"] is None
-    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
-    assert kinds[-1] == "run_handoff"
+    last = workbench.events.read_after(subject, 0)[-1]
+    assert last.kind == "run_handoff" and last.payload["parked"] is True
     # The committed conclusion step stays readable: the page shows the
     # incomplete outcome and its reasons.
     snapshot = workbench.snapshot(subject)
@@ -757,6 +757,41 @@ def test_cancel_and_new_run_are_accepted_after_a_handoff():
     outcome = workbench.run_once(subject, ScriptedInvestigator(clock))
     assert outcome is not None and outcome.execution == "completed"
     assert workbench.snapshot(subject)["report"] is not None
+
+
+def test_a_handoff_fenced_by_human_control_is_not_announced_as_a_handoff():
+    """Bot review (PR #44): no ``run_handoff`` unless the Run was really parked."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="fenced-1")
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    inner = ScriptedInvestigator(
+        clock,
+        replies=[
+            reply(tool_calls=[tool_call()], finish="tool_calls"),
+            reply(tool_calls=[tool_call()], finish="stop"),
+        ],
+    )
+
+    class NoteDuringAttempt:
+        def investigate(self, context, committer, evidence):
+            # A follow_up lands while the attempt runs: the generation moves
+            # on, every later commit is fenced and the loop ends in a handoff
+            # the attempt may no longer park.
+            workbench.incidents.control(
+                subject, context.control_generation, "follow_up", "op", {"q": "x"}
+            )
+            return inner.investigate(context, committer, evidence)
+
+    outcome = workbench.run_once(subject, NoteDuringAttempt())
+    assert outcome is not None and outcome.handoff is True
+    run = workbench.incidents.runs[run_id]
+    assert run["state"] == "queued" and run["owner"] is None
+    # The page keeps what the attempt saw as history, but the event never
+    # claims a durable park the Run row does not show.
+    last = workbench.events.read_after(subject, 0)[-1]
+    assert last.kind == "run_handoff" and last.payload["parked"] is False
+    assert workbench.snapshot(subject)["run"]["state"] == "queued"
 
 
 def test_an_unexpected_investigator_error_releases_the_lease_and_hands_off():

@@ -104,7 +104,13 @@ def announce_handoff(
     *,
     report_sha256: str | None = None,
     evidence_ids: tuple[str, ...] = (),
+    parked: bool = True,
 ) -> int:
+    """``parked`` says whether the Run really landed in ``waiting_human``.
+
+    False records what a fenced or crashed attempt saw without claiming a
+    durable park: the Run row is the authority for where it is now.
+    """
     return log.append(
         subject_id,
         "run_handoff",
@@ -113,6 +119,7 @@ def announce_handoff(
             "published": False,
             "execution": execution,
             "handoff": True,
+            "parked": parked,
             "reasons": list(reasons),
             "report_sha256": report_sha256,
             "evidence_ids": list(evidence_ids),

@@ -833,12 +833,16 @@ class Workbench:
         # ``park``: the loop ended in a handoff, so the Run waits for a human
         # (``waiting_human``, lease released; ADR-0005). A refusal means
         # human control already moved this Run on, or the lease lapsed: then
-        # only this exact lease is released, best effort, and the event
-        # still records what this attempt saw.
+        # only this exact lease is released, best effort. The event still
+        # records what this attempt saw (the page shows it as history), but
+        # says ``parked: false`` so it never claims a durable park the Run
+        # row does not show (bot review, PR #44).
+        parked = False
         try:
             if park:
                 try:
                     self.incidents.hand_off(lease)
+                    parked = True
                 except PersistenceError:
                     self.incidents.abandon(lease)
             else:
@@ -852,6 +856,7 @@ class Workbench:
                 reasons,
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
+                parked=parked,
             )
 
 
