@@ -2,17 +2,16 @@
 
 只保留当前状态表；更新时替换对应行，不追加段落。历史叙述见 [ROADMAP 历史归档](docs/archive/roadmap-history-2026-09-21.md)。
 
-## 当前状态（2026-09-23）
+## 当前状态（2026-09-24）
 
 | 项目 | 状态 | 证据 / 下一步 |
 |---|---|---|
 | 实施门槛 | 有界开放 M1-01（2026-09-13 用户决策 B） | [决策记录](docs/evidence/m0-real-investigation/round-06-gate-decision-draft.md)；M0 未完成项转为 M1 入口条件，见 SPEC 第 6 行。 |
 | feature passes | 0 / 11 | [feature_list.json](feature_list.json)；验收 harness 场景覆盖某 feature 全部步骤时翻转，接线为独立任务。 |
-| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39）、loop 小缺陷修复（#41）、adapter flake（#38）、集成记录（#37）、intake 认证合同（#21）、人工控制补全（#31）、外部验收入口（#32）、workbench UI（#33） | main `d035bb0`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
-| M1-01 待用户决定 | ① handoff 结论是否发布（main runner 发布并封闭事故 vs 工作台不发布保持可追问，`publish()` 把失败/handoff Run 也标为 completed）→ ADR；② 追问每轮累计重发 vs 折叠/引用（关系到输入总量上限）；③ 追问长度 8192（#31 截断）与网页 16384 对齐；④ `web` 依赖组是否默认安装；⑤ 是否按事故授权；⑥ 事故关闭/重开、目标重绑定、合并/拆分的输入与暂停迁移语义；⑦ `DEADLINE_EXCEEDED` 终态写入者与栅栏 | 各 PR 描述「未完成项 / 待用户决定」；[#31 任务记录](docs/tasks/2026-09-16-m1-01-control-completion.md)、[#33 任务记录](docs/tasks/2026-09-16-m1-01-progress-ui.md)。 |
-| M1-01 已知缺口 | 工作台实时进度未接真实驱动器（`runner.py` 不发工作台事件，`Workbench.run_once` 仅测试使用）；验收入口 4 个持久化场景的状态/标记为手工设置 | [#33 PR](https://github.com/kevinWangSheng/production-ops-agent/pull/33)、[#32 任务记录](docs/tasks/2026-09-16-m1-01-acceptance.md)。 |
-| M1-01 调查 loop 后续 | #29 已合并；已知偏离 C3 §5「按 ID 和片段读取」待证据读取工具；小缺陷修复（待重放计划校验、派发前 reasoning 校验、4xx 仅 429 重试）已合并 #41 | [任务记录「用户审核裁定」](docs/tasks/2026-09-21-m1-01-loop-long-horizon.md)、[设计草案](docs/design/investigation-loop-long-horizon-2026-09-21.md) |
-| M1-01 缺项 | worker 组合层未接 DurableToolLedger；suspension 持久化栅栏为 Controller 待办 | 见 [集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) 与 [工具执行器记录](docs/tasks/2026-09-14-m1-01-tool-executor.md)。 |
+| M1-01 已合并 | 持久化与恢复（#19 #22 #26）、人工控制（#28）、重启恢复（#30）、工具执行器（#20）、租约续期（#35）、claim 人工优先（#34）、探针 flake（#36）、指令纪律单一来源（#27）、调查 loop 含长程改造（#29）、流程审计（#39）、loop 小缺陷修复（#41）、adapter flake（#38）、集成记录（#37）、intake 认证合同（#21）、人工控制补全（#31）、外部验收入口（#32）、workbench UI（#33） | main `1f030fc`；任务记录见 `docs/tasks/` 下对应的 m1-01 与 fix 记录。 |
+| M1-01 完成定义 | ①–⑦ 已决（2026-09-24，见下行）后补齐接线；真实驱动端到端跑通；v4 冻结包确定性用例全过；正常/故障各 2 次真实 Run 均通过独立证据审查、无未处理 P1/P2。不翻 `passes`，不含恢复观察与复盘 | [v4 验收包](docs/testing/first-investigation-v4-2026-09-10.md)「确定性与报告判据」 |
+| M1-01 已决（2026-09-24） | ① 交接不发布、事故保持开放；⑦ 过期 Run 由清扫写超时交接（两项见 ADR-0005）；② 追问累计重发保持现状；③ 网页追问上限改 8192 并提示；④ `web` 依赖默认安装；⑤ 不做按事故授权（单团队）；⑥ close/reopen、重绑定、合并/拆分移出 M1-01。已知限制：合格结论发布后不可再追问；携带证据无观测载荷、时间策略双标准、intake 非同事务、C3 §5 按 ID 读证据降为已知偏离 | [ADR-0005](docs/adr/0005-handoff-and-deadline-terminal.md)；原则：优先对标上游 HolmesGPT |
+| M1-01 剩余工作 | 按序：1 runner 交接不发布 + 工作台实时进度接真实驱动；2 超时清扫；3 网页 8192 与 web 默认安装；4 worker 接 DurableToolLedger + suspension 持久化栅栏；5 验收入口 4 个持久化场景改真实驱动；6 正常/故障各 2 次真实 Run + 独立证据审查 | [#33 PR](https://github.com/kevinWangSheng/production-ops-agent/pull/33)、[#32 任务记录](docs/tasks/2026-09-16-m1-01-acceptance.md)、[集成记录 PR #37](https://github.com/kevinWangSheng/production-ops-agent/pull/37) |
 | DurableStore 加固 | A 类已合并（#26）；B/C 类待决 | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md)；运行时依赖声明按 AGENTS.md 由 Agent 自行处理。 |
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
 | LangGraph（ADR-0004） | 推迟，视为已决 | [ADR-0004](docs/adr/0004-langgraph-orchestration.md)；需要扩大比较时另立合同。 |
