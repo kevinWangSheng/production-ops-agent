@@ -1180,6 +1180,37 @@ class DurableStore:
                 (lease.run_id,),
             )
 
+    def hand_off(self, lease: Lease) -> None:
+        """Park this attempt's Run for a human (ADR-0005: a handoff is not published).
+
+        ``running -> waiting_human`` (``RUN_EXECUTION`` ``awaiting_human_input``):
+        the lease is released, the incident stays open and its conclusion
+        untouched. ``claim()`` never resumes a waiting Run on its own;
+        ``control()`` re-queues it on follow_up/correct, or cancels it so a
+        ``new_run`` can follow. Fenced like ``block()``: a lease human control
+        already superseded cannot park a Run it no longer holds.
+        """
+        with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
+            conn.execute(
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (lease.incident_id,),
+            )
+            row = conn.execute(
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
+                (lease.run_id,),
+            ).fetchone()
+            if (
+                not row
+                or row["run_state"] != "running"
+                or self._lease_revoked(row, lease, self._db_now(conn))
+            ):
+                raise PersistenceError("CONTROL_DENIED")
+            conn.execute(
+                "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running'",
+                (lease.run_id,),
+            )
+
     def lease_current(self, lease: Lease) -> bool:
         """Read the authoritative owner/epoch/generation/expiry fence."""
         with self.transaction() as conn:

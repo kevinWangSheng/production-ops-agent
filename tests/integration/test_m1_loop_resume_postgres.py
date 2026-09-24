@@ -127,10 +127,14 @@ class Harness:
         )
         self.transport_requests = 0
         self.executor_hook = None
+        # The evidence store the executor registers into; the runner's
+        # ``evidence`` projection pins the same rows, so both must agree.
+        self.sink = None
 
     def executor_factory(self, lease, input):
         executor, transport, _sink, _clock = build(
             clock=self.clock,
+            sink=self.sink,
             # The control generation stays the double's default: the tool
             # gateway checks it against its own control snapshot, not the
             # incident row (that fence is the store's).
@@ -302,13 +306,118 @@ def test_an_exhausted_budget_after_restart_is_a_handoff_not_a_completion():
         h.runner([*_tool_rounds(3), Crash("dead")]).resume(h.incident)
     h.wait_lease()
     outcome = h.runner([report_from_transcript]).resume(h.incident)
-    assert outcome.status == "published"
+    # ADR-0005: a handoff is never published as the conclusion. The Run is
+    # parked for a human, the incident stays open, and the committed
+    # conclusion step keeps the reasons readable.
+    assert outcome.status == "handed_off", outcome
+    assert outcome.reason == "BUDGET_EXHAUSTED"
     assert outcome.loop.execution == "budget_exhausted"
     assert outcome.loop.handoff is True
-    assert h.rows()["conclusion"]["conclusion"]["execution"] == "budget_exhausted"
-    assert h.rows()["conclusion"]["conclusion"]["handoff_reasons"] == [
-        "BUDGET_EXHAUSTED"
+    rows = h.rows()
+    assert rows["conclusion"] is None
+    assert rows["run"]["state"] == "waiting_human"
+    assert rows["run"]["owner"] is None and rows["run"]["lease_until"] is None
+    committed = [
+        s["response"]["conclusion"]
+        for s in rows["steps"]
+        if s["response"].get("kind") == "conclusion"
     ]
+    assert committed[-1]["execution"] == "budget_exhausted"
+    assert committed[-1]["handoff_reasons"] == ["BUDGET_EXHAUSTED"]
+    # No worker re-runs a parked Run on its own: a further resume neither
+    # claims nor calls the model (a model call here would raise).
+    parked = h.runner([]).resume(h.incident)
+    assert parked.status == "handed_off" and parked.reason == "AWAITING_HUMAN"
+    assert h.rows()["run"]["state"] == "waiting_human"
+    # Human control stays open: follow_up and correct re-queue the Run.
+    assert h.store.control(h.incident, 0, "follow_up", "operator", {"q": "x"}) == 1
+    assert h.rows()["run"]["state"] == "queued"
+    assert h.store.control(h.incident, 1, "correct", "operator", {"q": "y"}) == 2
+    assert h.rows()["run"]["state"] == "queued"
+
+
+def test_cancel_and_new_run_are_accepted_after_a_handoff():
+    h = Harness(budget_limit=1, model_requests=1)
+    # A tool plan on the last slot: the loop hands off (failed).
+    outcome = h.runner([*_tool_rounds(1)]).resume(h.incident)
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
+    assert outcome.loop.execution == "failed"
+    assert h.rows()["run"]["state"] == "waiting_human"
+    assert h.store.control(h.incident, 0, "cancel", "operator") == 1
+    assert h.rows()["run"]["state"] == "cancelled"
+    new_run = uuid4()
+    assert (
+        h.store.new_run(
+            h.incident,
+            new_run,
+            expected_generation=1,
+            deadline=h.deadline,
+            budget_limit=4,
+            versions=VERSIONS,
+            actor="operator",
+            input=_input(new_run),
+        )
+        == 2
+    )
+    assert h.rows()["run"]["run_id"] == new_run
+    outcome = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
+    assert outcome.status == "published" and h.rows()["run"]["state"] == "completed"
+
+
+def test_a_handoff_conclusion_committed_before_a_crash_is_not_published_on_resume():
+    """Breakpoint 4 with a handoff row: resume parks the Run, never publishes."""
+    h = Harness(budget_limit=2, model_requests=2)
+    worker = Worker.create(h.store, dict(VERSIONS))
+    session = worker.resume(h.incident, lease_seconds=30, renew_seconds=30)
+    executor = h.executor_factory(session.lease, None)
+    from opspilot.investigation.context import InvestigationInput, rebuild_transcript
+
+    input = InvestigationInput.from_json(h.rows()["run"]["input"])
+    transcript = rebuild_transcript(
+        h.rows(),
+        run_id=str(h.run),
+        authorized_targets=executor.scope.target_ids,
+        input=input,
+    )
+    loop = InvestigationLoop(
+        model=ScriptedModel(_tool_rounds(2)),
+        executor=executor,
+        store=DurableStepStore(h.store, session.lease),
+        clock=h.clock,
+    )
+    first = loop.resume(transcript)
+    assert first.handoff is True and first.final_step_id is not None
+    h.store.abandon(session.lease)  # the process died before it could settle
+    assert h.rows()["run"]["state"] == "running"
+    outcome = h.runner([]).resume(h.incident)  # a model call here would raise
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
+    assert outcome.loop is None  # settled from the rows, not by a new attempt
+    assert h.rows()["conclusion"] is None
+    assert h.rows()["run"]["state"] == "waiting_human"
+
+
+def test_a_stale_publish_cannot_land_on_a_parked_run():
+    """The fence: once parked, an older attempt's conclusion is only history."""
+    h = Harness(budget_limit=1, model_requests=1)
+    worker = Worker.create(h.store, dict(VERSIONS))
+    session = worker.resume(h.incident, lease_seconds=30, renew_seconds=30)
+    conclusion = {
+        "kind": "conclusion",
+        "assistant": {"role": "assistant", "content": None},
+        "conclusion": {"execution": "completed", "handoff": False},
+    }
+    step_id = DurableStepStore(h.store, session.lease).commit_step(
+        "conclusion:g0:ctx0:round-1", conclusion
+    )
+    h.store.hand_off(session.lease)
+    assert h.rows()["run"]["state"] == "waiting_human"
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        h.store.hand_off(session.lease)
+    assert h.store.publish(session.lease, conclusion, step_id=step_id) is False
+    rows = h.rows()
+    assert rows["conclusion"] is None and rows["run"]["state"] == "waiting_human"
+    late = [s for s in rows["steps"] if s["status"] == "late_result"]
+    assert len(late) == 1 and late[0]["logical_key"].startswith("late_result:publish:")
 
 
 def test_a_follow_up_drops_the_orphaned_plan_and_the_run_continues():
@@ -341,9 +450,12 @@ def test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript():
         return _tool_rounds(1)[0]
 
     outcome = h.runner([slow_reply]).resume(h.incident)
-    assert outcome.status == "unpublished" and outcome.loop.handoff_reasons == (
+    # The fenced attempt can neither publish nor park the Run it no longer
+    # holds: a control outcome, and the Run stays claimable.
+    assert outcome.status == "control_denied" and outcome.loop.handoff_reasons == (
         "CONTROL_DENIED",
     )
+    assert h.rows()["run"]["state"] == "running"
     statuses = [s["status"] for s in h.rows()["steps"]]
     assert statuses == ["late_result"]
     second = h.runner([*_tool_rounds(1), report_from_transcript]).resume(h.incident)
@@ -353,9 +465,17 @@ def test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript():
 
 def test_a_malformed_input_snapshot_blocks_the_run_durably():
     h = Harness(input={"version": "bogus"})
-    outcome = h.runner([report_from_transcript]).resume(h.incident)
+    log = _event_log(h.store)
+    runner = h.runner([report_from_transcript])
+    runner.events = log
+    outcome = runner.resume(h.incident)
     assert outcome.status == "blocked" and outcome.reason == "INPUT_INVALID"
     assert h.rows()["run"]["state"] == "blocked"
+    # Announced as a handoff the page can show, but never as a park: a
+    # blocked Run is not waiting_human and control does not re-queue it.
+    last = log.read_after(h.incident, 0, limit=1000)[-1]
+    assert last.kind == "run_handoff" and last.payload["parked"] is False
+    assert last.payload["reasons"] == ["INPUT_INVALID"]
     again = h.runner([report_from_transcript]).resume(h.incident)
     assert again.status == "control_denied"
 
@@ -567,7 +687,7 @@ def test_a_rejected_plan_is_never_replayed_by_recovery():
     outcome = h.runner([reply(tool_calls=[tool_call()], finish="stop")]).resume(
         h.incident
     )
-    assert outcome.status == "published"
+    assert outcome.status == "handed_off"
     assert outcome.loop.handoff_reasons == ("TOOL_PAIRING_INVALID",)
     assert h.transport_requests == 0
     rows = h.rows()
@@ -674,3 +794,183 @@ def test_a_follow_up_between_rounds_then_a_restart_resumes_and_publishes():
     assert h.rows()["run"]["state"] == "completed"
     assert len(outcome.loop.evidence_ids) == 1
     assert h.transport_requests == 1  # round 1's query ran once, never replayed
+
+
+# -- workbench live progress through the real driver (ADR-0005 / ROADMAP item 1)
+
+
+def _event_log(store):
+    from opspilot.web import DurableEventLog
+
+    log = DurableEventLog(store)
+    log.install()
+    return log
+
+
+def _kinds(log, incident):
+    return [e.kind for e in log.read_after(incident, 0, limit=1000)]
+
+
+def test_the_runner_announces_progress_and_completion_to_the_workbench():
+    h = Harness()
+    log = _event_log(h.store)
+    runner = h.runner([*_tool_rounds(1), report_from_transcript])
+    runner.events = log
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "published"
+    events = log.read_after(h.incident, 0, limit=1000)
+    assert [e.kind for e in events] == [
+        "run_claimed",
+        "step_committed",
+        "tool_committed",
+        "step_committed",
+        "run_completed",
+    ]
+    assert all(e.payload["run_id"] == str(h.run) for e in events)
+    assert events[0].payload["epoch"] == 1
+    assert events[1].payload["logical_key"] == "ctx0:round-1"
+    assert events[1].payload["planned_tools"] == 1
+    assert events[2].payload["ordinal"] == 0 and events[2].payload["evidence_id"]
+    assert events[-1].payload["published"] is True
+    assert events[-1].payload["handoff"] is False
+    assert events[-1].payload["report_sha256"] == outcome.loop.report_content_sha256
+    # Announcing completion is idempotent per run: a resume after publish
+    # neither claims nor announces again.
+    again = h.runner([])
+    again.events = log
+    assert again.resume(h.incident).status == "already_completed"
+    assert _kinds(log, h.incident).count("run_completed") == 1
+
+
+def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
+    from opspilot.web import (
+        DurableEvidenceStore,
+        DurableIncidentStore,
+        DurableWebLedger,
+        Workbench,
+    )
+
+    h = Harness(budget_limit=2, model_requests=2)
+    log = _event_log(h.store)
+    evidence = DurableEvidenceStore(h.store)
+    evidence.install()
+    ledger = DurableWebLedger(h.store)
+    ledger.install()
+    h.sink = evidence
+    runner = h.runner(_tool_rounds(2))
+    runner.events = log
+    runner.evidence = evidence
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "handed_off" and outcome.reason == "TOOL_PLAN_ON_FINAL"
+    kinds = _kinds(log, h.incident)
+    assert kinds[0] == "run_claimed" and kinds[-1] == "run_handoff"
+    # Round 1 ran its tool; round 2's plan was rejected (final slot), so it
+    # committed a step but no tool result.
+    assert kinds.count("step_committed") == 2 and kinds.count("tool_committed") == 1
+    last = log.read_after(h.incident, 0, limit=1000)[-1]
+    assert last.payload["reasons"] == ["TOOL_PLAN_ON_FINAL"]
+    assert last.payload["published"] is False
+    assert len(last.payload["evidence_ids"]) == 1
+    workbench = Workbench(
+        incidents=DurableIncidentStore(h.store),
+        events=log,
+        evidence=evidence,
+        ledger=ledger,
+        run_versions=dict(VERSIONS),
+    )
+    snapshot = workbench.snapshot(h.incident)
+    assert snapshot["run"]["state"] == "waiting_human"
+    assert snapshot["report"] is None
+    assert snapshot["outcome"]["handoff"] is True
+    assert snapshot["outcome"]["reasons"] == ["TOOL_PLAN_ON_FINAL"]
+    assert len(snapshot["steps"]) == 3  # two rounds + the conclusion step
+    # Evidence committed through the runner is readable from the page.
+    for evidence_id in last.payload["evidence_ids"]:
+        assert workbench.evidence_for(h.incident, evidence_id) is not None
+    # The poll that finds a parked Run announces nothing new.
+    parked = h.runner([])
+    parked.events = log
+    assert parked.resume(h.incident).status == "handed_off"
+    assert _kinds(log, h.incident)[-1] == "run_handoff"
+
+
+def test_a_recovered_tool_result_is_announced_and_its_evidence_readable():
+    """Bot review (PR #44): breakpoint-2 replays must reach the live stream."""
+    from opspilot.web import DurableEvidenceStore
+
+    h = Harness()
+    log = _event_log(h.store)
+    evidence = DurableEvidenceStore(h.store)
+    evidence.install()
+    h.sink = evidence
+
+    def die(request):
+        h.executor_hook = None
+        raise Crash("before the tool ran")
+
+    h.executor_hook = die
+    first = h.runner([*_tool_rounds(1)])
+    first.events, first.evidence = log, evidence
+    with pytest.raises(Crash):
+        first.resume(h.incident)
+    assert _kinds(log, h.incident) == ["run_claimed", "step_committed"]
+    h.wait_lease()
+    second = h.runner([report_from_transcript])
+    second.events, second.evidence = log, evidence
+    outcome = second.resume(h.incident)
+    assert outcome.status == "published" and outcome.replayed_tools == 1
+    events = log.read_after(h.incident, 0, limit=1000)
+    assert [e.kind for e in events] == [
+        "run_claimed",
+        "step_committed",
+        "run_claimed",
+        "tool_committed",
+        "step_committed",
+        "run_completed",
+    ]
+    recovered = events[3].payload
+    assert recovered["ordinal"] == 0 and recovered["run_id"] == str(h.run)
+    stored = evidence.get(recovered["evidence_id"])
+    assert stored is not None and stored.committed is True
+    assert events[-1].payload["evidence_ids"] == [recovered["evidence_id"]]
+
+
+def test_a_refused_claim_of_a_runnable_run_is_one_event_not_an_attempt():
+    # A queued Run whose deadline already passed looks runnable in the rows
+    # but the claim refuses it: that refusal is news for the page.
+    h = Harness(deadline_minutes=0)
+    log = _event_log(h.store)
+    runner = h.runner([])
+    runner.events = log
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "control_denied" and outcome.reason == "DEADLINE_EXCEEDED"
+    events = log.read_after(h.incident, 0, limit=1000)
+    assert [e.kind for e in events] == ["run_claim_refused"]
+    assert events[0].payload == {"run_id": str(h.run), "code": "DEADLINE_EXCEEDED"}
+    # A paused incident is refused on every poll by design: no event per
+    # poll (the queued Run row itself is left as is by ``control()``).
+    h.store.control(h.incident, 0, "pause", "operator")
+    assert h.rows()["state"] == "paused" and h.rows()["run"]["state"] == "queued"
+    for _ in range(3):
+        assert runner.resume(h.incident).status == "control_denied"
+    assert _kinds(log, h.incident) == ["run_claim_refused"]
+
+
+def test_an_evidence_projection_the_executor_did_not_register_into_hands_off():
+    """Independent review P2-2: a projection mismatch is a visible handoff."""
+    from opspilot.web import DurableEvidenceStore
+
+    h = Harness()
+    log = _event_log(h.store)
+    other = DurableEvidenceStore(h.store)
+    other.install()
+    # ``h.sink`` stays the transport double's own sink: the runner's
+    # projection cannot find the rows the executor registered.
+    runner = h.runner([*_tool_rounds(1), report_from_transcript])
+    runner.events = log
+    runner.evidence = other
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "handed_off"
+    assert outcome.reason == "EVIDENCE_PROJECTION_FAILED"
+    assert h.rows()["run"]["state"] == "waiting_human"
+    assert _kinds(log, h.incident)[-1] == "run_handoff"

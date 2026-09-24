@@ -39,6 +39,7 @@ from opspilot.investigation.reports import (
     delivered_from_context,
     eligible_time_policies,
     evidence_context_projection,
+    parse_report,
     view_targets_authorized,
 )
 from opspilot.tools.registry import canonical, redact_credentials
@@ -1000,6 +1001,40 @@ def pending_conclusion(
         ):
             return step["step_id"], dict(response)
     return None
+
+
+def conclusion_publishable(response: Mapping[str, Any]) -> bool:
+    """ADR-0005: only a qualified report with no handoff becomes the conclusion.
+
+    ``response`` is a committed ``conclusion`` step (``LoopOutcome.conclusion``
+    or the row ``pending_conclusion`` found). Anything else -- a budget or
+    pairing failure, an incomplete report, a fenced attempt -- is a handoff:
+    the row stays readable, the Run is parked for a human, nothing is
+    published. Both drivers (runner and workbench) decide with this one rule.
+    """
+    body = response.get("conclusion")
+    if not isinstance(body, Mapping):
+        return False
+    content = body.get("report_content")
+    # A recovered row is only as trustworthy as its own shape: the report
+    # must be present as text, match its recorded digest and still parse as
+    # the report the live path validated (same ``parse_report``), else the
+    # row is a handoff to a human rather than something to publish (bot
+    # review, PR #44). ``publish()`` still compares the row to the
+    # conclusion. Citations are not re-checked here: they were checked
+    # against the delivered views when the row was written.
+    if (
+        body.get("execution") != "completed"
+        or body.get("handoff") is not False
+        or not isinstance(content, str)
+        or hashlib.sha256(content.encode("utf-8")).hexdigest()
+        != body.get("report_content_sha256")
+    ):
+        return False
+    report, _reason = parse_report(content, finish_reason="stop")
+    return report is not None and report.schema_version == body.get(
+        "report_schema_version"
+    )
 
 
 def _calibration_from_row(response: Mapping[str, Any], factor: float) -> float:

@@ -16,7 +16,7 @@ projection.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -30,15 +30,22 @@ from opspilot.intake import (
     _reject_ambiguous_text,
     classify_intake_delivery,
 )
-from opspilot.investigation.context import CONCLUSION_KIND
+from opspilot.investigation.context import CONCLUSION_KIND, conclusion_publishable
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
     RUN_WALL_SECONDS,
 )
 from opspilot.investigation.loop import LoopOutcome
+from opspilot.investigation.progress import (
+    EmittingCommitter,
+    announce_claim_refused,
+    announce_claimed,
+    announce_completed,
+    announce_handoff,
+)
 from opspilot.investigation.reports import ReportV2, parse_report
-from opspilot.investigation.store import BudgetUsage, StepCommitter, StepStoreError
+from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.events import EventLog, SubjectEvent
@@ -113,157 +120,6 @@ class Investigator(Protocol):
     def investigate(
         self, context: RunContext, committer: StepCommitter, evidence: EvidenceSink
     ) -> LoopOutcome: ...
-
-
-class _EmittingCommitter:
-    """Wrap the loop's committer so each committed step/tool becomes an event.
-
-    The event is appended after the business commit returns, so a reader
-    never sees progress that did not persist. Refusals pass through
-    untouched: the loop's handoff semantics stay the loop's.
-    """
-
-    def __init__(
-        self,
-        base: StepCommitter,
-        events: EventLog,
-        subject_id: UUID,
-        run_id: UUID,
-        *,
-        renew: Callable[[], object] | None = None,
-        evidence: EvidenceStore | None = None,
-    ) -> None:
-        self._evidence = evidence
-        self._base = base
-        self._events = events
-        self._subject_id = subject_id
-        self._run_id = run_id
-        self._renew_lease = renew
-        self.last_step: tuple[UUID, dict[str, Any]] | None = None
-        self.steps_seen = 0
-        self.renewals = 0
-        self.renewal_refused = False
-
-    @property
-    def authorized_run_id(self) -> str:
-        return self._base.authorized_run_id
-
-    @property
-    def control_generation(self) -> int:
-        return self._base.control_generation
-
-    def usage(self) -> BudgetUsage:
-        return self._base.usage()
-
-    def renew(self) -> None:
-        """The loop's pre-dispatch renewal (PR #29 / #35 on main).
-
-        The base committer is built without ``renew_seconds`` so the lease is
-        renewed here. Unlike the commit paths below, a refusal must surface:
-        the loop calls this right before reading production again and relies
-        on ``StepStoreError`` to halt first (``StepCommitter.renew``), or a
-        fenced attempt performs one duplicate read whose result is then only
-        recorded as history (independent review of PR #33, P3-1).
-        """
-        self._renew()
-        if self.renewal_refused:
-            raise StepStoreError("CONTROL_DENIED")
-
-    def _renew(self) -> None:
-        """Extend the lease before touching the store (C3 section 6).
-
-        A refused renewal (``CONTROL_DENIED``) means this attempt no longer
-        owns the Run. The call is still forwarded: the store re-checks the
-        identical fence, refuses the same way, and, for a step or tool
-        result, records the late result as history exactly as an expired
-        lease would. Any other storage failure stops the attempt here.
-        """
-        if self._renew_lease is None:
-            return
-        try:
-            self._renew_lease()
-        except PersistenceError as exc:
-            if str(exc) == "CONTROL_DENIED":
-                self.renewal_refused = True
-                return
-            raise StepStoreError(str(exc)) from None
-        self.renewals += 1
-
-    def reserve_budget(
-        self, reservation_id: UUID, amount: int, *, seconds: float = 0.0
-    ) -> None:
-        self._renew()
-        self._base.reserve_budget(reservation_id, amount, seconds=seconds)
-
-    def settle_budget(
-        self, reservation_id: UUID, outcome: str, *, seconds: float | None = None
-    ) -> None:
-        self._renew()
-        self._base.settle_budget(reservation_id, outcome, seconds=seconds)
-
-    # PR #31 extends the committer seam with ``begin_round``/``assert_current``.
-    # Forward them when the base has them so this wrapper stays transparent
-    # after that merge; on this branch the loop never calls them.
-    def begin_round(self, logical_key: str) -> Any:
-        # The renewal before a model round is the one that matters most: it
-        # guarantees the lease covers the whole request that follows.
-        self._renew()
-        return getattr(self._base, "begin_round")(logical_key)
-
-    def assert_current(self) -> None:
-        self._renew()
-        getattr(self._base, "assert_current")()
-
-    def commit_step(self, logical_key: str, response: Mapping[str, Any]) -> UUID:
-        self._renew()
-        step_id = self._base.commit_step(logical_key, response)
-        self.last_step = (step_id, dict(response))
-        if response.get("kind") == CONCLUSION_KIND:
-            # The loop's terminal record (main), not a model round: the
-            # ``run_completed``/``run_handoff`` event that follows announces
-            # it together with the outcome, so it is not a progress step.
-            return step_id
-        self.steps_seen += 1
-        assistant = response.get("assistant")
-        calls = assistant.get("tool_calls") if isinstance(assistant, Mapping) else None
-        self._events.append(
-            self._subject_id,
-            "step_committed",
-            {
-                "run_id": str(self._run_id),
-                "step_id": str(step_id),
-                "logical_key": logical_key,
-                "finish_reason": response.get("finish_reason"),
-                "planned_tools": len(calls) if isinstance(calls, list) else 0,
-            },
-        )
-        return step_id
-
-    def commit_tool(
-        self, step_id: UUID, ordinal: int, result: Mapping[str, Any]
-    ) -> None:
-        self._renew()
-        self._base.commit_tool(step_id, ordinal, result)
-        # The committed tool result is the authority for what was consumed:
-        # pin the evidence projection to it so a stale replay (an expired
-        # worker returning the same bytes later) cannot replace it.
-        evidence_id = result.get("evidence_id")
-        if self._evidence is not None and isinstance(evidence_id, str):
-            self._evidence.commit(evidence_id, result)
-        self._events.append(
-            self._subject_id,
-            "tool_committed",
-            {
-                "run_id": str(self._run_id),
-                "step_id": str(step_id),
-                "ordinal": ordinal,
-                "evidence_id": result.get("evidence_id"),
-                "status": result.get("status"),
-                "adopted": result.get("adopted"),
-                "tool": result.get("tool"),
-                "target_id": result.get("target_id"),
-            },
-        )
 
 
 @dataclass
@@ -745,12 +601,24 @@ class Workbench:
         steps = [_step_view(step) for step in rebuilt["steps"]]
         # A published conclusion is terminal: a ``run_handoff`` the crashed
         # worker's exit path appended after it is history, not the outcome.
+        # A ``run_handoff`` that did not park (``parked: false``: the attempt
+        # was fenced by human control or crashed) is only the outcome while
+        # the Run row itself is not runnable; a queued/running row means the
+        # next attempt owns the state and the page must not show the Run as
+        # handed off (bot review, PR #44). The event stays in the list.
+        runnable = run["state"] in {"queued", "running"}
         outcome = next(
             (
                 e
                 for kind in ("run_completed", "run_handoff")
                 for e in reversed(events)
-                if e.kind == kind and e.payload.get("run_id") == str(run["run_id"])
+                if e.kind == kind
+                and e.payload.get("run_id") == str(run["run_id"])
+                and not (
+                    kind == "run_handoff"
+                    and runnable
+                    and e.payload.get("parked") is False
+                )
             ),
             None,
         )
@@ -845,21 +713,30 @@ class Workbench:
             # another worker runs (or a killed worker's lease runs down); a
             # polling worker would otherwise append one event per poll.
             if str(exc) != "LEASE_ACTIVE":
-                self.events.append(
-                    incident_id,
-                    "run_claim_refused",
-                    {"run_id": str(run_id), "code": str(exc)},
-                )
+                announce_claim_refused(self.events, incident_id, run_id, str(exc))
             return None
         try:
             return self._attempt(
                 incident_id, run_id, lease, investigator, request, seconds
             )
         except (StepStoreError, PersistenceError) as exc:
-            self._handoff(incident_id, lease, run_id, "failed", (str(exc),))
+            # A store refusal: the fence already took this lease, or storage
+            # failed. Not a loop handoff, so the Run is not parked -- the
+            # next claim converges on the committed rows.
+            self._handoff(incident_id, lease, run_id, "failed", (str(exc),), park=False)
             return None
         except BaseException:
-            self._handoff(incident_id, lease, run_id, "failed", ("UNEXPECTED_ERROR",))
+            # A crash, not a handoff: like a killed worker, the Run stays
+            # claimable and the next attempt resumes from the rows (C3
+            # section 7). The event still tells the page what happened.
+            self._handoff(
+                incident_id,
+                lease,
+                run_id,
+                "failed",
+                ("UNEXPECTED_ERROR",),
+                park=False,
+            )
             raise
 
     def _attempt(
@@ -885,16 +762,8 @@ class Workbench:
         # attempt's commits instead.
         self._reconcile_pending_notes(incident_id)
         notes = [] if self.incidents.payload_supported else self._notes(incident_id)
-        self.events.append(
-            incident_id,
-            "run_claimed",
-            {
-                "run_id": str(run_id),
-                "epoch": lease.epoch,
-                "control_generation": lease.control_generation,
-            },
-        )
-        committer = _EmittingCommitter(
+        announce_claimed(self.events, lease)
+        committer = EmittingCommitter(
             self.incidents.committer(lease),
             self.events,
             incident_id,
@@ -913,17 +782,16 @@ class Workbench:
         )
         outcome = investigator.investigate(context, committer, self.evidence)
         # A handoff (incomplete finding, budget, pairing failure) is never
-        # published as the conclusion: publishing would freeze human control
-        # (DurableStore.control refuses once a conclusion exists) exactly
-        # when a follow-up is needed. The committed step stays readable.
-        # ``final_step_id``/``conclusion`` is the terminal step the loop on
-        # main committed for this attempt; None means the store fenced it and
-        # there is nothing this attempt may publish (as in the runner).
+        # published as the conclusion (ADR-0005): publishing would freeze
+        # human control (DurableStore.control refuses once a conclusion
+        # exists) exactly when a follow-up is needed. The committed step
+        # stays readable and the Run is parked for a human. ``final_step_id``
+        # is None when the store fenced the terminal step: nothing this
+        # attempt may publish. Same rule as ``InvestigationRunner``.
         if (
-            outcome.report is None
-            or outcome.handoff
-            or outcome.final_step_id is None
+            outcome.final_step_id is None
             or outcome.conclusion is None
+            or not conclusion_publishable(outcome.conclusion)
         ):
             self._handoff(
                 incident_id,
@@ -949,21 +817,15 @@ class Workbench:
                 evidence_ids=outcome.evidence_ids,
             )
             return outcome
-        sequence = self.events.append_once(
+        sequence = announce_completed(
+            self.events,
             incident_id,
-            "run_completed",
-            {
-                "run_id": str(run_id),
-                "published": True,
-                "execution": outcome.execution,
-                "handoff": False,
-                "handoff_reasons": [],
-                "report_sha256": outcome.report_content_sha256,
-                "evidence_ids": list(outcome.evidence_ids),
-                "model_requests_used": outcome.model_requests_used,
-                "prompt_revision": outcome.prompt_revision,
-            },
-            key={"run_id": str(run_id)},
+            run_id,
+            execution=outcome.execution,
+            report_sha256=outcome.report_content_sha256,
+            evidence_ids=outcome.evidence_ids,
+            model_requests_used=outcome.model_requests_used,
+            prompt_revision=outcome.prompt_revision,
         )
         self.ledger.put("completion", str(run_id), {"sequence": sequence})
         return outcome
@@ -978,22 +840,35 @@ class Workbench:
         *,
         report_sha256: str | None = None,
         evidence_ids: tuple[str, ...] = (),
+        park: bool = True,
     ) -> None:
+        # ``park``: the loop ended in a handoff, so the Run waits for a human
+        # (``waiting_human``, lease released; ADR-0005). A refusal means
+        # human control already moved this Run on, or the lease lapsed: then
+        # only this exact lease is released, best effort. The event still
+        # records what this attempt saw (the page shows it as history), but
+        # says ``parked: false`` so it never claims a durable park the Run
+        # row does not show (bot review, PR #44).
+        parked = False
         try:
-            self.incidents.abandon(lease)
+            if park:
+                try:
+                    self.incidents.hand_off(lease)
+                    parked = True
+                except PersistenceError:
+                    self.incidents.abandon(lease)
+            else:
+                self.incidents.abandon(lease)
         finally:
-            self.events.append(
+            announce_handoff(
+                self.events,
                 incident_id,
-                "run_handoff",
-                {
-                    "run_id": str(run_id),
-                    "published": False,
-                    "execution": execution,
-                    "handoff": True,
-                    "reasons": list(reasons),
-                    "report_sha256": report_sha256,
-                    "evidence_ids": list(evidence_ids),
-                },
+                run_id,
+                execution,
+                reasons,
+                report_sha256=report_sha256,
+                evidence_ids=evidence_ids,
+                parked=parked,
             )
 
 
