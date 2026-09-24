@@ -1012,11 +1012,21 @@ def conclusion_publishable(response: Mapping[str, Any]) -> bool:
     published. Both drivers (runner and workbench) decide with this one rule.
     """
     body = response.get("conclusion")
+    if not isinstance(body, Mapping):
+        return False
+    content = body.get("report_content")
+    # A recovered row is only as trustworthy as its own shape: the report
+    # must be present as text and match its recorded digest, else the row is
+    # a handoff to a human rather than something to publish (bot review,
+    # PR #44). ``publish()`` still compares the row to the conclusion.
     return (
-        isinstance(body, Mapping)
-        and body.get("execution") == "completed"
+        body.get("execution") == "completed"
         and body.get("handoff") is False
-        and body.get("report_schema_version") is not None
+        and isinstance(body.get("report_schema_version"), str)
+        and bool(body.get("report_schema_version"))
+        and isinstance(content, str)
+        and hashlib.sha256(content.encode("utf-8")).hexdigest()
+        == body.get("report_content_sha256")
     )
 
 
