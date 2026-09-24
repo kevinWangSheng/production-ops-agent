@@ -1931,3 +1931,24 @@ def test_the_sweep_never_overwrites_a_human_decision_that_landed_first():
             for e in workbench.events.read_after(subject, 0)
             if e.kind == "run_handoff"
         ]
+
+
+def test_a_sweep_that_cannot_take_its_lock_does_not_fail_the_page_load():
+    """Independent review P3-4: the sweep is a repair on the way to a read;
+    a lock timeout there is not the page's failure."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="sweep-outage")
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
+    clock.advance(601)
+
+    def refuse(*, incident_id=None, limit=100):
+        raise PersistenceError("LOCK_TIMEOUT")
+
+    workbench.incidents.sweep_expired_runs = refuse
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["run"]["state"] == "running"
+    assert not [
+        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
+    ]

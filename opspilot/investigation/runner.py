@@ -119,12 +119,18 @@ class InvestigationRunner:
         # Its deadline fences every worker write, so nothing else can settle
         # it; parking it here (and announcing it once) is what lets the page
         # stop showing "investigating" for ever.
-        swept = {
-            run_id
-            for _, run_id in sweep_expired(
-                self.store, self.events, incident_id=incident_id
-            )
-        }
+        try:
+            swept = {
+                run_id
+                for _, run_id in sweep_expired(
+                    self.store, self.events, incident_id=incident_id
+                )
+            }
+        except PersistenceError:
+            # A lock timeout or an outage while sweeping: the Run stays as
+            # it is and the next poll sweeps it; the attempt below then
+            # meets the same fence ``claim()`` always applied.
+            swept = set()
         try:
             snapshot = self.store.rebuild(incident_id)
         except PersistenceError as exc:

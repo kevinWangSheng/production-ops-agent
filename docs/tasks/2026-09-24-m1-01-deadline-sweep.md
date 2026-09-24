@@ -24,10 +24,10 @@ Run 过 deadline 后，租约栅栏拒绝 worker 的一切写入，没有写入�
 - `make check`（实现提交 `eafdad4` 前的 dirty 工作区）：ruff / format / mypy 通过，pytest `1934 passed, 210 skipped, 2 xfailed`。
 - PG 集成（本 worktree 自己的 55431 实例，`postgres_lab start`）：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q` → `172 passed, 38 skipped`（#44 为 161）。
 - 真实 Run（DeepSeek Flash，8 秒 deadline，3 次 HTTP，0.012809 CNY 上界）：首次尝试跑过 deadline，结论步骤被栅栏落为 `late_result`，runner 返回 `control_denied`，行仍 `running`；过期后再轮询一次，入口清扫停放为 `waiting_human` 并发唯一 `run_handoff`（`DEADLINE_EXCEEDED`）。结论与账本见 [`docs/evidence/m1-01-deadline-sweep/run.md`](../evidence/m1-01-deadline-sweep/run.md)。
-- 独立审查：待执行（见下一步）。
+- 独立审查（全新上下文 Agent，拿 ADR/约束/diff/原始账本，不拿结论；自行跑 PG 与工作台用例并写探针）：无 P1。P2-1 并发用例断言全表清扫为空，在共用 lab 库上被其他集成用例遗留的 85 行过期 running 打红并顺带停放了它们 → 删除该断言（全表行为由专门用例以 `<=` 钉住）；P2-2 `announce_deadline_exceeded` 文档串与用例注释声称「清扫者停放后死掉，后来者会补发事件」而代码没有 → 改为如实写 at-most-once 且不补：行不记录停放原因，补写会在 loop 交接与超时之间猜，归入 ROADMAP 已列的投影补写后续项；P2-3 follow_up 停放后的 Run 变成永远 claim 不到的 `queued` 行，每次轮询追加一条 `run_claim_refused`（探针 3 次轮询 3 条）→ 与决定 4 同一问题，属 `control()` 合同层取舍（拒绝 follow_up/correct/resume 于已超时 Run，或让清扫也停放过期 `queued` 行），本 PR 不改，列为用户决策点；P3-4 清扫的 `PersistenceError`（如 4 秒锁超时）会从 `resume()` 无类型抛出、把页面 GET 变 503 → 两处调用改为捕获后跳过（下次轮询/加载再扫），新增单测；P3-5 清扫事件 `evidence_ids` 为空而 loop 结果有 2 条（模板只渲染 execution/reasons，证据经 `tool_committed` 仍可见）、P3-6 单语句 `FOR UPDATE OF i,r` 与两语句锁序的 ABBA 窗口为既有且受 `lock_timeout` 封顶、P3-7 内存替身与 DB 语义一致 → 记录不改。复验：修复后 PG 清扫用例 11 passed、工作台用例 48 passed。
 
 ## 下一步与交接
 
 - 独立审查 → 处置 P1/P2 → PR（用户门，功能 PR）→ CI → 一次 `@codex review` 分诊。
 - 本 worktree 的 PostgreSQL 实例由本任务停止（`postgres_lab stop`，数据保留）；合并后按 AGENTS.md 清理 worktree。
-- 用户决策点：决定 4（follow_up 对已超时 Run 的语义）。
+- 用户决策点：决定 4 / 审查 P2-3（follow_up 对已超时 Run 的语义：保持现状、`control()` 拒绝、或清扫也停放过期 `queued` 行）。

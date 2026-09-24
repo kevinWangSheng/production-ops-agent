@@ -519,7 +519,12 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             return
-        sweep_expired(self.incidents, self.events, incident_id=incident_id)
+        try:
+            sweep_expired(self.incidents, self.events, incident_id=incident_id)
+        except PersistenceError:
+            # A page load must not fail because the sweep could not take its
+            # row lock right now; the next load (or the next poll) sweeps.
+            pass
         intake = self.ledger.get("intake", summary.intake_key)
         if intake is not None:
             self._announce_intake(

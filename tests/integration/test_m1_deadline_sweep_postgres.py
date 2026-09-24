@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
-from opspilot.investigation.progress import sweep_expired
+from opspilot.investigation.progress import announce_deadline_exceeded, sweep_expired
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.web import (
@@ -78,6 +78,14 @@ def _run_row(store: DurableStore, run: UUID) -> dict:
         ).fetchone()
     assert row is not None
     return row
+
+
+def handoffs_seq(log: DurableEventLog, incident: UUID) -> int:
+    return next(
+        e.sequence
+        for e in log.read_after(incident, 0, limit=1000)
+        if e.kind == "run_handoff"
+    )
 
 
 def _handoffs(log: DurableEventLog, incident: UUID) -> list[dict]:
@@ -167,7 +175,6 @@ def test_the_sweep_is_idempotent_and_safe_to_run_concurrently():
         )
     assert sum(len(parked) for parked in results) == 1
     assert store.sweep_expired_runs(incident_id=incident) == ()
-    assert store.sweep_expired_runs() == ()
     assert _run_row(store, run)["state"] == "waiting_human"
 
 
@@ -250,8 +257,10 @@ def test_the_runner_sweeps_before_it_claims_and_announces_the_timeout_once():
     again = runner.resume(incident)
     assert again.status == "handed_off" and again.reason == "AWAITING_HUMAN"
     assert len(_handoffs(log, incident)) == 1
-    # A repeated announcement (a sweeper that died after the park) is keyed.
+    # A further sweep parks nothing and announces nothing; the announcement
+    # is keyed by run so an announcer racing this one cannot duplicate it.
     assert sweep_expired(store, log, incident_id=incident) == ()
+    assert announce_deadline_exceeded(log, incident, run) == handoffs_seq(log, incident)
     assert len(_handoffs(log, incident)) == 1
 
 

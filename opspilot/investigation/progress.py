@@ -140,9 +140,14 @@ class ExpirySweeper(Protocol):
 def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID) -> int:
     """The ``run_handoff`` a timeout park shows on the page, keyed by run.
 
-    A sweep parks a Run at most once, but the sweeper may die between the
-    park and this append and a later caller repeats the announcement from
-    ``sweep_expired``; the key makes that a no-op instead of a duplicate.
+    A sweep parks a Run at most once, and the key makes a second announcer
+    of the same park (a racing sweep, a retry) a no-op instead of a
+    duplicate. It is at-most-once, not exactly-once: a sweeper that dies
+    between the park and this append leaves the row ``waiting_human`` with
+    no event, and nothing here repairs that -- the row cannot say *why* it
+    was parked, so a repair would have to guess between a loop handoff and
+    a timeout. The rows stay the authority (ADR-0003); the projection
+    repair is the follow-up recorded in ROADMAP.
     """
     return log.append_once(
         subject_id,
