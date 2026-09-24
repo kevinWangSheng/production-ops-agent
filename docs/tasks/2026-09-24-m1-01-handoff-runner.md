@@ -1,6 +1,6 @@
 # M1-01 剩余工作 1：runner 交接不发布 + 工作台实时进度接真实驱动
 
-- 状态：进行中
+- 状态：进行中（待审查第 2 轮复验、PR 就绪、用户合并）
 - 更新日期：2026-09-24
 - 依据：[ADR-0005](../adr/0005-handoff-and-deadline-terminal.md)（用户 2026-09-24 决定，PR #43 分支）第 1 条；ROADMAP「M1-01 剩余工作」第 1 项；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Runtime and human control requirements」（显式 handoff 结果、人工控制优先）。功能 ID：M1-01。
 - 工作区：分支 `feature/m1-01-handoff-runner`，worktree `../production-ops-agent-handoff-runner`（起点 `origin/main` `1f030fc`）。
@@ -43,11 +43,11 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 - PG 集成（2026-09-24，在共用的 55431 实例上，未启停）：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q` → `160 passed, 38 skipped`（跳过为 `M0_B_RESTART` 等另行 opt-in 的用例）。新增 PG 用例：交接后 `waiting_human` + follow_up/correct 重新排队、cancel + new_run、断点 4 的交接行不发布、停放后迟到发布落 `late_result`、runner 事件顺序（完成 / 交接 / 拒绝 claim）、页面快照回读、证据投影错配交接。既有 `test_a_late_commit_from_a_fenced_attempt_is_history_not_transcript` 由 `unpublished` 改断 `control_denied`（被围栏的尝试既不能发布也不能停放它已不持有的 Run）。
 - `make check`（HEAD `744a084`）：`1927 passed, 198 skipped, 2 xfailed`。
 - 独立审查第 1 轮（全新上下文 Agent，拿 diff/ADR/约束，不拿结论）：P1-1 runner 路径尚无执行证据 → PG 套件已跑，见上；P2-1 `test_a_stale_publish_cannot_land_on_a_parked_run` 断言了存储没有的行为（随机 step_id 抛 `UNKNOWN_IDENTITY`）→ 改为先提交真实结论步骤再停放，并断言 `late_result` 行；P2-2 runner 的 `evidence` 投影与 executor sink 不一致时抛 `PersistenceError` 被记成 `control_denied` 且无终态事件、每租约周期重复 → `EmittingCommitter.commit_tool` 把投影失败转成 `StepStoreError("EVIDENCE_PROJECTION_FAILED")`，loop 以该原因交接（PG 用例覆盖），runner 字段加说明；P3-1 已停放/暂停的 Run 每次轮询都追加 `run_claim_refused` → runner 只在快照看起来可运行（事故非 paused/cancelled/completed 且 run 为 queued/running）时才发；P3-2 文档串改为「每个已结算的尝试恰一个终态事件，崩溃不发」；P3-3/P3-4/P3-5 记为观察（loop 级 `STORAGE_UNAVAILABLE` 会停放；claim 时版本不兼容只发 `run_claim_refused`；`publish()` 本身不强制发布规则）。复验：待第 2 轮。
-- 真实 Run：待执行（见下一步）。
+- lab PostgreSQL：端口 55431 原被 `production-ops-agent-m1-human-control`（已合并分支）遗留实例占用；lead 会话确认无客户端后在该 worktree 用 `postgres_lab stop` 停止（数据目录保留，worktree 未删）。上面的首轮集成结果（160 passed）跑在该遗留实例上；随后本 worktree 用 `postgres_lab start` 起自己的实例（`tmp/m0-b/postgres`），重跑 `tests/integration`：第 1 次 `2 failed, 158 passed`（失败用例名未捕获，仅有汇总行），第 2、3 次均 `160 passed, 38 skipped`；记为未定位的偶发，待 CI 的 m0-postgres 作业对照。
+- 真实 Run（2026-09-24，DeepSeek Flash，经 `InvestigationRunner` + 本 worktree PG）：4 次，合计 0.080403 CNY 上界。两次合格报告发布（`3a7dee13`、`325642ca`）、两次交接不发布（`b127b23a` 含 follow_up 后再 claim、`f987b4b6` 为脚本配置错误导致工具被拒）。结论与账本见 [`docs/evidence/m1-01-handoff-runner/run.md`](../evidence/m1-01-handoff-runner/run.md)。
 
 ## 下一步与交接
 
-- lab PostgreSQL 端口 55431 当前被 `production-ops-agent-m1-human-control`（已合并分支）的实例占用（pid 84545，0 个客户端）；已向 lead 请示是停掉该遗留实例、还是直接在其上跑集成套件。得到答复后：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`。
-- 真实 Run：`M0_ENV_FILE=/Users/shenghuikevin/dev/AI/production-ops-agent/.env .venv/bin/python scripts/m1_live_runner.py`（一次正常上限 2）与 `--model-requests 1 --follow-up`（强制预算交接 + 追问后再 claim），证据写入 `docs/evidence/m1-01-handoff-runner/live-runs/<run_id>/`。
-- 独立审查：全新上下文审查者，给 ADR、约束、diff 与原始证据。
+- 独立审查第 2 轮复验（P2-1/P2-2/P3-1 修复）结果待记；PR 开出后按 AGENTS.md 做一次 `@codex review` 分诊。
+- 本 worktree 的 PostgreSQL 实例由本任务停止（`postgres_lab stop`，数据保留）；合并后按 AGENTS.md 清理 worktree。
 - 用户裁定点：交接终态用 `waiting_human` 还是新增/改造 `failed`（见上「决定 1」）。

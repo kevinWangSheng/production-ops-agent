@@ -83,12 +83,16 @@ def executor_factory_for(evidence, clock, deadline):
             clock=clock,
             sink=evidence,
             registrations=[registration(name=LIVE_TOOL)],
+            # The control generation stays the fixture's default: the tool
+            # gateway checks it against its own fixed control snapshot, not
+            # the incident row (that fence is the store's). Overriding it
+            # denies every query with CONTROL_GENERATION_CHANGED (live run
+            # f987b4b6, 2026-09-24).
             scope_overrides={
                 "deadline": deadline,
                 "tool_names": frozenset({LIVE_TOOL}),
                 "run_id": str(lease.run_id),
                 "subject_id": str(lease.incident_id),
-                "control_generation": lease.control_generation,
             },
         )
         transport.response = TransportResponse(
