@@ -1,6 +1,6 @@
 # M1-01 剩余工作 1：runner 交接不发布 + 工作台实时进度接真实驱动
 
-- 状态：进行中（待审查第 2 轮复验、PR 就绪、用户合并）
+- 状态：进行中（PR #44 就绪待用户合并）
 - 更新日期：2026-09-24
 - 依据：[ADR-0005](../adr/0005-handoff-and-deadline-terminal.md)（用户 2026-09-24 决定，PR #43 分支）第 1 条；ROADMAP「M1-01 剩余工作」第 1 项；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Runtime and human control requirements」（显式 handoff 结果、人工控制优先）。功能 ID：M1-01。
 - 工作区：分支 `feature/m1-01-handoff-runner`，worktree `../production-ops-agent-handoff-runner`（起点 `origin/main` `1f030fc`）。
@@ -48,6 +48,6 @@ B. 真实驱动器发出工作台已消费的同一套事件（`run_claimed` / `
 
 ## 下一步与交接
 
-- PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44) 已开；等 CI 成功后做一次 `@codex review` 分诊；用户门，不自动合并。
+- PR [#44](https://github.com/kevinWangSheng/production-ops-agent/pull/44)：CI 成功后已做一次 `@codex review` 分诊，2 个 P2 均采纳并修复（`ba9a306` 断点 2 重放的工具结果发 `tool_committed` 并钉证据；`a811b9e` `conclusion_publishable` 对恢复行 fail-closed：版本为非空字符串、正文为字符串且摘要一致），thread 已回复并 resolve；修复后 `make check` 1930 passed、PG 161 passed。集成套件在本实例上此后连续 6 次全过，首跑的 2 个失败未复现、用例名未捕获，不断言无害。用户门，待用户合并。
 - 本 worktree 的 PostgreSQL 实例由本任务停止（`postgres_lab stop`，数据保留）；合并后按 AGENTS.md 清理 worktree。
 - 用户已裁定（2026-09-24，经 lead 转达）：交接终态保持 `waiting_human`，不改为 `failed`。
