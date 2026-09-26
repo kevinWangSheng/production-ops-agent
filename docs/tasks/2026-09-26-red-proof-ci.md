@@ -26,6 +26,7 @@ PR 正文里自述的「红→绿」无法复核。把它变成可重放检查�
 - 设计取舍：按文件逐个运行 pytest——实测任一文件收集失败时 pytest 以 exit 4 中止整次调用，其余文件不跑。试行期退出码恒 0，结论写入 step summary 与 notice/warning 注解：非必需检查失败会使 `mergeStateStatus` 变为 UNSTABLE，与就绪定义冲突。
 - 单测：`tests/test_red_proof.py` 7 passed。把快照改成取 HEAD 实现后，3 条依赖 base 实现的用例变红，复原后全绿。
 - 本地回放（未开 PostgreSQL，集成用例记为跳过）：#44 断言失败 3 / 收集失败 4 / 跳过 12；#45 断言失败 1 / 收集失败 9 / base 上通过 2；#46 断言失败 1；#47 断言失败 4 / 跳过 10；#48（只补测试）无红证明、跳过 3，属 `no-red-proof` 适用情形。
+- 独立审查（全新上下文 Agent）：历史回放数字逐项复核一致。P1 `--report-only` 下超时/内部异常仍非零退出且不落报告——采纳：超时与 junit 解析失败记为「未运行」，其余异常统一落「内部错误」报告，试行期恒 0。P2 只改 `tests/*_support.py` 时静默判不适用——采纳：改报「需人工确认」并列出未重放的 tests/ 改动。P3 采纳 node_id 转义、dispatch 并发组按 head 分组、文档写明退出码；「`no-red-proof` 由谁打标签」留到改为阻塞前评估。三类修复各有回归用例（10 passed）。
 - 未执行：本机 55431 的实例属于 `production-ops-agent-web-worker` worktree，端口在 `scripts/m0/postgres_lab.py` 写死，未启动第二个实例；PostgreSQL 路径留待合并后回放。
 
 ## 下一步与交接
