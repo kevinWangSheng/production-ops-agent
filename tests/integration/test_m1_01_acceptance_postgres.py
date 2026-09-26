@@ -224,17 +224,29 @@ def test_incompatible_state_is_a_blocked_handoff():
     assert h.store.control(h.incident, 0, "cancel", "operator") == 1
 
 
+def _released_global_gate(h: Harness) -> int:
+    with h.store.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+        ).fetchone()
+    generation = int(row["global_generation"])
+    if row["global_suspended"]:
+        generation = h.store.set_global_suspension(
+            False, expected_generation=generation, actor="operator"
+        )
+    return generation
+
+
 def test_a_scope_suspension_is_visible_as_human_control():
     """An operator suspension pauses the Run without a controls row
     (``set_global_suspension``); the seam must not read it as no decision
     (independent review P2-1)."""
     h = Harness()
+    # The global gate is a singleton shared by every test on the lab
+    # instance: start from released, whatever an earlier run left behind.
+    generation = _released_global_gate(h)
     with pytest.raises(Crash):
         h.runner([*_tool_rounds(1), Crash("in flight")]).resume(h.incident)
-    with h.store.transaction(snapshot=True) as conn:
-        generation = conn.execute(
-            "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
-        ).fetchone()["global_generation"]
     suspended = h.store.set_global_suspension(
         True, expected_generation=generation, actor="operator"
     )
