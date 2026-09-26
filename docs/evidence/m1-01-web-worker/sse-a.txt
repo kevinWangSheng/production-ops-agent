@@ -1,0 +1,36 @@
+retry: 2000
+
+id: 1
+event: intake_accepted
+data: {"run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "channel": "ui_basic", "actor_id": "demo", "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.", "target_id": "checkout-prod", "request_id": "8656c795-53ad-4009-b3ce-b5f62d8e8c0c", "received_at": "2026-09-26T01:40:19.184764-07:00"}
+
+id: 2
+event: run_claimed
+data: {"epoch": 1, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "control_generation": 0}
+
+id: 3
+event: step_committed
+data: {"run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e", "logical_key": "ctx0:round-1", "finish_reason": "tool_calls", "planned_tools": 1}
+
+id: 4
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e", "target_id": "checkout-prod", "evidence_id": "de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"}
+
+id: 5
+event: step_committed
+data: {"run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a", "logical_key": "ctx0:round-2", "finish_reason": "tool_calls", "planned_tools": 1}
+
+id: 6
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a", "target_id": "checkout-prod", "evidence_id": "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"}
+
+id: 7
+event: step_committed
+data: {"run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "768581e9-e09a-4794-bc58-a54324a8032d", "logical_key": "ctx0:round-3", "finish_reason": "stop", "planned_tools": 0}
+
+id: 8
+event: run_completed
+data: {"run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "handoff": false, "execution": "completed", "published": true, "evidence_ids": ["de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e", "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"], "report_sha256": "67dcb7f3bc042c970cfdf18dbdb0b66eb8a34e43affc8275240931e5d49d218d", "handoff_reasons": [], "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0", "model_requests_used": 3}
+
+: idle
+

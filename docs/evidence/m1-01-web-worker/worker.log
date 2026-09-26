@@ -1,0 +1,194 @@
+2026-09-26 01:40:01,502 opspilot.worker INFO worker owner=14ee6f57-9bde-458e-9568-412c2de7fe00 versions={'prompt_revision': 'prompt-replay-candidate-2c26fd0db1e0', 'context_policy_revision': 'ctx-ctx-policy-v1-156004a224ba', 'tool_schema_revision': 'fixture-1'}
+2026-09-26 01:40:01,502 opspilot.worker INFO worker started
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=3598d848-9b2d-49f9-90de-47879696f753 run=ff89a769-e2a9-46de-bbf8-5c36d83573cf
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=e1588f77-24d4-495b-a72e-225dd46a5063 run=f2f328e2-d691-4e32-854d-cf5ece3f2ef9
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=83680da6-52b5-4bc7-aa7e-29d96282c840 run=17a54fc8-8d3c-4969-994b-0220e9599bd9
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=931b3855-310e-49f3-b3c9-ec9dc1292f51 run=5af978ca-fce7-4366-aecf-4e6e6332fd84
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=989f9e7d-a9df-46e8-aeeb-0801a38e7c8e run=262ec859-cf6c-486e-add2-14e55e5d8ab9
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=7cf8380c-6201-456c-8520-22a4e9fa0aa4 run=dc9df583-e2b9-48a2-88b3-81ae0e0e5ac9
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=36f93c9f-bf4d-4616-9e9d-36d50462de58 run=a784a346-2755-4a74-9d5f-7caa59f46caf
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=1e2a2f97-6b6f-4d33-9f16-58d2525332bc run=d23b7e86-9413-45b0-a9ac-d5aacf8473b2
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=327e90b3-355b-4798-a732-52a39bc9a615 run=c57fe21d-7b1c-40c9-8112-38566af47439
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=d07b0d53-6c96-40e7-a9c7-d8632bf639cb run=22254774-4c96-46ef-af8a-adc73e4cf960
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=5627a328-7dca-447b-afea-02fb61c3ad76 run=18bfd696-dab5-4943-a031-a8aea3b79499
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=f5788737-93a5-4d7b-8f92-c80bcc69e39e run=d829c6bd-c4b2-4686-9bcf-67a0cb9b4909
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=9a1d77a3-d4a7-452d-8f70-f90267064032 run=4ba1aed7-e60d-46f0-9ed2-7a5cb6c348d1
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=2d2553e8-6741-46f0-b53a-d9d8b8c78b56 run=ad846ce5-e2e1-42c4-b08a-22baf60f632e
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=89aa46db-b2df-4e25-b3de-59f1970d6115 run=c47f320e-c95d-44b1-b089-334ab75b8e19
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=c71c5adf-ab31-4448-8556-0aacb2ab488d run=f2f9619d-c422-41af-a7e0-cf60348692a6
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=748d7a6c-ac72-441c-af8a-3612bc8cdfe0 run=73aba118-c54e-48da-bff1-29db0db0eb38
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=e424a61a-9751-4139-9eae-af32cf7c8b04 run=601e31e4-cfdb-4077-a90f-341cd37e0d41
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=7f6d18b7-01e5-4286-b84f-d3ef98d9ca9d run=543a8420-a33f-4905-a54c-51141cb721ba
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=77669e97-bca4-4436-b30b-3700f34d929f run=91e2d04b-5722-4121-a116-0211bdf771bc
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=8b6ed4a9-9f6a-44d5-b871-94bc0ea9f3c6 run=cd69e73d-6133-4e12-a46e-7579be042bc7
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=e99a7923-84db-49a7-9c0e-b76c33f5f0c8 run=5f7c4a3b-646b-443c-9785-397ec5f7807f
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=4d767ac0-86c4-40c3-8e04-ffc3e4c7fad5 run=a7b46cf4-460b-4243-8e55-3826eb6a9cc4
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=4fa4d867-f632-4ec6-a3bd-d04defba7a4c run=d0af6a16-e963-4759-9453-7359d7a4d175
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=2571e78a-964c-4476-9eb1-fceacca1ccbf run=4e8e9233-7a35-4932-9893-6f508f25ab5b
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=8f219d8d-b56a-4806-b4da-f2056a7149d0 run=e8198138-e8c1-4595-a560-dcbd8f17828f
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=76e586a7-5c32-4d07-9340-b417272d8267 run=d05bbe37-38f0-431d-ac45-e4d2b28e8c2d
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=43354112-9729-4763-8396-d00bb4399cda run=2aeb07b0-29a5-4483-a1b5-d7a2496c4a44
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=c46b3844-d877-4858-9a00-25f2ef2e8326 run=6dd7d388-3a62-4a32-b69f-69b4718dd580
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=e8bbaf97-77c5-4942-b103-d9f800a94273 run=3edffa43-e692-4afb-8407-dec69e3c6c4e
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=a0d07f75-70e9-4b9b-8a95-2d746f9283cf run=1de61802-515e-4b1f-8cf2-ecde2887c7f7
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=a08b3549-a4c7-43ab-89cc-c3347b9012c4 run=200072d5-7307-4728-8eee-fa4738f2d8c0
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=ceaa7439-8b7c-4b3a-9313-6f5c5f37cf67 run=d97ea25c-a039-432b-a1a0-33d7f7732c94
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=0911a591-0743-4731-82fe-efbafbe72138 run=6de3b2fa-616e-426e-b9df-1e3e0155c4c1
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=22a4436b-a833-4f44-8971-1d9f9af08759 run=3a8ce416-ee91-464d-a6d7-4ea57348801d
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=21a07ab0-a4ab-4b0e-8bf3-7ffa081fe90e run=6471d7c7-5cfd-4897-841c-e178009bb1ba
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=49575a37-0251-43a6-9b46-2c46a19d653a run=5217568f-5e17-4a4d-bf08-e27b4458ea54
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=f3fe3174-39b7-432b-94c5-7bc4ed4185a2 run=c5313fe0-8f3b-4280-943f-b073d382cda3
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=81b09bf6-6015-4556-9216-5b2bd83d3e86 run=c2b67e40-b939-41ab-ba46-bd810a4c1065
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=da41a8ff-2a0e-43c2-a21f-fefa8ca498b4 run=021df49b-9409-4aac-8f87-4cf01adb7fc3
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=88dbbf2d-8ed9-498b-a770-1f84168fc948 run=d0a9d0cf-3461-4dd4-8da7-13b33b4ed836
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=1f33d009-1cbf-4596-a260-886b47a93a80 run=cc7be020-eb7f-43ef-836d-3de19a2990cc
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=f56b84ca-8c6b-4679-8ffc-a7019ea161cc run=c6425509-b860-411c-bfa3-1e6a33aa6a96
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=1641fccf-287f-4c25-b53b-bda8436a9163 run=db0fd7d7-c01e-4d58-9903-198eb1c43d2e
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=3e0fee52-0bdf-46e3-9e7b-154df180f62e run=6f79f0f0-b74f-4c26-8f52-a119f9a049c1
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=44bb5f54-6d54-41ac-b7a0-584d5df3df8c run=8e4dfb51-2eec-450d-9098-59051ddb23b5
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=872ab3e2-d910-4194-bca9-8becdb65e6ec run=125eee86-6ab7-4b9b-9a22-ffebe9ebe7ba
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=125971e4-96a6-485f-9eea-ebeadb3a2f4e run=47e09b70-3648-4189-808b-de5c88e7670c
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=3884fdd5-fdcc-48fa-8527-c11e8ad6dd03 run=256adf2d-d858-4b7e-9f85-fd3b5952b64d
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=79d3180d-561f-4817-9822-47cf8d38dd2a run=b9d35413-f145-4265-a7e3-f52cb0916ec0
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=94c1a4b9-ac4a-4642-87d3-9bef8fecb318 run=9865e63e-4517-4532-ae28-d2f40036a1e9
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=cf88a5de-32d1-4175-8219-bd0664b5273a run=62e99efd-2d2a-40fe-99c1-530348d48759
+2026-09-26 01:40:01,796 opspilot.worker INFO swept incident=24a1279c-38e0-4696-a13a-51fe69108703 run=9eda19b5-859c-4ea9-a25b-dbe6f9fa84f4
+2026-09-26 01:40:01,813 opspilot.worker INFO attempt incident=d86bebe1-45d2-45a1-bebe-ed5b457f6919 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,828 opspilot.worker INFO attempt incident=0a440c3c-af96-4e91-8868-4e1d2ae3f468 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,841 opspilot.worker INFO attempt incident=b83aee50-da4a-4904-9317-880e801031ee status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,851 opspilot.worker INFO attempt incident=5b60b488-a6d0-4913-9028-3055013559b7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,864 opspilot.worker INFO attempt incident=1e7ff5a3-04b8-4b75-b4d8-a035b453e161 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,876 opspilot.worker INFO attempt incident=cc14c85f-928a-48bf-a2c7-bacfa8a6ef7b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,888 opspilot.worker INFO attempt incident=b1e63d15-bfee-4f9f-ad24-c324b2724aa6 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,903 opspilot.worker INFO attempt incident=1839d3c2-5a89-4deb-a374-cd91ef118a05 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,915 opspilot.worker INFO attempt incident=8a7a29ff-1b89-48b4-831c-f4d5d3d43985 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,929 opspilot.worker INFO attempt incident=1bba7379-fcdb-4b51-983a-e763ded7feb4 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,941 opspilot.worker INFO attempt incident=aa4191dd-ac26-428a-9f58-356de0b82789 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,956 opspilot.worker INFO attempt incident=bad94ffd-3fda-45ce-909a-9fead7501b85 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,968 opspilot.worker INFO attempt incident=e3231430-7613-4c55-93d9-b26696f7656a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,981 opspilot.worker INFO attempt incident=a841d1a1-f561-4f74-a5de-3ab509e9fdf2 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:01,995 opspilot.worker INFO attempt incident=c00b1474-3c43-427b-943e-476150264330 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:02,006 opspilot.worker INFO attempt incident=52004b96-1eaf-4cbf-91dd-ddc8189ec08f status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:02,022 opspilot.worker INFO attempt incident=eae1a4d7-f72e-4d43-8f5d-4910644e2b8a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:02,034 opspilot.worker INFO attempt incident=05171912-7e12-4729-b1ea-26b6d1786dbd status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:02,050 opspilot.worker INFO attempt incident=058e4be4-e49b-46b7-8de5-a655ae46f60d status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:02,063 opspilot.worker INFO attempt incident=0b0f87c0-3d58-46bd-9d34-531d0d9c5e64 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,097 opspilot.worker INFO attempt incident=4b8cfee7-6495-4cd9-85d0-efe00fba4750 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,112 opspilot.worker INFO attempt incident=655dfebf-0f5a-4b6c-968f-c1d0c88cea08 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,132 opspilot.worker INFO attempt incident=8e75d376-66b1-49aa-906e-426b6b92a4b3 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,145 opspilot.worker INFO attempt incident=964ddc74-ac98-410a-8615-7928c479ca73 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,163 opspilot.worker INFO attempt incident=c55f3d1c-c301-46a5-b93e-c9ca69023ebe status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,181 opspilot.worker INFO attempt incident=cc094c4e-cd58-4936-9daa-472e3e34a4ea status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,196 opspilot.worker INFO attempt incident=dd1e5118-77a1-4f22-9983-6e496b48574d status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,208 opspilot.worker INFO attempt incident=ee9fc8b7-42c3-4ec9-a559-a7d2cb7271e6 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,225 opspilot.worker INFO attempt incident=f111f8b8-6aec-43a2-a713-778bebf47e98 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,236 opspilot.worker INFO attempt incident=7d8783b2-73f3-4fed-bcd7-6a577d42e9b3 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,247 opspilot.worker INFO attempt incident=408c630d-7441-46c6-899e-5ec77e1223e7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,261 opspilot.worker INFO attempt incident=ef683ce9-2ca2-44f6-a5c2-7586037c6c51 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,272 opspilot.worker INFO attempt incident=5fdaa682-e81d-41d4-949a-b50bd7ac0fc8 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,287 opspilot.worker INFO attempt incident=496bda61-7e0c-4e6d-838d-d4d9c5b738cd status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,298 opspilot.worker INFO attempt incident=0246c471-1c8c-4a88-875e-8bddf86cd2e5 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,309 opspilot.worker INFO attempt incident=38e5251c-2da1-48db-9b90-1a4c7e8f3521 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:03,327 opspilot.worker INFO attempt incident=7e9dff27-07e1-493e-b00e-979d731813b3 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:40:34,567 opspilot.worker INFO attempt incident=3fae2b19-1225-59e8-84f4-3a94d42037d0 status=published reason=None
+2026-09-26 01:41:35,453 opspilot.worker INFO attempt incident=d5f8fbfd-dd87-5ddd-8b52-1526ff77ba42 status=control_denied reason=CONTROL_DENIED
+2026-09-26 01:41:36,490 opspilot.worker INFO swept incident=d5f8fbfd-dd87-5ddd-8b52-1526ff77ba42 run=d0b7b6d7-068d-5b32-a5c1-c61565103394
+2026-09-26 01:42:43,899 opspilot.worker INFO attempt incident=d5f8fbfd-dd87-5ddd-8b52-1526ff77ba42 status=published reason=None
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=7cf6768f-6ca7-4f5b-a123-0e6ef4135512 run=546b812e-567c-4982-8398-fa1dbd7fc16b
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=0a24e5c4-12bd-4003-b361-708ad79b9465 run=00a3dd56-b783-4eee-98e4-ce121f47964e
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=b7380ffe-ea5e-4af6-84b3-b6cd4a435996 run=ba092fc8-4442-4848-b53f-5e1e278c7911
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=aecde597-e0f1-448a-acec-50c591318e93 run=173bcb4a-05f5-42d3-bf72-b56f9a7dda1d
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=8224d521-b4a6-44d1-abb4-5fd54a894492 run=15bbf4d8-5c6d-4b12-9d35-fbca1e24c955
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=824c03dd-ef9a-41ae-bbf5-413fc01d778a run=6233ad5d-457f-4da5-a588-3057b04e902b
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=8c502f40-66f8-4f30-a58f-c2da4f034325 run=6796bb0c-9f4f-4c90-a8e3-2d9babd092cb
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=0344af51-615b-40fa-b3a7-c0961fff7c54 run=e01b2ac1-6320-4741-afa9-d4c14a8be61e
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=540a7a69-94cc-4327-9e2b-e3a5cd7fb461 run=53ef9665-15dc-450c-af0a-44f808cf6c42
+2026-09-26 01:42:44,960 opspilot.worker INFO swept incident=c503a51d-ce93-4550-9a17-36358eecafb4 run=d8e3c6b5-3de1-4620-bccc-7f2ff48c4575
+2026-09-26 01:43:01,325 opspilot.worker INFO swept incident=e31101cc-a30d-4d97-97be-618dc92bea6d run=b6fbbcf2-2b9a-4ee9-bf57-a0243ac890f7
+2026-09-26 01:43:12,897 opspilot.worker INFO attempt incident=25d0e174-0a92-456e-9765-42e8205d702e status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:12,912 opspilot.worker INFO attempt incident=04fdda2d-fde4-4427-8e87-3ea490d47290 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:12,922 opspilot.worker INFO attempt incident=e1ddf6d0-6d97-4d0d-a2ea-08ebc0ffe5f7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:12,934 opspilot.worker INFO attempt incident=8b49c4a5-f8ad-4216-b236-1c41be9531bd status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:14,982 opspilot.worker INFO attempt incident=246c80ff-223f-40ac-a2c0-0a71f966210b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:14,995 opspilot.worker INFO attempt incident=0dd91c89-4259-4e64-b039-7b92b1fe38f1 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,010 opspilot.worker INFO attempt incident=4f782b54-250a-43e1-8d0c-c29f645e92e0 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,025 opspilot.worker INFO attempt incident=14453ce4-88cc-4d76-b1ea-1b32a4b192d8 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,039 opspilot.worker INFO attempt incident=8d4141b1-9b32-44d4-9f7f-da74cd1925f0 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,051 opspilot.worker INFO attempt incident=f15e4183-5339-4fa9-b123-628d8f9e3428 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,065 opspilot.worker INFO attempt incident=2858d4c1-66ce-47ce-b133-505734663e89 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:15,075 opspilot.worker INFO attempt incident=8454fbfd-26a5-4003-b4c5-7d724a271027 status=control_denied reason=LEASE_ACTIVE
+2026-09-26 01:43:16,119 opspilot.worker INFO attempt incident=645168ae-3124-4ea2-a699-61ecb83b26ee status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,136 opspilot.worker INFO attempt incident=6694cfb6-3a1b-420b-9d09-f8afcf8b22f3 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,147 opspilot.worker INFO attempt incident=0d61dda1-e688-4ce7-bd9a-19162155ce12 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,163 opspilot.worker INFO attempt incident=1199180b-51e1-4277-bcf0-d92c0854faa5 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,174 opspilot.worker INFO attempt incident=36595c60-5b02-4a2b-9407-f93f8fe54b9e status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,195 opspilot.worker INFO attempt incident=54a6e005-c6fa-4ed5-a566-d807f06a1f12 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,206 opspilot.worker INFO attempt incident=5b780a09-a766-4667-8503-01c442d7e19b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,221 opspilot.worker INFO attempt incident=6af66c9f-26ce-4f90-8a1d-72d1357b3c31 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,231 opspilot.worker INFO attempt incident=81b16d3c-414e-4bf0-a231-375dd9d26ec1 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,246 opspilot.worker INFO attempt incident=900a514b-e717-49e3-8efb-5b1910a5fd82 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,259 opspilot.worker INFO attempt incident=acb1dbc8-3130-4baa-a99b-cece4b235280 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,272 opspilot.worker INFO attempt incident=bb1eac76-28ae-4dcd-b74b-95e6a517a6de status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,286 opspilot.worker INFO attempt incident=c97a16cc-655c-41aa-92e8-1fb2b3b41a48 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,297 opspilot.worker INFO attempt incident=dd39833b-c12c-4439-985c-e08df9e0b743 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:16,311 opspilot.worker INFO attempt incident=f25cf265-dd44-4fed-bbf9-2a0254b461dd status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:17,351 opspilot.worker INFO swept incident=46ad838c-3e6c-4f84-8cb2-9e8459b93da1 run=991efbd7-2056-45ff-b8c7-b1f1e974f78c
+2026-09-26 01:43:17,391 opspilot.worker INFO attempt incident=380c2d70-0d40-4e3c-869b-df5ab9801c97 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:17,431 opspilot.worker INFO attempt incident=744e1e34-a030-4219-8db8-1c4d277fcde3 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:17,462 opspilot.worker INFO attempt incident=ebbe0de9-a26e-4da0-857b-74fb511baa71 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:19,507 opspilot.worker INFO attempt incident=ac9e0bc0-538d-41cc-8791-39fc5d80d2f7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:30,775 opspilot.worker INFO swept incident=f27395d7-a7c3-415a-9042-bb16ec95a55a run=e88cc805-ee11-40d3-8afe-8f085c4ecbb5
+2026-09-26 01:43:33,858 opspilot.worker INFO swept incident=56b5c8d5-0431-48ed-93a7-5cf23ffcafa2 run=88a0eaa5-a4d8-45e1-ad75-17160338f0b5
+2026-09-26 01:43:38,933 opspilot.worker INFO swept incident=ab20a65f-4d11-410a-adcc-eb304980d37b run=56f698b4-79da-40ba-ada3-929aca2338b7
+2026-09-26 01:43:43,012 opspilot.worker INFO attempt incident=51cd98c8-c40e-4cfd-b73c-7dbd15fae13f status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:43,029 opspilot.worker INFO attempt incident=7c3af718-4b40-4b52-9eb6-c2c075e6aa66 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:43,048 opspilot.worker INFO attempt incident=7a5bc46f-7f99-4374-82b7-b128d1e7092a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:43,062 opspilot.worker INFO attempt incident=8cd8178f-8a6d-46b7-bf50-3d52434e8444 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:43,083 opspilot.worker INFO attempt incident=a33f5522-5260-41eb-8f69-e720f22315c0 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,122 opspilot.worker INFO attempt incident=8d51ca61-cb93-4b57-8b7b-2b255e272c74 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,132 opspilot.worker INFO attempt incident=635c44c4-6471-4a2b-b35c-0f26d41960b9 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,149 opspilot.worker INFO attempt incident=08c9e44f-bb83-4da5-89c5-fa17728e4ef0 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,173 opspilot.worker INFO attempt incident=d252928b-b392-4f3d-b276-563fbf7f67e7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,188 opspilot.worker INFO attempt incident=38eff681-e03b-477d-b594-be1119b4932a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,199 opspilot.worker INFO attempt incident=609d18c4-91c9-48a2-bdc0-d77dcc4a1248 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,212 opspilot.worker INFO attempt incident=bc84b7fc-2f37-4430-81d0-32354426ad43 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,222 opspilot.worker INFO attempt incident=4b8b7465-d436-433b-ae32-1de0ca14afb1 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,239 opspilot.worker INFO attempt incident=4c3a73bd-3df7-4c42-b39b-2c34b66eac18 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:44,251 opspilot.worker INFO attempt incident=7b7b512c-5206-44f2-8ce3-70c5fef79180 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,296 opspilot.worker INFO attempt incident=177ce2a7-c38c-4937-adc4-582650dcfe6a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,323 opspilot.worker INFO attempt incident=acb1addc-182d-4314-aa35-f2489212830c status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,390 opspilot.worker INFO attempt incident=96e3c55c-1c06-46ea-a4c3-b5a4ffc837a7 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,431 opspilot.worker INFO attempt incident=11dc947f-fdb7-4b9b-a588-25f88960239a status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,443 opspilot.worker INFO attempt incident=7573d054-ab18-4d3b-9808-f2652f154d9c status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,460 opspilot.worker INFO attempt incident=59306715-021f-4189-b7b9-7c279fb8c827 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,481 opspilot.worker INFO attempt incident=617e13d2-b31b-4faa-ab59-f49c1b01cc7b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,500 opspilot.worker INFO attempt incident=143014bd-78c9-4f37-bd59-334f5df4c832 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,513 opspilot.worker INFO attempt incident=43a865ca-23a9-42ff-a745-944d0eb900b4 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:45,532 opspilot.worker INFO attempt incident=8454fbfd-26a5-4003-b4c5-7d724a271027 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:46,575 opspilot.worker INFO attempt incident=7279519b-96ef-40ef-af00-b7beddce590f status=control_denied reason=LEASE_ACTIVE
+2026-09-26 01:43:47,609 opspilot.worker INFO attempt incident=d50b4d7e-92c8-40f2-8f1d-b90f33580776 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:47,624 opspilot.worker INFO attempt incident=88487332-3862-4be8-8ddc-b49b940b50c5 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,647 opspilot.worker INFO attempt incident=acf6abc6-2d0e-4ba1-bf9f-6152cfad258b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,660 opspilot.worker INFO attempt incident=d71b76e5-a9e4-4a8e-ae54-3d777354eb43 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,699 opspilot.worker INFO attempt incident=24c59e85-2c4a-4388-8794-05bb09c16bb2 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,710 opspilot.worker INFO attempt incident=da686021-ba9b-49af-b007-d47095bf5c30 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,726 opspilot.worker INFO attempt incident=87e8cd16-71bd-4b2c-a708-dcb90d1b33d4 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,735 opspilot.worker INFO attempt incident=2bbbd272-b4f0-40b7-984c-af8fdab0790f status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,747 opspilot.worker INFO attempt incident=5dfefdf4-9f47-4cd5-a2b3-692196983149 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:48,758 opspilot.worker INFO attempt incident=60f28a79-92a7-4a92-a803-5f64e44df3d0 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:49,809 opspilot.worker INFO attempt incident=2b857c98-c64c-43d9-8029-940d2b8cef31 status=control_denied reason=LEASE_ACTIVE
+2026-09-26 01:43:51,858 opspilot.worker INFO attempt incident=4ee69934-9854-4926-81f4-fc540409d961 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:51,873 opspilot.worker INFO attempt incident=4e689880-da31-4c54-ade6-bca717f7d1fa status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:52,900 opspilot.worker INFO attempt incident=ded473fd-82d5-457d-bc57-acb3f8b71f67 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:53,978 opspilot.worker INFO attempt incident=75ab2ba8-bce2-4195-b972-6439e81cf5d1 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:55,025 opspilot.worker INFO attempt incident=4e52ba25-fe64-4f70-895c-47a798560832 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:56,067 opspilot.worker INFO attempt incident=0e69d4b6-7264-4a5a-aa75-7152debf7268 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:56,081 opspilot.worker INFO attempt incident=2454f22a-6988-453e-9836-f0b2f5c534ce status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:57,115 opspilot.worker INFO attempt incident=75455228-667f-42ab-903d-fa4bac31230c status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:43:59,177 opspilot.worker INFO attempt incident=d5834eaf-3801-4b89-b571-efa2baf99ccd status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:44:04,263 opspilot.worker INFO attempt incident=109474ff-e0cc-4791-b03d-72e098e69388 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:44:04,282 opspilot.worker INFO attempt incident=79c6e7f1-868a-4914-8e69-91354739518b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:44:05,315 opspilot.worker INFO attempt incident=2b76d38f-8c38-4018-bc7d-e2a27b056a78 status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:44:07,410 opspilot.worker INFO attempt incident=b3e64a87-2d91-5603-920e-2a49e2296f3b status=blocked reason=INCOMPATIBLE_STATE
+2026-09-26 01:44:13,073 opspilot.worker INFO signal=15: stop claiming, finishing the in-flight attempt
+2026-09-26 01:44:13,076 opspilot.worker INFO worker stopped

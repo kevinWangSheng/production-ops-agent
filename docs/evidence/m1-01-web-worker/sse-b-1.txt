@@ -1,0 +1,24 @@
+retry: 2000
+
+id: 1
+event: intake_accepted
+data: {"run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "channel": "ui_basic", "actor_id": "demo", "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.", "target_id": "checkout-prod", "request_id": "0f07d421-682c-47f4-ac3f-a47e20b0a04b", "received_at": "2026-09-26T01:41:27.381528-07:00"}
+
+id: 2
+event: run_claimed
+data: {"epoch": 1, "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "control_generation": 0}
+
+id: 3
+event: step_committed
+data: {"run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "step_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2", "logical_key": "ctx0:round-1", "finish_reason": "tool_calls", "planned_tools": 1}
+
+id: 4
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2", "target_id": "checkout-prod", "evidence_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98"}
+
+id: 5
+event: run_handoff
+data: {"parked": true, "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "handoff": true, "reasons": ["DEADLINE_EXCEEDED"], "execution": "failed", "published": false, "evidence_ids": [], "report_sha256": null}
+
+: idle
+

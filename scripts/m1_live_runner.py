@@ -37,29 +37,26 @@ import argparse
 import json
 import os
 import time
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from opspilot.investigation.client import DeepSeekClient
-from opspilot.investigation.context import InvestigationInput, continuation_context
+from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore
 from opspilot.tools import TransportResponse
+from opspilot.tools.fixture import FIXTURE_TARGET, FIXTURE_TOOL, fixture_face
 from opspilot.web import DurableEventLog, DurableEvidenceStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN, verify_server
 from scripts.m1_live_flash_loop import (
-    LIVE_TOOL,
     QUESTION,
-    TOOL_SCHEMAS,
     RecordingClient,
     cost_cny,
-    live_evidence_context,
     read_key,
     resolve_env_file,
 )
@@ -69,8 +66,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "docs/evidence/m1-01-handoff-runner/live-runs"
 SWEEP_OUT_ROOT = ROOT / "docs/evidence/m1-01-deadline-sweep/live-runs"
 FOLLOWUP_OUT_ROOT = ROOT / "docs/evidence/m1-01-timeout-followup/live-runs"
-# The fixture registration's sole target (tests.m1_tool_support.registration).
-LIVE_TOOL_TARGET = "checkout-prod"
+# The product fixture profile's tool and sole target: the input recorded
+# here is built by the same ``ToolFace`` the workbench records on intake.
+LIVE_TOOL = FIXTURE_TOOL
+LIVE_TOOL_TARGET = FIXTURE_TARGET
 VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
@@ -96,19 +95,13 @@ def resolve_out_dir(
     return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
 
 
-def successor_input(store, incident, run_id):
+def successor_input(store, incident, run_id, deadline):
     """The renewed Run's input: the C3 continuation of the timed-out context."""
-    snapshot = store.rebuild(incident)
-    previous = InvestigationInput.from_json(snapshot["run"]["input"])
-    cont = continuation_context(
-        snapshot,
+    return continuation_input(
+        store.rebuild(incident),
         new_run_id=str(run_id),
+        deadline=deadline,
         authorized_targets=frozenset({LIVE_TOOL_TARGET}),
-    )
-    return replace(
-        previous,
-        question=f"{previous.question}\n\n{cont.handoff_note}",
-        evidence_context=cont.evidence_context,
     )
 
 
@@ -237,14 +230,12 @@ def main() -> int:
     clock = SystemClock()
     deadline = clock.now() + timedelta(seconds=args.deadline_seconds)
     incident, run_id = uuid4(), uuid4()
-    input = InvestigationInput(
+    input = fixture_face().input_for(
+        run_id=str(run_id),
         question=QUESTION,
+        target_id=LIVE_TOOL_TARGET,
+        deadline=deadline,
         model_requests=args.model_requests,
-        limits=M1_FROZEN_LIMITS,
-        tool_schemas=tuple(TOOL_SCHEMAS),
-        evidence_context=live_evidence_context(str(run_id)),
-        variant_id=DISCIPLINE_VARIANT,
-        scope_facts={"deadline": deadline.isoformat()},
     )
     store.accept(
         incident,
@@ -305,10 +296,7 @@ def main() -> int:
         generation = store.rebuild(incident)["control_generation"]
         renewed_run = uuid4()
         renewed_deadline = clock.now() + timedelta(seconds=args.renew_seconds)
-        renewed_input = replace(
-            successor_input(store, incident, renewed_run),
-            scope_facts={"deadline": renewed_deadline.isoformat()},
-        )
+        renewed_input = successor_input(store, incident, renewed_run, renewed_deadline)
         applied = store.control(
             incident,
             generation,

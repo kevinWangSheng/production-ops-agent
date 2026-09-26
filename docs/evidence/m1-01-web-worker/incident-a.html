@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident 3fae2b19-1225-59e8-84f4-3a94d42037d0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>3fae2b19-1225-59e8-84f4-3a94d42037d0</code></h1>
+<p>
+  State <span class="badge" id="incident-state">queued</span>
+  · lifecycle <span class="badge">open</span>
+  · <span class="badge" id="concluded">concluded</span>
+  · control generation <strong id="control-generation">0</strong>
+  · run <code>5084378c-fc93-5fb0-903a-4ca6de08413a</code> <span class="badge" id="run-state">completed</span>
+  · epoch 1
+  · budget 3 spent / 0 reserved / 0 unknown of 4
+  · deadline 2026-09-26 02:10:19.197347-07:00
+</p>
+
+<p>Target request: <code>checkout-prod</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 0. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="cancel-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="correct-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="follow_up-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="new_run-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="pause-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="resume-0-41a274d1d98449c8a8ce4af83d72a995">
+  
+  <button type="submit">resume</button>
+</form>
+
+
+<h2>Report</h2>
+
+
+
+  <p id="report-status">
+    Assessment <span class="badge">completed</span>
+    · conclusion <span class="badge">partial</span>
+    
+    · content sha256 <code>67dcb7f3bc042c970cfdf18dbdb0b66eb8a34e43affc8275240931e5d49d218d</code>
+  </p>
+  <p>The only queryable expression in this run was rate(http_errors[5m]), and it returned exactly one series on target checkout-prod: metric http_errors_rate with value 0.042, inside the authorized window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00 (evidence de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e and 35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f, both reports showing result_count 1, returned_count 1, truncated false, incomplete false, omitted_rows 0). Two independent dispatches returned the identical value, so the value itself is reproducible. However, no baseline window, no prior-period sample, no request-volume denominator, and no ERROR-labeled series were delivered; the view also shows data_as_of equal to the window start with freshness_seconds around 1,068,020-1,068,023 at retrieval and null source_start_at/source_end_at. The observed 0.042 errors/second is therefore a real, cited observation, but the claim that Checkout currently shows &#39;elevated&#39; HTTP errors is not established by the delivered evidence and remains unresolved (no comparable baseline was permitted or supplied).</p>
+  
+  
+    <section class="facts">
+      <h3>Facts (3)</h3>
+      
+      <ul>
+        
+        <li>Querying rate(http_errors[5m]) against target checkout-prod returned a single series: metric http_errors_rate with value 0.042, scoped to the authorized window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>Both dispatches returned identical view metadata: result_count 1, returned_count 1, truncated false, incomplete false, omitted_rows 0, omitted_bytes 0, status ok. The projected view therefore contains one aggregated sample only, with no per-route, per-status-class or per-label breakdown of http_errors_rate.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>The returned evidence is not fresh relative to collection: data_as_of is 2026-09-14T00:00:00+00:00 (equal to the window start) while observed_at is 2026-09-26T01:40:20.805382-07:00 / 2026-09-26T01:40:23.410287-07:00 with freshness_seconds 1068020.805382 and 1068023.410287, and source_start_at and source_end_at are null.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="hypotheses">
+      <h3>Hypotheses (1)</h3>
+      
+      <ul>
+        
+        <li>One non-zero error rate of 0.042 errors/second was observed on checkout-prod, which is consistent with some error traffic occurring during the window, but whether that rate is a regression versus a normal steady state cannot be determined from the delivered evidence and remains untested.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="counter">
+      <h3>Counter-evidence (1)</h3>
+      
+      <ul>
+        
+        <li>The delivered evidence contains no baseline period, no prior-window comparison, no request or traffic-volume series to serve as a denominator, and no series explicitly labeled ERROR. With only one scalar value (0.042) and no comparison point, the magnitude of the reported error rate cannot be judged as high or low.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="rejected">
+      <h3>Rejected hypotheses (1)</h3>
+      
+      <ul>
+        
+        <li>Rejected: that the single returned value of 0.042 errors/second is itself confirmation that Checkout HTTP errors are elevated. A value is not an elevation; the required comparable baseline, error-ratio series and request-volume context were not delivered in this run.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+            
+              <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>checkout-prod</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  <section class="unknown">
+    <h3>Unknown / gaps (4)</h3>
+    <ul><li>No comparable baseline window (e.g. a pre-window period for the same series) was delivered, so no latency or error trend may be inferred and elevation cannot be assessed.</li><li>Only one expression, rate(http_errors[5m]), was available; no ERROR-labeled series, denominator/request-rate series, or per-route/per-status breakdown of the error rate was obtainable, so label coverage and the composition of the 0.042 rate are unknown.</li><li>The view returned a single aggregated sample with data_as_of fixed at the window start and null source_start_at/source_end_at; the actual underlying sample cadence, point count and source response timing for the window are unknown.</li><li>No logs, traces, deployment events, SLO/threshold policy, or incident records were delivered, so error causation and severity cannot be assessed; whether the pre-window series even existed is unknown rather than zero.</li></ul>
+  </section>
+  
+    <section class="recommend">
+      <h3>Recommendations (0)</h3>
+      <p class="muted">none</p>
+    </section>
+  
+  <section>
+    <h3>Advisory next steps</h3>
+    <ul><li>Provide or authorize a comparison window (same series, adjacent earlier period) plus a request-volume/denominator series so the 0.042 errors/second on checkout-prod can be placed in context before any elevation claim is made.</li><li>Run a human-owned check of checkout-prod error budget/threshold policy and error-class breakdown (status codes, routes) around 2026-09-14T00:00:00Z-01:00:00Z to determine whether the observed rate breaches any defined objective.</li><li>Confirm with the telemetry owners why data_as_of equals the window start and why source_start_at/source_end_at are null, to establish whether the single sample is a stale or partial projection rather than a stable window aggregate.</li></ul>
+  </section>
+
+
+<h2>Steps</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>0</td>
+    <td><code>ctx0:round-1</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      1 / 1
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"><code>de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>1</td>
+    <td><code>ctx0:round-2</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      1 / 1
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/evidence/35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"><code>35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2</td>
+    <td><code>ctx0:round-3</code></td>
+    <td><span class="badge">response_committed</span></td>
+    <td>0</td>
+    <td>stop</td>
+    <td>
+      0 / 0
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>3</td>
+    <td><code>conclusion:g0:ctx0:round-3</code></td>
+    <td><span class="badge">response_committed</span></td>
+    <td>0</td>
+    <td></td>
+    <td>
+      0 / 0
+      
+    </td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+
+<h2>Human decisions</h2>
+<p class="muted">None recorded.</p>
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 8)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.", "received_at": "2026-09-26T01:40:19.184764-07:00", "request_id": "8656c795-53ad-4009-b3ce-b5f62d8e8c0c", "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "target_id": "checkout-prod"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>run_claimed</strong> <span class="muted">{"control_generation": 0, "epoch": 1, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a"}</span></li>
+  
+  <li data-sequence="3"><code>3</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-1", "planned_tools": 1, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e"}</span></li>
+  
+  <li data-sequence="4"><code>4</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e", "ordinal": 0, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "status": "ok", "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e", "target_id": "checkout-prod", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="5"><code>5</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-2", "planned_tools": 1, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a"}</span></li>
+  
+  <li data-sequence="6"><code>6</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f", "ordinal": 0, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "status": "ok", "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a", "target_id": "checkout-prod", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="7"><code>7</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "stop", "logical_key": "ctx0:round-3", "planned_tools": 0, "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a", "step_id": "768581e9-e09a-4794-bc58-a54324a8032d"}</span></li>
+  
+  <li data-sequence="8"><code>8</code> <strong>run_completed</strong> <span class="muted">{"evidence_ids": ["de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e", "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"], "execution": "completed", "handoff": false, "handoff_reasons": [], "model_requests_used": 3, "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0", "published": true, "report_sha256": "67dcb7f3bc042c970cfdf18dbdb0b66eb8a34e43affc8275240931e5d49d218d", "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 8;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/3fae2b19-1225-59e8-84f4-3a94d42037d0/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
