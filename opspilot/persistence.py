@@ -590,6 +590,32 @@ class DurableStore:
                 )
         return scope
 
+    def control_state(self, incident_id: UUID) -> dict[str, Any]:
+        """控制状态的只读快照，供工具网关的 ``ControlAuthority`` 使用。
+
+        返回事故代际、事故状态，以及全局/目标两层挂起的标志与代际——与四条
+        写路径的 ``_lease_revoked`` 比较的是同一批列。它只是执行器派发前后的
+        快路径检查；权威栅栏仍是 ``charge_tool``/``commit_tool`` 在行锁内的比较。
+        """
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT control_generation,state FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            scope = self._lock_scope(conn, incident_id)
+        return {
+            "incident_generation": int(row["control_generation"]),
+            "incident_state": row["state"],
+            "global_suspended": bool(scope["global_suspended"]),
+            "global_generation": int(scope["global_generation"]),
+            "target_suspended": bool(scope["target_suspended"]),
+            "target_generation": int(scope["target_generation"]),
+        }
+
     def new_run(
         self,
         incident_id: UUID,

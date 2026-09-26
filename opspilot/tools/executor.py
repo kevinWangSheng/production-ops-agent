@@ -312,10 +312,17 @@ class TransportRequest:
     max_result_bytes: int
     credential_ref: str
     read_only: bool = True
+    # The registered tool this read serves, resolved by the gateway (never
+    # the model's ``requested_tool``). A profile whose one target is read
+    # through more than one backend (the OTel Demo: Prometheus and Jaeger)
+    # routes on it; ``params`` alone cannot say which tool a call is for.
+    tool: str = ""
 
     def __post_init__(self) -> None:
         if self.read_only is not True or self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
+        if not isinstance(self.tool, str):
+            raise ToolContractError("INVALID_REQUEST")
 
 
 @dataclass(frozen=True)
@@ -707,6 +714,7 @@ class ReadOnlyToolExecutor:
             timeout_seconds=timeout,
             max_result_bytes=plan.registration.max_result_bytes,
             credential_ref=plan.target.credential_ref,
+            tool=plan.registration.name,
         )
         # Count the operation durably *before* the read goes out: if the
         # process dies while the request is in flight, the next attempt still
