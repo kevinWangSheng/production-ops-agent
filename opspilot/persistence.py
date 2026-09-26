@@ -1529,24 +1529,11 @@ class DurableStore:
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
-            elif action == "pause" and not keep_paused:
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
-                    (nxt, incident_id),
-                )
-            elif keep_paused:
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
-                    (nxt, incident_id),
-                )
-            elif action == "resume":
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
-                    (nxt, incident_id),
-                )
-            elif action in {"follow_up", "correct"} and renew:
+            elif renew:
                 # 与 new_run 同一套写入：旧 Run 关闭、新行沿用预算上限与版本、
                 # 事故指向新 Run；只是代际推进一步而不是两步，审计行仍是这条追问。
+                # 必须排在 keep_paused 分支之前：暂停的事故 / 挂起的范围下追问同样
+                # 不能把过期 Run 留在原地，新 Run 以 paused 开出（独立审查 P1-1）。
                 conn.execute(
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
@@ -1567,6 +1554,21 @@ class DurableStore:
                 conn.execute(
                     "UPDATE opspilot_incidents SET current_run_id=%s,lifecycle='open',conclusion=NULL WHERE incident_id=%s",
                     (renew_run_id, incident_id),
+                )
+            elif action == "pause" and not keep_paused:
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
+                    (nxt, incident_id),
+                )
+            elif keep_paused:
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
+                    (nxt, incident_id),
+                )
+            elif action == "resume":
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
+                    (nxt, incident_id),
                 )
             elif action in {"follow_up", "correct"}:
                 conn.execute(

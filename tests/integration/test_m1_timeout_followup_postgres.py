@@ -272,3 +272,65 @@ def test_the_workbench_note_after_a_timeout_shows_a_new_run_and_no_refusals():
         text="Also compare against the previous hour.",
     )
     assert replay.generation == 1 and replay.replayed is True
+
+
+def test_a_note_on_an_overdue_run_of_a_paused_incident_renews_it_paused():
+    """Independent review P1-1: keep_paused must not leave the overdue Run in
+    place. The note is recorded, the old Run closes, the new Run starts
+    ``paused`` under the fresh deadline, and resume queues that new Run."""
+    h = Harness()
+    store, incident, old = h.store, h.incident, h.run
+    store.claim(incident, old, uuid4(), VERSIONS, lease_seconds=300)
+    assert store.control(incident, 0, "pause", "operator") == 1
+    _expire(store, old)
+    fresh = _note(store, incident, "follow_up", 1)
+    rows = store.rebuild(incident)
+    assert rows["state"] == "paused"
+    assert rows["run"]["run_id"] == fresh and rows["run"]["state"] == "paused"
+    assert rows["run"]["control_generation"] == 2
+    assert _run_row(store, old)["state"] == "cancelled"
+    assert store.control(incident, 2, "resume", "operator") == 3
+    assert _run_row(store, fresh)["state"] == "queued"
+    outcome = h.runner([*_tool_rounds(1), report_from_transcript]).resume(incident)
+    assert outcome.status == "published", outcome
+    assert store.sweep_expired_runs(incident_id=incident) == ()
+
+
+def test_a_note_on_an_overdue_run_under_a_suspended_target_renews_it_paused():
+    store = _store()
+    target = store.register_target(f"resource-{uuid4()}")
+    incident, old = uuid4(), uuid4()
+    store.accept(
+        incident,
+        old,
+        f"m1-timeout-suspended-{incident}",
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        budget_limit=10,
+        versions=VERSIONS,
+        target_id=target,
+    )
+    store.claim(incident, old, uuid4(), VERSIONS, lease_seconds=300)
+    store.set_target_suspension(target, True, expected_generation=0, actor="op")
+    try:
+        _expire(store, old)
+        assert _run_row(store, old)["state"] == "paused"
+        fresh = uuid4()
+        assert (
+            store.control(
+                incident,
+                0,
+                "follow_up",
+                "operator",
+                {"text": "x", "channel": "web"},
+                renew_run_id=fresh,
+                renew_deadline=_fresh_deadline(),
+            )
+            == 1
+        )
+        rows = store.rebuild(incident)
+        assert rows["state"] == "paused"
+        assert rows["run"]["run_id"] == fresh and rows["run"]["state"] == "paused"
+        assert _run_row(store, old)["state"] == "cancelled"
+        assert store.sweep_expired_runs(incident_id=incident) == ()
+    finally:
+        store.set_target_suspension(target, False, expected_generation=1, actor="op")

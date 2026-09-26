@@ -16,7 +16,7 @@
 1. **改在 `control()` 内，同事务完成，而不是工作台先 control 再 cancel + new_run。** 理由：判定条件与清扫同源（数据库时钟、行锁下的 state + deadline），与清扫并发时无论谁先到结果一致（PG 用例用双线程钉住）；一次人工动作一个代际、一条审计行，避免中间态留下过期 `queued` 行。
 2. **触发条件取「当前 Run 处于开放态（queued/running/paused/waiting_human）且 deadline 已过」，不限于 `waiting_human`。** 理由：过期的 `running` Run 只是还没被清扫、过期的 `queued` Run 同样无人能领，追问落在它们上面的正确结果都是新 Run；这也是并发安全的来源。暂停的事故按既有 keep_paused 规则新 Run 以 `paused` 开出。
 3. **`renew_run_id` / `renew_deadline` / `renew_input` 由调用方提供，缺省时拒绝（`ILLEGAL_TRANSITION`）。** 理由：`new_run` 的这三项也是调用方给的；持久层不能构造续接输入（C3 `continuation_context` 属调查层，旧输入快照绑定旧 run id 不能照抄——真实探针证实照抄会让报告引用校验失败）。工作台按 `new_run` 同一套派生 run id 与 wall，输入与 `new_run` 一样为空（真实驱动器跑工作台开出的新 Run 会 `INPUT_MISSING`，这是 ROADMAP 第 5 项的既有缺口，本 PR 不扩）；真实 Run 脚本与 PG 用例用 `continuation_context` 构造输入。
-4. 工作台 `control_applied` 事件在指针变更时带 `run_id`（与 new_run 一致），由 `find_incident` 前后对比得出。
+4. 工作台直接路径的 `control_applied` 事件在指针变更时带 `run_id`（与 new_run 一致），由 `find_incident` 前后对比得出；经审计对账的重放事件不带（投影，行是权威）。
 
 ## 执行进展与证据
 
@@ -25,7 +25,7 @@
 - `make check`（dirty 工作区，实现提交前）：ruff / format / mypy 通过，pytest `1937 passed, 217 skipped, 2 xfailed`。
 - PG 集成（本 worktree 自己的 55431 实例）：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q` → `179 passed, 38 skipped`（#45 为 172）。
 - 真实 Run（DeepSeek Flash，8 秒 deadline → 清扫 → follow_up → 新 Run 12 分钟 wall）：新 Run 被 claim、引用 1 条携带证据 + 1 条新证据后发布；4 次 HTTP，0.047744 CNY 上界。见 [`docs/evidence/m1-01-timeout-followup/run.md`](../evidence/m1-01-timeout-followup/run.md)。
-- 独立审查：待执行。
+- 独立审查（全新上下文 Agent，拿合同/diff/原始账本，不拿结论；自行跑用例并写 5 个探针）：P1-1 续开分支排在 `keep_paused` 分支之后，暂停事故 / 挂起范围下的追问代际推进、审计与输入落库，但过期 Run 留在原地、无新 Run，之后每轮询 `run_claim_refused`；内存替身却走了续开路径（探针实测）→ 续开分支移到 `pause`/`keep_paused` 之前（新 Run 以 `paused` 开出），新增 PG 用例「暂停事故 + 过期 → 续开为 paused → resume → claim 并发布」「挂起目标 + 过期 → 续开为 paused」，红（`git apply -R` 后 2 failed）→ 绿；P3-1 工作台续开无输入快照，真实驱动器跑它会 `INPUT_MISSING` → `blocked`（与今日工作台 `new_run` 相同，决定 3 已披露，用户简报列出）；P3-2 经审计对账的 `control_applied` 重放事件不带 `run_id`、直接路径的 `run_id` 来自事务后读取 → 投影层，记录不改（决定 4 措辞改为「直接路径带」）；P3-3 旧 Run 终态取 `cancelled`（域状态机允许 `waiting_human -> cancelled`），行本身不区分「超时被接续」与「人工取消」，由 `run_handoff` 事件 + 该代际审计行区分 → 记录；P3-4 无续开参数的追问从「重排队」改为 `ILLEGAL_TRANSITION`，产品调用方只有工作台且总带参数 → 记录；P3-5 账本判定成立、无敏感串。通过项：清扫/claim/第二个 control 的并发、同 key 重试不开第二个 Run、过期 `queued` 续开、过期 `blocked` 仍拒绝、锁序一致。复验：修复后 PG 用例 20 passed。
 
 ## 下一步与交接
 
