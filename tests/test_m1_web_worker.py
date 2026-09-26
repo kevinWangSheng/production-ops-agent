@@ -156,6 +156,73 @@ def test_new_run_after_a_run_without_input_falls_back_to_a_fresh_input():
     assert input.evidence_context["run_id"] == str(fresh)
 
 
+def test_a_storage_failure_while_building_the_successor_fails_closed(monkeypatch):
+    """Bot review (PR #52): a transient store error must not turn into a
+    fresh input that silently drops the prior Run's evidence."""
+    app, workbench, _ = build_workbench(tool_face=fixture_face())
+    incident = submit_incident(app, key="storage-fail").json()["incident_id"]
+    subject = UUID(incident)
+    old = workbench.list_incidents()[0].current_run_id
+    _control(
+        app,
+        incident,
+        {"action": "cancel", "expected_generation": "0", "idempotency_key": "c"},
+    )
+
+    def unavailable(incident_id):
+        raise PersistenceError("STORAGE_UNAVAILABLE")
+
+    monkeypatch.setattr(workbench.incidents, "rebuild", unavailable)
+    refused = _control(
+        app,
+        incident,
+        {"action": "new_run", "expected_generation": "1", "idempotency_key": "n"},
+    )
+    assert refused.status == 503
+    assert refused.json()["code"] == "STORAGE_UNAVAILABLE"
+    assert workbench.list_incidents()[0].current_run_id == old
+    assert workbench.incidents.incidents[subject]["control_generation"] == 1
+    assert len(workbench.incidents.runs) == 1
+    # The refused intent does not block the retry under the same key.
+    assert workbench.ledger.get("control_intent", f"{subject}:n") is None
+    monkeypatch.undo()
+    retried = _control(
+        app,
+        incident,
+        {"action": "new_run", "expected_generation": "1", "idempotency_key": "n"},
+    )
+    assert retried.status == 200
+    fresh = workbench.list_incidents()[0].current_run_id
+    assert fresh != old and workbench.incidents.runs[fresh]["input"] is not None
+
+
+def test_a_queued_run_nobody_claimed_before_its_wall_is_swept():
+    """Bot review (PR #52): worker down or backlog -- an overdue ``queued``
+    Run is parked as DEADLINE_EXCEEDED like an overdue running one, and a
+    note then renews it (#47)."""
+    app, workbench, clock = build_workbench(tool_face=fixture_face())
+    incident = submit_incident(app, key="queued-overdue").json()["incident_id"]
+    subject = UUID(incident)
+    run_id = workbench.list_incidents()[0].current_run_id
+    clock.advance(601)
+    snapshot = workbench.snapshot(subject)
+    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
+    assert snapshot["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
+    follow = _control(
+        app,
+        incident,
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "f",
+            "text": "Look again.",
+        },
+    )
+    assert follow.status == 200
+    renewed = workbench.list_incidents()[0].current_run_id
+    assert renewed != run_id and workbench.incidents.runs[renewed]["state"] == "queued"
+
+
 def test_continuation_input_rebinds_deadline_and_context():
     face = fixture_face()
     old, new = uuid4(), uuid4()

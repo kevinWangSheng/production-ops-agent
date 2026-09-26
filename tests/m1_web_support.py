@@ -474,7 +474,7 @@ class MemoryIncidentStore:
         for run in self.runs.values():
             if incident_id is not None and run["incident_id"] != incident_id:
                 continue
-            if run["state"] != "running" or run["deadline"] > now:
+            if run["state"] not in {"queued", "running"} or run["deadline"] > now:
                 continue
             run.update(state="waiting_human", owner=None, lease_until=None)
             parked.append((run["incident_id"], run["run_id"]))

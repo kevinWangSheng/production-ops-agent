@@ -414,3 +414,47 @@ def test_resume_on_an_overdue_run_is_refused_and_no_dead_row_is_polled():
     )
     ((_, outcome),) = again.poll_once()
     assert outcome.status == "published"
+
+
+def test_a_queued_run_the_worker_never_reached_is_swept_and_renewable():
+    """Bot review (PR #52): worker down while the wall passes -- the next
+    poll parks the still-queued Run as DEADLINE_EXCEEDED (one event), and a
+    follow_up renews it into a Run the worker then completes (#47)."""
+    app, workbench, store, events, evidence = _build()
+    submitted = _submit(app, f"web-worker-queued-overdue-{uuid4()}")
+    subject, run_id = UUID(submitted["incident_id"]), UUID(submitted["run_id"])
+    _expire(store, run_id)  # no worker claimed it before its wall
+    assert subject not in store.claimable_incidents(limit=1000)
+    loop, model = _worker(store, events, evidence, [], subject=subject)
+    assert loop.poll_once() == []
+    assert _run_row(store, run_id)["state"] == "waiting_human"
+    assert model.calls == []
+    assert loop.poll_once() == []  # idempotent: not re-parked, not announced twice
+    kinds = _kinds(events, subject)
+    assert kinds == ["intake_accepted", "run_handoff"]
+    handoff = next(e for e in events.read_after(subject, 0) if e.kind == "run_handoff")
+    assert handoff.payload["reasons"] == ["DEADLINE_EXCEEDED"]
+    assert handoff.payload["parked"] is True
+    follow = _control(
+        app,
+        str(subject),
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "f",
+            "text": "Look again.",
+        },
+    )
+    assert follow.status == 200
+    renewed = store.rebuild(subject)["run"]
+    assert renewed["run_id"] != run_id and renewed["input"] is not None
+    again, _ = _worker(
+        store,
+        events,
+        evidence,
+        [_tool_round(), report_from_transcript],
+        subject=subject,
+    )
+    ((_, outcome),) = again.poll_once()
+    assert outcome.status == "published"
+    assert _kinds(events, subject)[-1] == "run_completed"

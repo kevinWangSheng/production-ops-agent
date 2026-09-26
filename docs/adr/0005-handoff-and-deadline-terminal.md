@@ -13,7 +13,7 @@
 ## 决定
 
 1. **交接不发布结论。** 仅当 loop 得到合格报告且无 handoff 时 publish。交接时 Run 记为交接终态（不是 `completed`），事故保持开放，最后一份不完整报告与原因可在页面查看；追问、纠正、取消、`new_run` 保持可用。runner 与工作台统一为此行为。
-2. **过期 Run 由清扫收尾。** 按数据库时钟定期找出 `deadline` 已过且仍为 `running` 的 Run，写为超时交接（`DEADLINE_EXCEEDED`），释放租约；事故按第 1 条保持开放。清扫写路径不经 worker 租约，但须在同一事务内确认 Run 仍为 `running` 且已过期，不覆盖期间落下的人工决定。
+2. **过期 Run 由清扫收尾。** 按数据库时钟定期找出 `deadline` 已过且仍为 `running` 的 Run，写为超时交接（`DEADLINE_EXCEEDED`），释放租约；事故按第 1 条保持开放。清扫写路径不经 worker 租约，但须在同一事务内确认 Run 仍为 `running` 且已过期，不覆盖期间落下的人工决定。补充（2026-09-26，PR #52 审查采纳）：从未被领取就过了 wall 的 `queued` Run（worker 停机或积压）同样无人能领，按同一规则清扫为超时交接。
 
 ## 后果
 

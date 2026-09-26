@@ -441,14 +441,23 @@ class Workbench:
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
             ).as_json()
-        except (ContextError, PersistenceError) as exc:
-            # Fixed code only; the fallback drops carried evidence, so say so.
+        except ContextError as exc:
+            if exc.code != "INPUT_MISSING":
+                # Rows this version cannot continue: fail closed with the
+                # fixed code (the control action is refused, nothing is
+                # created) rather than silently dropping carried evidence.
+                raise PersistenceError(exc.code) from exc
+            # The only case a fresh input is right for: a Run created before
+            # the face existed has no snapshot to continue.
             _log.warning(
                 "successor input falls back to a fresh input incident=%s code=%s",
                 summary.incident_id,
-                exc,
+                exc.code,
             )
             return self._fresh_input(request, run_id, deadline)
+        # A PersistenceError (storage outage, lock timeout) propagates: the
+        # control action fails closed and the operator retries (bot review,
+        # PR #52).
 
     def _audit_matches(
         self,

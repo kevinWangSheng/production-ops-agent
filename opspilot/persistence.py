@@ -1137,12 +1137,8 @@ class DurableStore:
         costs one refused claim and nothing else. Listed: an open incident
         whose current Run is ``queued``, or ``running`` with a lapsed lease
         (a killed worker's), and not yet overdue; parked and blocked rows are
-        a human's. An overdue ``running`` row is the sweep's (ADR-0005
-        decision 2). An overdue ``queued`` row -- never claimed before its
-        wall passed -- is listed by nobody and swept by nobody today: the
-        ADR names ``running`` only, so it stays ``queued`` until a human's
-        follow_up/correct (which starts a new Run) or cancel (known gap,
-        independent review of item 3b).
+        a human's, and an overdue row (``running`` or ``queued``) is the
+        sweep's (ADR-0005 decision 2), which every worker poll runs first.
         Oldest deadline first, like the sweep, so a worker that falls behind
         serves the Run that will time out soonest.
         """
@@ -1239,25 +1235,36 @@ class DurableStore:
             self._park(conn, lease.run_id)
 
     @staticmethod
-    def _park(conn: Connection, run_id: UUID) -> bool:
-        """The one ``running -> waiting_human`` write (``hand_off`` and the sweep)."""
+    def _park(
+        conn: Connection, run_id: UUID, *, from_states: tuple[str, ...] = ("running",)
+    ) -> bool:
+        """The one ``-> waiting_human`` write (``hand_off`` and the sweep).
+
+        ``hand_off`` parks a leased, hence ``running``, Run; the sweep also
+        parks an overdue ``queued`` one (never claimed before its wall).
+        """
         parked = conn.execute(
-            "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running' RETURNING run_id",
-            (run_id,),
+            "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state=ANY(%s) RETURNING run_id",
+            (run_id, list(from_states)),
         ).fetchone()
         return parked is not None
 
     def sweep_expired_runs(
         self, *, incident_id: UUID | None = None, limit: int = 100
     ) -> tuple[tuple[UUID, UUID], ...]:
-        """Park every ``running`` Run whose ``deadline`` has passed (ADR-0005 §2).
+        """Park every ``running`` or ``queued`` Run whose ``deadline`` has passed
+        (ADR-0005 §2).
 
         A Run past its deadline can never settle itself: the deadline fences
-        every worker write, so without this sweep the row stays ``running``
-        for ever. Each overdue Run is parked exactly as ``hand_off`` parks a
-        loop handoff (``_park``): ``waiting_human``, lease released, incident
-        open, conclusion untouched; the reason (``DEADLINE_EXCEEDED``) is the
-        caller's to announce.
+        every worker write and every claim, so without this sweep a
+        ``running`` row stays ``running`` for ever and a ``queued`` row that
+        no worker reached before its wall (worker down, backlog) stays
+        ``queued`` for ever with no event (bot review, PR #52). Each overdue
+        Run is parked exactly as ``hand_off`` parks a loop handoff
+        (``_park``): ``waiting_human``, lease released, incident open,
+        conclusion untouched; the reason (``DEADLINE_EXCEEDED``) is the
+        caller's to announce. A human then continues with follow_up/correct
+        (a renewed Run, #47) or cancel + new_run.
 
         No lease is involved, so the guard is the state and the deadline,
         re-checked under row locks in the transaction that writes: a human
@@ -1272,7 +1279,7 @@ class DurableStore:
         """
         with self.transaction(snapshot=True) as conn:
             candidates = conn.execute(
-                "SELECT incident_id,run_id FROM opspilot_runs WHERE state='running' AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
+                "SELECT incident_id,run_id FROM opspilot_runs WHERE state IN ('queued','running') AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
                 (incident_id, incident_id, limit),
             ).fetchall()
         parked: list[tuple[UUID, UUID]] = []
@@ -1288,11 +1295,13 @@ class DurableStore:
                 ).fetchone()
                 if (
                     row is None
-                    or row["state"] != "running"
+                    or row["state"] not in ("queued", "running")
                     or row["deadline"] > self._db_now(conn)
                 ):
                     continue
-                if self._park(conn, candidate["run_id"]):
+                if self._park(
+                    conn, candidate["run_id"], from_states=("queued", "running")
+                ):
                     parked.append((candidate["incident_id"], candidate["run_id"]))
         return tuple(parked)
 
