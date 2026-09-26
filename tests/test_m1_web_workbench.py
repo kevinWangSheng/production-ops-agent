@@ -309,6 +309,53 @@ def test_control_increments_the_generation_once_per_accepted_action():
     ]
 
 
+def test_control_text_over_the_shared_input_limit_is_refused_not_truncated():
+    """The web follow-up/correction limit is the same constant the loop
+    uses to bound a human input field (``context.INPUT_CONTENT_FIELD_MAX_CHARS``),
+    not a separate, larger magic number: text at the limit is accepted; one
+    character over is refused outright -- never silently cut down to the
+    limit -- and nothing is persisted for the refused attempt (ROADMAP
+    M1-01 已决 2026-09-24, item 3)."""
+    from opspilot.investigation.context import INPUT_CONTENT_FIELD_MAX_CHARS
+
+    app, workbench, _ = build_workbench()
+    incident = submit_incident(app).json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+
+    at_limit = "a" * INPUT_CONTENT_FIELD_MAX_CHARS
+    ok = _control(
+        app,
+        incident,
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "fu-at-limit",
+            "text": at_limit,
+        },
+    )
+    assert ok.status == 200 and ok.json()["generation"] == 1
+
+    over_limit = "a" * (INPUT_CONTENT_FIELD_MAX_CHARS + 1)
+    refused = _control(
+        app,
+        incident,
+        {
+            "action": "correct",
+            "expected_generation": "1",
+            "idempotency_key": "c-over-limit",
+            "text": over_limit,
+        },
+    )
+    assert refused.status == 400 and refused.json() == {"code": "INVALID_INPUT"}
+    # Nothing was persisted for the refused attempt: no idempotency intent,
+    # no control row, generation unchanged, no second note recorded.
+    assert workbench.ledger.get("control_intent", f"{subject}:c-over-limit") is None
+    assert workbench.ledger.get("control", f"{subject}:c-over-limit") is None
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["incident"].control_generation == 1
+    assert [c["text"] for c in snapshot["controls"]] == [at_limit]
+
+
 def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
     app, workbench, _ = build_workbench()
     incident = submit_incident(app).json()["incident_id"]

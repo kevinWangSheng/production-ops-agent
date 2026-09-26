@@ -30,7 +30,11 @@ from opspilot.intake import (
     _reject_ambiguous_text,
     classify_intake_delivery,
 )
-from opspilot.investigation.context import CONCLUSION_KIND, conclusion_publishable
+from opspilot.investigation.context import (
+    CONCLUSION_KIND,
+    INPUT_CONTENT_FIELD_MAX_CHARS,
+    conclusion_publishable,
+)
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -68,7 +72,13 @@ _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
 #: per-socket-operation timeout today, so a source dripping bytes could
 #: still outlast the lease (pre-existing client property, recorded here).
 LEASE_SECONDS = int(MODEL_REQUEST_TIMEOUT_SECONDS) + 60
-_MAX_TEXT = 16_384
+#: Same ceiling ``context.project_input_content`` enforces on a committed
+#: input row's ``text``/``channel``/``question`` fields. A control text over
+#: this length must be refused here, before it is ever persisted, rather
+#: than silently cut down to the limit once it reaches the model (ROADMAP
+#: M1-01 已决 2026-09-24, item 3) -- one constant, not a second ceiling that
+#: could drift from it.
+_MAX_TEXT = INPUT_CONTENT_FIELD_MAX_CHARS
 _EVENT_PAGE = 1000
 
 ControlAction = Literal["follow_up", "correct", "cancel", "pause", "resume", "new_run"]
