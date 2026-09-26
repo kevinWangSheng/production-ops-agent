@@ -89,6 +89,10 @@ def test_deadline_refusal_never_dispatches_a_model_request():
     assert model.calls == []
 
 
+class Crash(RuntimeError):
+    """A worker death mid-attempt: the rows committed so far stay."""
+
+
 def durable_snapshot(replies, *, publish=True):
     """A ``DurableStore.rebuild``-shaped snapshot from a real loop attempt.
 
@@ -97,7 +101,10 @@ def durable_snapshot(replies, *, publish=True):
     tool_result rows are the product's own, not hand-written.
     """
     loop, request, _model, _transport, store, _sink = assemble(replies=replies)
-    result = loop.run(request)
+    try:
+        result = loop.run(request)
+    except Crash:
+        return None, store.snapshot()
     if publish:
         assert store.publish(result.conclusion, step_id=result.final_step_id)
     return result, store.snapshot()
@@ -193,62 +200,178 @@ def test_durable_conclusion_missing_or_mistyped_fields_is_refused(payload):
         )
 
 
-def test_human_pause_and_cancel_are_the_observable_final_authority():
-    paused = outcome_from_durable(
-        scenario("pause"),
-        {"run": {"state": "paused"}, "conclusion": None},
-        action="pause",
-    )
-    cancelled = outcome_from_durable(
-        scenario("cancel"),
-        {"run": {"state": "cancelled"}, "conclusion": None},
-        action="cancel",
-    )
-    assert paused.final_state == "paused" and paused.human_interaction == "pause"
-    assert (
-        cancelled.final_state == "cancelled" and cancelled.human_interaction == "cancel"
-    )
+def _parked(snapshot):
+    """What ``DurableStore.rebuild`` shows after ``hand_off``: the loop's
+    conclusion step is committed, nothing is published, the row waits."""
+    assert snapshot["conclusion"] is None
+    snapshot["run"]["state"] = "waiting_human"
+    return snapshot
 
 
-def test_incompatible_state_is_a_blocked_handoff():
-    outcome = outcome_from_durable(
-        scenario("incompatible"), {"run": {"state": "blocked"}, "conclusion": None}
-    )
-    assert outcome.final_state == "blocked"
-    assert outcome.handoff_reasons == ("INCOMPATIBLE_STATE",)
-
-
-def test_late_result_is_rejected_after_newer_human_decision():
-    # Real committed tool_result rows from a Run whose conclusion was never
-    # published. MemoryStepStore has no control endpoint, so the cancelled
-    # state and the ``late_result_rejected`` marker are set by the test.
+def test_projection_of_a_parked_handoff_reads_the_committed_conclusion_step():
+    """Projection rule (ADR-0005): the real PostgreSQL scenario is
+    ``test_durable_handoff_parks_the_run_for_a_human``; this pins the seam
+    on the same shape rendered by ``MemoryStepStore``."""
     result, snapshot = durable_snapshot(
-        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript],
+        [ModelError("MODEL_UNAVAILABLE"), ModelError("MODEL_UNAVAILABLE")],
         publish=False,
     )
-    assert snapshot["conclusion"] is None
-    snapshot["run"]["state"] = "cancelled"
-    snapshot["late_result_rejected"] = True
-    outcome = outcome_from_durable(scenario("late-result"), snapshot, action="cancel")
-    assert outcome.final_state == "cancelled"
-    assert outcome.evidence_ids == result.evidence_ids != ()
-    assert "late_result_rejected" in outcome.actions
-    assert "STALE_CONTROL_GENERATION" in outcome.handoff_reasons
+    outcome = outcome_from_durable(scenario("parked"), _parked(snapshot))
+    assert result.execution == "failed"
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff" and outcome.human_interaction == "handoff"
+    assert outcome.handoff_reasons == ("MODEL_UNAVAILABLE",)
     assert outcome.report_available is False
 
 
-def test_worker_restart_resumes_from_committed_evidence():
-    # Real committed conclusion; only the ``worker_resumed`` marker is
-    # hand-set (no product path emits it yet).
-    result, snapshot = durable_snapshot(
+def test_projection_never_reports_an_unpublished_report_as_available():
+    """A completed-looking conclusion step that was parked instead of
+    published (e.g. a projection failure after the loop) is a handoff."""
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript],
+        publish=False,
+    )
+    outcome = outcome_from_durable(scenario("parked-report"), _parked(snapshot))
+    # ADR-0005 §1: a parked Run is a handoff terminal, never ``completed``.
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff"
+    assert outcome.report_available is False
+    assert outcome.evidence_ids != ()
+
+
+def test_projection_of_a_park_without_a_reason_row_uses_the_recorded_event():
+    """The sweep parks a Run with no conclusion step; only its ``run_handoff``
+    event names the reason. Without it the seam reports no reason."""
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False
+    )
+    parked = _parked(snapshot)
+    bare = outcome_from_durable(scenario("swept"), parked)
+    assert bare.final_state == "failed" and bare.decision == "handoff"
+    assert bare.handoff_reasons == () and bare.evidence_ids != ()
+    event = {
+        "run_id": parked["run"]["run_id"],
+        "parked": True,
+        "reasons": ["DEADLINE_EXCEEDED"],
+    }
+    swept = outcome_from_durable(scenario("swept"), parked, handoff_events=[event])
+    assert swept.handoff_reasons == ("DEADLINE_EXCEEDED",)
+    foreign = {**event, "run_id": "another-run"}
+    assert (
+        outcome_from_durable(
+            scenario("swept"), parked, handoff_events=[foreign]
+        ).handoff_reasons
+        == ()
+    )
+
+
+def test_projection_reads_the_latest_handoff_event_for_a_re_parked_run():
+    """Codex review (PR #53): handoff -> follow_up re-queue -> handoff again
+    leaves two ``run_handoff`` events for the same Run; the newest names the
+    park the rows show now, the older reason is superseded."""
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False
+    )
+    parked = _parked(snapshot)
+    run_id = parked["run"]["run_id"]
+    events = [
+        {"run_id": run_id, "parked": True, "reasons": ["MODEL_UNAVAILABLE"]},
+        {"run_id": "another-run", "parked": True, "reasons": ["BUDGET_EXHAUSTED"]},
+        {"run_id": run_id, "parked": True, "reasons": ["DEADLINE_EXCEEDED"]},
+    ]
+    outcome = outcome_from_durable(scenario("re-parked"), parked, handoff_events=events)
+    assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
+
+
+def test_projection_derives_human_control_from_the_controls_audit():
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False
+    )
+    snapshot["run"]["state"] = "paused"
+    snapshot["control_generation"] = 1
+    controls = [
+        {"action": "pause", "expected_generation": 0, "resulting_generation": 1}
+    ]
+    outcome = outcome_from_durable(scenario("paused"), snapshot, controls=controls)
+    assert outcome.final_state == "paused"
+    assert outcome.human_interaction == "pause"
+    assert outcome.decision == "human_control"
+    # A control from an older generation is history, not the current decision;
+    # a paused row no control wrote can only be a scope suspension.
+    stale = [{"action": "pause", "expected_generation": 0, "resulting_generation": 1}]
+    snapshot["control_generation"] = 2
+    older = outcome_from_durable(scenario("paused"), snapshot, controls=stale)
+    assert older.human_interaction == "scope_suspension"
+    assert older.decision == "human_control"
+    # A cancelled row without a controls row is just its state.
+    snapshot["run"]["state"] = "cancelled"
+    bare = outcome_from_durable(scenario("cancelled"), snapshot, controls=stale)
+    assert bare.human_interaction is None and bare.decision == "durable_state"
+
+
+def test_projection_does_not_let_a_consumed_follow_up_outrank_the_result():
+    """A follow_up re-queues the Run; once the next attempt published, the
+    controls row is history and the report is the decision (review P2-2)."""
+    _result, snapshot = durable_snapshot(
         [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
     )
-    snapshot["worker_resumed"] = True
-    outcome = outcome_from_durable(scenario("worker-restart"), snapshot)
+    snapshot["control_generation"] = 1
+    consumed = [
+        {"action": "follow_up", "expected_generation": 0, "resulting_generation": 1}
+    ]
+    outcome = outcome_from_durable(scenario("published"), snapshot, controls=consumed)
     assert outcome.final_state == "completed"
-    assert outcome.evidence_ids == result.evidence_ids != ()
-    assert "worker_resumed" in outcome.actions
+    assert outcome.decision == "report_available"
+    assert outcome.human_interaction is None
     assert outcome.report_available is True
+
+
+def test_projection_derives_late_results_and_restarts_from_the_rows():
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
+    )
+    assert (
+        "late_result_rejected"
+        not in outcome_from_durable(scenario("plain"), snapshot).actions
+    )
+    snapshot["run"]["epoch"] = 2
+    snapshot["steps"].append(
+        {
+            "step_id": "late",
+            "logical_key": "late_result:tool:x:0:e1",
+            "status": "late_result",
+            "control_generation": snapshot["control_generation"] - 1,
+            "response": {"evidence_id": "must-not-be-adopted"},
+            "tool_results": [],
+        }
+    )
+    outcome = outcome_from_durable(scenario("rows"), snapshot)
+    assert "worker_resumed" in outcome.actions
+    assert "late_result_rejected" in outcome.actions
+    assert "STALE_CONTROL_GENERATION" in outcome.handoff_reasons
+    assert "must-not-be-adopted" not in outcome.evidence_ids
+    # A late row of the current generation (lease lapsed, no newer decision)
+    # is rejected history without a generation reason.
+    snapshot["steps"][-1]["control_generation"] = snapshot["control_generation"]
+    same = outcome_from_durable(scenario("rows"), snapshot)
+    assert "late_result_rejected" in same.actions
+    assert "STALE_CONTROL_GENERATION" not in same.handoff_reasons
+
+
+@pytest.mark.parametrize("state", ["queued", "running", "failed", "budget_exhausted"])
+def test_projection_refuses_row_states_that_are_not_final(state):
+    with pytest.raises(ValueError, match="UNKNOWN_DURABLE_STATE"):
+        outcome_from_durable(
+            scenario("open"), {"run": {"state": state}, "steps": [], "conclusion": None}
+        )
+
+
+def test_projection_refuses_a_completed_row_without_a_published_conclusion():
+    with pytest.raises(ValueError, match="INVALID_DURABLE_SNAPSHOT"):
+        outcome_from_durable(
+            scenario("half"),
+            {"run": {"state": "completed"}, "steps": [], "conclusion": None},
+        )
 
 
 EVIDENCE_DIR = Path(__file__).parents[2] / "docs/evidence/m1-01-acceptance"
