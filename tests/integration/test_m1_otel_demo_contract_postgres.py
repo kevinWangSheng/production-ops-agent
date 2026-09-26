@@ -161,7 +161,9 @@ def test_control_state_reflects_incident_global_and_target_control():
     assert before["global_generation"] == lease.global_suspension_generation
     assert before["target_generation"] == lease.target_suspension_generation
     assert before["global_suspended"] is False and before["target_suspended"] is False
-    assert before["incident_state"] == "running"
+    # The incidents-row state verbatim: ``claim()`` moves only the Run row
+    # (the Run row is the execution authority), so the incident stays queued.
+    assert before["incident_state"] == store.rebuild(incident)["state"] == "queued"
 
     # Global suspension: the flag and its generation move; the incident's
     # own generation does not.
@@ -178,12 +180,15 @@ def test_control_state_reflects_incident_global_and_target_control():
         assert during["incident_generation"] == before["incident_generation"]
         assert during["incident_state"] == "paused"
     finally:
-        store.set_global_suspension(
+        release_generation = store.set_global_suspension(
             False, expected_generation=global_generation, actor="operator"
         )
     released = store.control_state(incident)
     assert released["global_suspended"] is False
-    assert released["global_generation"] == global_generation  # release: same gen
+    # A release is a state change too: the fence generation moves forward
+    # (C3 §4: a new attempt uses the current versions; a stale lease is not
+    # revived), and the executor sees CONTROL_GENERATION_CHANGED.
+    assert released["global_generation"] == release_generation == global_generation + 1
 
     # Target suspension: only this incident's target moves.
     target_generation = store.set_target_suspension(
@@ -202,14 +207,17 @@ def test_control_state_reflects_incident_global_and_target_control():
         other = store.control_state(other_incident)
         assert other["target_suspended"] is False and other["target_generation"] == 0
     finally:
-        store.set_target_suspension(
+        target_release = store.set_target_suspension(
             target, False, expected_generation=target_generation, actor="operator"
         )
-    assert store.control_state(incident)["target_suspended"] is False
+    after_target = store.control_state(incident)
+    assert after_target["target_suspended"] is False
+    assert after_target["target_generation"] == target_release == target_generation + 1
 
-    # A human decision on the incident bumps the incident generation.
+    # A human decision on the incident bumps the incident generation (cancel:
+    # legal from the paused state the global suspension left the incident in).
     generation = store.control(
-        incident, before["incident_generation"], "pause", "operator"
+        incident, before["incident_generation"], "cancel", "operator"
     )
     assert generation == before["incident_generation"] + 1
     assert store.control_state(incident)["incident_generation"] == generation
@@ -255,12 +263,13 @@ def test_durable_control_snapshot_mirrors_the_store(monkeypatch):
         assert suspended.suspended is True
         assert suspended.target_suspension_generation == generation
     finally:
-        store.set_target_suspension(
+        release_generation = store.set_target_suspension(
             target, False, expected_generation=generation, actor="operator"
         )
     released = DurableControl(store).snapshot(executor.scope)
     assert released.suspended is False
-    assert released.target_suspension_generation == generation
+    # The release moved the fence forward; the snapshot reports the current one.
+    assert released.target_suspension_generation == release_generation == generation + 1
 
 
 def test_a_global_suspension_makes_the_executor_deny_without_contacting_the_source(
