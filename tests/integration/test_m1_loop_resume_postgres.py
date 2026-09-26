@@ -936,24 +936,58 @@ def test_a_recovered_tool_result_is_announced_and_its_evidence_readable():
 
 
 def test_a_refused_claim_of_a_runnable_run_is_one_event_not_an_attempt():
-    # A queued Run whose deadline already passed looks runnable in the rows
-    # but the claim refuses it: that refusal is news for the page.
+    # A queued Run that looks runnable in the rows but whose claim is
+    # refused -- here by the C3 §5 version barrier, which blocks it durably
+    # -- is news for the page exactly once; later polls meet a ``blocked``
+    # row and announce nothing. (Until PR #52 this case was driven by an
+    # overdue queued Run; the sweep now parks those, see the next test.)
+    h = Harness()
+    log = _event_log(h.store)
+    runner = h.runner([])
+    runner.events = log
+    runner.worker = Worker.create(h.store, {**VERSIONS, "prompt_revision": "other"})
+    outcome = runner.resume(h.incident)
+    assert outcome.status == "blocked" and outcome.reason == "INCOMPATIBLE_STATE"
+    assert h.rows()["run"]["state"] == "blocked"
+    events = log.read_after(h.incident, 0, limit=1000)
+    assert [e.kind for e in events] == ["run_claim_refused"]
+    assert events[0].payload == {"run_id": str(h.run), "code": "INCOMPATIBLE_STATE"}
+    for _ in range(3):
+        assert runner.resume(h.incident).status == "blocked"
+    assert _kinds(log, h.incident) == ["run_claim_refused"]
+    # A paused incident is refused on every poll by design: no event per
+    # poll (the queued Run row itself is left as is by ``control()``).
+    paused = Harness()
+    paused.store.control(paused.incident, 0, "pause", "operator")
+    assert paused.rows()["state"] == "paused"
+    assert paused.rows()["run"]["state"] == "queued"
+    runner = paused.runner([])
+    runner.events = log
+    for _ in range(3):
+        assert runner.resume(paused.incident).status == "control_denied"
+    assert _kinds(log, paused.incident) == []
+
+
+def test_an_overdue_queued_run_is_swept_on_the_poll_not_refused():
+    """ADR-0005 decision 2 supplement (PR #52): a queued Run no worker
+    reached before its wall is parked by the poll's sweep as a
+    DEADLINE_EXCEEDED handoff (one event), never claimed, never refused
+    per poll."""
     h = Harness(deadline_minutes=0)
     log = _event_log(h.store)
     runner = h.runner([])
     runner.events = log
     outcome = runner.resume(h.incident)
-    assert outcome.status == "control_denied" and outcome.reason == "DEADLINE_EXCEEDED"
+    assert outcome.status == "handed_off" and outcome.reason == "DEADLINE_EXCEEDED"
+    assert h.rows()["run"]["state"] == "waiting_human"
     events = log.read_after(h.incident, 0, limit=1000)
-    assert [e.kind for e in events] == ["run_claim_refused"]
-    assert events[0].payload == {"run_id": str(h.run), "code": "DEADLINE_EXCEEDED"}
-    # A paused incident is refused on every poll by design: no event per
-    # poll (the queued Run row itself is left as is by ``control()``).
-    h.store.control(h.incident, 0, "pause", "operator")
-    assert h.rows()["state"] == "paused" and h.rows()["run"]["state"] == "queued"
+    assert [e.kind for e in events] == ["run_handoff"]
+    assert events[0].payload["reasons"] == ["DEADLINE_EXCEEDED"]
+    assert events[0].payload["parked"] is True
     for _ in range(3):
-        assert runner.resume(h.incident).status == "control_denied"
-    assert _kinds(log, h.incident) == ["run_claim_refused"]
+        again = runner.resume(h.incident)
+        assert again.status == "handed_off" and again.reason == "AWAITING_HUMAN"
+    assert _kinds(log, h.incident) == ["run_handoff"]
 
 
 def test_an_evidence_projection_the_executor_did_not_register_into_hands_off():
