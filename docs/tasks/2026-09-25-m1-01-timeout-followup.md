@@ -27,6 +27,8 @@
 - 真实 Run（DeepSeek Flash，8 秒 deadline → 清扫 → follow_up → 新 Run 12 分钟 wall）：新 Run 被 claim、引用 1 条携带证据 + 1 条新证据后发布；4 次 HTTP，0.047744 CNY 上界。见 [`docs/evidence/m1-01-timeout-followup/run.md`](../evidence/m1-01-timeout-followup/run.md)。
 - 独立审查（全新上下文 Agent，拿合同/diff/原始账本，不拿结论；自行跑用例并写 5 个探针）：P1-1 续开分支排在 `keep_paused` 分支之后，暂停事故 / 挂起范围下的追问代际推进、审计与输入落库，但过期 Run 留在原地、无新 Run，之后每轮询 `run_claim_refused`；内存替身却走了续开路径（探针实测）→ 续开分支移到 `pause`/`keep_paused` 之前（新 Run 以 `paused` 开出），新增 PG 用例「暂停事故 + 过期 → 续开为 paused → resume → claim 并发布」「挂起目标 + 过期 → 续开为 paused」，红（`git apply -R` 后 2 failed）→ 绿；P3-1 工作台续开无输入快照，真实驱动器跑它会 `INPUT_MISSING` → `blocked`（与今日工作台 `new_run` 相同，决定 3 已披露，用户简报列出）；P3-2 经审计对账的 `control_applied` 重放事件不带 `run_id`、直接路径的 `run_id` 来自事务后读取 → 投影层，记录不改（决定 4 措辞改为「直接路径带」）；P3-3 旧 Run 终态取 `cancelled`（域状态机允许 `waiting_human -> cancelled`），行本身不区分「超时被接续」与「人工取消」，由 `run_handoff` 事件 + 该代际审计行区分 → 记录；P3-4 无续开参数的追问从「重排队」改为 `ILLEGAL_TRANSITION`，产品调用方只有工作台且总带参数 → 记录；P3-5 账本判定成立、无敏感串。通过项：清扫/claim/第二个 control 的并发、同 key 重试不开第二个 Run、过期 `queued` 续开、过期 `blocked` 仍拒绝、锁序一致。复验：修复后 PG 用例 20 passed。
 
+- 机器人分诊（`@codex review` on `814737b`）：P1「工作台续开未填 `renew_input`，真实驱动器会 `INPUT_MISSING`」→ 按类拒绝：工作台 `submit()` 与 `new_run` 同样不写输入快照，真实驱动器今天跑不了任何工作台创建的 Run，本 PR 未引入新失败（审查 P3-1 与本记录决定 3 已披露，ROADMAP 第 5 项）；P2「pre-#31 兼容分支把续开关键字传给不认识它们的 `control()` 会 `TypeError`」→ 采纳：适配器按签名探测 `renew_run_id`，不支持则保持旧调用；新增单测用旧签名替身钉住 cancel / follow_up。
+
 ## 下一步与交接
 
 - 独立审查 → 处置 P1/P2 → PR（用户门：`control()` 合同变更）→ CI → 一次 `@codex review`。

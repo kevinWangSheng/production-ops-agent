@@ -2021,3 +2021,35 @@ def test_correct_on_a_timed_out_run_also_starts_a_new_run():
     assert workbench.incidents.runs[old]["state"] == "cancelled"
     # cancel still works on the fresh Run.
     assert _renew(app, incident, generation=1) == 3
+
+
+def test_the_durable_adapter_keeps_the_positional_call_for_an_older_store_base():
+    """Bot review (PR #47): a base whose control() predates payload and the
+    renewal keywords must still receive the call it accepts, for every
+    action, instead of a TypeError on keywords it does not know."""
+    from opspilot.web import DurableIncidentStore
+
+    class OlderBase:
+        calls = []
+
+        def control(self, incident_id, expected_generation, action, actor):
+            self.calls.append((action, expected_generation))
+            return expected_generation + 1
+
+    adapter = DurableIncidentStore(OlderBase())
+    assert adapter.payload_supported is False
+    subject = uuid4()
+    assert adapter.control(subject, 0, "cancel", "alice") == 1
+    assert (
+        adapter.control(
+            subject,
+            1,
+            "follow_up",
+            "alice",
+            {"text": "x", "channel": "web"},
+            renew_run_id=uuid4(),
+            renew_deadline=None,
+        )
+        == 2
+    )
+    assert OlderBase.calls == [("cancel", 0), ("follow_up", 1)]
