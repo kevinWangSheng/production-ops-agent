@@ -1,5 +1,4 @@
-# make acceptance on the tree of HEAD fe36c72 (feature/m1-01-acceptance-real), 2026-09-26T09:05Z
-# PostgreSQL rows ran on a throwaway PostgreSQL 17.9 at 127.0.0.1:55432 (data dir in the session scratchpad; the 55431 lab port was held by the feature/m1-01-web-worker worktree), with the lab DSN redirected inside each pytest subprocess via PYTEST_PLUGINS=dsn55432_plugin (a 3-line plugin that sets scripts.m0.postgres_lab.DSN) and M1_DURABLE_POSTGRES=1. Model/tool calls are deterministic doubles.
+# make acceptance on the tree of the commit following HEAD c8f3158 (feature/m1-01-acceptance, outcome_from_durable reads the committed conclusion payload), 2026-09-23T11:18Z
 .venv/bin/python scripts/m1_acceptance.py
 | scenario | feature | evidence level | result |
 |---|---|---|---|
@@ -8,17 +7,13 @@
 | budget-refusal | F2 | deterministic budget refusal | PASS |
 | deadline-refusal | F2 | deterministic deadline refusal | PASS |
 | durable-completed | F3/F8 | real loop Run published through MemoryStepStore: conclusion payload read | PASS |
-| durable-handoff | F3/F8 | MemoryStepStore publish of a handoff conclusion (pre-ADR-0005 row): seam still refuses to call it a report | PASS |
-| durable-handoff-pg | F2/F8 | real PostgreSQL: runner parks a MODEL_UNAVAILABLE handoff as waiting_human | PASS |
-| deadline-exceeded | F2/F8 | real PostgreSQL: sweep parks an overdue running Run; reason from its event | PASS |
-| pause-cancel | F2/F12 | real PostgreSQL: control() pause then cancel over a dead worker's rows | PASS |
-| scope-suspension | F2/F12 | real PostgreSQL: global suspension pauses a Run with no controls row | PASS |
-| late-result | F2/F12 | real PostgreSQL: cancel during a live query; commit_tool writes late_result | PASS |
-| worker-restart | F2/F8 | real PostgreSQL: crash, lease lapse, new Worker resumes (epoch 2) and publishes | PASS |
-| incompatible-state | F2/F8 | real PostgreSQL: version-incompatible Worker; claim() blocks the Run | PASS |
+| durable-handoff | F3/F8 | real handoff Run published: row says completed, seam reports failed | PASS |
+| pause-cancel | F2/F12 | seam projection of hand-set paused/cancelled row states | PASS |
+| late-result | F2/F12 | real committed tool_result rows + hand-set cancelled state and marker | PASS |
+| worker-restart | F2/F8 | real committed conclusion + hand-set worker_resumed marker | PASS |
+| incompatible-state | F2/F8 | seam projection of a hand-set blocked row state | PASS |
 | real-deepseek-records | F3 | recorded real Runs: projection equals ledger | PASS |
 | real-deepseek-report | F3 | one recorded real Run: bound report, no handoff | PASS |
 test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
-GITLEAKS_INSTALLED_8.30.1
 python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
 SECRET_SCAN_PASSED

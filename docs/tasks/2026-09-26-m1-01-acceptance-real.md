@@ -65,16 +65,16 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 
 - 先红后绿：新规则 8 个单元用例在旧实现下失败（`UNKNOWN_DURABLE_STATE` / 缺 kwargs），实现后 `tests/acceptance` 目录 36 passed（审查修复后 37）。
 - `make check` 退出码 0：ruff/format/mypy 通过（42 source files），1945 passed / 233 skipped / 2 xfailed。
-- PG 集成（55431 被 web-worker 分支的实例占用，先在 scratchpad 起了一次性 PostgreSQL 17.9 于 55432，
-  用脚本把 `scripts.m0.postgres_lab.DSN` 改到 55432 后收集）：新增 6 例全过；全套
-  `tests/integration` 179 passed / 54 skipped（跳过为 `M0_B_POSTGRES`/`M0_CONTROL_POSTGRES` 门）。
-  说明：第一次全套运行只改了 loop-resume 模块的 DSN，其余模块连到了 55431 约 70 秒，出现 6 个失败，
-  判定为两实例互相干扰（未逐一核实），已向 lead 披露；改为源头改 DSN 后复跑全绿。
-- `make acceptance`：55431 始终被占用，改为 `PYTEST_PLUGINS` 插件在每个 pytest 子进程内把 lab DSN 指到 55432
-  一次性实例后执行：15/15 PASS、`SECRET_SCAN_PASSED`、退出码 0，已刷新
-  `docs/evidence/m1-01-acceptance/acceptance-output.txt`（头部注明实例与重定向方式）。首轮曾有 scope-suspension
-  行 FAIL（DID NOT RAISE Crash）：审计表显示同一秒内审查者探针在切换全局暂停，属共享单例竞争；用例已改为先释放
-  全局门再开始，复跑通过。未在 55431 自有实例上运行。
+- PG 集成与 `make acceptance`：**尚未在自有 55431 实例上运行**（端口一直被 `feature/m1-01-web-worker` 的实例占用，
+  lead 决定不改端口、不共用实例）。`docs/evidence/m1-01-acceptance/acceptance-output.txt` 保持 2026-09-23 版本，
+  待 55431 归本任务后刷新。
+- 事故记录（2026-09-26 PDT，本任务责任）：为提前验证，曾在 scratchpad 起一次性 PostgreSQL 于 55432 并在进程内改
+  `DSN` 运行；其中一次全套 `tests/integration` 运行（约 01:45–01:46）只改了 loop-resume 模块的 DSN，pytest 按
+  rootdir 重新导入该模块与其余模块，均连到了 web-worker 的 55431 实例约 70 秒：写入了 `m1-loop-resume-*`、
+  `m1-stale-step-tools-*` 等新 uuid 行，并多次切换全局暂停代际；web-worker 的轮询 worker 与之竞争，把其中一个 Run
+  （事故 `8454fbfd`）持久化为 `blocked / INCOMPATIBLE_STATE`。已向 lead 披露。按 lead 决定：55432 上的全部结果
+  （含之后按源头改 DSN 的复跑）只作为开发中的预检，不是本 PR 的证据；DSN/端口补丁未进入工作区与提交；55432 实例
+  已停止。
 - 未跑真实模型 Run：本项只改验收入口、测试与运行器，未触碰 loop / runner / 恢复 / 校验代码。
 
 ## 独立审查处置（2026-09-26，全新上下文，含变异探针）
@@ -89,10 +89,10 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 - P3-2（采纳）：补回「cancel 后已提交证据仍可见」断言（旧 late-result 用例的断言迁到 pause-cancel 的 cancel 分支）。
 - P3-3（采纳）：停靠行结论步骤自报 completed 时投影 `failed`（ADR-0005 §1）；单元用例随之收紧。
 - P3-4（采纳）：运行器对 FAIL 行把 pytest 输出打到 stderr。
-- 审查者变异探针（scratch 副本，未改工作区）：去掉 published 守卫 / 代际规则由单元用例拦下；破坏 STALE / epoch /
+- 审查者变异探针（scratch 副本，未改工作区；PG 部分同样属预检）：去掉 published 守卫 / 代际规则由单元用例拦下；破坏 STALE / epoch /
   late 判定由 PG 用例拦下；去掉 `loop_state == "completed"` 存活但与 schema 判定冗余，不是缺口。
-- 修复后复验：`tests/acceptance` 37 passed；新增 PG 文件 7 passed（55432）；全套 `tests/integration` 于 55432
-  180 passed / 54 skipped；ruff/mypy 通过。
+- 修复后复验：`tests/acceptance` 37 passed；ruff/mypy 通过；`make check` 1946 passed / 234 skipped / 2 xfailed。
+  PG 用例的复验（审查者与本人均在 55432 预检实例上做过）按上文不计为证据，待 55431。
 
 ## 下一步与交接
 
@@ -101,4 +101,5 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 - 未验证/留给 owner：`blocked` 行无事件时投影固定为 `INCOMPATIBLE_STATE`，`_block_undecodable`
   （`INCONSISTENT_STATE`）路径只有事件能区分；清扫停靠的 Run 若事件写入失败，行说不出原因（#44 已记的
   投影补写待办）。
-- 55432 一次性实例：任务结束 `pg_ctl stop`，数据目录在 scratchpad，随会话丢弃。
+- 等 lead 通知 55431 释放后：`postgres_lab start` → `M1_DURABLE_POSTGRES=1 pytest tests/integration` →
+  `make acceptance` 刷新证据 → 再开 PR。
