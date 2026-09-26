@@ -1,6 +1,6 @@
 # M1-01 验收入口：持久化场景改由真实产品在 PostgreSQL 上产生
 
-- 状态：进行中
+- 状态：进行中（实现与证据完成，待开 PR）
 - 更新日期：2026-09-26
 - 依据：ROADMAP「M1-01 剩余工作」第 5 项；[验收记录](2026-09-16-m1-01-acceptance.md)独立审查 P2 与 Codex P1
   （四个 durable 行喂的是手写状态/标记，`late_result_rejected`/`worker_resumed`/`STALE_CONTROL_GENERATION`
@@ -65,9 +65,13 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 
 - 先红后绿：新规则 8 个单元用例在旧实现下失败（`UNKNOWN_DURABLE_STATE` / 缺 kwargs），实现后 `tests/acceptance` 目录 36 passed（审查修复后 37）。
 - `make check` 退出码 0：ruff/format/mypy 通过（42 source files），1945 passed / 233 skipped / 2 xfailed。
-- PG 集成与 `make acceptance`：**尚未在自有 55431 实例上运行**（端口一直被 `feature/m1-01-web-worker` 的实例占用，
-  lead 决定不改端口、不共用实例）。`docs/evidence/m1-01-acceptance/acceptance-output.txt` 保持 2026-09-23 版本，
-  待 55431 归本任务后刷新。
+- 与 main 合并（`git merge origin/main` 至 `11e6857`，#49 红证明 CI、#50 审查条款；无冲突）后 `make check` 退出码 0：
+  1956 passed / 234 skipped / 2 xfailed。`scripts/check_red_proof.py --base origin/main`：8 个单元用例在 base 上失败
+  （`UNKNOWN_DURABLE_STATE` / 缺 kwargs / 断言），PG 用例在 base 上因无 opt-in 跳过。
+- 自有 55431 实例（本 worktree `tmp/m0-b/postgres`，2026-09-26 PDT）：`M1_DURABLE_POSTGRES=1 pytest tests/integration`
+  180 passed / 54 skipped（[输出](../evidence/m1-01-acceptance/durable-pg-output.txt)）；`M1_DURABLE_POSTGRES=1 make acceptance`
+  15/15 PASS、`SECRET_SCAN_PASSED`、退出码 0（[表格](../evidence/m1-01-acceptance/acceptance-output.txt)）。
+  运行后实例已停止，数据保留。
 - 事故记录（2026-09-26 PDT，本任务责任）：为提前验证，曾在 scratchpad 起一次性 PostgreSQL 于 55432 并在进程内改
   `DSN` 运行；其中一次全套 `tests/integration` 运行（约 01:45–01:46）只改了 loop-resume 模块的 DSN，pytest 按
   rootdir 重新导入该模块与其余模块，均连到了 web-worker 的 55431 实例约 70 秒：写入了 `m1-loop-resume-*`、
@@ -101,5 +105,4 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 - 未验证/留给 owner：`blocked` 行无事件时投影固定为 `INCOMPATIBLE_STATE`，`_block_undecodable`
   （`INCONSISTENT_STATE`）路径只有事件能区分；清扫停靠的 Run 若事件写入失败，行说不出原因（#44 已记的
   投影补写待办）。
-- 等 lead 通知 55431 释放后：`postgres_lab start` → `M1_DURABLE_POSTGRES=1 pytest tests/integration` →
-  `make acceptance` 刷新证据 → 再开 PR。
+- PR 待 lead 通知（用户在决定 AGENTS.md 新条款「验收测试由未见实现的全新 Agent 编写」如何适用于本项）。

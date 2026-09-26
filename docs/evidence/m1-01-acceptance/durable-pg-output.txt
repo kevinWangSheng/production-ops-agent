@@ -1,2 +1,2 @@
-.........................................                                [100%]
-41 passed in 4.83s
+# M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q on the tree of HEAD acdc776, own 55431 lab instance, 2026-09-26T11:15Z
+180 passed, 54 skipped in 71.94s (0:01:11)
