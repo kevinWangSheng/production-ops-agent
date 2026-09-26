@@ -170,7 +170,18 @@ class MemoryIncidentStore:
             "reservations": {},
         }
 
-    def control(self, incident_id, expected_generation, action, actor, payload=None):
+    def control(
+        self,
+        incident_id,
+        expected_generation,
+        action,
+        actor,
+        payload=None,
+        *,
+        renew_run_id=None,
+        renew_deadline=None,
+        renew_input=None,
+    ):
         row = self.incidents.get(incident_id)
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
@@ -193,6 +204,18 @@ class MemoryIncidentStore:
             raise PersistenceError("ILLEGAL_TRANSITION")
         if action != "cancel" and run["state"] not in _CONTROL_OPEN:
             raise PersistenceError("ILLEGAL_TRANSITION")
+        # Mirror DurableStore.control: a note on an overdue Run starts a
+        # fresh Run (user decision 2026-09-25) instead of re-queueing it.
+        renew = (
+            action in {"follow_up", "correct"}
+            and run["state"] in _CONTROL_OPEN
+            and run["deadline"] <= self.now()
+        )
+        if renew:
+            if renew_run_id is None or renew_deadline is None:
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            if renew_run_id in self.runs:
+                raise PersistenceError("IDENTITY_CONFLICT")
         nxt = expected_generation + 1
         row["control_generation"] = nxt
         # PR #31 keep_paused: a note recorded while paused keeps the incident
@@ -218,6 +241,8 @@ class MemoryIncidentStore:
         target, allowed = transitions[action]
         if keep_paused:
             target, allowed = "paused", {"running", "waiting_human"}
+        if renew:
+            target, allowed = "cancelled", transitions["cancel"][1]
         for candidate in self.runs.values():
             if (
                 candidate["incident_id"] == incident_id
@@ -226,6 +251,18 @@ class MemoryIncidentStore:
                 candidate.update(
                     state=target, owner=None, lease_until=None, control_generation=nxt
                 )
+        if renew:
+            self.runs[renew_run_id] = self._run(
+                renew_run_id,
+                incident_id,
+                nxt,
+                renew_deadline,
+                run["budget_limit"],
+                run["versions"],
+            )
+            if keep_paused:
+                self.runs[renew_run_id]["state"] = "paused"
+            row.update(current_run_id=renew_run_id, lifecycle="open", conclusion=None)
         self.controls.append(
             {
                 "incident_id": incident_id,

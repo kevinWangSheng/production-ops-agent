@@ -24,6 +24,11 @@ attempt run into it (its writes are fenced), waits for the deadline to pass
 and polls once more: that poll is where the runner sweeps the overdue Run
 into a ``DEADLINE_EXCEEDED`` handoff (ADR-0005 decision 2). Ledgers for
 that mode go under docs/evidence/m1-01-deadline-sweep/live-runs/.
+``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
+Run: control() records the note and starts a fresh Run (user decision
+2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
+context, and a final poll investigates it for real (renewed wall
+``--renew-seconds``). Ledgers go under docs/evidence/m1-01-timeout-followup/.
 """
 
 from __future__ import annotations
@@ -32,12 +37,13 @@ import argparse
 import json
 import os
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from opspilot.investigation.client import DeepSeekClient
-from opspilot.investigation.context import InvestigationInput
+from opspilot.investigation.context import InvestigationInput, continuation_context
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
 from opspilot.investigation.runner import InvestigationRunner
@@ -62,6 +68,9 @@ from tests.m1_tool_support import WINDOW_START, body, build, registration
 ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "docs/evidence/m1-01-handoff-runner/live-runs"
 SWEEP_OUT_ROOT = ROOT / "docs/evidence/m1-01-deadline-sweep/live-runs"
+FOLLOWUP_OUT_ROOT = ROOT / "docs/evidence/m1-01-timeout-followup/live-runs"
+# The fixture registration's sole target (tests.m1_tool_support.registration).
+LIVE_TOOL_TARGET = "checkout-prod"
 VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
@@ -76,11 +85,31 @@ class SystemClock:
         return time.monotonic()
 
 
-def resolve_out_dir(run_id: str, *, sweep: bool = False) -> Path:
+def resolve_out_dir(
+    run_id: str, *, sweep: bool = False, follow_up_after_timeout: bool = False
+) -> Path:
     explicit = os.environ.get("M1_ACCEPTANCE_OUT")
     if explicit:
         return Path(explicit).expanduser() / run_id
+    if follow_up_after_timeout:
+        return FOLLOWUP_OUT_ROOT / run_id
     return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
+
+
+def successor_input(store, incident, run_id):
+    """The renewed Run's input: the C3 continuation of the timed-out context."""
+    snapshot = store.rebuild(incident)
+    previous = InvestigationInput.from_json(snapshot["run"]["input"])
+    cont = continuation_context(
+        snapshot,
+        new_run_id=str(run_id),
+        authorized_targets=frozenset({LIVE_TOOL_TARGET}),
+    )
+    return replace(
+        previous,
+        question=f"{previous.question}\n\n{cont.handoff_note}",
+        evidence_context=cont.evidence_context,
+    )
 
 
 def _db_now(store):
@@ -90,6 +119,12 @@ def _db_now(store):
 
 def executor_factory_for(evidence, clock, deadline):
     def factory(lease, input):
+        # A renewed Run carries its own wall in scope_facts; the tool gateway
+        # must not keep refusing on the timed-out Run's deadline.
+        recorded = input.scope_facts.get("deadline")
+        run_deadline = (
+            datetime.fromisoformat(recorded) if isinstance(recorded, str) else deadline
+        )
         executor, transport, _sink, _ = build(
             clock=clock,
             sink=evidence,
@@ -100,7 +135,7 @@ def executor_factory_for(evidence, clock, deadline):
             # denies every query with CONTROL_GENERATION_CHANGED (live run
             # f987b4b6, 2026-09-24).
             scope_overrides={
-                "deadline": deadline,
+                "deadline": run_deadline,
                 "tool_names": frozenset({LIVE_TOOL}),
                 "run_id": str(lease.run_id),
                 "subject_id": str(lease.incident_id),
@@ -177,7 +212,11 @@ def main() -> int:
     parser.add_argument("--follow-up", action="store_true")
     parser.add_argument("--deadline-seconds", type=int, default=12 * 60)
     parser.add_argument("--sweep", action="store_true")
+    parser.add_argument("--timeout-follow-up", action="store_true")
+    parser.add_argument("--renew-seconds", type=int, default=12 * 60)
     args = parser.parse_args()
+    if args.timeout_follow_up and not args.sweep:
+        raise SystemExit("--timeout-follow-up requires --sweep")
     if args.deadline_seconds < 1:
         raise SystemExit("deadline-seconds must be positive")
     if not 1 <= args.model_requests <= M1_FROZEN_LIMITS.model_requests:
@@ -259,10 +298,48 @@ def main() -> int:
             {"label": "sweep", "outcome": _outcome(runner.resume(incident))}
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
+    if (
+        args.timeout_follow_up
+        and attempts[-1]["rows_after"]["run_state"] == "waiting_human"
+    ):
+        generation = store.rebuild(incident)["control_generation"]
+        renewed_run = uuid4()
+        renewed_deadline = clock.now() + timedelta(seconds=args.renew_seconds)
+        renewed_input = replace(
+            successor_input(store, incident, renewed_run),
+            scope_facts={"deadline": renewed_deadline.isoformat()},
+        )
+        applied = store.control(
+            incident,
+            generation,
+            "follow_up",
+            "live-runner-operator",
+            {"text": "Also compare against the previous hour.", "channel": "web"},
+            renew_run_id=renewed_run,
+            renew_deadline=renewed_deadline,
+            renew_input=renewed_input.as_json(),
+        )
+        control = {
+            "action": "follow_up",
+            "expected_generation": generation,
+            "resulting_generation": applied,
+            "renewed_run_id": str(renewed_run),
+            "renewed_deadline": renewed_deadline.isoformat(),
+            "rows_after": _rows(store, incident),
+        }
+        attempts.append(
+            {
+                "label": "after-timeout-follow-up",
+                "outcome": _outcome(runner.resume(incident)),
+            }
+        )
+        attempts[-1]["rows_after"] = _rows(store, incident)
     ended = clock.now()
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
     ledger = {
-        "experiment": "m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner",
+        "experiment": "m1-01-timeout-followup"
+        if args.timeout_follow_up
+        else ("m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner"),
         "deadline_seconds": args.deadline_seconds,
         "driver": "opspilot.investigation.runner.InvestigationRunner",
         "incident_id": str(incident),
@@ -278,11 +355,15 @@ def main() -> int:
         "prompt_tokens": sum(int(u.get("prompt_tokens") or 0) for u in usages),
         "completion_tokens": sum(int(u.get("completion_tokens") or 0) for u in usages),
         "run_usage": store.run_usage(run_id),
+        "current_run_id": str(store.rebuild(incident)["run"]["run_id"]),
+        "current_run_usage": store.run_usage(store.rebuild(incident)["run"]["run_id"]),
         "attempts": attempts,
         "control": control,
         "events": _events(log, incident),
     }
-    out = resolve_out_dir(str(run_id), sweep=args.sweep)
+    out = resolve_out_dir(
+        str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
+    )
     out.mkdir(parents=True, exist_ok=False)
     (out / "ledger.json").write_text(
         json.dumps(ledger, indent=2, ensure_ascii=False, default=str)
