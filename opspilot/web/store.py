@@ -68,8 +68,16 @@ class IncidentStore(Protocol):
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
+        *,
+        renew_run_id: UUID | None = None,
+        renew_deadline: datetime | None = None,
+        renew_input: dict[str, Any] | None = None,
     ) -> int:
-        """Apply one human decision; ``payload`` carries follow-up/correction content."""
+        """Apply one human decision; ``payload`` carries follow-up/correction content.
+
+        ``renew_run_id`` / ``renew_deadline`` are the fresh Run a note on a
+        timed-out Run starts (``DurableStore.control``); unused otherwise.
+        """
         ...
 
     def new_run(
@@ -316,18 +324,37 @@ class DurableIncidentStore:
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
+        *,
+        renew_run_id: UUID | None = None,
+        renew_deadline: datetime | None = None,
+        renew_input: dict[str, Any] | None = None,
     ) -> int:
-        if payload is None:
-            return self._store.control(incident_id, expected_generation, action, actor)
-        if not self._payload_supported:
+        if payload is None or not self._payload_supported:
             # Base without PR #31: the store has no payload column. The
             # workbench then keeps the note in its ledger and composes it
             # into the next attempt's question (read under the lease).
-            return self._store.control(incident_id, expected_generation, action, actor)
+            return self._store.control(
+                incident_id,
+                expected_generation,
+                action,
+                actor,
+                renew_run_id=renew_run_id,
+                renew_deadline=renew_deadline,
+                renew_input=renew_input,
+            )
         # mypy sees the pre-#31 signature on this branch; the guard above
         # proves the parameter exists at runtime.
         control: Any = self._store.control
-        result: int = control(incident_id, expected_generation, action, actor, payload)
+        result: int = control(
+            incident_id,
+            expected_generation,
+            action,
+            actor,
+            payload,
+            renew_run_id=renew_run_id,
+            renew_deadline=renew_deadline,
+            renew_input=renew_input,
+        )
         return result
 
     def new_run(

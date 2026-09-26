@@ -1411,7 +1411,30 @@ class DurableStore:
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
+        *,
+        renew_run_id: UUID | None = None,
+        renew_deadline: datetime | None = None,
+        renew_input: dict[str, Any] | None = None,
     ) -> int:
+        """Apply one human decision under ``expected_generation``.
+
+        ``renew_run_id`` / ``renew_deadline`` (user decision 2026-09-25): a
+        follow_up or correct on a Run whose ``deadline`` has passed (parked by
+        the sweep as ``DEADLINE_EXCEEDED``, or still ``running``/``queued``
+        while overdue -- every claim and write is fenced either way) cannot
+        continue that Run. Mirroring upstream, where a message after TIMEOUT
+        is a new request, the note is recorded and a fresh Run starts under
+        the same generation step, exactly as ``new_run`` builds one: the old
+        Run is cancelled, the new row keeps its budget limit and versions,
+        takes ``renew_deadline`` and ``renew_input`` (the successor's own
+        input snapshot, ``None`` like ``new_run``'s default: an input bound
+        to the old Run's id cannot be reused as is), and the incident points
+        at it. The new Run reads every prior human input (``begin_round``
+        freezes the incident's inputs, not the Run's). Without a renewal the
+        note is refused (``ILLEGAL_TRANSITION``) rather than re-queueing a
+        row nothing can ever claim. A Run that is not overdue is re-queued as
+        before and the renewal arguments are unused.
+        """
         # payload 只接受 JSON 对象：列表/标量虽是合法 JSON，落库后模型侧投影
         # （非 Mapping 一律丢弃）会把操作者的文字静默吞掉，而 control() 却已报告
         # 成功（codex review，PR #31）。在任何写入之前拒绝，代际不推进，不留审计行；
@@ -1441,7 +1464,7 @@ class DurableStore:
             # 这个 incident 的状态，因此先判为不一致，不推进任何状态。
             run = (
                 conn.execute(
-                    "SELECT state AS run_state FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
+                    "SELECT state AS run_state,deadline,budget_limit,versions FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
                     (row["current_run_id"], incident_id),
                 ).fetchone()
                 if row["current_run_id"] is not None
@@ -1449,6 +1472,13 @@ class DurableStore:
             )
             if not run:
                 raise PersistenceError("INCONSISTENT_STATE")
+            # 超时的 Run 换新 Run：条件与清扫同源（数据库时钟、行锁下判定），
+            # 因此与清扫并发时无论谁先到，结果都是「旧 Run 关闭、新 Run 排队」。
+            renew = (
+                action in {"follow_up", "correct"}
+                and run["run_state"] in _CONTROL_OPEN_RUN_STATES
+                and run["deadline"] <= self._db_now(conn)
+            )
             if (
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None
@@ -1470,6 +1500,13 @@ class DurableStore:
             # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
             if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
                 raise PersistenceError("ILLEGAL_TRANSITION")
+            if renew:
+                if renew_run_id is None or renew_deadline is None:
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                if conn.execute(
+                    "SELECT 1 FROM opspilot_runs WHERE run_id=%s", (renew_run_id,)
+                ).fetchone():
+                    raise PersistenceError("IDENTITY_CONFLICT")
             keep_paused = action != "cancel" and (
                 scope["global_suspended"]
                 or scope["target_suspended"]
@@ -1506,6 +1543,30 @@ class DurableStore:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
                     (nxt, incident_id),
+                )
+            elif action in {"follow_up", "correct"} and renew:
+                # 与 new_run 同一套写入：旧 Run 关闭、新行沿用预算上限与版本、
+                # 事故指向新 Run；只是代际推进一步而不是两步，审计行仍是这条追问。
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
+                    (nxt, incident_id),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        renew_run_id,
+                        incident_id,
+                        "paused" if keep_paused else "queued",
+                        nxt,
+                        run["budget_limit"],
+                        renew_deadline,
+                        Jsonb(run["versions"]),
+                        None if renew_input is None else Jsonb(renew_input),
+                    ),
+                )
+                conn.execute(
+                    "UPDATE opspilot_incidents SET current_run_id=%s,lifecycle='open',conclusion=NULL WHERE incident_id=%s",
+                    (renew_run_id, incident_id),
                 )
             elif action in {"follow_up", "correct"}:
                 conn.execute(

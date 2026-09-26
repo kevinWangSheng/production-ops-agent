@@ -134,9 +134,22 @@ def test_a_human_decision_that_landed_first_is_never_overwritten(action):
     incident, run = _accepted(store, action)
     store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=300)
     _expire(store, run)
-    store.control(incident, 0, action, "operator")
+    if action == "follow_up":
+        # A note on an overdue Run starts a fresh Run (2026-09-25) and closes
+        # this one; the sweep then has nothing overdue left to touch.
+        store.control(
+            incident,
+            0,
+            action,
+            "operator",
+            {"text": "x", "channel": "web"},
+            renew_run_id=uuid4(),
+            renew_deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
+        )
+    else:
+        store.control(incident, 0, action, "operator")
     before = _run_row(store, run)["state"]
-    assert before in {"cancelled", "paused", "queued"}
+    assert before in {"cancelled", "paused"}
     assert store.sweep_expired_runs(incident_id=incident) == ()
     assert _run_row(store, run)["state"] == before
     assert store.rebuild(incident)["control_generation"] == 1
@@ -199,26 +212,26 @@ def test_follow_up_cancel_and_new_run_work_after_a_timeout_handoff():
     store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=300)
     _expire(store, run)
     assert store.sweep_expired_runs(incident_id=incident) == ((incident, run),)
-    # follow_up re-queues the parked Run under the next generation; the Run
-    # keeps its deadline, so a claim is refused until a human starts a new Run.
-    assert store.control(incident, 0, "follow_up", "operator", {"question": "x"}) == 1
-    assert _run_row(store, run)["state"] == "queued"
-    with pytest.raises(PersistenceError, match="^DEADLINE_EXCEEDED$"):
-        store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=300)
-    assert store.sweep_expired_runs(incident_id=incident) == ()
-    assert store.control(incident, 1, "cancel", "operator") == 2
+    # A note on a timed-out Run needs a fresh Run (user decision 2026-09-25):
+    # without one to offer, control() refuses rather than re-queue a row no
+    # claim can ever take, and nothing moves.
+    with pytest.raises(PersistenceError, match="^ILLEGAL_TRANSITION$"):
+        store.control(incident, 0, "follow_up", "operator", {"question": "x"})
+    assert _run_row(store, run)["state"] == "waiting_human"
+    assert store.rebuild(incident)["control_generation"] == 0
+    assert store.control(incident, 0, "cancel", "operator") == 1
     fresh = uuid4()
     assert (
         store.new_run(
             incident,
             fresh,
-            expected_generation=2,
+            expected_generation=1,
             deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
             budget_limit=10,
             versions=VERSIONS,
             actor="operator",
         )
-        == 3
+        == 2
     )
     lease = store.claim(incident, fresh, uuid4(), VERSIONS, lease_seconds=300)
     assert lease.run_id == fresh and _run_row(store, fresh)["state"] == "running"

@@ -1893,7 +1893,8 @@ def test_an_overdue_running_run_is_swept_into_a_timeout_handoff_on_the_page():
         workbench.incidents.hand_off(lease)
     assert workbench.incidents.publish(lease, {"late": True}, step_id=uuid4()) is False
     assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
-    # follow_up re-queues it like any parked Run.
+    # follow_up on the timed-out Run starts a fresh one (2026-09-25): the
+    # old row is closed, not re-queued into a claim nothing can take.
     follow = _control(
         app,
         incident,
@@ -1905,7 +1906,9 @@ def test_an_overdue_running_run_is_swept_into_a_timeout_handoff_on_the_page():
         },
     )
     assert follow.status == 200 and follow.json()["generation"] == 1
-    assert workbench.incidents.runs[run_id]["state"] == "queued"
+    assert workbench.incidents.runs[run_id]["state"] == "cancelled"
+    fresh = workbench.list_incidents()[0].current_run_id
+    assert fresh != run_id and workbench.incidents.runs[fresh]["state"] == "queued"
 
 
 def test_the_sweep_never_overwrites_a_human_decision_that_landed_first():
@@ -1952,3 +1955,69 @@ def test_a_sweep_that_cannot_take_its_lock_does_not_fail_the_page_load():
     assert not [
         e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
     ]
+
+
+def test_a_note_on_a_timed_out_run_starts_a_new_run_that_investigates():
+    """User decision 2026-09-25: a follow_up/correct on a Run the deadline
+    sweep parked cannot continue that Run (its deadline fences every claim),
+    so the note is recorded and a fresh Run starts, exactly as new_run does;
+    the new Run sees the note. No dead queued row, no refusal per poll."""
+    app, workbench, clock = build_workbench()
+    incident = submit_incident(app, key="timeout-note").json()["incident_id"]
+    subject = UUID(incident)
+    old = workbench.list_incidents()[0].current_run_id
+    workbench.incidents.claim(subject, old, uuid4(), {"state": "v1"}, 600)
+    clock.advance(601)
+    assert workbench.snapshot(subject)["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
+    follow = _control(
+        app,
+        incident,
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "after-timeout",
+            "text": "Check the dependency too.",
+        },
+    )
+    assert follow.status == 200 and follow.json()["generation"] == 1
+    fresh = workbench.list_incidents()[0].current_run_id
+    assert fresh != old
+    assert workbench.incidents.runs[old]["state"] == "cancelled"
+    new_run = workbench.incidents.runs[fresh]
+    assert new_run["state"] == "queued" and new_run["control_generation"] == 1
+    assert new_run["deadline"] > clock.now()
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["run"]["run_id"] == str(fresh) and snapshot["outcome"] is None
+    again = ScriptedInvestigator(clock, model_requests=4)
+    outcome = workbench.run_once(subject, again)
+    assert outcome is not None and outcome.execution == "completed"
+    assert note_reached_investigation(workbench, again, "Check the dependency too.")
+    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
+    assert "run_claim_refused" not in kinds
+    assert kinds.count("run_handoff") == 1
+
+
+def test_correct_on_a_timed_out_run_also_starts_a_new_run():
+    app, workbench, clock = build_workbench()
+    incident = submit_incident(app, key="timeout-correct").json()["incident_id"]
+    subject = UUID(incident)
+    old = workbench.list_incidents()[0].current_run_id
+    workbench.incidents.claim(subject, old, uuid4(), {"state": "v1"}, 600)
+    clock.advance(601)
+    workbench.snapshot(subject)
+    corrected = _control(
+        app,
+        incident,
+        {
+            "action": "correct",
+            "expected_generation": "0",
+            "idempotency_key": "correct-after-timeout",
+            "text": "The target is checkout-prod-2.",
+        },
+    )
+    assert corrected.status == 200 and corrected.json()["generation"] == 1
+    fresh = workbench.list_incidents()[0].current_run_id
+    assert fresh != old and workbench.incidents.runs[fresh]["state"] == "queued"
+    assert workbench.incidents.runs[old]["state"] == "cancelled"
+    # cancel still works on the fresh Run.
+    assert _renew(app, incident, generation=1) == 3
