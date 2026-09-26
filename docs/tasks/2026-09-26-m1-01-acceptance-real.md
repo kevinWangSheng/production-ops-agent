@@ -117,6 +117,13 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
   （[输出](../evidence/m1-01-acceptance/durable-pg-output.txt)）；`make acceptance` 15/15 PASS、`SECRET_SCAN_PASSED`
   （[表格](../evidence/m1-01-acceptance/acceptance-output.txt)）。实例已停止，数据保留。
 
+## PR #53 机器人分诊（2026-09-26）
+
+- P2 `opspilot/acceptance.py:204`「读最新的 handoff 事件」（采纳，可复现：#44 真实 Run `b127b23a` 交接 → follow_up →
+  再交接，同一 Run 两条 `run_handoff`，原实现取第一条、报过时理由）。修复：`_event_reasons` 取序列中最后一条匹配事件
+  （`read_after` 按 sequence 升序）；新增单元用例 `test_projection_reads_the_latest_handoff_event_for_a_re_parked_run`。
+  未加 PG 场景：事件顺序是投影规则，产品侧 `DurableEventLog.read_after` 的升序已由 web 套件钉住。
+
 ## 下一步与交接
 
 - 审查者复验受影响项（P2-1、P2-2、P3-2、P3-3）。

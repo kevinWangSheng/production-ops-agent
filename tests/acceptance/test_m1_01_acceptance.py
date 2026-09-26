@@ -265,6 +265,24 @@ def test_projection_of_a_park_without_a_reason_row_uses_the_recorded_event():
     )
 
 
+def test_projection_reads_the_latest_handoff_event_for_a_re_parked_run():
+    """Codex review (PR #53): handoff -> follow_up re-queue -> handoff again
+    leaves two ``run_handoff`` events for the same Run; the newest names the
+    park the rows show now, the older reason is superseded."""
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False
+    )
+    parked = _parked(snapshot)
+    run_id = parked["run"]["run_id"]
+    events = [
+        {"run_id": run_id, "parked": True, "reasons": ["MODEL_UNAVAILABLE"]},
+        {"run_id": "another-run", "parked": True, "reasons": ["BUDGET_EXHAUSTED"]},
+        {"run_id": run_id, "parked": True, "reasons": ["DEADLINE_EXCEEDED"]},
+    ]
+    outcome = outcome_from_durable(scenario("re-parked"), parked, handoff_events=events)
+    assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
+
+
 def test_projection_derives_human_control_from_the_controls_audit():
     _result, snapshot = durable_snapshot(
         [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False

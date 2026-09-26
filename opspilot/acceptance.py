@@ -195,14 +195,20 @@ def _event_reasons(
     conclusion step (the sweep's ``DEADLINE_EXCEEDED``) or blocked; that
     reason lives only in the announcement, which is a projection (ADR-0003),
     so it adds reasons and never changes the state read from the rows.
+
+    A Run can be handed off more than once (handoff, ``follow_up`` re-queue,
+    handoff again), and the log keeps every announcement in sequence order.
+    The newest matching one describes the park the rows show now; an older
+    one is a superseded reason (bot review, PR #53).
     """
+    latest: tuple[str, ...] = ()
     for event in handoff_events:
         if (
             str(event.get("run_id")) == run_id
             and bool(event.get("parked", False)) is parked
         ):
-            return _string_list(event.get("reasons", ()))
-    return ()
+            latest = _string_list(event.get("reasons", ()))
+    return latest
 
 
 def outcome_from_durable(
