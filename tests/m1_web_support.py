@@ -416,6 +416,21 @@ class MemoryIncidentStore:
             raise PersistenceError("CONTROL_DENIED")
         run.update(state="waiting_human", owner=None, lease_until=None)
 
+    def sweep_expired_runs(self, *, incident_id=None, limit=100):
+        """Mirror DurableStore.sweep_expired_runs (ADR-0005 decision 2)."""
+        now = self.now()
+        parked = []
+        for run in self.runs.values():
+            if incident_id is not None and run["incident_id"] != incident_id:
+                continue
+            if run["state"] != "running" or run["deadline"] > now:
+                continue
+            run.update(state="waiting_human", owner=None, lease_until=None)
+            parked.append((run["incident_id"], run["run_id"]))
+            if len(parked) >= limit:
+                break
+        return tuple(parked)
+
     def abandon(self, lease):
         run = self.runs[lease.run_id]
         if (

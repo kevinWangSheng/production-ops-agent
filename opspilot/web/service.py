@@ -43,6 +43,7 @@ from opspilot.investigation.progress import (
     announce_claimed,
     announce_completed,
     announce_handoff,
+    sweep_expired,
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
@@ -505,6 +506,9 @@ class Workbench:
     def reconcile(self, incident_id: UUID) -> None:
         """Repair projections from the authoritative rows (idempotent).
 
+        Sweeps the incident's Run if it is ``running`` past its deadline
+        (ADR-0005 decision 2: nothing else can settle it, so a page load
+        parks it as a ``DEADLINE_EXCEEDED`` handoff, announced once by run).
         Confirms notes the store already applied and emits a missing
         ``run_completed`` for a Run that published its conclusion but whose
         worker died before appending the event; the ledger remembers which
@@ -515,6 +519,12 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             return
+        try:
+            sweep_expired(self.incidents, self.events, incident_id=incident_id)
+        except PersistenceError:
+            # A page load must not fail because the sweep could not take its
+            # row lock right now; the next load (or the next poll) sweeps.
+            pass
         intake = self.ledger.get("intake", summary.intake_key)
         if intake is not None:
             self._announce_intake(

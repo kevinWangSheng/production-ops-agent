@@ -19,6 +19,11 @@ business ledger under docs/evidence/m1-01-handoff-runner/live-runs/<run_id>/
 ``--model-requests 1`` forces a budget handoff after the first (tool) round.
 ``--follow-up`` then applies one follow_up control and resumes once more, so
 the parked -> queued -> claimed -> parked cycle is recorded as well.
+``--deadline-seconds N --sweep`` gives the Run a tiny deadline, lets the real
+attempt run into it (its writes are fenced), waits for the deadline to pass
+and polls once more: that poll is where the runner sweeps the overdue Run
+into a ``DEADLINE_EXCEEDED`` handoff (ADR-0005 decision 2). Ledgers for
+that mode go under docs/evidence/m1-01-deadline-sweep/live-runs/.
 """
 
 from __future__ import annotations
@@ -56,6 +61,7 @@ from tests.m1_tool_support import WINDOW_START, body, build, registration
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "docs/evidence/m1-01-handoff-runner/live-runs"
+SWEEP_OUT_ROOT = ROOT / "docs/evidence/m1-01-deadline-sweep/live-runs"
 VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
@@ -70,11 +76,16 @@ class SystemClock:
         return time.monotonic()
 
 
-def resolve_out_dir(run_id: str) -> Path:
+def resolve_out_dir(run_id: str, *, sweep: bool = False) -> Path:
     explicit = os.environ.get("M1_ACCEPTANCE_OUT")
     if explicit:
         return Path(explicit).expanduser() / run_id
-    return OUT_ROOT / run_id
+    return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
+
+
+def _db_now(store):
+    with store.transaction(snapshot=True) as conn:
+        return conn.execute("SELECT clock_timestamp() AS now").fetchone()["now"]
 
 
 def executor_factory_for(evidence, clock, deadline):
@@ -164,7 +175,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-requests", type=int, default=2)
     parser.add_argument("--follow-up", action="store_true")
+    parser.add_argument("--deadline-seconds", type=int, default=12 * 60)
+    parser.add_argument("--sweep", action="store_true")
     args = parser.parse_args()
+    if args.deadline_seconds < 1:
+        raise SystemExit("deadline-seconds must be positive")
     if not 1 <= args.model_requests <= M1_FROZEN_LIMITS.model_requests:
         raise SystemExit("model-requests outside the frozen ceiling")
     env_file = resolve_env_file()
@@ -181,7 +196,7 @@ def main() -> int:
     evidence.install()
 
     clock = SystemClock()
-    deadline = clock.now() + timedelta(minutes=12)
+    deadline = clock.now() + timedelta(seconds=args.deadline_seconds)
     incident, run_id = uuid4(), uuid4()
     input = InvestigationInput(
         question=QUESTION,
@@ -236,10 +251,19 @@ def main() -> int:
             {"label": "after-follow-up", "outcome": _outcome(runner.resume(incident))}
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
+    if args.sweep:
+        # Wait on the database clock, the one the sweep reads.
+        while store.rebuild(incident)["run"]["deadline"] > _db_now(store):
+            time.sleep(0.5)
+        attempts.append(
+            {"label": "sweep", "outcome": _outcome(runner.resume(incident))}
+        )
+        attempts[-1]["rows_after"] = _rows(store, incident)
     ended = clock.now()
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
     ledger = {
-        "experiment": "m1-01-handoff-runner",
+        "experiment": "m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner",
+        "deadline_seconds": args.deadline_seconds,
         "driver": "opspilot.investigation.runner.InvestigationRunner",
         "incident_id": str(incident),
         "run_id": str(run_id),
@@ -258,7 +282,7 @@ def main() -> int:
         "control": control,
         "events": _events(log, incident),
     }
-    out = resolve_out_dir(str(run_id))
+    out = resolve_out_dir(str(run_id), sweep=args.sweep)
     out.mkdir(parents=True, exist_ok=False)
     (out / "ledger.json").write_text(
         json.dumps(ledger, indent=2, ensure_ascii=False, default=str)
@@ -270,6 +294,8 @@ def main() -> int:
     summary = {
         "status": attempts[0]["outcome"]["status"],
         "reason": attempts[0]["outcome"]["reason"],
+        "last_status": attempts[-1]["outcome"]["status"],
+        "last_reason": attempts[-1]["outcome"]["reason"],
         "run_state": attempts[-1]["rows_after"]["run_state"],
         "conclusion_published": attempts[-1]["rows_after"]["conclusion_published"],
         "last_event": ledger["events"][-1]["kind"] if ledger["events"] else None,

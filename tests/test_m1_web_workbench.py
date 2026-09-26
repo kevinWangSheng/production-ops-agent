@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import pytest
+
+from opspilot.persistence import PersistenceError
 from opspilot.web import MemoryEventLog
 from tests.m1_investigation_support import (
     reply,
@@ -1852,3 +1855,100 @@ def test_every_response_forbids_framing_so_human_controls_cannot_be_clickjacked(
         assert (
             response.headers.get("content-security-policy") == "frame-ancestors 'none'"
         ), name
+
+
+def test_an_overdue_running_run_is_swept_into_a_timeout_handoff_on_the_page():
+    """ADR-0005 decision 2: a Run past its deadline cannot settle itself (every
+    worker write is fenced), so a page load reconciles it into the same park
+    a loop handoff lands in, announced once as ``DEADLINE_EXCEEDED``."""
+    app, workbench, clock = build_workbench()
+    incident = submit_incident(app, key="sweep-1").json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    lease = workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
+    # Not due yet: the worker still owns it.
+    clock.advance(300)
+    assert workbench.snapshot(subject)["run"]["state"] == "running"
+    assert not [
+        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
+    ]
+    clock.advance(301)
+    snapshot = workbench.snapshot(subject)
+    run = workbench.incidents.runs[run_id]
+    assert run["state"] == "waiting_human"
+    assert run["owner"] is None and run["lease_until"] is None
+    assert workbench.incidents.incidents[subject]["conclusion"] is None
+    assert snapshot["run"]["state"] == "waiting_human"
+    assert snapshot["outcome"]["handoff"] is True
+    assert snapshot["outcome"]["parked"] is True
+    assert snapshot["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
+    # Idempotent: a second page load neither re-parks nor re-announces.
+    workbench.snapshot(subject)
+    handoffs = [
+        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
+    ]
+    assert len(handoffs) == 1
+    # The late worker cannot publish over the park; its writes are history.
+    with pytest.raises(PersistenceError, match="^CONTROL_DENIED$"):
+        workbench.incidents.hand_off(lease)
+    assert workbench.incidents.publish(lease, {"late": True}, step_id=uuid4()) is False
+    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
+    # follow_up re-queues it like any parked Run.
+    follow = _control(
+        app,
+        incident,
+        {
+            "action": "follow_up",
+            "expected_generation": "0",
+            "idempotency_key": "after-timeout",
+            "text": "Check the dependency too.",
+        },
+    )
+    assert follow.status == 200 and follow.json()["generation"] == 1
+    assert workbench.incidents.runs[run_id]["state"] == "queued"
+
+
+def test_the_sweep_never_overwrites_a_human_decision_that_landed_first():
+    app, workbench, clock = build_workbench()
+    for action in ("cancel", "pause"):
+        incident = submit_incident(app, key=f"sweep-{action}").json()["incident_id"]
+        subject = UUID(incident)
+        run_id = workbench.list_incidents()[0].current_run_id
+        workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
+        clock.advance(601)
+        applied = _control(
+            app,
+            incident,
+            {"action": action, "expected_generation": "0", "idempotency_key": action},
+        )
+        assert applied.status == 200
+        before = workbench.incidents.runs[run_id]["state"]
+        assert before == ("cancelled" if action == "cancel" else "paused")
+        workbench.snapshot(subject)
+        assert workbench.incidents.runs[run_id]["state"] == before
+        assert not [
+            e
+            for e in workbench.events.read_after(subject, 0)
+            if e.kind == "run_handoff"
+        ]
+
+
+def test_a_sweep_that_cannot_take_its_lock_does_not_fail_the_page_load():
+    """Independent review P3-4: the sweep is a repair on the way to a read;
+    a lock timeout there is not the page's failure."""
+    app, workbench, clock = build_workbench()
+    submit_incident(app, key="sweep-outage")
+    subject = workbench.list_incidents()[0].incident_id
+    run_id = workbench.list_incidents()[0].current_run_id
+    workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
+    clock.advance(601)
+
+    def refuse(*, incident_id=None, limit=100):
+        raise PersistenceError("LOCK_TIMEOUT")
+
+    workbench.incidents.sweep_expired_runs = refuse
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["run"]["state"] == "running"
+    assert not [
+        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
+    ]

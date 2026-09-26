@@ -127,6 +127,61 @@ def announce_handoff(
     )
 
 
+#: The handoff reason a swept Run carries (ADR-0005 decision 2).
+DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
+
+
+class ExpirySweeper(Protocol):
+    def sweep_expired_runs(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID], ...]: ...
+
+
+def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID) -> int:
+    """The ``run_handoff`` a timeout park shows on the page, keyed by run.
+
+    A sweep parks a Run at most once, and the key makes a second announcer
+    of the same park (a racing sweep, a retry) a no-op instead of a
+    duplicate. It is at-most-once, not exactly-once: a sweeper that dies
+    between the park and this append leaves the row ``waiting_human`` with
+    no event, and nothing here repairs that -- the row cannot say *why* it
+    was parked, so a repair would have to guess between a loop handoff and
+    a timeout. The rows stay the authority (ADR-0003); the projection
+    repair is the follow-up recorded in ROADMAP.
+    """
+    return log.append_once(
+        subject_id,
+        "run_handoff",
+        {
+            "run_id": str(run_id),
+            "published": False,
+            "execution": "failed",
+            "handoff": True,
+            "parked": True,
+            "reasons": [DEADLINE_EXCEEDED],
+            "report_sha256": None,
+            "evidence_ids": [],
+        },
+        key={"run_id": str(run_id), "parked": True, "reasons": [DEADLINE_EXCEEDED]},
+    )
+
+
+def sweep_expired(
+    store: ExpirySweeper, log: ProgressLog | None, *, incident_id: UUID | None = None
+) -> tuple[tuple[UUID, UUID], ...]:
+    """Park overdue ``running`` Runs and announce each park (ADR-0005 §2).
+
+    The store's sweep is the authority (state + deadline re-checked under row
+    locks); the event is a projection appended after the row committed, like
+    every other announcement here. Returns what this call parked.
+    """
+    parked = store.sweep_expired_runs(incident_id=incident_id)
+    if log is not None:
+        for subject_id, run_id in parked:
+            announce_deadline_exceeded(log, subject_id, run_id)
+    return parked
+
+
 def _tool_committed_payload(
     run_id: UUID, step_id: UUID, ordinal: int, result: Mapping[str, Any]
 ) -> dict[str, Any]:

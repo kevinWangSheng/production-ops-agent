@@ -105,6 +105,12 @@ class IncidentStore(Protocol):
         """Park the leased Run for a human (ADR-0005); ``CONTROL_DENIED`` if fenced."""
         ...
 
+    def sweep_expired_runs(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID], ...]:
+        """Park overdue ``running`` Runs (ADR-0005 decision 2); returns what was parked."""
+        ...
+
     def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
         """Extend a held lease under the write-path fence (PR #35).
 
@@ -368,6 +374,11 @@ class DurableIncidentStore:
 
     def hand_off(self, lease: Lease) -> None:
         self._store.hand_off(lease)
+
+    def sweep_expired_runs(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID], ...]:
+        return self._store.sweep_expired_runs(incident_id=incident_id, limit=limit)
 
     def renew_lease(self, lease: Lease, extend_seconds: int) -> datetime | None:
         # PR #35 adds DurableStore.renew_lease; without it the lease simply
