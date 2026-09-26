@@ -337,6 +337,13 @@ class TransportResponse:
     Consumers must not infer time-policy eligibility from unknown bounds or
     substitute the requested window/data_as_of. The adapter must derive these
     timestamps from source semantics, never model-supplied parameters.
+
+    ``sent`` is ``False`` when the transport refused the request before
+    anything left the process (a declared parameter it cannot turn into a
+    read the source may answer) and reports the refusal as a fixed
+    ``source_status`` code for the registration to classify. The executor
+    then records ``sent: false`` and ``source_contact: none`` instead of a
+    confirmed contact the source never had (independent review finding).
     """
 
     body: bytes
@@ -344,6 +351,7 @@ class TransportResponse:
     data_as_of: datetime | None = None
     source_start_at: datetime | None = None
     source_end_at: datetime | None = None
+    sent: bool = True
 
 
 @runtime_checkable
@@ -852,7 +860,22 @@ class ReadOnlyToolExecutor:
         # a failure to settle the cost must report that same uncertainty:
         # reporting ``confirmed`` here would let a transient PostgreSQL error
         # manufacture a false audit fact (bot review finding).
-        contact: SourceContact = failure[2] if failure is not None else "confirmed"
+        # A transport that decided *not* to send (``sent=False`` with a fixed
+        # refusal status) never contacted the source: the audit record must
+        # say so rather than claim a dispatch and a confirmed contact.
+        refused_before_send = (
+            failure is None
+            and isinstance(response, TransportResponse)
+            and response.sent is False
+            and response.source_status is not None
+        )
+        if refused_before_send:
+            operation = replace(operation, dispatched=False)
+        contact: SourceContact = (
+            failure[2]
+            if failure is not None
+            else ("none" if refused_before_send else "confirmed")
+        )
         settlement_denied = False
 
         def refuse_after_fetch(status: ToolStatus, reason: str) -> ToolOutcome:

@@ -770,14 +770,11 @@ def _refused(code: str) -> TransportResponse:
     """A fixed-code refusal decided before any request went out.
 
     Carried as ``source_status`` so the registration's ``error_classes``
-    classify it as ``INVALID_PARAMS``. Known imprecision of this seam: the
-    executor's audit then records ``source_contact: confirmed`` and
-    ``sent: true`` for a call that never left the process (the transport has
-    no pre-dispatch refusal signal; kept as the tested contract, see the
-    task record).
+    classify it as ``INVALID_PARAMS``, with ``sent=False`` so the executor
+    audits it as never dispatched and with no source contact.
     """
     return TransportResponse(
-        body=canonical({"error": code}).encode(), source_status=code
+        body=canonical({"error": code}).encode(), source_status=code, sent=False
     )
 
 
