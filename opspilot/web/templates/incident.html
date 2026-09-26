@@ -30,7 +30,7 @@
   <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
   <input type="hidden" name="idempotency_key" value="{{ action }}-{{ inc.control_generation }}-{{ form_nonce }}">
   {% if action in ("follow_up", "correct") %}
-    <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="16384">
+    <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
   {% endif %}
   <button type="submit">{{ action }}</button>
 </form>
