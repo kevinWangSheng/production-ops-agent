@@ -1,7 +1,5 @@
-2026-09-26 07:36:51,897 opspilot.worker INFO worker owner=572b72b1-e5a0-4f3e-be6e-f8bee464521f profile=otel-demo versions={'prompt_revision': 'prompt-replay-candidate-2c26fd0db1e0', 'context_policy_revision': 'ctx-ctx-policy-v1-156004a224ba', 'tool_schema_revision': 'otel-demo-3936d7ae7edb'}
-2026-09-26 07:36:51,900 opspilot.worker INFO worker started
-2026-09-26 07:36:55,029 opspilot.worker INFO attempt incident=5cb792c4-1361-43a8-aa79-2922feef1b21 status=blocked reason=INPUT_MISSING
-2026-09-26 07:38:18,877 opspilot.worker INFO attempt incident=83316ae6-a568-59b0-9a3d-e6e3765dfdee status=control_denied reason=CONTROL_DENIED
-2026-09-26 07:44:11,549 opspilot.worker INFO attempt incident=31f5db80-b77a-5153-a020-3bed7aca9036 status=published reason=None
-2026-09-26 07:45:36,849 opspilot.worker INFO signal=15: stop claiming, finishing the in-flight attempt
-2026-09-26 07:45:36,856 opspilot.worker INFO worker stopped
+2026-09-26 07:50:27,660 opspilot.worker INFO worker owner=9daf452d-0cb4-41e0-a081-de772bd5c2d3 profile=otel-demo versions={'prompt_revision': 'prompt-replay-candidate-2c26fd0db1e0', 'context_policy_revision': 'ctx-ctx-policy-v1-156004a224ba', 'tool_schema_revision': 'otel-demo-3936d7ae7edb'}
+2026-09-26 07:50:27,660 opspilot.worker INFO worker started
+2026-09-26 07:51:27,552 opspilot.worker INFO attempt incident=1f6636d4-7856-586e-9dd4-c4351ea3fd10 status=published reason=None
+2026-09-26 07:52:32,353 opspilot.worker INFO signal=15: stop claiming, finishing the in-flight attempt
+2026-09-26 07:52:32,355 opspilot.worker INFO worker stopped
