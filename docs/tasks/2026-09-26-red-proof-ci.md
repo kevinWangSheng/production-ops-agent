@@ -1,6 +1,6 @@
 # 测试红证明 CI
 
-- 状态：试行中（#49、#50 已合并）
+- 状态：进行中（#49、#50 已合并，红证明 CI 试行中）
 - 更新日期：2026-09-26
 - 依据：用户 2026-09-26 决定先落地「红证明 CI + 审查只报正确性/合同缺口」两项；业界依据见下方「必要上下文」
 - 工作区：`chore/red-proof-ci`，`/Users/shenghuikevin/dev/AI/production-ops-agent-red-proof`
