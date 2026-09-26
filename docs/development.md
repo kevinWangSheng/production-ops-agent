@@ -52,6 +52,35 @@ Codex 仅启用文档搜索/虚拟文档读取、API 搜索/符号读取四项�
 
 停用时在项目 Codex 两个 server 表设置 `enabled = false`，并按 Claude 的项目 MCP 管理停用对应名字；只改这两项，保留其他服务器。重新启用先核对修改后的配置，不用安装脚本覆盖用户后续定制。Git 忽略不等于可删除，清理工作区前按原 worktree 约定保留需要的本地配置与私有资料。
 
+## 本地运行演示：网页提交 → 常驻 worker → 真实调查
+
+三个进程：本 worktree 的 lab PostgreSQL（55431，数据留在 `tmp/m0-b/postgres`）、工作台 `python -m opspilot.web serve`（只收事故、记录调查输入、投影进度，不跑模型）、常驻 worker `python -m opspilot.worker_main`（轮询可领取的 Run → 清扫过期 Run → 经 `InvestigationRunner` 真实调查，工具用 `opspilot.tools.fixture` 的固定 Prometheus 回放，无真实 OTel）。两者必须用同一套 `versions` 与工具面（都来自 `opspilot.tools.fixture`），否则 Run 会在 claim 时被记为 `blocked`。真实模型调用按 AGENTS.md「费用与真实调用」常设授权，凭据只从环境或私有 env 文件读取，不打印。
+
+```sh
+.venv/bin/python -m scripts.m0.postgres_lab start
+export OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+# 工作台登录：哈希从 stdin 读密码，只打印哈希
+.venv/bin/python -m opspilot.web hash-password
+OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.web serve
+# 另一个终端：worker（SIGTERM/Ctrl-C 停止领取，等在跑的尝试最多 OPSPILOT_WORKER_GRACE_SECONDS 秒）
+OPSPILOT_ENV_FILE=/绝对路径/.env .venv/bin/python -m opspilot.worker_main
+# 提交事故（目标固定为 fixture 的 checkout-prod；Origin 必须是绑定地址）
+curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
+  -d target_id=checkout-prod -d idempotency_key=demo-1 \
+  --data-urlencode 'question=Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.' \
+  http://127.0.0.1:8080/intake/ui
+# 观察：浏览器打开 http://127.0.0.1:8080/incidents/<incident_id>，或订阅事件流
+curl -N -u demo:<密码> 'http://127.0.0.1:8080/incidents/<incident_id>/events?cursor=0'
+# 追问（交接或发布后；发布后会被 ILLEGAL_TRANSITION 拒绝，见 ADR-0005）
+curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
+  -d action=follow_up -d expected_generation=<页面上的代际> -d idempotency_key=f-1 \
+  --data-urlencode 'text=Also compare against the previous hour.' \
+  http://127.0.0.1:8080/incidents/<incident_id>/control
+.venv/bin/python -m scripts.m0.postgres_lab stop
+```
+
+worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时安装 schema，不是部署工件。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。

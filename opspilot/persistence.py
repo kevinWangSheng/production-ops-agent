@@ -1129,6 +1129,31 @@ class DurableStore:
                 (delta, lease.run_id),
             )
 
+    def claimable_incidents(self, *, limit: int = 20) -> tuple[UUID, ...]:
+        """Incidents whose current Run a worker may try to claim right now.
+
+        A read-only hint for the polling worker, never an authority:
+        ``claim()`` re-checks everything under row locks, so a stale row here
+        costs one refused claim and nothing else. Listed: an open incident
+        whose current Run is ``queued``, or ``running`` with a lapsed lease
+        (a killed worker's), and not yet overdue -- overdue rows are the
+        sweep's (ADR-0005 decision 2), parked and blocked rows are a human's.
+        Oldest deadline first, like the sweep, so a worker that falls behind
+        serves the Run that will time out soonest.
+        """
+        if type(limit) is not int or limit < 1:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.conclusion IS NULL "
+                "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
+                "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp()) "
+                "ORDER BY r.deadline, i.incident_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(row["incident_id"] for row in rows)
+
     def run_usage(self, run_id: UUID) -> dict[str, Any]:
         """Durable per-Run usage a new attempt continues from (C3 §13).
 
@@ -1474,11 +1499,15 @@ class DurableStore:
                 raise PersistenceError("INCONSISTENT_STATE")
             # 超时的 Run 换新 Run：条件与清扫同源（数据库时钟、行锁下判定），
             # 因此与清扫并发时无论谁先到，结果都是「旧 Run 关闭、新 Run 排队」。
-            renew = (
-                action in {"follow_up", "correct"}
-                and run["run_state"] in _CONTROL_OPEN_RUN_STATES
-                and run["deadline"] <= self._db_now(conn)
-            )
+            overdue = run["run_state"] in _CONTROL_OPEN_RUN_STATES and run[
+                "deadline"
+            ] <= self._db_now(conn)
+            renew = action in {"follow_up", "correct"} and overdue
+            # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
+            # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
+            # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
+            if action == "resume" and overdue:
+                raise PersistenceError("ILLEGAL_TRANSITION")
             if (
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None
