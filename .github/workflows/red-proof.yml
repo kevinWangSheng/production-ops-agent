@@ -19,7 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: red-proof-${{ github.event.pull_request.number || github.ref }}
+  # 手动回放按 head 分组，连续回放不同提交不会互相取消。
+  group: red-proof-${{ github.event.pull_request.number || format('dispatch-{0}', inputs.head) }}
   cancel-in-progress: true
 
 jobs:

@@ -167,5 +167,44 @@ def test_source_only_change_is_not_applicable(repo: pathlib.Path, capsys) -> Non
 
 def test_package_resolving_outside_snapshot_is_rejected(tmp_path: pathlib.Path) -> None:
     # 标准库的 json 不在快照里：等同于被测包错从 HEAD 或 site-packages 解析。
-    with pytest.raises(SystemExit, match="红证明无效"):
+    with pytest.raises(rp.RedProofError, match="红证明无效"):
         rp.assert_imports_from(tmp_path, "json")
+
+
+def test_support_only_change_needs_manual_confirmation(
+    repo: pathlib.Path, capsys
+) -> None:
+    # 断言强化只落在共享支持模块时，不能给出确定性的「不适用」。
+    _pr(repo, {"tests/calc_support.py": "EXPECTED = 5\n"})
+    assert _check(repo) == 1
+    out = capsys.readouterr().out
+    assert "需人工确认" in out
+    assert "tests/calc_support.py" in out
+    assert _check(repo, "--report-only") == 0
+
+
+def test_timeout_is_reported_not_raised(
+    repo: pathlib.Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rp, "PER_FILE_TIMEOUT_SECONDS", 1)
+    _pr(
+        repo,
+        {
+            "tests/test_slow.py": (
+                "import time\n\ndef test_slow():\n    time.sleep(5)\n"
+            )
+        },
+    )
+    assert _check(repo, "--report-only") == 0
+    out = capsys.readouterr().out
+    assert f"`tests/test_slow.py::test_slow` | {rp.NOT_RUN}" in out
+    assert "无红证明" in out
+
+
+def test_internal_error_is_reported_and_report_only_exits_zero(
+    repo: pathlib.Path, capsys
+) -> None:
+    code = rp.main(["--repo", str(repo), "--base", "no-such-ref", "--report-only"])
+    assert code == 0
+    assert "内部错误" in capsys.readouterr().out
+    assert rp.main(["--repo", str(repo), "--base", "no-such-ref"]) == 2

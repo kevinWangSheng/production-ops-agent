@@ -16,7 +16,7 @@
 - `make check`：诊断、离线锁检查、Ruff lint、Ruff 格式检查、pytest；任何一步失败即返回非零。不自动修复代码或安装依赖。
 - `make test`：诊断、离线锁检查、pytest。
 - `.venv/bin/python -m pytest tests/test_doctor.py`：定向测试，使用 pytest 原生参数。
-- `make red-proof`：把本分支已提交的新增/改动测试放到与 `origin/main` 的 merge-base 代码上重放，至少一个失败才算有红证明；只收集失败（新模块 ImportError）标为弱红证明。CI 的 `red-proof` 工作流试行期只报告，只钉住已有行为的 PR 加 label `no-red-proof`。集成测试需按下文自行准备数据库并设置 opt-in 变量，否则记为跳过。
+- `make red-proof`：把本分支已提交的新增/改动测试放到与 `origin/main` 的 merge-base 代码上重放，至少一个失败才算有红证明；只收集失败（新模块 ImportError）标为弱红证明；只改了 `tests/` 下支持模块时报「需人工确认」。本地退出码 0 有红证明或不适用、1 无红证明或需人工确认、2 内部错误；CI 的 `red-proof` 工作流试行期用 `--report-only`，退出码恒 0、只报告，只钉住已有行为的 PR 加 label `no-red-proof`。集成测试需按下文自行准备数据库并设置 opt-in 变量，否则记为跳过。
 - `python3 scripts/doctor.py --lab`：额外检查 Docker/Compose、daemon、kubectl 和 Helm；不会启动、安装或连接 Kubernetes 集群。
 
 基础诊断失败返回 1；基础可用而请求的实验设施缺失返回 2；所请求的诊断均满足前提返回 0。

@@ -12,8 +12,13 @@
 因 ImportError 失败属于这一类，证明力弱，单独标出）、通过、跳过。跳过通常是缺少
 环境开关（例如 PostgreSQL 集成测试），不算红。
 
-只比较已提交的内容；本地使用前先提交。试行期在 CI 中用 ``--report-only``：
-结论写入 step summary 与 warning 注解，退出码恒为 0，不影响合并状态。
+只比较已提交的内容；本地使用前先提交。选择范围只含 ``tests/`` 下 ``test_*.py`` /
+``*_test.py`` 里的测试函数；只改了共享支持模块（如 ``tests/m1_web_support.py``）时
+不判「不适用」，而是报「需人工确认」。
+
+退出码：有红证明或不适用为 0；无红证明、需人工确认为 1；内部错误为 2。
+试行期在 CI 中用 ``--report-only``：任何结论（包括超时与内部错误）都写入 step summary
+与注解，退出码恒为 0，不影响合并状态。
 
 用法::
 
@@ -45,6 +50,10 @@ GREEN = "通过"
 SKIPPED = "跳过"
 NOT_RUN = "未运行"
 RED_KINDS = (RED_ASSERT, RED_ERROR, RED_COLLECT)
+
+
+class RedProofError(Exception):
+    """检查自身无法得出结论（例如快照解析到快照之外）。"""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -97,16 +106,23 @@ def is_test_file(path: str) -> bool:
     )
 
 
-def selected_tests(repo: pathlib.Path, base: str, head: str) -> dict[str, list[str]]:
-    """{测试文件: [限定名]}，只含新增或改动过的测试。"""
+def selected_tests(
+    repo: pathlib.Path, base: str, head: str
+) -> tuple[dict[str, list[str]], list[str]]:
+    """({测试文件: [限定名]}, [tests/ 下改动了但不在选择范围内的文件])。"""
     names = git(
-        repo, "diff", "--name-only", "--diff-filter=AMR", base, head, "--", TEST_ROOT
+        repo, "diff", "--name-only", "--diff-filter=AMRD", base, head, "--", TEST_ROOT
     ).split()
     selected: dict[str, list[str]] = {}
+    unselected: list[str] = []
     for path in names:
         if not is_test_file(path):
+            unselected.append(path)
             continue
-        head_source = git(repo, "show", f"{head}:{path}")
+        try:
+            head_source = git(repo, "show", f"{head}:{path}")
+        except subprocess.CalledProcessError:
+            continue  # 删除的测试文件
         try:
             base_source: str | None = git(repo, "show", f"{base}:{path}")
         except subprocess.CalledProcessError:
@@ -114,7 +130,7 @@ def selected_tests(repo: pathlib.Path, base: str, head: str) -> dict[str, list[s
         items = changed_items(base_source, head_source)
         if items:
             selected[path] = items
-    return selected
+    return selected, unselected
 
 
 def extract(repo: pathlib.Path, ref: str, dest: pathlib.Path, *paths: str) -> None:
@@ -149,7 +165,7 @@ def assert_imports_from(snapshot: pathlib.Path, module: str) -> None:
     ).stdout.strip()
     resolved = pathlib.Path(origin).resolve() if origin else None
     if resolved is None or not resolved.is_relative_to(snapshot.resolve()):
-        raise SystemExit(
+        raise RedProofError(
             f"红证明无效：{module} 解析到 {origin or '无'}，不在 base 快照 {snapshot} 内"
         )
 
@@ -158,26 +174,33 @@ def run_file(
     snapshot: pathlib.Path, path: str, items: list[str], junit: pathlib.Path
 ) -> list[Outcome]:
     node_ids = [f"{path}::{item}" for item in items]
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-            f"--junitxml={junit}",
-            *node_ids,
-        ],
-        cwd=snapshot,
-        capture_output=True,
-        text=True,
-        timeout=PER_FILE_TIMEOUT_SECONDS,
-    )
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                f"--junitxml={junit}",
+                *node_ids,
+            ],
+            cwd=snapshot,
+            capture_output=True,
+            text=True,
+            timeout=PER_FILE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        detail = f"超过 {PER_FILE_TIMEOUT_SECONDS} 秒未完成"
+        return [Outcome(n, NOT_RUN, detail) for n in node_ids]
     if not junit.exists():
         tail = (completed.stdout + completed.stderr).strip().splitlines()[-3:]
         return [Outcome(n, NOT_RUN, " / ".join(tail)) for n in node_ids]
-    return classify(path, items, junit)
+    try:
+        return classify(path, items, junit)
+    except ET.ParseError as exc:
+        return [Outcome(n, NOT_RUN, f"junit 无法解析：{exc}") for n in node_ids]
 
 
 def classify(path: str, items: list[str], junit: pathlib.Path) -> list[Outcome]:
@@ -240,21 +263,69 @@ def verdict(outcomes: list[Outcome]) -> tuple[bool, str]:
     )
 
 
-def render(base: str, outcomes: list[Outcome], ok: bool, summary: str) -> str:
-    lines = [
-        "## 红证明",
-        "",
-        f"base：`{base[:12]}`；检查 {len(outcomes)} 个新增/改动的测试。",
-        "",
-        f"**{summary}**",
-        "",
-        "| 测试 | base 上的结果 | 说明 |",
-        "|---|---|---|",
-    ]
-    for o in outcomes:
-        detail = o.detail.replace("|", "\\|")[:160]
-        lines.append(f"| `{o.node_id}` | {o.kind} | {detail} |")
+def cell(text: str) -> str:
+    return text.replace("`", "'").replace("|", "\\|").replace("\n", " ")[:160]
+
+
+def render(
+    base: str, outcomes: list[Outcome], summary: str, unselected: list[str]
+) -> str:
+    lines = ["## 红证明", "", f"base：`{base[:12]}`", "", f"**{summary}**", ""]
+    if unselected:
+        lines += [
+            "tests/ 下还有不在选择范围内的改动（支持模块、fixture 或删除），"
+            "其影响未重放：",
+            "",
+            *[f"- `{cell(path)}`" for path in unselected],
+            "",
+        ]
+    if outcomes:
+        lines += ["| 测试 | base 上的结果 | 说明 |", "|---|---|---|"]
+        lines += [
+            f"| `{cell(o.node_id)}` | {o.kind} | {cell(o.detail)} |" for o in outcomes
+        ]
     return "\n".join(lines) + "\n"
+
+
+def publish(report: str, summary: str, level: str) -> None:
+    print(report)
+    if step_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(step_summary, "a", encoding="utf-8") as fh:
+            fh.write(report)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::{level} title=红证明::{summary}")
+
+
+def evaluate(args: argparse.Namespace) -> tuple[int, str, str]:
+    """返回 (退出码, 报告, 注解级别)。"""
+    repo = args.repo.resolve()
+    base = git(repo, "merge-base", args.base, args.head).strip()
+    head = git(repo, "rev-parse", args.head).strip()
+    selection, unselected = selected_tests(repo, base, head)
+    if not selection:
+        if unselected:
+            summary = (
+                "需人工确认：没有新增或改动的测试函数，"
+                "但 tests/ 下有支持模块等改动，检查未重放其影响。"
+            )
+            return 1, render(base, [], summary, unselected), "warning"
+        summary = "不适用：本次没有新增或改动的测试函数。"
+        return 0, render(base, [], summary, []), "notice"
+
+    snapshot = build_snapshot(repo, base, head)
+    try:
+        if (snapshot / args.module).exists():
+            assert_imports_from(snapshot, args.module)
+        outcomes: list[Outcome] = []
+        for index, (path, items) in enumerate(sorted(selection.items())):
+            junit = snapshot / f".red-proof-{index}.xml"
+            outcomes.extend(run_file(snapshot, path, items, junit))
+    finally:
+        shutil.rmtree(snapshot, ignore_errors=True)
+
+    ok, summary = verdict(outcomes)
+    report = render(base, outcomes, summary, unselected)
+    return (0 if ok else 1), report, ("notice" if ok else "warning")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -270,37 +341,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    repo = args.repo.resolve()
-    base = git(repo, "merge-base", args.base, args.head).strip()
-    head = git(repo, "rev-parse", args.head).strip()
-    selection = selected_tests(repo, base, head)
-    if not selection:
-        print("红证明：本次没有新增或改动的测试函数，不适用。")
-        return 0
-
-    snapshot = build_snapshot(repo, base, head)
     try:
-        if (snapshot / args.module).exists():
-            assert_imports_from(snapshot, args.module)
-        outcomes: list[Outcome] = []
-        for index, (path, items) in enumerate(sorted(selection.items())):
-            junit = snapshot / f".red-proof-{index}.xml"
-            outcomes.extend(run_file(snapshot, path, items, junit))
-    finally:
-        shutil.rmtree(snapshot, ignore_errors=True)
-
-    ok, summary = verdict(outcomes)
-    report = render(base, outcomes, ok, summary)
-    print(report)
-    if step_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(step_summary, "a", encoding="utf-8") as fh:
-            fh.write(report)
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        level = "notice" if ok else "warning"
-        print(f"::{level} title=红证明::{summary}")
-    if args.report_only:
-        return 0
-    return 0 if ok else 1
+        code, report, level = evaluate(args)
+        summary = next(
+            (line.strip("*") for line in report.splitlines() if line.startswith("**")),
+            "",
+        )
+    except Exception as exc:  # 检查自身出错也必须落报告，试行期不得变成失败退出
+        detail = f"{type(exc).__name__}: {exc}"
+        if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+            detail += f"（{first_line(str(exc.stderr))}）"
+        summary = "内部错误：未能得出红证明结论。"
+        report = f"## 红证明\n\n**{summary}**\n\n`{cell(detail)}`\n"
+        code, level = 2, "warning"
+    publish(report, summary, level)
+    return 0 if args.report_only else code
 
 
 if __name__ == "__main__":
