@@ -60,10 +60,18 @@ class IncidentStore(Protocol):
         budget_limit: int,
         versions: dict[str, str],
         input: dict[str, Any] | None = None,
+        target_id: UUID | None = None,
     ) -> None:
         """Create the incident and its first Run; ``input`` is the Run's
         investigation input snapshot (``InvestigationInput.as_json``), what
-        the real driver rebuilds the model context from."""
+        the real driver rebuilds the model context from; ``target_id`` is the
+        registered target identity the incident is bound to, so a target
+        suspension fences its Runs (an incident without one is fenced by the
+        global gate only)."""
+        ...
+
+    def register_target(self, resource_uid: str) -> UUID:
+        """The registered identity for ``resource_uid``; idempotent."""
         ...
 
     def control(
@@ -318,6 +326,7 @@ class DurableIncidentStore:
         budget_limit: int,
         versions: dict[str, str],
         input: dict[str, Any] | None = None,
+        target_id: UUID | None = None,
     ) -> None:
         self._store.accept(
             incident_id,
@@ -327,7 +336,11 @@ class DurableIncidentStore:
             budget_limit=budget_limit,
             versions=versions,
             input=input,
+            target_id=target_id,
         )
+
+    def register_target(self, resource_uid: str) -> UUID:
+        return self._store.register_target(resource_uid)
 
     def control(
         self,

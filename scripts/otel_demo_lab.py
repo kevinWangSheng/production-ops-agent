@@ -14,9 +14,10 @@ here is reachable from the product, the worker or the model, and the product
 profile (``opspilot.tools.otel_demo``) only ever reads the two backends.
 
 The lab directory is the one the pinned Compose file was generated for: its
-bind mounts are absolute paths under that directory, so it defaults to the
-M0 environment worktree's ``tmp/m0-environment`` and may be pointed
-elsewhere with ``OPSPILOT_OTEL_LAB``. ``prepare.py``/``freeze_images.py``
+bind mounts are absolute paths under that directory, so it defaults to this
+checkout's ``tmp/m0-environment`` when prepared, else the sibling M0
+environment worktree's, and may be pointed elsewhere with
+``OPSPILOT_OTEL_LAB``. ``prepare.py``/``freeze_images.py``
 are how that directory is (re)built; this script does not rebuild it and
 refuses to start without the pinned file.
 """
@@ -35,9 +36,24 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LAB = Path(
-    "/Users/shenghuikevin/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment"
-)
+
+
+def default_lab() -> Path:
+    """The lab directory M0 froze, found from the checkout layout.
+
+    The M0 environment worktree is a sibling checkout named
+    ``production-ops-agent-m0-environment`` (its pinned Compose file binds
+    absolute paths under its own ``tmp/m0-environment``); when this checkout
+    is that worktree, or has its own prepared lab, ``tmp/m0-environment``
+    under the repo root is used. ``OPSPILOT_OTEL_LAB`` overrides both.
+    """
+    sibling = ROOT.parent / "production-ops-agent-m0-environment" / "tmp/m0-environment"
+    local = ROOT / "tmp/m0-environment"
+    if (local / "compose-pinned.json").is_file():
+        return local
+    return sibling
+
+
 PROFILE = "m0-otel"
 CONTEXT = f"colima-{PROFILE}"
 PROJECT = "opspilot-m0"
@@ -52,7 +68,7 @@ OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def lab_dir() -> Path:
-    lab = Path(os.environ.get("OPSPILOT_OTEL_LAB") or DEFAULT_LAB)
+    lab = Path(os.environ.get("OPSPILOT_OTEL_LAB") or default_lab())
     if not (lab / "compose-pinned.json").is_file():
         raise SystemExit(
             f"{lab / 'compose-pinned.json'} is missing: point OPSPILOT_OTEL_LAB at the "

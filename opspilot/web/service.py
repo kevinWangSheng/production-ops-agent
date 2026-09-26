@@ -179,6 +179,11 @@ class Workbench:
         # accept() is idempotent on (incident_id, run_id, key); calling it on
         # the replay path closes the crash window between ledger and accept.
         deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        # Bind the incident to the registered identity of its target so a
+        # target suspension fences its Runs; without it the incident row
+        # carried no target and only the global gate applied (PR #54 bot
+        # review P1). The intake string is the resource uid; the tool
+        # gateway still resolves authorization from its own registry.
         self.incidents.accept(
             incident_id,
             run_id,
@@ -187,6 +192,7 @@ class Workbench:
             budget_limit=self.budget_limit,
             versions=dict(self.run_versions),
             input=self._fresh_input(envelope.request, run_id, deadline),
+            target_id=self.incidents.register_target(envelope.request.target_id),
         )
         if not inserted:
             # A retry after the process died between accept() and the
