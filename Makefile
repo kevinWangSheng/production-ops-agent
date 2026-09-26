@@ -1,4 +1,4 @@
-.PHONY: setup doctor check test acceptance
+.PHONY: setup doctor check test acceptance red-proof
 
 setup:
 	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
@@ -21,3 +21,6 @@ acceptance:
 	.venv/bin/python scripts/m1_acceptance.py
 	test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
 	python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
+
+red-proof:
+	.venv/bin/python scripts/check_red_proof.py --base origin/main

@@ -16,6 +16,7 @@
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
 | LangGraph（ADR-0004） | 推迟，视为已决 | [ADR-0004](docs/adr/0004-langgraph-orchestration.md)；需要扩大比较时另立合同。 |
 | M0 遗留入口条件 | K8s RBAC/OS 隔离、正式保留集与 judge 校准、产品级 streaming/PG 审计/压缩器接入 | [M0 退出矩阵](docs/evidence/m0-real-investigation/m0-exit-matrix.md)；供应商账单对账改为余额差记账，不再是入口条件。 |
+| 测试红证明 CI | 试行（只报告，不阻塞） | [任务记录](docs/tasks/2026-09-26-red-proof-ci.md)；合并后在 CI 回放 #47 验证 PostgreSQL 路径，试行 1–2 周后决定是否改为阻塞。 |
 
 ## 交付顺序
 
