@@ -29,15 +29,20 @@ lease_until=NULL, state='paused'`。
 | `claim` `:706` | `_lock_scope` FOR SHARE + JOIN | 标志直接拒 `CONTROL_DENIED`；事故 `paused` 也拒 | 已闭合 |
 | `reserve_budget` `:827` | 同上 | `_lease_revoked` | 已闭合 |
 | `charge_tool` `:961` | 同上 | `_lease_revoked`；**例外**：结算本租约已预留的 dispatch 放行（只把预留秒数改为实际秒数，不新建预留、不采纳结果，代码注释已说明） | 已闭合，例外已钉住 |
-| `commit_step` `:1286` / `begin_round` `:1589` | 同上 | `_lease_revoked` | 已闭合 |
+| `commit_step` `:1286` | 同上 | `_lease_revoked` → 响应落 `late_result` | 已闭合 |
+| `begin_round` `:1589` | `_lock_scope` FOR SHARE（结果并入行，不 JOIN） | `_lease_revoked` | 已闭合 |
 | `commit_tool` `:1349` | 同上 | `_lease_revoked` → 结果落 `late_result`，不采纳 | 已闭合 |
 | `publish` `:1659` | 同上 | `_lease_revoked` + `run_state != running` + 事故 `paused` → 结论落 `late_result`，返回 False | 已闭合 |
 | `hand_off` `:1183` / `block` `:1159` | 同上 | `_lease_revoked` + `run_state` | 已闭合 |
 | `renew_lease` `:777` | **否**（不读 scope 行） | 自带判定：`run_state='running'`、owner/epoch/事故代际、`lease_until` 非空 | 可观察行为已闭合，靠暂停写回 Run 行 |
 | `settle_budget` `:890` | **否** | 同上（无 `run_state`） | 同上 |
+| `abandon` `:1278` | 否 | 按 owner/epoch/代际只清 `owner`/`lease_until`，不写业务记录 | 无需栅栏 |
 
-并发：写路径先 `FOR SHARE` scope 行，暂停 `FOR UPDATE` 同一行，再锁事故行；暂停要等在途写事务
-提交后才能落地，落地后同一租约的下一次写被拒。没有「暂停已提交、读到未暂停的写也提交」的窗口。
+并发：读 scope 行的写路径先 `FOR SHARE` scope 行，暂停对同一行 `FOR UPDATE`；`renew_lease` /
+`settle_budget` 不读 scope 行，靠事故行 `FOR UPDATE` 与暂停的事故行锁串行。两种情况下暂停都要等
+在途写事务提交后才能落地，落地后同一租约的下一次写被拒；没有「暂停已提交、读到未暂停的写也
+提交」的窗口。测试 ③ 用真实写路径（`reserve_budget` 与 `renew_lease` 各一）在取锁后延迟
+`clock_timestamp()` 读取来钉住这一点。
 
 变异核对（临时补丁，已还原，不入库）：
 - 去掉 `_lease_revoked` 的 4 个 scope 判定：6 个新用例仍全过 → 目前承重的是暂停对 Run 行的改写
@@ -50,9 +55,10 @@ lease_until=NULL, state='paused'`。
 
 - 新增 `tests/integration/test_m1_suspension_fence_postgres.py`（global/target 各参数化）：
   ① 租约后暂停 → 上表全部路径被拒/落 late_result，预算与工具用量不变、结论为空，释放暂停后旧租约
-  仍被拒；② 已预留 dispatch 的结算放行、新 dispatch 仍拒；③ 持 scope 行 FOR SHARE 时暂停阻塞，
-  在途 `reserve_budget` 提交后暂停才落地，下一次写被拒。
-- 首次运行即绿（产品代码未改），证明栅栏已在；变异核对见上。
+  在全部路径仍被拒；② 已预留 dispatch 的结算放行、新 dispatch 仍拒；③ 暂停对在途写阻塞，
+  在途 `reserve_budget` / `renew_lease`（真实写路径，取锁后延迟时钟读取）提交后暂停才落地，
+  下一次写被拒。
+- 首次运行即绿（产品代码未改），证明栅栏已在；变异核对见上。修订后 8 例连跑 3 次全过。
 - `make check`：ruff 通过，1936 passed / 216 skipped / 2 xfailed。
 - `M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 pytest tests/integration -q`：178 passed / 38 skipped
   （含新增 6 例）。
@@ -60,7 +66,13 @@ lease_until=NULL, state='paused'`。
 
 ## 下一步与交接
 
-- 独立审查、PR、`@codex review` 一次分诊；不合并（功能 ID 下的测试 PR，由 lead 决定）。
+- 独立审查（全新上下文，2026-09-26）：无 P1。P2「锁测试用裸连接持锁、并发段落以偏概全」→ 已改为
+  真实写路径持锁并改写段落；P3 采纳：`holder` 泄漏（随重写消失）、结算 docstring「只降低」改为
+  「替换为实际秒数」、`begin_round` 行措辞、补 `abandon` 行、释放后复验全部路径与 `late_result:step:`。
+  审查者用探针确认变异 2 下除 `renew_lease` / `settle_budget` 外各路径均由代际栅栏拦下。
+- PR、`@codex review` 一次分诊；不合并（功能 ID 下的测试 PR，由 lead 决定）。
 - 待决（owner）：是否把 `renew_lease` / `settle_budget` 对齐到 `_lease_revoked`（补读 scope 列），
   使代际栅栏在两条路径上也独立成立。
+- 审查者提出、本项未核实：持续重叠的写流量下，新的 `FOR SHARE` 可插到排队中的暂停 `FOR UPDATE`
+  之前，暂停可能撞 `lock_timeout=4000ms` 报错而非落地；超出本项范围，记给 owner。
 - PG 实例：任务结束后 `postgres_lab stop`，数据保留。

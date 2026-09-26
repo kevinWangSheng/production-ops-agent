@@ -3,8 +3,10 @@ durable write path, not only the next claim (PRODUCT-CONSTRAINTS "human
 control decisions ... scoped outside the model's authority"; C3 §6/§7).
 
 ``claim()`` snapshots the global and target suspension generations into the
-``Lease``. These tests only use the public store API: claim, suspend, then
-try each write path with the now-stale lease and check the committed rows.
+``Lease``. The scenarios drive the store through its public API (claim,
+suspend, then each write path with the now-stale lease) and check the
+committed rows; raw SQL only reads state or, in the lock test, holds the
+in-flight transaction open.
 """
 
 import os
@@ -13,9 +15,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-import psycopg
 import pytest
-from psycopg.rows import dict_row
 
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
@@ -101,8 +101,38 @@ def _run_row(s: DurableStore, run_id):
         ).fetchone()
 
 
-def _steps(s: DurableStore, incident_id):
-    return s.rebuild(incident_id)["steps"]
+def _fresh_charge(s: DurableStore, lease, operation_id: str = "round-0:0") -> None:
+    s.charge_tool(
+        lease,
+        operation_id,
+        0.0,
+        max_operations=10,
+        max_tool_seconds=100.0,
+        dispatch_id=uuid4(),
+    )
+
+
+def _assert_every_write_denied(s: DurableStore, lease, step, reservation) -> None:
+    assert s.lease_current(lease) is False
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.renew_lease(lease, 30)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.reserve_budget(lease, uuid4(), 1)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.settle_budget(lease, reservation, "spent")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        _fresh_charge(s, lease)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.begin_round(lease, "round-1")
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.commit_step(lease, "round-1", {"tool_calls": []})
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.commit_tool(lease, step, 0, {"ok": True})
+    assert s.publish(lease, _ONE_TOOL, step_id=step) is False
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.hand_off(lease)
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        s.block(lease)
 
 
 @pytest.mark.parametrize("kind", ["global", "target"])
@@ -118,33 +148,7 @@ def test_a_suspension_after_claim_fences_every_durable_write_path(kind):
 
     scope.suspend(lease)
     try:
-        assert s.lease_current(lease) is False
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.renew_lease(lease, 30)
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.reserve_budget(lease, uuid4(), 1)
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.settle_budget(lease, reservation, "spent")
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.charge_tool(
-                lease,
-                "round-0:0",
-                0.0,
-                max_operations=10,
-                max_tool_seconds=100.0,
-                dispatch_id=uuid4(),
-            )
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.begin_round(lease, "round-1")
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.commit_step(lease, "round-1", {"tool_calls": []})
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.commit_tool(lease, step, 0, {"ok": True})
-        assert s.publish(lease, _ONE_TOOL, step_id=step) is False
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.hand_off(lease)
-        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.block(lease)
+        _assert_every_write_denied(s, lease, step, reservation)
 
         after = _run_row(s, r)
         rebuilt = s.rebuild(i)
@@ -161,6 +165,7 @@ def test_a_suspension_after_claim_fences_every_durable_write_path(kind):
         late = {
             x["logical_key"] for x in rebuilt["steps"] if x["status"] == "late_result"
         }
+        assert any(k.startswith("late_result:step:") for k in late)
         assert any(k.startswith("late_result:tool:") for k in late)
         assert any(k.startswith("late_result:publish:") for k in late)
     finally:
@@ -168,25 +173,7 @@ def test_a_suspension_after_claim_fences_every_durable_write_path(kind):
 
     # Releasing the gate flips the flags back but the generation moved on:
     # the stale lease stays revoked on every path, it is never revived.
-    assert s.lease_current(lease) is False
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.reserve_budget(lease, uuid4(), 1)
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.charge_tool(
-            lease,
-            "round-0:0",
-            0.0,
-            max_operations=10,
-            max_tool_seconds=100.0,
-            dispatch_id=uuid4(),
-        )
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.commit_step(lease, "round-2", {"tool_calls": []})
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.commit_tool(lease, step, 0, {"ok": True})
-    assert s.publish(lease, _ONE_TOOL, step_id=step) is False
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.hand_off(lease)
+    _assert_every_write_denied(s, lease, step, reservation)
     assert _run_row(s, r)["state"] == "paused"
     assert s.rebuild(i)["conclusion"] is None
 
@@ -194,7 +181,7 @@ def test_a_suspension_after_claim_fences_every_durable_write_path(kind):
 @pytest.mark.parametrize("kind", ["global", "target"])
 def test_settling_a_dispatch_reserved_before_the_suspension_is_still_allowed(kind):
     """The one documented exception in ``charge_tool``: settling a dispatch
-    this same lease already reserved only lowers the reserved seconds to the
+    this same lease already reserved replaces the reserved seconds with the
     measured ones. It adopts nothing and reserves nothing new; refusing it
     would leave the full timeout occupied forever."""
     s = _store()
@@ -225,71 +212,77 @@ def test_settling_a_dispatch_reserved_before_the_suspension_is_still_allowed(kin
         row = _run_row(s, r)
         assert row["tool_operations_used"] == 1 and row["tool_seconds_used"] == 1.5
         with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-            s.charge_tool(
-                lease,
-                "round-0:1",
-                0.0,
-                max_operations=10,
-                max_tool_seconds=100.0,
-                dispatch_id=uuid4(),
-            )
+            _fresh_charge(s, lease, "round-0:1")
         assert _run_row(s, r)["tool_operations_used"] == 1
     finally:
         scope.release()
 
 
 @pytest.mark.parametrize("kind", ["global", "target"])
-def test_a_suspension_cannot_land_inside_an_in_flight_fenced_write(kind):
-    """Row-lock contract: every fenced write shares the scope rows
-    (``FOR SHARE``) that a suspension takes ``FOR UPDATE``. A suspension
-    therefore waits for the in-flight write to commit, and the very next
-    write on the same lease is rejected -- there is no window in which the
-    pause is committed while a write that read "not suspended" also commits.
+@pytest.mark.parametrize("path", ["reserve_budget", "renew_lease"])
+def test_a_suspension_waits_for_an_in_flight_write_and_fences_the_next_one(
+    kind, path, monkeypatch
+):
+    """A suspension issued while a fenced write is mid-transaction lands only
+    after that write commits, and the next write on the same lease is denied:
+    there is no window in which the pause is committed while a write that
+    read "not suspended" also commits.
+
+    The in-flight write is a real store method. It is held open by delaying
+    the ``clock_timestamp()`` read that every write path performs after taking
+    its locks; the suspension is started from another thread at that point.
+    ``reserve_budget`` shares the scope row; ``renew_lease`` does not read it
+    and is serialized through the incident row instead.
     """
     s = _store()
     scope = _Scope(kind, s)
     i, r = _accept(s, target=scope.target)
     lease = s.claim(i, r, uuid4(), {"v": "1"})
 
-    # Hold the same shared lock a fenced write path holds while it works.
-    holder = psycopg.connect(DSN, row_factory=dict_row)
-    if kind == "global":
-        holder.execute(
-            "SELECT 1 FROM opspilot_scope_controls WHERE scope_id=1 FOR SHARE"
-        )
-    else:
-        holder.execute(
-            "SELECT 1 FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
-            (scope.target,),
-        )
-
+    real_now = DurableStore._db_now
     done = threading.Event()
-    started = time.monotonic()
-    elapsed: dict[str, float] = {}
+    seen: dict[str, object] = {"armed": True}
 
-    def suspend():
-        scope.suspend(lease)
-        elapsed["t"] = time.monotonic() - started
-        done.set()
-
-    t = threading.Thread(target=suspend)
-    t.start()
-    try:
-        time.sleep(0.6)
-        # The suspension is blocked behind the in-flight write ...
-        assert not done.is_set()
-        # ... which is still allowed to finish and commit under its lease.
-        s.reserve_budget(lease, uuid4(), 1)
-        holder.commit()
-        holder.close()
-        assert done.wait(5.0)
-        assert elapsed["t"] >= 0.6
-    finally:
-        t.join(5.0)
+    def suspend() -> None:
         try:
-            # The pause then fences the next write on the same lease.
-            with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-                s.reserve_budget(lease, uuid4(), 1)
-            assert _run_row(s, r)["budget_reserved"] == 1
+            scope.suspend(lease)
+        except BaseException as exc:  # surfaced by the assertions below
+            seen["error"] = exc
         finally:
-            scope.release()
+            seen["suspended_at"] = time.monotonic()
+            done.set()
+
+    thread = threading.Thread(target=suspend)
+
+    def held_open_now(conn):
+        if seen.pop("armed", False):
+            thread.start()
+            time.sleep(0.8)
+            seen["suspended_before_commit"] = done.is_set()
+        return real_now(conn)
+
+    monkeypatch.setattr(DurableStore, "_db_now", staticmethod(held_open_now))
+    try:
+        if path == "reserve_budget":
+            s.reserve_budget(lease, uuid4(), 1)
+        else:
+            s.renew_lease(lease, 30)
+        seen["committed_at"] = time.monotonic()
+        assert done.wait(5.0)
+    finally:
+        thread.join(5.0)
+        monkeypatch.undo()
+    assert "error" not in seen, seen["error"]
+    # Blocked while the write was open; landed only after it committed.
+    assert seen["suspended_before_commit"] is False
+    assert seen["suspended_at"] >= seen["committed_at"]
+    try:
+        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+            s.reserve_budget(lease, uuid4(), 1)
+        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+            s.renew_lease(lease, 30)
+        row = _run_row(s, r)
+        assert row["state"] == "paused"
+        assert row["budget_reserved"] == (1 if path == "reserve_budget" else 0)
+    finally:
+        scope.release()
