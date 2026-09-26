@@ -1,0 +1,528 @@
+{
+  "experiment": "m1-01-web-worker",
+  "driver": "python -m opspilot.web serve + python -m opspilot.worker_main (real processes)",
+  "model": "deepseek-flash",
+  "incidents": {
+    "a": {
+      "incident_id": "3fae2b19-1225-59e8-84f4-3a94d42037d0",
+      "incident": {
+        "state": "queued",
+        "lifecycle": "open",
+        "control_generation": 0,
+        "current_run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+        "concluded": true
+      },
+      "runs": [
+        {
+          "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+          "state": "completed",
+          "epoch": 1,
+          "control_generation": 0,
+          "budget_limit": 4,
+          "budget_reserved": 0,
+          "budget_spent": 3,
+          "budget_unknown": 0,
+          "tool_operations_used": 2,
+          "tool_seconds_used": 3.324984572827816e-05,
+          "deadline": "2026-09-26T02:10:19.197347-07:00",
+          "lease_until": null,
+          "owner_set": false,
+          "input_recorded": true,
+          "versions": {
+            "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+            "tool_schema_revision": "fixture-1",
+            "context_policy_revision": "ctx-ctx-policy-v1-156004a224ba"
+          },
+          "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.",
+          "run_usage": {
+            "budget_limit": 4,
+            "model_requests_used": 3,
+            "model_seconds_used": 14.438685374800116,
+            "tool_operations_used": 2,
+            "tool_seconds_used": 3.324984572827816e-05
+          }
+        }
+      ],
+      "steps": [
+        {
+          "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "control_generation": 0,
+          "kind": null,
+          "usage": {
+            "total_tokens": 1233,
+            "prompt_tokens": 1126,
+            "completion_tokens": 107,
+            "prompt_tokens_details": {
+              "cached_tokens": 640
+            },
+            "prompt_cache_hit_tokens": 640,
+            "prompt_cache_miss_tokens": 486,
+            "completion_tokens_details": {
+              "reasoning_tokens": 61
+            }
+          }
+        },
+        {
+          "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+          "logical_key": "ctx0:round-2",
+          "status": "tool_result_committed",
+          "control_generation": 0,
+          "kind": null,
+          "usage": {
+            "total_tokens": 2028,
+            "prompt_tokens": 1667,
+            "completion_tokens": 361,
+            "prompt_tokens_details": {
+              "cached_tokens": 1152
+            },
+            "prompt_cache_hit_tokens": 1152,
+            "prompt_cache_miss_tokens": 515,
+            "completion_tokens_details": {
+              "reasoning_tokens": 315
+            }
+          }
+        },
+        {
+          "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+          "logical_key": "ctx0:round-3",
+          "status": "response_committed",
+          "control_generation": 0,
+          "kind": null,
+          "usage": {
+            "total_tokens": 5103,
+            "prompt_tokens": 2464,
+            "completion_tokens": 2639,
+            "prompt_tokens_details": {
+              "cached_tokens": 1920
+            },
+            "prompt_cache_hit_tokens": 1920,
+            "prompt_cache_miss_tokens": 544,
+            "completion_tokens_details": {
+              "reasoning_tokens": 686
+            }
+          }
+        },
+        {
+          "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+          "logical_key": "conclusion:g0:ctx0:round-3",
+          "status": "response_committed",
+          "control_generation": 0,
+          "kind": "conclusion",
+          "usage": null
+        }
+      ],
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "intake_accepted",
+          "payload": {
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "channel": "ui_basic",
+            "actor_id": "demo",
+            "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.",
+            "target_id": "checkout-prod",
+            "request_id": "8656c795-53ad-4009-b3ce-b5f62d8e8c0c",
+            "received_at": "2026-09-26T01:40:19.184764-07:00"
+          }
+        },
+        {
+          "sequence": 2,
+          "kind": "run_claimed",
+          "payload": {
+            "epoch": 1,
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "control_generation": 0
+          }
+        },
+        {
+          "sequence": 3,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e",
+            "logical_key": "ctx0:round-1",
+            "finish_reason": "tool_calls",
+            "planned_tools": 1
+          }
+        },
+        {
+          "sequence": 4,
+          "kind": "tool_committed",
+          "payload": {
+            "tool": "metrics_range_query",
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "status": "ok",
+            "adopted": true,
+            "ordinal": 0,
+            "step_id": "de500460-8a53-4da6-bfd2-5c1536bc635e",
+            "target_id": "checkout-prod",
+            "evidence_id": "de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e"
+          }
+        },
+        {
+          "sequence": 5,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a",
+            "logical_key": "ctx0:round-2",
+            "finish_reason": "tool_calls",
+            "planned_tools": 1
+          }
+        },
+        {
+          "sequence": 6,
+          "kind": "tool_committed",
+          "payload": {
+            "tool": "metrics_range_query",
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "status": "ok",
+            "adopted": true,
+            "ordinal": 0,
+            "step_id": "35939695-fb9c-44d3-8eaa-7804153d495a",
+            "target_id": "checkout-prod",
+            "evidence_id": "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"
+          }
+        },
+        {
+          "sequence": 7,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "step_id": "768581e9-e09a-4794-bc58-a54324a8032d",
+            "logical_key": "ctx0:round-3",
+            "finish_reason": "stop",
+            "planned_tools": 0
+          }
+        },
+        {
+          "sequence": 8,
+          "kind": "run_completed",
+          "payload": {
+            "run_id": "5084378c-fc93-5fb0-903a-4ca6de08413a",
+            "handoff": false,
+            "execution": "completed",
+            "published": true,
+            "evidence_ids": [
+              "de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e",
+              "35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f"
+            ],
+            "report_sha256": "67dcb7f3bc042c970cfdf18dbdb0b66eb8a34e43affc8275240931e5d49d218d",
+            "handoff_reasons": [],
+            "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+            "model_requests_used": 3
+          }
+        }
+      ],
+      "conclusion_published": true,
+      "report_content": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"The only queryable expression in this run was rate(http_errors[5m]), and it returned exactly one series on target checkout-prod: metric http_errors_rate with value 0.042, inside the authorized window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00 (evidence de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e and 35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f, both reports showing result_count 1, returned_count 1, truncated false, incomplete false, omitted_rows 0). Two independent dispatches returned the identical value, so the value itself is reproducible. However, no baseline window, no prior-period sample, no request-volume denominator, and no ERROR-labeled series were delivered; the view also shows data_as_of equal to the window start with freshness_seconds around 1,068,020-1,068,023 at retrieval and null source_start_at/source_end_at. The observed 0.042 errors/second is therefore a real, cited observation, but the claim that Checkout currently shows 'elevated' HTTP errors is not established by the delivered evidence and remains unresolved (no comparable baseline was permitted or supplied).\",\"claims\":[{\"kind\":\"fact\",\"text\":\"Querying rate(http_errors[5m]) against target checkout-prod returned a single series: metric http_errors_rate with value 0.042, scoped to the authorized window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Both dispatches returned identical view metadata: result_count 1, returned_count 1, truncated false, incomplete false, omitted_rows 0, omitted_bytes 0, status ok. The projected view therefore contains one aggregated sample only, with no per-route, per-status-class or per-label breakdown of http_errors_rate.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The returned evidence is not fresh relative to collection: data_as_of is 2026-09-14T00:00:00+00:00 (equal to the window start) while observed_at is 2026-09-26T01:40:20.805382-07:00 / 2026-09-26T01:40:23.410287-07:00 with freshness_seconds 1068020.805382 and 1068023.410287, and source_start_at and source_end_at are null.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The delivered evidence contains no baseline period, no prior-window comparison, no request or traffic-volume series to serve as a denominator, and no series explicitly labeled ERROR. With only one scalar value (0.042) and no comparison point, the magnitude of the reported error rate cannot be judged as high or low.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected: that the single returned value of 0.042 errors/second is itself confirmation that Checkout HTTP errors are elevated. A value is not an elevation; the required comparable baseline, error-ratio series and request-volume context were not delivered in this run.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"One non-zero error rate of 0.042 errors/second was observed on checkout-prod, which is consistent with some error traffic occurring during the window, but whether that rate is a regression versus a normal steady state cannot be determined from the delivered evidence and remains untested.\",\"evidence_ids\":[\"de500460-8a53-4da6-bfd2-5c1536bc635e-t0:7dd901f6-3774-43d6-8a1a-eadb27aea40e\",\"35939695-fb9c-44d3-8eaa-7804153d495a-t0:71cd4c9e-8aa8-4eb6-a37b-57c779351a2f\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"No comparable baseline window (e.g. a pre-window period for the same series) was delivered, so no latency or error trend may be inferred and elevation cannot be assessed.\",\"Only one expression, rate(http_errors[5m]), was available; no ERROR-labeled series, denominator/request-rate series, or per-route/per-status breakdown of the error rate was obtainable, so label coverage and the composition of the 0.042 rate are unknown.\",\"The view returned a single aggregated sample with data_as_of fixed at the window start and null source_start_at/source_end_at; the actual underlying sample cadence, point count and source response timing for the window are unknown.\",\"No logs, traces, deployment events, SLO/threshold policy, or incident records were delivered, so error causation and severity cannot be assessed; whether the pre-window series even existed is unknown rather than zero.\"],\"next_steps\":[\"Provide or authorize a comparison window (same series, adjacent earlier period) plus a request-volume/denominator series so the 0.042 errors/second on checkout-prod can be placed in context before any elevation claim is made.\",\"Run a human-owned check of checkout-prod error budget/threshold policy and error-class breakdown (status codes, routes) around 2026-09-14T00:00:00Z-01:00:00Z to determine whether the observed rate breaches any defined objective.\",\"Confirm with the telemetry owners why data_as_of equals the window start and why source_start_at/source_end_at are null, to establish whether the single sample is a stale or partial projection rather than a stable window aggregate.\"]}"
+    },
+    "b": {
+      "incident_id": "d5f8fbfd-dd87-5ddd-8b52-1526ff77ba42",
+      "incident": {
+        "state": "running",
+        "lifecycle": "open",
+        "control_generation": 1,
+        "current_run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+        "concluded": true
+      },
+      "runs": [
+        {
+          "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+          "state": "cancelled",
+          "epoch": 1,
+          "control_generation": 1,
+          "budget_limit": 4,
+          "budget_reserved": 1,
+          "budget_spent": 1,
+          "budget_unknown": 0,
+          "tool_operations_used": 1,
+          "tool_seconds_used": 7.791910320520401e-06,
+          "deadline": "2026-09-26T01:41:35.391035-07:00",
+          "lease_until": null,
+          "owner_set": false,
+          "input_recorded": true,
+          "versions": {
+            "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+            "tool_schema_revision": "fixture-1",
+            "context_policy_revision": "ctx-ctx-policy-v1-156004a224ba"
+          },
+          "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.",
+          "run_usage": {
+            "budget_limit": 4,
+            "model_requests_used": 2,
+            "model_seconds_used": 7.296103416870549,
+            "tool_operations_used": 1,
+            "tool_seconds_used": 7.791910320520401e-06
+          }
+        },
+        {
+          "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+          "state": "completed",
+          "epoch": 1,
+          "control_generation": 1,
+          "budget_limit": 4,
+          "budget_reserved": 0,
+          "budget_spent": 2,
+          "budget_unknown": 0,
+          "tool_operations_used": 2,
+          "tool_seconds_used": 1.791701652109623e-05,
+          "deadline": "2026-09-26T02:12:23.962973-07:00",
+          "lease_until": null,
+          "owner_set": false,
+          "input_recorded": true,
+          "versions": {
+            "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+            "tool_schema_revision": "fixture-1",
+            "context_policy_revision": "ctx-ctx-policy-v1-156004a224ba"
+          },
+          "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.\n\nContinuation of investigation Run d0b7b6d7-068d-5b32-a5c1-c61565103394.\nPrevious outcome: execution=unknown, handoff_reasons=[], rounds=unknown.\nCarried evidence (1 adopted views, cite by evidence_id): 7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98\nCarried views keep their original observation time; query again for current state instead of re-dating them.",
+          "run_usage": {
+            "budget_limit": 4,
+            "model_requests_used": 2,
+            "model_seconds_used": 19.201567499898374,
+            "tool_operations_used": 2,
+            "tool_seconds_used": 1.791701652109623e-05
+          }
+        }
+      ],
+      "steps": [
+        {
+          "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "control_generation": 1,
+          "kind": null,
+          "usage": {
+            "total_tokens": 1944,
+            "prompt_tokens": 1377,
+            "completion_tokens": 567,
+            "prompt_tokens_details": {
+              "cached_tokens": 768
+            },
+            "prompt_cache_hit_tokens": 768,
+            "prompt_cache_miss_tokens": 609,
+            "completion_tokens_details": {
+              "reasoning_tokens": 485
+            }
+          }
+        },
+        {
+          "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "control_generation": 1,
+          "kind": null,
+          "usage": {
+            "total_tokens": 6836,
+            "prompt_tokens": 2802,
+            "completion_tokens": 4034,
+            "prompt_tokens_details": {
+              "cached_tokens": 1280
+            },
+            "prompt_cache_hit_tokens": 1280,
+            "prompt_cache_miss_tokens": 1522,
+            "completion_tokens_details": {
+              "reasoning_tokens": 1850
+            }
+          }
+        },
+        {
+          "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+          "logical_key": "conclusion:g1:ctx0:round-2",
+          "status": "response_committed",
+          "control_generation": 1,
+          "kind": "conclusion",
+          "usage": null
+        },
+        {
+          "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "control_generation": 0,
+          "kind": null,
+          "usage": {
+            "total_tokens": 1369,
+            "prompt_tokens": 1128,
+            "completion_tokens": 241,
+            "prompt_tokens_details": {
+              "cached_tokens": 768
+            },
+            "prompt_cache_hit_tokens": 768,
+            "prompt_cache_miss_tokens": 360,
+            "completion_tokens_details": {
+              "reasoning_tokens": 195
+            }
+          }
+        },
+        {
+          "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+          "logical_key": "late_result:step:conclusion:g0:ctx0:round-1:e1",
+          "status": "late_result",
+          "control_generation": 0,
+          "kind": "conclusion",
+          "usage": null
+        }
+      ],
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "intake_accepted",
+          "payload": {
+            "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+            "channel": "ui_basic",
+            "actor_id": "demo",
+            "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.",
+            "target_id": "checkout-prod",
+            "request_id": "0f07d421-682c-47f4-ac3f-a47e20b0a04b",
+            "received_at": "2026-09-26T01:41:27.381528-07:00"
+          }
+        },
+        {
+          "sequence": 2,
+          "kind": "run_claimed",
+          "payload": {
+            "epoch": 1,
+            "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+            "control_generation": 0
+          }
+        },
+        {
+          "sequence": 3,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+            "step_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2",
+            "logical_key": "ctx0:round-1",
+            "finish_reason": "tool_calls",
+            "planned_tools": 1
+          }
+        },
+        {
+          "sequence": 4,
+          "kind": "tool_committed",
+          "payload": {
+            "tool": "metrics_range_query",
+            "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+            "status": "ok",
+            "adopted": true,
+            "ordinal": 0,
+            "step_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2",
+            "target_id": "checkout-prod",
+            "evidence_id": "7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98"
+          }
+        },
+        {
+          "sequence": 5,
+          "kind": "run_handoff",
+          "payload": {
+            "parked": true,
+            "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394",
+            "handoff": true,
+            "reasons": [
+              "DEADLINE_EXCEEDED"
+            ],
+            "execution": "failed",
+            "published": false,
+            "evidence_ids": [],
+            "report_sha256": null
+          }
+        },
+        {
+          "sequence": 6,
+          "kind": "control_applied",
+          "payload": {
+            "text": "Also compare against the previous hour.",
+            "action": "follow_up",
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "actor_id": "demo",
+            "generation": 1,
+            "expected_generation": 0
+          }
+        },
+        {
+          "sequence": 7,
+          "kind": "run_claimed",
+          "payload": {
+            "epoch": 1,
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "control_generation": 1
+          }
+        },
+        {
+          "sequence": 8,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "step_id": "08562905-49cf-496c-a3c8-fa573941a24b",
+            "logical_key": "ctx0:round-1",
+            "finish_reason": "tool_calls",
+            "planned_tools": 2
+          }
+        },
+        {
+          "sequence": 9,
+          "kind": "tool_committed",
+          "payload": {
+            "tool": "metrics_range_query",
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "status": "ok",
+            "adopted": true,
+            "ordinal": 0,
+            "step_id": "08562905-49cf-496c-a3c8-fa573941a24b",
+            "target_id": "checkout-prod",
+            "evidence_id": "08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8"
+          }
+        },
+        {
+          "sequence": 10,
+          "kind": "tool_committed",
+          "payload": {
+            "tool": "metrics_range_query",
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "status": "ok",
+            "adopted": true,
+            "ordinal": 1,
+            "step_id": "08562905-49cf-496c-a3c8-fa573941a24b",
+            "target_id": "checkout-prod",
+            "evidence_id": "08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14"
+          }
+        },
+        {
+          "sequence": 11,
+          "kind": "step_committed",
+          "payload": {
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "step_id": "2a6399da-5b6f-445a-ab22-4880c468d6d4",
+            "logical_key": "ctx0:round-2",
+            "finish_reason": "stop",
+            "planned_tools": 0
+          }
+        },
+        {
+          "sequence": 12,
+          "kind": "run_completed",
+          "payload": {
+            "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a",
+            "handoff": false,
+            "execution": "completed",
+            "published": true,
+            "evidence_ids": [
+              "7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98",
+              "08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8",
+              "08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14"
+            ],
+            "report_sha256": "3eb91312b3e6b8c82e1885a086aa33540d3db8be8012929587475406378c7d41",
+            "handoff_reasons": [],
+            "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0",
+            "model_requests_used": 2
+          }
+        }
+      ],
+      "conclusion_published": true,
+      "report_content": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Within the fixed authorized window (policy-window-1, 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z) and the single available expression rate(http_errors[5m]), the target checkout-prod returned exactly one projected sample: http_errors_rate = 0.042. Two independent dispatches of the same query returned the same single value (result_count=1, returned_count=1, truncated=false, incomplete=false) with data_as_of equal to the window start. No time series, no label dimensions (no route, status class, or instance), and no threshold/SLO context were delivered, so nothing in the evidence shows a value rising, falling, or persisting across the window. The follow-up request to compare against the previous hour cannot be satisfied from this evidence: the previous hour (2026-09-13T23:00:00Z-2026-09-14T00:00:00Z) lies outside the authorized window and the metrics tool exposes no start/end parameters. Therefore the user-facing claim that Checkout 'shows elevated HTTP errors' is not substantiated by this run; at most there is a single reported error-rate value of 0.042 for checkout-prod in the window, whose magnitude cannot be judged without a baseline, threshold, or labels. A further caveat: the projected view is stale (freshness_seconds ≈ 1,068,147, roughly 12 days, relative to observed_at 2026-09-26T01:42:27Z) and is anchored to the window start rather than to a continuous current series.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"For target checkout-prod inside the authorized window, expression rate(http_errors[5m]) returned a single projected sample with metric http_errors_rate and value 0.042; result_count=1, returned_count=1, truncated=false, incomplete=false.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\",\"08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Two separate dispatches of the identical query returned the same single value 0.042, so repeated querying did not reveal any variation or trend within the delivered view; the view carries no label dimensions and no per-timestamp series.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\",\"08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The returned view is anchored to the window start: data_as_of is 2026-09-14T00:00:00+00:00 while observed_at is 2026-09-26T01:42:27Z, with freshness_seconds ≈ 1,068,147 (about 12.4 days) and source_start_at/source_end_at both null.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The carried adopted view from the prior run is bound in this context to target checkout-prod under time scope policy-window-1 with binding status ok; its underlying content was not re-delivered here.\",\"evidence_ids\":[\"7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The claim of 'elevated' HTTP errors is not testable on this evidence: no baseline, threshold, SLO, error budget, or prior-period comparison was delivered, and a single scalar 0.042 cannot by itself distinguish normal from elevated.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\",\"08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The requested previous-hour comparison could not be performed: the prior hour (2026-09-13T23:00:00Z-2026-09-14T00:00:00Z) is outside the fixed authorized window policy-window-1, and the metrics tool accepts no start/end parameters and only the single registered expression rate(http_errors[5m]). The pre-window baseline therefore remains unknown, not zero.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Hypothesis rejected as unsupported: that checkout-prod experienced a sustained or rising HTTP-error condition throughout the authorized window. The delivered evidence is a single projected sample at the window start (no per-timestamp series, no variation across repeated queries), so no persistence or trend across the window can be established, and no latency/error trend claim is warranted without a comparable baseline.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\",\"08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"If the 0.042 rate corresponds to HTTP 5xx errors at ~0.042/s (unit not provided), it would be modest in absolute terms for a production checkout, but this remains an unverified interpretation because the metric's unit, denominator and labels were not delivered.\",\"evidence_ids\":[\"08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8\"],\"target_refs\":[\"checkout-prod\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"No baseline for the previous hour or any pre-window period inside an authorized scope, so 'elevated' relative to normal is unknown rather than zero.\",\"No label/breakdown dimensions (route, status class, instance, region) were returned, so it is unknown which error classes or endpoints contribute to http_errors_rate.\",\"No time series within policy-window-1 was delivered — only a single sample anchored at data_as_of = window start — so intra-window behavior, onset time and duration are unknown.\",\"No threshold, SLO or error-budget definition was supplied to define what level counts as elevated.\",\"No ERROR-labeled metric series was returned; its absence is unknown, not evidence of zero errors.\",\"The content of the carried adopted view 7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98 was not re-delivered, so whether it agrees or conflicts with the current value is unknown.\",\"Data freshness is ~1,068,147 s (about 12.4 days) and source_start_at/source_end_at are null, so the ingestion timing and whether the projection covers the full window are unknown.\",\"No trace or log evidence was supplied, so no call chain, downstream dependency, or deploy correlation can be asserted; span counts and parents were not provided.\"],\"next_steps\":[\"Obtain a human-authorized baseline window (e.g., the hour immediately preceding 2026-09-14T00:00:00Z) and compare the same expression against it before characterizing the rate as elevated.\",\"Provide the threshold/SLO or expected error-rate band for checkout-prod so the observed 0.042 can be interpreted.\",\"Request label-broken-down error metrics (status class, route, instance) and an intra-window series to establish onset and duration.\",\"Check the metrics pipeline timestamps (data_as_of vs. ingestion time, null source_start_at/source_end_at) to confirm whether the projected sample represents the full authorized window.\"]}"
+    }
+  }
+}

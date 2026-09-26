@@ -1129,6 +1129,32 @@ class DurableStore:
                 (delta, lease.run_id),
             )
 
+    def claimable_incidents(self, *, limit: int = 20) -> tuple[UUID, ...]:
+        """Incidents whose current Run a worker may try to claim right now.
+
+        A read-only hint for the polling worker, never an authority:
+        ``claim()`` re-checks everything under row locks, so a stale row here
+        costs one refused claim and nothing else. Listed: an open incident
+        whose current Run is ``queued``, or ``running`` with a lapsed lease
+        (a killed worker's), and not yet overdue; parked and blocked rows are
+        a human's, and an overdue row (``running`` or ``queued``) is the
+        sweep's (ADR-0005 decision 2), which every worker poll runs first.
+        Oldest deadline first, like the sweep, so a worker that falls behind
+        serves the Run that will time out soonest.
+        """
+        if type(limit) is not int or limit < 1:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.conclusion IS NULL "
+                "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
+                "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp()) "
+                "ORDER BY r.deadline, i.incident_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(row["incident_id"] for row in rows)
+
     def run_usage(self, run_id: UUID) -> dict[str, Any]:
         """Durable per-Run usage a new attempt continues from (C3 §13).
 
@@ -1209,25 +1235,36 @@ class DurableStore:
             self._park(conn, lease.run_id)
 
     @staticmethod
-    def _park(conn: Connection, run_id: UUID) -> bool:
-        """The one ``running -> waiting_human`` write (``hand_off`` and the sweep)."""
+    def _park(
+        conn: Connection, run_id: UUID, *, from_states: tuple[str, ...] = ("running",)
+    ) -> bool:
+        """The one ``-> waiting_human`` write (``hand_off`` and the sweep).
+
+        ``hand_off`` parks a leased, hence ``running``, Run; the sweep also
+        parks an overdue ``queued`` one (never claimed before its wall).
+        """
         parked = conn.execute(
-            "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state='running' RETURNING run_id",
-            (run_id,),
+            "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL WHERE run_id=%s AND state=ANY(%s) RETURNING run_id",
+            (run_id, list(from_states)),
         ).fetchone()
         return parked is not None
 
     def sweep_expired_runs(
         self, *, incident_id: UUID | None = None, limit: int = 100
     ) -> tuple[tuple[UUID, UUID], ...]:
-        """Park every ``running`` Run whose ``deadline`` has passed (ADR-0005 §2).
+        """Park every ``running`` or ``queued`` Run whose ``deadline`` has passed
+        (ADR-0005 §2).
 
         A Run past its deadline can never settle itself: the deadline fences
-        every worker write, so without this sweep the row stays ``running``
-        for ever. Each overdue Run is parked exactly as ``hand_off`` parks a
-        loop handoff (``_park``): ``waiting_human``, lease released, incident
-        open, conclusion untouched; the reason (``DEADLINE_EXCEEDED``) is the
-        caller's to announce.
+        every worker write and every claim, so without this sweep a
+        ``running`` row stays ``running`` for ever and a ``queued`` row that
+        no worker reached before its wall (worker down, backlog) stays
+        ``queued`` for ever with no event (bot review, PR #52). Each overdue
+        Run is parked exactly as ``hand_off`` parks a loop handoff
+        (``_park``): ``waiting_human``, lease released, incident open,
+        conclusion untouched; the reason (``DEADLINE_EXCEEDED``) is the
+        caller's to announce. A human then continues with follow_up/correct
+        (a renewed Run, #47) or cancel + new_run.
 
         No lease is involved, so the guard is the state and the deadline,
         re-checked under row locks in the transaction that writes: a human
@@ -1242,7 +1279,7 @@ class DurableStore:
         """
         with self.transaction(snapshot=True) as conn:
             candidates = conn.execute(
-                "SELECT incident_id,run_id FROM opspilot_runs WHERE state='running' AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
+                "SELECT incident_id,run_id FROM opspilot_runs WHERE state IN ('queued','running') AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
                 (incident_id, incident_id, limit),
             ).fetchall()
         parked: list[tuple[UUID, UUID]] = []
@@ -1258,11 +1295,13 @@ class DurableStore:
                 ).fetchone()
                 if (
                     row is None
-                    or row["state"] != "running"
+                    or row["state"] not in ("queued", "running")
                     or row["deadline"] > self._db_now(conn)
                 ):
                     continue
-                if self._park(conn, candidate["run_id"]):
+                if self._park(
+                    conn, candidate["run_id"], from_states=("queued", "running")
+                ):
                     parked.append((candidate["incident_id"], candidate["run_id"]))
         return tuple(parked)
 
@@ -1474,11 +1513,15 @@ class DurableStore:
                 raise PersistenceError("INCONSISTENT_STATE")
             # 超时的 Run 换新 Run：条件与清扫同源（数据库时钟、行锁下判定），
             # 因此与清扫并发时无论谁先到，结果都是「旧 Run 关闭、新 Run 排队」。
-            renew = (
-                action in {"follow_up", "correct"}
-                and run["run_state"] in _CONTROL_OPEN_RUN_STATES
-                and run["deadline"] <= self._db_now(conn)
-            )
+            overdue = run["run_state"] in _CONTROL_OPEN_RUN_STATES and run[
+                "deadline"
+            ] <= self._db_now(conn)
+            renew = action in {"follow_up", "correct"} and overdue
+            # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
+            # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
+            # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
+            if action == "resume" and overdue:
+                raise PersistenceError("ILLEGAL_TRANSITION")
             if (
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None

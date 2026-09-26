@@ -16,6 +16,7 @@ projection.
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -33,8 +34,10 @@ from opspilot.intake import (
 from opspilot.investigation.context import (
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
+    ContextError,
     conclusion_publishable,
 )
+from opspilot.investigation.inputs import ToolFace, continuation_input
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -63,6 +66,7 @@ from opspilot.web.store import (
 )
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+_log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
 #: in flight: the lease must outlast the longest request plus a margin.
@@ -142,6 +146,11 @@ class Workbench:
     run_versions: dict[str, str]
     budget_limit: int = MAX_MODEL_REQUESTS_PER_RUN
     run_seconds: float = RUN_WALL_SECONDS
+    #: The model-visible tool profile every Run this workbench creates is
+    #: recorded against. With it, each new Run row carries the investigation
+    #: input the real driver rebuilds from (``INPUT_MISSING`` otherwise);
+    #: ``None`` keeps the test-only ``run_once`` path, which needs no input.
+    tool_face: ToolFace | None = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -169,14 +178,15 @@ class Workbench:
                 raise WorkbenchError("INTAKE_KEY_CONFLICT")
         # accept() is idempotent on (incident_id, run_id, key); calling it on
         # the replay path closes the crash window between ledger and accept.
-        now = self.incidents.now()
+        deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
         self.incidents.accept(
             incident_id,
             run_id,
             key,
-            deadline=now + timedelta(seconds=self.run_seconds),
+            deadline=deadline,
             budget_limit=self.budget_limit,
             versions=dict(self.run_versions),
+            input=self._fresh_input(envelope.request, run_id, deadline),
         )
         if not inserted:
             # A retry after the process died between accept() and the
@@ -343,6 +353,7 @@ class Workbench:
         # DurableStore.new_run on main fences on ``expected`` as well.
         run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{expected + 1}")
         now = self.incidents.now()
+        deadline = now + timedelta(seconds=self.run_seconds)
         if action != "new_run":
             # The note travels with the decision: DurableStore.control (PR #31)
             # writes it to opspilot_controls.payload and opspilot_inputs, from
@@ -356,7 +367,8 @@ class Workbench:
             if action in _TEXT_ACTIONS:
                 renewal = {
                     "renew_run_id": run_id,
-                    "renew_deadline": now + timedelta(seconds=self.run_seconds),
+                    "renew_deadline": deadline,
+                    "renew_input": self._successor_input(summary, run_id, deadline),
                 }
             generation = self.incidents.control(
                 summary.incident_id, expected, action, actor_id, payload, **renewal
@@ -375,12 +387,77 @@ class Workbench:
             summary.incident_id,
             run_id,
             expected_generation=expected,
-            deadline=now + timedelta(seconds=self.run_seconds),
+            deadline=deadline,
             budget_limit=self.budget_limit,
             versions=dict(self.run_versions),
             actor=actor_id,
+            input=self._successor_input(summary, run_id, deadline),
         )
         return generation, run_id
+
+    # -- investigation inputs -------------------------------------------
+
+    def _fresh_input(
+        self, request: IntakeRequest, run_id: UUID, deadline: datetime
+    ) -> dict[str, Any] | None:
+        """A first Run's input over the intake question (``None`` without a face)."""
+        if self.tool_face is None:
+            return None
+        return self.tool_face.input_for(
+            run_id=str(run_id),
+            question=request.question,
+            target_id=request.target_id,
+            deadline=deadline,
+            model_requests=self.budget_limit,
+        ).as_json()
+
+    def _successor_input(
+        self, summary: IncidentSummary, run_id: UUID, deadline: datetime
+    ) -> dict[str, Any] | None:
+        """The input a Run that replaces the current one starts from.
+
+        The C3 continuation of the current Run (carried evidence re-bound
+        to the new id, handoff note) whenever its rows allow it; a Run with
+        no snapshot (rows older than the face) or rows this version cannot
+        continue gets a fresh input over the intake question instead, so
+        the successor is always runnable. The renewal input is built before
+        the store decides whether the note renews at all (only an overdue
+        Run does); an unused one costs a rebuild and nothing else.
+        """
+        if self.tool_face is None:
+            return None
+        intake = self.ledger.get("intake", summary.intake_key)
+        if intake is None:
+            # No intake row: nothing to build a question from. The Run is
+            # created without input and the runner blocks it (INPUT_MISSING)
+            # rather than this path guessing one.
+            _log.warning("intake row missing incident=%s", summary.incident_id)
+            return None
+        request = _envelope_from_json(intake["envelope"]).request
+        try:
+            return continuation_input(
+                self.incidents.rebuild(summary.incident_id),
+                new_run_id=str(run_id),
+                deadline=deadline,
+                authorized_targets=frozenset({request.target_id}),
+            ).as_json()
+        except ContextError as exc:
+            if exc.code != "INPUT_MISSING":
+                # Rows this version cannot continue: fail closed with the
+                # fixed code (the control action is refused, nothing is
+                # created) rather than silently dropping carried evidence.
+                raise PersistenceError(exc.code) from exc
+            # The only case a fresh input is right for: a Run created before
+            # the face existed has no snapshot to continue.
+            _log.warning(
+                "successor input falls back to a fresh input incident=%s code=%s",
+                summary.incident_id,
+                exc.code,
+            )
+            return self._fresh_input(request, run_id, deadline)
+        # A PersistenceError (storage outage, lock timeout) propagates: the
+        # control action fails closed and the operator retries (bot review,
+        # PR #52).
 
     def _audit_matches(
         self,

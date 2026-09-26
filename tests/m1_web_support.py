@@ -124,7 +124,15 @@ class MemoryIncidentStore:
     # -- IncidentStore ------------------------------------------------------
 
     def accept(
-        self, incident_id, run_id, intake_key, *, deadline, budget_limit, versions
+        self,
+        incident_id,
+        run_id,
+        intake_key,
+        *,
+        deadline,
+        budget_limit,
+        versions,
+        input=None,
     ):
         existing = self._by_key.get(intake_key)
         if existing is not None:
@@ -145,13 +153,16 @@ class MemoryIncidentStore:
             "created_at": self.now(),
         }
         self.runs[run_id] = self._run(
-            run_id, incident_id, 0, deadline, budget_limit, versions
+            run_id, incident_id, 0, deadline, budget_limit, versions, input
         )
         self._by_key[intake_key] = incident_id
 
     @staticmethod
-    def _run(run_id, incident_id, generation, deadline, budget_limit, versions):
+    def _run(
+        run_id, incident_id, generation, deadline, budget_limit, versions, input=None
+    ):
         return {
+            "input": input,
             "run_id": run_id,
             "incident_id": incident_id,
             "state": "queued",
@@ -206,11 +217,12 @@ class MemoryIncidentStore:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # Mirror DurableStore.control: a note on an overdue Run starts a
         # fresh Run (user decision 2026-09-25) instead of re-queueing it.
-        renew = (
-            action in {"follow_up", "correct"}
-            and run["state"] in _CONTROL_OPEN
-            and run["deadline"] <= self.now()
-        )
+        overdue = run["state"] in _CONTROL_OPEN and run["deadline"] <= self.now()
+        renew = action in {"follow_up", "correct"} and overdue
+        # Mirror DurableStore.control: resume carries no input to continue an
+        # overdue Run with, so it is refused rather than re-queued.
+        if action == "resume" and overdue:
+            raise PersistenceError("ILLEGAL_TRANSITION")
         if renew:
             if renew_run_id is None or renew_deadline is None:
                 raise PersistenceError("ILLEGAL_TRANSITION")
@@ -259,6 +271,7 @@ class MemoryIncidentStore:
                 renew_deadline,
                 run["budget_limit"],
                 run["versions"],
+                renew_input,
             )
             if keep_paused:
                 self.runs[renew_run_id]["state"] = "paused"
@@ -296,6 +309,7 @@ class MemoryIncidentStore:
         budget_limit,
         versions,
         actor,
+        input=None,
     ):
         row = self.incidents.get(incident_id)
         if row is None:
@@ -318,7 +332,7 @@ class MemoryIncidentStore:
             raise PersistenceError("CONTROL_CONFLICT")
         nxt = row["control_generation"] + 1
         self.runs[run_id] = self._run(
-            run_id, incident_id, nxt, deadline, budget_limit, versions
+            run_id, incident_id, nxt, deadline, budget_limit, versions, input
         )
         row.update(
             state="queued",
@@ -460,7 +474,7 @@ class MemoryIncidentStore:
         for run in self.runs.values():
             if incident_id is not None and run["incident_id"] != incident_id:
                 continue
-            if run["state"] != "running" or run["deadline"] > now:
+            if run["state"] not in {"queued", "running"} or run["deadline"] > now:
                 continue
             run.update(state="waiting_human", owner=None, lease_until=None)
             parked.append((run["incident_id"], run["run_id"]))
@@ -734,7 +748,9 @@ class ScriptedInvestigator:
         return outcome
 
 
-def build_workbench(*, clock=None, sse_poll=0.01, sse_idle=0.2, sse_repair=5.0):
+def build_workbench(
+    *, clock=None, sse_poll=0.01, sse_idle=0.2, sse_repair=5.0, tool_face=None
+):
     clock = clock or FakeClock(start=NOW)
     incidents = MemoryIncidentStore(clock)
     events = MemoryEventLog()
@@ -747,6 +763,7 @@ def build_workbench(*, clock=None, sse_poll=0.01, sse_idle=0.2, sse_repair=5.0):
         ledger=ledger,
         run_versions={"state": "v1"},
         run_seconds=600,
+        tool_face=tool_face,
     )
     config = AuthConfig(
         ui_users={UI_USER: hash_password(UI_PASSWORD, salt=b"fixed-salt-16byt")},

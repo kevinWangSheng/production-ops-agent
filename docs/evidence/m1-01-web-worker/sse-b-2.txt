@@ -1,0 +1,36 @@
+retry: 2000
+
+id: 5
+event: run_handoff
+data: {"parked": true, "run_id": "d0b7b6d7-068d-5b32-a5c1-c61565103394", "handoff": true, "reasons": ["DEADLINE_EXCEEDED"], "execution": "failed", "published": false, "evidence_ids": [], "report_sha256": null}
+
+id: 6
+event: control_applied
+data: {"text": "Also compare against the previous hour.", "action": "follow_up", "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "actor_id": "demo", "generation": 1, "expected_generation": 0}
+
+id: 7
+event: run_claimed
+data: {"epoch": 1, "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "control_generation": 1}
+
+id: 8
+event: step_committed
+data: {"run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "step_id": "08562905-49cf-496c-a3c8-fa573941a24b", "logical_key": "ctx0:round-1", "finish_reason": "tool_calls", "planned_tools": 2}
+
+id: 9
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "08562905-49cf-496c-a3c8-fa573941a24b", "target_id": "checkout-prod", "evidence_id": "08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8"}
+
+id: 10
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "08562905-49cf-496c-a3c8-fa573941a24b", "target_id": "checkout-prod", "evidence_id": "08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14"}
+
+id: 11
+event: step_committed
+data: {"run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "step_id": "2a6399da-5b6f-445a-ab22-4880c468d6d4", "logical_key": "ctx0:round-2", "finish_reason": "stop", "planned_tools": 0}
+
+id: 12
+event: run_completed
+data: {"run_id": "02de1518-d4e3-547e-b594-73f04f8bd92a", "handoff": false, "execution": "completed", "published": true, "evidence_ids": ["7fee20b2-6aed-4445-9f40-85dd3acb25c2-t0:b06346fc-cb55-46f3-a4a4-2052288dda98", "08562905-49cf-496c-a3c8-fa573941a24b-t0:87b6edd7-9002-4650-bae8-09cac80c63a8", "08562905-49cf-496c-a3c8-fa573941a24b-t1:cfdc4c89-0b18-4d79-b013-9e4d7cf4fb14"], "report_sha256": "3eb91312b3e6b8c82e1885a086aa33540d3db8be8012929587475406378c7d41", "handoff_reasons": [], "prompt_revision": "prompt-replay-candidate-2c26fd0db1e0", "model_requests_used": 2}
+
+: idle
+

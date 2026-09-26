@@ -59,7 +59,12 @@ class IncidentStore(Protocol):
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
-    ) -> None: ...
+        input: dict[str, Any] | None = None,
+    ) -> None:
+        """Create the incident and its first Run; ``input`` is the Run's
+        investigation input snapshot (``InvestigationInput.as_json``), what
+        the real driver rebuilds the model context from."""
+        ...
 
     def control(
         self,
@@ -90,6 +95,7 @@ class IncidentStore(Protocol):
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
+        input: dict[str, Any] | None = None,
     ) -> int: ...
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]: ...
@@ -311,6 +317,7 @@ class DurableIncidentStore:
         deadline: datetime,
         budget_limit: int,
         versions: dict[str, str],
+        input: dict[str, Any] | None = None,
     ) -> None:
         self._store.accept(
             incident_id,
@@ -319,6 +326,7 @@ class DurableIncidentStore:
             deadline=deadline,
             budget_limit=budget_limit,
             versions=versions,
+            input=input,
         )
 
     def control(
@@ -366,6 +374,7 @@ class DurableIncidentStore:
         budget_limit: int,
         versions: dict[str, str],
         actor: str,
+        input: dict[str, Any] | None = None,
     ) -> int:
         return self._store.new_run(
             incident_id,
@@ -375,6 +384,7 @@ class DurableIncidentStore:
             budget_limit=budget_limit,
             versions=versions,
             actor=actor,
+            input=input,
         )
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]:
