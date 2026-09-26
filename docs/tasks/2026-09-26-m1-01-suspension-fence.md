@@ -71,8 +71,9 @@ lease_until=NULL, state='paused'`。
   「替换为实际秒数」、`begin_round` 行措辞、补 `abandon` 行、释放后复验全部路径与 `late_result:step:`。
   审查者用探针确认变异 2 下除 `renew_lease` / `settle_budget` 外各路径均由代际栅栏拦下。
 - PR、`@codex review` 一次分诊；不合并（功能 ID 下的测试 PR，由 lead 决定）。
-- 待决（owner）：是否把 `renew_lease` / `settle_budget` 对齐到 `_lease_revoked`（补读 scope 列），
-  使代际栅栏在两条路径上也独立成立。
+- 已考虑、不做（lead 决定 2026-09-26）：把 `renew_lease` / `settle_budget` 对齐到 `_lease_revoked`
+  补读 scope 列。理由：暂停对 Run 行的改写（`owner=NULL, lease_until=NULL, state='paused'`）与事故行锁
+  已承担栅栏，变异核对证明这不是可观察缺口；本项按速度优先、只改真实缺口处理。
 - 审查者提出、本项未核实：持续重叠的写流量下，新的 `FOR SHARE` 可插到排队中的暂停 `FOR UPDATE`
   之前，暂停可能撞 `lock_timeout=4000ms` 报错而非落地；超出本项范围，记给 owner。
 - PG 实例：任务结束后 `postgres_lab stop`，数据保留。
