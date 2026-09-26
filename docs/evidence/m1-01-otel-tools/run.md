@@ -12,6 +12,7 @@
 | 时刻（UTC） | 事件 |
 |---|---|
 | 14:50:34 | `POST /intake/ui` → 201，`run_id 19f7f6a5`，观测窗 = 提交时刻往前 300 秒（报告正文引用 `14:45:34Z–14:50:34Z`） |
+| 14:50:3x | worker 启动时同库还有一行早前 PG 用例留下的事故 `5cb792c4`，被记为 `blocked INPUT_MISSING`（`worker-run1-run2.log` 07:36:55；对非本版本行的正确处置，与本次三个事故无关） |
 | 14:50:3x–14:51:27 | `run_claimed`（epoch 1）→ 3 轮工具（16 次）→ 第 4 轮报告 → `run_completed`（`published: true`，`handoff: false`），事件 1–23 见 `sse.txt` |
 
 工具操作（全部 `ok`、`adopted`，目标 `m0-otel-20260909`）：
@@ -23,7 +24,7 @@
 
 其中第一条 metrics 查询返回 103 个 series、视图保留 81 个、`truncated: true`——`max_view_bytes`（24 KiB）截断路径在真实数据上触发；其余 15 次未截断。
 
-终态（`ledger.json` → `run3_authoritative.run`）：`state completed`、`epoch 1`、**`tool_operations_used 16`、`tool_seconds_used 0.54`**，`opspilot_tool_charges` 16 行（`DurableToolLedger` 落库）。结论：`model_requests_used 4`、`model_seconds_used 50.8`、`rounds 4`、`handoff_reasons []`。报告 `m0-report-v2`，`assessment_status completed`，`conclusion partial`：14 条 claim（9 fact、2 hypothesis、1 counter_evidence、1 rejected_hypothesis、1 recommendation），引用的 15 个证据 id 全部属于本 Run（事后核对 ⊆ `evidence_ids`）；16 条证据行 `view_sha256` 事后重算一致、全部 `committed`。摘要：窗口内 checkout 及 payment/product-catalog/cart/currency/shipping/email 的采样 span 全部无错误状态，唯一非零 ERROR series 属 recommendation 的 flagd EventStream（不在依赖集内）；checkout 的 ERROR series 未返回，故错误率记为 unknown 而非零；没有更早基线，「elevated」不能确立也不能否定 → partial。页面 `incident.html` 显示已解析报告。
+终态（`ledger.json` → `run3_authoritative.run`）：`state completed`、`epoch 1`、**`tool_operations_used 16`、`tool_seconds_used 0.54`**，`opspilot_tool_charges` 16 行（`DurableToolLedger` 落库）。结论：`model_requests_used 4`、`model_seconds_used 50.8`、`rounds 4`、`handoff_reasons []`。报告 `m0-report-v2`，`assessment_status completed`，`conclusion partial`：14 条 claim（9 fact、2 hypothesis、1 counter_evidence、1 rejected_hypothesis、1 recommendation），引用的 15 个证据 id 全部属于本 Run（事后核对 ⊆ `evidence_ids`）；16 条证据行 `view_sha256` 事后重算一致、全部 `committed`。raw 字节本目录只记 `raw_sha256` 与长度，因此「raw 与 view 对应」在本目录不可重算，只能在数据库（数据保留在本 worktree 的 55431 实例）核对。摘要：窗口内 checkout 及 payment/product-catalog/cart/currency/shipping/email 的采样 span 全部无错误状态，唯一非零 ERROR series 属 recommendation 的 flagd EventStream（不在依赖集内）；checkout 的 ERROR series 未返回，故错误率记为 unknown 而非零；没有更早基线，「elevated」不能确立也不能否定 → partial。页面 `incident.html` 显示已解析报告。
 
 ## 判定
 
@@ -36,5 +37,5 @@
 
 ## 历史：Run 1（`83316ae6`）与 Run 2（`31f5db80`）
 
-- Run 1：14:37:09 提交，3 轮 16 次真实工具操作全部 ok（`sse-revoked.txt`）后 14:38:18 被 `CONTROL_DENIED`，Run `paused`、`lease_until NULL`。原因（`ledger.json.suspension_audit_global`）：14:37:52Z 合同测试作者按本人指示在同一实例重跑 PG 合同用例，其两次全局挂起/解除（全局代际 3→6）撤销了在途租约——租约栅栏按设计生效，但冒烟被污染。
+- Run 1：14:37:09 提交，3 轮 16 次真实工具操作全部 ok（`sse-revoked.txt`；其中一条 metrics 视图 103 series 保留 56、24347 B、`truncated: true`，也触发了截断路径）后 14:38:18 被 `CONTROL_DENIED`，Run `paused`、`lease_until NULL`。原因（`ledger.json.suspension_audit_global`）：14:37:52Z 合同测试作者按本人指示在同一实例重跑 PG 合同用例，其两次全局挂起/解除（全局代际 3→6）撤销了在途租约——租约栅栏按设计生效，但冒烟被污染。
 - Run 2：14:43:30 提交，实例已独占，4 次请求、14 次工具操作、40 秒发布 `partial`（`sse-run2.txt`）；跑在派发前拒绝审计修复（`dd6e85e`）之前的代码上，且该 Run 没有走到拒绝分支。为让证据与最终代码一致，另跑 Run 3 作为权威。
