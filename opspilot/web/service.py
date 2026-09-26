@@ -338,22 +338,39 @@ class Workbench:
         actor_id: str,
         text: str | None,
     ) -> tuple[int, UUID | None]:
+        # The run id is derived from ``expected + 1`` so a stale form either
+        # conflicts on identity or replays the very run it already created;
+        # DurableStore.new_run on main fences on ``expected`` as well.
+        run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{expected + 1}")
+        now = self.incidents.now()
         if action != "new_run":
             # The note travels with the decision: DurableStore.control (PR #31)
             # writes it to opspilot_controls.payload and opspilot_inputs, from
             # where begin_round() hands it to the next model round. The web
-            # ledger keeps a copy for idempotency and display only.
+            # ledger keeps a copy for idempotency and display only. A note on
+            # a timed-out Run starts a fresh Run with the same id derivation
+            # and wall as new_run (user decision 2026-09-25); the store
+            # decides that from the row, and the changed pointer says so.
             payload = None if text is None else {"text": text, "channel": "web"}
-            return self.incidents.control(
-                summary.incident_id, expected, action, actor_id, payload
-            ), None
-        # The run id is derived from ``expected + 1`` so a stale form either
-        # conflicts on identity or replays the very run it already created;
-        # DurableStore.new_run on main fences on ``expected`` as well.
+            renewal: dict[str, Any] = {}
+            if action in _TEXT_ACTIONS:
+                renewal = {
+                    "renew_run_id": run_id,
+                    "renew_deadline": now + timedelta(seconds=self.run_seconds),
+                }
+            generation = self.incidents.control(
+                summary.incident_id, expected, action, actor_id, payload, **renewal
+            )
+            current = self.incidents.find_incident(summary.incident_id)
+            if (
+                current is None
+                or current.current_run_id is None
+                or current.current_run_id == summary.current_run_id
+            ):
+                return generation, None
+            return generation, current.current_run_id
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
-        run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{expected + 1}")
-        now = self.incidents.now()
         generation = self.incidents.new_run(
             summary.incident_id,
             run_id,

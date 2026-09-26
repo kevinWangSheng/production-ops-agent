@@ -68,8 +68,16 @@ class IncidentStore(Protocol):
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
+        *,
+        renew_run_id: UUID | None = None,
+        renew_deadline: datetime | None = None,
+        renew_input: dict[str, Any] | None = None,
     ) -> int:
-        """Apply one human decision; ``payload`` carries follow-up/correction content."""
+        """Apply one human decision; ``payload`` carries follow-up/correction content.
+
+        ``renew_run_id`` / ``renew_deadline`` are the fresh Run a note on a
+        timed-out Run starts (``DurableStore.control``); unused otherwise.
+        """
         ...
 
     def new_run(
@@ -282,9 +290,13 @@ class DurableIncidentStore:
         self._clock = DurableClock(store)
         # PR #31 adds ``payload`` to DurableStore.control (opspilot_controls.payload
         # + opspilot_inputs). Detect it once so this adapter works on both bases.
-        self._payload_supported = (
-            "payload" in inspect.signature(store.control).parameters
-        )
+        parameters = inspect.signature(store.control).parameters
+        self._payload_supported = "payload" in parameters
+        # A note on a timed-out Run starts a fresh Run (user decision
+        # 2026-09-25) only where the store's control() knows the renewal
+        # keywords; an older base gets the positional call it accepts and
+        # keeps re-queueing (bot review, PR #47).
+        self._renewal_supported = "renew_run_id" in parameters
 
     @property
     def payload_supported(self) -> bool:
@@ -316,19 +328,33 @@ class DurableIncidentStore:
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
+        *,
+        renew_run_id: UUID | None = None,
+        renew_deadline: datetime | None = None,
+        renew_input: dict[str, Any] | None = None,
     ) -> int:
-        if payload is None:
-            return self._store.control(incident_id, expected_generation, action, actor)
-        if not self._payload_supported:
+        renewal: dict[str, Any] = {}
+        if self._renewal_supported:
+            renewal = {
+                "renew_run_id": renew_run_id,
+                "renew_deadline": renew_deadline,
+                "renew_input": renew_input,
+            }
+        # The signature guards above prove which keywords exist at runtime;
+        # mypy only sees the current DurableStore signature.
+        control: Any = self._store.control
+        if payload is None or not self._payload_supported:
             # Base without PR #31: the store has no payload column. The
             # workbench then keeps the note in its ledger and composes it
             # into the next attempt's question (read under the lease).
-            return self._store.control(incident_id, expected_generation, action, actor)
-        # mypy sees the pre-#31 signature on this branch; the guard above
-        # proves the parameter exists at runtime.
-        control: Any = self._store.control
-        result: int = control(incident_id, expected_generation, action, actor, payload)
-        return result
+            result: int = control(
+                incident_id, expected_generation, action, actor, **renewal
+            )
+            return result
+        applied: int = control(
+            incident_id, expected_generation, action, actor, payload, **renewal
+        )
+        return applied
 
     def new_run(
         self,
