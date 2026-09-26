@@ -73,7 +73,6 @@ __all__ = [
     "ToolUsage",
     "ToolUsageLedger",
     "TransportError",
-    "TransportRefused",
     "TransportRequest",
     "TransportResponse",
     "TransportResultTooLarge",
@@ -104,19 +103,6 @@ class TransportUnavailable(TransportError):
 
 class TransportResultTooLarge(TransportError):
     """The transport stopped reading because the byte ceiling was reached."""
-
-
-class TransportRefused(TransportError):
-    """The transport refused to send the request: the declared parameters
-    cannot be turned into a read the source may legitimately answer (a query
-    that would read outside the window, a value outside the enumeration).
-
-    Nothing left the process, so the outcome is ``error``/``INVALID_PARAMS``
-    with ``source_contact: none`` and ``sent: false``. The operation stays
-    counted: it was a real proposal the gateway had to reserve for, and
-    section 13 counts every dispatch decision, not only the ones that reach
-    the source.
-    """
 
 
 class ControlUnavailable(Exception):
@@ -838,12 +824,6 @@ class ReadOnlyToolExecutor:
             response = self._transport.fetch(request)
         except TransportTimeout:
             failure = ("timeout", "TOOL_TIMEOUT", "possible")
-        except TransportRefused:
-            # Decided inside the transport before any request went out: the
-            # audit record must not claim a dispatch or a source contact
-            # (independent review finding on the OTel profile).
-            failure = ("error", "INVALID_PARAMS", "none")
-            operation = replace(operation, dispatched=False)
         except TransportResultTooLarge:
             failure = ("error", "RESULT_TOO_LARGE", "confirmed")
         except TransportUnavailable:

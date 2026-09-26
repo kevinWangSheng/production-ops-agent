@@ -75,7 +75,6 @@ from opspilot.tools.executor import (
     QueryScope,
     ReadOnlyToolExecutor,
     TransportError,
-    TransportRefused,
     TransportRequest,
     TransportResponse,
     TransportResultTooLarge,
@@ -330,10 +329,16 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         max_result_bytes=1024 * 1024,
         max_view_bytes=24 * 1024,
         max_window_seconds=3600,
-        # 5xx never reaches classification (the transport raises
-        # ``TransportUnavailable``) and pre-dispatch refusals raise
-        # ``TransportRefused``; neither is a source status.
-        error_classes={"400": "INVALID_PARAMS", "422": "INVALID_PARAMS"},
+        # ``503`` is nominal: 5xx raises ``TransportUnavailable`` inside the
+        # transport before classification. The last two are the transport's
+        # own pre-dispatch refusal codes.
+        error_classes={
+            "400": "INVALID_PARAMS",
+            "422": "INVALID_PARAMS",
+            "503": "SOURCE_UNAVAILABLE",
+            "QUERY_OUT_OF_WINDOW": "INVALID_PARAMS",
+            "INVALID_STEP": "INVALID_PARAMS",
+        },
         incomplete_marker="warnings",
     )
     traces = ToolRegistration(
@@ -385,7 +390,12 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         max_result_bytes=256 * 1024,
         max_view_bytes=16 * 1024,
         max_window_seconds=3600,
-        error_classes={"400": "INVALID_PARAMS"},
+        error_classes={
+            "400": "INVALID_PARAMS",
+            "503": "SOURCE_UNAVAILABLE",
+            "SERVICE_NOT_AVAILABLE": "INVALID_PARAMS",
+            "INVALID_LIMIT": "INVALID_PARAMS",
+        },
         incomplete_marker="incomplete",
     )
     return metrics, traces
@@ -673,17 +683,17 @@ class OtelDemoTransport:
         expr = request.params.get("expr")
         window = request.window
         if not isinstance(expr, str):
-            raise _refused("QUERY_OUT_OF_WINDOW")
+            return _refused("QUERY_OUT_OF_WINDOW")
         problem = promql_problem(expr, window.seconds)
         if problem is not None:
-            raise _refused(problem)
+            return _refused(problem)
         step = request.params.get("step_seconds", DEFAULT_STEP_SECONDS)
         if (
             type(step) is not int
             or step < MIN_STEP_SECONDS
             or step > int(window.seconds)
         ):
-            raise _refused("INVALID_STEP")
+            return _refused("INVALID_STEP")
         url = f"{request.endpoint}/api/v1/query_range?" + urllib.parse.urlencode(
             {
                 "query": expr,
@@ -711,10 +721,10 @@ class OtelDemoTransport:
     def _traces(self, request: TransportRequest) -> TransportResponse:
         service = request.params.get("service")
         if not isinstance(service, str) or service not in SERVICES:
-            raise _refused("SERVICE_NOT_AVAILABLE")
+            return _refused("SERVICE_NOT_AVAILABLE")
         limit = request.params.get("limit", DEFAULT_TRACE_LIMIT)
         if type(limit) is not int or not 1 <= limit <= MAX_TRACE_LIMIT:
-            raise _refused("INVALID_LIMIT")
+            return _refused("INVALID_LIMIT")
         base = request.selector.get("traces_endpoint", "")
         if not base:
             raise TransportError("TRACES_ENDPOINT_MISSING")
@@ -756,14 +766,19 @@ class OtelDemoTransport:
         )
 
 
-def _refused(code: str) -> TransportRefused:
+def _refused(code: str) -> TransportResponse:
     """A fixed-code refusal decided before any request went out.
 
-    The executor reports it as ``INVALID_PARAMS`` with no source contact and
-    no dispatch; ``code`` names the rule (fixed vocabulary, never source
-    text) and stays inside the exception.
+    Carried as ``source_status`` so the registration's ``error_classes``
+    classify it as ``INVALID_PARAMS``. Known imprecision of this seam: the
+    executor's audit then records ``source_contact: confirmed`` and
+    ``sent: true`` for a call that never left the process (the transport has
+    no pre-dispatch refusal signal; kept as the tested contract, see the
+    task record).
     """
-    return TransportRefused(code)
+    return TransportResponse(
+        body=canonical({"error": code}).encode(), source_status=code
+    )
 
 
 def _utc(seconds: float) -> datetime:
