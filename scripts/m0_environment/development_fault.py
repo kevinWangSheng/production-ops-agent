@@ -8,10 +8,13 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-LAB = ROOT / "tmp/m0-environment"
+# The lab directory the pinned Compose file mounts; ``scripts/otel_demo_lab.py``
+# points this at the M0 environment worktree when run from another one.
+LAB = Path(os.environ.get("OPSPILOT_OTEL_LAB") or ROOT / "tmp/m0-environment")
 FLAGS = (
     LAB
     / "opentelemetry-demo-63649d6d6a59de88fb421b88c3c3a6185b6d21ad/src/flagd/demo.flagd.json"

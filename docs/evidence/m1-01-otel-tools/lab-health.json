@@ -1,0 +1,36 @@
+{
+  "prometheus": {
+    "url": "http://127.0.0.1:19090",
+    "status": 200,
+    "ok": true
+  },
+  "jaeger": {
+    "url": "http://127.0.0.1:16686/jaeger/ui",
+    "status": 200,
+    "ok": true,
+    "services": [
+      "accounting",
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "flagd",
+      "fraud-detection",
+      "frontend",
+      "frontend-proxy",
+      "jaeger-all-in-one",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping"
+    ]
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:18080/",
+    "status": 200
+  },
+  "ok": true
+}
