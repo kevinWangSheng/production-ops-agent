@@ -1,4 +1,4 @@
-# make acceptance on the tree of HEAD acdc776 (feature/m1-01-acceptance-real merged with origin/main 11e6857), 2026-09-26T11:15Z
+# make acceptance on the tree of feature/m1-01-acceptance-real (fresh-context PG scenarios, merged with origin/main 11e6857), 2026-09-26T11:34Z
 # PostgreSQL rows ran on this worktree's own lab instance (scripts/m0/postgres_lab.py, 127.0.0.1:55431, PostgreSQL 17.9) with M1_DURABLE_POSTGRES=1; model/tool calls are deterministic doubles.
 .venv/bin/python scripts/m1_acceptance.py
 | scenario | feature | evidence level | result |

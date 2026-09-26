@@ -98,6 +98,25 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 - 修复后复验：`tests/acceptance` 37 passed；ruff/mypy 通过；`make check` 1946 passed / 234 skipped / 2 xfailed。
   PG 用例的复验（审查者与本人均在 55432 预检实例上做过）按上文不计为证据，待 55431。
 
+## PG 验收场景由全新上下文 Agent 重写（AGENTS.md #50 条款，用户 2026-09-26 决定适用本项）
+
+- 全新上下文 Agent（未见 `opspilot/acceptance.py`、本人的测试文件、任务记录与分支历史）只拿 C3 §4/§6/§7/§9/§13、
+  ADR-0003/0005、PRODUCT-CONSTRAINTS、feature_list F2/F8/F12、产品公开方法与入口签名
+  `outcome_from_durable(scenario, snapshot, *, controls=(), handoff_events=())`，重写
+  `tests/integration/test_m1_01_acceptance_postgres.py`（7 个场景，函数名与运行器一致）。新文件断言严格多于本人版本
+  （行级证据：owner/lease_until 清空、controls 审计行全字段、late 行 logical_key 与代际、pending_tools 为空、
+  释放全局门后 Run 仍 paused 等），本人版本已替换、未保留。实现者未改其断言。
+- 首跑（自有 55431 实例）：4 通过、3 失败，失败点唯一：停靠/blocked 且尚无人工动作时 `human_interaction`，
+  新测试断言 `None`，实现返回 `"handoff"`。核实 main：`outcome_from_loop`/`outcome_from_live_record` 与已归档的
+  acceptance-outcome JSON 用 `"handoff"`，旧 `outcome_from_durable` 只回传调用方的 `action`（即 None）——main 自身
+  不一致。作为合同问题上报。
+- **合同澄清（用户决定 2026-09-26）**：`human_interaction == "handoff"` 表示「需要人工介入」，用于尚无人工动作的
+  停靠或 blocked Run，三条投影一致；一旦记录了人工动作，该字段为该动作。由全新 Agent（非实现者）按此把 3 处断言
+  改为 `== "handoff"`；这是合同澄清，不是为通过而改测试。
+- 澄清后复跑（自有 55431 实例，2026-09-26 PDT）：新文件 7/7 passed；全套 `tests/integration` 180 passed / 54 skipped
+  （[输出](../evidence/m1-01-acceptance/durable-pg-output.txt)）；`make acceptance` 15/15 PASS、`SECRET_SCAN_PASSED`
+  （[表格](../evidence/m1-01-acceptance/acceptance-output.txt)）。实例已停止，数据保留。
+
 ## 下一步与交接
 
 - 审查者复验受影响项（P2-1、P2-2、P3-2、P3-3）。
@@ -105,4 +124,4 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
 - 未验证/留给 owner：`blocked` 行无事件时投影固定为 `INCOMPATIBLE_STATE`，`_block_undecodable`
   （`INCONSISTENT_STATE`）路径只有事件能区分；清扫停靠的 Run 若事件写入失败，行说不出原因（#44 已记的
   投影补写待办）。
-- PR 待 lead 通知（用户在决定 AGENTS.md 新条款「验收测试由未见实现的全新 Agent 编写」如何适用于本项）。
+- PR：按常规流程（CI、自动审查一次分诊、CLEAN、0 未处理 thread）；不合并（用户门：验收）。
