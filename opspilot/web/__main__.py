@@ -11,6 +11,8 @@ Configuration comes from the environment only, and only as hashes:
 * ``OPSPILOT_RUN_SECONDS``    Run wall for new Runs (default: the frozen
   ``RUN_WALL_SECONDS``); a dev knob to exercise the deadline sweep, never
   above the freeze.
+* ``OPSPILOT_TOOL_PROFILE``   ``fixture`` (default) or ``otel-demo``; must
+  match the worker (``opspilot.tools.profiles``).
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -27,7 +29,7 @@ import sys
 
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.persistence import DurableStore
-from opspilot.tools.fixture import fixture_face, fixture_versions
+from opspilot.tools.profiles import select_profile
 from opspilot.web.app import create_app
 from opspilot.web.auth import AuthConfig, Authenticator, hash_password, token_digest
 from opspilot.web.events import DurableEventLog
@@ -83,6 +85,8 @@ def _serve() -> int:
     evidence.install()
     ledger = DurableWebLedger(store)
     ledger.install()
+    profile = select_profile(os.environ)
+    clock = DurableClock(store)
     workbench = Workbench(
         incidents=DurableIncidentStore(store),
         events=events,
@@ -91,11 +95,11 @@ def _serve() -> int:
         # The same versions and tool face ``python -m opspilot.worker_main``
         # claims and runs with: a Run recorded under other versions is
         # blocked on claim (C3 §5), and without the face it has no input.
-        run_versions=fixture_versions(),
-        tool_face=fixture_face(),
+        run_versions=profile.versions(),
+        tool_face=profile.face(clock),
         run_seconds=_run_seconds(),
     )
-    app = create_app(workbench, Authenticator(config), DurableClock(store))
+    app = create_app(workbench, Authenticator(config), clock)
     host, _, port = bind.rpartition(":")
     uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
     return 0

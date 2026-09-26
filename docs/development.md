@@ -81,6 +81,22 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
 
 worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时安装 schema，不是部署工件。
 
+## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
+
+worker 与工作台各有一个工具 profile 开关 `OPSPILOT_TOOL_PROFILE`（`opspilot/tools/profiles.py`）：默认 `fixture`（上面的固定回放，CI 与测试用），`otel-demo` 让 worker 通过 HTTP 只读查询固定的 OTel Demo 2.0.2 实验环境的 Prometheus（`metrics_range_query`，范围查询）与 Jaeger（`traces_search`，按服务搜 trace 并投影为 M0 trace view v3 的采样记录）。**两个进程必须设同一个值**：`versions` 里的 `tool_schema_revision` 不同，Run 在 claim 时会被记为 `blocked`。观测窗是提交时刻往前 300 秒，由工作台写进 Run 的输入快照，worker 从快照读回（超时后续开的新 Run 沿用前一 Run 的历史窗口，不重新取窗）；目标固定为 `m0-otel-20260909`（提交事故时 `target_id` 必须是它）。后端地址用 `OPSPILOT_OTEL_PROMETHEUS_URL`（默认 `http://127.0.0.1:19090`）、`OPSPILOT_OTEL_JAEGER_URL`（默认 `http://127.0.0.1:16686/jaeger/ui`）；实验环境无认证，`OPSPILOT_OTEL_TOKEN` 只在有 bearer 的后端才需要，只进请求头，不进注册、证据或日志。
+
+实验环境属工程操作，不是产品或 Agent 能力：镜像与配置沿用 M0 冻结的 `compose-pinned.json`（默认在 `production-ops-agent-m0-environment/tmp/m0-environment`，可用 `OPSPILOT_OTEL_LAB` 指向别处；重建见 [环境复现](evidence/m0-real-environment/reproduce.md) 与 `scripts/m0_environment/prepare.py` / `freeze_images.py`）。
+
+```sh
+python3 scripts/otel_demo_lab.py up        # colima start m0-otel（4 CPU/6 GiB）+ compose up，等两个后端就绪
+python3 scripts/otel_demo_lab.py health    # Prometheus 有 span metrics、Jaeger 列出 checkout 才算就绪
+python3 scripts/otel_demo_lab.py fault inject --experiment-id <id>   # 开发故障：paymentFailure flag 100%（M0 development_fault.py）
+python3 scripts/otel_demo_lab.py fault restore --experiment-id <id>
+python3 scripts/otel_demo_lab.py stop      # compose stop + colima stop，不删容器、卷或 profile
+```
+
+故障钩子只改实验目录里的 flagd 文件并保存前后字节与 SHA256；调查者与模型没有它的入口。刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。

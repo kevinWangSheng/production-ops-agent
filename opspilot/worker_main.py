@@ -28,11 +28,13 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_POLL_SECONDS``  idle poll interval (default 2).
 * ``OPSPILOT_WORKER_GRACE_SECONDS`` SIGTERM join bound (default 30).
 * ``OPSPILOT_WORKER_BATCH``         incidents per poll (default 20).
+* ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
+  must match the workbench (``opspilot.tools.profiles``).
 
 Like ``python -m opspilot.web serve`` it installs schema on start and is a
-development entry point, not a deployment artifact. The only tool profile
-is the fixture one (``opspilot.tools.fixture``): the demo runs the real
-model over a canned read-only tool, not a real telemetry source.
+development entry point, not a deployment artifact. Under the default
+profile the demo runs the real model over a canned read-only tool, not a
+real telemetry source; ``otel-demo`` reads the pinned OTel Demo lab.
 """
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.progress import ExpirySweeper, ProgressLog, sweep_expired
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.persistence import DurableStore, PersistenceError
-from opspilot.tools.fixture import fixture_executor_factory, fixture_versions
+from opspilot.tools.profiles import ToolProfile, select_profile
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
 from opspilot.web.service import LEASE_SECONDS
@@ -188,9 +190,15 @@ def _int_env(name: str, default: int) -> int:
 
 
 def build_loop(
-    store: DurableStore, api_key: str, *, stop: threading.Event
+    store: DurableStore,
+    api_key: str,
+    *,
+    stop: threading.Event,
+    profile: ToolProfile | None = None,
 ) -> WorkerLoop:
-    """The product composition: durable events/evidence/ledger, fixture tools."""
+    """The product composition: durable events/evidence/ledger, one tool profile."""
+    profile = profile or select_profile(os.environ)
+    versions = profile.versions()
     events = DurableEventLog(store)
     events.install()
     evidence = DurableEvidenceStore(store)
@@ -198,17 +206,20 @@ def build_loop(
     clock = DurableClock(store)
     runner = InvestigationRunner(
         store=store,
-        worker=Worker.create(store, fixture_versions()),
+        worker=Worker.create(store, versions),
         model=DeepSeekClient(api_key, clock=clock),
-        executor_factory=fixture_executor_factory(
-            store, evidence=evidence, clock=clock
-        ),
+        executor_factory=profile.executor_factory(store, evidence, clock),
         clock=clock,
         lease_seconds=LEASE_SECONDS,
         events=events,
         evidence=evidence,
     )
-    _log.info("worker owner=%s versions=%s", runner.worker.owner, fixture_versions())
+    _log.info(
+        "worker owner=%s profile=%s versions=%s",
+        runner.worker.owner,
+        profile.name,
+        versions,
+    )
     return WorkerLoop(
         queue=store,
         runner=runner,

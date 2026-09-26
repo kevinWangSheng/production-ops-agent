@@ -15,7 +15,7 @@ import json
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from opspilot.investigation.loop import (
     InvestigationLoop,
@@ -123,6 +123,11 @@ class MemoryIncidentStore:
 
     # -- IncidentStore ------------------------------------------------------
 
+    def register_target(self, resource_uid):
+        # Stable identity per resource uid, like the durable store's
+        # ``opspilot_targets`` row.
+        return uuid5(NAMESPACE_URL, f"memory-target:{resource_uid}")
+
     def accept(
         self,
         incident_id,
@@ -133,6 +138,7 @@ class MemoryIncidentStore:
         budget_limit,
         versions,
         input=None,
+        target_id=None,
     ):
         existing = self._by_key.get(intake_key)
         if existing is not None:
@@ -145,6 +151,7 @@ class MemoryIncidentStore:
         self.incidents[incident_id] = {
             "incident_id": incident_id,
             "intake_key": intake_key,
+            "target_id": target_id,
             "state": "queued",
             "lifecycle": "open",
             "control_generation": 0,

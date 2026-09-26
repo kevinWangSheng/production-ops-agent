@@ -564,11 +564,17 @@ class DurableStore:
     suspend_target = set_target_suspension
 
     def _lock_scope(
-        self, conn: Connection, incident_id: UUID | None = None
+        self, conn: Connection, incident_id: UUID | None = None, *, lock: bool = True
     ) -> dict[str, Any]:
+        # ``lock=False`` is the read-only snapshot path (``control_state``):
+        # a REPEATABLE READ transaction is opened read-only and PostgreSQL
+        # refuses ``FOR SHARE`` there; the snapshot itself is the consistency
+        # guarantee (independent review P1).
+        share = " FOR SHARE" if lock else ""
         scope = self._require_row(
             conn.execute(
-                "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1 FOR SHARE"
+                "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+                + share
             )
         )
         scope.update(target_suspended=False, target_generation=0)
@@ -579,7 +585,8 @@ class DurableStore:
             ).fetchone()
             if target and target["target_id"] is not None:
                 row = conn.execute(
-                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s"
+                    + share,
                     (target["target_id"],),
                 ).fetchone()
                 if row is None:
@@ -589,6 +596,32 @@ class DurableStore:
                     target_generation=row["generation"],
                 )
         return scope
+
+    def control_state(self, incident_id: UUID) -> dict[str, Any]:
+        """控制状态的只读快照，供工具网关的 ``ControlAuthority`` 使用。
+
+        返回事故代际、事故状态，以及全局/目标两层挂起的标志与代际——与四条
+        写路径的 ``_lease_revoked`` 比较的是同一批列。它只是执行器派发前后的
+        快路径检查；权威栅栏仍是 ``charge_tool``/``commit_tool`` 在行锁内的比较。
+        """
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT control_generation,state FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            scope = self._lock_scope(conn, incident_id, lock=False)
+        return {
+            "incident_generation": int(row["control_generation"]),
+            "incident_state": row["state"],
+            "global_suspended": bool(scope["global_suspended"]),
+            "global_generation": int(scope["global_generation"]),
+            "target_suspended": bool(scope["target_suspended"]),
+            "target_generation": int(scope["target_generation"]),
+        }
 
     def new_run(
         self,
