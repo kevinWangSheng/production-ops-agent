@@ -81,6 +81,12 @@ SCENARIOS = (
         f"{PG}::test_human_pause_and_cancel_are_the_observable_final_authority",
     ),
     (
+        "scope-suspension",
+        "F2/F12",
+        "real PostgreSQL: global suspension pauses a Run with no controls row",
+        f"{PG}::test_a_scope_suspension_is_visible_as_human_control",
+    ),
+    (
         "late-result",
         "F2/F12",
         "real PostgreSQL: cancel during a live query; commit_tool writes late_result",
@@ -138,7 +144,13 @@ def main() -> int:
             capture_output=True,
             text=True,
         )
-        rows.append((name, feature, evidence, _status(result)))
+        status = _status(result)
+        if status == "FAIL":
+            # The table is the record; the reason must not be swallowed.
+            print(f"--- {name}: {node}", file=sys.stderr)
+            print(result.stdout[-4000:], file=sys.stderr)
+            print(result.stderr[-2000:], file=sys.stderr)
+        rows.append((name, feature, evidence, status))
     print("| scenario | feature | evidence level | result |")
     print("|---|---|---|---|")
     for name, feature, evidence, row_status in rows:

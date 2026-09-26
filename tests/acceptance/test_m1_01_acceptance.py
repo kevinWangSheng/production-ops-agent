@@ -232,7 +232,8 @@ def test_projection_never_reports_an_unpublished_report_as_available():
         publish=False,
     )
     outcome = outcome_from_durable(scenario("parked-report"), _parked(snapshot))
-    assert outcome.final_state == "completed"
+    # ADR-0005 §1: a parked Run is a handoff terminal, never ``completed``.
+    assert outcome.final_state == "failed"
     assert outcome.decision == "handoff"
     assert outcome.report_available is False
     assert outcome.evidence_ids != ()
@@ -277,11 +278,34 @@ def test_projection_derives_human_control_from_the_controls_audit():
     assert outcome.final_state == "paused"
     assert outcome.human_interaction == "pause"
     assert outcome.decision == "human_control"
-    # A control from an older generation is history, not the current decision.
+    # A control from an older generation is history, not the current decision;
+    # a paused row no control wrote can only be a scope suspension.
     stale = [{"action": "pause", "expected_generation": 0, "resulting_generation": 1}]
     snapshot["control_generation"] = 2
     older = outcome_from_durable(scenario("paused"), snapshot, controls=stale)
-    assert older.human_interaction is None and older.decision == "durable_state"
+    assert older.human_interaction == "scope_suspension"
+    assert older.decision == "human_control"
+    # A cancelled row without a controls row is just its state.
+    snapshot["run"]["state"] = "cancelled"
+    bare = outcome_from_durable(scenario("cancelled"), snapshot, controls=stale)
+    assert bare.human_interaction is None and bare.decision == "durable_state"
+
+
+def test_projection_does_not_let_a_consumed_follow_up_outrank_the_result():
+    """A follow_up re-queues the Run; once the next attempt published, the
+    controls row is history and the report is the decision (review P2-2)."""
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
+    )
+    snapshot["control_generation"] = 1
+    consumed = [
+        {"action": "follow_up", "expected_generation": 0, "resulting_generation": 1}
+    ]
+    outcome = outcome_from_durable(scenario("published"), snapshot, controls=consumed)
+    assert outcome.final_state == "completed"
+    assert outcome.decision == "report_available"
+    assert outcome.human_interaction is None
+    assert outcome.report_available is True
 
 
 def test_projection_derives_late_results_and_restarts_from_the_rows():

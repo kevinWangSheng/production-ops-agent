@@ -229,8 +229,11 @@ def outcome_from_durable(
       ``STALE_CONTROL_GENERATION`` from such a row written under an older
       control generation than the incident's; ``worker_resumed`` from a
       claim epoch above 1.
-    * ``human_interaction`` is the ``controls`` row in force for the current
-      generation; nothing here is set by the caller.
+    * ``human_interaction`` is the ``controls`` row whose state the row still
+      shows (``pause``/``cancel``), or ``scope_suspension`` for a paused row
+      no control wrote; nothing here is set by the caller. ``worker_resumed``
+      names a further claim of the Run -- after a crash or a human re-queue;
+      the rows do not distinguish the two.
 
     A report is available only when it was published.
     """
@@ -263,9 +266,16 @@ def outcome_from_durable(
     else:
         loop_state = "failed"
         evidence = _committed_evidence(snapshot)
-    state = cast(
-        OutcomeState, row_state if row_state in _HUMAN_OR_BLOCKED else loop_state
-    )
+    if row_state in _HUMAN_OR_BLOCKED:
+        state = cast(OutcomeState, row_state)
+    elif row_state == "waiting_human" and loop_state == "completed":
+        # ADR-0005 §1: a parked Run is a handoff terminal, never ``completed``.
+        # The loop's step may say completed while ``conclusion_publishable``
+        # refused to publish it (digest or parse mismatch); the Run's
+        # observable outcome is the refusal, not the step's self-report.
+        state = "failed"
+    else:
+        state = cast(OutcomeState, loop_state)
 
     if state == "blocked":
         reasons.extend(
@@ -285,7 +295,21 @@ def outcome_from_durable(
     if type(epoch) is int and epoch > 1:
         actions.append("worker_resumed")
 
-    human = _current_human_action(controls, generation)
+    # A control row is in force only while the row still shows the state it
+    # wrote (``pause`` -> paused, ``cancel`` -> cancelled). A ``follow_up``
+    # / ``correct`` / ``resume`` at the current generation re-queued the
+    # Run; once a later attempt settled it, that row is consumed history and
+    # the published or parked result is the decision (independent review
+    # P2-2). ``persistence.py`` writes ``paused`` to a Run row from exactly
+    # two paths: ``control()`` and a global/target suspension
+    # (``set_global_suspension`` / ``set_target_suspension``), which bumps no
+    # control generation and leaves no controls row; a paused row without
+    # one is therefore the operator's suspension (review P2-1).
+    human = None
+    if row_state in {"paused", "cancelled"}:
+        human = _current_human_action(controls, generation)
+        if human is None and row_state == "paused":
+            human = "scope_suspension"
     if human is not None:
         decision = "human_control"
     elif published is not None:

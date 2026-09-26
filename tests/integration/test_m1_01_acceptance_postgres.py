@@ -146,6 +146,7 @@ def test_human_pause_and_cancel_are_the_observable_final_authority():
     assert rows["run"]["state"] == "cancelled"
     assert cancelled.final_state == "cancelled"
     assert cancelled.human_interaction == "cancel"
+    assert cancelled.evidence_ids == paused.evidence_ids  # still inspectable
     assert cancelled.report_available is False
     assert h.runner([]).resume(h.incident).status == "already_completed"
 
@@ -221,3 +222,32 @@ def test_incompatible_state_is_a_blocked_handoff():
     assert h.runner([]).resume(h.incident).status == "control_denied"
     # Human control is still the exit.
     assert h.store.control(h.incident, 0, "cancel", "operator") == 1
+
+
+def test_a_scope_suspension_is_visible_as_human_control():
+    """An operator suspension pauses the Run without a controls row
+    (``set_global_suspension``); the seam must not read it as no decision
+    (independent review P2-1)."""
+    h = Harness()
+    with pytest.raises(Crash):
+        h.runner([*_tool_rounds(1), Crash("in flight")]).resume(h.incident)
+    with h.store.transaction(snapshot=True) as conn:
+        generation = conn.execute(
+            "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+        ).fetchone()["global_generation"]
+    suspended = h.store.set_global_suspension(
+        True, expected_generation=generation, actor="operator"
+    )
+    try:
+        outcome, rows = project(h, "scope-suspension")
+        assert rows["run"]["state"] == "paused" and rows["control_generation"] == 0
+        assert outcome.final_state == "paused"
+        assert outcome.human_interaction == "scope_suspension"
+        assert outcome.decision == "human_control"
+        assert outcome.evidence_ids != ()
+        assert outcome.report_available is False
+        assert h.runner([]).resume(h.incident).status == "control_denied"
+    finally:
+        h.store.set_global_suspension(
+            False, expected_generation=suspended, actor="operator"
+        )
