@@ -70,8 +70,11 @@ MemoryStepStore 发布交接结论是 ADR-0005 之前的形状，入口仍拒绝
   `tests/integration` 179 passed / 54 skipped（跳过为 `M0_B_POSTGRES`/`M0_CONTROL_POSTGRES` 门）。
   说明：第一次全套运行只改了 loop-resume 模块的 DSN，其余模块连到了 55431 约 70 秒，出现 6 个失败，
   判定为两实例互相干扰（未逐一核实），已向 lead 披露；改为源头改 DSN 后复跑全绿。
-- `make acceptance`（55431 自有实例）：待 55431 释放后执行并刷新
-  `docs/evidence/m1-01-acceptance/acceptance-output.txt`。
+- `make acceptance`：55431 始终被占用，改为 `PYTEST_PLUGINS` 插件在每个 pytest 子进程内把 lab DSN 指到 55432
+  一次性实例后执行：15/15 PASS、`SECRET_SCAN_PASSED`、退出码 0，已刷新
+  `docs/evidence/m1-01-acceptance/acceptance-output.txt`（头部注明实例与重定向方式）。首轮曾有 scope-suspension
+  行 FAIL（DID NOT RAISE Crash）：审计表显示同一秒内审查者探针在切换全局暂停，属共享单例竞争；用例已改为先释放
+  全局门再开始，复跑通过。未在 55431 自有实例上运行。
 - 未跑真实模型 Run：本项只改验收入口、测试与运行器，未触碰 loop / runner / 恢复 / 校验代码。
 
 ## 独立审查处置（2026-09-26，全新上下文，含变异探针）
