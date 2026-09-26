@@ -83,7 +83,7 @@ worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里�
 
 ## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
 
-worker 与工作台各有一个工具 profile 开关 `OPSPILOT_TOOL_PROFILE`（`opspilot/tools/profiles.py`）：默认 `fixture`（上面的固定回放，CI 与测试用），`otel-demo` 让 worker 通过 HTTP 只读查询固定的 OTel Demo 2.0.2 实验环境的 Prometheus（`metrics_range_query`，范围查询）与 Jaeger（`traces_search`，按服务搜 trace 并投影为 M0 trace view v3 的采样记录）。**两个进程必须设同一个值**：`versions` 里的 `tool_schema_revision` 不同，Run 在 claim 时会被记为 `blocked`。观测窗是提交时刻往前 300 秒，由工作台写进 Run 的输入快照，worker 从快照读回；目标固定为 `m0-otel-20260909`（提交事故时 `target_id` 必须是它）。后端地址用 `OPSPILOT_OTEL_PROMETHEUS_URL`（默认 `http://127.0.0.1:19090`）、`OPSPILOT_OTEL_JAEGER_URL`（默认 `http://127.0.0.1:16686/jaeger/ui`）；实验环境无认证，`OPSPILOT_OTEL_TOKEN` 只在有 bearer 的后端才需要，只进请求头，不进注册、证据或日志。
+worker 与工作台各有一个工具 profile 开关 `OPSPILOT_TOOL_PROFILE`（`opspilot/tools/profiles.py`）：默认 `fixture`（上面的固定回放，CI 与测试用），`otel-demo` 让 worker 通过 HTTP 只读查询固定的 OTel Demo 2.0.2 实验环境的 Prometheus（`metrics_range_query`，范围查询）与 Jaeger（`traces_search`，按服务搜 trace 并投影为 M0 trace view v3 的采样记录）。**两个进程必须设同一个值**：`versions` 里的 `tool_schema_revision` 不同，Run 在 claim 时会被记为 `blocked`。观测窗是提交时刻往前 300 秒，由工作台写进 Run 的输入快照，worker 从快照读回（超时后续开的新 Run 沿用前一 Run 的历史窗口，不重新取窗）；目标固定为 `m0-otel-20260909`（提交事故时 `target_id` 必须是它）。后端地址用 `OPSPILOT_OTEL_PROMETHEUS_URL`（默认 `http://127.0.0.1:19090`）、`OPSPILOT_OTEL_JAEGER_URL`（默认 `http://127.0.0.1:16686/jaeger/ui`）；实验环境无认证，`OPSPILOT_OTEL_TOKEN` 只在有 bearer 的后端才需要，只进请求头，不进注册、证据或日志。
 
 实验环境属工程操作，不是产品或 Agent 能力：镜像与配置沿用 M0 冻结的 `compose-pinned.json`（默认在 `production-ops-agent-m0-environment/tmp/m0-environment`，可用 `OPSPILOT_OTEL_LAB` 指向别处；重建见 [环境复现](evidence/m0-real-environment/reproduce.md) 与 `scripts/m0_environment/prepare.py` / `freeze_images.py`）。
 

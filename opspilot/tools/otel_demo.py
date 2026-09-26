@@ -52,7 +52,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from http.client import HTTPResponse
@@ -75,6 +75,7 @@ from opspilot.tools.executor import (
     QueryScope,
     ReadOnlyToolExecutor,
     TransportError,
+    TransportRefused,
     TransportRequest,
     TransportResponse,
     TransportResultTooLarge,
@@ -240,12 +241,11 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "then spans with an error status tag, then the longest, up to "
                 "20 spans in total, each with trace_id, span_id, service, "
                 "operation, start_us, duration_us, status tags, parent "
-                "references and up to 4 clipped error detail fields. The "
-                "record also reports how many traces and spans the backend "
-                "returned, per-service span and error counts over all of "
-                "them, and how many spans were omitted. At most 16 KiB of "
-                "sampled spans are shown; when truncated the view sets "
-                "truncated true. This is a biased sample, not the complete "
+                "references and up to 4 clipped error detail fields. At most "
+                "16 KiB of sampled spans are shown; when truncated the view "
+                "sets truncated true and reports omitted_rows. Backend trace "
+                "and span counts are kept in the stored evidence record, not "
+                "in this view. This is a biased sample, not the complete "
                 "trace graph or a failure rate: an omitted span is unknown, "
                 "an error detail applies only to the span it is shown on, and "
                 "an empty result means no trace of that service was returned "
@@ -330,13 +330,10 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         max_result_bytes=1024 * 1024,
         max_view_bytes=24 * 1024,
         max_window_seconds=3600,
-        error_classes={
-            "400": "INVALID_PARAMS",
-            "422": "INVALID_PARAMS",
-            "503": "SOURCE_UNAVAILABLE",
-            "QUERY_OUT_OF_WINDOW": "INVALID_PARAMS",
-            "INVALID_STEP": "INVALID_PARAMS",
-        },
+        # 5xx never reaches classification (the transport raises
+        # ``TransportUnavailable``) and pre-dispatch refusals raise
+        # ``TransportRefused``; neither is a source status.
+        error_classes={"400": "INVALID_PARAMS", "422": "INVALID_PARAMS"},
         incomplete_marker="warnings",
     )
     traces = ToolRegistration(
@@ -388,12 +385,7 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         max_result_bytes=256 * 1024,
         max_view_bytes=16 * 1024,
         max_window_seconds=3600,
-        error_classes={
-            "400": "INVALID_PARAMS",
-            "503": "SOURCE_UNAVAILABLE",
-            "SERVICE_NOT_AVAILABLE": "INVALID_PARAMS",
-            "INVALID_LIMIT": "INVALID_PARAMS",
-        },
+        error_classes={"400": "INVALID_PARAMS"},
         incomplete_marker="incomplete",
     )
     return metrics, traces
@@ -446,7 +438,7 @@ class OtelDemoConfig:
 
     prometheus_url: str = "http://127.0.0.1:19090"
     jaeger_url: str = "http://127.0.0.1:16686/jaeger/ui"
-    token: str | None = None
+    token: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -579,8 +571,13 @@ class DurableControl:
 def promql_problem(expr: str, window_seconds: float) -> str | None:
     """Why this PromQL must not be sent, or ``None`` (M0 ``read_proxy`` rules).
 
-    ``offset`` and ``@`` read outside the evaluated window, and so does a
-    range selector longer than it; all three are refused before dispatch.
+    ``offset`` and ``@`` move the evaluation outside the window and a range
+    selector longer than the window is refused; a selector at the window
+    start still looks back up to its own length before it (plus Prometheus'
+    lookback delta), which is bounded and stays on the dedicated instance --
+    the returned sample timestamps are what the executor checks against the
+    scope. Any ``[...]`` that is not ``<n>[smh]`` is refused too (a label
+    regex such as ``[a-z]+`` is over-refused, safely).
     """
     if not expr or len(expr) > MAX_PROMQL_CHARS:
         return "QUERY_OUT_OF_WINDOW"
@@ -676,17 +673,17 @@ class OtelDemoTransport:
         expr = request.params.get("expr")
         window = request.window
         if not isinstance(expr, str):
-            return _refused("QUERY_OUT_OF_WINDOW")
+            raise _refused("QUERY_OUT_OF_WINDOW")
         problem = promql_problem(expr, window.seconds)
         if problem is not None:
-            return _refused(problem)
+            raise _refused(problem)
         step = request.params.get("step_seconds", DEFAULT_STEP_SECONDS)
         if (
             type(step) is not int
             or step < MIN_STEP_SECONDS
             or step > int(window.seconds)
         ):
-            return _refused("INVALID_STEP")
+            raise _refused("INVALID_STEP")
         url = f"{request.endpoint}/api/v1/query_range?" + urllib.parse.urlencode(
             {
                 "query": expr,
@@ -714,10 +711,10 @@ class OtelDemoTransport:
     def _traces(self, request: TransportRequest) -> TransportResponse:
         service = request.params.get("service")
         if not isinstance(service, str) or service not in SERVICES:
-            return _refused("SERVICE_NOT_AVAILABLE")
+            raise _refused("SERVICE_NOT_AVAILABLE")
         limit = request.params.get("limit", DEFAULT_TRACE_LIMIT)
         if type(limit) is not int or not 1 <= limit <= MAX_TRACE_LIMIT:
-            return _refused("INVALID_LIMIT")
+            raise _refused("INVALID_LIMIT")
         base = request.selector.get("traces_endpoint", "")
         if not base:
             raise TransportError("TRACES_ENDPOINT_MISSING")
@@ -759,17 +756,14 @@ class OtelDemoTransport:
         )
 
 
-def _refused(code: str) -> TransportResponse:
+def _refused(code: str) -> TransportRefused:
     """A fixed-code refusal decided before any request went out.
 
-    Carried as ``source_status`` so the registration's ``error_classes``
-    classify it; the executor's audit then records ``source_contact:
-    confirmed`` for a call that never left, which is a known imprecision of
-    this seam (there is no transport-side INVALID_PARAMS signal).
+    The executor reports it as ``INVALID_PARAMS`` with no source contact and
+    no dispatch; ``code`` names the rule (fixed vocabulary, never source
+    text) and stays inside the exception.
     """
-    return TransportResponse(
-        body=canonical({"error": code}).encode(), source_status=code
-    )
+    return TransportRefused(code)
 
 
 def _utc(seconds: float) -> datetime:
@@ -820,13 +814,13 @@ def _details(span: Mapping[str, Any]) -> list[dict[str, Any]]:
     for log in span.get("logs") or []:
         if not isinstance(log, Mapping):
             continue
-        for field in log.get("fields") or []:
-            if isinstance(field, Mapping) and field.get("key") in _DETAIL_KEYS:
+        for entry in log.get("fields") or []:
+            if isinstance(entry, Mapping) and entry.get("key") in _DETAIL_KEYS:
                 result.append(
                     {
                         "location": "span_log",
-                        "key": field["key"],
-                        "value": field.get("value"),
+                        "key": entry["key"],
+                        "value": entry.get("value"),
                         "timestamp_us": log.get("timestamp"),
                     }
                 )
@@ -960,6 +954,9 @@ def project_traces(
         )
     )
     sampled = spans[:MAX_SAMPLED_SPANS]
+    # Judged over the sampled set: the executor's byte cap may still drop
+    # trailing sampled spans, so a "visible" parent is one that was sampled,
+    # not necessarily one the model was shown.
     visible_keys = {(s["trace_id"], s["span_id"]) for s in sampled}
     for span in sampled:
         for ref in span["parent_references"]:

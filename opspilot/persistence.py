@@ -564,11 +564,17 @@ class DurableStore:
     suspend_target = set_target_suspension
 
     def _lock_scope(
-        self, conn: Connection, incident_id: UUID | None = None
+        self, conn: Connection, incident_id: UUID | None = None, *, lock: bool = True
     ) -> dict[str, Any]:
+        # ``lock=False`` is the read-only snapshot path (``control_state``):
+        # a REPEATABLE READ transaction is opened read-only and PostgreSQL
+        # refuses ``FOR SHARE`` there; the snapshot itself is the consistency
+        # guarantee (independent review P1).
+        share = " FOR SHARE" if lock else ""
         scope = self._require_row(
             conn.execute(
-                "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1 FOR SHARE"
+                "SELECT global_suspended,global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+                + share
             )
         )
         scope.update(target_suspended=False, target_generation=0)
@@ -579,7 +585,8 @@ class DurableStore:
             ).fetchone()
             if target and target["target_id"] is not None:
                 row = conn.execute(
-                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s"
+                    + share,
                     (target["target_id"],),
                 ).fetchone()
                 if row is None:
@@ -606,7 +613,7 @@ class DurableStore:
             ).fetchone()
             if row is None:
                 raise PersistenceError("UNKNOWN_IDENTITY")
-            scope = self._lock_scope(conn, incident_id)
+            scope = self._lock_scope(conn, incident_id, lock=False)
         return {
             "incident_generation": int(row["control_generation"]),
             "incident_state": row["state"],

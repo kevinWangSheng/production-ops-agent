@@ -42,7 +42,10 @@ PROFILE = "m0-otel"
 CONTEXT = f"colima-{PROFILE}"
 PROJECT = "opspilot-m0"
 PROMETHEUS = os.environ.get("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090")
-JAEGER = os.environ.get("OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686")
+# Same variable and meaning as the product profile: the Jaeger UI base.
+JAEGER = os.environ.get(
+    "OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui"
+).rstrip("/")
 # The lab's frontend-proxy; only used to report that the workload answers.
 FRONTEND = "http://127.0.0.1:18080/"
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -101,7 +104,7 @@ def health(quiet: bool = False) -> dict[str, object]:
         and prom.get("status") == "success"
         and bool(prom["data"]["result"])
     )
-    jaeger_status, jaeger = get_json(f"{JAEGER}/jaeger/ui/api/services")
+    jaeger_status, jaeger = get_json(f"{JAEGER}/api/services")
     services = sorted(jaeger.get("data") or []) if isinstance(jaeger, dict) else []
     jaeger_ok = jaeger_status == 200 and "checkout" in services
     try:
