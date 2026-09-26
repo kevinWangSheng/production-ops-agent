@@ -1136,8 +1136,13 @@ class DurableStore:
         ``claim()`` re-checks everything under row locks, so a stale row here
         costs one refused claim and nothing else. Listed: an open incident
         whose current Run is ``queued``, or ``running`` with a lapsed lease
-        (a killed worker's), and not yet overdue -- overdue rows are the
-        sweep's (ADR-0005 decision 2), parked and blocked rows are a human's.
+        (a killed worker's), and not yet overdue; parked and blocked rows are
+        a human's. An overdue ``running`` row is the sweep's (ADR-0005
+        decision 2). An overdue ``queued`` row -- never claimed before its
+        wall passed -- is listed by nobody and swept by nobody today: the
+        ADR names ``running`` only, so it stays ``queued`` until a human's
+        follow_up/correct (which starts a new Run) or cancel (known gap,
+        independent review of item 3b).
         Oldest deadline first, like the sweep, so a worker that falls behind
         serves the Run that will time out soonest.
         """

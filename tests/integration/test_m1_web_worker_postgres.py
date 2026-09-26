@@ -138,8 +138,9 @@ def _worker(
                 tool_seconds_used = 0.0
 
                 def execute(self, request):
+                    outcome = executor.execute(request)
                     executor_hook(request)
-                    return executor.execute(request)
+                    return outcome
 
             return Hooked()
 
@@ -300,7 +301,9 @@ def test_a_worker_killed_mid_run_is_resumed_by_the_next_worker():
     subject, run_id = UUID(submitted["incident_id"]), UUID(submitted["run_id"])
 
     def die(request):
-        raise RuntimeError("killed before the tool ran")
+        # After the executor ran (and charged) the dispatch, before the
+        # session could commit its result: the killed-worker window.
+        raise RuntimeError("killed before the tool result committed")
 
     first, _ = _worker(
         store, events, evidence, [_tool_round()], subject=subject, executor_hook=die
@@ -308,6 +311,8 @@ def test_a_worker_killed_mid_run_is_resumed_by_the_next_worker():
     assert first.poll_once() == []  # the crash is survived, nothing settled
     rows = store.rebuild(subject)
     assert rows["run"]["state"] == "running" and len(rows["pending_tools"]) == 1
+    # The dead attempt's dispatch was charged durably before it died.
+    assert store.run_usage(run_id)["tool_operations_used"] == 1
     assert first.poll_once() == []  # the lease is still live: LEASE_ACTIVE
     time.sleep(LEASE + 0.5)
     second, model = _worker(
@@ -316,8 +321,9 @@ def test_a_worker_killed_mid_run_is_resumed_by_the_next_worker():
     ((_, outcome),) = second.poll_once()
     assert outcome.status == "published" and outcome.replayed_tools == 1
     assert len(model.calls) == 1  # the committed round was not re-asked
-    usage = store.run_usage(run_id)
-    assert usage["tool_operations_used"] == 1
+    # The replay is a second real read (C3 §13): counted on top of the
+    # first attempt's charge, which a restart did not reset.
+    assert store.run_usage(run_id)["tool_operations_used"] == 2
     kinds = _kinds(events, subject)
     assert kinds.count("run_claimed") == 2 and kinds[-1] == "run_completed"
     assert "tool_committed" in kinds

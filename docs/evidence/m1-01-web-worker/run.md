@@ -40,5 +40,6 @@ web 以 `OPSPILOT_RUN_SECONDS=8` 重启后提交（默认 wall 下无法在有�
 3. 超时 Run 由 worker 的轮询清扫收尾；HTTP 追问经工作台续开新 Run（续接输入由工作台构造，不再依赖脚本），worker 领取并发布。
 4. 未演示项：多实例并发与被杀 worker 的回放只在 PG 集成用例中证明（`tests/integration/test_m1_web_worker_postgres.py`），本次真实 Run 未做。
 5. 观察（既有行为，非本 PR 引入）：发布后 `opspilot_incidents.state` 仍为 `queued`/`running`，`conclusion` 与 Run 行才是终态权威；worker 与页面均按 `conclusion` 判断。
-6. 干扰记录：01:43–01:45 另一 worktree 的 PG 用例跑在同一 55431 实例上，本 worker 曾对其中 3 个事故 `LEASE_ACTIVE` 拒绝、对 1 个版本不符的 Run 记 `blocked`（`worker.log`）；这是 worker 的正确行为，与本次两事故无关。
-7. 本轮不是产品验收、不改 feature `passes`。
+6. 干扰记录（`worker.log` 逐行计数）：worker 面对的是一个装满既往测试行的共享实例。启动时（01:40:01–03）清扫了 69 个过期 `running` 行、把 37 个 `versions` 不符的 Run 记为 `blocked`；01:43 起另一 worktree 的 PG 用例跑在同一 55431 实例上，worker 又把其 78 个 Run 记为 `blocked`（共 115 条 `INCOMPATIBLE_STATE`）、对 3 个事故 `LEASE_ACTIVE` 拒绝。这些都是 worker 对「不是自己版本的 Run」的正确处置，但会永久改写别的套件的行，可能使那批用例失败（未核实）。教训写入 `docs/development.md`：worker 只对没有测试套件或 live 脚本在用的数据库运行。
+7. 污染核查（lead 要求）：另两批外来用例在 01:43 与 01:46 跑在同一实例上（后者推进了全局挂起代际，现为 42）。事后按行核对本次两个事故：`opspilot_controls` 只有本次的 1 条 `follow_up`（事故 B，0→1）；三个 Run 均 `epoch 1`；全部事件的 `recorded_at` 在 01:40:19–01:42:43 之间，早于外来活动；无 paused/blocked 状态。本记录为权威，未重跑。
+8. 本轮不是产品验收、不改 feature `passes`。

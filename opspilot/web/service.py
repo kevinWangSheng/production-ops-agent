@@ -16,6 +16,7 @@ projection.
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -65,6 +66,7 @@ from opspilot.web.store import (
 )
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+_log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
 #: in flight: the lease must outlast the longest request plus a margin.
@@ -426,6 +428,10 @@ class Workbench:
             return None
         intake = self.ledger.get("intake", summary.intake_key)
         if intake is None:
+            # No intake row: nothing to build a question from. The Run is
+            # created without input and the runner blocks it (INPUT_MISSING)
+            # rather than this path guessing one.
+            _log.warning("intake row missing incident=%s", summary.incident_id)
             return None
         request = _envelope_from_json(intake["envelope"]).request
         try:
@@ -435,7 +441,13 @@ class Workbench:
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
             ).as_json()
-        except (ContextError, PersistenceError):
+        except (ContextError, PersistenceError) as exc:
+            # Fixed code only; the fallback drops carried evidence, so say so.
+            _log.warning(
+                "successor input falls back to a fresh input incident=%s code=%s",
+                summary.incident_id,
+                exc,
+            )
             return self._fresh_input(request, run_id, deadline)
 
     def _audit_matches(

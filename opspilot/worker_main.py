@@ -174,6 +174,19 @@ def _float_env(name: str, default: float) -> float:
     return value
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise SystemExit(f"{name} must be an integer") from None
+    if value < 1:
+        raise SystemExit(f"{name} must be positive")
+    return value
+
+
 def build_loop(
     store: DurableStore, api_key: str, *, stop: threading.Event
 ) -> WorkerLoop:
@@ -203,7 +216,7 @@ def build_loop(
         events=events,
         stop=stop,
         poll_seconds=_float_env("OPSPILOT_WORKER_POLL_SECONDS", 2.0),
-        batch=int(_float_env("OPSPILOT_WORKER_BATCH", 20)),
+        batch=_int_env("OPSPILOT_WORKER_BATCH", 20),
     )
 
 
@@ -230,8 +243,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     thread.start()
     _log.info("worker started")
     # Wait in short slices so the signal handlers get to run on this thread.
+    # A loop thread that died (anything but the refusals ``poll_once``
+    # handles) must not leave a live process that never polls.
     while not stop.wait(0.5):
-        pass
+        if not thread.is_alive():
+            _log.error("worker loop died; exiting")
+            return 1
     thread.join(grace)
     if thread.is_alive():
         _log.warning(

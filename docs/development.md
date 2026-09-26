@@ -79,7 +79,7 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
 .venv/bin/python -m scripts.m0.postgres_lab stop
 ```
 
-worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时安装 schema，不是部署工件。
+worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时安装 schema，不是部署工件。
 
 ## M0-01 离线协议入口
 

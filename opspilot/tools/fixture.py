@@ -15,9 +15,14 @@ would be for a real source:
   the model cites resolves on the page.
 
 The control authority echoes the scope's generations: this profile has no
-Controller of its own, and the real fence on every write is the store's
-lease (``charge_tool``, ``commit_tool``). The same holds for the doubles
-the tests use.
+Controller of its own, so the executor's *own* control checks (pause,
+suspension, generation change before and after a fetch) never fire here;
+what protects every durable write is the store's lease fence
+(``charge_tool`` / ``commit_tool`` compare owner, epoch, control generation
+and both suspension generations under the row lock), and a human decision
+therefore surfaces as a refused write, not as the executor's own
+``SUSPENDED`` / ``CONTROL_GENERATION_CHANGED`` outcome. A real profile
+must supply a real ``ControlSnapshot`` source as well as a real transport.
 """
 
 from __future__ import annotations
@@ -209,7 +214,12 @@ class _CannedTransport:
 
 
 class _EchoControl:
-    """No Controller of its own: the scope's generations are the snapshot."""
+    """No Controller of its own: the scope's generations are the snapshot.
+
+    Consequence (see the module docstring): the executor never sees a
+    control change itself; the durable fence is the store's. Not a
+    production control source.
+    """
 
     def snapshot(self, scope: QueryScope) -> ControlSnapshot:
         return ControlSnapshot(
