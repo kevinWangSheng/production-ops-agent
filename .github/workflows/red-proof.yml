@@ -1,0 +1,68 @@
+name: red-proof
+
+# 红证明：PR 新增或修改的测试放到 merge-base 的代码上至少要有一个失败。
+# 试行期只报告（--report-only），结论见 step summary 与 warning 注解，不影响合并状态。
+# 只钉住已有行为的 PR（重构、补特征测试）加 label `no-red-proof` 跳过。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "对比基线（commit 或分支），用于回放历史提交"
+        required: true
+      head:
+        description: "被检查的提交"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: red-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  red-proof:
+    name: red-proof
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-red-proof') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # 与 ci.yml 的 m0-postgres 相同的镜像与限额，让集成测试也能在 base 上重放。
+        image: postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545
+        env:
+          POSTGRES_USER: m0_lab
+          POSTGRES_DB: m0_budget
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55431:5432
+        options: >-
+          --cpus=1 --memory=512m
+          --health-cmd "pg_isready -U m0_lab -d m0_budget"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        run: make setup
+      - name: Replay changed tests on the merge-base
+        env:
+          M0_B_POSTGRES: "1"
+          M1_DURABLE_POSTGRES: "1"
+          # 输入经环境变量传入，不在 shell 里展开表达式。
+          RED_PROOF_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || inputs.base }}
+          RED_PROOF_HEAD: ${{ github.event_name == 'pull_request' && 'HEAD' || inputs.head }}
+        run: >-
+          .venv/bin/python scripts/check_red_proof.py --report-only
+          --base "$RED_PROOF_BASE" --head "$RED_PROOF_HEAD"
