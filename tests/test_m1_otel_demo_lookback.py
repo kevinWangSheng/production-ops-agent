@@ -18,6 +18,7 @@ pins that the refusal rules did not loosen.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -248,3 +249,94 @@ def test_tool_schema_revision_moved_with_the_description():
     packet's Runs were recorded under the old literal and must not be
     reclaimed under the new one."""
     assert TOOL_SCHEMA_REVISION != PRE_FIX_TOOL_SCHEMA_REVISION
+
+
+# -- end to end through the OTel executor path -------------------------------
+
+
+def test_window_length_selector_view_is_adopted_and_citable_end_to_end(monkeypatch):
+    """A ``[5m]`` selector over the 300 s window reads back exactly to the
+    window start; the view says so, stays adopted and citable, and a fact
+    citing it binds to the Run's own historical_window policy."""
+    from opspilot.investigation.context import delivered_view
+    from opspilot.investigation.reports import parse_report, unsupported_citations
+    from opspilot.tools.otel_demo import _evidence_context
+    from tests.test_m1_otel_demo_contract import _call, _executor
+
+    expr = "rate(traces_span_metrics_calls_total[5m])"
+    opener = FakeOpener(by_query={expr: CHECKOUT_BODY})
+    executor, _, lease, _ = _executor(monkeypatch, opener)
+
+    outcome = executor.execute(_call(METRICS_TOOL, {"expr": expr}))
+
+    assert (outcome.status, outcome.reason) == ("ok", None), outcome.model_view
+    view = outcome.model_view
+    assert view["adopted"] is True
+    assert view["citable_as_fact"] is True
+    assert view["lookback_seconds"] == 300
+    assert (
+        view["lookback_start_at"] == (WINDOW.start - timedelta(seconds=300)).isoformat()
+    )
+    first_sample = datetime.fromisoformat(view["source_start_at"])
+    assert WINDOW.start <= first_sample <= WINDOW.end
+    assert first_sample == outcome.evidence.source_start_at
+    assert opener.called
+
+    authorized = frozenset({TARGET_ID})
+    context = _evidence_context(str(lease.run_id), WINDOW)
+    delivered = delivered_view(
+        view, evidence_context=context, authorized_targets=authorized
+    )
+    assert delivered is not None
+    assert delivered.status == "ok"
+    assert "policy-window-1" in delivered.time_scope_refs
+
+    report, reason = parse_report(
+        json.dumps(
+            {
+                "schema_version": "m0-report-v2",
+                "assessment_status": "completed",
+                "conclusion": "supported",
+                "summary": "One series was returned inside the window.",
+                "claims": [
+                    {
+                        "kind": "fact",
+                        "text": "The call-rate series was returned for checkout.",
+                        "evidence_ids": [view["evidence_id"]],
+                        "target_refs": [TARGET_ID],
+                        "time_scope_ref": "policy-window-1",
+                    }
+                ],
+                "gaps": [],
+                "next_steps": [],
+            }
+        ),
+        finish_reason="stop",
+    )
+    assert report is not None, reason
+    assert (
+        unsupported_citations(
+            report,
+            views=[delivered],
+            authorized_targets=authorized,
+            time_policy_ids=("policy-window-1",),
+            target_catalog=None,
+        )
+        is False
+    )
+
+
+def test_selector_longer_than_the_window_is_refused_before_any_request(monkeypatch):
+    """Mirrors the ``offset`` refusal: ``[6m]`` over a 300 s window never
+    reaches the source and leaves no evidence."""
+    from tests.test_m1_otel_demo_contract import _call, _executor
+
+    opener = FakeOpener(routes={"/api/v1/query_range": CHECKOUT_BODY})
+    executor, sink, _, _ = _executor(monkeypatch, opener)
+
+    outcome = executor.execute(_call(METRICS_TOOL, {"expr": "rate(x[6m])"}))
+
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+    assert not opener.called
+    assert sink.records == [] and outcome.evidence is None
+    assert outcome.model_view["content"] is None
