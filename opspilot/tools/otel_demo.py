@@ -16,10 +16,12 @@ What a Run may read (technical plan §8):
   window. The raw evidence is the exact Prometheus response; the model view
   is its leading ``data.result`` series. ``offset``, ``@`` and a range
   selector longer than the window are refused before any request goes out;
-  a selector up to the window length is allowed and, evaluated at the window
-  start, reads that far back before it (upstream Holmes issues the same
-  queries) -- the view reports that read as ``lookback_seconds`` /
-  ``lookback_start_at`` next to the in-window ``source_start_at``;
+  a selector up to the window length is allowed and the query's ``start``
+  is pushed forward by its length, so every evaluated point reads samples
+  from inside the window only (a window-length selector evaluates once, at
+  the window end, as the whole-window aggregate) -- the view reports the
+  length as ``lookback_seconds`` and the earliest instant read as
+  ``lookback_start_at`` (the window start) next to ``source_start_at``;
 * ``traces_search``: Jaeger's trace search for one service in the window.
   Raw Jaeger responses are 300 KB-600 KB for 20 traces, so the raw evidence
   here is the transport's projected observation record -- the M0 trace
@@ -199,14 +201,22 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "Wrap a counter in rate() or increase() for per-window "
                 "activity. "
                 "A range selector may be at most the window length. "
-                "A range selector evaluated at the window start reads that "
-                "far back before the window. "
-                "The view reports that read as lookback_seconds and "
+                "A point at time t with range selector [r] covers [t - r, t]. "
+                "Every point covers samples inside the window only. "
+                "No point reads samples from before the window. "
+                "The first point is at the window start plus the longest "
+                "range selector. "
+                "The view reports the longest range selector as "
+                "lookback_seconds and the earliest instant read as "
                 "lookback_start_at. "
                 "source_start_at is the first returned sample inside the "
                 "window. "
-                "A value at the first points may therefore reflect samples "
-                "from before the window. "
+                "A whole-window total, maximum or minimum comes from one "
+                "evaluation of a window-length selector, such as "
+                "increase(x[300s]), max_over_time(x[300s]) or "
+                "min_over_time(x[300s]). "
+                "Do not compute totals, maxima or minima from the point list "
+                "yourself. "
                 "A range selector longer than the window is refused. "
                 "offset is refused. "
                 "@ is refused. "
@@ -318,8 +328,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "offset is refused. "
                 "@ is refused. "
                 "A range selector longer than the window is refused. "
-                "A range selector up to the window length reads that far "
-                "back before the window start."
+                "A range selector up to the window length moves the first "
+                "evaluated point forward by its length, so every point reads "
+                "samples inside the window only."
             ),
             limits=(
                 "Truncated at the registered max_view_bytes: whole leading "
@@ -329,9 +340,8 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
                 "unhealthy, and a series that is not returned is unknown, not "
-                "zero; cumulative counters are not rates; a value at the first "
-                "points is not an in-window event when lookback_seconds is "
-                "nonzero."
+                "zero; cumulative counters are not rates; a per-step point is "
+                "not a whole-window total, maximum or minimum."
             ),
         ),
         may_contain_secrets=False,
@@ -606,12 +616,13 @@ def promql_problem(expr: str, window_seconds: float) -> str | None:
     """Why this PromQL must not be sent, or ``None`` (M0 ``read_proxy`` rules).
 
     ``offset`` and ``@`` move the evaluation outside the window and a range
-    selector longer than the window is refused; a selector at the window
-    start still looks back up to its own length before it (plus Prometheus'
-    lookback delta), which is bounded and stays on the dedicated instance --
-    the returned sample timestamps are what the executor checks against the
-    scope. Any ``[...]`` that is not ``<n>[smh]`` is refused too (a label
-    regex such as ``[a-z]+`` is over-refused, safely).
+    selector longer than the window is refused; a selector up to the window
+    length is accepted and ``_metrics`` starts the evaluation that far after
+    the window start, so no point reads before it (Prometheus' staleness
+    lookback for instant selectors aside) -- the returned sample timestamps
+    are what the executor checks against the scope. Any ``[...]`` that is not
+    ``<n>[smh]`` is refused too (a label regex such as ``[a-z]+`` is
+    over-refused, safely).
     """
     if not expr or len(expr) > MAX_PROMQL_CHARS:
         return "QUERY_OUT_OF_WINDOW"
@@ -631,13 +642,15 @@ def promql_problem(expr: str, window_seconds: float) -> str | None:
 
 
 def promql_lookback_seconds(expr: str) -> int:
-    """How far before the window start an accepted expression reads, in seconds.
+    """How far each evaluated point of an accepted expression reads back, in seconds.
 
     The largest ``<n>[smh]`` range or subquery selector in ``expr``; 0 when
-    there is none. Only meaningful for an expression ``promql_problem``
-    accepted, so every selector here already parses and is at most the
-    window length. Prometheus' staleness lookback for instant selectors is
-    not counted: it is a server default the query does not state.
+    there is none. ``_metrics`` starts the range query this far after the
+    window start so the first point's read begins at the window start. Only
+    meaningful for an expression ``promql_problem`` accepted, so every
+    selector here already parses and is at most the window length.
+    Prometheus' staleness lookback for instant selectors is not counted: it
+    is a server default the query does not state.
     """
     longest = 0
     for selector in _RANGE_SELECTOR.findall(expr):
@@ -735,10 +748,17 @@ class OtelDemoTransport:
             or step > int(window.seconds)
         ):
             return _refused("INVALID_STEP")
+        # Evaluate from window start + longest range selector, so every
+        # point's ``[t - range, t]`` lies inside the window; a window-length
+        # selector gives start == end, one point: the whole-window aggregate
+        # (v4 rerun, 3 of 4 Runs reported the pre-window first point as
+        # in-window).
+        lookback = promql_lookback_seconds(expr)
+        start = window.start + timedelta(seconds=lookback)
         url = f"{request.endpoint}/api/v1/query_range?" + urllib.parse.urlencode(
             {
                 "query": expr,
-                "start": f"{window.start.timestamp():.3f}",
+                "start": f"{start.timestamp():.3f}",
                 "end": f"{window.end.timestamp():.3f}",
                 "step": str(step),
                 "timeout": f"{int(request.timeout_seconds)}s",
@@ -755,7 +775,7 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
-            lookback_seconds=promql_lookback_seconds(expr),
+            lookback_seconds=lookback,
         )
 
     # -- traces -------------------------------------------------------------

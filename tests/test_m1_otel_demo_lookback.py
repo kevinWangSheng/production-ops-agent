@@ -1,8 +1,10 @@
-"""OTel Demo metrics lookback: what a range selector reads before the window.
+"""OTel Demo metrics lookback: how far back each range-selector point reads.
 
 ``promql_problem`` already lets a range selector up to the window length
-through, and a selector evaluated at the window start reads that far back
-before it. The v4 packet's model-visible description said the opposite ("a
+through; originally a selector evaluated at the window start read that far
+back before it (the window-points contract has since moved the first
+evaluation forward by the selector length, so ``lookback_start_at`` is now
+the window start). The v4 packet's model-visible description said the opposite ("a
 query that reads outside it returns an error"), so the model could not tell
 whether ``rate(x[5m])`` at the window start was in or out of scope, and the
 view did not record how far back a sample's rate actually reached.
@@ -182,9 +184,10 @@ def test_metrics_transport_refusal_carries_no_lookback():
 
 
 def test_view_carries_lookback_seconds_and_lookback_start_at():
-    """``lookback_start_at`` is the requested window start minus
-    ``lookback_seconds``, as an ISO-8601 string; ``source_start_at`` stays
-    the first returned sample."""
+    """``lookback_start_at`` is the earliest instant any returned point reads,
+    i.e. the requested window start (the adapter starts evaluating
+    ``lookback_seconds`` after it), as an ISO-8601 string; ``source_start_at``
+    stays the first returned sample (window-points contract, rule 3)."""
     executor, transport, _, _ = build()
     first_sample = WINDOW_START + timedelta(minutes=2)
     transport.response = TransportResponse(
@@ -201,9 +204,7 @@ def test_view_carries_lookback_seconds_and_lookback_start_at():
     view = outcome.model_view
     assert view["lookback_seconds"] == 300
     assert isinstance(view["lookback_start_at"], str)
-    assert datetime.fromisoformat(view["lookback_start_at"]) == (
-        WINDOW_START - timedelta(seconds=300)
-    )
+    assert datetime.fromisoformat(view["lookback_start_at"]) == WINDOW_START
     assert datetime.fromisoformat(view["source_start_at"]) == first_sample
     assert outcome.evidence.view["lookback_seconds"] == 300
     assert outcome.evidence.view["lookback_start_at"] == view["lookback_start_at"]
@@ -255,9 +256,10 @@ def test_tool_schema_revision_moved_with_the_description():
 
 
 def test_window_length_selector_view_is_adopted_and_citable_end_to_end(monkeypatch):
-    """A ``[5m]`` selector over the 300 s window reads back exactly to the
-    window start; the view says so, stays adopted and citable, and a fact
-    citing it binds to the Run's own historical_window policy."""
+    """A ``[5m]`` selector over the 300 s window is evaluated once at the
+    window end and reads back exactly to the window start; the view says so,
+    stays adopted and citable, and a fact citing it binds to the Run's own
+    historical_window policy."""
     from opspilot.investigation.context import delivered_view
     from opspilot.investigation.reports import parse_report, unsupported_citations
     from opspilot.tools.otel_demo import _evidence_context
@@ -274,9 +276,7 @@ def test_window_length_selector_view_is_adopted_and_citable_end_to_end(monkeypat
     assert view["adopted"] is True
     assert view["citable_as_fact"] is True
     assert view["lookback_seconds"] == 300
-    assert (
-        view["lookback_start_at"] == (WINDOW.start - timedelta(seconds=300)).isoformat()
-    )
+    assert view["lookback_start_at"] == WINDOW.start.isoformat()
     first_sample = datetime.fromisoformat(view["source_start_at"])
     assert WINDOW.start <= first_sample <= WINDOW.end
     assert first_sample == outcome.evidence.source_start_at

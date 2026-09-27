@@ -31,7 +31,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
@@ -338,14 +338,14 @@ class TransportResponse:
     substitute the requested window/data_as_of. The adapter must derive these
     timestamps from source semantics, never model-supplied parameters.
 
-    ``lookback_seconds`` is how far before the requested window start the
-    source was read to produce the first in-window points (a PromQL range
-    selector evaluated at the window start), derived by the adapter from the
-    query it sent; ``None`` when the adapter does not report it. It is not
-    part of ``source_start_at``: that interval stays the in-window samples the
-    scope and time-policy checks bound, and the lookback is shown to the
-    model beside it as ``lookback_start_at`` (v4 acceptance packet, normal-1
-    review P2-3).
+    ``lookback_seconds`` is how far back each returned point reads (the
+    longest PromQL range selector), derived by the adapter from the query it
+    sent; ``None`` when the adapter does not report it. The adapter starts
+    its evaluation that far after the requested window start, so the earliest
+    instant any point reads is the window start itself, shown to the model as
+    ``lookback_start_at``. It is not part of ``source_start_at``: that
+    interval stays the returned samples the scope and time-policy checks
+    bound (v4 acceptance packet, normal-1 review P2-3; v4 rerun P2).
 
     ``sent`` is ``False`` when the transport refused the request before
     anything left the process (a declared parameter it cannot turn into a
@@ -1165,11 +1165,10 @@ class ReadOnlyToolExecutor:
         if lookback is not None and (
             type(lookback) is not int or lookback < 0 or lookback > plan.window.seconds
         ):
-            # The adapter may not claim to have read further back than the
+            # The adapter may not claim a per-point read longer than the
             # window it was asked for (the PromQL guard refuses longer
-            # selectors before any request), and the bound also keeps the
-            # ``lookback_start_at`` arithmetic below inside the datetime
-            # range instead of raising ``OverflowError`` on an absurd value.
+            # selectors before any request, and a longer one could not start
+            # inside the window).
             return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if any(
@@ -1352,9 +1351,12 @@ class ReadOnlyToolExecutor:
             else source_end_at.isoformat(),
             "freshness_seconds": freshness,
             "lookback_seconds": lookback,
+            # The earliest instant any returned point reads: the adapter
+            # starts evaluating ``lookback`` after the window start, so the
+            # first point's ``[t - lookback, t]`` begins exactly there.
             "lookback_start_at": None
             if lookback is None
-            else (plan.window.start - timedelta(seconds=lookback)).isoformat(),
+            else plan.window.start.isoformat(),
             "result_count": len(rows),
             "returned_count": len(kept),
             "incomplete": incomplete,
