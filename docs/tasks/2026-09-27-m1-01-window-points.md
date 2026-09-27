@@ -56,3 +56,4 @@ D. **清理**：`opspilot/instructions/discipline.py` 中引用模型视图不�
 - 全新上下文测试作者先按本合同写 `tests/test_m1_view_explicit_contract.py` 并在未实现代码上确认红；之后实现者实现并转绿，不改该文件断言。
 - 独立审查 + 冻结后重跑 v4 2+2（6f），与 6e 对比；按服务分组缺失序列类 P2 是否仍出现作为第 2 条的决策依据。
 - 2026-09-27：合同 D 不执行（lead 决定）：两处旧字段只出现在 `PROJECTION_DISCIPLINE`，该段只进入两个复刻上游 Holmes 的历史 baseline 变体（本 Run 使用的 replay-candidate 不含），且 `tests/test_instruction_discipline.py:182` 按 `holmes_baseline.py` 逐字节校验；修改会改变实际变体之外的行为，与 D 自身约束冲突。保持原样，记为已知。
+- 2026-09-27：第二轮独立审查（全新上下文 Claude Agent）无 P1/P2：A/B 取值与投影同源、对 metrics 与 fixture 零影响；C 实时与重建共用 `run_coverage_message`，重建时对最终步做快照哈希核对，人为改模板后重建报 `INCOMPATIBLE_STATE`（失败而非静默）。可选项：视图溢出为 stub 时不含 B 的计数字段（trace 视图 ≤16 KiB，通常不溢出），记为已知。make check 非 PG 2237 passed；撤回实现后新合同测试 18 红。候选冻结于本提交，重跑证据 `docs/evidence/m1-01-explicit-view-rerun/`。
