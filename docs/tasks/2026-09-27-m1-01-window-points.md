@@ -55,3 +55,4 @@ D. **清理**：`opspilot/instructions/discipline.py` 中引用模型视图不�
 
 - 全新上下文测试作者先按本合同写 `tests/test_m1_view_explicit_contract.py` 并在未实现代码上确认红；之后实现者实现并转绿，不改该文件断言。
 - 独立审查 + 冻结后重跑 v4 2+2（6f），与 6e 对比；按服务分组缺失序列类 P2 是否仍出现作为第 2 条的决策依据。
+- 2026-09-27：合同 D 不执行（lead 决定）：两处旧字段只出现在 `PROJECTION_DISCIPLINE`，该段只进入两个复刻上游 Holmes 的历史 baseline 变体（本 Run 使用的 replay-candidate 不含），且 `tests/test_instruction_discipline.py:182` 按 `holmes_baseline.py` 逐字节校验；修改会改变实际变体之外的行为，与 D 自身约束冲突。保持原样，记为已知。
