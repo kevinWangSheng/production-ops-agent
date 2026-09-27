@@ -34,3 +34,4 @@
   - 未动 `tool_schema_revision` 钉值测试：合同 7 只要求与旧值不同，现有断言即为 `!=`。
 - 2026-09-27：独立合同测试 `fd5c256`（18 项）。红绿对照：`git apply -R` 撤回 d8b6e39 的 opspilot/ 改动后 6 failed / 12 passed（失败均为新合同项：start 偏移 ×3、lookback_start_at、描述句、revision），恢复后 18 passed。
 - 2026-09-27：独立审查（Codex 两次容量不足未产出，改由全新上下文 Claude Agent）：主修复正确，P2 嵌套子查询回看漏算 → 合同第 1 条修订 310701b，实现 3145325，独立测试 9cd4941（4 项）。红绿对照：撤回 3145325 的 opspilot/ 改动后 3 failed / 19 passed（并列取最大一项在新旧实现下均成立），恢复后全绿。`make check` 通过；非 PG 测试 2217 passed / 2 xfailed。
+- 2026-09-27：**6e 重跑已执行**（候选冻结 `b352230`，`tool_schema_revision` `otel-demo-585e5ef89c39`，与 6d 同流程/同判据，[证据](../evidence/m1-01-window-points-rerun/run.md)）：4/4 发布；**v4 口径 1/4 通过（fault-1 五条全过，其余三次判据 3 失败：P2 合计 6，均为模型对缺失 vs 显式、视图 vs 后端计数的可见范围混淆，无产品归因）；上游口径 4/4**（两正常窗正确判定无故障，两故障窗正确定位 checkout→payment `Charge`，trace id 与独立观察逐一吻合）。6d 的「回看首点」类 P2（3/4 Run）本包为 0，但模型四次都只用 `[300s]`，多点路径未在真实 Run 中触发。费用 0.49 CNY（48.50 → 48.01）。环境已 stop（colima `m0-otel`、55431 均保留数据）。M1-01 完成定义的处置待用户决定。

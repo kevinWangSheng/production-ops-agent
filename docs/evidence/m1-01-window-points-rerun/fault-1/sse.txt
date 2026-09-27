@@ -1,0 +1,102 @@
+retry: 2000
+
+id: 1
+event: intake_accepted
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "channel": "ui_basic", "actor_id": "demo", "question": "Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the authorized 300-second window, determine whether checkout and its dependency calls (payment, product-catalog, cart, currency, shipping, email) show failures or elevated latency, cite trace ids, and return a json investigation report.", "target_id": "m0-otel-20260909", "request_id": "d3106fc0-3223-4b1a-97c5-2993996bbdea", "received_at": "2026-09-27T05:34:20.512377-07:00"}
+
+id: 2
+event: run_claimed
+data: {"epoch": 1, "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "control_generation": 0}
+
+id: 3
+event: step_committed
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "logical_key": "ctx0:round-1", "finish_reason": "tool_calls", "planned_tools": 7}
+
+id: 4
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t0:242f2f35-6720-4057-a931-b7996a2e2195"}
+
+id: 5
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t1:9c3b9ac4-68ec-48b2-b54c-e753bd165419"}
+
+id: 6
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t2:9d7d32a4-d088-4687-bb49-5516400da0b0"}
+
+id: 7
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t3:f8436275-8b1d-4e98-ab80-4415642dc200"}
+
+id: 8
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 4, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t4:68353050-3250-4661-aa6c-87c33de104e3"}
+
+id: 9
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 5, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t5:afef480d-e94e-48ed-8106-176ae5528346"}
+
+id: 10
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 6, "step_id": "5a4e4c12-ad33-499d-989c-463253680dad", "target_id": "m0-otel-20260909", "evidence_id": "5a4e4c12-ad33-499d-989c-463253680dad-t6:82dcf479-e32c-4d8a-a065-0993cd1cf56d"}
+
+id: 11
+event: step_committed
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "logical_key": "ctx0:round-2", "finish_reason": "tool_calls", "planned_tools": 7}
+
+id: 12
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t0:2aae1c53-553a-493c-a180-fdc3290efa56"}
+
+id: 13
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t1:438374a5-4d30-4cac-9954-db78fdbd4f02"}
+
+id: 14
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t2:b1ca847f-ff60-40f7-9500-c7425add8966"}
+
+id: 15
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "no_data", "adopted": true, "ordinal": 3, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t3:58137c45-e4ed-4f64-ac50-731c2d0ac00b"}
+
+id: 16
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 4, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t4:ef220c47-ba3a-4f40-b108-8e8aea1342a8"}
+
+id: 17
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 5, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t5:ca4c0884-bf98-47cd-a607-5c3fffb9011a"}
+
+id: 18
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 6, "step_id": "24b58d22-c582-467e-99eb-38f875b656a2", "target_id": "m0-otel-20260909", "evidence_id": "24b58d22-c582-467e-99eb-38f875b656a2-t6:c9ba2c6d-fb91-40ba-a820-65c7ab8865d3"}
+
+id: 19
+event: step_committed
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "step_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c", "logical_key": "ctx0:round-3", "finish_reason": "tool_calls", "planned_tools": 4}
+
+id: 20
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c", "target_id": "m0-otel-20260909", "evidence_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t0:1e8245d1-e162-40ff-9ae3-e0cb28c3aa0f"}
+
+id: 21
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c", "target_id": "m0-otel-20260909", "evidence_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t1:b5a7da53-2f48-4bb6-82b0-881b50799cc0"}
+
+id: 22
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c", "target_id": "m0-otel-20260909", "evidence_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t2:cc224a5c-036c-464a-95f3-e85d595ad5ca"}
+
+id: 23
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c", "target_id": "m0-otel-20260909", "evidence_id": "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t3:03a38116-2fd8-4c4e-ba1c-229045994eb2"}
+
+id: 24
+event: step_committed
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "step_id": "dfbce256-9f73-4565-af08-56811a62234f", "logical_key": "ctx0:round-4", "finish_reason": "stop", "planned_tools": 0}
+
+id: 25
+event: run_completed
+data: {"run_id": "d826e986-fd5b-5cf7-a8f1-32a736861ddc", "handoff": false, "execution": "completed", "published": true, "evidence_ids": ["5a4e4c12-ad33-499d-989c-463253680dad-t0:242f2f35-6720-4057-a931-b7996a2e2195", "5a4e4c12-ad33-499d-989c-463253680dad-t1:9c3b9ac4-68ec-48b2-b54c-e753bd165419", "5a4e4c12-ad33-499d-989c-463253680dad-t2:9d7d32a4-d088-4687-bb49-5516400da0b0", "5a4e4c12-ad33-499d-989c-463253680dad-t3:f8436275-8b1d-4e98-ab80-4415642dc200", "5a4e4c12-ad33-499d-989c-463253680dad-t4:68353050-3250-4661-aa6c-87c33de104e3", "5a4e4c12-ad33-499d-989c-463253680dad-t5:afef480d-e94e-48ed-8106-176ae5528346", "5a4e4c12-ad33-499d-989c-463253680dad-t6:82dcf479-e32c-4d8a-a065-0993cd1cf56d", "24b58d22-c582-467e-99eb-38f875b656a2-t0:2aae1c53-553a-493c-a180-fdc3290efa56", "24b58d22-c582-467e-99eb-38f875b656a2-t1:438374a5-4d30-4cac-9954-db78fdbd4f02", "24b58d22-c582-467e-99eb-38f875b656a2-t2:b1ca847f-ff60-40f7-9500-c7425add8966", "24b58d22-c582-467e-99eb-38f875b656a2-t3:58137c45-e4ed-4f64-ac50-731c2d0ac00b", "24b58d22-c582-467e-99eb-38f875b656a2-t4:ef220c47-ba3a-4f40-b108-8e8aea1342a8", "24b58d22-c582-467e-99eb-38f875b656a2-t5:ca4c0884-bf98-47cd-a607-5c3fffb9011a", "24b58d22-c582-467e-99eb-38f875b656a2-t6:c9ba2c6d-fb91-40ba-a820-65c7ab8865d3", "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t0:1e8245d1-e162-40ff-9ae3-e0cb28c3aa0f", "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t1:b5a7da53-2f48-4bb6-82b0-881b50799cc0", "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t2:cc224a5c-036c-464a-95f3-e85d595ad5ca", "e211cd46-1308-427a-95b3-fc9c6e3dbe7c-t3:03a38116-2fd8-4c4e-ba1c-229045994eb2"], "report_sha256": "74495c1254c4a9b03ba14ed5fae9a22e317ff044def63fdf04b6abd2326b043c", "handoff_reasons": [], "prompt_revision": "prompt-replay-candidate-04a9d1a1a80e", "model_requests_used": 4}
+
