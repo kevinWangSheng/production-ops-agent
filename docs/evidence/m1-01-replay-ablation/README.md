@@ -59,3 +59,63 @@
 ## 目录
 
 `README.md`、`review-rubric.md`、`rebuild-manifest.json`（四个 Run 的哈希核对）、`ledger.jsonl`（100 次调用的 usage 与请求 sha256）、`validation.json`、`summary.json`、`deepseek-balance-before/after.json`、`scripts/`（rebuild_final_requests、replay、span_groups、validate、blind_pack、summarize）、`samples/<group>-<case>-r<n>/{report.txt,meta.json}`（模型输出原文，不含 reasoning_content）、`reviews/`（8 份评审结果与盲评映射）。脚本以 `PYTHONPATH=. ABLATION_WORK=<工作目录> M0_ENV_FILE=<私有 .env>` 在 worktree 根目录运行，还原的 messages 只在工作目录生成。
+
+# 第二阶段：组合组、双盲评审复评、留出场景（2026-09-27 UTC 19:00–20:45）
+
+授权：lead 2026-09-27 第二阶段指令（费用不设硬上限、模型 HTTP 本阶段 ≤250、产品代码不改）。本阶段模型调用：组 5 重放 20、两个留出 Run 各 4（产品路径）、留出重放 40，共 68 次；重放账本累计 160 条（`ledger.jsonl`）。余额 40.59 → 38.08 CNY，本阶段 **2.51 CNY**（`heldout/deepseek-balance-after-phase2.json`）。产品代码零改动（`git status opspilot/` 为空）；55431 PG 与 colima `m0-otel` 结束后均已停止，数据保留。
+
+## 新评审方法
+
+- 每个样本由 **2 位**全新上下文盲评者（Fable 5.1）独立判定，评分标准原文与第一阶段完全相同（`review-rubric.md`），样本随机匿名、Run 别名 R1–R6 随机；评审者不知组别与目的。分配脚本 `scripts/blind_pack2.py`（每人 10 个样本，每样本 2 个不同评审者，按负载最低分配）。
+- 不一致（a 类计数、e 类计数或 verdict 任一不同）的样本交第 3 位裁决者：拿评分标准、两份评审（匿名为 A/B）、报告与视图，逐条核对后给出最终 a/e 列表与 verdict（`scripts/adjudicate_pack.py`，结果 `reviews2/adjudicator-*.jsonl` 含 `decision_notes`）。一致的样本取共同结果。汇总 `scripts/summarize2.py` → `summary2.json`。
+- 复评范围：组 0、组 1、组 3 各 20 个已有样本（只复评，不重跑模型）+ 阶段 A 组 5 的 20 个 + 阶段 B 留出 40 个 = 120 样本、240 份评审、43 次裁决（评审者 1–24，裁决者 17–19、25–27）。
+- **一致率**（120 样本）：a、e 计数完全一致 80/120（67%）；错误有无一致（a≥1 与 e≥1 的判断都相同）97/120（81%）；verdict 一致 114/120（95%）。分批看：6f 复评 80 样本完全一致 61（76%），留出 40 样本 19（48%）——留出报告数值更多，评审者对区间归属的分歧更大。
+
+## 阶段 A：组 5 = 组 1 规则句 + 组 3 span_groups（6f 四个上下文，4 Run × 5 次）
+
+新方法下 6f 各组（每组 20 样本 = fault 10 + normal 10；a / e 为裁决后计数）：
+
+| 组 | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | fault 窗含错 | normal 窗含错 | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|---|---|
+| 0 基线（复评） | 23 | 25 | 18/20 | 9/10 | 9/10 | 19/20 | 17/20 | 8,826 |
+| 1 规则句（复评） | 7 | 15 | 12/20 | 5/10 | 7/10 | 19/20 | 17/20 | 8,922 |
+| 3 span_groups（复评） | 17 | 5 | 13/20 | 4/10 | 9/10 | 19/20 | 18/20 | 8,330 |
+| **5 规则句 + span_groups** | **6** | **4** | **6/20** | **1/10** | 5/10 | 18/20 | 17/20 | 9,256 |
+
+- 复评与第一阶段单评的次序一致（a 类：规则句降得最多；e 类：span_groups 降得最多），但绝对数不同（基线 a 25→23、e 20→25；组 3 a 10→17），说明第一阶段的单评计数含评审者尺度噪声。
+- 组 5 把两类错误同时压到最低：fault 窗 10 个样本只有 1 个含错（1 个 e），normal 窗 5/10 含错（a 6 个全在 normal-1，e 3 个）。组 5 校验未通过 2 个（`g5-fault-1-r3`、`g5-normal-1-r4`，均为引用不存在的 evidence_id）。
+- 上游口径「不正确」的 12 个（各组 2–3 个）仍全部是 normal-1 报告被记为 `other`：该窗确有 payment 的 GET/tcp.connect/dns.lookup 探针 ERROR span，报告如实写出并拒绝归因，评审者按标准原文「窗内无失败调用」判为 `other`。没有任何样本指认错误原因。
+
+## 阶段 B：留出场景（冻结产品 f8fac31 真实跑 2 个新故障）
+
+- 环境：`heldout/lab-up.log`（colima `m0-otel` + OTel Demo 2.0.2），web 与 worker 以 `OPSPILOT_TOOL_PROFILE=otel-demo` 启动，`worker.log` 首行 versions = `prompt-replay-candidate-177e529f603d` / `ctx-ctx-policy-v1-b4b4c61e0eec` / `otel-demo-44ed0d63b0d3`，与 6f 相同。问题文本、`target_id`、流程与 6f `run_case.sh` 完全一致（`scripts/run_heldout_case.sh`）。
+- 故障钩子：`scripts/heldout_fault.py`（新写，参数化 flag；捕获原字节、拒绝重复注入、恢复前核对注入快照、逐条时间线 `heldout/fault-timeline.jsonl`；未改 `scripts/m0_environment/development_fault.py`）。flagd 文件前后 SHA256 往返一致（`1ee5c025…` → 注入 → 恢复 → `1ee5c025…`，两次）。
+- `productCatalogFailure`（product-catalog GetProduct 对单一商品报错）：19:05:37Z 注入。该故障对 checkout 只是间歇性的（16 分钟内 23 条 checkout trace 只有 2 条失败，`observe-pc-16min` 见 `heldout/observe-pc-pre-attempt*.json`），因此用 30 秒轮询等到 300 秒窗内 ≥2 条「checkout 失败且 product-catalog 子 span 失败」的 trace 才提交（19:48:17Z，窗内 2/9）。Run `5e571762` 4 轮发布，窗 19:48:18–19:53:18，事后独立观察窗内 2/9 失败 trace 均为 product-catalog 子 span（`heldout/pc-fault/observe-post.json`）；报告定位 checkout PlaceOrder → product-catalog `GetProduct`（gRPC 13，"Product Catalog Fail Feature Flag Enabled"）。19:54:28Z 恢复，19:55–20:00 窗独立观察 0 失败（`observe-after-pc-restore.json`）。
+- `cartFailure`（cart EmptyCart 连不上 valkey）：20:00:27Z 注入，20:02:18Z 窗内 5/7 失败即提交。Run `46bf55e1` 4 轮发布，窗 20:02:18–20:07:18，事后观察 6/7 失败 trace 均为 cart 子 span；报告定位 checkout → cart `EmptyCart`（gRPC 9，"Can't access cart storage … redis"）。20:09:11Z 恢复，20:10–20:15 窗观察 0 失败（`observe-after-cart-restore.json`）。
+- 两个 Run 的最终轮请求用产品路径还原，`input_snapshot_hash` 与 `request_sha256` 均与记录一致（`heldout/rebuild-manifest.json`），随后重放组 0 与组 5 各 2 Run × 10 次。
+
+| 组（留出，2 Run × 10） | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | 含 a | 含 e | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|---|---|
+| 0 基线 | 21 | 46 | 19/20 | 14 | 17 | 20/20 | 20/20 | 7,920 |
+| 5 规则句 + span_groups | **4** | **20** | 13/20 | 4 | 12 | **14/20** | 20/20 | 9,181 |
+
+按 Run：pc-fault 基线 a 13 / e 18 / 含错 9/10 → 组 5 a 1 / e 10 / 6/10；cart-fault 基线 a 8 / e 28 / 10/10 → 组 5 a 3 / e 10 / 7/10。40 个样本全部正确定位到对应依赖（product-catalog GetProduct / cart EmptyCart）。
+
+组 5 在留出上校验未通过 6 个：3 个引用不存在的 evidence_id（长 id 抄漏一个字符，如 `91b291d3-a75-…`）、2 个 fact 引用 `no_data` 视图、1 个 JSON 语法错（12,809 字符）。基线 20/20 通过。这是组 5 输出更长（+16% completion token）、引用更多 id 带来的新失败模式，第一阶段 6f 上也有苗头（组 5 6f 2/20）。
+
+## 结论（第二阶段）
+
+- **最优组合是组 5**：在 6f 上含错样本 18/20 → 6/20，在未见过的两个故障上 19/20 → 13/20，a 类 21 → 4、e 类 46 → 20；上游口径在留出 40/40。效果不局限于 6f 四个上下文，但留出场景的 e 类仍剩一半——留出 Run 的视图数值更密（cart 故障有大量 EmptyCart 延迟与错误计数），span_groups 只覆盖 trace 视图，metrics 视图的数值复述仍靠模型。
+- 组 5 的代价是校验通过率下降（留出 14/20）：更长的报告引用更多 evidence_id，抄错一个字符即被引用校验拒绝；这类错误确定性可检，但意味着产品侧若采用组 5，需要考虑 id 校验失败时的处理（如让模型只引用短别名），这是合同层取舍，留给用户。
+- 双盲一致率 67%（完全）/ 81%（有无），裁决改变了 43/120 个样本的计数；组间次序在单评与双评下相同，绝对计数应以本阶段 `summary2.json` 为准。
+
+## 局限（第二阶段）
+
+- 留出只有 2 个故障场景各 1 个真实 Run（10 次重放共享同一上下文），Run 级样本量为 2；未跑留出的 normal 窗。
+- `productCatalogFailure` 在 checkout 上是间歇故障，提交时机由 30 秒轮询「窗内 ≥2 条失败 trace」决定，与 6f 的 paymentFailure（100%）不同质；该 Run 窗内 checkout 失败率约 2/9。
+- 评审者尺度差异仍在（留出 40 样本完全一致率 48%），裁决者也是模型；normal-1 的 `other` 判定为标准原文的字面适用，不是报告错误。
+- 阶段 C（组 6 官方提示词）未做，等 lead 给原文。
+
+## 目录（第二阶段新增）
+
+`summary2.json`、`reviews2/`（reviewer-1…24、adjudicator-17…19、25…27 的 jsonl，`blind-mapping.json`、`adjudication.json`）、`samples/g5-*`、`samples/g0-{pc,cart}-fault-r*`、`samples/g5-{pc,cart}-fault-r*`、`heldout/`（`lab-up.log`、`lab-stop.log`、`web.log`、`worker.log`、`fault-timeline.jsonl`、`observe-*.json`、`rebuild-manifest.json`、`deepseek-balance-after-phase2.json`、`pc-fault/` 与 `cart-fault/` 各含 6f 同款 `request/intake/window/observe-pre/observe-post/sse/events/incident.html/ledger.json/report.json`）、`scripts/`（新增 `heldout_fault.py`、`run_heldout_case.sh`、`blind_pack2.py`、`adjudicate_pack.py`、`summarize2.py`；`replay.py` 新增组 5 与 250 上限；`rebuild_final_requests.py` 支持 `intake:<key>=<case>`）。

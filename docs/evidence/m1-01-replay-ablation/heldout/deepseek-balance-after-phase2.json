@@ -1,0 +1,13 @@
+{
+ "is_available": true,
+ "balance_infos": [
+  {
+   "currency": "CNY",
+   "total_balance": "38.08",
+   "granted_balance": "0.00",
+   "topped_up_balance": "38.08"
+  }
+ ],
+ "queried_at_utc": "2026-09-27T20:40:42Z",
+ "note": "after phase 2 (group 5, two held-out Runs, held-out replays); phase 1 ended at 40.59"
+}

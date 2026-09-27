@@ -1,4 +1,94 @@
 {
+ "g0-cart-fault-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 15,
+  "gaps": 7
+ },
+ "g0-cart-fault-r10": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 14,
+  "gaps": 7
+ },
+ "g0-cart-fault-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 13,
+  "gaps": 7
+ },
+ "g0-cart-fault-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 13,
+  "gaps": 7
+ },
+ "g0-cart-fault-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 13,
+  "gaps": 6
+ },
+ "g0-cart-fault-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15,
+  "gaps": 6
+ },
+ "g0-cart-fault-r6": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 14,
+  "gaps": 7
+ },
+ "g0-cart-fault-r7": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 11,
+  "gaps": 7
+ },
+ "g0-cart-fault-r8": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 15,
+  "gaps": 7
+ },
+ "g0-cart-fault-r9": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 11,
+  "gaps": 6
+ },
  "g0-fault-1-r1": {
   "accepted": true,
   "reason": "",
@@ -181,6 +271,96 @@
   "conclusion": "partial",
   "claims": 14,
   "gaps": 10
+ },
+ "g0-pc-fault-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 11,
+  "gaps": 8
+ },
+ "g0-pc-fault-r10": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 19,
+  "gaps": 8
+ },
+ "g0-pc-fault-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 17,
+  "gaps": 6
+ },
+ "g0-pc-fault-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15,
+  "gaps": 7
+ },
+ "g0-pc-fault-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 20,
+  "gaps": 8
+ },
+ "g0-pc-fault-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 13,
+  "gaps": 6
+ },
+ "g0-pc-fault-r6": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 19,
+  "gaps": 7
+ },
+ "g0-pc-fault-r7": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 21,
+  "gaps": 7
+ },
+ "g0-pc-fault-r8": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 13,
+  "gaps": 7
+ },
+ "g0-pc-fault-r9": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15,
+  "gaps": 7
  },
  "g1-fault-1-r1": {
   "accepted": true,
@@ -897,5 +1077,377 @@
   "conclusion": "partial",
   "claims": 10,
   "gaps": 5
+ },
+ "g5-cart-fault-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 12,
+  "gaps": 6
+ },
+ "g5-cart-fault-r10": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "fact_cites_non_ok_view"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15
+ },
+ "g5-cart-fault-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15,
+  "gaps": 7
+ },
+ "g5-cart-fault-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 22,
+  "gaps": 7
+ },
+ "g5-cart-fault-r4": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "unknown_evidence_id"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 17
+ },
+ "g5-cart-fault-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16,
+  "gaps": 9
+ },
+ "g5-cart-fault-r6": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "fact_cites_non_ok_view"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16
+ },
+ "g5-cart-fault-r7": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 12,
+  "gaps": 8
+ },
+ "g5-cart-fault-r8": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 13,
+  "gaps": 8
+ },
+ "g5-cart-fault-r9": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16,
+  "gaps": 6
+ },
+ "g5-fault-1-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 21,
+  "gaps": 6
+ },
+ "g5-fault-1-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 19,
+  "gaps": 9
+ },
+ "g5-fault-1-r3": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "unknown_evidence_id"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 15
+ },
+ "g5-fault-1-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 14,
+  "gaps": 8
+ },
+ "g5-fault-1-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 14,
+  "gaps": 6
+ },
+ "g5-fault-2-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 19,
+  "gaps": 7
+ },
+ "g5-fault-2-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 14,
+  "gaps": 5
+ },
+ "g5-fault-2-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 23,
+  "gaps": 6
+ },
+ "g5-fault-2-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "claims": 18,
+  "gaps": 6
+ },
+ "g5-fault-2-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 21,
+  "gaps": 6
+ },
+ "g5-normal-1-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16,
+  "gaps": 8
+ },
+ "g5-normal-1-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 21,
+  "gaps": 7
+ },
+ "g5-normal-1-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 20,
+  "gaps": 8
+ },
+ "g5-normal-1-r4": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "unknown_evidence_id"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 17
+ },
+ "g5-normal-1-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 17,
+  "gaps": 7
+ },
+ "g5-normal-2-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16,
+  "gaps": 7
+ },
+ "g5-normal-2-r2": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15,
+  "gaps": 7
+ },
+ "g5-normal-2-r3": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 18,
+  "gaps": 7
+ },
+ "g5-normal-2-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 18,
+  "gaps": 9
+ },
+ "g5-normal-2-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 13,
+  "gaps": 8
+ },
+ "g5-pc-fault-r1": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 17,
+  "gaps": 6
+ },
+ "g5-pc-fault-r10": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 17,
+  "gaps": 7
+ },
+ "g5-pc-fault-r2": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "target_ref_not_observed_by_view",
+   "unknown_evidence_id"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 16
+ },
+ "g5-pc-fault-r3": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "citations",
+  "details": [
+   "target_ref_not_observed_by_view",
+   "unknown_evidence_id"
+  ],
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 15
+ },
+ "g5-pc-fault-r4": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 18,
+  "gaps": 8
+ },
+ "g5-pc-fault-r5": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 18,
+  "gaps": 7
+ },
+ "g5-pc-fault-r6": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 20,
+  "gaps": 7
+ },
+ "g5-pc-fault-r7": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 13,
+  "gaps": 8
+ },
+ "g5-pc-fault-r8": {
+  "accepted": false,
+  "reason": "REPORT_INVALID",
+  "stage": "parse"
+ },
+ "g5-pc-fault-r9": {
+  "accepted": true,
+  "reason": "",
+  "stage": "",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "claims": 24,
+  "gaps": 8
  }
 }

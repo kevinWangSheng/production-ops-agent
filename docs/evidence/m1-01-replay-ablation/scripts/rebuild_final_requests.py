@@ -145,8 +145,10 @@ def main() -> None:
     evidence = os.environ.get("ABLATION_EVIDENCE")
     store = DurableStore(DSN)
     manifest = []
-    for key in sys.argv[1:]:
-        case = key.split(":", 1)[1].removeprefix("6f-")
+    for arg in sys.argv[1:]:
+        # ``intake:<key>`` or ``intake:<key>=<case name>`` (held-out Runs).
+        key, _, case = arg.partition("=")
+        case = case or key.split(":", 1)[1].removeprefix("6f-")
         run_id, final, transcript, built = rebuild_case(store, key)
         out = work / case
         out.mkdir(parents=True, exist_ok=True)

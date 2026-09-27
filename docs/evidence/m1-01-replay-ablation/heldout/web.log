@@ -1,0 +1,15 @@
+INFO:     Started server process [12489]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63540 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60345 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60763 - "GET /incidents/c14da90b-9c37-569d-ac21-924edbc313a9/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60869 - "GET /incidents/c14da90b-9c37-569d-ac21-924edbc313a9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50982 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:53530 - "GET /incidents/a68124f5-9515-56a8-908a-c817a746ab8f/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54109 - "GET /incidents/a68124f5-9515-56a8-908a-c817a746ab8f HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12489]

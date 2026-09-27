@@ -13,6 +13,8 @@ to the request the live Run sent, see ``rebuild_final_requests.py``):
      (``span_groups.py``); no instruction text changes.
   4  model: messages unchanged, model ``deepseek-v4-pro`` instead of
      ``deepseek-flash``; every other request parameter kept.
+  5  combination (phase 2): group 1's RULE_SENTENCE and group 3's
+     ``span_groups`` together, text and algorithm unchanged.
 
 Every HTTP call is appended to ``$ABLATION_WORK/ledger.jsonl`` (usage, model,
 finish reason, request sha256, elapsed). The script refuses to start a call
@@ -39,7 +41,9 @@ from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from span_groups import transform_messages  # noqa: E402
 
-MAX_CALLS = 130
+# Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2 (the
+# ledger is cumulative, so this bounds the whole experiment).
+MAX_CALLS = 250
 CASES = ("normal-1", "normal-2", "fault-1", "fault-2")
 RULE_SENTENCE = (
     "State only values that appear in the cited view. A field that does not "
@@ -89,6 +93,8 @@ def build_call(group: int, messages: list[dict], params: dict) -> ModelCall:
         messages = transform_messages(messages)
     elif group == 4:
         model = STRONGER_MODEL
+    elif group == 5:
+        messages = transform_messages(append_sentence(messages, RULE_SENTENCE))
     elif group != 0:
         raise SystemExit("unknown group")
     return ModelCall(

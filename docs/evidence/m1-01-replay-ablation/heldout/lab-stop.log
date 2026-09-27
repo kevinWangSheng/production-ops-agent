@@ -1,0 +1,73 @@
++ docker --context colima-m0-otel compose -p opspilot-m0 -f <home>/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json stop
+ Container opspilot-m0-read-proxy Stopping 
+ Container opspilot-m0-frontend-proxy Stopping 
+ Container opspilot-m0-fraud-detection Stopping 
+ Container opspilot-m0-accounting Stopping 
+ Container opspilot-m0-prometheus Stopping 
+ Container opspilot-m0-prometheus Stopped 
+ Container opspilot-m0-accounting Stopped 
+ Container opspilot-m0-fraud-detection Stopped 
+ Container opspilot-m0-frontend-proxy Stopped 
+ Container opspilot-m0-load-generator Stopping 
+ Container opspilot-m0-flagd-ui Stopping 
+ Container opspilot-m0-grafana Stopping 
+ Container opspilot-m0-read-proxy Stopped 
+ Container opspilot-m0-grafana Stopped 
+ Container opspilot-m0-flagd-ui Stopped 
+ Container opspilot-m0-load-generator Stopped 
+ Container opspilot-m0-frontend Stopping 
+ Container opspilot-m0-frontend Stopped 
+ Container opspilot-m0-image-provider Stopping 
+ Container opspilot-m0-recommendation Stopping 
+ Container opspilot-m0-quote Stopping 
+ Container opspilot-m0-ad Stopping 
+ Container opspilot-m0-checkout Stopping 
+ Container opspilot-m0-checkout Stopped 
+ Container opspilot-m0-currency Stopping 
+ Container opspilot-m0-payment Stopping 
+ Container opspilot-m0-email Stopping 
+ Container opspilot-m0-kafka Stopping 
+ Container opspilot-m0-cart Stopping 
+ Container opspilot-m0-shipping Stopping 
+ Container opspilot-m0-image-provider Stopped 
+ Container opspilot-m0-quote Stopped 
+ Container opspilot-m0-email Stopped 
+ Container opspilot-m0-cart Stopped 
+ Container opspilot-m0-valkey-cart Stopping 
+ Container opspilot-m0-ad Stopped 
+ Container opspilot-m0-payment Stopped 
+ Container opspilot-m0-valkey-cart Stopped 
+ Container opspilot-m0-kafka Stopped 
+ Container opspilot-m0-recommendation Stopped 
+ Container opspilot-m0-product-catalog Stopping 
+ Container opspilot-m0-product-catalog Stopped 
+ Container opspilot-m0-flagd Stopping 
+ Container opspilot-m0-shipping Stopped 
+ Container opspilot-m0-currency Stopped 
+ Container opspilot-m0-otel-collector Stopping 
+ Container opspilot-m0-flagd Stopped 
+ Container opspilot-m0-otel-collector Stopped 
+ Container opspilot-m0-opensearch Stopping 
+ Container opspilot-m0-jaeger Stopping 
+ Container opspilot-m0-jaeger Stopped 
+ Container opspilot-m0-opensearch Stopped 
++ colima stop m0-otel
+time="2026-09-27T13:16:08-07:00" level=info msg="stopping colima [profile=m0-otel]"
+time="2026-09-27T13:16:08-07:00" level=info msg="stopping ..." context=docker
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+Stopping 'docker.service', but its triggering units are still active:
+docker.socket
+colima-m0-otel
+time="2026-09-27T13:16:09-07:00" level=info msg="stopping ..." context=vm
+time="2026-09-27T13:16:11-07:00" level=info msg="Sending SIGINT to hostagent process 8298"
+time="2026-09-27T13:16:11-07:00" level=info msg="Waiting for the host agent and the driver processes to shut down"
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Received SIGINT, shutting down the host agent"
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Shutting down the host agent"
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/docker.sock\" (guest) to \"<home>/.colima/m0-otel/docker.sock\" (host)"
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/containerd/containerd.sock\" (guest) to \"<home>/.colima/m0-otel/containerd.sock\" (host)"
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Unmounting disk \"colima-m0-otel\""
+time="2026-09-27T13:16:11-07:00" level=info msg="[hostagent] Shutting down VZ"
+time="2026-09-27T13:16:13-07:00" level=info msg="[hostagent] [VZ] - vm state change: stopped"
+time="2026-09-27T13:16:13-07:00" level=info msg="Waiting for the instance to shut down"
+time="2026-09-27T13:16:14-07:00" level=info msg="The instance colima-m0-otel has shut down"
+time="2026-09-27T13:16:14-07:00" level=info msg=done

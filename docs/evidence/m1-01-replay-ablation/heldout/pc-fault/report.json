@@ -1,0 +1,254 @@
+{
+ "run_id": "5e571762-5858-5eb8-979d-4e3825a0d274",
+ "step_id": "cf1f80ee-27c9-4c4a-8f7a-1697f8049ae7",
+ "logical_key": "conclusion:g0:ctx0:round-4",
+ "observed_at": "2026-09-27T12:53:49.950623-07:00",
+ "execution": "completed",
+ "handoff": false,
+ "handoff_reasons": [],
+ "rounds": 4,
+ "model_requests_used": 4,
+ "model_seconds_used": 30.30369708291255,
+ "evidence_ids": [
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t0:0825fd7f-e8b2-4cad-af3e-ddcfdcd8d253",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t0:c47b40fa-c1c5-4f0d-b0b5-ee269c1a4e63",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t1:86363400-7037-4c85-9527-5582f06a688d",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t2:f0eb25c5-2b1a-4b27-bfc6-cc94df224fab",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1",
+  "045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd",
+  "045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687"
+ ],
+ "report_sha256": "dcfebd864e75d031e86672ce33223c589f56d99ad08453355a43db01468b016a",
+ "report_bytes": 12526,
+ "report_text": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Within the authorized 300s window (2026-09-27T19:48:18Z–19:53:18Z, policy-window-1) on target m0-otel-20260909, checkout shows a real but minority error signal: checkout oteldemo.CheckoutService/PlaceOrder had a 16.7% span error ratio and checkout's client-side calls to oteldemo.ProductCatalogService/GetProduct had a 10% error ratio (045042ec-a09a-41d5-893e-2a350a9aad3f-t1). Trace evidence links the failures to product-catalog returning gRPC 13 with status description 'Error: Product Catalog Fail Feature Flag Enabled' in traces 2498e6a9bb928e2e8b2fd75bd615cfad and f1a90aea549ff42335c7986877282fcc, with checkout PlaceOrder erroring as 'failed to prepare order: failed to get product #\\\"OLJCESPC7Z\\\"' (4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2, 7fd10a55-980f-434b-8a82-028a3236a29b-t3). Payment, cart, currency, shipping and email spans in the sampled traces show no error tags and success status codes. Checkout server-side PlaceOrder p95 was 205 ms while its outbound dependency p95s were all under 47 ms (7fd10a55-980f-434b-8a82-028a3236a29b-t0, 7fd10a55-980f-434b-8a82-028a3236a29b-t1); no comparable pre-window baseline was available, so no latency trend is asserted. Causal attribution to the product-catalog feature flag remains a hypothesis, not a proven cause.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"In the authorized window, checkout spans show an error ratio of 0.1667 (16.7%) for oteldemo.CheckoutService/PlaceOrder and 0.1 (10%) for checkout's client-side oteldemo.ProductCatalogService/GetProduct spans; these are ratios computed from STATUS_CODE_ERROR increase divided by total span-call increase over 300s.\",\"evidence_ids\":[\"045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Span-count metrics for the window show checkout/oteldemo.CheckoutService/PlaceOrder with status_code STATUS_CODE_ERROR at 1.25 and checkout/oteldemo.ProductCatalogService/GetProduct with STATUS_CODE_ERROR at 1.25, alongside non-error counterparts for the same operations (6.25 and 11.25 respectively).\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t0:0825fd7f-e8b2-4cad-af3e-ddcfdcd8d253\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"checkout's outbound RPC client metrics for the window contain exactly one non-zero error series: oteldemo.ProductCatalogService/GetProduct with rpc_grpc_status_code 13 (value 1.25); all other checkout outbound calls (PaymentService/Charge, CurrencyService/Convert, CartService/GetCart, CartService/EmptyCart, ShippingService/GetQuote, ShippingService/ShipOrder) are reported only under rpc_grpc_status_code 0.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Traces 2498e6a9bb928e2e8b2fd75bd615cfad and f1a90aea549ff42335c7986877282fcc contain checkout oteldemo.CheckoutService/PlaceOrder spans with otel.status_code ERROR and rpc.grpc.status_code 13, status description 'failed to prepare order: failed to get product #\\\"OLJCESPC7Z\\\"'.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The same two traces contain product-catalog service spans for oteldemo.ProductCatalogService/GetProduct with otel.status_code ERROR and rpc.grpc.status_code 13 and status description 'Error: Product Catalog Fail Feature Flag Enabled', and checkout client spans for the same operation with that same status description.\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"In that product-catalog trace sample, three oteldemo.ProductCatalogService/GetProduct spans carry error=true / rpc.grpc.status_code 13 (durations 738us, 307us, 120us) while the remaining returned GetProduct and ListProducts spans carry rpc.grpc.status_code 0.\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Within the window, server-side p95 for checkout oteldemo.CheckoutService/PlaceOrder was 205 ms, and client-side p95 for checkout's calls were Charge 23.125 ms, EmptyCart 46.875 ms, GetCart 8.5 ms, GetProduct 4.75 ms, GetQuote 21.25 ms, ShipOrder 4.75 ms and Convert 14.5 ms.\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t0:c47b40fa-c1c5-4f0d-b0b5-ee269c1a4e63\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t1:86363400-7037-4c85-9527-5582f06a688d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Sampled payment spans (grpc.oteldemo.PaymentService/Charge and charge) in the window carry rpc.grpc.status_code 0 and no error tags, with durations from 761us to 13981us.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Sampled currency spans (Currency/Convert) in the window carry otel.status_code OK and rpc.grpc.status_code 0, with durations from 164us to 6256us.\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Sampled shipping spans in the window show rpc.grpc.status_code 0 for oteldemo.ShippingService/GetQuote and ShipOrder and http.status_code 200 for the corresponding POST spans (GetQuote durations 4036–7769us, ShipOrder 22–45us).\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Sampled email spans in the window show http.status_code 200 on POST /send_order_confirmation and no error tags, with durations from 5605us to 22441us.\",\"evidence_ids\":[\"045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"In traces that failed at PlaceOrder, the checkout HTTP POST span of successful sibling traces returned http.status_code 200 (e.g. traces 81e408053eccf4ab471c1529916231a2, 67f474de1d99c705700336a1501e7815, 00601fa300115ccf1d9d6b68cae6585b, b01c5733ad7a8a307ce67cd838b68561), and one load-generator POST span in failing trace 2498e6a9bb928e2e8b2fd75bd615cfad carried http.status_code 500 with otel.status_code ERROR.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"Most checkout PlaceOrder evidence in the window is non-erroring: the server-side and client-side error ratio was 16.7%, and the sampled checkout PlaceOrder spans include eight spans with rpc.grpc.status_code 0 and durations 53–120 ms alongside the two ERROR spans, so checkout was not failing on most observed requests.\",\"evidence_ids\":[\"045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687\",\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"Product-catalog spans in the window are predominantly successful: sampled product-catalog GetProduct/ListProducts spans carry rpc.grpc.status_code 0 with durations 376–2462us, and only three of the returned spans carry error=true / status 13, which argues against product-catalog-wide unavailability.\",\"evidence_ids\":[\"7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected as unsupported by the collected evidence: payment, currency, cart, shipping or email being the direct source of the checkout errors. Sampled spans for these services show rpc.grpc.status_code 0 / otel.status_code OK and HTTP 200 with no error tags, and checkout's outbound RPC error metric exists only for oteldemo.ProductCatalogService/GetProduct.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a\",\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1\",\"045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The checkout error burst is consistent with checkout's GetProduct dependency call failing while the product-catalog 'Product Catalog Fail' behavior is active: the failing traces show the product-catalog span reporting that flag-enabled error, and checkout reports gRPC 13 on the same operation. This is correlation within two sampled traces plus aggregate error metrics, not a demonstrated causal chain, since intermediate parent spans were not visible.\",\"evidence_ids\":[\"4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91\",\"7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062\",\"045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"No pre-window or comparison baseline was authorized or retrieved, so no latency trend (increase/decrease) can be asserted for checkout PlaceOrder (p95 205 ms) or any dependency; the p95 values are single-window observations only.\",\"Two delivered trace-search views reported incomplete=true and therefore cannot be treated as complete coverage: product-catalog (7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062, reason 'backend returned as many traces as requested; more may exist') and cart (7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a, same reason).\",\"Trace searches are sampled views (spans_omitted of 250–354 per service view), so span counts are not unique request counts and the full call chain, including parent/child edges, is unknown: most parent references had parent_is_visible=false, so checkout-to-dependency call edges are only inferred from the operation names, not from supplied parent references.\",\"No ERROR-labelled time series or error-ratio series was retrieved for payment, cart, currency, shipping or email; absence of such series in the returned metric output is an unknown, not evidence of zero errors for those services.\",\"The HTTP server request-count query returned only a cart series with no http_status_code label populated (7fd10a55-980f-434b-8a82-028a3236a29b-t2:f0eb25c5-2b1a-4b27-bfc6-cc94df224fab), so HTTP status distribution across the demo cannot be assessed from metrics; per-service status-code coverage is incomplete.\",\"Whether the product-catalog failure mode is still active, how long it has been active, and which checkout requests it affects could not be determined: the window is a single 300-second slice and the flag state itself was not observed.\"],\"next_steps\":[\"A human operator should compare the same checkout/PlaceOrder and GetProduct error-ratio and p95 queries against an adjacent equal-length window to establish whether the observed error rate and 205 ms p95 are a change from baseline.\",\"An operator with trace-backend access should pull full traces by the cited trace ids (2498e6a9bb928e2e8b2fd75bd615cfad, f1a90aea549ff42335c7986877282fcc) with the parent spans visible to confirm the checkout-to-product-catalog call edge and locate the failing request path.\",\"The owner of the demo environment should check the status and recent change history of the 'Product Catalog Fail' behavior flag, since the error status description names it, and verify whether it was intentionally enabled during this window.\"]}",
+ "report_parsed": {
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within the authorized 300s window (2026-09-27T19:48:18Z–19:53:18Z, policy-window-1) on target m0-otel-20260909, checkout shows a real but minority error signal: checkout oteldemo.CheckoutService/PlaceOrder had a 16.7% span error ratio and checkout's client-side calls to oteldemo.ProductCatalogService/GetProduct had a 10% error ratio (045042ec-a09a-41d5-893e-2a350a9aad3f-t1). Trace evidence links the failures to product-catalog returning gRPC 13 with status description 'Error: Product Catalog Fail Feature Flag Enabled' in traces 2498e6a9bb928e2e8b2fd75bd615cfad and f1a90aea549ff42335c7986877282fcc, with checkout PlaceOrder erroring as 'failed to prepare order: failed to get product #\"OLJCESPC7Z\"' (4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2, 7fd10a55-980f-434b-8a82-028a3236a29b-t3). Payment, cart, currency, shipping and email spans in the sampled traces show no error tags and success status codes. Checkout server-side PlaceOrder p95 was 205 ms while its outbound dependency p95s were all under 47 ms (7fd10a55-980f-434b-8a82-028a3236a29b-t0, 7fd10a55-980f-434b-8a82-028a3236a29b-t1); no comparable pre-window baseline was available, so no latency trend is asserted. Causal attribution to the product-catalog feature flag remains a hypothesis, not a proven cause.",
+  "claims": [
+   {
+    "kind": "fact",
+    "text": "In the authorized window, checkout spans show an error ratio of 0.1667 (16.7%) for oteldemo.CheckoutService/PlaceOrder and 0.1 (10%) for checkout's client-side oteldemo.ProductCatalogService/GetProduct spans; these are ratios computed from STATUS_CODE_ERROR increase divided by total span-call increase over 300s.",
+    "evidence_ids": [
+     "045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Span-count metrics for the window show checkout/oteldemo.CheckoutService/PlaceOrder with status_code STATUS_CODE_ERROR at 1.25 and checkout/oteldemo.ProductCatalogService/GetProduct with STATUS_CODE_ERROR at 1.25, alongside non-error counterparts for the same operations (6.25 and 11.25 respectively).",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t0:0825fd7f-e8b2-4cad-af3e-ddcfdcd8d253"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "checkout's outbound RPC client metrics for the window contain exactly one non-zero error series: oteldemo.ProductCatalogService/GetProduct with rpc_grpc_status_code 13 (value 1.25); all other checkout outbound calls (PaymentService/Charge, CurrencyService/Convert, CartService/GetCart, CartService/EmptyCart, ShippingService/GetQuote, ShippingService/ShipOrder) are reported only under rpc_grpc_status_code 0.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Traces 2498e6a9bb928e2e8b2fd75bd615cfad and f1a90aea549ff42335c7986877282fcc contain checkout oteldemo.CheckoutService/PlaceOrder spans with otel.status_code ERROR and rpc.grpc.status_code 13, status description 'failed to prepare order: failed to get product #\"OLJCESPC7Z\"'.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The same two traces contain product-catalog service spans for oteldemo.ProductCatalogService/GetProduct with otel.status_code ERROR and rpc.grpc.status_code 13 and status description 'Error: Product Catalog Fail Feature Flag Enabled', and checkout client spans for the same operation with that same status description.",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "In that product-catalog trace sample, three oteldemo.ProductCatalogService/GetProduct spans carry error=true / rpc.grpc.status_code 13 (durations 738us, 307us, 120us) while the remaining returned GetProduct and ListProducts spans carry rpc.grpc.status_code 0.",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Within the window, server-side p95 for checkout oteldemo.CheckoutService/PlaceOrder was 205 ms, and client-side p95 for checkout's calls were Charge 23.125 ms, EmptyCart 46.875 ms, GetCart 8.5 ms, GetProduct 4.75 ms, GetQuote 21.25 ms, ShipOrder 4.75 ms and Convert 14.5 ms.",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t0:c47b40fa-c1c5-4f0d-b0b5-ee269c1a4e63",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t1:86363400-7037-4c85-9527-5582f06a688d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Sampled payment spans (grpc.oteldemo.PaymentService/Charge and charge) in the window carry rpc.grpc.status_code 0 and no error tags, with durations from 761us to 13981us.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Sampled currency spans (Currency/Convert) in the window carry otel.status_code OK and rpc.grpc.status_code 0, with durations from 164us to 6256us.",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Sampled shipping spans in the window show rpc.grpc.status_code 0 for oteldemo.ShippingService/GetQuote and ShipOrder and http.status_code 200 for the corresponding POST spans (GetQuote durations 4036–7769us, ShipOrder 22–45us).",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Sampled email spans in the window show http.status_code 200 on POST /send_order_confirmation and no error tags, with durations from 5605us to 22441us.",
+    "evidence_ids": [
+     "045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "In traces that failed at PlaceOrder, the checkout HTTP POST span of successful sibling traces returned http.status_code 200 (e.g. traces 81e408053eccf4ab471c1529916231a2, 67f474de1d99c705700336a1501e7815, 00601fa300115ccf1d9d6b68cae6585b, b01c5733ad7a8a307ce67cd838b68561), and one load-generator POST span in failing trace 2498e6a9bb928e2e8b2fd75bd615cfad carried http.status_code 500 with otel.status_code ERROR.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "Most checkout PlaceOrder evidence in the window is non-erroring: the server-side and client-side error ratio was 16.7%, and the sampled checkout PlaceOrder spans include eight spans with rpc.grpc.status_code 0 and durations 53–120 ms alongside the two ERROR spans, so checkout was not failing on most observed requests.",
+    "evidence_ids": [
+     "045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687",
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "Product-catalog spans in the window are predominantly successful: sampled product-catalog GetProduct/ListProducts spans carry rpc.grpc.status_code 0 with durations 376–2462us, and only three of the returned spans carry error=true / status 13, which argues against product-catalog-wide unavailability.",
+    "evidence_ids": [
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Rejected as unsupported by the collected evidence: payment, currency, cart, shipping or email being the direct source of the checkout errors. Sampled spans for these services show rpc.grpc.status_code 0 / otel.status_code OK and HTTP 200 with no error tags, and checkout's outbound RPC error metric exists only for oteldemo.ProductCatalogService/GetProduct.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a",
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1",
+     "045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The checkout error burst is consistent with checkout's GetProduct dependency call failing while the product-catalog 'Product Catalog Fail' behavior is active: the failing traces show the product-catalog span reporting that flag-enabled error, and checkout reports gRPC 13 on the same operation. This is correlation within two sampled traces plus aggregate error metrics, not a demonstrated causal chain, since intermediate parent spans were not visible.",
+    "evidence_ids": [
+     "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91",
+     "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062",
+     "045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   }
+  ],
+  "gaps": [
+   "No pre-window or comparison baseline was authorized or retrieved, so no latency trend (increase/decrease) can be asserted for checkout PlaceOrder (p95 205 ms) or any dependency; the p95 values are single-window observations only.",
+   "Two delivered trace-search views reported incomplete=true and therefore cannot be treated as complete coverage: product-catalog (7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062, reason 'backend returned as many traces as requested; more may exist') and cart (7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a, same reason).",
+   "Trace searches are sampled views (spans_omitted of 250–354 per service view), so span counts are not unique request counts and the full call chain, including parent/child edges, is unknown: most parent references had parent_is_visible=false, so checkout-to-dependency call edges are only inferred from the operation names, not from supplied parent references.",
+   "No ERROR-labelled time series or error-ratio series was retrieved for payment, cart, currency, shipping or email; absence of such series in the returned metric output is an unknown, not evidence of zero errors for those services.",
+   "The HTTP server request-count query returned only a cart series with no http_status_code label populated (7fd10a55-980f-434b-8a82-028a3236a29b-t2:f0eb25c5-2b1a-4b27-bfc6-cc94df224fab), so HTTP status distribution across the demo cannot be assessed from metrics; per-service status-code coverage is incomplete.",
+   "Whether the product-catalog failure mode is still active, how long it has been active, and which checkout requests it affects could not be determined: the window is a single 300-second slice and the flag state itself was not observed."
+  ],
+  "next_steps": [
+   "A human operator should compare the same checkout/PlaceOrder and GetProduct error-ratio and p95 queries against an adjacent equal-length window to establish whether the observed error rate and 205 ms p95 are a change from baseline.",
+   "An operator with trace-backend access should pull full traces by the cited trace ids (2498e6a9bb928e2e8b2fd75bd615cfad, f1a90aea549ff42335c7986877282fcc) with the parent spans visible to confirm the checkout-to-product-catalog call edge and locate the failing request path.",
+   "The owner of the demo environment should check the status and recent change history of the 'Product Catalog Fail' behavior flag, since the error status description names it, and verify whether it was intentionally enabled during this window."
+  ]
+ },
+ "conclusion_other_fields": {
+  "rounds": 4,
+  "handoff": false,
+  "segment": "ctx0",
+  "execution": "completed",
+  "calibration": 1.1688256530048842,
+  "compactions": 0,
+  "source_step_id": "9ea08018-2838-4210-9b9c-18e60d67570e",
+  "handoff_reasons": [],
+  "prompt_revision": "prompt-replay-candidate-177e529f603d",
+  "question_sha256": "256391196210eba1f2d17721dc1039368645fa76793a60e97429c40099799e63",
+  "model_seconds_used": 30.30369708291255,
+  "prompt_face_sha256": "9632b420bbf94dcca2d148094ee0f4f3e91eb32fbd6ea30404517639cf33766a",
+  "model_requests_used": 4,
+  "report_content_sha256": "dcfebd864e75d031e86672ce33223c589f56d99ad08453355a43db01468b016a",
+  "report_schema_version": "m0-report-v2"
+ }
+}
