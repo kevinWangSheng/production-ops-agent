@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -353,6 +354,15 @@ class TransportResponse:
     ``source_status`` code for the registration to classify. The executor
     then records ``sent: false`` and ``source_contact: none`` instead of a
     confirmed contact the source never had (independent review finding).
+
+    ``row_unit`` names what one result row is (``"spans"``) and
+    ``backend_rows_returned`` how many such rows the source returned before
+    the adapter sampled and the executor truncated; the view then carries
+    ``backend_<unit>_returned``, ``<unit>_shown`` (rows in the view) and
+    ``<unit>_omitted`` (the difference), so a count always states its unit
+    (round 2 rule B). ``view_fields`` are further adapter-verified,
+    tool-specific view fields copied onto the view verbatim; a key that
+    collides with a generic view field is MALFORMED_RESULT.
     """
 
     body: bytes
@@ -362,6 +372,9 @@ class TransportResponse:
     source_end_at: datetime | None = None
     sent: bool = True
     lookback_seconds: int | None = None
+    row_unit: str | None = None
+    backend_rows_returned: int | None = None
+    view_fields: Mapping[str, object] | None = None
 
 
 @runtime_checkable
@@ -1170,6 +1183,8 @@ class ReadOnlyToolExecutor:
             # selectors before any request, and a longer one could not start
             # inside the window).
             return _problem("error", "MALFORMED_RESULT")
+        if _unit_fields_problem(response, len(rows)):
+            return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if any(
             moment is not None and moment > operation.finished_at
@@ -1365,6 +1380,17 @@ class ReadOnlyToolExecutor:
             "omitted_bytes": omitted_bytes,
             "content": None if not adopted else kept,
         }
+        if response.view_fields:
+            view.update(response.view_fields)
+        if response.row_unit is not None and response.backend_rows_returned is not None:
+            # Counts with their unit (round 2 rule B): what the source
+            # returned, what this view shows, and the gap between them --
+            # whether the adapter sampled rows out or the byte cap dropped
+            # them, both are rows the model does not see.
+            unit = response.row_unit
+            view[f"backend_{unit}_returned"] = response.backend_rows_returned
+            view[f"{unit}_shown"] = len(kept)
+            view[f"{unit}_omitted"] = response.backend_rows_returned - len(kept)
         return EvidenceRecord(
             evidence_id=f"{operation.operation_id}:{dispatch_id}",
             operation=operation,
@@ -1535,6 +1561,79 @@ def _result_rows(
         # model-supplied params (bot review finding).
         return None, payload
     return cursor, payload
+
+
+# Every key ``_record`` writes on a view; an adapter's ``view_fields`` may not
+# shadow one of them.
+_GENERIC_VIEW_KEYS = frozenset(
+    {
+        "evidence_id",
+        "operation_id",
+        "trust",
+        "status",
+        "adopted",
+        "citable_as_fact",
+        "tool",
+        "tool_version",
+        "source",
+        "target_id",
+        "registry_revision",
+        "tool_registry_revision",
+        "projection_revision",
+        "query",
+        "window",
+        "observed_at",
+        "dispatch_started_at",
+        "data_as_of",
+        "source_start_at",
+        "source_end_at",
+        "freshness_seconds",
+        "lookback_seconds",
+        "lookback_start_at",
+        "result_count",
+        "returned_count",
+        "incomplete",
+        "truncated",
+        "omitted_rows",
+        "omitted_bytes",
+        "content",
+    }
+)
+_ROW_UNIT = re.compile(r"[a-z][a-z_]*")
+
+
+def _unit_fields_problem(response: TransportResponse, row_count: int) -> bool:
+    """``True`` when the adapter's unit counts or extra view fields are not
+    well formed: a unit without a count (or the reverse), a backend count
+    below the rows it handed over, a key that shadows a generic field or one
+    of the unit-count fields, or a value that is not plain finite JSON."""
+    unit = response.row_unit
+    backend = response.backend_rows_returned
+    if (unit is None) != (backend is None):
+        return True
+    reserved: set[str] = set()
+    if unit is not None:
+        if not isinstance(unit, str) or not _ROW_UNIT.fullmatch(unit):
+            return True
+        if type(backend) is not int or backend < row_count:
+            return True
+        reserved = {f"backend_{unit}_returned", f"{unit}_shown", f"{unit}_omitted"}
+    fields = response.view_fields
+    if fields is None:
+        return False
+    if not isinstance(fields, Mapping):
+        return True
+    for key, value in fields.items():
+        if not isinstance(key, str) or not key or key in _GENERIC_VIEW_KEYS:
+            return True
+        if key in reserved:
+            return True
+        try:
+            json.dumps(value, allow_nan=False)
+            canonical(value).encode("utf-8")
+        except (TypeError, ValueError, RecursionError):
+            return True
+    return False
 
 
 def _incomplete(registration: ToolRegistration, payload: object) -> bool:

@@ -300,11 +300,15 @@ def discipline_revision(variant_id: str) -> str:
     return f"l1a-{variant_id}-{_short(template_projection(variant_id))}"
 
 
-def prompt_revision(variant_id: str, *, report_contract: str) -> str:
+def prompt_revision(
+    variant_id: str, *, report_contract: str, run_coverage_template: str = ""
+) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
-    ``report_contract`` 传入 L2 报告契约的完整文本，由调用方从其单一来源取得。
-    实例值不参与，所以仅预算或授权范围不同的两个 Run 得到相同取值。
+    ``report_contract`` 传入 L2 报告契约的完整文本，``run_coverage_template``
+    传入最终报告请求后追加的运行覆盖摘要模板（第二轮合同 C），都由调用方从
+    其单一来源取得。实例值不参与，所以仅预算或授权范围不同的两个 Run 得到
+    相同取值。
     """
     return "prompt-{}-{}".format(
         variant_id,
@@ -312,6 +316,7 @@ def prompt_revision(variant_id: str, *, report_contract: str) -> str:
             {
                 "discipline": template_projection(variant_id),
                 "report_contract": report_contract,
+                "run_coverage_template": run_coverage_template,
             }
         ),
     )

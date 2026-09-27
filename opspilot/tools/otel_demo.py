@@ -159,6 +159,11 @@ MIN_STEP_SECONDS = 15
 MAX_PROMQL_CHARS = 2000
 DEFAULT_TRACE_LIMIT = 10
 MAX_TRACE_LIMIT = 20
+# The one reason a trace search is ``incomplete`` (round 2 rule B): Jaeger
+# answered with as many traces as were asked for.
+TRACES_INCOMPLETE_REASON = (
+    "backend returned as many traces as requested; more may exist"
+)
 #: Jaeger's response for 20 traces has been 300-600 KB in this lab; the
 #: transport stops reading past this and the operation fails as
 #: ``RESULT_TOO_LARGE`` rather than projecting a partial body.
@@ -272,9 +277,22 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "operation, start_us, duration_us, status tags, parent "
                 "references and up to 4 clipped error detail fields. At most "
                 "16 KiB of sampled spans are shown; when truncated the view "
-                "sets truncated true and reports omitted_rows. Backend trace "
-                "and span counts are kept in the stored evidence record, not "
-                "in this view. This is a biased sample, not the complete "
+                "sets truncated true and reports omitted_rows. "
+                "traces_requested is the number of traces asked of the "
+                "backend. "
+                "backend_traces_returned is the number of traces the backend "
+                "returned. "
+                "backend_spans_returned is the number of spans in those "
+                "traces. "
+                "spans_shown is the number of span rows in this view. "
+                "spans_omitted is the number of backend spans not shown, "
+                "whether sampled out or truncated. "
+                "incomplete_reason states why incomplete is true, or is null. "
+                "status_state is recorded when the row has at least one "
+                "status tag and not_recorded when it has none. "
+                "not_recorded means the span carries no status tag, which is "
+                "Unset in OTel terms, not status code 0 and not OK. "
+                "This is a biased sample, not the complete "
                 "trace graph or a failure rate: an omitted span is unknown, "
                 "an error detail applies only to the span it is shown on, and "
                 "an empty result means no trace of that service was returned "
@@ -385,9 +403,13 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         description=ToolDescription(
             returns=(
                 "A projected observation record over the Jaeger trace search "
-                "for one service: sampled spans under data.sampled_spans, "
-                "backend trace/span counts per service, and the SHA-256 and "
-                "byte count of the wire response it was projected from."
+                "for one service: sampled spans under data.sampled_spans, each "
+                "with status_state recorded or not_recorded, backend "
+                "trace/span counts per service, and the SHA-256 and byte "
+                "count of the wire response it was projected from; the view "
+                "adds traces_requested, backend_traces_returned, "
+                "backend_spans_returned, spans_shown, spans_omitted and "
+                "incomplete_reason."
             ),
             window_format=(
                 "The authorized absolute query window, appended as {window}; "
@@ -870,6 +892,18 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
+            # Round 2 rule B: counts with their unit, from the record's own
+            # fields; the executor adds spans_shown / spans_omitted once it
+            # knows how many sampled spans fit the view.
+            row_unit="spans",
+            backend_rows_returned=record["backend_returned_span_count"],
+            view_fields={
+                "traces_requested": limit,
+                "backend_traces_returned": record["backend_returned_trace_count"],
+                "incomplete_reason": TRACES_INCOMPLETE_REASON
+                if record["incomplete"]
+                else None,
+            },
         )
 
 
@@ -1049,6 +1083,12 @@ def project_traces(
                     "duration_us": span.get("duration"),
                     "error_by_visible_tags": error,
                     "status_tags": {k: tags[k] for k in _STATUS_KEYS if k in tags},
+                    # Round 2 rule A: a span with no status key is Unset in
+                    # OTel terms, not status 0 / OK; say so instead of leaving
+                    # an empty mapping to be read as "no error".
+                    "status_state": "recorded"
+                    if any(k in tags for k in _STATUS_KEYS)
+                    else "not_recorded",
                     "parent_references": [
                         {k: ref.get(k) for k in ("refType", "traceID", "spanID")}
                         for ref in span.get("references") or []

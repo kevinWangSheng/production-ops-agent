@@ -161,8 +161,9 @@ def test_a_rebuild_reproduces_the_compacted_context_byte_for_byte():
     loop.run(request)
     transcript = _transcript(store, request)
     last = list(model.calls[-1].messages)
-    if last[-1]["content"] == FINAL_REPORT_INSTRUCTION:
-        last = last[:-1]
+    if len(last) >= 2 and last[-2]["content"] == FINAL_REPORT_INSTRUCTION:
+        # Round 2 rule C: the instruction and its trailing coverage summary.
+        last = last[:-2]
     # The rows also hold the accepted report itself as the last assistant turn.
     assert transcript.messages[-1]["role"] == "assistant"
     assert transcript.messages[:-1] == last
@@ -432,7 +433,9 @@ def test_a_compaction_never_takes_the_reserved_final_report_slot():
     assert len(model.calls) == 4 and outcome.model_requests_used == 4
     assert model.calls[2].messages[-1]["content"] == COMPACTION_INSTRUCTION
     assert model.calls[3].tools is None and model.calls[3].json_mode is True
-    assert model.calls[3].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
+    # Round 2 rule C: the run coverage summary follows the instruction.
+    assert model.calls[3].messages[-2]["content"] == FINAL_REPORT_INSTRUCTION
+    assert model.calls[3].messages[-1]["content"].startswith("Run coverage summary")
 
 
 def test_a_rejected_summary_keeps_its_tool_calls_out_of_the_executable_plan():

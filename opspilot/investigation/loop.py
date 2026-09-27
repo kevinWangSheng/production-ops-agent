@@ -53,6 +53,7 @@ from opspilot.investigation.messages import (
 from opspilot.investigation.reports import (
     FINAL_REPORT_INSTRUCTION,
     REPORT_CONTRACT,
+    RUN_COVERAGE_TEMPLATE,
     DeliveredView,
     ReportV2,
     context_target_catalog,
@@ -60,6 +61,7 @@ from opspilot.investigation.reports import (
     delivered_from_context,
     evidence_context_projection,
     parse_report,
+    run_coverage_message,
     unsupported_citations,
 )
 from opspilot.investigation.store import (
@@ -106,8 +108,22 @@ def prompt_revision_versions(
     here.
     """
     return {
-        "prompt_revision": prompt_revision(variant_id, report_contract=report_contract)
+        "prompt_revision": prompt_revision(
+            variant_id,
+            report_contract=report_contract,
+            run_coverage_template=RUN_COVERAGE_TEMPLATE,
+        )
     }
+
+
+def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
+    """The final round's trailing user messages: the report instruction, then
+    the run coverage summary over the views this Run delivered so far (round
+    2 rule C). ``_check_snapshot_hash`` re-adds the same pair on rebuild."""
+    return (
+        {"role": "user", "content": FINAL_REPORT_INSTRUCTION},
+        {"role": "user", "content": run_coverage_message(state.delivered)},
+    )
 
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
@@ -542,9 +558,7 @@ class InvestigationLoop:
     ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
         request = state.request
         tools = None if final else tuple(request.tool_schemas)
-        extra = (
-            ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},) if final else ()
-        )
+        extra = _final_messages(state) if final else ()
         # Freeze the human-input boundary for this round before anything is
         # estimated or sent: the follow-up/correction/event rows up to the
         # frozen watermark reach the model as one projected trailing message
@@ -583,7 +597,7 @@ class InvestigationLoop:
             # final-report request, so this round becomes it.
             final = True
             tools = None
-            extra = ({"role": "user", "content": FINAL_REPORT_INSTRUCTION},)
+            extra = _final_messages(state)
         timeout = self._remaining_timeout(state)
         watermark = input_watermark(inputs)
         outbound = [*state.messages, *_with_trailing(trailing, extra)]

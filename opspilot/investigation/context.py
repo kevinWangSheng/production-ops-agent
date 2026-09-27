@@ -476,6 +476,10 @@ def delivered_view(
         target_ids=target_ids,
         status=status if isinstance(status, str) else "unknown",
         citable_as_fact=citable,
+        # Only an explicit ``True`` counts (round 2 rule C): the executor
+        # writes both flags on every view, so a missing one is not a limit.
+        incomplete=view.get("incomplete") is True,
+        truncated=view.get("truncated") is True,
         time_scope_refs=eligible_time_policies(
             evidence_context.get("time_policies")
             if isinstance(evidence_context, Mapping)
@@ -728,7 +732,7 @@ def rebuild_transcript(
             # did not reproduce (a lost compaction row, or rows out of order).
             raise ContextError("INCOMPATIBLE_STATE")
         if not diverged:
-            _check_snapshot_hash(response, messages, inputs=inputs)
+            _check_snapshot_hash(response, messages, inputs=inputs, delivered=delivered)
         last_step_id = step_id
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
@@ -962,6 +966,7 @@ def _check_snapshot_hash(
     sent_before: Sequence[Mapping[str, Any]],
     *,
     inputs: Sequence[Mapping[str, Any]] = (),
+    delivered: Sequence[DeliveredView] = (),
 ) -> None:
     """Refuse a rebuild whose bytes differ from what that step actually sent.
 
@@ -985,9 +990,15 @@ def _check_snapshot_hash(
         if message is not None:
             sent.append(message)
     if context.get("final") is True:
-        from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
+        from opspilot.investigation.reports import (
+            FINAL_REPORT_INSTRUCTION,
+            run_coverage_message,
+        )
 
         sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+        # The coverage summary is computed from the views delivered before
+        # this step, exactly as ``_round`` computed it when the step was sent.
+        sent.append({"role": "user", "content": run_coverage_message(delivered)})
     if messages_hash(sent) != recorded:
         raise ContextError("INCOMPATIBLE_STATE")
 
