@@ -33,3 +33,4 @@
   - `tests/test_m1_otel_demo_lookback.py` 模块 docstring 改为记录语义变迁；`test_metrics_description_states_the_lookback_and_the_refusals`（要求描述含 "before"）未改，新句 "No point reads samples from before the window" 仍满足。
   - 未动 `tool_schema_revision` 钉值测试：合同 7 只要求与旧值不同，现有断言即为 `!=`。
 - 2026-09-27：独立合同测试 `fd5c256`（18 项）。红绿对照：`git apply -R` 撤回 d8b6e39 的 opspilot/ 改动后 6 failed / 12 passed（失败均为新合同项：start 偏移 ×3、lookback_start_at、描述句、revision），恢复后 18 passed。
+- 2026-09-27：独立审查（Codex 两次容量不足未产出，改由全新上下文 Claude Agent）：主修复正确，P2 嵌套子查询回看漏算 → 合同第 1 条修订 310701b，实现 3145325，独立测试 9cd4941（4 项）。红绿对照：撤回 3145325 的 opspilot/ 改动后 3 failed / 19 passed（并列取最大一项在新旧实现下均成立），恢复后全绿。`make check` 通过；非 PG 测试 2217 passed / 2 xfailed。
