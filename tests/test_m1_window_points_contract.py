@@ -134,6 +134,73 @@ def test_start_uses_the_longer_of_a_plain_range_and_a_subquery_selector():
     assert float(query["end"][0]) == WINDOW.end.timestamp()
 
 
+# -- rule 1 (2026-09-27 independent-review addendum): a subquery's L adds
+# its own outer range to its inner expression's L, recursively, rather than
+# taking the single longest bracket in the expression. ----------------------
+
+
+def test_subquery_lookback_adds_the_outer_range_to_the_inner_selector():
+    """Contract example 1: ``max_over_time(rate(x[1m])[4m:30s])`` -- the
+    outer subquery's 240 s range plus the inner ``rate(x[1m])``'s 60 s range
+    is 300 s, exactly the window length, so this is evaluated once at the
+    window end. A flat "longest single bracket" reading would wrongly stop
+    at 240 s (the ``4m`` before the colon) and never reach 300."""
+    expr = "max_over_time(rate(x[1m])[4m:30s])"
+    opener = FakeOpener(by_query={expr: EMPTY_BODY})
+
+    _transport(opener).fetch(_metrics_request({"expr": expr}))
+
+    query = _sent_query(opener)
+    assert float(query["start"][0]) == WINDOW.end.timestamp()
+    assert float(query["end"][0]) == WINDOW.end.timestamp()
+
+
+def test_subquery_lookback_recursion_over_the_window_is_refused():
+    """Contract example 2: the same shape with a 5 m outer range --
+    ``max_over_time(rate(x[1m])[5m:30s])`` -- sums to 300 + 60 = 360 s,
+    over the 300 s window, so it is refused before any request is sent."""
+    expr = "max_over_time(rate(x[1m])[5m:30s])"
+    opener = FakeOpener(routes={"/api/v1/query_range": EMPTY_BODY})
+
+    response = _transport(opener).fetch(_metrics_request({"expr": expr}))
+
+    assert response.source_status == "QUERY_OUT_OF_WINDOW"
+    assert not opener.called
+
+
+def test_subquery_lookback_recursion_sums_every_nesting_level():
+    """Three levels deep, shaped after the canonical Prometheus nested-
+    subquery example (``max_over_time(deriv(rate(x[5s])[20s:5s])[1m:30s])``):
+    innermost ``rate(x[5s])`` is 5 s; the middle subquery ``[20s:5s]`` adds
+    its own 20 s (25 s so far); ``deriv`` passes that through unchanged; the
+    outer subquery ``[1m:30s]`` adds its own 60 s, for 85 s total. A reading
+    that only summed two levels, or picked the single longest bracket (60 s),
+    would get this wrong."""
+    expr = "max_over_time(deriv(rate(x[5s])[20s:5s])[1m:30s])"
+    opener = FakeOpener(by_query={expr: EMPTY_BODY})
+
+    _transport(opener).fetch(_metrics_request({"expr": expr}))
+
+    query = _sent_query(opener)
+    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=85)).timestamp()
+    assert float(query["end"][0]) == WINDOW.end.timestamp()
+
+
+def test_subquery_lookback_recursion_is_maxed_against_a_sibling_selector():
+    """Contract rule 1's "multiple parallel selectors take the max" still
+    applies once a sibling's own L is computed recursively: the 200 s plain
+    selector here outranges the recursively-summed 60 s subquery
+    (50 s outer + 10 s inner), so L is 200, not 60."""
+    expr = "rate(x[200s]) + max_over_time(rate(y[10s])[50s:10s])"
+    opener = FakeOpener(by_query={expr: EMPTY_BODY})
+
+    _transport(opener).fetch(_metrics_request({"expr": expr}))
+
+    query = _sent_query(opener)
+    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=200)).timestamp()
+    assert float(query["end"][0]) == WINDOW.end.timestamp()
+
+
 # -- rule 3: view fields --------------------------------------------------
 
 
