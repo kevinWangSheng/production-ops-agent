@@ -41,6 +41,10 @@
 - 独立审查者只能重算视图与 raw 的 sha256、比对独立观察，未能对每条 claim 的措辞做穷尽核对；各 `review.md` 列出了实际核对的条目。
 - 供应商余额差含本机唯一使用者本时段的全部调用，本时段无其他调用者（未做独立核实）。
 
+## PR #55 机器人分诊（一次 push）
+
+Codex 对 `observe.py` 提出两条：P1「控制窗前提只检查 checkout 有正增量，未要求依赖调用」、P2「distinct/failing 计数未按 `any_span_in_window` 过滤」。两条都是对验收前提的收紧（AGENTS.md：验收步骤只能收紧），均采纳：`observe.py` 现要求 checkout、payment 与 checkout 客户端调用三组 series 都有正增量，且只统计窗内有 span 的 trace。观察文件在改动前录制，因此用 `recheck_observations.py` 对已录的 9 份观察按收紧后的谓词重算（`observe-recheck.json`）：9/9 窗内 trace = 返回 trace（无窗外 trace 混入），9/9 依赖流量成立，四个 Run 的 `control_window_ok` 与故障案的 `fault_confirmed` 结论不变。
+
 ## 目录
 
 `lab-up.log`、`web.log`、`worker.log`、`fault-timeline.jsonl`、`observe-after-restore.json`、`deepseek-balance-*.json`、脚本 `observe.py` / `extract_ledger.py` / `run_case.sh`；每个 Run 目录：`request.json`、`intake.json`、`window.json`、`observe-pre.json`、`observe-post.json`、`sse.txt`、`events.jsonl`、`incident.html`、`worker-attempt.txt`、`ledger.json`、`report.json`、`review.md`，交接的 Run 另有执行者的 `handoff-cause.md`。

@@ -1,0 +1,218 @@
+[
+ {
+  "file": "fault-1/observe-post.json",
+  "window": {
+   "start": "2026-09-27T04:05:58+00:00",
+   "end": "2026-09-27T04:10:58+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 4,
+  "traces_in_window": 4,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 7,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 5,
+   "all_services_error_calls": 5
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": true,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": true
+  }
+ },
+ {
+  "file": "fault-1/observe-pre.json",
+  "window": {
+   "start": "2026-09-27T04:05:58+00:00",
+   "end": "2026-09-27T04:10:58+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 4,
+  "traces_in_window": 4,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 7,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 5,
+   "all_services_error_calls": 5
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": true,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": true
+  }
+ },
+ {
+  "file": "fault-2/observe-post.json",
+  "window": {
+   "start": "2026-09-27T04:15:09+00:00",
+   "end": "2026-09-27T04:20:09+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 8,
+  "traces_in_window": 8,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 7,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 5,
+   "all_services_error_calls": 5
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": true,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": true
+  }
+ },
+ {
+  "file": "fault-2/observe-pre.json",
+  "window": {
+   "start": "2026-09-27T04:15:09+00:00",
+   "end": "2026-09-27T04:20:09+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 8,
+  "traces_in_window": 8,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 7,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 5,
+   "all_services_error_calls": 5
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": true,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": true
+  }
+ },
+ {
+  "file": "normal-1/observe-post.json",
+  "window": {
+   "start": "2026-09-27T03:41:59+00:00",
+   "end": "2026-09-27T03:46:59+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 13,
+  "traces_in_window": 13,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 11,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 8,
+   "all_services_error_calls": 0
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": false,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": false
+  }
+ },
+ {
+  "file": "normal-1/observe-pre.json",
+  "window": {
+   "start": "2026-09-27T03:41:53+00:00",
+   "end": "2026-09-27T03:46:53+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 12,
+  "traces_in_window": 12,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 11,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 8,
+   "all_services_error_calls": 0
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": false,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": false
+  }
+ },
+ {
+  "file": "normal-2/observe-post.json",
+  "window": {
+   "start": "2026-09-27T03:51:56+00:00",
+   "end": "2026-09-27T03:56:56+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 11,
+  "traces_in_window": 11,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 11,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 8,
+   "all_services_error_calls": 0
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": false,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": false
+  }
+ },
+ {
+  "file": "normal-2/observe-pre.json",
+  "window": {
+   "start": "2026-09-27T03:51:56+00:00",
+   "end": "2026-09-27T03:56:56+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 11,
+  "traces_in_window": 11,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 11,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 8,
+   "all_services_error_calls": 0
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": false,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": false
+  }
+ },
+ {
+  "file": "observe-after-restore.json",
+  "window": {
+   "start": "2026-09-27T04:24:27+00:00",
+   "end": "2026-09-27T04:29:27+00:00",
+   "seconds": 300
+  },
+  "returned_traces": 8,
+  "traces_in_window": 8,
+  "traces_out_of_window": 0,
+  "positive_series_count": {
+   "checkout_calls_by_span_status": 11,
+   "payment_calls_by_span_status": 2,
+   "checkout_client_calls_by_peer": 8,
+   "all_services_error_calls": 0
+  },
+  "dependency_traffic": true,
+  "control_window_ok_tightened": true,
+  "fault_confirmed_tightened": false,
+  "recorded_precondition": {
+   "control_window_ok": true,
+   "fault_confirmed": false
+  }
+ }
+]

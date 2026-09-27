@@ -134,10 +134,14 @@ def main():
                 "failed_non_checkout_spans": failed_calls,
             }
         )
-    distinct = {t["trace_id"] for t in traces}
+    # Only traces with at least one span inside the requested window count
+    # (PR #55 review P2: an overlapping trace Jaeger returns must not validate
+    # an out-of-window failure).
+    in_window_traces = [t for t in traces if t["any_span_in_window"]]
+    distinct = {t["trace_id"] for t in in_window_traces}
     failing = [
         t
-        for t in traces
+        for t in in_window_traces
         if t["checkout_error_spans"] and t["failed_non_checkout_spans"]
     ]
     failed_dep_services = sorted(
@@ -146,6 +150,13 @@ def main():
     positive = {
         n: sum(1 for s in m["series"] if s["value"] > 0) for n, m in metrics.items()
     }
+    # v4 packet: the control window needs positive increments for checkout AND
+    # its dependency calls (PR #55 review P1: checkout alone is not enough).
+    dependency_traffic = (
+        positive["checkout_calls_by_span_status"] > 0
+        and positive["payment_calls_by_span_status"] > 0
+        and positive["checkout_client_calls_by_peer"] > 0
+    )
     result = {
         "window": {
             "start": start.isoformat(),
@@ -160,14 +171,15 @@ def main():
         "jaeger": {
             "query": {"service": "checkout", "limit": 500},
             "returned_traces": len(traces),
+            "traces_in_window": len(in_window_traces),
             "distinct_trace_ids": len(distinct),
             "traces_with_checkout_error_and_failed_dependency_call": len(failing),
             "failed_dependency_services": failed_dep_services,
             "traces": traces,
         },
         "precondition": {
-            "control_window_ok": len(distinct) >= 2
-            and positive["checkout_calls_by_span_status"] > 0,
+            "control_window_ok": len(distinct) >= 2 and dependency_traffic,
+            "dependency_traffic": dependency_traffic,
             "fault_confirmed": len(failing) >= 2,
         },
     }
