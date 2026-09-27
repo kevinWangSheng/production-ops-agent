@@ -40,11 +40,12 @@ from opspilot.investigation.reports import (
     DeliveredView,
     context_target_catalog,
     context_time_policy_ids,
+    delivered_from_context,
     parse_report,
     unsupported_citations,
 )
 from opspilot.tools import PROJECTION_REVISION, TransportResponse
-from tests.m1_tool_support import body, build, request
+from tests.m1_tool_support import body, build, historical_window_context, request
 
 # Pre-fix literals, pinned from the packet's own ledgers
 # (docs/evidence/m1-01-v4-acceptance/<run>/ledger.json, runs[0].versions).
@@ -197,6 +198,218 @@ def test_view_stub_keeps_citable_as_fact():
 
 def test_context_policy_revision_moved_with_the_stub_shape():
     assert context_policy_revision() != PRE_FIX_CONTEXT_POLICY_REVISION
+
+
+# -- C. The checker enforces citable_as_fact, not just status == ok ---------
+#
+# PR #56 review P2 (adopted): the L2 contract tells the model a fact may cite
+# only a view whose ``citable_as_fact`` is true, so the checker must enforce
+# that same flag. ``DeliveredView`` carries it (fail-closed default False),
+# ``delivered_view`` copies it from the persisted view (deriving
+# ``status == "ok"`` only when the key is absent), and
+# ``delivered_from_context`` honours an explicit ``citable_as_fact: false``
+# on a status-ok binding. Non-fact kinds are unaffected by the flag.
+
+FIXTURE_RUN_ID = "run-9"
+FIXTURE_TARGET = "checkout-prod"
+FIXTURE_TARGETS = frozenset({FIXTURE_TARGET})
+POLICY = "policy-window-1"
+
+
+def _claim(evidence_id: str, *, kind: str = "fact") -> dict:
+    """A fully scoped claim: valid target_ref and time_scope_ref, so the only
+    thing left for the checker to reject is the cited view's flag."""
+    return {
+        "kind": kind,
+        "text": f"{kind} citing {evidence_id}",
+        "evidence_ids": [evidence_id],
+        "target_refs": [FIXTURE_TARGET],
+        "time_scope_ref": POLICY,
+    }
+
+
+def _report(*claims: dict):
+    conclusion = "supported" if any(c["kind"] == "fact" for c in claims) else "partial"
+    report, reason = parse_report(
+        json.dumps(
+            {
+                "schema_version": "m0-report-v2",
+                "assessment_status": "completed",
+                "conclusion": conclusion,
+                "summary": "Citation flag test.",
+                "claims": list(claims),
+                "gaps": [],
+                "next_steps": [],
+            }
+        ),
+        finish_reason="stop",
+    )
+    assert report is not None, reason
+    return report
+
+
+def _rejected(report, views) -> bool:
+    return unsupported_citations(
+        report,
+        views=views,
+        authorized_targets=FIXTURE_TARGETS,
+        time_policy_ids=(POLICY,),
+        target_catalog=None,
+    )
+
+
+def _ok_view(evidence_id: str, *, citable: bool) -> DeliveredView:
+    return DeliveredView(
+        evidence_id=evidence_id,
+        target_ids=FIXTURE_TARGETS,
+        status="ok",
+        time_scope_refs=frozenset({POLICY}),
+        citable_as_fact=citable,
+    )
+
+
+def test_delivered_view_citable_as_fact_defaults_to_false():
+    """Fail-closed: a DeliveredView built without the flag is not fact
+    evidence even when its status is ok."""
+    view = DeliveredView(
+        evidence_id="ev-default",
+        target_ids=FIXTURE_TARGETS,
+        status="ok",
+        time_scope_refs=frozenset({POLICY}),
+    )
+    assert view.citable_as_fact is False
+    assert _rejected(_report(_claim("ev-default")), [view]) is True
+
+
+@pytest.mark.parametrize("kind", sorted(FACT_LIKE))
+def test_ok_view_with_citable_false_cannot_support_a_fact_like_claim(kind):
+    """The same status-ok view: flag False -> rejected, flag True -> accepted.
+    Everything else about the claim is valid, so the flag is the only cause."""
+    report = _report(_claim("ev-1", kind=kind))
+
+    assert _rejected(report, [_ok_view("ev-1", citable=False)]) is True
+    assert _rejected(report, [_ok_view("ev-1", citable=True)]) is False
+
+
+def test_one_non_citable_view_among_several_rejects_the_claim():
+    report = _report({**_claim("ev-good"), "evidence_ids": ["ev-good", "ev-flagged"]})
+    views = [_ok_view("ev-good", citable=True), _ok_view("ev-flagged", citable=False)]
+    assert _rejected(report, views) is True
+
+
+def test_hypothesis_may_cite_a_non_citable_view():
+    """Non-fact kinds are unaffected by the flag: a hypothesis binding to a
+    delivered view that is not citable_as_fact still passes."""
+    report = _report(_claim("ev-1", kind="hypothesis"))
+    assert _rejected(report, [_ok_view("ev-1", citable=False)]) is False
+
+
+def _persisted_ok_view() -> dict:
+    """A real persisted view from the fixture executor (status ok, adopted,
+    citable_as_fact True under projection v5)."""
+    executor, transport, _, _ = build()
+    transport.response = TransportResponse(body=body([{"metric": "x", "value": 1}]))
+    outcome = executor.execute(request())
+    raw = dict(outcome.evidence.view)
+    assert raw["status"] == "ok" and raw["adopted"] is True
+    assert raw["citable_as_fact"] is True
+    return raw
+
+
+def _through_delivered_view(raw: dict) -> DeliveredView:
+    view = delivered_view(
+        raw,
+        evidence_context=historical_window_context(FIXTURE_RUN_ID),
+        authorized_targets=FIXTURE_TARGETS,
+    )
+    assert view is not None
+    assert view.status == "ok"
+    assert POLICY in view.time_scope_refs, "fixture view must bind the policy"
+    return view
+
+
+def test_delivered_view_carries_citable_false_from_the_persisted_view():
+    raw = {**_persisted_ok_view(), "citable_as_fact": False}
+
+    view = _through_delivered_view(raw)
+
+    assert view.citable_as_fact is False
+    assert _rejected(_report(_claim(view.evidence_id)), [view]) is True
+    # Non-fact kinds are unaffected.
+    assert _rejected(_report(_claim(view.evidence_id, kind="hypothesis")), [view]) is (
+        False
+    )
+
+
+def test_delivered_view_carries_citable_true_from_the_persisted_view():
+    raw = {**_persisted_ok_view(), "citable_as_fact": True}
+
+    view = _through_delivered_view(raw)
+
+    assert view.citable_as_fact is True
+    assert _rejected(_report(_claim(view.evidence_id)), [view]) is False
+
+
+def test_delivered_view_without_the_key_derives_citable_from_status_ok():
+    """A view lacking the key (older projection) derives ``status == "ok"``
+    rather than the fail-closed dataclass default."""
+    raw = _persisted_ok_view()
+    del raw["citable_as_fact"]
+
+    view = _through_delivered_view(raw)
+
+    assert view.citable_as_fact is True
+    assert _rejected(_report(_claim(view.evidence_id)), [view]) is False
+
+
+def _v4_context(evidence_id: str, **binding_extra) -> dict:
+    return {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": FIXTURE_RUN_ID,
+        "time_policies": [{"id": POLICY}],
+        "view_bindings": {
+            evidence_id: {
+                "status": "ok",
+                "target_refs": [FIXTURE_TARGET],
+                "time_scope_refs": [POLICY],
+                **binding_extra,
+            }
+        },
+    }
+
+
+def test_delivered_from_context_honours_explicit_citable_false():
+    context = _v4_context("ev-bound", citable_as_fact=False)
+
+    views = delivered_from_context(context, run_id=FIXTURE_RUN_ID)
+
+    assert [view.evidence_id for view in views] == ["ev-bound"]
+    (view,) = views
+    assert view.status == "ok"
+    assert view.citable_as_fact is False
+    assert _rejected(_report(_claim("ev-bound")), views) is True
+    # Non-fact kinds are unaffected.
+    assert _rejected(_report(_claim("ev-bound", kind="hypothesis")), views) is False
+
+
+def test_delivered_from_context_without_the_key_keeps_ok_views_citable():
+    """Existing behaviour: a status-ok binding with no flag is citable."""
+    context = _v4_context("ev-bound")
+
+    views = delivered_from_context(context, run_id=FIXTURE_RUN_ID)
+
+    assert [view.evidence_id for view in views] == ["ev-bound"]
+    assert views[0].citable_as_fact is True
+    assert _rejected(_report(_claim("ev-bound")), views) is False
+
+
+def test_delivered_from_context_explicit_citable_true_is_citable():
+    context = _v4_context("ev-bound", citable_as_fact=True)
+
+    views = delivered_from_context(context, run_id=FIXTURE_RUN_ID)
+
+    assert views[0].citable_as_fact is True
+    assert _rejected(_report(_claim("ev-bound")), views) is False
 
 
 # -- D. Packet replay: the rule is not loosened ---------------------------

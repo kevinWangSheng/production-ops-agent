@@ -40,5 +40,6 @@ v4 包 2+2 真实 Run 0/4：模型两次都正确定位 checkout→payment `Char
 ## 下一步与交接
 
 - PR [#56](https://github.com/kevinWangSheng/production-ops-agent/pull/56)：CI 三项通过；机器人分诊一次——1 条 P1（观察脚本失败 span 须自身在窗内）采纳，处置见证据 run.md；**不合并**（功能 PR，用户门）。
-- 残余项（交 lead/用户）：(a) metrics 描述与 `values_format` 按 DeepSeek 参考 §2.5 拆成一句一约束——会再 bump `tool_schema_revision`，建议放在 2+2 重跑之前一并做；(b) Prometheus 瞬时选择器的 staleness 回看不计入 `lookback_seconds`；(c) `PROJECTION_REVISION` 手工编号（既有）；(d) 发布后事故 `state=queued`（v4 包已记）。
+- 机器人第二轮 2 条 P2：`unsupported_citations` 同时校验 `citable_as_fact`（采纳，只收紧：`DeliveredView` 带该标志，fail-closed 默认 false，模型可见文字与投影未动、revision 不变）；超限视图 stub 保留 `lookback_seconds`/`lookback_start_at`（有效，**延后到 6d pre-freeze**：改投影会 bump revision，使本 PR 真实 Run 证据与代码脱钩；用户 2026-09-27 决定剩余模型面/投影改动统一进 6d 重跑 PR 的冻结前提交）。此后只有够格的 P1 才改代码。
+- 待决「6d pre-freeze」清单：(a0) stub 保留 lookback 字段（上条）；(a) metrics 描述与 `values_format` 按 DeepSeek 参考 §2.5 拆成一句一约束——会再 bump `tool_schema_revision`；(b) Prometheus 瞬时选择器的 staleness 回看不计入 `lookback_seconds`；(c) `PROJECTION_REVISION` 手工编号（既有）；(d) 发布后事故 `state=queued`（v4 包已记）。
 - 资源：lab VM 已 `stop`（数据保留）；web/worker 已停；本 worktree 的 55431 实例仍在运行供审查回读，合并后 `postgres_lab stop`；`.env` 未改。

@@ -185,6 +185,10 @@ class DeliveredView:
     target_ids: frozenset[str]
     status: str
     time_scope_refs: frozenset[str] = frozenset()
+    # The view's own ``citable_as_fact`` flag, carried so the checker enforces
+    # exactly what the L2 contract tells the model (PR #56 bot review P2): an
+    # ``ok`` view whose flag is false is not fact evidence. Fail-closed default.
+    citable_as_fact: bool = False
 
 
 # Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
@@ -673,7 +677,7 @@ def unsupported_citations(
         if claim.time_scope_ref not in policies:
             return True
         cited = [by_id[eid] for eid in claim.evidence_ids]
-        if any(view.status != "ok" for view in cited):
+        if any(view.status != "ok" or not view.citable_as_fact for view in cited):
             return True
         if any(claim.time_scope_ref not in view.time_scope_refs for view in cited):
             return True
@@ -758,6 +762,9 @@ def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredVie
                 target_ids=targets,
                 status="ok",
                 time_scope_refs=time_refs,
+                # An ``ok`` binding is citable unless it says otherwise; an
+                # explicit false is honoured (PR #56 bot review P2).
+                citable_as_fact=binding.get("citable_as_fact") is not False,
             )
         )
     return delivered
