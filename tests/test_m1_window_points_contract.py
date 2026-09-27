@@ -38,7 +38,13 @@ from opspilot.tools.otel_demo import (
 )
 from tests.m1_tool_support import WINDOW_START as GENERIC_WINDOW_START
 from tests.m1_tool_support import body, build, request
-from tests.test_m1_otel_demo_contract import EMPTY_BODY, JAEGER_URL, PROMETHEUS_URL, WINDOW, FakeOpener
+from tests.test_m1_otel_demo_contract import (
+    EMPTY_BODY,
+    JAEGER_URL,
+    PROMETHEUS_URL,
+    WINDOW,
+    FakeOpener,
+)
 
 WINDOW_SECONDS = int(WINDOW.seconds)  # 300, from tests/fixtures/otel_demo/window.txt
 
@@ -90,7 +96,9 @@ def test_start_is_window_start_plus_lookback_for_a_partial_window_selector():
     _transport(opener).fetch(_metrics_request({"expr": expr}))
 
     query = _sent_query(opener)
-    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=60)).timestamp()
+    assert (
+        float(query["start"][0]) == (WINDOW.start + timedelta(seconds=60)).timestamp()
+    )
     assert float(query["end"][0]) == WINDOW.end.timestamp()
 
 
@@ -130,7 +138,9 @@ def test_start_uses_the_longer_of_a_plain_range_and_a_subquery_selector():
     _transport(opener).fetch(_metrics_request({"expr": expr}))
 
     query = _sent_query(opener)
-    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=120)).timestamp()
+    assert (
+        float(query["start"][0]) == (WINDOW.start + timedelta(seconds=120)).timestamp()
+    )
     assert float(query["end"][0]) == WINDOW.end.timestamp()
 
 
@@ -182,7 +192,9 @@ def test_subquery_lookback_recursion_sums_every_nesting_level():
     _transport(opener).fetch(_metrics_request({"expr": expr}))
 
     query = _sent_query(opener)
-    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=85)).timestamp()
+    assert (
+        float(query["start"][0]) == (WINDOW.start + timedelta(seconds=85)).timestamp()
+    )
     assert float(query["end"][0]) == WINDOW.end.timestamp()
 
 
@@ -197,7 +209,9 @@ def test_subquery_lookback_recursion_is_maxed_against_a_sibling_selector():
     _transport(opener).fetch(_metrics_request({"expr": expr}))
 
     query = _sent_query(opener)
-    assert float(query["start"][0]) == (WINDOW.start + timedelta(seconds=200)).timestamp()
+    assert (
+        float(query["start"][0]) == (WINDOW.start + timedelta(seconds=200)).timestamp()
+    )
     assert float(query["end"][0]) == WINDOW.end.timestamp()
 
 
