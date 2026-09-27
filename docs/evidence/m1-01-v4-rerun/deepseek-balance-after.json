@@ -1,0 +1,12 @@
+{
+"is_available": true,
+"balance_infos": [
+{
+"currency": "CNY",
+"total_balance": "48.52",
+"granted_balance": "0.00",
+"topped_up_balance": "48.52"
+}
+],
+"queried_at_utc": "2026-09-27T07:54:10Z (after all 4 Runs, re-queried; the 07:42:11Z query right after fault-2 still showed 48.64)"
+}

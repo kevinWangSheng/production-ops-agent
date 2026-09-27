@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident 22fe0e26-4fb0-58b2-9a6a-733fbda9d96a</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>22fe0e26-4fb0-58b2-9a6a-733fbda9d96a</code></h1>
+<p>
+  State <span class="badge" id="incident-state">queued</span>
+  · lifecycle <span class="badge">open</span>
+  · <span class="badge" id="concluded">concluded</span>
+  · control generation <strong id="control-generation">0</strong>
+  · run <code>03557486-0054-51f4-b4dc-508870d158c1</code> <span class="badge" id="run-state">completed</span>
+  · epoch 1
+  · budget 4 spent / 0 reserved / 0 unknown of 4
+  · deadline 2026-09-27 01:00:14.642607-07:00
+</p>
+
+<p>Target request: <code>m0-otel-20260909</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the authorized 300-second window, determine whether checkout and its dependency calls (payment, product-catalog, cart, currency, shipping, email) show failures or elevated latency, cite trace ids, and return a json investigation report.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 0. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="cancel-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="correct-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="follow_up-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="new_run-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="pause-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="resume-0-d7cce78438a747c487ab5c37e72f3b00">
+  
+  <button type="submit">resume</button>
+</form>
+
+
+<h2>Report</h2>
+
+
+
+  <p id="report-status">
+    Assessment <span class="badge">completed</span>
+    · conclusion <span class="badge">partial</span>
+    
+    · content sha256 <code>6d70fa5a0c0713675700b9995d86c662d7ba7cd40315a0d91995dcadb6d0b681</code>
+  </p>
+  <p>Within the authorized 300-second window (2026-09-27T07:25:14Z–07:30:14Z) checkout does show errors: checkout span-metric increases include a STATUS_CODE_ERROR series (9.28–16.75 per step) with no ERROR values in the first two steps and nonzero values from the third step onward, and checkout client RPC counts show Charge calls with rpc.grpc.status_code=2 (4.06–8.37 per step) while Charge calls with grpc status 0 fall to 0 in the same later steps (9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f, 9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7, f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65). The failing traces point at the checkout→payment Charge call: e.g. trace 8b732f9c8306005cdc9f18a225ef13cd contains checkout PlaceOrder span 30633f5750f9df4b (otel.status_code ERROR, rpc.grpc.status_code 13, &#39;failed to charge card: ... Payment request failed. Invalid token.&#39;), its supplied child Charge client span 40320755f3a5a50c (grpc status 2), and a payment-service Charge span e34cf65f59288a74 with the message &#39;Payment request failed. Invalid token.&#39; (9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6, 9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91). For the other dependencies the sampled evidence shows no failures and short durations (cart 0.4–8.9 ms, product-catalog 0.08–3.5 ms), but ERROR series were not returned for cart/product-catalog/shipping/currency/email, and no currency/shipping/email traces were retrieved, so their error state is unknown rather than zero. No comparable baseline window was available, so no latency trend can be asserted; only current p95 levels (checkout PlaceOrder ~64.5–73.3 ms, product-catalog GetProduct ~4.75–4.91 ms) are observed.</p>
+  
+  
+    <section class="facts">
+      <h3>Facts (10)</h3>
+      
+      <ul>
+        
+        <li>checkout span-metric increase by status contains a STATUS_CODE_ERROR series that is absent/non-numeric in the earliest two steps and nonzero from the third step onward (values 9.28, 12.28, 8.14, 9.64, 7.43, 8.43, 16.75), while the checkout STATUS_CODE_UNSET series is present across the window; the same checkout ERROR series is reproduced in a second query of all services.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>checkout RPC client counts show Charge calls with rpc.grpc.status_code=2 (increase 4.06–8.37 per step from the third step onward) while checkout Charge calls with rpc.grpc.status_code=0 fall from ~5.0 to 0 over the same later steps; other checkout client methods (Convert, GetCart, GetProduct, GetQuote, EmptyCart, ShipOrder) show only status code 0 series in the returned data.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65"><code>f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>Trace 8b732f9c8306005cdc9f18a225ef13cd contains a checkout oteldemo.CheckoutService/PlaceOrder span 30633f5750f9df4b with error=true, otel.status_code=ERROR, rpc.grpc.status_code=13 and description &#39;failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token.&#39;, plus a checkout-side oteldemo.PaymentService/Charge span 40320755f3a5a50c (error=true, rpc.grpc.status_code=2) whose span id appears as the supplied parent reference of a payment-service span e34cf65f59288a74 carrying grpc.error_message &#39;Payment request failed. Invalid token.&#39; in the same trace.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>The same failure signature appears in multiple distinct traces from the checkout search: a3ba4eaeb631d944262836cbb7e57a35, d53617e305d878aac2ece6e0a10ce477, bb683b6afdeeb3220845cd60ae48b7dd, 30f2a348e90a46058ac4c22f37364106, bd4e068162e6b4e3d3c1207fbacbae3b, 23e56663f17cd9bc4c3a0193f4552eef and 063a04337e644042a2d36507d153f155, each with an errored checkout PlaceOrder span and/or a Charge span reporting &#39;Payment request failed. Invalid token.&#39;; the payment-service search shows matching errored grpc.oteldemo.PaymentService/Charge spans (e.g. 46d208d7db584645, 4cc8247653d2fcd7, ac01f9bf03fab3b2, 6df2be385de902bf, b946c32157d98922, 583371cb2f182a33, 2332a56c1754c36d).
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>Trace a3ba4eaeb631d944262836cbb7e57a35 shows an error path along supplied parent references: load-generator POST span da6780c8dfcfc36f (http.status_code 500) → frontend-proxy ingress 6b3788895df94a55 (500) → frontend-proxy &#39;router frontend egress&#39; d43c4a7f1d1f44fd (500) → frontend POST 2d04bae773755e21 (500) → frontend &#39;POST /api/checkout&#39; 69eb806fbc5eb94d (500) → frontend &#39;executing api route (pages) /api/checkout&#39; a63850e7f3eeabd3 (gRPC 13 INTERNAL, message &#39;failed to charge card: ... Payment request failed. Invalid token.&#39;) → frontend-side checkout PlaceOrder span 43a0702c0a2f9174 (grpc 13) → checkout PlaceOrder span 32847e8cbd7b44bd (ERROR, grpc 13).
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>In the payment trace view, non-errored payment internal spans appear alongside the errored Charge spans: &#39;charge&#39; spans (e.g. ae346828b2431e8a 13.9 ms, 3972694917a39deb 3.4 ms) and &#39;grpc.flagd.evaluation.v1.Service/ResolveFloat&#39; span 2275787c1e03ff1c (12.1 ms, rpc.grpc.status_code 0) are present with error_by_visible_tags=false.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>In the cart trace view all returned spans have error_by_visible_tags=false, with durations from 424 µs to 8946 µs across CartService/AddItem, CartService/GetCart and Redis HGET/HMSET operations (e.g. span 2bccf607640f8cbd 8.9 ms, 702df9fc1c37266a HGET 5.9 ms).
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>Product-catalog spans returned show no errors and rpc.grpc.status_code=0 with durations 77 µs–3526 µs (e.g. span 930bd97867733714 3.5 ms, 075a39acef7faafc 80 µs), including spans in the failing checkout traces 063a04337e644042a2d36507d153f155 and bd4e068162e6b4e3d3c1207fbacbae3b.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>Observed p95 rpc_server_duration levels in the window: checkout PlaceOrder 64.5–73.3 ms, product-catalog GetProduct ~4.75–4.91 ms and ListProducts ~4.75 ms, ad GetAds 19–167 ms; a wider query returned the same checkout PlaceOrder and product-catalog series plus otelcol-contrib Export ~4.87–4.93 ms and no other series for payment, cart, currency, shipping or email.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957"><code>f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>All-services span-metric increase shows ERROR series for checkout, frontend, frontend-proxy, load-generator and payment beginning in the same later steps of the window, while the returned series for cart, product-catalog, shipping, email (STATUS_CODE_UNSET) and currency (STATUS_CODE_OK) contain no ERROR series.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="hypotheses">
+      <h3>Hypotheses (2)</h3>
+      
+      <ul>
+        
+        <li>The checkout error burst is best explained by the downstream payment Charge call rejecting requests (&#39;Payment request failed. Invalid token. app.loyalty.level=gold&#39;, gRPC code 2/Unknown), which surfaces at checkout as gRPC 13 PlaceOrder failures and as HTTP 500 at frontend/frontend-proxy/load-generator; the supplied parent references place the payment span under the checkout Charge client span in the same traces.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+        <li>The &#39;Invalid token&#39; wording in the payment error, together with the &#39;app.loyalty.level=gold&#39; attribute and the presence of a flagd ResolveFloat span inside the payment Charge span, is consistent with a charge-token or experiment/feature-flag-driven fault in the payment service rather than with an infrastructure failure; this remains an inference from error text only.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="counter">
+      <h3>Counter-evidence (1)</h3>
+      
+      <ul>
+        
+        <li>Failures are not universal across the demo: cart spans in the window are all non-errored with sub-10 ms durations, product-catalog GetProduct spans are grpc status 0 with sub-4 ms durations even inside the failing checkout traces, and the payment trace view shows non-errored &#39;charge&#39; and flagd ResolveFloat spans, so the observed fault is not a blanket degradation of all checkout dependencies.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  
+    <section class="rejected">
+      <h3>Rejected hypotheses (1)</h3>
+      
+      <ul>
+        
+        <li>A claim that checkout&#39;s dependencies show elevated latency is not supported by this run: no pre-window baseline was retrieved, and the only observed levels are p95 checkout PlaceOrder ~64.5–73.3 ms, product-catalog GetProduct ~4.75–4.91 ms and cart span durations 0.4–8.9 ms, with no comparable baseline to establish any increase.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957"><code>f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957</code></a>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  <section class="unknown">
+    <h3>Unknown / gaps (5)</h3>
+    <ul><li>No pre-window or otherwise comparable baseline was retrieved, so no latency trend/increase can be assessed for checkout or any dependency; only current p95 and span-duration levels are observed (093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87, f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957).</li><li>No ERROR series was returned for cart, product-catalog, shipping, currency or email in the span-metric queries; missing series are unknown, not zero, so their error state in this window cannot be stated (093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb, 9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f).</li><li>No trace searches were performed for currency, shipping or email, so their spans, failures and latencies are entirely unknown in this run.</li><li>Trace views were incomplete or truncated: the checkout search returned 18 of 20 with 2 omitted rows and truncated=true, and the product-catalog and cart views are flagged incomplete, so the trace inventory is a sampled and partial view (9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6, 093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e, 093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea).</li><li>Several returned spans have parent_is_visible=false with supplied parent ids outside the returned set (e.g. checkout PlaceOrder parents 5cbd92a053f5db98 and 43a0702c0a2f9174 in trace 8b732f9c8306005cdc9f18a225ef13cd), so no complete call chain can be asserted from this sampled view.</li></ul>
+  </section>
+  
+    <section class="recommend">
+      <h3>Recommendations (1)</h3>
+      
+      <ul>
+        
+        <li>Human follow-up should inspect payment-service charge token/loyalty handling and any active fault-injection or feature-flag configuration, since the visible failure text is an application-level &#39;Invalid token&#39; rejection rather than a transport error; this is advisory only and was not executed.
+          <br><span class="muted">evidence:</span>
+            
+              <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+            
+          
+          <span class="muted">targets:</span> <code>m0-otel-20260909</code> 
+          <span class="muted">time scope:</span> <code>policy-window-1</code>
+        </li>
+        
+      </ul>
+      
+    </section>
+  
+  <section>
+    <h3>Advisory next steps</h3>
+    <ul><li>Compare the same checkout/payment error and latency series against an adjacent baseline window to determine whether errors and latency are elevated relative to normal behavior.</li><li>Query ERROR-status metrics and traces specifically for currency, shipping and email to close the unknown dependency error coverage.</li><li>Inspect payment-service logs/configuration for charge token validation and for any active fault-injection or flagd experiment targeting payment during 2026-09-27T07:25–07:30Z.</li><li>Verify whether the checkout ERROR burst onset (third metric step of the window, ~2026-09-27T07:27:14Z) coincides with a deployment or configuration change.</li></ul>
+  </section>
+
+
+<h2>Steps</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>0</td>
+    <td><code>ctx0:round-1</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91"><code>9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>1</td>
+    <td><code>ctx0:round-2</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea"><code>093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2</td>
+    <td><code>ctx0:round-3</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      2 / 2
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957"><code>f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/evidence/f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65"><code>f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>3</td>
+    <td><code>ctx0:round-4</code></td>
+    <td><span class="badge">response_committed</span></td>
+    <td>0</td>
+    <td>stop</td>
+    <td>
+      0 / 0
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>4</td>
+    <td><code>conclusion:g0:ctx0:round-4</code></td>
+    <td><span class="badge">response_committed</span></td>
+    <td>0</td>
+    <td></td>
+    <td>
+      0 / 0
+      
+    </td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+
+<h2>Human decisions</h2>
+<p class="muted">None recorded.</p>
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 17)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the authorized 300-second window, determine whether checkout and its dependency calls (payment, product-catalog, cart, currency, shipping, email) show failures or elevated latency, cite trace ids, and return a json investigation report.", "received_at": "2026-09-27T00:30:14.631238-07:00", "request_id": "1ef682e5-6c90-4e06-8ffd-9c91d7bc78a3", "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "target_id": "m0-otel-20260909"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>run_claimed</strong> <span class="muted">{"control_generation": 0, "epoch": 1, "run_id": "03557486-0054-51f4-b4dc-508870d158c1"}</span></li>
+  
+  <li data-sequence="3"><code>3</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-1", "planned_tools": 4, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "step_id": "9633cbda-ba02-4938-95ce-ea699c54c64d"}</span></li>
+  
+  <li data-sequence="4"><code>4</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f", "ordinal": 0, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "9633cbda-ba02-4938-95ce-ea699c54c64d", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="5"><code>5</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7", "ordinal": 1, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "9633cbda-ba02-4938-95ce-ea699c54c64d", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="6"><code>6</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6", "ordinal": 2, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "9633cbda-ba02-4938-95ce-ea699c54c64d", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="7"><code>7</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91", "ordinal": 3, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "9633cbda-ba02-4938-95ce-ea699c54c64d", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="8"><code>8</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-2", "planned_tools": 4, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "step_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb"}</span></li>
+  
+  <li data-sequence="9"><code>9</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87", "ordinal": 0, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="10"><code>10</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb", "ordinal": 1, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="11"><code>11</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e", "ordinal": 2, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="12"><code>12</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea", "ordinal": 3, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "093e09ff-a1e6-41e8-94a3-679dcaa992eb", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="13"><code>13</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-3", "planned_tools": 2, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "step_id": "f3ad059e-3142-472b-a81c-2974bf6ca60f"}</span></li>
+  
+  <li data-sequence="14"><code>14</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957", "ordinal": 0, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "f3ad059e-3142-472b-a81c-2974bf6ca60f", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="15"><code>15</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65", "ordinal": 1, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "status": "ok", "step_id": "f3ad059e-3142-472b-a81c-2974bf6ca60f", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="16"><code>16</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "stop", "logical_key": "ctx0:round-4", "planned_tools": 0, "run_id": "03557486-0054-51f4-b4dc-508870d158c1", "step_id": "bebe0a3c-0c91-46da-b054-b5e30d7fd9db"}</span></li>
+  
+  <li data-sequence="17"><code>17</code> <strong>run_completed</strong> <span class="muted">{"evidence_ids": ["9633cbda-ba02-4938-95ce-ea699c54c64d-t0:07dbe9b4-829c-40a2-9a0e-cdadccdad29f", "9633cbda-ba02-4938-95ce-ea699c54c64d-t1:81aaa5ee-bf2c-490b-806b-886bb704cbd7", "9633cbda-ba02-4938-95ce-ea699c54c64d-t2:009c240a-cc34-4982-9130-bf4b72fd60d6", "9633cbda-ba02-4938-95ce-ea699c54c64d-t3:d9554e5d-51e3-490a-b8e3-ac908e6b5a91", "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t0:833f98f9-167a-4e57-81d6-e6e9dc31ca87", "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t1:f97e8b5d-3c01-4ce8-9e24-498bf558d9fb", "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t2:bb111b9d-c42b-4731-9c06-15a9f393960e", "093e09ff-a1e6-41e8-94a3-679dcaa992eb-t3:96c0a7a4-f69f-4148-8649-dce558adfeea", "f3ad059e-3142-472b-a81c-2974bf6ca60f-t0:6c5c2129-827e-40cf-be8f-071217153957", "f3ad059e-3142-472b-a81c-2974bf6ca60f-t1:0de7107f-2095-4dee-9c26-0d13162f7b65"], "execution": "completed", "handoff": false, "handoff_reasons": [], "model_requests_used": 4, "prompt_revision": "prompt-replay-candidate-04a9d1a1a80e", "published": true, "report_sha256": "6d70fa5a0c0713675700b9995d86c662d7ba7cd40315a0d91995dcadb6d0b681", "run_id": "03557486-0054-51f4-b4dc-508870d158c1"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 17;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/22fe0e26-4fb0-58b2-9a6a-733fbda9d96a/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
