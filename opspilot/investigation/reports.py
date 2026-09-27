@@ -68,7 +68,13 @@ REPORT_CONTRACT = (
     "counter_evidence and rejected_hypothesis must cite at least one complete "
     "evidence_id actually supplied in this Run, nonempty target_refs from the "
     "delivered evidence context, and a time_scope_ref from that context; never "
-    "abbreviate or invent IDs. Permission to query a target is not observed "
+    "abbreviate or invent IDs. Cite the complete evidence_id field only; "
+    "operation_id is a correlation key, not an evidence_id, and citing it "
+    "invalidates the claim. A fact, counter_evidence or rejected_hypothesis "
+    "may cite only views whose status is ok and whose citable_as_fact is "
+    "true. A view whose status is no_data, error, timeout or denied never "
+    "supports a fact: state what it failed to show in gaps or as an unknown "
+    "instead. Permission to query a target is not observed "
     "evidence. Missing policy or source timing cannot support a current fact; "
     "return explicit gaps and inconclusive or incomplete. Use gaps for missing "
     "information and next_steps for advisory human follow-up. Do not invent a "
@@ -179,6 +185,10 @@ class DeliveredView:
     target_ids: frozenset[str]
     status: str
     time_scope_refs: frozenset[str] = frozenset()
+    # The view's own ``citable_as_fact`` flag, carried so the checker enforces
+    # exactly what the L2 contract tells the model (PR #56 bot review P2): an
+    # ``ok`` view whose flag is false is not fact evidence. Fail-closed default.
+    citable_as_fact: bool = False
 
 
 # Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
@@ -667,7 +677,7 @@ def unsupported_citations(
         if claim.time_scope_ref not in policies:
             return True
         cited = [by_id[eid] for eid in claim.evidence_ids]
-        if any(view.status != "ok" for view in cited):
+        if any(view.status != "ok" or not view.citable_as_fact for view in cited):
             return True
         if any(claim.time_scope_ref not in view.time_scope_refs for view in cited):
             return True
@@ -752,6 +762,9 @@ def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredVie
                 target_ids=targets,
                 status="ok",
                 time_scope_refs=time_refs,
+                # An ``ok`` binding is citable unless it says otherwise; an
+                # explicit false is honoured (PR #56 bot review P2).
+                citable_as_fact=binding.get("citable_as_fact") is not False,
             )
         )
     return delivered

@@ -83,6 +83,7 @@ _VIEW_PROVENANCE_KEYS = (
     "operation_id",
     "status",
     "adopted",
+    "citable_as_fact",
     "tool",
     "source",
     "target_id",
@@ -458,10 +459,17 @@ def delivered_view(
     aliases = frozenset(key for key, mapped in catalog.items() if mapped == registry)
     target_ids = (frozenset({registry}) if registry else frozenset()) | aliases
     status = view.get("status")
+    # The executor writes the flag on every view (projection v5); a view
+    # without it can only be from an older projection, whose Run the
+    # revision bump blocks anyway, so the same rule is derived rather than
+    # assumed true.
+    flag = view.get("citable_as_fact")
+    citable = flag if isinstance(flag, bool) else status == "ok"
     return DeliveredView(
         evidence_id=evidence_id,
         target_ids=target_ids,
         status=status if isinstance(status, str) else "unknown",
+        citable_as_fact=citable,
         time_scope_refs=eligible_time_policies(
             evidence_context.get("time_policies")
             if isinstance(evidence_context, Mapping)

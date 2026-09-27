@@ -51,7 +51,9 @@ __all__ = [
 
 # Version of the raw -> view projection. Stored with every evidence record so a
 # later reader can tell which projection produced the view it is reading.
-PROJECTION_REVISION = "m1-01-tool-view-v4"
+# v5: ``citable_as_fact``, ``lookback_seconds``, ``lookback_start_at`` (the v4
+# acceptance packet's REPORT_INVALID handoffs, docs/evidence/m1-01-v4-acceptance).
+PROJECTION_REVISION = "m1-01-tool-view-v5"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

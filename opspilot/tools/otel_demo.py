@@ -14,9 +14,12 @@ What a Run may read (technical plan §8):
   so target isolation is by instance, not by a spliced-in label filter;
 * ``metrics_range_query``: a PromQL range query over the Run's absolute
   window. The raw evidence is the exact Prometheus response; the model view
-  is its leading ``data.result`` series. A query that reads outside the
-  window (``offset``, ``@``, a range selector longer than the window) is
-  refused before any request goes out;
+  is its leading ``data.result`` series. ``offset``, ``@`` and a range
+  selector longer than the window are refused before any request goes out;
+  a selector up to the window length is allowed and, evaluated at the window
+  start, reads that far back before it (upstream Holmes issues the same
+  queries) -- the view reports that read as ``lookback_seconds`` /
+  ``lookback_start_at`` next to the in-window ``source_start_at``;
 * ``traces_search``: Jaeger's trace search for one service in the window.
   Raw Jaeger responses are 300 KB-600 KB for 20 traces, so the raw evidence
   here is the transport's projected observation record -- the M0 trace
@@ -113,6 +116,7 @@ __all__ = [
     "otel_demo_face",
     "otel_demo_versions",
     "project_traces",
+    "promql_lookback_seconds",
     "promql_problem",
     "scope_window",
 ]
@@ -192,9 +196,14 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "the raw response series (data.result: one entry per label set "
                 "with [timestamp, value] points). Counters such as "
                 "*_calls_total are cumulative; wrap them in rate()/increase() "
-                "for per-window activity. Range selectors, offset and @ must "
-                "stay inside the window; a query that reads outside it returns "
-                "an error. At most 24 KiB of series are shown; when truncated "
+                "for per-window activity. A range selector may be at most the "
+                "window length; evaluated at the window start it reads that "
+                "far back before the window; the view reports that read as "
+                "lookback_seconds and lookback_start_at, while source_start_at "
+                "is the first returned sample inside the window, so a value at "
+                "the first points may reflect samples from before the window. "
+                "Longer selectors, offset and @ are refused. "
+                "At most 24 KiB of series are shown; when truncated "
                 "the view sets truncated true and reports omitted_rows. A "
                 "series that is not returned is unknown, not zero, and a "
                 "returned series does not by itself prove the service is "
@@ -296,8 +305,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             ),
             values_format=(
                 "The authorized target and service enumeration for this Run, "
-                "appended as {values}; a query reading outside the window is "
-                "refused."
+                "appended as {values}; offset, @ and a range selector longer "
+                "than the window are refused, a selector up to the window "
+                "length reads that far back before the window start."
             ),
             limits=(
                 "Truncated at the registered max_view_bytes: whole leading "
@@ -307,7 +317,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
                 "unhealthy, and a series that is not returned is unknown, not "
-                "zero; cumulative counters are not rates."
+                "zero; cumulative counters are not rates; a value at the first "
+                "points is not an in-window event when lookback_seconds is "
+                "nonzero."
             ),
         ),
         may_contain_secrets=False,
@@ -606,6 +618,23 @@ def promql_problem(expr: str, window_seconds: float) -> str | None:
     return None
 
 
+def promql_lookback_seconds(expr: str) -> int:
+    """How far before the window start an accepted expression reads, in seconds.
+
+    The largest ``<n>[smh]`` range or subquery selector in ``expr``; 0 when
+    there is none. Only meaningful for an expression ``promql_problem``
+    accepted, so every selector here already parses and is at most the
+    window length. Prometheus' staleness lookback for instant selectors is
+    not counted: it is a server default the query does not state.
+    """
+    longest = 0
+    for selector in _RANGE_SELECTOR.findall(expr):
+        for part in selector.split(":"):
+            if part and _DURATION.fullmatch(part):
+                longest = max(longest, int(part[:-1]) * _DURATIONS[part[-1]])
+    return longest
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args: Any, **kwargs: Any) -> None:
         return None
@@ -714,6 +743,7 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
+            lookback_seconds=promql_lookback_seconds(expr),
         )
 
     # -- traces -------------------------------------------------------------
