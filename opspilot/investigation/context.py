@@ -83,6 +83,7 @@ _VIEW_PROVENANCE_KEYS = (
     "operation_id",
     "status",
     "adopted",
+    "citable_as_fact",
     "tool",
     "source",
     "target_id",

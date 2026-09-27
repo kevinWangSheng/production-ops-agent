@@ -31,7 +31,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
@@ -338,6 +338,15 @@ class TransportResponse:
     substitute the requested window/data_as_of. The adapter must derive these
     timestamps from source semantics, never model-supplied parameters.
 
+    ``lookback_seconds`` is how far before the requested window start the
+    source was read to produce the first in-window points (a PromQL range
+    selector evaluated at the window start), derived by the adapter from the
+    query it sent; ``None`` when the adapter does not report it. It is not
+    part of ``source_start_at``: that interval stays the in-window samples the
+    scope and time-policy checks bound, and the lookback is shown to the
+    model beside it as ``lookback_start_at`` (v4 acceptance packet, normal-1
+    review P2-3).
+
     ``sent`` is ``False`` when the transport refused the request before
     anything left the process (a declared parameter it cannot turn into a
     read the source may answer) and reports the refusal as a fixed
@@ -352,6 +361,7 @@ class TransportResponse:
     source_start_at: datetime | None = None
     source_end_at: datetime | None = None
     sent: bool = True
+    lookback_seconds: int | None = None
 
 
 @runtime_checkable
@@ -1151,6 +1161,9 @@ class ReadOnlyToolExecutor:
             )
         ):
             return _problem("error", "MALFORMED_RESULT")
+        lookback = response.lookback_seconds
+        if lookback is not None and (type(lookback) is not int or lookback < 0):
+            return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if any(
             moment is not None and moment > operation.finished_at
@@ -1288,6 +1301,7 @@ class ReadOnlyToolExecutor:
         freshness = (
             None if data_as_of is None else (observed_at - data_as_of).total_seconds()
         )
+        lookback = response.lookback_seconds
         view: dict[str, object] = {
             # One identity per dispatched observation, not per stable
             # operation: the per-dispatch charging protocol permits the same
@@ -1304,6 +1318,11 @@ class ReadOnlyToolExecutor:
             "trust": "untrusted-evidence",
             "status": status,
             "adopted": adopted,
+            # Stated on the view itself because the L2 contract's citation
+            # rule ("fact-like claims cite ok views only") was invisible to
+            # the model while ``adopted: true`` on a ``no_data`` view looked
+            # like an invitation to cite it (v4 packet, normal-2 / fault-1).
+            "citable_as_fact": adopted and status == "ok",
             "tool": registration.name,
             "tool_version": registration.version,
             "source": registration.source,
@@ -1325,6 +1344,10 @@ class ReadOnlyToolExecutor:
             if source_end_at is None
             else source_end_at.isoformat(),
             "freshness_seconds": freshness,
+            "lookback_seconds": lookback,
+            "lookback_start_at": None
+            if lookback is None
+            else (plan.window.start - timedelta(seconds=lookback)).isoformat(),
             "result_count": len(rows),
             "returned_count": len(kept),
             "incomplete": incomplete,
@@ -1371,6 +1394,7 @@ class ReadOnlyToolExecutor:
             "operation_id": operation.operation_id,
             "trust": "gateway",
             "status": status,
+            "citable_as_fact": False,
             "reason": reason,
             "source_contact": contact,
             "tool": operation.tool,

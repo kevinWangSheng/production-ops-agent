@@ -93,6 +93,7 @@ python3 scripts/otel_demo_lab.py health    # Prometheus 有 span metrics、Jaege
 python3 scripts/otel_demo_lab.py fault inject --experiment-id <id>   # 开发故障：paymentFailure flag 100%（M0 development_fault.py）
 python3 scripts/otel_demo_lab.py fault restore --experiment-id <id>
 python3 scripts/otel_demo_lab.py stop      # compose stop + colima stop，不删容器、卷或 profile
+python3 scripts/otel_demo_observe.py <start_iso> <end_iso> <out.json> [--expect fault|normal]   # 独立观察：直接读 Prometheus/Jaeger，输出控制窗前提与故障确认（父子关系谓词）
 ```
 
 故障钩子只改实验目录里的 flagd 文件并保存前后字节与 SHA256；调查者与模型没有它的入口。刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
