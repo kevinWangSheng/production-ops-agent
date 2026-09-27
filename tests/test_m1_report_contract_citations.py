@@ -392,15 +392,25 @@ def test_delivered_from_context_honours_explicit_citable_false():
     assert _rejected(_report(_claim("ev-bound", kind="hypothesis")), views) is False
 
 
-def test_delivered_from_context_without_the_key_keeps_ok_views_citable():
-    """Existing behaviour: a status-ok binding with no flag is citable."""
+def test_delivered_from_context_without_the_key_fails_closed():
+    """A status-ok binding with no flag is delivered but not citable as fact.
+
+    Supersedes the PR #56 behaviour ("an ok binding is citable unless it says
+    otherwise"): the bot review P2 item deferred there was decided by the
+    user on 2026-09-27 -- the context path fails closed like the
+    ``DeliveredView`` default, so a v4 context can only grant fact citations
+    by saying ``citable_as_fact: true`` explicitly. The executor-view path
+    (``delivered_view``, tested above) is unchanged by that decision."""
     context = _v4_context("ev-bound")
 
     views = delivered_from_context(context, run_id=FIXTURE_RUN_ID)
 
     assert [view.evidence_id for view in views] == ["ev-bound"]
-    assert views[0].citable_as_fact is True
-    assert _rejected(_report(_claim("ev-bound")), views) is False
+    assert views[0].status == "ok"
+    assert views[0].citable_as_fact is False
+    assert _rejected(_report(_claim("ev-bound")), views) is True
+    # Non-fact kinds are unaffected.
+    assert _rejected(_report(_claim("ev-bound", kind="hypothesis")), views) is False
 
 
 def test_delivered_from_context_explicit_citable_true_is_citable():

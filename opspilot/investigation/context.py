@@ -90,6 +90,11 @@ _VIEW_PROVENANCE_KEYS = (
     "window",
     "observed_at",
     "freshness_seconds",
+    # A metrics view that spills keeps how far before the window it read,
+    # or the stub would hide exactly the caveat the description makes about
+    # its first points (PR #56 bot review P2, deferred to the 6d pre-freeze).
+    "lookback_seconds",
+    "lookback_start_at",
     "truncated",
 )
 _TOKENS_PER_BYTE = 0.25
@@ -1197,6 +1202,10 @@ def continuation_context(
             continue
         bindings[citation.evidence_id] = {
             "status": citation.status,
+            # Carried explicitly: ``delivered_from_context`` fails closed on a
+            # binding without the flag, so a successor could otherwise never
+            # cite inherited evidence as fact.
+            "citable_as_fact": citation.citable_as_fact,
             "target_refs": sorted(citation.target_ids),
             "time_scope_refs": sorted(citation.time_scope_refs - current_policies),
         }

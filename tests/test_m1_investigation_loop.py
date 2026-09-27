@@ -259,6 +259,7 @@ def test_v4_opaque_target_refs_are_validated_via_catalog():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": [opaque],
                     "time_scope_refs": ["policy-window-1"],
                 },
@@ -295,6 +296,7 @@ def test_registry_id_is_rejected_when_a_v4_catalog_is_present():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": [opaque],
                     "time_scope_refs": ["policy-window-1"],
                 },
@@ -375,6 +377,7 @@ def test_fact_time_scope_must_match_the_cited_view():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": ["checkout-prod"],
                     "time_scope_refs": ["policy-other"],
                 },
@@ -866,6 +869,7 @@ def test_supplied_context_views_can_be_cited_without_new_tools():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": ["checkout-prod"],
                     "time_scope_refs": ["policy-window-1"],
                 },
@@ -899,6 +903,7 @@ def test_evidence_context_from_a_different_run_is_not_trusted():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": ["checkout-prod"],
                     "time_scope_refs": ["policy-window-1"],
                 },
@@ -924,6 +929,7 @@ def test_evidence_context_missing_run_id_entirely_is_not_trusted():
             "view_bindings": {
                 evidence_id: {
                     "status": "ok",
+                    "citable_as_fact": True,
                     "target_refs": ["checkout-prod"],
                     "time_scope_refs": ["policy-window-1"],
                 },
@@ -1820,6 +1826,7 @@ def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
                 "view_bindings": {
                     evidence_id: {
                         "status": "ok",
+                        "citable_as_fact": True,
                         "target_refs": ["checkout-prod"],
                         "time_scope_refs": ["policy-window-1"],
                     },
@@ -1896,6 +1903,7 @@ def test_evidence_context_projection_strips_nested_unlisted_keys():
         "view_bindings": {
             evidence_id: {
                 "status": "ok",
+                "citable_as_fact": True,
                 "target_refs": [opaque],
                 "time_scope_refs": ["policy-window-1"],
                 "authorization": "leak-view",
@@ -1961,6 +1969,7 @@ def test_evidence_context_projection_rejects_a_nested_object_under_a_scalar_fiel
         "view_bindings": {
             evidence_id: {
                 "status": "ok",
+                "citable_as_fact": True,
                 # A schema-compliant ViewBinding.target_refs is a list of
                 # strings.
                 "target_refs": [{"authorization": "leak-target-refs"}],
@@ -2048,6 +2057,7 @@ def test_evidence_context_projection_preserves_every_schema_required_field():
                     "source_time_basis": "event_time",
                 },
                 "status": "ok",
+                "citable_as_fact": True,
             },
         },
         "time_policies": [
@@ -2125,6 +2135,7 @@ def test_loop_never_sends_nested_secret_bearing_keys_to_the_model():
         "view_bindings": {
             evidence_id: {
                 "status": "ok",
+                "citable_as_fact": True,
                 "target_refs": ["checkout-prod"],
                 "time_scope_refs": ["policy-window-1"],
                 "token": "leak-view",
