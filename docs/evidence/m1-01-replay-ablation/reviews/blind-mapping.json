@@ -1,0 +1,650 @@
+{
+ "run_alias": {
+  "fault-1": "R1",
+  "normal-2": "R2",
+  "fault-2": "R3",
+  "normal-1": "R4"
+ },
+ "samples": {
+  "S9878": {
+   "sample_id": "g2-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 1
+  },
+  "S8918": {
+   "sample_id": "g3-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 1
+  },
+  "S9724": {
+   "sample_id": "g1-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 1
+  },
+  "S4290": {
+   "sample_id": "g4-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 1
+  },
+  "S2524": {
+   "sample_id": "g4-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 1
+  },
+  "S3525": {
+   "sample_id": "g0-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 1
+  },
+  "S9771": {
+   "sample_id": "g4-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 1
+  },
+  "S3076": {
+   "sample_id": "g0-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 1
+  },
+  "S7318": {
+   "sample_id": "g2-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 1
+  },
+  "S4640": {
+   "sample_id": "g4-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 1
+  },
+  "S2343": {
+   "sample_id": "g2-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 1
+  },
+  "S1776": {
+   "sample_id": "g1-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 1
+  },
+  "S8161": {
+   "sample_id": "g3-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 1
+  },
+  "S9207": {
+   "sample_id": "g3-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 1
+  },
+  "S5299": {
+   "sample_id": "g0-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 1
+  },
+  "S2323": {
+   "sample_id": "g0-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 2
+  },
+  "S5863": {
+   "sample_id": "g2-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S9481": {
+   "sample_id": "g1-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 2
+  },
+  "S9269": {
+   "sample_id": "g1-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 2
+  },
+  "S5297": {
+   "sample_id": "g4-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 2
+  },
+  "S4830": {
+   "sample_id": "g1-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 2
+  },
+  "S2849": {
+   "sample_id": "g2-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 2
+  },
+  "S3219": {
+   "sample_id": "g1-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S7485": {
+   "sample_id": "g4-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 2
+  },
+  "S4925": {
+   "sample_id": "g4-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S1052": {
+   "sample_id": "g1-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S6038": {
+   "sample_id": "g2-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 2
+  },
+  "S9224": {
+   "sample_id": "g2-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S3538": {
+   "sample_id": "g0-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 2
+  },
+  "S1927": {
+   "sample_id": "g2-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 2
+  },
+  "S6281": {
+   "sample_id": "g2-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 3
+  },
+  "S6105": {
+   "sample_id": "g4-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 3
+  },
+  "S4564": {
+   "sample_id": "g4-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S2681": {
+   "sample_id": "g0-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S7007": {
+   "sample_id": "g0-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 3
+  },
+  "S1150": {
+   "sample_id": "g2-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 3
+  },
+  "S8441": {
+   "sample_id": "g3-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 3
+  },
+  "S6575": {
+   "sample_id": "g2-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S2242": {
+   "sample_id": "g1-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S7212": {
+   "sample_id": "g0-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 3
+  },
+  "S7907": {
+   "sample_id": "g3-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 3
+  },
+  "S8570": {
+   "sample_id": "g1-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S2167": {
+   "sample_id": "g0-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S6892": {
+   "sample_id": "g1-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 3
+  },
+  "S4668": {
+   "sample_id": "g0-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 3
+  },
+  "S6957": {
+   "sample_id": "g1-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 4
+  },
+  "S4603": {
+   "sample_id": "g3-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 4
+  },
+  "S7640": {
+   "sample_id": "g0-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 4
+  },
+  "S1962": {
+   "sample_id": "g3-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 4
+  },
+  "S6928": {
+   "sample_id": "g3-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 4
+  },
+  "S9566": {
+   "sample_id": "g0-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 4
+  },
+  "S5572": {
+   "sample_id": "g1-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 4
+  },
+  "S8098": {
+   "sample_id": "g4-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 4
+  },
+  "S3160": {
+   "sample_id": "g3-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 4
+  },
+  "S9480": {
+   "sample_id": "g3-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 4
+  },
+  "S8880": {
+   "sample_id": "g4-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 4
+  },
+  "S2650": {
+   "sample_id": "g3-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 4
+  },
+  "S7218": {
+   "sample_id": "g4-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 4
+  },
+  "S5235": {
+   "sample_id": "g2-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 4
+  },
+  "S3881": {
+   "sample_id": "g3-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 4
+  },
+  "S5768": {
+   "sample_id": "g0-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S1128": {
+   "sample_id": "g4-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S4584": {
+   "sample_id": "g3-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S9120": {
+   "sample_id": "g0-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S3823": {
+   "sample_id": "g3-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S3426": {
+   "sample_id": "g2-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S7634": {
+   "sample_id": "g0-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S7666": {
+   "sample_id": "g1-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S2161": {
+   "sample_id": "g1-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S5595": {
+   "sample_id": "g1-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 5,
+   "round": 2
+  },
+  "S5528": {
+   "sample_id": "g4-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S7196": {
+   "sample_id": "g3-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S1475": {
+   "sample_id": "g4-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S5160": {
+   "sample_id": "g4-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S3119": {
+   "sample_id": "g3-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S2384": {
+   "sample_id": "g4-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S1108": {
+   "sample_id": "g4-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S3350": {
+   "sample_id": "g2-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S9571": {
+   "sample_id": "g1-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S7129": {
+   "sample_id": "g3-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 6,
+   "round": 2
+  },
+  "S3018": {
+   "sample_id": "g0-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S8625": {
+   "sample_id": "g1-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S1556": {
+   "sample_id": "g2-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S7219": {
+   "sample_id": "g2-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S3511": {
+   "sample_id": "g0-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S3648": {
+   "sample_id": "g3-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S7598": {
+   "sample_id": "g4-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S6194": {
+   "sample_id": "g3-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S3015": {
+   "sample_id": "g1-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S6613": {
+   "sample_id": "g0-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 7,
+   "round": 2
+  },
+  "S5163": {
+   "sample_id": "g2-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S2383": {
+   "sample_id": "g1-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S4509": {
+   "sample_id": "g3-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S7818": {
+   "sample_id": "g2-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S9152": {
+   "sample_id": "g1-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S8453": {
+   "sample_id": "g0-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S2080": {
+   "sample_id": "g2-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R3",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S7862": {
+   "sample_id": "g4-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R2",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S5657": {
+   "sample_id": "g2-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewer": 8,
+   "round": 2
+  },
+  "S2359": {
+   "sample_id": "g0-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R4",
+   "reviewer": 8,
+   "round": 2
+  }
+ }
+}

@@ -1,0 +1,102 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Checkout span metrics and trace search showed no checkout ERROR status, and checkout's outbound RPC calls to payment, product-catalog, cart, currency, and shipping were counted only with gRPC status 0. Trace e0c0a1bba5d753eef0a9d4ec7acd313b showed a long PlaceOrder of 1,158,979 us with long shipping and email spans, but no comparable baseline was supplied to establish elevated latency. Payment trace search showed two background error spans (ECONNREFUSED 169.254.169.254:80 and ENOTFOUND metadata.google.internal) outside the checkout Charge path, while payment ERROR metric rows were zero, leaving a discrepancy.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In the 300-second window, checkout span metric volume was 94.842 calls, all with status_code STATUS_CODE_UNSET; span names included oteldemo.CheckoutService/PlaceOrder, oteldemo.CartService/GetCart, oteldemo.ProductCatalogService/GetProduct, oteldemo.CurrencyService/Convert, oteldemo.PaymentService/Charge, oteldemo.ShippingService/GetQuote, and oteldemo.ShippingService/ShipOrder.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t0:9b4e70da-1e55-43d8-af6d-3c5706998e52",
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t1:72502223-16b4-44e2-9cde-d7ed836b6edc"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The STATUS_CODE_ERROR metric query returned rows only for frontend, frontend-proxy, load-generator, and payment, each with value 0; it did not return a checkout, cart, product-catalog, shipping, currency, or email row.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t0:ec32c606-ba0d-470c-9e25-5613d35934ae"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment trace search returned two root GET spans with error_by_visible_tags true: trace 6f898b9f00425d15e89b130ef89d1220 had 'connect ECONNREFUSED 169.254.169.254:80', and trace 9c5cb49cf9b16a9020a90a8afdde8849 had 'getaddrinfo ENOTFOUND metadata.google.internal.'; their visible tcp.connect and dns.lookup children also carried error tags.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's outbound RPC client metrics counted Charge, Convert, EmptyCart, GetCart, GetProduct, GetQuote, and ShipOrder only with rpc_grpc_status_code 0; no non-zero status code row was returned for these checkout client calls.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout rpc_server_duration_milliseconds p95 was 73.26 ms; product-catalog p95 was 4.82 ms; ad p95 was 42.29 ms; otelcol-contrib p95 was 4.95 ms.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Trace e0c0a1bba5d753eef0a9d4ec7acd313b shows checkout PlaceOrder duration 1,158,979 us; in the same trace payment Charge was 101,959 us, shipping GetQuote was 290,938 us, and email send_order_confirmation was 217,933 us. Other sampled checkout PlaceOrder spans include 66,668 us and 71,484 us.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08",
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The long PlaceOrder in trace e0c0a1bba5d753eef0a9d4ec7acd313b is consistent with a slow checkout call dominated by dependency latency, but no comparable baseline was supplied to establish elevated latency as a fact.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08",
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "The hypothesis that checkout service spans failed during this window is unsupported: checkout span metrics returned only STATUS_CODE_UNSET, checkout client RPC status codes were all 0, and visible checkout spans in the trace sample had error_by_visible_tags false.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t0:9b4e70da-1e55-43d8-af6d-3c5706998e52",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8",
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Trace search views for product-catalog, cart, and frontend were status ok but incomplete: the backend returned as many traces as requested, so more spans may exist and complete absence cannot be inferred for those services.",
+    "Payment ERROR-labeled metric rows for GET, dns.lookup, and tcp.connect returned 0 even though payment trace search showed error spans for those operations; this metric-vs-trace discrepancy is unresolved.",
+    "No baseline or threshold was supplied, so elevated latency cannot be confirmed despite a visible long checkout trace and a checkout p95 of 73.26 ms.",
+    "The sampled trace view does not establish a complete call chain for all checkout dependency edges because some parent references were not visible in the same service view."
+  ],
+  "next_steps": [
+    "Review the full trace e0c0a1bba5d753eef0a9d4ec7acd313b with logs for checkout, shipping, email, and payment to determine whether the 1.16-second PlaceOrder was expected or anomalous.",
+    "Investigate the payment ECONNREFUSED 169.254.169.254:80 and ENOTFOUND metadata.google.internal spans to determine whether they are unrelated metadata probes and why they do not appear in the payment ERROR metric series.",
+    "Compare checkout server p95 73.26 ms and the observed trace durations against a known SLO or historical baseline before declaring elevated latency.",
+    "If full coverage is needed, rerun product-catalog, cart, and frontend trace searches without the returned-traces limit or use targeted filters."
+  ]
+}

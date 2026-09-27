@@ -1,0 +1,168 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within policy-window-1, checkout's own span metrics and RPC client metrics show no failure statuses: all checkout spans in the sampled view and all rpc_grpc_status_code values were 0 or equivalent success, and HTTP POST spans returned http.status_code 200. Visible error spans were found only in payment service metadata lookups (ECONNREFUSED 169.254.169.254:80 and ENOTFOUND metadata.google.internal.), but those spans have no supplied parent from checkout. Checkout's server p95 latency was 73.26ms and client-side p95 Charge latency was 23.875ms; trace e0c0a1bba5d753eef0a9d4ec7acd313b showed outlier durations across checkout, shipping, and email, but no comparable baseline was delivered, so elevated latency cannot be confirmed as a trend. Missing STATUS_CODE_ERROR series for several services and incomplete trace search results for product-catalog, cart, and frontend prevent a complete full-window determination.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In the 300s window, checkout's span metrics showed only STATUS_CODE_UNSET across 11 span names (PlaceOrder, orders publish, CartService/EmptyCart, CartService/GetCart, CurrencyService/Convert, PaymentService/Charge, ProductCatalogService/GetProduct, ShippingService/GetQuote, ShippingService/ShipOrder, HTTP POST, prepareOrderItemsAndShippingQuoteFromCart) and no STATUS_CODE_ERROR series was returned.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t0:9b4e70da-1e55-43d8-af6d-3c5706998e52"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The service-level status_code query returned STATUS_CODE_ERROR series only for frontend, frontend-proxy, load-generator, and payment, each with value 0; checkout, product-catalog, cart, shipping, currency, and email had no ERROR series in that returned result.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t1:72502223-16b4-44e2-9cde-d7ed836b6edc"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's RPC client duration count query showed all rpc_grpc_status_code values of 0 for Charge, Convert, EmptyCart, GetCart, GetProduct, GetQuote, and ShipOrder, with no nonzero status returned.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled checkout spans show PlaceOrder spans with rpc.grpc.status_code 0 and HTTP POST spans with http.status_code 200; no error tags were visible in the returned checkout spans. In trace e0c0a1bba5d753eef0a9d4ec7acd313b, the checkout PlaceOrder span b8727623747ac7b8 had duration 1,158,979us.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled payment spans include two error traces: 6f898b9f00425d15e89b130ef89d1220 with GET/tcp.connect ECONNREFUSED 169.254.169.254:80, and 9c5cb49cf9b16a9020a90a8afdde8849 with GET/tcp.connect/dns.lookup ENOTFOUND metadata.google.internal.; neither error span supplied a parent reference from checkout.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's p95 server latency in this window was 73.26257115604497ms and product-catalog p95 server latency was 4.822488922036131ms.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout client-side p95 RPC durations were 23.875ms for Charge, 22.75ms for GetQuote, 9.65251405238929ms for EmptyCart, and 4.75ms for Convert, GetCart, GetProduct, and ShipOrder.",
+      "evidence_ids": [
+        "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t3:d9ff9bea-ff91-40e6-987e-85cb6c2c7011"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the sampled shipping trace e0c0a1bba5d753eef0a9d4ec7acd313b, GetQuote span 9fc59e80d41e5542 took 290,938us and its child POST span e73e6e38e4adf24f took 284,719us, while the next largest visible shipping GetQuote span was 9,437us.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the sampled email trace e0c0a1bba5d753eef0a9d4ec7acd313b, POST /send_order_confirmation span bd28b0c0d5bd6de8 took 217,933us and its child send_email span 631ee1f730dd18ad took 213,630us, while the next largest visible send_order_confirmation span was 14,409us.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The reported elevated checkout errors are not confirmed by checkout's own metrics or sampled spans; the only visible errors are payment service metadata lookup failures without checkout parentage.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t0:9b4e70da-1e55-43d8-af6d-3c5706998e52",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8",
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The high-latency trace e0c0a1bba5d753eef0a9d4ec7acd313b suggests an isolated slow checkout order with shipping and email outliers, but without baseline latency data it cannot be established as an elevated-latency trend.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "Checkout dependency calls show failures in this window.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Payment service returned error spans for metadata lookups, but those spans supplied no parent reference from checkout and therefore do not support checkout failures.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No STATUS_CODE_ERROR metric series was returned for checkout, product-catalog, cart, shipping, currency, or email; their absence in the delivered result is unknown rather than proof of zero errors.",
+    "Product-catalog, cart, and frontend trace search views were incomplete (backend returned as many traces as requested; more may exist), so their full span population is not covered by this Run.",
+    "No comparable baseline latency data for the same services over previous windows was delivered, so elevated latency cannot be conclusively determined.",
+    "The trace search sample returned only 20 spans per service query, with hundreds of spans omitted per view; therefore unique request counts and complete call chains cannot be derived from the sampled spans.",
+    "Payment error spans have no visible parent referencing checkout, so the complete call chain and relationship to checkout cannot be established from the sampled view."
+  ],
+  "next_steps": [
+    "Query trace details by trace_id for e0c0a1bba5d753eef0a9d4ec7acd313b to inspect the full span tree and identify why checkout, shipping, and email spans had outlier durations.",
+    "Expand trace search limits for checkout, product-catalog, cart, and frontend to cover the full 300s window, and query raw Prometheus STATUS_CODE_ERROR series to confirm whether the missing series are truly absent.",
+    "Investigate the payment service metadata lookup errors (169.254.169.254:80 and metadata.google.internal) and their possible relationship to checkout error reports.",
+    "Collect baseline latency from previous 300-second windows for checkout and its dependencies to compare against the current p95 values."
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within the authorized 300-second window, sampled checkout spans and checkout's direct RPC client metrics showed success statuses (rpc.grpc.status_code=0 or HTTP 200) with no visible errors. The only observed error spans were in the payment service, with ECONNREFUSED/ENOTFOUND messages, but those spans were not parented to checkout in the delivered views. Latency p95 values were observed (e.g., checkout server 73.26 ms, checkout client Charge 23.875 ms) but no comparable baseline was supplied, so elevated latency cannot be determined. Some trace searches for product-catalog, cart, and frontend were incomplete.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In the authorized window, sampled checkout service spans showed no error_by_visible_tags=true and status_tags indicated rpc.grpc.status_code=0 or http.status_code=200.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's RPC client metrics for dependency calls (PaymentService/Charge, CurrencyService/Convert, CartService/EmptyCart, CartService/GetCart, ProductCatalogService/GetProduct, ShippingService/GetQuote, ShippingService/ShipOrder) all showed rpc_grpc_status_code=0 in the sampled window.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Trace e0c0a1bba5d753eef0a9d4ec7acd313b contained a checkout PlaceOrder span with child spans including PaymentService/Charge, CurrencyService/Convert, CartService/GetCart, ProductCatalogService/GetProduct, ShippingService/GetQuote, and HTTP POST; those sampled spans were recorded with rpc.grpc.status_code=0 or http.status_code=200.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Trace search for payment returned visible error spans with error_by_visible_tags=true and otel.status_code=ERROR, including 'connect ECONNREFUSED 169.254.169.254:80' and 'getaddrinfo ENOTFOUND metadata.google.internal.', in trace IDs 6f898b9f00425d15e89b130ef89d1220 and 9c5cb49cf9b16a9020a90a8afdde8849.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the sampled payment trace search, the error spans' parent_references are empty or point to other payment service spans; none are shown as children of a checkout service span.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled shipping and email spans in the window showed no visible error tags; for example, a shipping GetQuote span in trace e0c0a1bba5d753eef0a9d4ec7acd313b had duration 290938 us and HTTP 200/rpc status 0.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580",
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled currency spans showed otel.status_code=OK and rpc.grpc.status_code=0.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t5:4ecaf47f-28f6-469c-88bd-abe91b9bb6c0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled product-catalog spans (first 20 returned; view incomplete) showed no visible error tags and rpc.grpc.status_code=0.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t4:6226d93d-abb2-4fc8-939c-d78d6162e3ad"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout server p95 rpc_server_duration observed was 73.26257115604497 ms; checkout client p95 rpc_client_duration by RPC method ranged from 4.75 ms (Convert, GetCart, GetProduct, ShipOrder) to 23.875 ms (Charge) in the sampled histograms.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7",
+        "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t3:d9ff9bea-ff91-40e6-987e-85cb6c2c7011"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The traces_span_metrics_calls_total metric returned 0 for STATUS_CODE_ERROR series for sampled payment GET, payment tcp.connect, payment dns.lookup, frontend GET, and load-generator GET in the window.",
+      "evidence_ids": [
+        "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t0:c0f8bbe4-d6cf-46a2-894b-e24b4a59a362"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "Payment service internal ECONNREFUSED/ENOTFOUND error spans represent failures of checkout's Charge dependency call; this is rejected because the error spans' parent references do not connect them to checkout spans in the delivered view.",
+      "evidence_ids": [
+        "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "recommendation",
+      "text": "Collect a comparable baseline for rpc_server_duration and rpc_client_duration histograms before concluding whether the observed p95 latencies are elevated.",
+      "evidence_ids": [
+        "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7",
+        "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t3:d9ff9bea-ff91-40e6-987e-85cb6c2c7011"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No comparable baseline or comparator window was supplied for latency histograms, so elevated latency cannot be determined from the observed p95 values alone.",
+    "Trace searches for product-catalog (8a58a5b6-9c82-4947-858f-c861fd537462-t4:6226d93d-abb2-4fc8-939c-d78d6162e3ad), cart (8a58a5b6-9c82-4947-858f-c861fd537462-t5:6b7b659f-e334-4d5d-8d2d-6ea76d9e0b4f), and frontend (6948af8e-c6ae-4143-81d5-025cfbc17481-t7:fd36fcf3-4abc-4ec0-a3ae-ff51ee3a486a) are incomplete_views with incomplete=true; absence of errors beyond the first 20 returned spans is not established.",
+    "The traces_span_metrics_calls_total metric returned 0 for STATUS_CODE_ERROR for payment while trace search observed payment error spans; the metric-trace discrepancy is unresolved and could reflect spanmetrics aggregation, sampling, or export timing differences.",
+    "No direct parent edge between payment error spans and checkout spans was visible, so attribution of payment errors to checkout is unknown."
+  ],
+  "next_steps": [
+    "Paginate through incomplete trace searches for product-catalog, cart, and frontend to complete error and latency assessment beyond the first 20 returned spans.",
+    "Resolve the discrepancy between traces_span_metrics_calls_total ERROR=0 and observed payment error spans by inspecting spanmetrics connector configuration, sampling, and export timestamps.",
+    "Filter trace search for traces where checkout is an ancestor of payment GET/tcp.connect/dns.lookup error spans to determine whether those errors impact checkout.",
+    "Obtain a historical baseline for the same service set and window length to evaluate whether p95 rpc server/client durations are elevated."
+  ]
+}
