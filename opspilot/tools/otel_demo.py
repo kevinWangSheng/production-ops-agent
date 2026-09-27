@@ -183,7 +183,6 @@ _DETAIL_KEYS = frozenset(
     }
 )
 _STATUS_KEYS = ("error", "otel.status_code", "rpc.grpc.status_code", "http.status_code")
-_RANGE_SELECTOR = re.compile(r"\[([^\]]+)\]")
 _DURATION = re.compile(r"[1-9][0-9]*[smh]")
 _DURATIONS = {"s": 1, "m": 60, "h": 3600}
 
@@ -202,6 +201,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "activity. "
                 "A range selector may be at most the window length. "
                 "A point at time t with range selector [r] covers [t - r, t]. "
+                "A subquery (inner)[a:b] covers a plus what inner covers, "
+                "and that total may be at most the window length. "
                 "Every point covers samples inside the window only. "
                 "No point reads samples from before the window. "
                 "The first point is at the window start plus the longest "
@@ -615,14 +616,15 @@ class DurableControl:
 def promql_problem(expr: str, window_seconds: float) -> str | None:
     """Why this PromQL must not be sent, or ``None`` (M0 ``read_proxy`` rules).
 
-    ``offset`` and ``@`` move the evaluation outside the window and a range
-    selector longer than the window is refused; a selector up to the window
-    length is accepted and ``_metrics`` starts the evaluation that far after
-    the window start, so no point reads before it (Prometheus' staleness
-    lookback for instant selectors aside) -- the returned sample timestamps
-    are what the executor checks against the scope. Any ``[...]`` that is not
-    ``<n>[smh]`` is refused too (a label regex such as ``[a-z]+`` is
-    over-refused, safely).
+    ``offset`` and ``@`` move the evaluation outside the window and an
+    expression whose one-point read (``_promql_lookback``: range selectors,
+    nested subqueries added up) is longer than the window is refused; a
+    read up to the window length is accepted and ``_metrics`` starts the
+    evaluation that far after the window start, so no point reads before it
+    (Prometheus' staleness lookback for instant selectors aside) -- the
+    returned sample timestamps are what the executor checks against the
+    scope. Any ``[...]`` that is not ``<n>[smh]`` is refused too (a label
+    regex such as ``[a-z]+`` is over-refused, safely).
     """
     if not expr or len(expr) > MAX_PROMQL_CHARS:
         return "QUERY_OUT_OF_WINDOW"
@@ -630,34 +632,76 @@ def promql_problem(expr: str, window_seconds: float) -> str | None:
     # is matched case-folded (fresh-context contract test finding).
     if "@" in expr or re.search(r"\boffset\b", expr, re.IGNORECASE):
         return "QUERY_OUT_OF_WINDOW"
-    for selector in _RANGE_SELECTOR.findall(expr):
-        for part in selector.split(":"):
-            if not part:
-                continue
-            if not _DURATION.fullmatch(part):
-                return "QUERY_OUT_OF_WINDOW"
-            if int(part[:-1]) * _DURATIONS[part[-1]] > window_seconds:
-                return "QUERY_OUT_OF_WINDOW"
+    lookback = _promql_lookback(expr, window_seconds)
+    if lookback is None or lookback > window_seconds:
+        return "QUERY_OUT_OF_WINDOW"
     return None
+
+
+def _promql_lookback(expr: str, window_seconds: float) -> int | None:
+    """Total seconds one evaluation point of ``expr`` reads back, or ``None``.
+
+    A range selector ``x[r]`` reads ``r``; a subquery ``(<inner>)[a:b]``
+    reads ``a`` plus what one point of ``inner`` reads, so nesting adds up
+    (independent review P2: ``max_over_time(rate(x[1m])[5m:30s])`` reads
+    360 s, not 300). Parallel selectors take the maximum. ``None`` when a
+    ``[...]`` is not ``<n>[smh]`` parts, a part alone exceeds the window
+    (``m[5m:6m]`` stays refused), or a ``)`` has no ``(`` -- all refused by
+    ``promql_problem``.
+
+    The walk is a bracket-depth scan, not a PromQL parser: a selector
+    applies to the operand just before it, which is a parenthesised group
+    (its own max lookback) or a bare selector/metric name (0).
+    """
+    frames: list[int] = [0]  # max lookback seen inside each open ``(``
+    last = 0  # lookback of the operand a following ``[...]`` applies to
+    index = 0
+    while index < len(expr):
+        char = expr[index]
+        if char == "(":
+            frames.append(0)
+            last = 0
+        elif char == ")":
+            if len(frames) == 1:
+                return None
+            last = frames.pop()
+            frames[-1] = max(frames[-1], last)
+        elif char == "[":
+            close = expr.find("]", index)
+            if close < 0:
+                return None
+            parts = [part for part in expr[index + 1 : close].split(":") if part]
+            if not parts:
+                return None
+            seconds: list[int] = []
+            for part in parts:
+                if not _DURATION.fullmatch(part):
+                    return None
+                seconds.append(int(part[:-1]) * _DURATIONS[part[-1]])
+                if seconds[-1] > window_seconds:
+                    return None
+            last = seconds[0] + last
+            frames[-1] = max(frames[-1], last)
+            index = close
+        elif not char.isspace():
+            last = 0
+        index += 1
+    return max(frames)
 
 
 def promql_lookback_seconds(expr: str) -> int:
     """How far each evaluated point of an accepted expression reads back, in seconds.
 
-    The largest ``<n>[smh]`` range or subquery selector in ``expr``; 0 when
-    there is none. ``_metrics`` starts the range query this far after the
-    window start so the first point's read begins at the window start. Only
-    meaningful for an expression ``promql_problem`` accepted, so every
-    selector here already parses and is at most the window length.
-    Prometheus' staleness lookback for instant selectors is not counted: it
-    is a server default the query does not state.
+    ``_promql_lookback`` with an unbounded window: the total of nested range
+    and subquery selectors, the maximum over parallel ones; 0 when there is
+    none. ``_metrics`` starts the range query this far after the window
+    start so the first point's read begins at the window start. Only
+    meaningful for an expression ``promql_problem`` accepted, which used the
+    same computation, so the value is at most the window length. Prometheus'
+    staleness lookback for instant selectors is not counted: it is a server
+    default the query does not state.
     """
-    longest = 0
-    for selector in _RANGE_SELECTOR.findall(expr):
-        for part in selector.split(":"):
-            if part and _DURATION.fullmatch(part):
-                longest = max(longest, int(part[:-1]) * _DURATIONS[part[-1]])
-    return longest
+    return _promql_lookback(expr, float("inf")) or 0
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -90,9 +90,10 @@ _VIEW_PROVENANCE_KEYS = (
     "window",
     "observed_at",
     "freshness_seconds",
-    # A metrics view that spills keeps how far before the window it read,
-    # or the stub would hide exactly the caveat the description makes about
-    # its first points (PR #56 bot review P2, deferred to the 6d pre-freeze).
+    # A metrics view that spills keeps how far back each point reads and the
+    # earliest instant read (the window start), or the stub would hide the
+    # coverage the description promises for its points (PR #56 bot review
+    # P2, deferred to the 6d pre-freeze; window-points contract rule 3).
     "lookback_seconds",
     "lookback_start_at",
     "truncated",
