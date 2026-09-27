@@ -27,6 +27,10 @@
 
 全新上下文 Agent（Fable 5.1）拿目标、用户决定、约束、diff 与本目录原始证据（不拿执行者结论），并对 55431 只读查询。结论：**P1 0；P2 1**（产生证据的描述改动当时未提交——已随本 PR 提交，HEAD 重算的 `tool_schema_revision` 即 `otel-demo-79788429f835`）；P3 4 条：`lab-up.log` 本机路径（已替换占位符）；描述里的最大回看只对范围选择器成立，瞬时选择器的 Prometheus staleness 回看（默认 5 分钟）不计入 `lookback_seconds`（描述与 docstring 已写明只计范围选择器，残余项）；metrics 描述与 `values_format` 一句多约束，不符 DeepSeek 参考 §2.5「一句一个约束」（未改：改字面会再次 bump `tool_schema_revision`，使本 Run 证据与代码不再对应，留给重跑前处理）；`PROJECTION_REVISION` 仍是手工编号（既有设计，本次同时有三个内容哈希 revision 变化，在途 Run 仍会被 blocked）。审查者核对了：校验器四处未改；三份 v4 交接报告用自己的脚本回放仍被拒；本 Run claim 0–8、11 的数值与被引视图内容一致；窗口、时间策略、观察窗、故障时间线互相吻合；v4 判据 1–4 成立，判据 5 即本审查。审查者未核：发布后事故行 `state=queued` 是否有意（v4 包已记的既有问题）。
 
+## PR #56 机器人分诊（一次 push）
+
+Codex 对 `scripts/otel_demo_observe.py` 提出一条 P1：失败 span 只按「trace 里有任一 span 在窗内」计数，窗外的 checkout/依赖失败也会被算进 `fault_confirmed`。这是对验收前提的收紧（AGENTS.md：验收步骤只能收紧），采纳：现在每个失败 span 自身的 `startTime` 须在窗内，依赖失败的 checkout 父 span 也须在窗内，输出记录 `start_us` 以便离线重算。本目录的 `observe-pre.json` / `observe-post.json` 由收紧前的谓词录制，且未记 span 时间戳，实验环境已停，无法对完整 trace 离线重算；改用产品自己的 trace 视图（`ledger.json`，每次搜索最多 20 个有偏采样 span）交叉核对：10 个失败 trace 的 74 个采样 span 全部在窗内，其中 6/10 在采样内就满足收紧后的谓词（checkout 错误 span 在窗内、payment 失败 span 在窗内且 `CHILD_OF` 父 span 为窗内 checkout span），其余 4 条只是采样里没有 payment span，不构成反证；`fault_confirmed` 要求 ≥2，结论不变。这是产品采样上的核对，不替代独立的完整 trace 观察；重跑时用收紧后的脚本。
+
 ## 未执行 / 未验证
 
 - 未跑正常案；未做 2+2 重跑（下一项）。一次样本不证明泛化。

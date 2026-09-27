@@ -39,6 +39,6 @@ v4 包 2+2 真实 Run 0/4：模型两次都正确定位 checkout→payment `Char
 
 ## 下一步与交接
 
-- PR 至 `main`，CI，机器人分诊一次；**不合并**（功能 PR，用户门）。
+- PR [#56](https://github.com/kevinWangSheng/production-ops-agent/pull/56)：CI 三项通过；机器人分诊一次——1 条 P1（观察脚本失败 span 须自身在窗内）采纳，处置见证据 run.md；**不合并**（功能 PR，用户门）。
 - 残余项（交 lead/用户）：(a) metrics 描述与 `values_format` 按 DeepSeek 参考 §2.5 拆成一句一约束——会再 bump `tool_schema_revision`，建议放在 2+2 重跑之前一并做；(b) Prometheus 瞬时选择器的 staleness 回看不计入 `lookback_seconds`；(c) `PROJECTION_REVISION` 手工编号（既有）；(d) 发布后事故 `state=queued`（v4 包已记）。
 - 资源：lab VM 已 `stop`（数据保留）；web/worker 已停；本 worktree 的 55431 实例仍在运行供审查回读，合并后 `postgres_lab stop`；`.env` 未改。

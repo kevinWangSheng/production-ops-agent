@@ -72,21 +72,29 @@ def classify_trace(trace: dict, start: datetime, end: datetime) -> dict:
     procs = {k: v["serviceName"] for k, v in trace["processes"].items()}
     spans = trace["spans"]
     service_of = {s["spanID"]: procs.get(s["processID"]) for s in spans}
+    # Jaeger returns whole traces that intersect the interval; a span counts
+    # as fault evidence only when it itself started inside the window, and a
+    # dependency failure only when its checkout parent did too (PR #56 bot
+    # review P1: an in-window sibling span must not validate an out-of-window
+    # failure). ``start_us`` is recorded so the predicate can be recomputed
+    # offline from the output.
+    started_in_window = {
+        s["spanID"]: start.timestamp() <= s["startTime"] / 1_000_000 <= end.timestamp()
+        for s in spans
+    }
     checkout_err = []
     failed_dependency_children = []
-    in_window = False
+    in_window = any(started_in_window.values())
     for span in spans:
         svc = service_of[span["spanID"]]
         tags = {t["key"]: t["value"] for t in span.get("tags") or []}
-        st = span["startTime"] / 1_000_000
-        if start.timestamp() <= st <= end.timestamp():
-            in_window = True
-        if not span_failed(tags):
+        if not span_failed(tags) or not started_in_window[span["spanID"]]:
             continue
         status = {k: tags[k] for k in STATUS_KEYS if k in tags}
         entry = {
             "span_id": span["spanID"],
             "operation": span["operationName"],
+            "start_us": span["startTime"],
             "status": status,
         }
         if svc == "checkout":
@@ -99,7 +107,11 @@ def classify_trace(trace: dict, start: datetime, end: datetime) -> dict:
             for r in span.get("references") or []
             if r.get("refType") == "CHILD_OF"
         ]
-        checkout_parents = [p for p in parents if service_of.get(p) == "checkout"]
+        checkout_parents = [
+            p
+            for p in parents
+            if service_of.get(p) == "checkout" and started_in_window.get(p, False)
+        ]
         if checkout_parents:
             failed_dependency_children.append(
                 {**entry, "service": svc, "parent_span_ids": checkout_parents}
