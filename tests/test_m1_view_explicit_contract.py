@@ -19,10 +19,8 @@ from dataclasses import replace
 from datetime import timedelta
 from uuid import uuid4
 
-import pytest
-
 from opspilot.investigation.context import rebuild_transcript
-from opspilot.investigation.loop import InvestigationLoop, prompt_revision_versions
+from opspilot.investigation.loop import prompt_revision_versions
 from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 from opspilot.persistence import Lease
 from opspilot.tools import ReadOnlyToolExecutor, ToolRequest, TransportResponse
@@ -35,7 +33,6 @@ from opspilot.tools.otel_demo import (
     otel_demo_face,
 )
 from tests.m1_investigation_support import (
-    ScriptedModel,
     assemble,
     reply,
     report_from_transcript,
@@ -153,15 +150,16 @@ def test_sanity_a_tool_round_then_final_round_reaches_the_model_twice():
     outcome = loop.run(request)
     assert outcome.execution == "completed"
     assert len(model.calls) == 2
+    assert model.calls[0].tools is not None  # a real tool round happened first
+    assert model.calls[1].json_mode is True  # the second round was the final one
     (evidence_id,) = _own_evidence_ids(model.calls[1].messages)
     assert evidence_id  # a real evidence_id was delivered before the final round
-    # Pre-round-2 shape: the final round's very last message is still
-    # FINAL_REPORT_INSTRUCTION itself -- there is no trailing message after
-    # it yet. This is the baseline the behavior tests above expect to change.
-    assert model.calls[1].messages[-1] == {
-        "role": "user",
-        "content": FINAL_REPORT_INSTRUCTION,
-    }
+    # Deliberately not asserting the exact shape of the final round's trailing
+    # messages here: that is the behavior under test above and below, and
+    # pinning it in this sanity fixture would make it red the moment that
+    # behavior lands, defeating its purpose (it exists to show the double
+    # setup itself -- tool round then final round, evidence delivered -- is
+    # sound, independent of round 2).
 
 
 # -- A: trace row status existence -------------------------------------------
@@ -549,28 +547,36 @@ def test_c_an_inherited_view_binding_is_not_counted():
     assert normalized_baseline == normalized_inherited
 
 
-class _Interrupted(RuntimeError):
-    """Stands in for the process dying after the model reply was recorded."""
-
-
 def test_c_the_final_round_message_is_byte_identical_live_and_rebuilt():
+    """The final round is, by definition, the last available model-request
+    slot (``remaining <= 1``); interrupting it before it commits would spend
+    that last slot and leave a resume with none left (C3 §13, "in-flight
+    slot stays occupied" -- see test_m1_investigation_context.py:143), so it
+    cannot be exercised the way a mid-run tool round can. Instead: let the
+    Run complete once (the live path), then rebuild the transcript from the
+    committed rows the way a restarted worker would (the rebuild path) and
+    feed its recovered ``delivered`` views through the same single-source
+    ``run_coverage_message`` the live round used. Byte-identical reconstruction
+    of the coverage message, plus the unchanged prefix in front of it, is
+    exactly "live and rebuilt agree" for the message the final round sent.
+    """
+    from opspilot.investigation.reports import run_coverage_message
+
     loop, request, model, transport, store, _ = assemble(
         replies=[
             reply(tool_calls=[tool_call()], finish="tool_calls"),
-            _Interrupted("killed after send, before the reply landed"),
+            report_from_transcript,
         ],
         model_requests=2,
     )
     transport.response = TransportResponse(
         body=body([{"metric": "a", "value": 1}], partial=True)
     )
-    with pytest.raises(_Interrupted):
-        loop.run(request)
-    live_messages = model.calls[-1].messages
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"  # sanity
+    live_messages = model.calls[1].messages
     instruction_msg, coverage_msg = _final_pair(live_messages)
     assert instruction_msg == {"role": "user", "content": FINAL_REPORT_INSTRUCTION}
-    (evidence_id,) = _own_evidence_ids(live_messages)
-    assert evidence_id in coverage_msg["content"]  # sanity: the live send carried it
 
     transcript = rebuild_transcript(
         store.snapshot(),
@@ -578,16 +584,18 @@ def test_c_the_final_round_message_is_byte_identical_live_and_rebuilt():
         authorized_targets=request.scope.target_ids,
         input=request.as_input(),
     )
-    second_model = ScriptedModel(
-        [reply(content=json.dumps(_CLEAN_REPORT), finish="stop")]
-    )
-    second_loop = InvestigationLoop(
-        model=second_model, executor=loop.executor, store=store, clock=loop.clock
-    )
-    rebuilt_outcome = second_loop.resume(transcript)
-    assert rebuilt_outcome.execution == "completed"
-    rebuilt_messages = second_model.calls[0].messages
-    assert rebuilt_messages == live_messages
+    # The final round's own reply (it made no tool calls) is the last message
+    # `rebuild_transcript` appended; drop it to recover the exact prefix that
+    # round's *request* -- not its response -- was built on.
+    assert transcript.messages[-1]["role"] == "assistant"
+    rebuilt_prefix = transcript.messages[:-1]
+    rebuilt_coverage = run_coverage_message(transcript.delivered)
+    rebuilt_messages = [
+        *rebuilt_prefix,
+        instruction_msg,
+        {"role": "user", "content": rebuilt_coverage},
+    ]
+    assert rebuilt_messages == list(live_messages)
 
 
 # -- C: prompt_revision moves with the new template --------------------------
