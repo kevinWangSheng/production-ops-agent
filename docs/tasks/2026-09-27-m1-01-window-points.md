@@ -35,3 +35,19 @@
 - 2026-09-27：独立合同测试 `fd5c256`（18 项）。红绿对照：`git apply -R` 撤回 d8b6e39 的 opspilot/ 改动后 6 failed / 12 passed（失败均为新合同项：start 偏移 ×3、lookback_start_at、描述句、revision），恢复后 18 passed。
 - 2026-09-27：独立审查（Codex 两次容量不足未产出，改由全新上下文 Claude Agent）：主修复正确，P2 嵌套子查询回看漏算 → 合同第 1 条修订 310701b，实现 3145325，独立测试 9cd4941（4 项）。红绿对照：撤回 3145325 的 opspilot/ 改动后 3 failed / 19 passed（并列取最大一项在新旧实现下均成立），恢复后全绿。`make check` 通过；非 PG 测试 2217 passed / 2 xfailed。
 - 2026-09-27：**6e 重跑已执行**（候选冻结 `b352230`，`tool_schema_revision` `otel-demo-585e5ef89c39`，与 6d 同流程/同判据，[证据](../evidence/m1-01-window-points-rerun/run.md)）：4/4 发布；**v4 口径 1/4 通过（fault-1 五条全过，其余三次判据 3 失败：P2 合计 6，均为模型对缺失 vs 显式、视图 vs 后端计数的可见范围混淆，无产品归因）；上游口径 4/4**（两正常窗正确判定无故障，两故障窗正确定位 checkout→payment `Charge`，trace id 与独立观察逐一吻合）。6d 的「回看首点」类 P2（3/4 Run）本包为 0，但模型四次都只用 `[300s]`，多点路径未在真实 Run 中触发。费用 0.49 CNY（48.50 → 48.01）。环境已 stop（colima `m0-otel`、55431 均保留数据）。M1-01 完成定义的处置待用户决定。
+
+## 第二轮：视图显式表达"未知"与单位（2026-09-27 用户决定）
+
+6e（[证据](../evidence/m1-01-window-points-rerun/run.md)）剩余 6 个 P2 均为模型把"缺失/空/计数"误述。两份独立调研（Codex 多方对比、Claude 上下文与规则调研）结论一致：提示词不能消除，主路径是工具视图显式携带存在性与单位，跨视图计数由运行时算好。用户决定先做下列 A/B/C，不加新规则、不加报告校验器；"按服务分组的缺失序列显式化"待下一次重跑证据再定。本轮继续在本分支，重跑证据另建目录。
+
+### 行为合同
+
+A. **trace 行的状态存在性**：每个 trace 视图行新增 `status_state`，取值 `recorded`（`status_tags` 至少含一个状态键）或 `not_recorded`（不含任何状态键）；`status_tags` 保持原样。工具描述一句说明：`not_recorded` 表示该 span 没有状态标签，按 OTel 语义是 Unset，不等于状态码 0 或 OK。
+B. **trace 视图计数带单位**：trace 视图顶层新增 `traces_requested`（= 请求的 limit）、`backend_traces_returned`（后端实际返回的 trace 数）、`backend_spans_returned`（后端返回的 span 总数）、`spans_shown`（视图展示的 span 行数）、`spans_omitted`（后端返回但未展示的 span 数）、`incomplete_reason`（`incomplete` 为 true 时为一句原因，如 "backend returned as many traces as requested; more may exist"，否则为 null）。数值取自投影记录中已有字段，不新增后端请求。既有通用字段（`result_count`、`returned_count`、`incomplete`、`query.limit`）保留不变。工具描述按一句一约束说明各字段单位。
+C. **运行级覆盖摘要**：进入最终报告请求时，在 `FINAL_REPORT_INSTRUCTION` 之后追加一条固定模板的 user 消息，列出本 Run 已采纳视图中：`incomplete` 为 true 的 evidence_id、`truncated` 为 true 的 evidence_id、`status` 不为 `ok` 的 evidence_id（附 status），以及视图总数；按交付顺序排列；某类为空写 none。只读取视图的结构化字段，不解析任何文本。实时路径与重启后重建路径产生逐字节相同的消息；继承视图不计入。模板变化计入 `prompt_revision`。
+D. **清理**：`opspilot/instructions/discipline.py` 中引用模型视图不存在字段（`actual_visible_span_count`、`display_max_spans`）的句子改为引用 B 中的新字段或删除；不得改变本 Run 实际使用的 prompt 变体之外的行为。
+
+### 验收
+
+- 全新上下文测试作者先按本合同写 `tests/test_m1_view_explicit_contract.py` 并在未实现代码上确认红；之后实现者实现并转绿，不改该文件断言。
+- 独立审查 + 冻结后重跑 v4 2+2（6f），与 6e 对比；按服务分组缺失序列类 P2 是否仍出现作为第 2 条的决策依据。
