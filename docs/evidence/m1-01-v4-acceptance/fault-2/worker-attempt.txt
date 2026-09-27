@@ -1,0 +1,1 @@
+2026-09-26 21:20:53,550 opspilot.worker INFO attempt incident=3a5090fe-4e2f-5d05-87ad-3f24678f3e90 status=handed_off reason=REPORT_INVALID

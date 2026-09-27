@@ -1,0 +1,859 @@
+{
+ "window": {
+  "start": "2026-09-27T04:05:58+00:00",
+  "end": "2026-09-27T04:10:58+00:00",
+  "seconds": 300
+ },
+ "observed_at": "2026-09-27T04:10:58.540007+00:00",
+ "sources": {
+  "prometheus": "http://127.0.0.1:19090",
+  "jaeger": "http://127.0.0.1:16686/jaeger/ui"
+ },
+ "expect": "fault",
+ "metrics": {
+  "checkout_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[300s])",
+   "evaluated_at": "2026-09-27T04:10:58+00:00",
+   "series": [
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.500208336805613
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 8.750145835763929
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_PRODUCER",
+      "span_name": "orders publish",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "prepareOrderItemsAndShippingQuoteFromCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 3.7500625010416844
+    }
+   ]
+  },
+  "payment_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"payment\"}[300s])",
+   "evaluated_at": "2026-09-27T04:10:58+00:00",
+   "series": [
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "GET",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 3.7500625010416844
+    }
+   ]
+  },
+  "checkout_client_calls_by_peer": {
+   "expr": "sum by (span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[300s]))",
+   "evaluated_at": "2026-09-27T04:10:58+00:00",
+   "series": [
+    {
+     "metric": {
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.500208336805613
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 8.750145835763929
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 3.7500625010416844
+    }
+   ]
+  },
+  "all_services_error_calls": {
+   "expr": "sum by (service_name) (increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[300s]))",
+   "evaluated_at": "2026-09-27T04:10:58+00:00",
+   "series": [
+    {
+     "metric": {
+      "service_name": "load-generator"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "service_name": "frontend"
+     },
+     "value": 11.250187503125053
+    },
+    {
+     "metric": {
+      "service_name": "payment"
+     },
+     "value": 3.7500625010416844
+    },
+    {
+     "metric": {
+      "service_name": "frontend-proxy"
+     },
+     "value": 7.500125002083369
+    },
+    {
+     "metric": {
+      "service_name": "recommendation"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "fraud-detection"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "ad"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "checkout"
+     },
+     "value": 7.500125002083369
+    }
+   ]
+  }
+ },
+ "positive_series_count": {
+  "checkout_calls_by_span_status": 7,
+  "payment_calls_by_span_status": 2,
+  "checkout_client_calls_by_peer": 5,
+  "all_services_error_calls": 5
+ },
+ "jaeger": {
+  "query": {
+   "service": "checkout",
+   "limit": 500
+  },
+  "returned_traces": 4,
+  "distinct_trace_ids": 4,
+  "traces_with_checkout_error_and_failed_dependency_call": 4,
+  "failed_dependency_services": [
+   "frontend",
+   "frontend-proxy",
+   "load-generator",
+   "payment"
+  ],
+  "traces": [
+   {
+    "trace_id": "1f02b21f03c70665d82df0f855246933",
+    "span_count": 35,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "142f1f02eb345195",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "53aa9f0d600242fb",
+      "operation": "oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     }
+    ],
+    "failed_non_checkout_spans": [
+     {
+      "service": "frontend",
+      "span_id": "99e1b42ceda19ac7",
+      "operation": "POST /api/checkout",
+      "status": {}
+     },
+     {
+      "service": "payment",
+      "span_id": "27d619e59b667b1a",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "2a1674bc3da195f4",
+      "operation": "executing api route (pages) /api/checkout",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "load-generator",
+      "span_id": "7ec3ca63c135033e",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "69b8e9e0a8ef2b64",
+      "operation": "router frontend egress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "8c0487377cb3239a",
+      "operation": "grpc.oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "9872750817d135e3",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "a69105dadd23a44f",
+      "operation": "ingress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     }
+    ]
+   },
+   {
+    "trace_id": "04930c8022489d469888b9ee3a0685e9",
+    "span_count": 27,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "76072129538a1678",
+      "operation": "oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     },
+     {
+      "span_id": "30983a4b8505b46e",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_non_checkout_spans": [
+     {
+      "service": "load-generator",
+      "span_id": "70dad57e9a4155ef",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "7bbf93d165a8bfb5",
+      "operation": "executing api route (pages) /api/checkout",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "7e294ce3471e5c68",
+      "operation": "router frontend egress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "0f153c22c4f8595c",
+      "operation": "grpc.oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "57a5fc8dc4c9d62e",
+      "operation": "POST /api/checkout",
+      "status": {}
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "6cad805da94d59b4",
+      "operation": "ingress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "953a745c843f32a3",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "payment",
+      "span_id": "dc9e4fd9c35e3c26",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     }
+    ]
+   },
+   {
+    "trace_id": "7f625d027190439c44ac1fddb3867bcc",
+    "span_count": 35,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "51f780d1cfc4e5e8",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "1cb896425d21bef2",
+      "operation": "oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     }
+    ],
+    "failed_non_checkout_spans": [
+     {
+      "service": "payment",
+      "span_id": "655e400d2c2b3fff",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "840dff7acd72de3b",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "1bff84a5b64fc2c1",
+      "operation": "POST /api/checkout",
+      "status": {}
+     },
+     {
+      "service": "frontend",
+      "span_id": "d137fef9f3408128",
+      "operation": "executing api route (pages) /api/checkout",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "load-generator",
+      "span_id": "66f5b5b24890caef",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "87ca65224d214a9c",
+      "operation": "ingress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "c378ffeae5009be5",
+      "operation": "router frontend egress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "e09d2b8599fb5314",
+      "operation": "grpc.oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ]
+   },
+   {
+    "trace_id": "17160eea54f52bf71b5bbb0eb20417f9",
+    "span_count": 27,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "bace7d7fcc2649ab",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "6739534426e0b079",
+      "operation": "oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     }
+    ],
+    "failed_non_checkout_spans": [
+     {
+      "service": "frontend",
+      "span_id": "4b03ac7b4fda751e",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "1ddc6ca53bfd4811",
+      "operation": "router frontend egress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "payment",
+      "span_id": "f819ccf4f4abd6e0",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "load-generator",
+      "span_id": "73c7584f32be5223",
+      "operation": "POST",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "2b0cf249fda00834",
+      "operation": "executing api route (pages) /api/checkout",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "91c40c8e3b4e5aae",
+      "operation": "grpc.oteldemo.CheckoutService/PlaceOrder",
+      "status": {
+       "otel.status_code": "ERROR",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "service": "frontend-proxy",
+      "span_id": "b35830a117355034",
+      "operation": "ingress",
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      }
+     },
+     {
+      "service": "frontend",
+      "span_id": "c35be58fccb65680",
+      "operation": "POST /api/checkout",
+      "status": {}
+     }
+    ]
+   }
+  ]
+ },
+ "precondition": {
+  "control_window_ok": true,
+  "fault_confirmed": true
+ }
+}

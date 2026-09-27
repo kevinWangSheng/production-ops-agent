@@ -1,0 +1,35 @@
+System-wide memory free percentage: 40%
+vm.swapusage: total = 15360.00M  used = 13701.88M  free = 1658.12M  (encrypted)
+exit=0
+  "jaeger": {
+    "url": "http://127.0.0.1:16686/jaeger/ui",
+    "status": 200,
+    "ok": true,
+    "services": [
+      "accounting",
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "flagd",
+      "fraud-detection",
+      "frontend",
+      "frontend-proxy",
+      "jaeger-all-in-one",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping"
+    ]
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:18080/",
+    "status": 200
+  },
+  "ok": true
+}
+
+[exited with code 0]
