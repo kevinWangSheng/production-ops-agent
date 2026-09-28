@@ -14,8 +14,13 @@ import pytest
 from opspilot.investigation.context import ContextError, continuation_context
 from opspilot.investigation.limits import RunLimits
 from opspilot.investigation.loop import InvestigationLoop, InvestigationRequest
-from opspilot.investigation.reports import delivered_from_context
+from opspilot.investigation.reports import (
+    delivered_from_context,
+    parse_report,
+    unsupported_citations,
+)
 from opspilot.investigation.store import MemoryStepStore
+from opspilot.tools import TransportResponse
 from tests.m1_investigation_support import (
     TOOL_SCHEMAS,
     ScriptedModel,
@@ -24,7 +29,7 @@ from tests.m1_investigation_support import (
     report_json,
     tool_call,
 )
-from tests.m1_tool_support import build
+from tests.m1_tool_support import WINDOW_START, body, build
 
 
 def _rounds(count):
@@ -100,6 +105,114 @@ def test_a_successor_run_can_cite_the_previous_runs_adopted_evidence():
     assert result.execution == "completed", result.handoff_reasons
     assert result.model_requests_used == 1
     assert cited in result.evidence_ids
+
+
+def _fact_binds(evidence_id, views) -> bool:
+    """Whether a fully scoped fact citing ``evidence_id`` passes the checker
+    against ``views`` (False means rejected)."""
+    report, reason = parse_report(
+        report_json(evidence_id=evidence_id), finish_reason="stop"
+    )
+    assert report is not None, reason
+    return not unsupported_citations(
+        report,
+        views=views,
+        authorized_targets=frozenset({"checkout-prod"}),
+        time_policy_ids=("policy-window-1",),
+        target_catalog=None,
+    )
+
+
+def test_carried_bindings_state_citable_as_fact_as_a_bool_from_the_previous_view():
+    """``continuation_context`` is the product's only producer of
+    ``view_bindings``. Since ``delivered_from_context`` fails closed on a
+    binding without ``citable_as_fact`` (6d pre-freeze decision B,
+    2026-09-27), every carried binding must state the flag as a bool equal
+    to the previous Run's delivered view flag, or a successor could never
+    cite inherited evidence as fact. Two adopted ok views -> both True."""
+    _, request, store, outcome = _exhausted_run()
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+
+    bindings = cont.evidence_context["view_bindings"]
+    assert set(bindings) == set(outcome.evidence_ids)
+    for binding in bindings.values():
+        assert binding["status"] == "ok"
+        assert type(binding["citable_as_fact"]) is bool
+        assert binding["citable_as_fact"] is True
+
+    views = delivered_from_context(cont.evidence_context, run_id="run-next")
+    assert sorted(v.evidence_id for v in views) == sorted(outcome.evidence_ids)
+    assert all(v.citable_as_fact is True for v in views)
+    for evidence_id in outcome.evidence_ids:
+        assert _fact_binds(evidence_id, views) is True
+
+
+def test_carried_binding_for_a_no_data_view_is_not_citable_as_fact():
+    """A previous Run whose reads returned no rows carries adopted no_data
+    views; the successor's binding says ``citable_as_fact: False`` and the
+    successor cannot cite them as fact."""
+    loop, request, model, transport, store, _ = assemble(
+        replies=[*_rounds(2), reply(content="", finish="stop")],
+        budget_limit=3,
+        model_requests=3,
+    )
+    transport.response = TransportResponse(body=body([]), data_as_of=WINDOW_START)
+    request = replace(request, limits=RunLimits(model_requests=3))
+    outcome = loop.run(request)
+    assert outcome.execution == "failed" and outcome.handoff is True
+    assert len(outcome.evidence_ids) == 2
+    store.input = request.as_input().as_json()
+
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+
+    bindings = cont.evidence_context["view_bindings"]
+    assert set(bindings) == set(outcome.evidence_ids)
+    for binding in bindings.values():
+        assert binding["status"] == "no_data"
+        assert binding["citable_as_fact"] is False
+    views = delivered_from_context(cont.evidence_context, run_id="run-next")
+    for evidence_id in outcome.evidence_ids:
+        assert _fact_binds(evidence_id, views) is False
+
+
+def test_inherited_binding_without_the_flag_is_carried_as_not_citable():
+    """A binding the previous Run itself inherited without the flag (an
+    older producer) is re-derived through the fail-closed path and handed
+    on as ``citable_as_fact: False``, never silently promoted to True."""
+    _, request, store, outcome = _exhausted_run()
+    snapshot_input = request.as_input().as_json()
+    snapshot_input["evidence_context"]["view_bindings"] = {
+        "ev-inherited": {
+            "status": "ok",
+            "target_refs": ["checkout-prod"],
+            "time_scope_refs": ["policy-window-1"],
+        }
+    }
+    store.input = snapshot_input
+
+    cont = continuation_context(
+        store.snapshot(),
+        new_run_id="run-next",
+        authorized_targets=request.scope.target_ids,
+    )
+
+    bindings = cont.evidence_context["view_bindings"]
+    assert "ev-inherited" in bindings
+    assert bindings["ev-inherited"]["status"] == "ok"
+    assert bindings["ev-inherited"]["citable_as_fact"] is False
+    # The previous Run's own ok views are still carried as citable.
+    for evidence_id in outcome.evidence_ids:
+        assert bindings[evidence_id]["citable_as_fact"] is True
+    views = delivered_from_context(cont.evidence_context, run_id="run-next")
+    assert _fact_binds("ev-inherited", views) is False
 
 
 def test_evidence_outside_the_successors_authorization_is_not_carried():

@@ -1162,7 +1162,14 @@ class ReadOnlyToolExecutor:
         ):
             return _problem("error", "MALFORMED_RESULT")
         lookback = response.lookback_seconds
-        if lookback is not None and (type(lookback) is not int or lookback < 0):
+        if lookback is not None and (
+            type(lookback) is not int or lookback < 0 or lookback > plan.window.seconds
+        ):
+            # The adapter may not claim to have read further back than the
+            # window it was asked for (the PromQL guard refuses longer
+            # selectors before any request), and the bound also keeps the
+            # ``lookback_start_at`` arithmetic below inside the datetime
+            # range instead of raising ``OverflowError`` on an absurd value.
             return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if any(

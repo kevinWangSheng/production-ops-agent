@@ -251,6 +251,9 @@ _VIEW_BINDING_FIELDS: dict[str, Callable[[object], bool]] = {
     "time_scope_refs": _is_list_of_str,
     "status": _is_str,
     "target_id": _is_str,
+    # Bool only: the flag decides whether a fact may cite the binding, so a
+    # truthy string must not survive as if it were ``True``.
+    "citable_as_fact": _is_bool,
 }
 _TIMING_FIELDS: dict[str, Callable[[object], bool]] = {
     "operation_started_at": _is_str_or_none,
@@ -762,9 +765,12 @@ def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredVie
                 target_ids=targets,
                 status="ok",
                 time_scope_refs=time_refs,
-                # An ``ok`` binding is citable unless it says otherwise; an
-                # explicit false is honoured (PR #56 bot review P2).
-                citable_as_fact=binding.get("citable_as_fact") is not False,
+                # Fail closed: only an explicit ``True`` makes a binding fact
+                # evidence. A binding that omits the flag was projected before
+                # the flag existed, and the projection above already drops a
+                # non-bool value (PR #56 bot review P2, user decision
+                # 2026-09-27).
+                citable_as_fact=binding.get("citable_as_fact") is True,
             )
         )
     return delivered
