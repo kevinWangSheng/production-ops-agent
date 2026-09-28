@@ -458,6 +458,29 @@ def test_sanity_traces_search_within_the_old_cap_still_works(monkeypatch):
     assert parse_qs(urlsplit(opener.urls()[0]).query)["limit"] == ["5"]
 
 
+def test_b1_review_a_too_large_trace_result_refusal_is_actionable(monkeypatch):
+    """Review disposition P2 ("trace limit 过大时整条失败"): B1 removed the
+    trace-search count ceiling, so a large ``limit`` can now make the
+    backend's response overflow the read/result byte ceiling. Upstream's own
+    oversized-result tools return an actionable hint, not a bare error code
+    (contract text: state the byte ceiling and suggest a smaller ``limit`` or
+    a narrower window). 300 heavy spans project to just over 1 MiB."""
+    start_us = int(_FRAME_1H.start.timestamp() * 1_000_000) + 1_000_000
+    spans = [_heavy_span(i, start_us=start_us) for i in range(300)]
+    opener = FakeOpener(routes={"/api/traces": _trace_body(spans)})
+    executor = _otel_executor(monkeypatch, opener, window=_FRAME_1H)
+    outcome = executor.execute(
+        _call(TRACES_TOOL, {"service": "checkout", "limit": 300}, window=_FRAME_1H)
+    )
+    assert outcome.status != "ok"
+    assert outcome.reason == "RESULT_TOO_LARGE"
+    serialized = json.dumps(outcome.model_view, default=str).lower()
+    assert "byte" in serialized, "refusal must state the byte ceiling"
+    assert "limit" in serialized or "window" in serialized, (
+        "refusal must suggest a smaller limit or a narrower window"
+    )
+
+
 # =============================================================================
 # B2 -- the model may pick a time window inside a runner-authorized frame
 # =============================================================================
@@ -579,6 +602,67 @@ def test_sanity_a_full_frame_request_with_no_time_params_dispatches_today():
     )
     assert response.source_status is None, response.body
     assert opener.called
+
+
+def test_b2_p1_default_query_window_view_reports_the_query_window_not_the_frame(
+    monkeypatch,
+):
+    """Review disposition P1: the view's ``window`` and ``lookback_start_at``
+    must reflect the *actual query window* the model was answered over, not
+    the runner's 24 h authorized frame -- even though the frame is what
+    ``scope.window`` (and, per the B2 design note, the unnarrowed top-level
+    ``ToolRequest.window``) still carries. No start/end given: the query
+    window is the default 1 h ending at submission."""
+    opener = FakeOpener(routes={"/api/v1/query_range": _prom_body([])})
+    executor = _otel_executor(monkeypatch, opener, window=_FRAME_24H)
+    outcome = executor.execute(
+        _call(METRICS_TOOL, {"expr": "rate(x[5m])"}, window=_FRAME_24H)
+    )
+    view = outcome.model_view
+    query_window = Window(SUBMIT - timedelta(hours=1), SUBMIT)
+    assert view["window"] == query_window.as_json(), (
+        "must be the 1 h query window, not the 24 h frame"
+    )
+    assert view["lookback_start_at"] == query_window.start.isoformat(), (
+        "must be the query window's own start, not the frame's"
+    )
+
+
+def test_b2_p1_explicit_sub_window_view_records_that_sub_window(monkeypatch):
+    """Review disposition P1, second scenario: an explicit start/end (here,
+    the 10 minutes ending 20 minutes before submission) must be exactly what
+    the view's ``window``/``lookback_start_at`` report."""
+    sub_window = Window(SUBMIT - timedelta(minutes=30), SUBMIT - timedelta(minutes=20))
+    opener = FakeOpener(routes={"/api/v1/query_range": _prom_body([])})
+    executor = _otel_executor(monkeypatch, opener, window=_FRAME_24H)
+    outcome = executor.execute(
+        _call(
+            METRICS_TOOL,
+            {
+                "expr": "rate(x[5m])",
+                "start": sub_window.start.isoformat(),
+                "end": sub_window.end.isoformat(),
+            },
+            window=_FRAME_24H,
+        )
+    )
+    view = outcome.model_view
+    assert view["window"] == sub_window.as_json()
+    assert view["lookback_start_at"] == sub_window.start.isoformat()
+
+
+def test_b2_p2_metrics_description_no_longer_hardcodes_300s_for_whole_window_totals():
+    """Review disposition P2: the whole-window-aggregate examples
+    (``increase(x[300s])`` etc.) hardcoded a stale fixed window length; the
+    query window is now model-chosen and may be any length, so the
+    description must no longer state 300 specifically."""
+    by_name = {schema["function"]["name"]: schema for schema in TOOL_SCHEMAS}
+    description = by_name[METRICS_TOOL]["function"]["description"]
+    assert "300s" not in description
+    assert "A whole-window total, maximum or minimum" in description, (
+        "the underlying guidance must still be present, just not tied to "
+        "a literal 300s example"
+    )
 
 
 # =============================================================================
