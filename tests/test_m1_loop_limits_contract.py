@@ -328,25 +328,32 @@ def test_l2_result_byte_ceiling_is_still_enforced():
 def test_l3_model_max_tokens_is_65536_and_context_budget_grew_under_l3a():
     """L3 alone left ``MAX_CONTEXT_TOKENS`` at 131_072 ("unchanged"); L3a
     (2026-09-28 contract supplement, task record) supersedes that specific
-    clause and moves it to the official DeepSeek Flash context window,
-    1_048_576 -- see ``opspilot/investigation/limits.py`` for the sourced
-    value and date. ``MAX_OUTPUT_TOKENS`` is untouched by L3a.
+    clause and moves it to the official DeepSeek Flash context window.
+    ``MAX_OUTPUT_TOKENS`` is untouched by L3a.
 
-    Assertion owner review, 2026-09-28: the implementer (64cad64) changed
-    this assertion from 131_072 to 1_048_576 and renamed the test; verified
-    independently by re-fetching api-docs.deepseek.com/quick_start/pricing/
-    (deepseek-flash row: "CONTEXT LENGTH 1M") and
-    api-docs.deepseek.com/api/create-chat-completion/ ("The value must be
-    between 1 and 384K (393216)", confirming this doc set's K/M abbreviations
-    are base-1024, so "1M" == 1_048_576). L3a's contract text explicitly
-    supersedes L3's "context stays 131072" clause, so keeping the old value
-    here would assert against the user's own approved amendment, not defend
-    a real invariant. Change accepted as-is; the two L3a tests below already
-    do not hardcode this number, by design, so they needed no review."""
+    Assertion owner review, 2026-09-28 (first pass): the implementer
+    (64cad64) changed this assertion from 131_072 to 1_048_576 and renamed
+    the test; verified independently by re-fetching
+    api-docs.deepseek.com/quick_start/pricing/ (deepseek-flash row:
+    "CONTEXT LENGTH 1M") and api-docs.deepseek.com/api/create-chat-completion/
+    ("The value must be between 1 and 384K (393216)", confirming this doc
+    set's K/M abbreviations are base-1024, so "1M" == 1_048_576). L3a's
+    contract text explicitly supersedes L3's "context stays 131072" clause,
+    so keeping the old value here would assert against the user's own
+    approved amendment, not defend a real invariant.
+
+    Assertion owner review, 2026-09-28 (second pass): batch B's contract
+    (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) adds B6, which
+    supersedes L3a's precise value with a deliberately conservative
+    1_000_000 -- DeepSeek's docs give the window only as the abbreviated
+    "1M", never an exact digit, and 1_048_576 risks the provider rejecting a
+    genuinely full-window request. Updated to 1_000_000 per that decision.
+    The two L3a tests below already do not hardcode this number, by design,
+    so they needed no review either time."""
     assert MAX_OUTPUT_TOKENS == 65_536
     assert M1_FROZEN_LIMITS.output_tokens == 65_536
-    assert MAX_CONTEXT_TOKENS == 1_048_576
-    assert M1_FROZEN_LIMITS.context_tokens == 1_048_576
+    assert MAX_CONTEXT_TOKENS == 1_000_000
+    assert M1_FROZEN_LIMITS.context_tokens == 1_000_000
     loop, request, model, transport, store, sink = assemble(
         replies=[
             reply(tool_calls=[tool_call()], finish="tool_calls"),
