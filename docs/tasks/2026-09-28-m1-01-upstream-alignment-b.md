@@ -163,3 +163,37 @@ B6. **上下文取保守值**（lead 2026-09-28 补充）：`MAX_CONTEXT_TOKENS`
     skipped（未 opt-in 的 M0 测试）。
   - 未执行：6-Run 真实效果测量（本文件"验收"第 3 项）与独立审查——按 lead
     交给我的范围（实现 + `make check`/PG）未覆盖，留给下一个判断点。
+
+- 2026-09-28：审查后处置（P1/P2）落地，commit `b17c65f`（未 push）。
+  - P1：`TransportResponse` 新增 `query_window`（otel_demo 的 `_metrics`/
+    `_traces` 回填实际查询窗）；执行器 `_inspect()` 校验其落在 `plan.window`
+    内（否则 MALFORMED_RESULT，与 lookback 越界同一 fail-closed 处理）；
+    `_record()` 的 `view["window"]`/`lookback_start_at` 改用该值，未给出时
+    回退 `plan.window`（兼容未接入此字段的其他 profile，如 fixture.py）。
+  - 检查了 `plan.window` 在 executor.py 的其余用处：`_inspect()` 的
+    `source_start_at`/`source_end_at` 窗内校验（WINDOW_OUT_OF_SCOPE）**未改**
+    ——该处本就绑定 `self._scope.window`（授权外框），不是 `plan.window`，
+    现有注释已明确"the bound is the *scope* window, not the narrower
+    requested one"；改成实际查询窗会让来源数据的合法桶对齐偏差被误判为越权，
+    维持原判。`reports.eligible_time_policies()` 的 `window` 参数**未改**——
+    其文档已把该参数称作"query window"并要求落在 policy 自己声明的窗口内
+    （`policy_start <= view_start <= view_end <= policy_end`），policy 的窗口
+    在 evidence_context 里仍是完整外框；`view["window"]` 收窄为实际查询窗后，
+    这条包含关系依然成立（子集仍在外框内），该函数不用动，反而让引用资格判定
+    更贴合实际查询范围（此前用外框会把资格判定放宽到比实际证据覆盖更大的
+    区间）。
+  - P2（trace 描述整窗聚合）：改为"range selector equal to the query
+    window's length in seconds"通用写法（`increase(x[Ws])` 等），不再写死
+    300s。
+  - P2（trace 过大可操作拒绝）：executor 新增 `_refuse(..., detail=...)` 与
+    `_refusal_detail()`，仅对 `RESULT_TOO_LARGE` 附加 `max_result_bytes` 与
+    建议缩小 `limit`/收窄窗口的 `message`；放在 executor.py（跨 profile 通用），
+    不是 otel_demo 专属。
+  - 验证：`tests/test_m1_upstream_alignment_b_contract.py` 22 项全绿（原
+    18 项 + 本轮新增 4 项 P1×2/P2×2）；`pytest tests/ --ignore=tests/integration
+    -q` 2280 passed 2 xfailed 零失败；`ruff check/format`、`mypy` 改动的 2 个
+    文件干净；`M1_DURABLE_POSTGRES=1 pytest tests/integration -q` 204
+    passed 54 skipped（本 worktree 55431 lab，遇到一次后台任务通知丢失导致的
+    残留状态误报 2 个失败，`postgres_lab restart` 后前台重跑清零，非代码
+    回归）；`make check` 整体绿（此前的既有 lint 债务已被另一提交
+    `27476a1` 修复，与本任务无关）；PG lab 已 `stop`。
