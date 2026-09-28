@@ -597,11 +597,13 @@ def test_a_failed_usage_read_after_the_claim_releases_the_lease(monkeypatch):
 
 def test_limits_above_the_freeze_are_refused_at_the_product_boundary():
     run = uuid4()
-    wide = RunLimits(model_requests=8)
-    h = Harness(input=_input(run, model_requests=8, limits=wide))
+    # Past M1_FROZEN_LIMITS.model_requests (100, M1-01 2026-09-28 user
+    # decision), not just past the old 4-request freeze.
+    wide = RunLimits(model_requests=120)
+    h = Harness(input=_input(run, model_requests=120, limits=wide))
     # The snapshot names a different run id than the row; fix that first so the
     # only refusal left is the freeze.
-    snapshot = _input(h.run, model_requests=8, limits=wide)
+    snapshot = _input(h.run, model_requests=120, limits=wide)
     with h.store.transaction() as conn:
         from psycopg.types.json import Jsonb
 

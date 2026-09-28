@@ -4,6 +4,15 @@ Technical plan section 13: budgets are reserved and settled in PostgreSQL and a
 restart must not reset them. Before this seam existed the executor counted only
 in instance memory, so every new attempt of the same Run had the frozen
 20 operations / 240 s again.
+
+M1-01 (2026-09-28 user decision, docs/tasks/2026-09-28-m1-01-loop-limits.md,
+L2): ``MAX_OPERATIONS_PER_RUN``/``MAX_TOOL_SECONDS_PER_RUN`` are no longer a
+per-Run ceiling ``charge_tool``/``DurableToolLedger`` refuse on -- the loop's
+single anti-loop ceiling is the model-request count (L1). This suite keeps
+exercising ``charge_tool``'s durable *accounting* (counts and seconds surviving
+a restart, idempotent settlement, reservation-then-settlement, lease fencing)
+and, where a test used to prove a refusal at the old cap, now proves the
+opposite: the charge still succeeds and the count/total keeps growing past it.
 """
 
 import dataclasses
@@ -18,8 +27,6 @@ from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.tools import (
     MAX_OPERATIONS_PER_RUN,
     MAX_TOOL_SECONDS_PER_RUN,
-    ToolBudgetExhausted,
-    ToolTimeBudgetExhausted,
     TransportResponse,
 )
 from opspilot.tools.ledger import DurableToolLedger
@@ -67,6 +74,14 @@ def _attempt(store, lease, clock, *, duration):
 
 
 def test_second_attempt_of_the_same_run_inherits_used_operations_and_seconds():
+    """M1-01 (2026-09-28 user decision, L2) removed the cap this test used to
+    prove was hit after a restart; the accounting-continuity invariant it
+    also proved -- a new attempt's executor starts counting from the ledger,
+    not from zero -- still holds and is what this test now isolates. Charging
+    ``MAX_OPERATIONS_PER_RUN`` more operations on top of the 3 the first
+    attempt already spent crosses the old 20-operation ceiling with real
+    dispatches and none of them are refused.
+    """
     store = DurableStore(DSN)
     store.install()
     incident, run = _accept(store, "restart")
@@ -90,16 +105,11 @@ def test_second_attempt_of_the_same_run_inherits_used_operations_and_seconds():
         executor.execute(request(step_id="s2", tool_index=index))
         for index in range(MAX_OPERATIONS_PER_RUN)
     ]
-    dispatched = [item for item in outcomes if item.status == "ok"]
-    refused = [item for item in outcomes if item.status != "ok"]
-    assert len(dispatched) == MAX_OPERATIONS_PER_RUN - 3
-    assert {(item.status, item.reason) for item in refused} == {
-        ("denied", "OPERATION_BUDGET_EXHAUSTED")
-    }
-    assert len(transport.requests) == MAX_OPERATIONS_PER_RUN - 3
+    assert all(item.status == "ok" for item in outcomes)
+    assert len(transport.requests) == MAX_OPERATIONS_PER_RUN
     row = store.rebuild(incident)["run"]
-    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
-    assert row["tool_seconds_used"] == 6.0 * MAX_OPERATIONS_PER_RUN
+    assert row["tool_operations_used"] == 3 + MAX_OPERATIONS_PER_RUN
+    assert row["tool_seconds_used"] == 18.0 + 6.0 * MAX_OPERATIONS_PER_RUN
 
 
 def test_charge_tool_counts_once_per_operation_and_settles_seconds_upward():
@@ -165,14 +175,13 @@ def test_charge_tool_counts_once_per_operation_and_settles_seconds_upward():
             )
 
 
-def test_charge_tool_refuses_a_new_operation_once_the_cap_is_reached():
-    """Bot review finding: counting a new operation was unconditional once
-    past the lease/control checks, so two executors racing from the same
-    stale ``operations_used`` snapshot (e.g. both read 19, both pass their
-    local ``< 20`` check) could both increment after serializing on the row
-    lock, taking the durable count past the frozen cap of 20. The cap must
-    be enforced inside the same locked transaction that does the increment,
-    not only in the application code that decides whether to attempt it.
+def test_charge_tool_no_longer_refuses_a_new_operation_past_the_old_cap():
+    """M1-01 (2026-09-28 user decision, L2) removes the per-Run operation-count
+    ceiling: ``charge_tool`` no longer refuses counting a new operation once
+    the Run is past the old frozen cap of 20 -- it keeps counting. The row
+    lock (``FOR UPDATE`` above the UPDATE) still serializes concurrent
+    charges against the same Run, so the accounting itself stays race-free;
+    what changed is that there is nothing left to refuse on.
     """
 
     store = DurableStore(DSN)
@@ -191,21 +200,17 @@ def test_charge_tool_refuses_a_new_operation_once_the_cap_is_reached():
     row = store.rebuild(incident)["run"]
     assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
 
-    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
-        store.charge_tool(
-            lease,
-            "step-1:overflow",
-            1.0,
-            max_operations=MAX_OPERATIONS_PER_RUN,
-            max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
-            dispatch_id=uuid4(),
-        )
+    store.charge_tool(
+        lease,
+        "step-1:overflow",
+        1.0,
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+        dispatch_id=uuid4(),
+    )
     row = store.rebuild(incident)["run"]
-    # Refused, not just rejected after already incrementing: the count stays
-    # exactly at the cap, and the charge row from the rolled-back attempt
-    # does not survive either.
-    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
-    assert row["tool_seconds_used"] == float(MAX_OPERATIONS_PER_RUN)
+    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN + 1
+    assert row["tool_seconds_used"] == float(MAX_OPERATIONS_PER_RUN + 1)
 
 
 def test_charge_tool_settlement_is_not_subject_to_the_cap():
@@ -243,21 +248,16 @@ def test_charge_tool_settlement_is_not_subject_to_the_cap():
     assert row["tool_seconds_used"] == 3.0
 
 
-def test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global_default():
-    """Bot review finding: ``DurableToolLedger`` defaulted ``max_operations``
-    to the frozen global ceiling (20) regardless of what a Run's own
-    ``QueryScope.max_operations`` actually authorized. A Run issued a
-    narrower per-Run cap would still have its durable charges enforced
-    against the wider global cap -- the ledger adapter, not just
-    ``charge_tool`` itself, has to carry the caller's real cap through.
-    ``max_operations`` is now a required keyword; this proves binding it to
-    something narrower than the global default actually changes what the
-    durable ledger enforces, not just what ``charge_tool`` accepts directly.
-
-    Also proves the real translation from ``charge_tool``'s
-    ``PersistenceError("OPERATION_BUDGET_EXHAUSTED")`` into the abstract
-    ``ToolUsageLedger`` contract's ``ToolBudgetExhausted`` (a later, separate
-    bot review finding) -- not just the in-memory test double's behaviour.
+def test_the_durable_ledger_no_longer_enforces_max_operations_at_any_binding():
+    """Superseded bot review finding, M1-01 (2026-09-28 user decision, L2):
+    before this decision, ``DurableToolLedger`` had to carry the caller's own
+    ``max_operations`` through to ``charge_tool`` rather than default to the
+    frozen global ceiling, because a narrower per-Run cap had to bind tighter
+    than the global one. There is no ceiling left to bind narrower or wider
+    any more -- ``max_operations`` stays a required constructor keyword only
+    to keep the input-validation shape unchanged (see ``ledger.py``'s
+    docstring), and a ledger bound to ``max_operations=1`` charges a second
+    operation exactly as freely as one bound to the global default.
     """
 
     store = DurableStore(DSN)
@@ -270,11 +270,8 @@ def test_the_durable_ledger_binds_the_cap_it_was_constructed_with_not_the_global
     ledger.charge("step-1:0", 1.0, dispatch_id=uuid4())
     assert ledger.usage().operations_used == 1
 
-    with pytest.raises(ToolBudgetExhausted, match="OPERATION_BUDGET_EXHAUSTED"):
-        ledger.charge(
-            "step-1:1", 1.0, dispatch_id=uuid4()
-        )  # refused at 1, not the global cap of 20
-    assert ledger.usage().operations_used == 1
+    ledger.charge("step-1:1", 1.0, dispatch_id=uuid4())  # no longer refused at 1
+    assert ledger.usage().operations_used == 2
 
 
 def test_a_re_dispatched_operation_in_a_new_epoch_is_counted_again():
@@ -452,9 +449,11 @@ def test_two_dispatches_of_one_operation_in_one_epoch_are_both_charged():
     assert (row["tool_operations_used"], row["tool_seconds_used"]) == (2, 12.0)
 
 
-def test_a_duplicate_dispatch_still_cannot_exceed_the_operation_cap():
-    """Charging every dispatch must not let duplicates outrun the cap: the
-    second dispatch is a new operation and is refused once the Run is full.
+def test_a_duplicate_dispatch_is_charged_like_any_other_past_the_old_cap():
+    """M1-01 (2026-09-28 user decision, L2): a second real dispatch of the
+    same stable ``operation_id`` is charged as its own operation (C3 §13,
+    "重试计入次数和费用") whether or not the Run is past the old 20-operation
+    ceiling -- there is no ceiling left to stop it from counting.
     """
     store = DurableStore(DSN)
     incident, run = _accept(store, "dup-cap")
@@ -469,28 +468,27 @@ def test_a_duplicate_dispatch_still_cannot_exceed_the_operation_cap():
             dispatch_id=uuid4(),
         )
 
-    with pytest.raises(PersistenceError, match="OPERATION_BUDGET_EXHAUSTED"):
-        store.charge_tool(
-            lease,
-            "step-1:0",  # same stable operation, a second real dispatch
-            0.0,
-            max_operations=MAX_OPERATIONS_PER_RUN,
-            max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
-            dispatch_id=uuid4(),
-        )
+    store.charge_tool(
+        lease,
+        "step-1:0",  # same stable operation, a second real dispatch
+        0.0,
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
+        dispatch_id=uuid4(),
+    )
     row = store.rebuild(incident)["run"]
-    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN
+    assert row["tool_operations_used"] == MAX_OPERATIONS_PER_RUN + 1
 
 
-def test_a_dispatch_that_does_not_fit_the_remaining_time_is_refused():
-    """Bot review finding: the previous pass gated on seconds *already used*,
-    but a pre-dispatch charge carried 0.0 seconds, so two executors both
-    starting from 239 s each passed the gate, each dispatched a one-second
-    read, and their unconditional settlements left the Run at 241 s.
-
-    The reservation closes it: the first charge for a dispatch holds the whole
-    authorized duration against the ceiling, so the second dispatch has no room
-    and is refused before it is ever sent.
+def test_a_dispatch_past_the_old_cumulative_time_ceiling_is_charged_not_refused():
+    """M1-01 (2026-09-28 user decision, L2) removes the per-Run cumulative
+    tool-time ceiling: a reservation that would have overrun the old 240 s
+    cap is charged and accumulates like any other -- there is no ceiling
+    left for two executors racing from the same stale usage snapshot to
+    overrun (the row lock still makes each charge's own accounting atomic;
+    the reservation-then-settlement mechanism this test used to prove closed
+    a race is exercised more directly by
+    ``test_settling_releases_the_unused_part_of_a_reservation``).
     """
     store = DurableStore(DSN)
     incident, run = _accept(store, "time-reserve")
@@ -509,7 +507,7 @@ def test_a_dispatch_that_does_not_fit_the_remaining_time_is_refused():
         )
     assert store.rebuild(incident)["run"]["tool_seconds_used"] == 239.0
 
-    first = uuid4()  # executor A reserves the one second that is left
+    first = uuid4()
     store.charge_tool(
         lease,
         "step-1:1",
@@ -518,19 +516,17 @@ def test_a_dispatch_that_does_not_fit_the_remaining_time_is_refused():
         max_tool_seconds=cap,
         dispatch_id=first,
     )
-    with pytest.raises(PersistenceError, match="TIME_BUDGET_EXHAUSTED"):
-        # Executor B, holding the same stale 239 s snapshot, gets nothing.
-        store.charge_tool(
-            lease,
-            "step-1:2",
-            1.0,
-            max_operations=MAX_OPERATIONS_PER_RUN,
-            max_tool_seconds=cap,
-            dispatch_id=uuid4(),
-        )
+    store.charge_tool(
+        lease,
+        "step-1:2",
+        1.0,
+        max_operations=MAX_OPERATIONS_PER_RUN,
+        max_tool_seconds=cap,
+        dispatch_id=uuid4(),
+    )
     row = store.rebuild(incident)["run"]
-    assert row["tool_seconds_used"] == 240.0
-    assert row["tool_operations_used"] == 2  # the refused dispatch left nothing
+    assert row["tool_seconds_used"] == 241.0
+    assert row["tool_operations_used"] == 3
 
 
 def test_settling_releases_the_unused_part_of_a_reservation():
@@ -583,10 +579,12 @@ def test_a_transport_that_overran_its_reservation_is_recorded_truthfully():
     assert store.rebuild(incident)["run"]["tool_seconds_used"] == 9.0
 
 
-def test_the_durable_ledger_reports_the_time_ceiling_with_its_own_signal():
-    """The typed signal must distinguish the two ceilings: a caller that sees
-    the operation reason for a spent time budget would report the wrong
-    authoritative denial.
+def test_the_durable_ledger_no_longer_reports_a_time_ceiling_signal():
+    """Superseded bot review finding, M1-01 (2026-09-28 user decision, L2):
+    ``ledger.py`` no longer translates a time-budget code out of
+    ``charge_tool`` at all (there is none to translate -- see ``charge()``'s
+    updated comment), so a ledger bound to a 2 s ``max_tool_seconds`` charges
+    straight past it instead of raising ``ToolTimeBudgetExhausted``.
     """
     store = DurableStore(DSN)
     incident, run = _accept(store, "time-signal")
@@ -595,9 +593,9 @@ def test_the_durable_ledger_reports_the_time_ceiling_with_its_own_signal():
         store, lease, max_operations=MAX_OPERATIONS_PER_RUN, max_tool_seconds=2.0
     )
 
-    ledger.charge("step-1:0", 2.0, dispatch_id=uuid4())  # reserves the whole cap
-    with pytest.raises(ToolTimeBudgetExhausted, match="TIME_BUDGET_EXHAUSTED"):
-        ledger.charge("step-1:1", 0.5, dispatch_id=uuid4())
+    ledger.charge("step-1:0", 2.0, dispatch_id=uuid4())
+    ledger.charge("step-1:1", 0.5, dispatch_id=uuid4())  # no longer refused past 2 s
+    assert ledger.usage().tool_seconds_used == 2.5
 
 
 def test_a_revoked_lease_may_settle_its_own_reservation_but_not_make_a_new_one():
