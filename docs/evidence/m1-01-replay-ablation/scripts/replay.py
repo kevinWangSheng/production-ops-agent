@@ -15,6 +15,11 @@ to the request the live Run sent, see ``rebuild_final_requests.py``):
      ``deepseek-flash``; every other request parameter kept.
   5  combination (phase 2): group 1's RULE_SENTENCE and group 3's
      ``span_groups`` together, text and algorithm unchanged.
+  6  official-style final instruction (phase C): the run coverage message is
+     moved BEFORE the final instruction (so the instruction is the last user
+     message) and the instruction text is replaced by OFFICIAL_INSTRUCTION;
+     the system prompt and everything else are unchanged.
+  6b group 6 plus ``span_groups`` (same algorithm as group 3).
 
 Every HTTP call is appended to ``$ABLATION_WORK/ledger.jsonl`` (usage, model,
 finish reason, request sha256, elapsed). The script refuses to start a call
@@ -57,6 +62,26 @@ COVERAGE_SENTENCE = (
     "all/every/none unless every shown row supports it."
 )
 STRONGER_MODEL = "deepseek-v4-pro"
+OFFICIAL_INSTRUCTION = (
+    "This is the final report request. Use only the delivered views and the "
+    "report schema already provided. Return exactly one json object; do not "
+    "emit prose, Markdown fences, tool calls, or fresh queries.\n"
+    "\n"
+    "- State only values that appear in the cited view.\n"
+    "- If a field is absent, it was not recorded; never substitute a default "
+    "such as status code 0 or HTTP 200.\n"
+    "- When summarizing multiple rows, use the counts, ranges, and grouped "
+    "summaries provided by the view; do not recalculate them from individual "
+    "rows.\n"
+    "- Treat omitted, sampled, truncated, empty, or non-ok data as an unknown "
+    "or gap unless the view explicitly states otherwise.\n"
+    "- Cite complete evidence_id values."
+)
+
+
+def parse_group(text: str):
+    """Groups 0-5 are ints; the phase C groups are the strings "6" and "6b"."""
+    return text if text in ("6", "6b") else int(text)
 
 
 def read_key() -> str:
@@ -83,7 +108,18 @@ def append_sentence(messages: list[dict], sentence: str) -> list[dict]:
     return out
 
 
-def build_call(group: int, messages: list[dict], params: dict) -> ModelCall:
+def official_final(messages: list[dict]) -> list[dict]:
+    """Group 6: swap the two trailing user messages (coverage first) and
+    replace the final instruction text."""
+    hits = [i for i, m in enumerate(messages)
+            if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION]
+    if len(hits) != 1 or hits[0] != len(messages) - 2 or messages[-1].get("role") != "user":
+        raise SystemExit("final instruction + coverage message not found as the trailing pair")
+    coverage = dict(messages[-1])
+    return [*messages[:-2], coverage, {"role": "user", "content": OFFICIAL_INSTRUCTION}]
+
+
+def build_call(group: str, messages: list[dict], params: dict) -> ModelCall:
     model = params["model"]
     if group == 1:
         messages = append_sentence(messages, RULE_SENTENCE)
@@ -95,6 +131,10 @@ def build_call(group: int, messages: list[dict], params: dict) -> ModelCall:
         model = STRONGER_MODEL
     elif group == 5:
         messages = transform_messages(append_sentence(messages, RULE_SENTENCE))
+    elif group == "6":
+        messages = official_final(messages)
+    elif group == "6b":
+        messages = transform_messages(official_final(messages))
     elif group != 0:
         raise SystemExit("unknown group")
     return ModelCall(
@@ -127,7 +167,7 @@ class Ledger:
                 f.write(json.dumps(entry) + "\n")
 
 
-def run_sample(client: DeepSeekClient, ledger: Ledger, group: int, case: str,
+def run_sample(client: DeepSeekClient, ledger: Ledger, group, case: str,
                rep: int, work: Path, samples: Path) -> dict:
     sample_id = f"g{group}-{case}-r{rep}"
     out = samples / sample_id
@@ -172,7 +212,7 @@ def run_sample(client: DeepSeekClient, ledger: Ledger, group: int, case: str,
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--group", type=int, required=True)
+    ap.add_argument("--group", type=parse_group, required=True)
     ap.add_argument("--repeats", type=int, default=5)
     ap.add_argument("--cases", nargs="*", default=list(CASES))
     ap.add_argument("--workers", type=int, default=3)

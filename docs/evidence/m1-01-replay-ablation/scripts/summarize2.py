@@ -19,7 +19,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-GROUPS = {0: "baseline", 1: "rule", 3: "span_groups", 5: "rule+span_groups", 6: "official-prompt"}
+GROUPS = {"0": "baseline", "1": "rule", "3": "span_groups", "5": "rule+span_groups",
+          "6": "official-prompt", "6b": "official-prompt+span_groups"}
 EXPECTED = {  # case prefix -> regex the blamed target must match
     "fault": r"payment|charge",
     "pc-fault": r"product.?catalog|getproduct",
@@ -39,8 +40,8 @@ def expected_ok(case: str, review: dict) -> bool:
     return False
 
 
-def group_of(sample_id: str) -> int:
-    return int(sample_id.split("-")[0][1:])
+def group_of(sample_id: str) -> str:
+    return sample_id.split("-")[0][1:]
 
 
 def main() -> None:
@@ -101,6 +102,7 @@ def main() -> None:
             "adjudicated": aid in adjudicated, "exact_agree": exact, "presence_agree": presence,
             "verdict_agree": verdict_agree, "reviewer_a": a_counts, "reviewer_e": e_counts,
             "accepted": validation.get(sid, {}).get("accepted"), "reject_reason": validation.get(sid, {}).get("reason"),
+            "reject_details": validation.get(sid, {}).get("details") or ([validation[sid]["reason"]] if sid in validation and not validation[sid]["accepted"] else []),
             "completion_tokens": usage.get("completion_tokens", 0),
             "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get("reasoning_tokens", 0),
             "cost_cny": cost,
@@ -111,14 +113,16 @@ def main() -> None:
     for r in rows:
         by[(r["case"].split("-")[0] if not r["case"].startswith(("pc", "cart")) else "heldout", r["group"])].append(r)
     table = []
-    for (scenario, g), rs in sorted(by.items()):
+    for (scenario, g), rs in sorted(by.items(), key=lambda kv: (kv[0][0], kv[0][1].ljust(2))):
         n = len(rs)
         entry = {
-            "scenario": scenario, "group": g, "name": GROUPS.get(g, str(g)), "n": n,
+            "scenario": scenario, "group": g, "name": GROUPS.get(g, g), "n": n,
             "a_total": sum(r["a"] for r in rs), "e_total": sum(r["e"] for r in rs),
             "samples_with_a": sum(1 for r in rs if r["a"]), "samples_with_e": sum(1 for r in rs if r["e"]),
             "samples_with_a_or_e": sum(1 for r in rs if r["a"] or r["e"]),
             "validation_accepted": sum(1 for r in rs if r["accepted"]),
+            "reject_reasons": dict(sorted(__import__("collections").Counter(
+                d for r in rs for d in r["reject_details"]).items())),
             "verdict_correct": sum(1 for r in rs if r["verdict_correct"]),
             "adjudicated": sum(1 for r in rs if r["adjudicated"]),
             "exact_agree": sum(1 for r in rs if r["exact_agree"]),

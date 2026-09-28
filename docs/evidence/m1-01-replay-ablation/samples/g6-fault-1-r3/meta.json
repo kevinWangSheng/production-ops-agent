@@ -1,0 +1,30 @@
+{
+ "sample_id": "g6-fault-1-r3",
+ "group": "6",
+ "case": "fault-1",
+ "rep": 3,
+ "model": "deepseek-flash",
+ "request_sha256": "db69eb688830b427b211436fb7ae77de8ae7116748ee2a1ed71bd67eff05e9ad",
+ "request_bytes": 128524,
+ "started_utc": "2026-09-27T20:53:44Z",
+ "elapsed_s": 24.71,
+ "response_model": "deepseek-flash",
+ "response_id": "3f80c88c-3cea-4b7e-894e-4cbbf0d0b9da",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 35987,
+  "completion_tokens": 6375,
+  "total_tokens": 42362,
+  "prompt_tokens_details": {
+   "cached_tokens": 35840
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 1875
+  },
+  "prompt_cache_hit_tokens": 35840,
+  "prompt_cache_miss_tokens": 147
+ },
+ "content_chars": 13683,
+ "reasoning_chars": 6261,
+ "tool_calls": 0
+}

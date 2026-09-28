@@ -1,0 +1,13 @@
+{
+ "is_available": true,
+ "balance_infos": [
+  {
+   "currency": "CNY",
+   "total_balance": "35.30",
+   "granted_balance": "0.00",
+   "topped_up_balance": "35.30"
+  }
+ ],
+ "queried_at_utc": "2026-09-27T21:20:14Z",
+ "note": "after phase C replays (groups 6 and 6b, 80 calls); phase 2 ended at 38.08"
+}
