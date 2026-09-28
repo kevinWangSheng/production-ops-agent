@@ -18,6 +18,13 @@ B6. **上下文取保守值**（lead 2026-09-28 补充）：`MAX_CONTEXT_TOKENS`
 
 实现决定（lead 2026-09-28）：B2 的模型自选时间窗采用"工具参数"方式——start/end 作为可选参数进入 `request.params`，由 `_metrics`/`_traces` 在 runner 授权外框内校验与使用（与上游工具参数语义一致）；otel_demo 各注册的 `max_window_seconds` 相应提高以容纳 24 小时外框。
 
+### 审查后处置（lead 2026-09-28）
+
+- P1（视图记录外框而非实际查询窗）：修复。transport 把实际查询窗回传执行器，视图 `window` 与 `lookback_start_at` 按实际查询窗记录；补执行器层合同测试（不传 start/end、传子窗两种）。
+- P2（工具描述仍称 `[300s]` 为整窗聚合）：修复。描述改为"整窗聚合的范围选择器等于所选查询窗长度"，并给出以查询窗秒数为参数的通用写法，不写死 300。
+- P2（trace limit 过大时整条失败）：对齐上游——上游在结果过大时返回可操作的提示让模型缩小查询（Prometheus 工具返回摘要而非数据）。本项目在 `RESULT_TOO_LARGE`/读取超限时返回可操作的拒绝说明：写明上限字节与建议的更小 limit 或更窄窗口，模型可据此重查。后端代价仍由 4MiB 读取上限与单次 30 秒超时约束（满足 PRODUCT-CONSTRAINTS「cost … constrained」），不另设条数上限。
+- P2（效果测量口径）：第二批测量的问题文本把 "for the authorized 300-second window" 改为 "for the last 5 minutes"（真实用户描述时间的方式，时间窗交给模型选择），其余不变；独立观察仍按最近 5 分钟采集。Run 顺序：两个 normal 先跑，其后 fault、留出；与 6f/第一批的问题文本差异在 run.md 中写明。
+
 ## 验收
 
 - 全新上下文测试作者先写 `tests/test_m1_upstream_alignment_b_contract.py` 并确认红；实现者转绿不改断言；既有测试因合同变化的修改逐条记录。
