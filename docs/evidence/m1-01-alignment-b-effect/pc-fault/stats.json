@@ -1,0 +1,196 @@
+{
+ "rounds": [
+  {
+   "round": 1,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 3
+  },
+  {
+   "round": 2,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 4
+  },
+  {
+   "round": 3,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 4
+  },
+  {
+   "round": 4,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 3
+  },
+  {
+   "round": 5,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 3
+  },
+  {
+   "round": 6,
+   "final": false,
+   "finish_reason": "tool_calls",
+   "n_tool_calls": 1
+  },
+  {
+   "round": 7,
+   "final": false,
+   "finish_reason": "stop",
+   "n_tool_calls": 0
+  }
+ ],
+ "n_rounds": 7,
+ "tool_calls_per_round": [
+  3,
+  4,
+  4,
+  3,
+  3,
+  1,
+  0
+ ],
+ "total_tools": 18,
+ "self_terminated": true,
+ "forced_final_rounds_before_ceiling": [],
+ "windows": [
+  {
+   "round": 1,
+   "tool": "traces_search",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 1,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 1,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 2,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 2,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T12:27:27+00:00",
+   "end": "2026-09-28T12:32:27+00:00",
+   "status": "no_data"
+  },
+  {
+   "round": 2,
+   "tool": "traces_search",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 2,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 3,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:22:27+00:00",
+   "end": "2026-09-28T13:27:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 3,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:22:27+00:00",
+   "end": "2026-09-28T13:27:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 3,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 3,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 4,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 4,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:22:27+00:00",
+   "end": "2026-09-28T13:27:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 4,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:12:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 5,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 5,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:07:27+00:00",
+   "end": "2026-09-28T13:12:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 5,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:27:27+00:00",
+   "end": "2026-09-28T13:32:27+00:00",
+   "status": "ok"
+  },
+  {
+   "round": 6,
+   "tool": "metrics_range_query",
+   "start": "2026-09-28T13:17:27+00:00",
+   "end": "2026-09-28T13:22:27+00:00",
+   "status": "ok"
+  }
+ ],
+ "result_too_large_count": 0,
+ "duplicate_tool_call_count": 0,
+ "usage_totals": {
+  "model_requests_with_usage": 7,
+  "prompt_tokens": 478880,
+  "completion_tokens": 23998,
+  "prompt_cache_hit_tokens": 394752,
+  "reasoning_tokens": 15190
+ }
+}

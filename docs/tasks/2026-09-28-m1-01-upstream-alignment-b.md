@@ -197,3 +197,19 @@ B6. **上下文取保守值**（lead 2026-09-28 补充）：`MAX_CONTEXT_TOKENS`
     残留状态误报 2 个失败，`postgres_lab restart` 后前台重跑清零，非代码
     回归）；`make check` 整体绿（此前的既有 lint 债务已被另一提交
     `27476a1` 修复，与本任务无关）；PG lab 已 `stop`。
+- 2026-09-28：**效果测量已执行**（候选冻结 `e22e6c4`，`opspilot/` 全程零改动，
+  6 个真实 Run：2 正常 + 2 paymentFailure + 2 留出 productCatalogFailure/
+  cartFailure；问题文本改"for the last 5 minutes"，时间窗模型自选），每 Run
+  全新上下文独立审查（Opus）+ v4 判据 + a/b/c/d/e 分类 + 上游口径 + 新增窗口
+  污染核查，[证据](../evidence/m1-01-alignment-b-effect/run.md)。结果：6/6
+  发布，5/6 自行结束（fault-2 触发 B3/L1a 合并重试，round8 引用无效被拒→
+  round9 修复发布，审查确认修对了触发拒绝的问题但引入 2 个新 P2）；
+  `RESULT_TOO_LARGE`/B5 去重 0 次触发；6/6 上游口径正确；6/6 未发现窗口污染
+  （跨故障误用证据）。核心 4 场景 P2 合计三包连续下降 14（6f）→10（第一批）
+  →8（本批），六 Run 全量 21（第一批）→13（本批，-38%）。资源体量：prompt
+  token 较第一批增约 5.8×（3,499,044 vs 605,530），费用增约 2.6×（1.46 vs
+  0.56 CNY），主因 B1 视图体量放宽叠加 B4 压缩阈值 0.95 共同推迟压缩，未触发
+  任何一次 `RESULT_TOO_LARGE` 或上下文耗尽。产品侧发现：`replay-candidate`
+  提示词变体仍含 `FIXED_WINDOW` 段落（discipline.py:82,127,172），文字上与
+  B2 工具 schema 矛盾（"do not supply start/end"），但实测 6/6 Run 模型均
+  无视该句正常传参，未造成可观察后果，留给 lead 决定是否需要同步修订。
