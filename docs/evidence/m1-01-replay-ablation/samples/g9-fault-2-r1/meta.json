@@ -1,0 +1,49 @@
+{
+ "sample_id": "g9-fault-2-r1",
+ "group": 9,
+ "case": "fault-2",
+ "rep": 1,
+ "model": "deepseek-flash",
+ "request_sha256": "ad8f7ef955f9feb39e06ac99657b4885d940dbd8f66aebcd9d5ce5409d1ee47a",
+ "request_bytes": 162731,
+ "started_utc": "2026-09-28T04:45:17Z",
+ "elapsed_s": 23.55,
+ "response_model": "deepseek-flash",
+ "response_id": "54579fe3-5fa5-4df4-bda5-e8446684d5dc",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 45095,
+  "completion_tokens": 5595,
+  "total_tokens": 50690,
+  "prompt_tokens_details": {
+   "cached_tokens": 5888
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 1922
+  },
+  "prompt_cache_hit_tokens": 5888,
+  "prompt_cache_miss_tokens": 39207
+ },
+ "content_chars": 13056,
+ "reasoning_chars": 6379,
+ "tool_calls": 0,
+ "alias_count": 16,
+ "alias_map": {
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t0:237a4f31-c706-4344-8bf6-a4c9b25c3c14": "E1",
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t1:07007b9c-38f3-42c3-a854-74a4d9522ff5": "E2",
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t2:a44ffc56-bc5c-4b9e-a4ed-ba9fe715fd5a": "E3",
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t3:b5a03d6a-1650-4df5-bdf2-503b5f9adda3": "E4",
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t4:9635111e-257e-456d-854d-027be5c48aa0": "E5",
+  "62ee48e8-d7b5-41cd-a627-94f30431793e-t5:3903143e-6d05-4db3-9764-8f86d223a2ae": "E6",
+  "4f2c7823-0e7d-4179-80f1-122beb4b6299-t0:d8956fb4-4a91-486c-81f1-c74bcb65ce52": "E7",
+  "4f2c7823-0e7d-4179-80f1-122beb4b6299-t1:e3007911-7fba-4acc-a63a-47b33c5c0ea1": "E8",
+  "4f2c7823-0e7d-4179-80f1-122beb4b6299-t2:c40239ae-6b72-4d87-a01d-c65d7ae6b606": "E9",
+  "4f2c7823-0e7d-4179-80f1-122beb4b6299-t3:286d8330-4289-4f22-9deb-768b819a4170": "E10",
+  "4f2c7823-0e7d-4179-80f1-122beb4b6299-t4:32769389-9f54-45a1-81cb-3cb479527b0d": "E11",
+  "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t0:849f0eb6-6ec5-43e6-9b4d-fcc89e172b08": "E12",
+  "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t1:e83467ee-fc74-41fd-a28e-f38265625cda": "E13",
+  "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t2:83243fe0-38d1-4d86-a2fc-61419eb44cb0": "E14",
+  "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t3:0a626238-d19e-4961-9d4e-37ebf783cd8b": "E15",
+  "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t4:c6ee13d3-17a5-4f99-b389-b2e7071db206": "E16"
+ }
+}

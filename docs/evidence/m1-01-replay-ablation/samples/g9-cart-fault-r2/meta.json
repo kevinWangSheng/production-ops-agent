@@ -1,0 +1,51 @@
+{
+ "sample_id": "g9-cart-fault-r2",
+ "group": 9,
+ "case": "cart-fault",
+ "rep": 2,
+ "model": "deepseek-flash",
+ "request_sha256": "6f062144e73dc52deb0a445e670799f0eb31aea5b08032969ccbcf873abb8312",
+ "request_bytes": 186669,
+ "started_utc": "2026-09-28T04:49:15Z",
+ "elapsed_s": 41.34,
+ "response_model": "deepseek-flash",
+ "response_id": "82646473-c23a-4e4b-88bc-4ab41f2a69b3",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 48200,
+  "completion_tokens": 9692,
+  "total_tokens": 57892,
+  "prompt_tokens_details": {
+   "cached_tokens": 48000
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 5773
+  },
+  "prompt_cache_hit_tokens": 48000,
+  "prompt_cache_miss_tokens": 200
+ },
+ "content_chars": 13299,
+ "reasoning_chars": 20123,
+ "tool_calls": 0,
+ "alias_count": 18,
+ "alias_map": {
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t0:a9655bbc-d604-48e1-adc0-3aec7e90760d": "E1",
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t1:503b06b2-9ebf-4426-8820-0f8b462899e0": "E2",
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t2:eba5d7b0-a6fb-4766-a69d-a9016dccad96": "E3",
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t3:5393a4ce-1f47-4070-bfaa-9c3be6ffca9d": "E4",
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t4:d0d3b5ed-4ce0-4aeb-adcf-4c62d3d9a25b": "E5",
+  "654e83eb-7c7a-49cb-81ce-f0e89d6b59e9-t5:f02da0e3-30fb-48c1-ac4e-34c217ebf8c7": "E6",
+  "0de12cf7-962b-475e-8111-8290c83af619-t0:883652fb-a0e6-4310-bb41-98e2be777e52": "E7",
+  "0de12cf7-962b-475e-8111-8290c83af619-t1:44afa9a5-15d9-47fb-b29a-72140b199a04": "E8",
+  "0de12cf7-962b-475e-8111-8290c83af619-t2:82033805-91af-40b8-a7cf-f21bc6cac26a": "E9",
+  "0de12cf7-962b-475e-8111-8290c83af619-t3:f2cba36f-e65b-45c3-abb4-765f7748760d": "E10",
+  "0de12cf7-962b-475e-8111-8290c83af619-t4:faf39de9-5e39-43f2-b7d7-4885da0e6447": "E11",
+  "0de12cf7-962b-475e-8111-8290c83af619-t5:dd3fa9e2-920f-4ee6-9f73-b4c7036a3654": "E12",
+  "0de12cf7-962b-475e-8111-8290c83af619-t6:0a4a6135-90f2-4674-a0e3-f715a9911f75": "E13",
+  "0de12cf7-962b-475e-8111-8290c83af619-t7:53b8300f-23de-4a10-9175-6aa0b36f8c5c": "E14",
+  "0e105689-7678-4c1c-aa27-f68e9d0f5cec-t0:82c3e8e0-c137-4922-8b7a-1c5ce93ecfed": "E15",
+  "0e105689-7678-4c1c-aa27-f68e9d0f5cec-t1:b9bd7e66-a27c-4625-a5f8-9f61677a63e2": "E16",
+  "0e105689-7678-4c1c-aa27-f68e9d0f5cec-t2:644521c8-031e-4c4c-9c81-64ea3b9cffeb": "E17",
+  "0e105689-7678-4c1c-aa27-f68e9d0f5cec-t3:ffa59aaf-af55-43ea-ab6e-b2bc601d1c95": "E18"
+ }
+}

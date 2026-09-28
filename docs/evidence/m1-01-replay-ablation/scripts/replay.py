@@ -27,6 +27,20 @@ to the request the live Run sent, see ``rebuild_final_requests.py``):
      edges) to every JSON tool-result message that looks like a span table,
      and appends a final-checks paragraph to the trailing run-coverage user
      message. No other message is changed.
+  8  phase D: group 5 (RULE_SENTENCE + span_groups) plus GROUP8_SENTENCE
+     appended after RULE_SENTENCE on the same final-instruction message.
+  9  phase D: group 8 plus deterministic short evidence-id aliasing. Every
+     full ``evidence_id`` that appears in the built request (in delivery
+     order) gets a short alias E1, E2, ...; every literal occurrence of the
+     full id anywhere in the request text is replaced by its alias, and
+     GROUP9_SENTENCE is appended after group 8's two sentences. The model
+     sees only aliases. The reply is de-aliased back to full ids (regex
+     ``\\bE\\d+\\b``, unmapped aliases left as-is so they surface as
+     ``unknown_evidence_id`` downstream) before anything else touches it:
+     ``report.txt`` (validated and shown to reviewers) is always the
+     de-aliased text; the raw aliased completion is kept separately as
+     ``report.aliased.txt``, and the id->alias map is recorded in
+     ``meta.json``.
 
 Every HTTP call is appended to ``$ABLATION_WORK/ledger.jsonl`` (usage, model,
 finish reason, request sha256, elapsed). The script refuses to start a call
@@ -40,6 +54,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -54,10 +69,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from span_groups import transform_messages  # noqa: E402
 from group7_transform import transform as group7_transform  # noqa: E402
 
-# Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2, then
-# to 290 for phase C (240 already spent on groups 6/6b, up to 50 more for
-# group 7). The ledger is cumulative, so this bounds the whole experiment.
-MAX_CALLS = 290
+# Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2, to
+# 290 for phase C, then to 370 for phase D (280 already spent on groups
+# 0-7, up to 90 more for groups 8/9). The ledger is cumulative, so this
+# bounds the whole experiment.
+MAX_CALLS = 370
 CASES = ("normal-1", "normal-2", "fault-1", "fault-2")
 RULE_SENTENCE = (
     "State only values that appear in the cited view. A field that does not "
@@ -86,6 +102,12 @@ OFFICIAL_INSTRUCTION = (
     "or gap unless the view explicitly states otherwise.\n"
     "- Cite complete evidence_id values."
 )
+GROUP8_SENTENCE = (
+    "When summarizing multiple rows, use the counts, ranges, and grouped "
+    "summaries provided by the view; do not recalculate them from "
+    "individual rows."
+)
+GROUP9_SENTENCE = "Cite evidence by its short id exactly as shown (for example E3)."
 
 
 def parse_group(text: str):
@@ -108,13 +130,62 @@ def read_key() -> str:
 
 
 def append_sentence(messages: list[dict], sentence: str) -> list[dict]:
+    return append_sentences(messages, [sentence])
+
+
+def append_sentences(messages: list[dict], sentences: list[str]) -> list[dict]:
+    """Append one or more sentences (space-joined, in order) to the original
+    FINAL_REPORT_INSTRUCTION message in one step -- needed for groups 8/9,
+    which add more than one sentence and can't rely on the exact-match probe
+    finding an already-modified message."""
     hits = [i for i, m in enumerate(messages)
             if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION]
     if len(hits) != 1:
         raise SystemExit("final report instruction message not found exactly once")
     out = [dict(m) for m in messages]
-    out[hits[0]]["content"] = FINAL_REPORT_INSTRUCTION + " " + sentence
+    out[hits[0]]["content"] = FINAL_REPORT_INSTRUCTION + " " + " ".join(sentences)
     return out
+
+
+def build_alias_map(messages: list[dict]) -> dict[str, str]:
+    """Every distinct evidence_id of a tool-result view, in delivery order,
+    gets a short alias E1, E2, ... (group 9)."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for m in messages:
+        if m.get("role") != "tool":
+            continue
+        try:
+            payload = json.loads(m["content"])
+        except (TypeError, ValueError):
+            continue
+        eid = payload.get("evidence_id") if isinstance(payload, dict) else None
+        if isinstance(eid, str) and eid not in seen:
+            seen.add(eid)
+            ids.append(eid)
+    return {eid: f"E{i + 1}" for i, eid in enumerate(ids)}
+
+
+def apply_alias(messages: list[dict], alias_map: dict[str, str]) -> list[dict]:
+    """Replace every literal occurrence of a full evidence_id, anywhere in
+    the serialized request, with its short alias. Longest ids first so no id
+    is a prefix-replaced remnant of another; the substitution is on the JSON
+    text (not the parsed structure) so it also catches ids quoted in prose,
+    e.g. the run-coverage message's "Views with incomplete true: <id>,...".
+    """
+    text = json.dumps(messages)
+    for eid in sorted(alias_map, key=len, reverse=True):
+        text = text.replace(eid, alias_map[eid])
+    return json.loads(text)
+
+
+def dealias_text(text: str, alias_map: dict[str, str]) -> str:
+    """Map short aliases back to full evidence_ids in a model reply. An
+    alias with no entry in the map (a typo'd id the model invented) is left
+    as-is, so it surfaces downstream as ``unknown_evidence_id`` -- matching
+    what a real mis-cited id would do."""
+    reverse = {alias: eid for eid, alias in alias_map.items()}
+    return re.sub(r"\bE\d+\b", lambda m: reverse.get(m.group(0), m.group(0)), text)
 
 
 def official_final(messages: list[dict]) -> list[dict]:
@@ -128,8 +199,9 @@ def official_final(messages: list[dict]) -> list[dict]:
     return [*messages[:-2], coverage, {"role": "user", "content": OFFICIAL_INSTRUCTION}]
 
 
-def build_call(group: str, messages: list[dict], params: dict) -> ModelCall:
+def build_call(group: str, messages: list[dict], params: dict) -> tuple[ModelCall, dict]:
     model = params["model"]
+    extra: dict = {}
     if group == 1:
         messages = append_sentence(messages, RULE_SENTENCE)
     elif group == 2:
@@ -155,9 +227,17 @@ def build_call(group: str, messages: list[dict], params: dict) -> ModelCall:
             "stream": params["stream"],
         })
         messages = body["messages"]
+    elif group == 8:
+        messages = transform_messages(append_sentences(messages, [RULE_SENTENCE, GROUP8_SENTENCE]))
+    elif group == 9:
+        messages = transform_messages(
+            append_sentences(messages, [RULE_SENTENCE, GROUP8_SENTENCE, GROUP9_SENTENCE]))
+        alias_map = build_alias_map(messages)
+        messages = apply_alias(messages, alias_map)
+        extra["alias_map"] = alias_map
     elif group != 0:
         raise SystemExit("unknown group")
-    return ModelCall(
+    call = ModelCall(
         messages=tuple(messages),
         tools=None,
         json_mode=params["json_mode"],
@@ -165,6 +245,7 @@ def build_call(group: str, messages: list[dict], params: dict) -> ModelCall:
         timeout_seconds=params["timeout_seconds"],
         model=model,
     )
+    return call, extra
 
 
 class Ledger:
@@ -196,7 +277,7 @@ def run_sample(client: DeepSeekClient, ledger: Ledger, group, case: str,
     req = work / "requests" / case
     messages = json.load(open(req / "messages.json"))
     params = json.load(open(req / "params.json"))
-    call = build_call(group, messages, params)
+    call, extra = build_call(group, messages, params)
     body = serialized_request(call)
     request_sha = hashlib.sha256(body).hexdigest()
     if not ledger.reserve():
@@ -225,7 +306,14 @@ def run_sample(client: DeepSeekClient, ledger: Ledger, group, case: str,
     })
     ledger.append(entry)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "report.txt").write_text(reply.content or "")
+    content = reply.content or ""
+    alias_map = extra.get("alias_map")
+    if alias_map:
+        (out / "report.aliased.txt").write_text(content)
+        content = dealias_text(content, alias_map)
+        entry["alias_count"] = len(alias_map)
+        entry["alias_map"] = alias_map
+    (out / "report.txt").write_text(content)
     (out / "meta.json").write_text(json.dumps(entry, indent=1))
     return entry
 
@@ -244,10 +332,11 @@ def main() -> None:
     if args.dry_run:
         for case in args.cases:
             req = work / "requests" / case
-            call = build_call(args.group, json.load(open(req / "messages.json")),
-                              json.load(open(req / "params.json")))
+            call, extra = build_call(args.group, json.load(open(req / "messages.json")),
+                                      json.load(open(req / "params.json")))
             body = serialized_request(call)
-            print(case, call.model, len(body), hashlib.sha256(body).hexdigest())
+            print(case, call.model, len(body), hashlib.sha256(body).hexdigest(),
+                  f"aliases={len(extra['alias_map'])}" if "alias_map" in extra else "")
         return
     client = DeepSeekClient(read_key())
     jobs = [(case, rep) for rep in range(1, args.repeats + 1) for case in args.cases]

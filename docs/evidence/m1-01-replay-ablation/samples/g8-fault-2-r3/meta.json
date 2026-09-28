@@ -1,0 +1,30 @@
+{
+ "sample_id": "g8-fault-2-r3",
+ "group": 8,
+ "case": "fault-2",
+ "rep": 3,
+ "model": "deepseek-flash",
+ "request_sha256": "1d05c874d8d94803b57a0cb9dd872fb6be71c147a790f5f8224b2c924ac8b0dd",
+ "request_bytes": 164286,
+ "started_utc": "2026-09-28T04:37:39Z",
+ "elapsed_s": 31.89,
+ "response_model": "deepseek-flash",
+ "response_id": "8c5d36c4-bbb6-4628-8b2d-2973e0119284",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 46128,
+  "completion_tokens": 8345,
+  "total_tokens": 54473,
+  "prompt_tokens_details": {
+   "cached_tokens": 45952
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2938
+  },
+  "prompt_cache_hit_tokens": 45952,
+  "prompt_cache_miss_tokens": 176
+ },
+ "content_chars": 16053,
+ "reasoning_chars": 8483,
+ "tool_calls": 0
+}

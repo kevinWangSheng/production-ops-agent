@@ -1,0 +1,51 @@
+{
+ "sample_id": "g9-normal-1-r1",
+ "group": 9,
+ "case": "normal-1",
+ "rep": 1,
+ "model": "deepseek-flash",
+ "request_sha256": "41fc41befa4446ee933928ad4edddc46888e30b99d8d5c909cfdb9175d2083ca",
+ "request_bytes": 179018,
+ "started_utc": "2026-09-28T04:44:57Z",
+ "elapsed_s": 40.43,
+ "response_model": "deepseek-flash",
+ "response_id": "30a96a88-a76e-460f-85e5-2bba57108e54",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 47380,
+  "completion_tokens": 9745,
+  "total_tokens": 57125,
+  "prompt_tokens_details": {
+   "cached_tokens": 1664
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 4346
+  },
+  "prompt_cache_hit_tokens": 1664,
+  "prompt_cache_miss_tokens": 45716
+ },
+ "content_chars": 18168,
+ "reasoning_chars": 15577,
+ "tool_calls": 0,
+ "alias_count": 18,
+ "alias_map": {
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t0:9b4e70da-1e55-43d8-af6d-3c5706998e52": "E1",
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t1:72502223-16b4-44e2-9cde-d7ed836b6edc": "E2",
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t2:1090756f-b0bf-4976-8702-5c22ade35d08": "E3",
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t3:ed79b96c-1b79-427c-898b-efc8a7937066": "E4",
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t4:6226d93d-abb2-4fc8-939c-d78d6162e3ad": "E5",
+  "8a58a5b6-9c82-4947-858f-c861fd537462-t5:6b7b659f-e334-4d5d-8d2d-6ea76d9e0b4f": "E6",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t0:ec32c606-ba0d-470c-9e25-5613d35934ae": "E7",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t1:8fd149f8-d316-41cb-9ef2-873f3d63feb8": "E8",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t2:b06541f1-9053-4f78-873f-c6b1c140f3d7": "E9",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t3:de9690f0-1e75-4918-84b4-e90935a2428c": "E10",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t4:4218e6fe-d35b-4bbb-accd-43106c290580": "E11",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t5:4ecaf47f-28f6-469c-88bd-abe91b9bb6c0": "E12",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t6:078a2f71-fee3-4b73-97bc-ab0f1e412ca2": "E13",
+  "6948af8e-c6ae-4143-81d5-025cfbc17481-t7:fd36fcf3-4abc-4ec0-a3ae-ff51ee3a486a": "E14",
+  "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t0:c0f8bbe4-d6cf-46a2-894b-e24b4a59a362": "E15",
+  "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t1:368463de-bad7-4e34-ad14-878460a34664": "E16",
+  "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t2:2a4a180b-a322-4e9d-8e34-2451a1aa19c8": "E17",
+  "ee70a4e3-32a9-4e29-a00e-ce33dc634e27-t3:d9ff9bea-ff91-40e6-987e-85cb6c2c7011": "E18"
+ }
+}
