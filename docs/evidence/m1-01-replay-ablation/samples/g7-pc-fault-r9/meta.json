@@ -1,0 +1,30 @@
+{
+ "sample_id": "g7-pc-fault-r9",
+ "group": 7,
+ "case": "pc-fault",
+ "rep": 9,
+ "model": "deepseek-flash",
+ "request_sha256": "2019ede059528a514fd5d1e637681538268680959903260cdf6ba666dd8f48c2",
+ "request_bytes": 165465,
+ "started_utc": "2026-09-28T03:29:13Z",
+ "elapsed_s": 52.66,
+ "response_model": "deepseek-flash",
+ "response_id": "4875dbc7-772d-4a35-b5af-7b67ee7dc10b",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 47382,
+  "completion_tokens": 13490,
+  "total_tokens": 60872,
+  "prompt_tokens_details": {
+   "cached_tokens": 47232
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 7136
+  },
+  "prompt_cache_hit_tokens": 47232,
+  "prompt_cache_miss_tokens": 150
+ },
+ "content_chars": 19270,
+ "reasoning_chars": 24519,
+ "tool_calls": 0
+}

@@ -20,6 +20,13 @@ to the request the live Run sent, see ``rebuild_final_requests.py``):
      message) and the instruction text is replaced by OFFICIAL_INSTRUCTION;
      the system prompt and everything else are unchanged.
   6b group 6 plus ``span_groups`` (same algorithm as group 3).
+  7  isolated-context proposal (phase C, ``group7_transform.py``, copied
+     verbatim from the proposing agent's output): appends a status-discipline
+     paragraph to the system message, adds a ``model_view_index`` (per
+     service+operation row counts/status/duration, plus visible parent
+     edges) to every JSON tool-result message that looks like a span table,
+     and appends a final-checks paragraph to the trailing run-coverage user
+     message. No other message is changed.
 
 Every HTTP call is appended to ``$ABLATION_WORK/ledger.jsonl`` (usage, model,
 finish reason, request sha256, elapsed). The script refuses to start a call
@@ -45,10 +52,12 @@ from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from span_groups import transform_messages  # noqa: E402
+from group7_transform import transform as group7_transform  # noqa: E402
 
-# Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2 (the
-# ledger is cumulative, so this bounds the whole experiment).
-MAX_CALLS = 250
+# Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2, then
+# to 290 for phase C (240 already spent on groups 6/6b, up to 50 more for
+# group 7). The ledger is cumulative, so this bounds the whole experiment.
+MAX_CALLS = 290
 CASES = ("normal-1", "normal-2", "fault-1", "fault-2")
 RULE_SENTENCE = (
     "State only values that appear in the cited view. A field that does not "
@@ -135,6 +144,17 @@ def build_call(group: str, messages: list[dict], params: dict) -> ModelCall:
         messages = official_final(messages)
     elif group == "6b":
         messages = transform_messages(official_final(messages))
+    elif group == 7:
+        body = group7_transform({
+            "model": model,
+            "messages": messages,
+            "max_tokens": params["max_tokens"],
+            "response_format": params["response_format"],
+            "thinking": params["thinking"],
+            "reasoning_effort": params["reasoning_effort"],
+            "stream": params["stream"],
+        })
+        messages = body["messages"]
     elif group != 0:
         raise SystemExit("unknown group")
     return ModelCall(
