@@ -325,11 +325,16 @@ def test_l2_result_byte_ceiling_is_still_enforced():
 # -- L3: the per-request completion budget is 65536, context stays 131072 ---
 
 
-def test_l3_model_max_tokens_is_65536_and_context_budget_is_unchanged():
+def test_l3_model_max_tokens_is_65536_and_context_budget_grew_under_l3a():
+    """L3 alone left ``MAX_CONTEXT_TOKENS`` at 131_072 ("unchanged"); L3a
+    (2026-09-28 contract supplement, task record) supersedes that specific
+    clause and moves it to the official DeepSeek Flash context window,
+    1_048_576 -- see ``opspilot/investigation/limits.py`` for the sourced
+    value and date. ``MAX_OUTPUT_TOKENS`` is untouched by L3a."""
     assert MAX_OUTPUT_TOKENS == 65_536
     assert M1_FROZEN_LIMITS.output_tokens == 65_536
-    assert MAX_CONTEXT_TOKENS == 131_072
-    assert M1_FROZEN_LIMITS.context_tokens == 131_072
+    assert MAX_CONTEXT_TOKENS == 1_048_576
+    assert M1_FROZEN_LIMITS.context_tokens == 1_048_576
     loop, request, model, transport, store, sink = assemble(
         replies=[
             reply(tool_calls=[tool_call()], finish="tool_calls"),

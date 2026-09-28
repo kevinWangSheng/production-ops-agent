@@ -25,14 +25,56 @@ from opspilot.tools.registry import MAX_REQUEST_TIMEOUT_SECONDS, MAX_RESULT_BYTE
 # 2026-09-28 user decision (docs/tasks/2026-09-28-m1-01-loop-limits.md, L1).
 MAX_MODEL_REQUESTS_PER_RUN = 100
 
-# Completion budget handed to the provider. Distinct from the 131072 context
-# window; 65_536 matches DeepSeek's thinking-mode default max output
+# Completion budget handed to the provider. 65_536 matches DeepSeek's
+# thinking-mode default max output
 # (https://api-docs.deepseek.com/api/create-chat-completion/), superseding
-# the 2026-09-13 freeze of 16_384 (2026-09-28 user decision, L3).
+# the 2026-09-13 freeze of 16_384 (2026-09-28 user decision, L3). L3a (same
+# decision, contract supplement) leaves this untouched -- only the context
+# ceiling below changed.
 MAX_OUTPUT_TOKENS = 65_536
-MAX_CONTEXT_TOKENS = 131_072
 
-MAX_HTTP_REQUEST_BYTES = 512 * 1024
+# The full DeepSeek Flash context window (docs/tasks/2026-09-28-m1-01-loop-
+# limits.md L3a): upstream HolmesGPT budgets input as
+# "context window - reserved output" (``holmes/core/llm.py:787``), so this
+# ceiling now tracks the provider's real window instead of the earlier
+# 131_072 sketch L3 alone left in place.
+#
+# Sourced 2026-09-28 from https://api-docs.deepseek.com/quick_start/pricing/
+# (checked live; the page carries no revision date): the "Models & Pricing"
+# table's only two rows, deepseek-flash and deepseek-v4-pro, both list
+# "CONTEXT LENGTH: 1M" and "MAXIMUM (output): 384K" -- neither model or an
+# unabbreviated deepseek-v4.1-flash/deepseek-v4-flash row exists on the page,
+# but ``ACCEPTED_RESPONSE_MODEL`` (opspilot/investigation/loop.py) is
+# "deepseek-flash" and this is the only pricing row for it.
+#
+# The page gives context length only as the abbreviated "1M", never an exact
+# digit count. The same page's companion API reference
+# (https://api-docs.deepseek.com/api/create-chat-completion/, checked the
+# same day) states the output ceiling exactly: "The value must be between 1
+# and 384K (393216)" -- confirming DeepSeek's own K/M abbreviations on this
+# doc set are base-1024 (384 * 1024 == 393216). Applying that same,
+# provider-confirmed convention to "1M" (not independently verified as an
+# exact digit anywhere in DeepSeek's public docs) gives 1024 * 1024 ==
+# 1_048_576, the value used here.
+MAX_CONTEXT_TOKENS = 1_048_576
+
+# Sized to a full-context request, not the earlier 512 KiB sketch (2026-09-28
+# user decision, L3a): "1M" tokens contain roughly a factor-of-~2.4 more
+# request bytes than the old 131_072-token context assumed. Calculated from
+# this module's own estimator ratio (``_TOKENS_PER_BYTE = 0.25`` in
+# opspilot/investigation/context.py, i.e. 4 bytes/token -- not a separately
+# guessed ratio) applied to the input budget (context - output =
+# 1_048_576 - 65_536 = 983_040 tokens): 983_040 * 4 == 3_932_160 raw content
+# bytes, measured via ``serialized_request()`` on a single-message
+# ``ModelCall`` sized to exactly that many estimated tokens at 3_932_333
+# bytes once wrapped in the Chat Completions JSON envelope (173 bytes of
+# per-request overhead beyond the raw content). A real Run's request has
+# many messages -- system prompt, question, evidence context, a growing
+# tool-call history -- whose per-message JSON structure adds more overhead
+# than one padded blob does, so this ceiling must clear that measured floor
+# with real margin, not sit right at it: 8 MiB (8_388_608 bytes), a little
+# over double the measured single-message floor.
+MAX_HTTP_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024
 
 MODEL_REQUEST_TIMEOUT_SECONDS = 360.0

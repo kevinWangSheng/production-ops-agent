@@ -363,9 +363,12 @@ def _scope(**overrides):
 @pytest.mark.parametrize(
     ("overrides", "code"),
     [
-        ({"max_operations": 21}, "OPERATION_BUDGET_OUT_OF_RANGE"),
         ({"max_operations": 0}, "OPERATION_BUDGET_OUT_OF_RANGE"),
-        ({"max_tool_seconds": 241}, "TIME_BUDGET_OUT_OF_RANGE"),
+        ({"max_operations": -1}, "OPERATION_BUDGET_OUT_OF_RANGE"),
+        ({"max_tool_seconds": 0}, "TIME_BUDGET_OUT_OF_RANGE"),
+        ({"max_tool_seconds": -1.0}, "TIME_BUDGET_OUT_OF_RANGE"),
+        ({"max_tool_seconds": float("nan")}, "TIME_BUDGET_OUT_OF_RANGE"),
+        ({"max_tool_seconds": float("inf")}, "TIME_BUDGET_OUT_OF_RANGE"),
         ({"subject_kind": "release"}, "INVALID_SUBJECT_KIND"),
         ({"control_generation": -1}, "INVALID_CONTROL_GENERATION"),
         ({"deadline": datetime(2026, 9, 14, 2)}, "INVALID_DEADLINE"),
@@ -378,6 +381,16 @@ def _scope(**overrides):
 def test_scope_refuses_authorizations_outside_the_frozen_contract(overrides, code):
     with pytest.raises(ToolContractError, match=code):
         _scope(**overrides)
+
+
+def test_scope_no_longer_bounds_max_operations_or_max_tool_seconds_above_the_old_ceiling():
+    """M1-01 (2026-09-28 user decision, L2) removed the per-Run tool-count and
+    cumulative-tool-time ceilings; ``QueryScope`` no longer refuses a value
+    above the old frozen 20/240 either (residual validation clean-up flagged
+    by independent review) -- only basic positivity is checked now."""
+    scope = _scope(max_operations=21, max_tool_seconds=241.0)
+    assert scope.max_operations == 21
+    assert scope.max_tool_seconds == 241.0
 
 
 def test_scope_normalizes_its_deadline_to_utc():

@@ -1087,10 +1087,12 @@ class DurableStore:
             # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
             # 唯一的例外是**结算一个本租约已经预留过的派发**：栅栏若连它也拒，
             # 预留的整段超时就永远占着 tool_seconds_used，恢复后的尝试继承这个
-            # 虚高总量，可能因为根本没花掉的秒数而 TIME_BUDGET_EXHAUSTED
-            # （bot review 发现）。结算只是把已知的实际耗时写回本租约自己建立的
-            # 那一行：它不新建预留、不采纳任何结果，人工决定仍由执行器取回后的
-            # control 复读上报并按 history-only 登记。
+            # 虚高总量——记账仍然保留（M1-01，2026-09-28 用户决定，L2 之后不再
+            # 是上限判定的输入，但仍是审计事实），一笔从未真正花掉的耗时永远赖在
+            # 账上依旧是账目错误（bot review 发现，过时表述已按 L2 更新）。结算
+            # 只是把已知的实际耗时写回本租约自己建立的那一行：它不新建预留、不
+            # 采纳任何结果，人工决定仍由执行器取回后的 control 复读上报并按
+            # history-only 登记。
             if existing is None and self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             if existing is None:

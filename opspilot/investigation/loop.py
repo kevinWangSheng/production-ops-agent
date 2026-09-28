@@ -302,6 +302,14 @@ class _State:
     # minus it is the tool time this attempt has added.
     tool_seconds_at_open: float = 0.0
     last_step_id: UUID | None = None
+    # L1a (docs/tasks/2026-09-28-m1-01-loop-limits.md): a non-final round
+    # whose reply proposed no tool calls and failed report validation must be
+    # followed by exactly one forced final-report request, never another
+    # tool-bearing round -- regardless of how many physical requests remain.
+    # ``_drive`` ORs this into its own ``final`` computation; ``_round`` sets
+    # it when it hits that case, and ``resume`` re-derives it from the last
+    # committed row so a restart mid-attempt forces the same next round.
+    force_final: bool = False
 
 
 @dataclass
@@ -473,6 +481,15 @@ class InvestigationLoop:
                     report=verdict[2],
                     content=verdict[3],
                 )
+            if not last.tool_round and not last.final:
+                # L1a: ``verdict`` is ``None`` here for exactly one reason --
+                # the committed round was non-final, proposed no tool calls
+                # and failed report validation (a tool round or an already-
+                # final row always returns a definite verdict above). The
+                # live round would have forced ``state.force_final`` at this
+                # point (see ``_round``'s ``not calls`` branch); a restart
+                # must force the same next round, not another tool-bearing one.
+                state.force_final = True
         return self._drive(state)
 
     def _round_verdict(
@@ -535,7 +552,7 @@ class InvestigationLoop:
                 remaining = request.model_requests - state.used
                 if remaining <= 0:
                     raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
-                outcome = self._round(state, final=remaining <= 1)
+                outcome = self._round(state, final=remaining <= 1 or state.force_final)
                 if outcome is not None:
                     return self._finish(
                         state,
@@ -682,8 +699,14 @@ class InvestigationLoop:
         if verdict is not None:
             return verdict
         if not calls:
-            # Candidate text failed validation; keep the reserved last request.
+            # L1a: a non-final round always reaches here with an invalid,
+            # non-tool-call reply (a valid one already returned above via
+            # ``verdict``, and a final round's invalid reply already returned
+            # a "failed" verdict above too) -- upstream ends on any no-tool
+            # reply; this project gives it one forced final-report retry
+            # instead of another tool-bearing round.
             state.messages.append(assistant)
+            state.force_final = True
             return None
         results = self._run_tools(state, step_id, calls)
         try:

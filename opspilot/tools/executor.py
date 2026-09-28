@@ -242,12 +242,21 @@ class QueryScope:
             or self.deadline.utcoffset() is None
         ):
             raise ToolContractError("INVALID_DEADLINE")
-        if type(self.max_operations) is not int or not (
-            0 < self.max_operations <= MAX_OPERATIONS_PER_RUN
-        ):
+        # M1-01 (2026-09-28 user decision, L2): these two fields are no
+        # longer a ceiling the executor or the durable ledger enforces (see
+        # ``ReadOnlyToolExecutor._reserve()`` and
+        # ``opspilot.persistence.DurableStore.charge_tool``) -- only basic
+        # positivity is worth checking here now, not an upper bound tied to
+        # the old frozen constants, which would otherwise fail-closed refuse
+        # a value that is not actually a ceiling violation of anything.
+        if type(self.max_operations) is not int or self.max_operations < 1:
             raise ToolContractError("OPERATION_BUDGET_OUT_OF_RANGE")
-        if type(self.max_tool_seconds) not in (int, float) or not (
-            0 < self.max_tool_seconds <= MAX_TOOL_SECONDS_PER_RUN
+        seconds = self.max_tool_seconds
+        if (
+            type(seconds) not in (int, float)
+            or seconds != seconds  # NaN
+            or seconds in (float("inf"), float("-inf"))
+            or seconds <= 0
         ):
             raise ToolContractError("TIME_BUDGET_OUT_OF_RANGE")
         for names in (self.target_ids, self.tool_names):

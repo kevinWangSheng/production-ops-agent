@@ -14,6 +14,7 @@ import pytest
 
 from opspilot.investigation.client import _parse_reply
 from opspilot.investigation.limits import (
+    MAX_CONTEXT_TOKENS,
     MAX_HTTP_REQUEST_BYTES,
     MAX_HTTP_RESPONSE_BYTES,
     MAX_MODEL_REQUESTS_PER_RUN,
@@ -1343,11 +1344,19 @@ def test_frozen_ceilings_match_the_v4_b2_values():
     1_800 -> 7_200 s (L4). ``MAX_TOOL_OPERATIONS_PER_RUN``/
     ``MAX_TOOL_SECONDS_PER_RUN`` stay at their 2026-09-13 values -- L2 removed
     the executor's own refusal on them, not the constants themselves (they
-    remain the durable ledger's backstop; see the task record's L2 note)."""
+    remain the durable ledger's backstop; see the task record's L2 note).
+
+    The contract supplement (same task record, "合同补充") moved two more:
+    L3a grows the context ceiling from the earlier 131_072 sketch to the
+    official DeepSeek Flash window, 1_048_576 (see
+    ``opspilot/investigation/limits.py`` for the sourced figure and date),
+    and grows the HTTP request-byte ceiling from 512 KiB to 8 MiB so it
+    cannot trip before that wider context budget does."""
     assert MAX_MODEL_REQUESTS_PER_RUN == 100
     assert MAX_TOOL_OPERATIONS_PER_RUN == 20
     assert MAX_OUTPUT_TOKENS == 65_536
-    assert MAX_HTTP_REQUEST_BYTES == 512 * 1024
+    assert MAX_CONTEXT_TOKENS == 1_048_576
+    assert MAX_HTTP_REQUEST_BYTES == 8 * 1024 * 1024
     assert MAX_HTTP_RESPONSE_BYTES == 2 * 1024 * 1024
     assert MODEL_REQUEST_TIMEOUT_SECONDS == 360.0
     assert RUN_WALL_SECONDS == 7200.0
