@@ -48,8 +48,20 @@ class Crash(RuntimeError):
 
 
 def _rounds(count, *, start=1):
+    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): distinct
+    # arguments per round -- an exact repeat (same tool, same params) is no
+    # longer re-dispatched within one attempt, and every caller here wants
+    # ``count`` genuinely separate dispatches to compact/rebuild over.
     return [
-        reply(tool_calls=[tool_call(call_id=f"call-{start + i}")], finish="tool_calls")
+        reply(
+            tool_calls=[
+                tool_call(
+                    call_id=f"call-{start + i}",
+                    arguments=f'{{"expr":"rate(http_errors[{start + i}m])"}}',
+                )
+            ],
+            finish="tool_calls",
+        )
         for i in range(count)
     ]
 

@@ -12,29 +12,39 @@ What a Run may read (technical plan §8):
   ``opspilot.integration.id`` resource attribute baked into the pinned
   configuration); the Prometheus and Jaeger instances are dedicated to it,
   so target isolation is by instance, not by a spliced-in label filter;
-* ``metrics_range_query``: a PromQL range query over the Run's absolute
-  window. The raw evidence is the exact Prometheus response; the model view
-  is its leading ``data.result`` series. ``offset``, ``@`` and a range
-  selector longer than the window are refused before any request goes out;
-  a selector up to the window length is allowed and the query's ``start``
-  is pushed forward by its length, so every evaluated point reads samples
-  from inside the window only (a window-length selector evaluates once, at
-  the window end, as the whole-window aggregate) -- the view reports the
-  length as ``lookback_seconds`` and the earliest instant read as
-  ``lookback_start_at`` (the window start) next to ``source_start_at``;
-* ``traces_search``: Jaeger's trace search for one service in the window.
-  Raw Jaeger responses are 300 KB-600 KB for 20 traces, so the raw evidence
-  here is the transport's projected observation record -- the M0 trace
-  view v3 sampling policy ported to product code -- which carries the
-  SHA-256 and byte count of the wire response it was projected from. That
-  is a weaker provenance than the metrics tool's exact bytes and is stated
-  as such in the tool description.
+* ``metrics_range_query``: a PromQL range query over a query window inside
+  the Run's authorized frame (batch B, B2). ``start``/``end`` are optional
+  tool parameters the model may use to pick a narrower window than the
+  frame; omitted, the query defaults to the 1 hour ending at the frame's
+  end (upstream ``holmes/plugins/toolsets/utils.py:111-113`` semantics).
+  A window outside the frame is refused before any request goes out and the
+  refusal states the frame. The raw evidence is the exact Prometheus
+  response; the model view is its leading ``data.result`` series. ``offset``,
+  ``@`` and a range selector longer than the *query* window are refused
+  before any request goes out; a selector up to the query window's length is
+  allowed and the query's ``start`` is pushed forward by its length, so every
+  evaluated point reads samples from inside the query window only (a
+  window-length selector evaluates once, at the window end, as the
+  whole-window aggregate) -- the view reports the length as
+  ``lookback_seconds`` and the earliest instant read as ``lookback_start_at``
+  (the query window's start) next to ``source_start_at``;
+* ``traces_search``: Jaeger's trace search for one service inside a query
+  window chosen the same way (``start``/``end``, same default and frame
+  refusal as above). Raw Jaeger responses are 300 KB-600 KB for 20 traces,
+  so the raw evidence here is the transport's projected observation record
+  -- the M0 trace view v3 sampling policy ported to product code -- which
+  carries the SHA-256 and byte count of the wire response it was projected
+  from. That is a weaker provenance than the metrics tool's exact bytes and
+  is stated as such in the tool description.
 
-The observation window is fixed per Run when the workbench records the
-input (``otel_demo_face``): the 300 s ending at submission, as the frozen
-v4 acceptance packet requires. The executor factory re-reads that window
-from the Run's recorded input rather than trusting the model or the clock,
-so every attempt of a Run reads the same interval.
+The authorized frame is fixed per Run when the workbench records the input
+(``otel_demo_face``): the 24 h ending at submission (batch B, B2; upstream
+default lookback scaled to a runner-level authorization frame rather than a
+fixed 300 s v4 acceptance-packet window -- see ``OBSERVATION_SECONDS``). The
+executor factory re-reads that frame from the Run's recorded input rather
+than trusting the model or the clock, so every attempt of a Run is
+authorized over the same interval; the model still picks a narrower query
+window inside it per call, as above.
 
 Credentials: the lab backends are anonymous. A bearer token, if one is
 configured, is looked up by ``credential_ref`` inside the transport and
@@ -152,13 +162,28 @@ SERVICES: tuple[str, ...] = (
     "shipping",
 )
 
-#: The v4 packet's per-Run observation window.
-OBSERVATION_SECONDS = 300
+#: The runner's default per-Run authorization frame (batch B, B2 --
+#: "runner 仍决定一个授权外框（默认提交时刻前 24 小时至提交时刻）"), superseding
+#: the v4 acceptance packet's fixed 300 s observation window. The model
+#: chooses a narrower *query* window inside this frame per call (``start``/
+#: ``end`` tool parameters, default: the 1 hour ending at the frame's end,
+#: upstream ``holmes/plugins/toolsets/utils.py:111-113``); a query window
+#: outside the frame is refused. The name is kept (not renamed to e.g.
+#: ``AUTHORIZED_FRAME_SECONDS``) because it is a stable public export several
+#: test modules import; only its value and role changed.
+OBSERVATION_SECONDS = 24 * 3600
 DEFAULT_STEP_SECONDS = 30
 MIN_STEP_SECONDS = 15
 MAX_PROMQL_CHARS = 2000
-DEFAULT_TRACE_LIMIT = 10
-MAX_TRACE_LIMIT = 20
+# B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): no more count
+# ceiling on a trace search -- upstream's own trace-search tools (Grafana
+# Tempo, the closest upstream analog to a Jaeger trace search; no direct
+# upstream Jaeger toolset exists) enforce no ``limit`` upper bound either
+# (``holmes/plugins/toolsets/grafana/toolset_grafana_tempo.py:542,635``) and
+# default to 20 (``params.get("limit") or 20``) -- both the removed ceiling
+# and the new default of 20 (was 10) are taken from that value; there was no
+# upstream Jaeger-specific value to match instead.
+DEFAULT_TRACE_LIMIT = 20
 # The one reason a trace search is ``incomplete`` (round 2 rule B): Jaeger
 # answered with as many traces as were asked for.
 TRACES_INCOMPLETE_REASON = (
@@ -166,9 +191,24 @@ TRACES_INCOMPLETE_REASON = (
 )
 #: Jaeger's response for 20 traces has been 300-600 KB in this lab; the
 #: transport stops reading past this and the operation fails as
-#: ``RESULT_TOO_LARGE`` rather than projecting a partial body.
+#: ``RESULT_TOO_LARGE`` rather than projecting a partial body. Unaffected by
+#: B1 (a raw-response-size guard, not the view row/byte cap).
 TRACE_SOURCE_READ_BYTES = 4 * 1024 * 1024
-MAX_SAMPLED_SPANS = 20
+# B1: the model view's byte cap for both tools, replacing the old 16 KiB
+# (traces) / 24 KiB (metrics) figures -- widened to upstream's per-tool
+# single-result scale: ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS = 25000``
+# (``holmes/common/env_vars.py:142``), converted at this module's own
+# estimator convention (``_TOKENS_PER_BYTE = 0.25`` in
+# ``opspilot/investigation/context.py``, i.e. 4 bytes/token) to
+# 25000 * 4 == 100_000 bytes. Rounded to this codebase's existing KiB-based
+# convention for these constants (24 * 1024, 16 * 1024, 1024 * 1024) rather
+# than the exact decimal figure: 100 KiB == 102_400 bytes == ~25_600 tokens
+# at the same estimator, the same order of scale as upstream's 25_000-token
+# figure and still comfortably under upstream's other bound (15% of a
+# 1_000_000-token context, i.e. 150_000 tokens -- B6 -- so the absolute
+# 25_000-token figure is what actually binds upstream here too, see
+# ``opspilot.investigation.context.ContextPolicy.single_tool_pct``).
+MAX_VIEW_BYTES = 100 * 1024
 MAX_DETAIL_FIELDS_PER_SPAN = 4
 MAX_DETAIL_BYTES_PER_FIELD = 600
 MAX_OPERATION_CHARS = 150
@@ -198,36 +238,37 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
             "name": METRICS_TOOL,
             "description": (
                 "Evaluate one PromQL range query against the registered "
-                "target's Prometheus inside the authorized window. "
+                "target's Prometheus inside a query window you may choose "
+                "within the authorized window. "
                 "The result is the raw response series: data.result holds "
                 "one entry per label set with [timestamp, value] points. "
                 "Counters such as *_calls_total are cumulative. "
                 "Wrap a counter in rate() or increase() for per-window "
                 "activity. "
-                "A range selector may be at most the window length. "
+                "A range selector may be at most the query window length. "
                 "A point at time t with range selector [r] covers [t - r, t]. "
                 "A subquery (inner)[a:b] covers a plus what inner covers, "
-                "and that total may be at most the window length. "
-                "Every point covers samples inside the window only. "
-                "No point reads samples from before the window. "
+                "and that total may be at most the query window length. "
+                "Every point covers samples inside the query window only. "
+                "No point reads samples from before the query window. "
                 "The expression's total lookback is its longest range "
                 "selector, or a subquery range plus its inner lookback. "
-                "The first point is at the window start plus the total "
-                "lookback. "
+                "The first point is at the query window start plus the "
+                "total lookback. "
                 "The view reports the total lookback as lookback_seconds "
                 "and the earliest instant read as lookback_start_at. "
                 "source_start_at is the first returned sample inside the "
-                "window. "
+                "query window. "
                 "A whole-window total, maximum or minimum comes from one "
                 "evaluation of a window-length selector, such as "
                 "increase(x[300s]), max_over_time(x[300s]) or "
                 "min_over_time(x[300s]). "
                 "Do not compute totals, maxima or minima from the point list "
                 "yourself. "
-                "A range selector longer than the window is refused. "
+                "A range selector longer than the query window is refused. "
                 "offset is refused. "
                 "@ is refused. "
-                "At most 24 KiB of series are shown. "
+                "At most 100 KiB of series are shown. "
                 "When the series are truncated the view sets truncated true "
                 "and reports omitted_rows. "
                 "A series that is not returned is unknown, not zero. "
@@ -256,7 +297,27 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                         "type": "integer",
                         "description": (
                             "Resolution between returned points, 15 to the "
-                            "window length; omitted means 30."
+                            "query window length; omitted means 30."
+                        ),
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 start of the query window. "
+                            "Give both start and end, or neither. "
+                            "Must lie inside the authorized window; a query "
+                            "window outside it is refused and the refusal "
+                            "states the authorized window."
+                        ),
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 end of the query window. "
+                            "Give both start and end, or neither. "
+                            "Omitted with start also omitted, the query "
+                            "window defaults to the 1 hour ending at the "
+                            "authorized window's end."
                         ),
                     },
                 },
@@ -270,14 +331,15 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
             "name": TRACES_TOOL,
             "description": (
                 "Search the registered target's Jaeger for traces of one "
-                "service inside the authorized window and return a projected "
-                "sample of their spans: spans of the requested service first, "
-                "then spans with an error status tag, then the longest, up to "
-                "20 spans in total, each with trace_id, span_id, service, "
-                "operation, start_us, duration_us, status tags, parent "
-                "references and up to 4 clipped error detail fields. At most "
-                "16 KiB of sampled spans are shown; when truncated the view "
-                "sets truncated true and reports omitted_rows. "
+                "service inside a query window you may choose within the "
+                "authorized window, and return a projected sample of their "
+                "spans: spans of the requested service first, then spans "
+                "with an error status tag, then the longest, each with "
+                "trace_id, span_id, service, operation, start_us, "
+                "duration_us, status tags, parent references and up to 4 "
+                "clipped error detail fields. At most 100 KiB of sampled "
+                "spans are shown; when truncated the view sets truncated "
+                "true and reports omitted_rows. "
                 "traces_requested is the number of traces asked of the "
                 "backend. "
                 "backend_traces_returned is the number of traces the backend "
@@ -296,7 +358,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "trace graph or a failure rate: an omitted span is unknown, "
                 "an error detail applies only to the span it is shown on, and "
                 "an empty result means no trace of that service was returned "
-                "for the window, not that the service made no calls. "
+                "for the query window, not that the service made no calls. "
                 'Available services: ["accounting", "ad", "cart", '
                 '"checkout", "currency", "email", "fraud-detection", '
                 '"frontend", "frontend-proxy", "image-provider", '
@@ -314,8 +376,28 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                     "limit": {
                         "type": "integer",
                         "description": (
-                            "How many traces to ask the backend for, 1 to 20; "
-                            "omitted means 10."
+                            "How many traces to ask the backend for, at "
+                            "least 1; omitted means 20."
+                        ),
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 start of the query window. "
+                            "Give both start and end, or neither. "
+                            "Must lie inside the authorized window; a query "
+                            "window outside it is refused and the refusal "
+                            "states the authorized window."
+                        ),
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 end of the query window. "
+                            "Give both start and end, or neither. "
+                            "Omitted with start also omitted, the query "
+                            "window defaults to the 1 hour ending at the "
+                            "authorized window's end."
                         ),
                     },
                 },
@@ -340,17 +422,21 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             ),
             window_format=(
                 "The authorized absolute query window, appended as {window}; "
-                "start/end/step are bound by the gateway, never by the query."
+                "start/end/step are bound by the gateway, never by the query. "
+                "start/end tool parameters (batch B) pick a query window "
+                "inside it; omitted, the query window defaults to the 1 "
+                "hour ending at the authorized window's end, and a chosen "
+                "query window outside the authorized window is refused."
             ),
             values_format=(
                 "The authorized target and service enumeration for this Run "
                 "is appended as {values}. "
                 "offset is refused. "
                 "@ is refused. "
-                "A range selector longer than the window is refused. "
-                "A range selector up to the window length moves the first "
-                "evaluated point forward by its length, so every point reads "
-                "samples inside the window only."
+                "A range selector longer than the query window is refused. "
+                "A range selector up to the query window length moves the "
+                "first evaluated point forward by its length, so every "
+                "point reads samples inside the query window only."
             ),
             limits=(
                 "Truncated at the registered max_view_bytes: whole leading "
@@ -369,23 +455,47 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             "expr": ParameterSpec(
                 "string",
                 required=True,
-                description="The PromQL expression to evaluate over the window.",
+                description="The PromQL expression to evaluate over the query window.",
             ),
             "step_seconds": ParameterSpec(
                 "integer",
                 description=(
-                    "Resolution between returned points, 15 to the window length."
+                    "Resolution between returned points, 15 to the query window length."
+                ),
+            ),
+            # B2: model-chosen sub-window, validated by the transport
+            # (``_query_window``) against the authorized frame carried as
+            # ``TransportRequest.window`` -- not a gateway-level ceiling, so
+            # ``max_window_seconds`` below still bounds only the frame.
+            "start": ParameterSpec(
+                "string",
+                description=(
+                    "Absolute ISO-8601 start of the query window; give both "
+                    "start and end or neither."
+                ),
+            ),
+            "end": ParameterSpec(
+                "string",
+                description=(
+                    "Absolute ISO-8601 end of the query window; give both "
+                    "start and end or neither."
                 ),
             ),
         },
         result_path=("data", "result"),
         request_timeout_seconds=30.0,
         max_result_bytes=1024 * 1024,
-        max_view_bytes=24 * 1024,
-        max_window_seconds=3600,
+        max_view_bytes=MAX_VIEW_BYTES,
+        # B2: raised from 3600 to accommodate ``OBSERVATION_SECONDS``'s new
+        # 24 h authorization frame, which the loop always carries as the
+        # top-level ``ToolRequest.window`` (``_run_tools`` ->
+        # ``request.scope.window``) regardless of the model's own, narrower
+        # ``start``/``end`` selection -- the per-call volume limit that used
+        # to live here moved into the transport's frame-containment check.
+        max_window_seconds=OBSERVATION_SECONDS,
         # ``503`` is nominal: 5xx raises ``TransportUnavailable`` inside the
-        # transport before classification. The last two are the transport's
-        # own pre-dispatch refusal codes.
+        # transport before classification. The rest are the transport's own
+        # pre-dispatch refusal codes.
         error_classes={
             "400": "INVALID_PARAMS",
             "422": "INVALID_PARAMS",
@@ -413,14 +523,18 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             ),
             window_format=(
                 "The authorized absolute query window, appended as {window}; "
-                "the search start/end are bound by the gateway."
+                "the search start/end are bound by the gateway. "
+                "start/end tool parameters (batch B) pick a query window "
+                "inside it; omitted, the query window defaults to the 1 "
+                "hour ending at the authorized window's end, and a chosen "
+                "query window outside the authorized window is refused."
             ),
             values_format=(
                 "The authorized service enumeration for this Run, appended as "
                 "{values}; any other service returns an error."
             ),
             limits=(
-                "At most 20 traces requested and 20 spans sampled (requested "
+                "No cap on traces requested or spans sampled (requested "
                 "service first, error status first, longest first); truncated "
                 "at the registered max_view_bytes by dropping trailing spans."
             ),
@@ -440,19 +554,42 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             ),
             "limit": ParameterSpec(
                 "integer",
-                description="How many traces to ask the backend for, 1 to 20.",
+                description="How many traces to ask the backend for, at least 1.",
+            ),
+            "start": ParameterSpec(
+                "string",
+                description=(
+                    "Absolute ISO-8601 start of the query window; give both "
+                    "start and end or neither."
+                ),
+            ),
+            "end": ParameterSpec(
+                "string",
+                description=(
+                    "Absolute ISO-8601 end of the query window; give both "
+                    "start and end or neither."
+                ),
             ),
         },
         result_path=("data", "sampled_spans"),
         request_timeout_seconds=30.0,
-        max_result_bytes=256 * 1024,
-        max_view_bytes=16 * 1024,
-        max_window_seconds=3600,
+        # Raised from 256 KiB alongside B1's row-cap removal (not itself
+        # part of the contract's numbers): the projected record's raw JSON
+        # -- unlike the view -- is not row-capped, so a large ``limit`` on a
+        # busy trace search can now project past the old ceiling before the
+        # view's own MAX_VIEW_BYTES truncation ever applies. Matched to the
+        # metrics tool's own raw-body ceiling rather than left tight.
+        max_result_bytes=1024 * 1024,
+        max_view_bytes=MAX_VIEW_BYTES,
+        # B2: see the metrics registration's comment; raised for the same
+        # reason (accommodates ``OBSERVATION_SECONDS``'s new 24 h frame).
+        max_window_seconds=OBSERVATION_SECONDS,
         error_classes={
             "400": "INVALID_PARAMS",
             "503": "SOURCE_UNAVAILABLE",
             "SERVICE_NOT_AVAILABLE": "INVALID_PARAMS",
             "INVALID_LIMIT": "INVALID_PARAMS",
+            "QUERY_OUT_OF_WINDOW": "INVALID_PARAMS",
         },
         incomplete_marker="incomplete",
     )
@@ -802,9 +939,12 @@ class OtelDemoTransport:
 
     def _metrics(self, request: TransportRequest) -> TransportResponse:
         expr = request.params.get("expr")
-        window = request.window
         if not isinstance(expr, str):
             return _refused("QUERY_OUT_OF_WINDOW")
+        window, refusal = _query_window(request)
+        if refusal is not None:
+            return refusal
+        assert window is not None
         problem = promql_problem(expr, window.seconds)
         if problem is not None:
             return _refused(problem)
@@ -851,13 +991,18 @@ class OtelDemoTransport:
         service = request.params.get("service")
         if not isinstance(service, str) or service not in SERVICES:
             return _refused("SERVICE_NOT_AVAILABLE")
+        # B1: no more upper bound (was ``MAX_TRACE_LIMIT = 20``); the byte
+        # cap (``MAX_VIEW_BYTES``) is what now bounds a large request's view.
         limit = request.params.get("limit", DEFAULT_TRACE_LIMIT)
-        if type(limit) is not int or not 1 <= limit <= MAX_TRACE_LIMIT:
+        if type(limit) is not int or limit < 1:
             return _refused("INVALID_LIMIT")
+        window, refusal = _query_window(request)
+        if refusal is not None:
+            return refusal
+        assert window is not None
         base = request.selector.get("traces_endpoint", "")
         if not base:
             raise TransportError("TRACES_ENDPOINT_MISSING")
-        window = request.window
         url = f"{base}/api/traces?" + urllib.parse.urlencode(
             {
                 "service": service,
@@ -907,15 +1052,56 @@ class OtelDemoTransport:
         )
 
 
-def _refused(code: str) -> TransportResponse:
+def _query_window(
+    request: TransportRequest,
+) -> tuple[Window | None, TransportResponse | None]:
+    """B2: the model's per-call ``start``/``end`` params, validated against
+    the runner's authorized frame (``request.window`` -- the top-level
+    window the loop always sets to the full authorized frame; see
+    ``opspilot.investigation.loop._run_tools``). Returns ``(window, None)``
+    on success, or ``(None, refusal)`` when the pair is malformed or the
+    chosen window is not fully inside the frame.
+
+    Upstream default when both are omitted (``holmes/plugins/toolsets/utils
+    .py:111-113``): the hour ending at the frame's end, clamped forward to
+    the frame's own start so a frame narrower than an hour (a test fixture,
+    never a real Run post-B2) is unaffected.
+    """
+    frame = request.window
+    start_text = request.params.get("start")
+    end_text = request.params.get("end")
+    if start_text is None and end_text is None:
+        end = frame.end
+        start = max(frame.start, end - timedelta(hours=1))
+        return Window(start, end), None
+    if not isinstance(start_text, str) or not isinstance(end_text, str):
+        return None, _refused("QUERY_OUT_OF_WINDOW")
+    window = Window.parse({"start": start_text, "end": end_text})
+    if window is None:
+        return None, _refused("QUERY_OUT_OF_WINDOW")
+    if not frame.contains(window):
+        # The refusal states the frame so the model can retry inside it
+        # (PRODUCT-CONSTRAINTS "Query scope ... constrained").
+        return None, _refused("QUERY_OUT_OF_WINDOW", frame=frame)
+    return window, None
+
+
+def _refused(code: str, *, frame: Window | None = None) -> TransportResponse:
     """A fixed-code refusal decided before any request went out.
 
     Carried as ``source_status`` so the registration's ``error_classes``
     classify it as ``INVALID_PARAMS``, with ``sent=False`` so the executor
-    audits it as never dispatched and with no source contact.
+    audits it as never dispatched and with no source contact. ``frame``
+    (B2), when given, states the authorized window in the body so a
+    caller reading the raw ``TransportResponse`` (not just the eventual
+    model view, which already carries the same bound generically via
+    ``operation.window``) can discover it.
     """
+    body: dict[str, Any] = {"error": code}
+    if frame is not None:
+        body["authorized_window"] = frame.as_json()
     return TransportResponse(
-        body=canonical({"error": code}).encode(), source_status=code, sent=False
+        body=canonical(body).encode(), source_status=code, sent=False
     )
 
 
@@ -1112,7 +1298,11 @@ def project_traces(
             str(s["span_id"]),
         )
     )
-    sampled = spans[:MAX_SAMPLED_SPANS]
+    # B1: no more row cap here (was ``spans[:MAX_SAMPLED_SPANS]``, 20) --
+    # every span from the returned traces is sampled and sorted; the
+    # executor's own byte cap (``max_view_bytes``) is the only remaining
+    # truncation, applied downstream in ``_fit_rows``.
+    sampled = spans
     # Judged over the sampled set: the executor's byte cap may still drop
     # trailing sampled spans, so a "visible" parent is one that was sampled,
     # not necessarily one the model was shown.
@@ -1145,7 +1335,8 @@ def project_traces(
         },
         "limits": {
             "source_query_limit": limit,
-            "display_max_spans": MAX_SAMPLED_SPANS,
+            # B1: the fixed row cap this field once named is gone; there is
+            # no longer a display-max-spans constant to report here.
             "detail_max_fields_per_span": MAX_DETAIL_FIELDS_PER_SPAN,
             "detail_max_utf8_bytes_per_field": MAX_DETAIL_BYTES_PER_FIELD,
         },

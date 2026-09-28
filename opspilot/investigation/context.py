@@ -105,7 +105,33 @@ _MESSAGE_OVERHEAD_TOKENS = 4
 @dataclass(frozen=True)
 class ContextPolicy:
     version: str = "ctx-policy-v1"
-    compaction_pct: float = 0.8
+    # B4 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): upstream
+    # ``get_context_window_compaction_threshold_pct()`` defaults
+    # ``CONTEXT_WINDOW_COMPACTION_THRESHOLD_PCT`` to ``"95"``
+    # (``holmes/core/llm.py:159``); 0.8 was this project's own pre-alignment
+    # guess.
+    compaction_pct: float = 0.95
+    # Checked against upstream's own per-tool cap (B4, "单条工具结果占比按上游
+    # 设置核对并记录"): upstream's ``get_max_token_count_for_single_tool()``
+    # is ``min(15% of the context window, TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_
+    # TOKENS=25000)`` (``holmes/core/llm.py:326-338``,
+    # ``holmes/common/env_vars.py:133,142``). At this project's context size
+    # (1_000_000 tokens, B6) the 25_000-token absolute cap binds, not the
+    # 15% figure (150_000 tokens) -- so upstream's real per-tool ceiling here
+    # is ~2.7% of the usable budget, well under this policy's 25%. This
+    # mechanism (``visible_view``'s stub fallback) is intentionally left
+    # wider: B1 already caps a single otel_demo view at the registration
+    # level (``max_view_bytes``, ~100 KiB ≈ 25_000 tokens at this
+    # module's own 4-bytes/token estimator -- the same upstream figure, by
+    # construction), so a view from this project's own tool profile never
+    # approaches even the *old* 25% figure in practice and this mechanism
+    # only ever fires as an extra backstop for a hypothetically larger future
+    # tool profile, not a live constraint today. Tightening it to upstream's
+    # ~2.7% is not done in this batch: no profile in this codebase currently
+    # produces a view large enough to make the two thresholds behave
+    # differently, so there is nothing to verify the tighter number against
+    # yet; recorded here as a follow-up if a future tool profile's views can
+    # approach this budget.
     single_tool_pct: float = 0.25
     stub_preview_chars: int = 512
 

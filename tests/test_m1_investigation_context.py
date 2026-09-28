@@ -51,9 +51,20 @@ def _wide(*, replies, model_requests=8, budget_limit=12):
 
 
 def _tool_rounds(count, *, start=1):
+    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): distinct
+    # arguments per round, not just a distinct call_id -- an exact repeat
+    # (same tool, same params) is no longer re-dispatched within one attempt,
+    # and every caller of this helper wants ``count`` genuinely separate
+    # dispatches.
     return [
         reply(
-            tool_calls=[tool_call(call_id=f"call-{start + index}")], finish="tool_calls"
+            tool_calls=[
+                tool_call(
+                    call_id=f"call-{start + index}",
+                    arguments=f'{{"expr":"rate(http_errors[{start + index}m])"}}',
+                )
+            ],
+            finish="tool_calls",
         )
         for index in range(count)
     ]

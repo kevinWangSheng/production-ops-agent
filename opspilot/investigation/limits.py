@@ -48,15 +48,19 @@ MAX_OUTPUT_TOKENS = 65_536
 # "deepseek-flash" and this is the only pricing row for it.
 #
 # The page gives context length only as the abbreviated "1M", never an exact
-# digit count. The same page's companion API reference
-# (https://api-docs.deepseek.com/api/create-chat-completion/, checked the
-# same day) states the output ceiling exactly: "The value must be between 1
-# and 384K (393216)" -- confirming DeepSeek's own K/M abbreviations on this
-# doc set are base-1024 (384 * 1024 == 393216). Applying that same,
-# provider-confirmed convention to "1M" (not independently verified as an
-# exact digit anywhere in DeepSeek's public docs) gives 1024 * 1024 ==
-# 1_048_576, the value used here.
-MAX_CONTEXT_TOKENS = 1_048_576
+# digit count. L3a's original pass read DeepSeek's own K/M abbreviations as
+# base-1024 (confirmed for "384K" == 393_216 by the companion API reference's
+# exact digit count) and applied that same convention to "1M", landing on
+# 1_048_576. The lead's 2026-09-28 batch-B supplement (B6,
+# docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) revisits that specific
+# extrapolation: unlike "384K", "1M" is never independently confirmed to an
+# exact digit anywhere in DeepSeek's public docs, so assuming the same
+# base-1024 reading for it is unverified. The conservative reading -- treat
+# "1M" as the round decimal 1_000_000 absent an exact digit count -- is used
+# here instead; it under-reads the true window if DeepSeek's "1M" is in fact
+# 1_048_576, which only ever makes this ceiling stricter than the provider's
+# real limit, never looser.
+MAX_CONTEXT_TOKENS = 1_000_000
 
 # Sized to a full-context request, not the earlier 512 KiB sketch (2026-09-28
 # user decision, L3a): "1M" tokens contain roughly a factor-of-~2.4 more
@@ -74,6 +78,12 @@ MAX_CONTEXT_TOKENS = 1_048_576
 # than one padded blob does, so this ceiling must clear that measured floor
 # with real margin, not sit right at it: 8 MiB (8_388_608 bytes), a little
 # over double the measured single-message floor.
+#
+# Re-checked 2026-09-28 (B6): the input budget shrank to context - output =
+# 1_000_000 - 65_536 = 934_464 tokens (smaller than the 983_040 this ceiling
+# was measured against), so the measured floor above is itself now an
+# over-estimate and this 8 MiB ceiling clears the real floor with more margin
+# than before, not less. No value change needed.
 MAX_HTTP_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024
 

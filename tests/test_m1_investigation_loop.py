@@ -1273,7 +1273,18 @@ def test_the_lease_is_renewed_before_every_live_tool_dispatch():
 
     loop2, request2, _, _, store2, _ = assemble(
         replies=[
-            reply(tool_calls=[tool_call("c1"), tool_call("c2")], finish="tool_calls")
+            reply(
+                tool_calls=[
+                    tool_call("c1"),
+                    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md):
+                    # distinct params, as the first half of this test already
+                    # does -- an exact repeat of c1 would not be dispatched
+                    # (or renewed) at all, defeating this test's "halted
+                    # before c2's dispatch" assertion below.
+                    tool_call("c2", arguments='{"expr":"up"}'),
+                ],
+                finish="tool_calls",
+            )
         ]
     )
     store2.__class__ = Renewing
@@ -1348,14 +1359,19 @@ def test_frozen_ceilings_match_the_v4_b2_values():
 
     The contract supplement (same task record, "合同补充") moved two more:
     L3a grows the context ceiling from the earlier 131_072 sketch to the
-    official DeepSeek Flash window, 1_048_576 (see
-    ``opspilot/investigation/limits.py`` for the sourced figure and date),
-    and grows the HTTP request-byte ceiling from 512 KiB to 8 MiB so it
-    cannot trip before that wider context budget does."""
+    DeepSeek Flash window, and grows the HTTP request-byte ceiling from
+    512 KiB to 8 MiB so it cannot trip before that wider context budget
+    does. Batch B's own supplement (B6,
+    docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md, lead decision
+    2026-09-28) revisits L3a's context figure: DeepSeek's pricing page states
+    only the abbreviated "1M", never an exact digit count, so the
+    conservative reading (1_000_000) replaces L3a's base-1024 extrapolation
+    (1_048_576) -- see ``opspilot/investigation/limits.py`` for the sourced
+    figure and date."""
     assert MAX_MODEL_REQUESTS_PER_RUN == 100
     assert MAX_TOOL_OPERATIONS_PER_RUN == 20
     assert MAX_OUTPUT_TOKENS == 65_536
-    assert MAX_CONTEXT_TOKENS == 1_048_576
+    assert MAX_CONTEXT_TOKENS == 1_000_000
     assert MAX_HTTP_REQUEST_BYTES == 8 * 1024 * 1024
     assert MAX_HTTP_RESPONSE_BYTES == 2 * 1024 * 1024
     assert MODEL_REQUEST_TIMEOUT_SECONDS == 360.0
