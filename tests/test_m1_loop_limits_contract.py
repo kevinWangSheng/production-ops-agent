@@ -7,6 +7,14 @@ align the loop with upstream HolmesGPT -- one anti-loop ceiling
 (``max_steps`` defaults to 100), a model that decides for itself when to stop
 calling tools and answer, and no budget sentence in the system prompt.
 
+L1a and L3a (added to the contract 2026-09-28 after independent review, see
+the task record's "合同补充" section) are written the same way, against
+``opspilot/investigation/limits.py`` at commit c1d5d82, before L1a/L3a were
+implemented: L1a (no-tool-call replies end the Run immediately, an invalid
+one forces exactly one final-report retry rather than another tool round)
+and L3a (the input budget must not shrink below its pre-2026-09-28 floor,
+and the HTTP request-byte ceiling must not trip before that budget does).
+
 Written from the public interface only (no implementation code read): the
 investigation loop's observable request/response shape
 (``tests.m1_investigation_support.assemble``), the tool executor's observable
@@ -19,16 +27,23 @@ to match it.
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
+from opspilot.investigation.context import estimate_tokens
 from opspilot.investigation.limits import (
     M1_FROZEN_LIMITS,
     MAX_CONTEXT_TOKENS,
+    MAX_HTTP_REQUEST_BYTES,
     MAX_MODEL_REQUESTS_PER_RUN,
     MAX_OUTPUT_TOKENS,
     RUN_WALL_SECONDS,
 )
-from opspilot.investigation.loop import InvestigationRequest
+from opspilot.investigation.loop import (
+    InvestigationRequest,
+    ModelCall,
+    serialized_request,
+)
 from opspilot.tools import TransportResponse
 from tests.m1_investigation_support import (
     TOOL_SCHEMAS,
@@ -58,6 +73,30 @@ _REQUIRED_STOP_SENTENCE = (
     "Use the tools as needed until the evidence is sufficient, then return the report."
 )
 _FINAL_REPORT_MARKER = "Collection is now CLOSED"
+# Not parseable JSON (a Markdown fence), the L1a example of an invalid
+# non-tool-call reply -- distinct from a citation failure, so it exercises
+# ``parse_report``'s own REPORT_INVALID path rather than the evidence check.
+_INVALID_FENCE_REPLY = '```json\n{"not": "bare json"}\n```'
+
+
+def _report_json_with_no_claims() -> str:
+    """A schema-valid report that cites no evidence at all.
+
+    Needed for the L1a tests below: they end a Run before any tool ever ran,
+    so no ``evidence_id`` exists yet for a claim to cite. ``incomplete`` +
+    ``inconclusive`` + a nonempty ``gaps`` + zero claims satisfies
+    ``ReportV2.coherent`` without needing a supported fact.
+    """
+    payload = {
+        "schema_version": "m0-report-v2",
+        "assessment_status": "incomplete",
+        "conclusion": "inconclusive",
+        "summary": "Ending without querying any tool; no claims are made.",
+        "claims": [],
+        "gaps": ["No evidence was gathered."],
+        "next_steps": [],
+    }
+    return json.dumps(payload, ensure_ascii=False)
 
 
 # -- fixture sanity (must stay green before and after the implementation) ----
@@ -154,6 +193,67 @@ def test_l1_forced_final_report_request_only_when_one_slot_remains():
     )
 
 
+# -- L1a: a no-tool-call reply ends the round immediately, valid or not -----
+
+
+def test_l1a_valid_report_with_no_tool_calls_ends_the_run_on_the_first_request():
+    """Not new on its own (an early valid report already ended the Run before
+    L1a); recorded here so the L1a section states the whole contrasting pair
+    at model_requests=100."""
+    loop, request, model, transport, store, sink = assemble(
+        replies=[reply(content=_report_json_with_no_claims())],
+        model_requests=100,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.model_requests_used == 1
+    assert len(model.calls) == 1
+    assert model.calls[0].tools == TOOL_SCHEMAS
+
+
+def test_l1a_invalid_non_tool_reply_forces_exactly_one_final_report_request():
+    """A non-final round with an invalid, no-tool-call reply must go straight
+    to the forced final-report request (no tools, JSON mode, the final-report
+    instruction and coverage message) -- not back to another tool-bearing
+    round, even though 98 requests of the 100-request budget remain."""
+    loop, request, model, transport, store, sink = assemble(
+        replies=[
+            reply(content=_INVALID_FENCE_REPLY, finish="stop"),
+            reply(content=_report_json_with_no_claims(), finish="stop"),
+        ],
+        model_requests=100,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed"
+    assert outcome.model_requests_used == 2
+    assert len(model.calls) == 2
+    assert model.calls[0].tools == TOOL_SCHEMAS
+    assert model.calls[1].tools is None
+    assert any(
+        _FINAL_REPORT_MARKER in str(message.get("content"))
+        for message in model.calls[1].messages
+    )
+
+
+def test_l1a_invalid_forced_final_report_ends_with_report_invalid():
+    """When the forced final-report request (triggered by the first invalid
+    reply) is itself invalid, the Run ends REPORT_INVALID after exactly two
+    requests -- it must not spend a third request on another tool round."""
+    loop, request, model, transport, store, sink = assemble(
+        replies=[
+            reply(content=_INVALID_FENCE_REPLY, finish="stop"),
+            reply(content=_INVALID_FENCE_REPLY, finish="stop"),
+        ],
+        model_requests=100,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "failed"
+    assert outcome.handoff_reasons == ("REPORT_INVALID",)
+    assert outcome.model_requests_used == 2
+    assert len(model.calls) == 2
+    assert model.calls[1].tools is None
+
+
 # -- L2: no more per-Run tool-call-count or cumulative-tool-time ceiling ----
 
 
@@ -240,6 +340,41 @@ def test_l3_model_max_tokens_is_65536_and_context_budget_is_unchanged():
     outcome = loop.run(request)
     assert outcome.execution == "completed"
     assert [call.max_tokens for call in model.calls] == [65_536, 65_536]
+
+
+# -- L3a: input budget must not shrink; the byte ceiling must not trip first -
+
+
+def test_l3a_input_budget_is_not_smaller_than_before_the_2026_09_28_decision():
+    """L3 alone (context unchanged at 131072, output raised to 65536) shrinks
+    the input budget from 114688 (131072-16384, the pre-2026-09-28 floor) to
+    65536. L3a requires the context ceiling to grow enough that the input
+    budget -- read live from the limits module, no value hardcoded here since
+    the task record has not pinned the official DeepSeek window yet -- is
+    back to at least that floor."""
+    input_budget = MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS
+    assert input_budget >= 114_688
+    assert M1_FROZEN_LIMITS.context_tokens - M1_FROZEN_LIMITS.output_tokens >= 114_688
+
+
+def test_l3a_http_request_byte_ceiling_does_not_trip_before_a_full_budget_request():
+    """A request sized to the (live) input budget must not be refused
+    REQUEST_TOO_LARGE by the byte ceiling before the context management ever
+    gets a chance to compact it. Sizing uses the loop's own token estimator
+    (``estimate_tokens``, 4 bytes/token) rather than a guessed ratio, and
+    reads both ceilings from the limits module rather than a hardcoded
+    number, so the check tracks whatever context window L3a settles on."""
+    input_budget = MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS
+    padding = "x" * (input_budget * 4)
+    call = ModelCall(
+        messages=({"role": "user", "content": padding},),
+        tools=None,
+        json_mode=False,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        timeout_seconds=30.0,
+    )
+    assert estimate_tokens(call.messages) >= input_budget
+    assert len(serialized_request(call)) <= MAX_HTTP_REQUEST_BYTES
 
 
 # -- L4: the Run wall is 7200 s, only as a stuck-run backstop ---------------
