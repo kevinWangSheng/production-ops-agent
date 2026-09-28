@@ -1336,13 +1336,21 @@ def test_a_fenced_settlement_leaves_the_reservation_occupied_and_records_history
 
 
 def test_frozen_ceilings_match_the_v4_b2_values():
-    assert MAX_MODEL_REQUESTS_PER_RUN == 4
+    """M1-01 (2026-09-28 user decision,
+    docs/tasks/2026-09-28-m1-01-loop-limits.md): the loop's single anti-loop
+    ceiling is the model-request count, raised 4 -> 100 (L1); the output
+    budget moved 16_384 -> 65_536 (L3); the Run wall backstop moved
+    1_800 -> 7_200 s (L4). ``MAX_TOOL_OPERATIONS_PER_RUN``/
+    ``MAX_TOOL_SECONDS_PER_RUN`` stay at their 2026-09-13 values -- L2 removed
+    the executor's own refusal on them, not the constants themselves (they
+    remain the durable ledger's backstop; see the task record's L2 note)."""
+    assert MAX_MODEL_REQUESTS_PER_RUN == 100
     assert MAX_TOOL_OPERATIONS_PER_RUN == 20
-    assert MAX_OUTPUT_TOKENS == 16_384
+    assert MAX_OUTPUT_TOKENS == 65_536
     assert MAX_HTTP_REQUEST_BYTES == 512 * 1024
     assert MAX_HTTP_RESPONSE_BYTES == 2 * 1024 * 1024
     assert MODEL_REQUEST_TIMEOUT_SECONDS == 360.0
-    assert RUN_WALL_SECONDS == 1800.0
+    assert RUN_WALL_SECONDS == 7200.0
     assert MAX_TOOL_SECONDS_PER_RUN == 240.0
     assert ACCEPTED_RESPONSE_MODEL == "deepseek-flash"
 
@@ -1795,6 +1803,17 @@ def test_a_tool_plan_missing_reasoning_content_is_rejected_before_dispatch():
 
 
 def test_prompt_revision_is_stable_across_instance_budgets():
+    """``prompt_revision`` never moves with ``model_requests`` for any variant.
+
+    Before M1-01 (2026-09-28 user decision) ``replay-candidate`` still had
+    ``{steps}`` in its opening, so the two faces genuinely differed even
+    though the revision did not -- the L1a/L1b split. L5 removed the budget
+    sentence from ``replay-candidate`` entirely (see ``REPLAY_OPENING``), so
+    it no longer has an L1b instance value to vary the face on and the faces
+    are now equal too; that split is still exercised by
+    ``baseline-multi-step``, which keeps the ``{steps}`` slot (see
+    ``tests/test_instruction_discipline.py::test_instance_values_do_not_move_the_revision``).
+    """
     from opspilot.instructions.discipline import prompt_revision, render
     from opspilot.investigation.reports import REPORT_CONTRACT
 
@@ -1811,14 +1830,20 @@ def test_prompt_revision_is_stable_across_instance_budgets():
             "replay-candidate", model_requests=4, report_contract=REPORT_CONTRACT
         ).encode()
     ).hexdigest()
-    assert face_one != face_four
+    assert face_one == face_four
 
 
 def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
     """Two real loop runs that differ only in ``model_requests`` (an L1b
     instance value) must report the same ``ModelProfile.prompt_revision`` --
-    the exact value ``prompt_revision_versions`` would put in ``versions`` --
-    even though their rendered L1 face genuinely differs (C3 §5)."""
+    the exact value ``prompt_revision_versions`` would put in ``versions``
+    (C3 §5). Before M1-01 (2026-09-28 user decision) the rendered L1 face
+    still genuinely differed, because the budget sentence embedded
+    ``model_requests`` as ``{steps}``; L5 dropped that sentence from
+    ``replay-candidate``'s opening (see ``REPLAY_OPENING``), so the variant no
+    longer has any L1b instance value left to vary the face on, and the two
+    faces are now equal too -- ``prompt_revision``'s independence from
+    ``model_requests`` is unaffected either way."""
     from opspilot.investigation.loop import prompt_revision_versions
 
     def with_supplied_view(request, evidence_id):
@@ -1853,7 +1878,7 @@ def test_loop_outcome_prompt_revision_ignores_the_run_instance_budget():
     expected = prompt_revision_versions()["prompt_revision"]
     assert outcome_one.prompt_revision == expected
     assert outcome_four.prompt_revision == expected
-    assert outcome_one.prompt_face_sha256 != outcome_four.prompt_face_sha256
+    assert outcome_one.prompt_face_sha256 == outcome_four.prompt_face_sha256
 
 
 def test_prompt_revision_versions_moves_with_the_l2_report_contract_text():

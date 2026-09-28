@@ -630,8 +630,15 @@ class ReadOnlyToolExecutor:
         decision = self._control_decision()
         if decision:
             return self._refuse(operation, "denied", decision)
-        if self._operations_used >= scope.max_operations:
-            return self._refuse(operation, "denied", "OPERATION_BUDGET_EXHAUSTED")
+        # M1-01 (2026-09-28 user decision, docs/tasks/2026-09-28-m1-01-loop-limits.md
+        # L2): no per-Run ceiling on operation count or cumulative tool time --
+        # the loop's single anti-loop ceiling is the model-request count (L1).
+        # ``scope.max_operations``/``scope.max_tool_seconds`` still bound what a
+        # ``QueryScope`` may declare (__post_init__), but this method no longer
+        # refuses a dispatch on either one. The per-call timeout, result-byte
+        # ceiling and view truncation are untouched (they guard one call, not
+        # investigation length).
+        #
         # Re-read the trusted clock here rather than reusing ``started_at``.
         # The control lookup above is a Controller round trip of unbounded
         # duration, so an authorization that was still valid when the request
@@ -644,16 +651,9 @@ class ReadOnlyToolExecutor:
         remaining_deadline = (scope.deadline - authorized_at).total_seconds()
         if remaining_deadline <= 0:
             return self._refuse(operation, "denied", "DEADLINE_EXCEEDED")
-        remaining_budget = scope.max_tool_seconds - self._tool_seconds_used
-        if remaining_budget <= 0:
-            return self._refuse(operation, "denied", "TIME_BUDGET_EXHAUSTED")
         # Section 8 requires the SDK timeout and the gateway bound together;
-        # the authorization deadline and the remaining budget always win.
-        timeout = min(
-            plan.registration.request_timeout_seconds,
-            remaining_deadline,
-            remaining_budget,
-        )
+        # the authorization deadline always wins.
+        timeout = min(plan.registration.request_timeout_seconds, remaining_deadline)
         operation = replace(
             operation,
             timeout_seconds=timeout,

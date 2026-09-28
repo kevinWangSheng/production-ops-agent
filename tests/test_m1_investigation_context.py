@@ -31,7 +31,9 @@ from tests.m1_investigation_support import (
     tool_call,
 )
 
-WIDE = RunLimits(model_requests=12)
+# M1-01 (2026-09-28 user decision): the frozen model-request ceiling moved
+# 4 -> 100, so "wider than frozen" now needs a value past 100, not past 4.
+WIDE = RunLimits(model_requests=120)
 
 
 class Crash(RuntimeError):
@@ -100,7 +102,9 @@ def test_input_snapshot_round_trips_and_rejects_a_tampered_tool_face():
     with pytest.raises(ContextError, match="INPUT_INVALID"):
         InvestigationInput.from_json(tampered)
     with pytest.raises(ContextError, match="INPUT_INVALID"):
-        InvestigationInput.from_json({**snapshot, "model_requests": 99})
+        # Past WIDE.model_requests (120, M1-01 2026-09-28), not just past the
+        # old 4-request freeze.
+        InvestigationInput.from_json({**snapshot, "model_requests": 999})
 
 
 def test_frozen_limits_are_the_default_and_a_wider_instance_is_not_within_them():

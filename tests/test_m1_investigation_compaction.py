@@ -396,7 +396,14 @@ def test_calibration_grows_with_the_provider_count_and_survives_a_rebuild():
     loop, request, _, _, store, _ = assemble(
         replies=[], budget_limit=8, model_requests=4
     )
-    request = replace(request, limits=RunLimits(model_requests=8))
+    # ``output_tokens`` pinned to its pre-M1-01 value (2026-09-28 user decision
+    # raised the frozen default to 65_536, docs/tasks/2026-09-28-m1-01-loop-limits.md
+    # L3): this test is about the calibration mechanism surviving a round whose
+    # real usage vastly exceeds the estimate, not about the current output-token
+    # freeze, and the wider L3 reservation would otherwise shrink the context
+    # budget enough for round 2's 45x-calibrated estimate to trip
+    # CONTEXT_EXHAUSTED before the calibration value is ever recorded.
+    request = replace(request, limits=RunLimits(model_requests=8, output_tokens=16_384))
     heavy = reply(tool_calls=[tool_call()], finish="tool_calls")
     heavy = replace(heavy, usage={"prompt_tokens": 50_000, "completion_tokens": 1})
     loop.model = ScriptedModel([heavy, _cite_first(store)])

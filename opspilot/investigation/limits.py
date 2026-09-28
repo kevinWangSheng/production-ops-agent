@@ -1,10 +1,14 @@
 """Frozen M1-01 per-Run resource ceilings.
 
 Source: ``docs/testing/first-investigation-v4-2026-09-10.md``, user-approved
-2026-09-13 (ROADMAP B2). Raising a ceiling needs a new freeze, not a code
-change alone. Tool-side ceilings already live on the gateway; this module
-holds the investigation-loop ceilings and re-exports the tool ones so a
-caller can read one table.
+2026-09-13 (ROADMAP B2), superseded 2026-09-28 by the user decision recorded
+in ``docs/tasks/2026-09-28-m1-01-loop-limits.md``: the per-Run budget
+scaffolding is dropped and the loop is aligned with upstream HolmesGPT — one
+anti-loop ceiling (the model-request count, default 100), no separate tool
+call-count or cumulative tool-time ceiling. Raising a ceiling still needs a
+new freeze, not a code change alone. Tool-side ceilings already live on the
+gateway; this module holds the investigation-loop ceilings and re-exports the
+tool ones so a caller can read one table.
 """
 
 from __future__ import annotations
@@ -16,18 +20,25 @@ from opspilot.tools.executor import MAX_OPERATIONS_PER_RUN, MAX_TOOL_SECONDS_PER
 from opspilot.tools.registry import MAX_REQUEST_TIMEOUT_SECONDS, MAX_RESULT_BYTES
 
 # Per-Run model HTTP requests, including the reserved final-report request.
-MAX_MODEL_REQUESTS_PER_RUN = 4
+# 100, aligned with upstream HolmesGPT's default ``max_steps``
+# (``holmes/config.py:112``) -- the loop's single anti-loop ceiling as of the
+# 2026-09-28 user decision (docs/tasks/2026-09-28-m1-01-loop-limits.md, L1).
+MAX_MODEL_REQUESTS_PER_RUN = 100
 
 # Completion budget handed to the provider. Distinct from the 131072 context
-# window; the 2026-09-13 freeze is 16_384, not the earlier 32_768 sketch.
-MAX_OUTPUT_TOKENS = 16_384
+# window; 65_536 matches DeepSeek's thinking-mode default max output
+# (https://api-docs.deepseek.com/api/create-chat-completion/), superseding
+# the 2026-09-13 freeze of 16_384 (2026-09-28 user decision, L3).
+MAX_OUTPUT_TOKENS = 65_536
 MAX_CONTEXT_TOKENS = 131_072
 
 MAX_HTTP_REQUEST_BYTES = 512 * 1024
 MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024
 
 MODEL_REQUEST_TIMEOUT_SECONDS = 360.0
-RUN_WALL_SECONDS = 1800.0
+# A stuck-run backstop only (ADR-0005's timeout sweep), not a routine budget:
+# 7200, up from the 2026-09-13 freeze of 1800 (2026-09-28 user decision, L4).
+RUN_WALL_SECONDS = 7200.0
 
 
 @dataclass(frozen=True)
