@@ -374,9 +374,12 @@ def test_b1_traces_search_limit_above_the_old_cap_of_20_reaches_the_backend(
 
 
 def test_b1_traces_view_no_longer_caps_sampled_spans_at_20():
-    """Row-cap-free assertion: 60 *small* spans stay comfortably under even
-    today's 16 KiB ``max_view_bytes``, so a returned-row count above 20
-    proves the row cap (not the byte cap) moved."""
+    """Row-cap-free assertion: 40 *small* spans (~370 bytes each projected --
+    corrected count: the original 60 was sized against a stale ~123
+    bytes/row estimate that had actually only measured the *old* code's
+    20-row-capped output) stay comfortably under today's 16 KiB
+    ``max_view_bytes``, so a returned-row count above 20 proves the row cap
+    (not the byte cap) moved."""
     start_us = int(_FRAME_1H.start.timestamp() * 1_000_000) + 1_000_000
     from opspilot.tools.otel_demo import project_traces
     from opspilot.tools.registry import canonical
@@ -385,7 +388,7 @@ def test_b1_traces_view_no_longer_caps_sampled_spans_at_20():
         {
             "traceID": "trace0",
             "processes": {"p1": {"serviceName": "checkout"}},
-            "spans": [_small_span(i, start_us=start_us) for i in range(60)],
+            "spans": [_small_span(i, start_us=start_us) for i in range(40)],
         }
     ]
     record, _s, _e = project_traces(
@@ -425,7 +428,7 @@ def test_b1_traces_view_byte_cap_matches_the_upstream_tool_result_scale(
     view = outcome.model_view
     assert view["truncated"] is False, view.get("omitted_bytes")
     assert view["omitted_rows"] == 0
-    assert len(view["data"]["sampled_spans"]) == 20
+    assert len(view["content"]) == 20
 
 
 def test_b1_metrics_view_byte_cap_also_widened(monkeypatch):
@@ -440,7 +443,7 @@ def test_b1_metrics_view_byte_cap_also_widened(monkeypatch):
     view = outcome.model_view
     assert view["truncated"] is False, view.get("omitted_bytes")
     assert view["omitted_rows"] == 0
-    assert len(view["data"]["result"]) == 1200
+    assert len(view["content"]) == 1200
 
 
 def test_sanity_traces_search_within_the_old_cap_still_works(monkeypatch):
