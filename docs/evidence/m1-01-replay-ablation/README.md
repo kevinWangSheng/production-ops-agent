@@ -119,3 +119,74 @@
 ## 目录（第二阶段新增）
 
 `summary2.json`、`reviews2/`（reviewer-1…24、adjudicator-17…19、25…27 的 jsonl，`blind-mapping.json`、`adjudication.json`）、`samples/g5-*`、`samples/g0-{pc,cart}-fault-r*`、`samples/g5-{pc,cart}-fault-r*`、`heldout/`（`lab-up.log`、`lab-stop.log`、`web.log`、`worker.log`、`fault-timeline.jsonl`、`observe-*.json`、`rebuild-manifest.json`、`deepseek-balance-after-phase2.json`、`pc-fault/` 与 `cart-fault/` 各含 6f 同款 `request/intake/window/observe-pre/observe-post/sse/events/incident.html/ledger.json/report.json`）、`scripts/`（新增 `heldout_fault.py`、`run_heldout_case.sh`、`blind_pack2.py`、`adjudicate_pack.py`、`summarize2.py`；`replay.py` 新增组 5 与 250 上限；`rebuild_final_requests.py` 支持 `intake:<key>=<case>`）。
+
+# 第三阶段（阶段 C）：官方式指令、隔离上下文提案、统一 Opus 复评（2026-09-27 UTC 20:52–21:35）
+
+授权：lead 阶段 C 指令，模型 HTTP 本任务上限 50（实际组 7 用 40 次）；产品代码零改动（`git status opspilot/` 为空）；本阶段不需要 OTel/colima，55431 PG 沿用本 worktree `tmp/` 数据，未新增启动。DeepSeek 余额：组 6/6b 生成前 38.08 → 组 6/6b 后 35.30（`heldout/deepseek-balance-after-phase-c.json`，2.78 CNY／80 次）；组 7 前 35.26 → 后 31.63（`heldout/deepseek-balance-after-group7.json`，3.63 CNY／40 次）；阶段 C 合计约 6.45 CNY／120 次。评审与裁决不消耗 DeepSeek 额度（用 Agent 工具、`model: opus`，不经 DeepSeek）。
+
+## 两个新组
+
+- **组 6「官方式最终指令」**（`scripts/replay.py` 的 `OFFICIAL_INSTRUCTION`）：把运行级覆盖消息（`run_coverage_message`）移到最终报告指令**之前**，最终指令整条替换为一段结构化的要点式提示（禁止默认填充状态码、按视图给出的计数/区间转述而非重新计算、把缺失/采样/截断/空/非 ok 数据当作未知或缺口、引用完整 evidence_id），系统提示与其余消息不变。
+- **组 6b**：组 6 + `span_groups.py`（与组 3 同一算法，按 service+operation 预算好行数/状态分布/duration 区间）。
+- **组 7「隔离上下文提案」**（`scripts/group7_transform.py`，隔离上下文 Codex 提出，原样复制、未改一字）：不改最终指令原文，而是（a）在系统提示末尾追加一段状态判定纪律段落，（b）给每个像 span 表的 JSON 工具结果追加 `model_view_index`（按 service+operation 的可见行数、`status_state`/`status_tags` 计数、`error_by_visible_tags` 为真的行数、duration 区间，以及 `parent_is_visible=true` 的可见父子边），（c）在运行级覆盖消息末尾追加一段最终自检清单（spans_shown 与 trace 计数分开、同标签行才能合并统计、逐字核对 ID 计数、父子关系要求可见父引用、每条数值/状态结论都要标 evidence_id、保留 incomplete/truncated/no_data 视图为缺口）。三处都验证了要改的锚点存在才落地（系统消息、覆盖消息前缀 `"Run coverage summary, computed from the structured fields"`），无锚点会直接报错，未触发过。
+
+组 6/6b 各在 6f 四个上下文（4 Run × 5 次）与两个留出上下文（2 Run × 10 次）各生成 20 个样本，共 80。组 7 同规模，共 40（`ledger.jsonl` 累计 280 条）。`validation.json` 已覆盖全部 280 个样本。
+
+## 统一复评：组 0/5/6/6b/7，Opus，200 样本
+
+用户决定这一轮复评模型从 Fable 换成 Opus，范围收窄为组 0、5、6、6b、7（不含组 1、3），6f 与两个留出上下文各 20 个样本、共 200。方法与阶段 B 相同（`scripts/blind_pack3.py`／`adjudicate_pack3.py`／`summarize3.py`，逻辑与 `blind_pack2.py`／`adjudicate_pack.py`／`summarize2.py` 一致，只换了目录名与模型）：
+
+- 200 个样本随机打乱、匿名编号，6 个 Run 别名（R1–R6，覆盖 6f 四个 Run 与两个留出 Run）随机重新映射，与之前各阶段的映射不复用。
+- 16 位全新上下文的 Opus 评审者（Agent 工具，`model: opus`），每人 25 个样本，每个样本 2 位独立评审；评审者只拿 `review-rubric.md` 原文、该 Run 的基线视图（不含 `span_groups`／`model_view_index`，避免泄露组别）与报告原文，不知组别与实验目的。
+- 两位评审在 a 类计数、e 类计数或 verdict 任一不同即视为不一致：200 个样本中 50 个不一致，交 5 位全新上下文的 Opus 裁决者（每人 10 个，重新核对报告与视图后独立给出最终计数），150 个一致样本取共同结果。
+- 之前 Fable 的评审结果**保留不删**：阶段 C 样本生成后，上一个 Agent 曾用 `blind_pack2.py` 起过一轮更大范围（组 0/1/3/5/6/6b，200 样本）的 Fable 复评，中断时只完成 8/16 个评审者（评审者 25–32，各 10 个样本），没有任何样本凑够两份评审，从未产出可用结果；原文保存在 `reviews2/phase-c-fable-partial-superseded/`（含说明），**不计入**本节任何数字。本节结论以 `reviews3/`／`summary3.json`（Opus 这套）为准。
+
+评审一致率（200 样本，`summary3.json` `overall`）：a/e 计数完全一致 152/200（76%）；错误有无一致 172/200（86%）；verdict 一致 197/200（98.5%）。分场景看：6f 100 样本完全一致 79（79%）、有无一致 88（88%）、verdict 97（97%）；留出 100 样本完全一致 73（73%）、有无一致 84（84%）、verdict 100（100%）——与阶段 B 一致，留出场景数值更密，评审者对区间/计数归属分歧更大，但比阶段 B 的 Fable 复评（6f 76%／留出 48%）更一致。
+
+## 结果：6f（4 上下文 × 5 次，n=20／组）
+
+| 组 | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | fault 窗含错（n=10） | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|---|
+| 0 基线 | 24 | 24 | 19/20 | 9/10 | 19/20 | 19/20 | 8,825 |
+| 5 规则句+span_groups | 7 | **5** | 8/20 | 2/10 | 18/20 | 20/20 | 9,255 |
+| 6 官方式指令 | 19 | 17 | 18/20 | 8/10 | 15/20 | 20/20 | 8,050 |
+| 6b 官方式指令+span_groups | 10 | 7 | 12/20 | 7/10 | 19/20 | 18/20 | 8,666 |
+| 7 隔离上下文提案 | **3** | 11 | 12/20 | 5/10 | 17/20 | 19/20 | 11,585 |
+
+## 结果：留出（2 上下文 × 10 次，n=20／组，全部为 fault 窗）
+
+| 组 | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|
+| 0 基线 | 18 | 56 | 19/20 | 20/20 | 20/20 | 7,920 |
+| 5 规则句+span_groups | **6** | 26 | 14/20 | 14/20 | 20/20 | 9,181 |
+| 6 官方式指令 | 15 | 35 | 18/20 | 19/20 | 20/20 | 8,409 |
+| 6b 官方式指令+span_groups | 13 | **11** | 16/20 | 17/20 | 20/20 | 8,436 |
+| 7 隔离上下文提案 | 7 | 20 | 17/20 | 16/20 | 20/20 | 11,686 |
+
+## 校验失败原因分布（`validation.json` 的 `reason`／citation `details`）
+
+6f：组 0 = target_ref_not_authorized×1、target_ref_not_observed_by_view×1；组 5 = unknown_evidence_id×2；组 6 = REPORT_INVALID（JSON 解析错误）×1、target_ref_not_observed_by_view×2、unknown_evidence_id×2、fact_cites_non_ok_view×2；组 6b = REPORT_INVALID×1；组 7 = OUTPUT_LENGTH（触顶 16384）×2、REPORT_INVALID×1。
+
+留出：组 0 = 无（20/20 通过）；组 5 = target_ref_not_observed_by_view×2、unknown_evidence_id×3、fact_cites_non_ok_view×2、REPORT_INVALID×1；组 6 = target_ref_not_observed_by_view×1、unknown_evidence_id×1；组 6b = unknown_evidence_id×1、REPORT_INVALID×2；组 7 = REPORT_INVALID×2、unknown_evidence_id×2、target_ref_not_observed_by_view×1。
+
+`unknown_evidence_id`／`target_ref_not_observed_by_view` 是引用绑定错误（多为 evidence_id 抄漏字符，或引用了该 view 未观测到的 target）；`fact_cites_non_ok_view` 是 fact 类声明引用了 `no_data`／非 ok 视图；`REPORT_INVALID`（无 `details` 的通用原因）在这里都对应 JSON 解析失败（语法错或截断）；`OUTPUT_LENGTH` 是触顶 `max_tokens=16384`。
+
+## 结论（阶段 C）
+
+- 没有一个组在两个场景、两类错误上同时最优。**组 5（规则句+span_groups，阶段 A/B 的最优组合）在 a 类上仍是最稳的选择**：6f 第二低（7，仅次于组 7 的 3）、留出最低（6）；e 类上 6f 最低（5），留出第二低（26，次于组 6b 的 11）。
+- **组 7（隔离上下文提案）把 6f 的 a 类压到全组最低（3，低于组 5 的 7）**，留出 a 类也接近最优（7，次于组 5 的 6）——只加计算辅助与自检清单、不改最终指令原文，对状态默认填充这类错误的抑制效果不弱于重写指令。代价是 e 类没有同步改善（6f 11、留出 20，均高于组 5），平均输出 token 比组 5 高约 25–28%（6f 11,585 vs 9,255；留出 11,686 vs 9,181），且是唯一在 6f 出现 `OUTPUT_LENGTH` 触顶的组。
+- **组 6b（官方式指令+span_groups）在留出场景把 e 类压到全组最低（11，低于组 5 的 26）**，但 6f 上 e 类（7）和 a 类（10）都不如组 5；说明"重写指令+计算辅助"与"保留原指令、只加规则句+计算辅助"哪个更好，会随上下文的数值密度反转——留出场景（cart-fault 的 EmptyCart 延迟/错误计数、pc-fault 的 GetProduct 系列）数值远比 6f 密集，官方式指令的分组小节表述可能更利于对齐这类密集计数。
+- **组 6（只重写指令、不加计算辅助）在两个场景都不如组 6b**，且 6f 校验通过率最低（15/20，4 类引用/解析错误都出现），说明单靠更长的结构化指令、没有计算辅助支撑时，模型更容易在引用绑定上出错。
+- 上游口径（verdict 正确性）在两个场景所有组都是 18–20/20，与错误类别无关，和阶段 A/B 的结论一致（normal 窗的 `other` 保守判定拉低个别组 1–2 个）。
+- 建议的下一步：组 5 或组 6b 与组 7 的计算辅助/自检清单叠加，分别在 6f 与留出两种数值密度下验证是否能同时压低 a 与 e；本阶段没有跑任何三者叠加的组合。
+
+## 局限（阶段 C）
+
+- 每组每场景仍是 20 个样本（6f 4 Run × 5、留出 2 Run × 10），单个 Run 的波动仍可能主导某一类计数（如阶段 A/B 已观察到的模式），本阶段未重新核对每组按 Run 拆分后的分布。
+- 评审改用 Opus 后一致率提高（6f 79%／留出 73% vs 阶段 B Fable 的 76%／48%），但留出场景仍明显低于 6f，复评的绝对计数应以本节裁决后的 `summary3.json` 为准，不与阶段 A/B 的 Fable 计数直接相加比较。
+- 组 7 的转换函数由隔离上下文 Codex 提出，本任务只做了「锚点存在性」校验（系统消息存在、覆盖消息前缀匹配）与人工抽查（`model_view_index` 结构、guard 文本插入位置），没有额外的正确性证明；`docs/evidence/m1-01-replay-ablation/scripts/group7_transform.py` 是其原文，未改一字。
+- 中断前的 Fable 部分复评（`reviews2/phase-c-fable-partial-superseded/`）范围含组 1、3，与本阶段组范围不同，且从未凑齐任何样本的两份评审，不能与本节数字互相印证或合并。
+
+## 目录（阶段 C 新增）
+
+`summary3.json`、`reviews3/`（reviewer-1…16、adjudicator-17…21 的 jsonl，`blind-mapping.json`、`adjudication.json`）、`reviews2/phase-c-fable-partial-superseded/`（中断前 8 个 Fable 评审者原文 + `NOTE.md` + `blind2-mapping-snapshot.json`，保留不用于比较）、`samples/g6-*`、`samples/g6b-*`、`samples/g7-*`、`heldout/deepseek-balance-after-phase-c.json`、`heldout/deepseek-balance-after-group7.json`、`scripts/`（新增 `group7_transform.py`、`blind_pack3.py`、`adjudicate_pack3.py`、`summarize3.py`；`replay.py` 新增组 6/6b/7 与 290 上限）。
