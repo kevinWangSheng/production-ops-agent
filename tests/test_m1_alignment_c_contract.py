@@ -34,21 +34,33 @@ change):
   which does not touch the feedback's content and so is insensitive to C2.
 * C3: "span_groups 计入视图哈希" is tested directly (the emitted
   ``view_sha256`` must equal ``canonical_hash`` of the view that already
-  carries ``span_groups``). "计入字节上限" is not independently pinned with a
-  byte-boundary fixture -- doing so would require measuring the new byte math
-  against an implementation that does not exist yet (the same reason B1's own
-  byte-truncation test, ``test_m1_view_explicit_contract.py``, measured
-  rather than guessed its span count); what *is* tested is the sharper,
-  unambiguous half of the same sentence: when the row-fit truncation already
-  drops rows, ``span_groups`` must reflect only what is actually shown, never
-  the dropped rows (a synthetic fixture where the omitted rows carry an
-  outlier ``duration_us`` that must not leak into ``duration_us_min``).
+  carries ``span_groups``). "计入字节上限" is tested two ways: a
+  byte-boundary fixture (below, added per 2026-09-28 review follow-up) with
+  260 distinct-operation spans, empirically measured (not guessed) so the
+  row array alone canonicalizes to 96201 bytes -- under ``MAX_VIEW_BYTES``
+  (102400) on its own -- while adding the resulting 260-group ``span_groups``
+  pushes the naive combined total to 133122, forcing a conforming view to
+  drop more rows than row-only fitting would; and the sharper, unambiguous
+  half of the same sentence already covered without needing that
+  measurement: when the row-fit truncation already drops rows for an
+  unrelated reason (oversized detail fields), ``span_groups`` must reflect
+  only what is actually shown, never the dropped rows (a fixture where the
+  omitted rows carry an outlier ``duration_us`` that must not leak into
+  ``duration_us_min``).
 * C3's status/error/duration fields are asserted with only numeric-valued
   status tags (``rpc.grpc.status_code``, ``http.status_code``), matching the
   contract's own literal example (``"rpc.grpc.status_code=0": 13``) and
   avoiding the reference script's own idiosyncratic string/bool formatting
   (``json.dumps`` / bare ``str()``) for tag values, which is an
   implementation detail of that script, not contract text.
+
+2026-09-28 independent-review follow-up (2 required + 1 optional, requested
+by the team lead after the first review pass): the byte-cap fixture above
+(C3), a schema-failure analogue of the C2 cap-at-50 test (120 claims with an
+empty ``text`` field -- a pydantic ``ValidationError`` with one ``loc`` entry
+per claim, not a citation failure), and a light guard that ``span_groups``
+is additive and does not disturb the generic (non-trace-specific) view
+fields ``_record()`` already builds for every tool.
 
 Conflicting existing tests (not modified here; the implementer's call how to
 resolve, per the task's own "既有测试因合同变化的修改逐条记录"):
@@ -83,6 +95,7 @@ from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.persistence import Lease
 from opspilot.tools import ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.otel_demo import (
+    MAX_VIEW_BYTES,
     TARGET_ID,
     TOOL_SCHEMAS,
     TRACES_TOOL,
@@ -90,7 +103,7 @@ from opspilot.tools.otel_demo import (
     otel_demo_executor_factory,
     otel_demo_face,
 )
-from opspilot.tools.registry import canonical_hash
+from opspilot.tools.registry import canonical, canonical_hash
 from tests.m1_investigation_support import assemble, reply, tool_call
 from tests.m1_tool_support import FakeClock, RecordingSink, body
 from tests.test_m1_otel_demo_contract import (
@@ -176,11 +189,11 @@ def _final_retry_feedback(model) -> str:
 
 def _claim_marker_positions(text: str) -> dict[int, int]:
     """Every ``claim``/``claims`` token immediately (within 20 non-digit
-    characters) followed by a 0/1/2-digit index, mapped to its first
-    position in *text*. Structural, not a pinned reason string -- see the
-    module docstring's interpretive note on C2."""
+    characters) followed by a 1-to-3-digit index (fixtures below go up to
+    119), mapped to its first position in *text*. Structural, not a pinned
+    reason string -- see the module docstring's interpretive note on C2."""
     positions: dict[int, int] = {}
-    for match in re.finditer(r"claims?[^0-9]{0,20}(\d{1,2})\b", text, re.IGNORECASE):
+    for match in re.finditer(r"claims?[^0-9]{0,20}(\d{1,3})\b", text, re.IGNORECASE):
         index = int(match.group(1))
         positions.setdefault(index, match.start())
     return positions
@@ -457,6 +470,53 @@ def test_c2_json_parse_failure_feedback_includes_a_position_description():
     assert re.search(
         r"\bline\b.{0,20}\bcolumn\b|\bchar(?:acter)?\b\s*\d+", feedback, re.IGNORECASE
     ), f"a JSON parse failure must include a position description: {feedback!r}"
+
+
+def test_c2_schema_failure_feedback_is_also_capped_at_50_with_truncation_note():
+    """Review follow-up: the cap-at-50-with-truncation-note requirement is
+    not specific to citation failures -- a schema (pydantic) failure with
+    many broken claims must get the same treatment. 120 claims each with an
+    empty ``text`` field fail ``ReportV2``'s ``Text = Annotated[str,
+    Field(min_length=1)]`` constraint; ``ReportV2.model_validate`` raises one
+    ``ValidationError`` whose ``.errors()`` carries exactly 120 entries, each
+    ``loc`` naming its own claim index (``('claims', i, 'text')``) --
+    verified against pydantic directly before writing this fixture. Today
+    this is a bare parse failure (``report`` is ``None``), so
+    ``report_retry_feedback`` has no per-claim detail to draw on at all."""
+    claims = [
+        {"kind": "hypothesis", "text": "", "evidence_ids": []} for _ in range(120)
+    ]
+    payload = {
+        "schema_version": "m0-report-v2",
+        "assessment_status": "incomplete",
+        "conclusion": "inconclusive",
+        "summary": "One hundred twenty claims, each with an empty text field.",
+        "claims": claims,
+        "gaps": ["Placeholder."],
+        "next_steps": [],
+    }
+    loop, request, model, transport, store, sink = assemble(
+        replies=[
+            reply(content=json.dumps(payload, ensure_ascii=False), finish="stop"),
+            reply(content=_clean_incomplete_report(), finish="stop"),
+        ],
+        model_requests=5,
+    )
+    outcome = loop.run(request)
+    assert outcome.execution == "completed", outcome.handoff_reasons
+    feedback = _final_retry_feedback(model)
+    assert "REPORT_INVALID" in feedback
+    markers = _claim_marker_positions(feedback)
+    assert len(markers) <= 50
+    for index in (0, 1, 25, 49):
+        assert index in markers, f"claim {index} must still be listed: {feedback!r}"
+    assert 50 not in markers and 119 not in markers, (
+        "at most 50 items, in ascending claim order -- claims 50+ must not "
+        f"appear: {feedback!r}"
+    )
+    assert re.search(r"truncat\w*|\bmore\b|\b120\b", feedback, re.IGNORECASE), (
+        f"a truncated list must say so: {feedback!r}"
+    )
 
 
 # =============================================================================
@@ -776,3 +836,84 @@ def test_c3_span_groups_present_and_internally_consistent_on_the_real_checkout_f
         assert sum(g["status"].values()) == g["rows"]
         assert 0 <= g["error_rows"] <= g["rows"]
         assert g["duration_us_min"] <= g["duration_us_max"]
+
+
+def test_c3_span_groups_counts_toward_the_view_byte_cap(monkeypatch):
+    """Review follow-up (2026-09-28 independent review, P2): span_groups
+    must itself count against ``MAX_VIEW_BYTES``, not just the row array
+    ``_fit_rows`` already bounds today.
+
+    260 minimal spans, each its own operation (empirically measured, not
+    guessed -- see the module docstring): the row array alone canonicalizes
+    to 96201 bytes, ~6 KiB under ``MAX_VIEW_BYTES`` (102400) -- content alone
+    would not need to truncate under today's rows-only accounting. Because
+    every span has a distinct operation, span_groups has 260 entries and
+    canonicalizes to another ~36 KiB on top, for an unaccounted combined
+    total of 133122 bytes -- well over the cap. A conforming view must drop
+    more rows than row-only fitting would, to leave room for span_groups,
+    and the final serialized view (rows and span_groups together) must
+    still fit under the cap."""
+    start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
+    ROW_COUNT = 260
+
+    def make_span(i: int) -> dict:
+        return {
+            "traceID": "t-cardinality",
+            "spanID": f"span{i:05d}",
+            "operationName": f"op-{i:05d}",
+            "startTime": start_us + i,
+            "duration": 100 + i,
+            "processID": "p1",
+            "tags": [],
+            "logs": [],
+            "references": [],
+        }
+
+    trace = {
+        "traceID": "t-cardinality",
+        "spans": [make_span(i) for i in range(ROW_COUNT)],
+        "processes": {"p1": {"serviceName": "checkout", "tags": []}},
+    }
+    synthetic_body = json.dumps({"data": [trace]}).encode()
+    opener = FakeOpener(routes={"/api/traces": synthetic_body})
+    executor = _trace_executor(monkeypatch, opener)
+    outcome = executor.execute(_trace_call({"service": "checkout", "limit": ROW_COUNT}))
+    view = outcome.model_view
+
+    total_bytes = len(canonical(view).encode("utf-8"))
+    assert total_bytes <= MAX_VIEW_BYTES, (
+        "span_groups must count toward the view byte cap: "
+        f"{total_bytes} bytes (cap {MAX_VIEW_BYTES})"
+    )
+    assert view["truncated"] is True and view["omitted_rows"] > 0, (
+        "260 rows fit alone (96201 B < cap) under row-only accounting; a "
+        f"conforming view must drop more once span_groups is counted: {view!r}"
+    )
+    groups = view["span_groups"]
+    assert sum(g["rows"] for g in groups) == len(view["content"]), (
+        "span_groups must summarize exactly the rows finally shown, after "
+        "accounting for its own bytes -- not the pre-trim row set"
+    )
+
+
+def test_c3_span_groups_does_not_disturb_the_generic_view_fields(monkeypatch):
+    """Review follow-up (optional item): span_groups must be purely additive
+    -- it must not overwrite or hide any of the generic (non-trace-specific)
+    fields ``_record()`` already builds for every tool (``tool``, ``status``,
+    ``adopted``, ``citable_as_fact``, ``content``, ``truncated``,
+    ``omitted_rows``, ``result_count``/``returned_count``, ``evidence_id``)."""
+    opener = FakeOpener(routes={"/api/traces": _grouping_payload()})
+    executor = _trace_executor(monkeypatch, opener)
+    outcome = executor.execute(_trace_call({"service": "payment", "limit": 10}))
+    view = outcome.model_view
+    assert view["tool"] == TRACES_TOOL
+    assert view["status"] == "ok"
+    assert view["adopted"] is True
+    assert view["citable_as_fact"] is True
+    assert isinstance(view["content"], list) and len(view["content"]) == 5
+    assert view["truncated"] is False and view["omitted_rows"] == 0
+    assert view["result_count"] == view["returned_count"] == 5
+    assert isinstance(view["evidence_id"], str) and view["evidence_id"]
+    # span_groups is its own, additively-present field -- not something that
+    # replaced or hid any of the checks above.
+    assert "span_groups" in view
