@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -387,6 +387,19 @@ class TransportResponse:
     (round 2 rule B). ``view_fields`` are further adapter-verified,
     tool-specific view fields copied onto the view verbatim; a key that
     collides with a generic view field is MALFORMED_RESULT.
+
+    ``view_augment``, when given, is called once with the view's own
+    ``content`` -- the rows actually kept after byte-cap truncation, not
+    ``rows`` (every extracted row before it) -- and its return value is
+    merged onto the view the same way ``view_fields`` is (batch C, C3:
+    ``opspilot.tools.otel_demo``'s ``span_groups``, a per-(service,
+    operation) summary that must reflect only what the model is shown, never
+    a row the byte cap dropped). Unlike ``view_fields`` it cannot be computed
+    before dispatch -- truncation happens inside the executor, after the
+    adapter has already returned -- so it is a callback, not a value; the
+    executor calls it while building the view (before ``view_sha256`` is
+    computed), so its output counts toward the committed evidence's hash
+    like every other view field.
     """
 
     body: bytes
@@ -400,6 +413,7 @@ class TransportResponse:
     backend_rows_returned: int | None = None
     view_fields: Mapping[str, object] | None = None
     query_window: Window | None = None
+    view_augment: Callable[[Sequence[object]], Mapping[str, object]] | None = None
 
 
 @runtime_checkable
@@ -1437,6 +1451,14 @@ class ReadOnlyToolExecutor:
             view[f"backend_{unit}_returned"] = response.backend_rows_returned
             view[f"{unit}_shown"] = len(kept)
             view[f"{unit}_omitted"] = response.backend_rows_returned - len(kept)
+        if response.view_augment is not None:
+            # C3: computed from ``kept`` (the rows actually shown, post byte
+            # cap), not ``rows`` -- and before ``view_sha256`` below, so it
+            # counts toward the committed evidence's hash like every other
+            # view field.
+            extra = response.view_augment(kept)
+            if extra:
+                view.update(extra)
         return EvidenceRecord(
             evidence_id=f"{operation.operation_id}:{dispatch_id}",
             operation=operation,

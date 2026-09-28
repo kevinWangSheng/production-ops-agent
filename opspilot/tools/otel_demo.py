@@ -350,6 +350,9 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "spans_shown is the number of span rows in this view. "
                 "spans_omitted is the number of backend spans not shown, "
                 "whether sampled out or truncated. "
+                "span_groups summarizes the shown spans by (service, "
+                "operation): rows, status counts, error_rows and "
+                "duration_us_min/max, computed only from spans_shown. "
                 "incomplete_reason states why incomplete is true, or is null. "
                 "status_state is recorded when the row has at least one "
                 "status tag and not_recorded when it has none. "
@@ -1055,7 +1058,18 @@ class OtelDemoTransport:
                 "incomplete_reason": TRACES_INCOMPLETE_REASON
                 if record["incomplete"]
                 else None,
+                # C3: span_groups summarizes only the spans shown in
+                # content; a span sampled out or dropped by the byte cap is
+                # not counted in any group.
+                "span_groups_note": (
+                    "span_groups summarizes only the spans shown in "
+                    "content; spans omitted or truncated are not counted "
+                    "in any group."
+                ),
             },
+            # C3: computed by the executor from the rows actually shown
+            # (post byte-cap truncation), not the full backend/sampled set.
+            view_augment=_span_groups_view,
         )
 
 
@@ -1365,6 +1379,90 @@ def project_traces(
         # Every span lies outside the window: nothing in-window is covered.
         return record, None, None
     return record, _utc(start_us / 1_000_000), _utc(end_us / 1_000_000)
+
+
+# -- span_groups (C3, docs/tasks/2026-09-28-m1-01-alignment-c.md) -----------
+
+
+def _span_status_key(row: Mapping[str, Any]) -> str:
+    """One row's status, as a single grouping key.
+
+    Ported from the replay-ablation experiment
+    (``docs/evidence/m1-01-replay-ablation/scripts/span_groups.py``,
+    ``status_key``) unchanged: every present ``status_tags`` entry, joined
+    ``key=value`` in sorted-key order (a row's ``status_tags`` may legitimately
+    carry more than one of the four status keys at once), or ``"not_recorded"``
+    when the row has none. The contract's own literal example
+    (``"rpc.grpc.status_code=0": 13``) is the single-key case, which this
+    produces unchanged for numeric tag values.
+    """
+    tags = row.get("status_tags")
+    if (
+        row.get("status_state") == "not_recorded"
+        or not isinstance(tags, Mapping)
+        or not tags
+    ):
+        return "not_recorded"
+    return ";".join(
+        f"{k}={json.dumps(tags[k])}" if isinstance(tags[k], str) else f"{k}={tags[k]}"
+        for k in sorted(tags)
+    )
+
+
+def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
+    """Per-(service, operation) summary of the rows actually shown (C3).
+
+    Algorithm ported from the replay-ablation experiment
+    (``docs/evidence/m1-01-replay-ablation/scripts/span_groups.py``,
+    ``span_groups``): grouped by ``(service, operation)``, each group giving
+    ``rows``, ``status`` (a count per :func:`_span_status_key`),
+    ``error_rows`` (``error_by_visible_tags`` true), and
+    ``duration_us_min``/``duration_us_max`` over the group's own rows.
+
+    One required difference from that script (the contract text, not an
+    implementation choice): groups here are returned **sorted by
+    ``(service, operation)``**, not in first-appearance order. The reference
+    script groups in encounter order, which is a legitimate summary but not
+    what C3 asks for (and, for a query whose requested service is not first
+    alphabetically, gives a different group order than this function).
+
+    Takes ``rows`` -- the view's own ``content`` after byte-cap truncation,
+    supplied by the executor's ``view_augment`` callback, never the full
+    backend row set -- so an omitted/sampled-out row is never counted here
+    either, matching the contract's "只汇总已展示行".
+    """
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        key = (str(row.get("service")), str(row.get("operation")))
+        group = groups.get(key)
+        if group is None:
+            group = groups[key] = {
+                "service": key[0],
+                "operation": key[1],
+                "rows": 0,
+                "status": {},
+                "error_rows": 0,
+                "duration_us_min": None,
+                "duration_us_max": None,
+            }
+        group["rows"] += 1
+        status = _span_status_key(row)
+        group["status"][status] = group["status"].get(status, 0) + 1
+        if row.get("error_by_visible_tags") is True:
+            group["error_rows"] += 1
+        duration = row.get("duration_us")
+        if isinstance(duration, int):
+            lo, hi = group["duration_us_min"], group["duration_us_max"]
+            group["duration_us_min"] = duration if lo is None else min(lo, duration)
+            group["duration_us_max"] = duration if hi is None else max(hi, duration)
+    return [groups[key] for key in sorted(groups)]
+
+
+def _span_groups_view(rows: Sequence[object]) -> dict[str, Any]:
+    """``TransportResponse.view_augment`` for ``traces_search``."""
+    return {"span_groups": _span_groups(rows)}
 
 
 # -- composition -------------------------------------------------------------

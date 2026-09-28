@@ -561,33 +561,48 @@ class InvestigationLoop:
     ) -> tuple[ReportV2 | None, str, str]:
         """``parse_report`` plus the citation check, as the live round applies
         them. Returns ``(report, reason, retry_feedback)``: ``retry_feedback``
-        is B3's fixed-template diagnostic message for this exact failure
+        is B3/C2's fixed-template diagnostic message for this exact failure
         ("" on success), computed here (not by the caller) so it always
         reflects the parsed report the citation check actually saw."""
         report, reason = parse_report(
             content, finish_reason=finish_reason if finish_reason else "unknown"
         )
+        request = state.request
+        target_catalog = context_target_catalog(
+            request.evidence_context, authorized_targets=request.scope.target_ids
+        )
+        time_policy_ids = context_time_policy_ids(request.evidence_context)
         if report is None:
             return (
                 None,
                 reason,
-                report_retry_feedback(reason, report=None, views=state.delivered),
+                report_retry_feedback(
+                    reason,
+                    report=None,
+                    views=state.delivered,
+                    content=content,
+                    authorized_targets=request.scope.target_ids,
+                    time_policy_ids=time_policy_ids,
+                    target_catalog=target_catalog,
+                ),
             )
-        request = state.request
         if unsupported_citations(
             report,
             views=state.delivered,
             authorized_targets=request.scope.target_ids,
-            time_policy_ids=context_time_policy_ids(request.evidence_context),
-            target_catalog=context_target_catalog(
-                request.evidence_context, authorized_targets=request.scope.target_ids
-            ),
+            time_policy_ids=time_policy_ids,
+            target_catalog=target_catalog,
         ):
             return (
                 None,
                 "REPORT_INVALID",
                 report_retry_feedback(
-                    "REPORT_INVALID", report=report, views=state.delivered
+                    "REPORT_INVALID",
+                    report=report,
+                    views=state.delivered,
+                    authorized_targets=request.scope.target_ids,
+                    time_policy_ids=time_policy_ids,
+                    target_catalog=target_catalog,
                 ),
             )
         return report, "", ""

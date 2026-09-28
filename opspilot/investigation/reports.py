@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from pydantic import Field, ValidationError, model_validator
 
-from opspilot.domain.base import DTO, Text
+from opspilot.domain.base import DTO, Text, sanitized_errors
 
 REPORT_SCHEMA_VERSION = "m0-report-v2"
 EVIDENCE_CONTEXT_TYPE = "opspilot-evidence-context-v4"
@@ -230,16 +230,18 @@ def run_coverage_message(views: Sequence[DeliveredView]) -> str:
     )
 
 
-# B3 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the fixed
-# template of the user message the forced final round (loop-limits L1a)
-# carries when it follows a report-validation failure, so the model sees why
-# the previous reply was not accepted instead of only the unconditional
-# ``FINAL_REPORT_INSTRUCTION``. Merged with L1a into one mechanism: this is
-# the *only* retry a Run ever gets (loop.py's ``force_final`` already caps it
-# at one). Never includes a view's own content -- only the failure's fixed
-# reason code and, when it can be named safely, the unsupported evidence_id
-# value(s) a claim cited. Part of ``prompt_revision`` (via
-# ``report_retry_template``) like every other model-visible template here.
+# B3/C2 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md,
+# docs/tasks/2026-09-28-m1-01-alignment-c.md): the fixed template of the user
+# message the forced final round (loop-limits L1a) carries when it follows a
+# report-validation failure, so the model sees why the previous reply was not
+# accepted instead of only the unconditional ``FINAL_REPORT_INSTRUCTION``.
+# Merged with L1a into one mechanism: this is the *only* retry a Run ever
+# gets (loop.py's ``force_final`` already caps it at one). Never includes a
+# view's own content -- only the failure's fixed reason code and (C2) an
+# itemized, per-claim breakdown: claim index, the evidence_id(s) implicated
+# (when the failure is about one) and a normalized reason name. Part of
+# ``prompt_revision`` (via ``report_retry_template``) like every other
+# model-visible template here.
 REPORT_RETRY_TEMPLATE = (
     "The previous reply was not accepted as the final report ({reason})."
     "{detail} This is the forced final retry: return exactly one corrected "
@@ -247,44 +249,250 @@ REPORT_RETRY_TEMPLATE = (
     "evidence_id values already delivered in this transcript."
 )
 
+# C2's closed vocabulary of normalized citation-failure reasons, one per
+# ``_citation_failures`` branch (declared here so the two -- and the
+# contract's own examples -- stay traceable to each other).
+UNKNOWN_EVIDENCE_ID = "unknown_evidence_id"
+MISSING_TARGET_REFS = "missing_target_refs"
+MISSING_TIME_SCOPE_REF = "missing_time_scope_ref"
+CITES_NON_OK_VIEW = "cites_non_ok_view"
+NOT_CITABLE_AS_FACT = "not_citable_as_fact"
+TIME_SCOPE_NOT_BOUND_TO_VIEW = "time_scope_not_bound_to_view"
+TARGET_NOT_OBSERVED_BY_VIEW = "target_not_observed_by_view"
+# C2's cap: "最多列 50 条并注明是否截断" -- an unbounded model-authored claims
+# list must not turn the retry message itself into an unbounded resend.
+_MAX_FEEDBACK_ITEMS = 50
 
-def unsupported_evidence_ids(
-    report: ReportV2, *, views: Sequence[DeliveredView]
-) -> tuple[str, ...]:
-    """Evidence_id values a claim cited that no delivered view carries.
 
-    A narrower, content-free companion to ``unsupported_citations``: it names
-    only the one failure mode (an unknown id) that is safe to repeat back to
-    the model, never a view's own content. A citation failure for another
-    reason (an unauthorized target_ref, a wrong time_scope_ref, a non-fact
-    view cited as a fact) is not named here even though
-    ``unsupported_citations`` is still true for it -- there is nothing
-    view-shaped to safely repeat back for those.
+@dataclass(frozen=True)
+class ClaimCitationFailure:
+    """One claim's first citation-check failure, in the C2 reason vocabulary.
+
+    ``evidence_ids`` are the specific ids implicated -- empty when the
+    failure is about a target/time reference rather than a citation, since
+    there is no single id to name for those.
     """
-    known = {view.evidence_id for view in views}
-    return tuple(
-        dict.fromkeys(
-            eid
-            for claim in report.claims
-            for eid in claim.evidence_ids
-            if eid not in known
+
+    claim_index: int
+    reason: str
+    evidence_ids: tuple[str, ...] = ()
+
+
+def _citation_failures(
+    report: ReportV2,
+    *,
+    views: Sequence[DeliveredView],
+    authorized_targets: frozenset[str],
+    time_policy_ids: Sequence[str],
+    target_catalog: Mapping[str, str | None] | None = None,
+) -> list[ClaimCitationFailure]:
+    """Every claim's first citation-check failure, in claim order.
+
+    The single source both ``unsupported_citations`` (the pass/fail gate)
+    and C2's retry-feedback itemization read, so the two can never disagree
+    about which claim failed or why -- this function's branches and order
+    are a line-for-line port of ``unsupported_citations``'s previous body
+    (a claim's checks still short-circuit at its first failure, unchanged),
+    with each ``return True`` turned into "record this claim's failure and
+    move to the next claim" instead of aborting the whole report at the
+    first offending claim. That rewrite cannot change which reports fail:
+    the caller only asks "is this list empty", exactly the same boolean the
+    old early-return computed, just no longer thrown away.
+    """
+    by_id = {view.evidence_id: view for view in views}
+    policies = set(time_policy_ids)
+    failures: list[ClaimCitationFailure] = []
+    for index, claim in enumerate(report.claims):
+        unknown_ids = tuple(eid for eid in claim.evidence_ids if eid not in by_id)
+        if unknown_ids:
+            failures.append(
+                ClaimCitationFailure(index, UNKNOWN_EVIDENCE_ID, unknown_ids)
+            )
+            continue
+        if target_catalog is not None:
+            bad_refs = any(
+                ref not in target_catalog for ref in claim.target_refs
+            ) or any(
+                target_catalog[ref] is not None
+                and target_catalog[ref] not in authorized_targets
+                for ref in claim.target_refs
+            )
+        else:
+            bad_refs = any(ref not in authorized_targets for ref in claim.target_refs)
+        if bad_refs:
+            failures.append(ClaimCitationFailure(index, MISSING_TARGET_REFS))
+            continue
+        if claim.time_scope_ref is not None and claim.time_scope_ref not in policies:
+            failures.append(ClaimCitationFailure(index, MISSING_TIME_SCOPE_REF))
+            continue
+        if claim.kind not in _FACTLKE:
+            continue
+        if claim.time_scope_ref not in policies:
+            failures.append(ClaimCitationFailure(index, MISSING_TIME_SCOPE_REF))
+            continue
+        cited = [by_id[eid] for eid in claim.evidence_ids]
+        non_ok = tuple(v.evidence_id for v in cited if v.status != "ok")
+        if non_ok:
+            failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))
+            continue
+        not_citable = tuple(v.evidence_id for v in cited if not v.citable_as_fact)
+        if not_citable:
+            failures.append(
+                ClaimCitationFailure(index, NOT_CITABLE_AS_FACT, not_citable)
+            )
+            continue
+        unbound = tuple(
+            v.evidence_id
+            for v in cited
+            if claim.time_scope_ref not in v.time_scope_refs
+        )
+        if unbound:
+            failures.append(
+                ClaimCitationFailure(index, TIME_SCOPE_NOT_BOUND_TO_VIEW, unbound)
+            )
+            continue
+        observed: set[str] = set()
+        for view in cited:
+            observed.update(view.target_ids)
+        if any(ref not in observed for ref in claim.target_refs):
+            failures.append(ClaimCitationFailure(index, TARGET_NOT_OBSERVED_BY_VIEW))
+            continue
+    return failures
+
+
+def _json_parse_position_detail(content: str) -> str:
+    """A content-free position description for a JSON decode failure (C2's
+    third example: "JSON 解析失败的位置描述"), independently re-attempting the
+    same two parse steps ``parse_report`` already took -- purely to capture
+    their own diagnostic text, never to change which replies are accepted;
+    ``parse_report`` alone still decides that.
+    """
+    try:
+        payload = json.loads(content, object_pairs_hook=_unique_object)
+    except (ValueError, RecursionError) as exc:
+        return f" JSON parse error: {exc}."
+    try:
+        ReportV2.model_validate(payload)
+    except ValidationError as exc:
+        items: list[str] = []
+        # Never ``exc.errors()``/``.json()`` directly: both carry the
+        # rejected input verbatim (a refused credential would ride out
+        # through the very failure that refused it) --
+        # ``tests/test_architecture.py`` enforces this repo-wide.
+        for error in sanitized_errors(exc):
+            loc_value = error.get("loc", ())
+            loc: tuple[object, ...] = (
+                tuple(loc_value) if isinstance(loc_value, (tuple, list)) else ()
+            )
+            if len(loc) >= 2 and loc[0] == "claims" and isinstance(loc[1], int):
+                field = ".".join(str(part) for part in loc[2:]) or "claim"
+                items.append(
+                    f"claim {loc[1]}: schema_error ({field}: {error.get('msg', '')})"
+                )
+            else:
+                path = ".".join(str(part) for part in loc) or "report"
+                items.append(f"{path}: schema_error ({error.get('msg', '')})")
+        if items:
+            return " " + "; ".join(items) + "."
+    except ValueError:
+        pass
+    return ""
+
+
+def _citation_failure_detail(
+    report: ReportV2, *, views: Sequence[DeliveredView], **citation_kwargs: object
+) -> str:
+    """C2's itemized citation-failure detail: one line per failing claim,
+    sorted by claim index (the order ``_citation_failures`` already
+    produces), capped at 50 with a truncation note, never a view's own
+    content -- only the normalized reason and, when the failure is about
+    one, the evidence_id(s) implicated.
+    """
+    failures = _citation_failures(report, views=views, **citation_kwargs)  # type: ignore[arg-type]
+    if not failures:
+        return ""
+    shown = failures[:_MAX_FEEDBACK_ITEMS]
+    lines = [
+        f"claim {f.claim_index}: {f.reason}"
+        + (f" (evidence_id: {', '.join(f.evidence_ids)})" if f.evidence_ids else "")
+        for f in shown
+    ]
+    detail = " " + " ".join(f"{line}." for line in lines)
+    if len(failures) > len(shown):
+        omitted = len(failures) - len(shown)
+        detail += (
+            f" Truncated: {omitted} more claim(s) failed citation checks "
+            f"({len(failures)} total); only the first {len(shown)} are listed."
+        )
+    return detail
+
+
+def unsupported_citations(
+    report: ReportV2,
+    *,
+    views: Sequence[DeliveredView],
+    authorized_targets: frozenset[str],
+    time_policy_ids: Sequence[str],
+    target_catalog: Mapping[str, str | None] | None = None,
+) -> bool:
+    """True when a claim fails the v4 evidence/target/time bind.
+
+    Fact-like claims must cite delivered ok views, targets those views
+    actually observed, and the time policy each cited view was delivered
+    under. When a v4 ``target_catalog`` is present, claim ``target_refs``
+    are opaque catalog keys, not registry target ids. A thin wrapper over
+    ``_citation_failures`` (C2): the boolean is exactly "is that list
+    non-empty", the same short-circuiting decision the previous inline
+    implementation made.
+    """
+    return bool(
+        _citation_failures(
+            report,
+            views=views,
+            authorized_targets=authorized_targets,
+            time_policy_ids=time_policy_ids,
+            target_catalog=target_catalog,
         )
     )
 
 
 def report_retry_feedback(
-    reason: str, *, report: ReportV2 | None, views: Sequence[DeliveredView]
+    reason: str,
+    *,
+    report: ReportV2 | None,
+    views: Sequence[DeliveredView],
+    content: str | None = None,
+    authorized_targets: frozenset[str] = frozenset(),
+    time_policy_ids: Sequence[str] = (),
+    target_catalog: Mapping[str, str | None] | None = None,
 ) -> str:
-    """B3's one-shot retry feedback for a failed report (loop.py's L1a path).
+    """B3/C2's one-shot retry feedback for a failed report (loop.py's L1a
+    path).
 
     ``reason`` is ``parse_report``'s or the citation check's fixed code.
     ``report`` is the parsed report when parsing succeeded (a citation
-    failure) or ``None`` (a parse failure never became claims to inspect).
+    failure) or ``None`` (parsing never produced claims to inspect). When
+    ``report`` is given, the detail is C2's per-claim citation breakdown
+    (``authorized_targets``/``time_policy_ids``/``target_catalog`` must match
+    what the citation check itself was called with, so the two never
+    disagree about which claims failed). When ``report`` is ``None`` and the
+    reason is ``REPORT_INVALID``, the detail is a JSON parse/schema position
+    description instead (C2's third example) -- ``OUTPUT_LENGTH``/
+    ``EMPTY_REPORT`` get no detail, since there is nothing more specific to
+    say for either.
     """
-    ids = unsupported_evidence_ids(report, views=views) if report is not None else ()
-    detail = (
-        f" Unsupported evidence_id value(s) cited: {', '.join(ids)}." if ids else ""
-    )
+    if report is not None:
+        detail = _citation_failure_detail(
+            report,
+            views=views,
+            authorized_targets=authorized_targets,
+            time_policy_ids=time_policy_ids,
+            target_catalog=target_catalog,
+        )
+    elif reason == "REPORT_INVALID" and isinstance(content, str) and content.strip():
+        detail = _json_parse_position_detail(content)
+    else:
+        detail = ""
     return REPORT_RETRY_TEMPLATE.format(reason=reason, detail=detail)
 
 
@@ -737,56 +945,6 @@ def context_time_policy_ids(context: object) -> tuple[str, ...]:
             if isinstance(ident, str) and ident:
                 ids.append(ident)
     return tuple(ids)
-
-
-def unsupported_citations(
-    report: ReportV2,
-    *,
-    views: Sequence[DeliveredView],
-    authorized_targets: frozenset[str],
-    time_policy_ids: Sequence[str],
-    target_catalog: Mapping[str, str | None] | None = None,
-) -> bool:
-    """True when a claim fails the v4 evidence/target/time bind.
-
-    Fact-like claims must cite delivered ok views, targets those views
-    actually observed, and the time policy each cited view was delivered
-    under. When a v4 ``target_catalog`` is present, claim ``target_refs``
-    are opaque catalog keys, not registry target ids.
-    """
-    by_id = {view.evidence_id: view for view in views}
-    policies = set(time_policy_ids)
-    for claim in report.claims:
-        if any(eid not in by_id for eid in claim.evidence_ids):
-            return True
-        if target_catalog is not None:
-            if any(ref not in target_catalog for ref in claim.target_refs):
-                return True
-            if any(
-                target_catalog[ref] is not None
-                and target_catalog[ref] not in authorized_targets
-                for ref in claim.target_refs
-            ):
-                return True
-        elif any(ref not in authorized_targets for ref in claim.target_refs):
-            return True
-        if claim.time_scope_ref is not None and claim.time_scope_ref not in policies:
-            return True
-        if claim.kind not in _FACTLKE:
-            continue
-        if claim.time_scope_ref not in policies:
-            return True
-        cited = [by_id[eid] for eid in claim.evidence_ids]
-        if any(view.status != "ok" or not view.citable_as_fact for view in cited):
-            return True
-        if any(claim.time_scope_ref not in view.time_scope_refs for view in cited):
-            return True
-        observed: set[str] = set()
-        for view in cited:
-            observed.update(view.target_ids)
-        if any(ref not in observed for ref in claim.target_refs):
-            return True
-    return False
 
 
 def view_targets_authorized(
