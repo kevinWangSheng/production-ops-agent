@@ -32,11 +32,19 @@ def main() -> None:
     args = ap.parse_args()
     work = Path(os.environ["ABLATION_WORK"])
     blind = work / "blind3"
-    rng = random.Random(args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big"))
+    rng = random.Random(
+        args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big")
+    )
     mapping_path = blind / "mapping.json"
-    previous = json.load(open(mapping_path)) if mapping_path.exists() else {"run_alias": {}, "samples": {}}
+    previous = (
+        json.load(open(mapping_path))
+        if mapping_path.exists()
+        else {"run_alias": {}, "samples": {}}
+    )
     run_alias: dict[str, str] = dict(previous["run_alias"])
-    cases = sorted(p.name for p in (work / "requests").iterdir() if (p / "messages.json").exists())
+    cases = sorted(
+        p.name for p in (work / "requests").iterdir() if (p / "messages.json").exists()
+    )
     new_cases = [c for c in cases if c not in run_alias]
     rng.shuffle(new_cases)
     for case in new_cases:
@@ -52,15 +60,23 @@ def main() -> None:
                 continue
             view = json.loads(message["content"])
             n += 1
-            (vdir / f"{n:02d}-{view.get('tool')}.json").write_text(json.dumps(view, indent=1, ensure_ascii=False))
+            (vdir / f"{n:02d}-{view.get('tool')}.json").write_text(
+                json.dumps(view, indent=1, ensure_ascii=False)
+            )
     done = {m["sample_id"] for m in previous["samples"].values()}
     used = set(previous["samples"])
-    samples = sorted(p for p in (work / "samples").iterdir()
-                     if (p / "report.txt").exists() and p.name not in done
-                     and any(fnmatch.fnmatch(p.name, pat) for pat in args.samples))
+    samples = sorted(
+        p
+        for p in (work / "samples").iterdir()
+        if (p / "report.txt").exists()
+        and p.name not in done
+        and any(fnmatch.fnmatch(p.name, pat) for pat in args.samples)
+    )
     rng.shuffle(samples)
     reviewers_needed = -(-len(samples) * args.copies // args.per_reviewer)
-    first = 1 + max((r for m in previous["samples"].values() for r in m["reviewers"]), default=0)
+    first = 1 + max(
+        (r for m in previous["samples"].values() for r in m["reviewers"]), default=0
+    )
     reviewers = list(range(first, first + reviewers_needed))
     load = {r: 0 for r in reviewers}
     packets: dict[int, list[dict]] = {r: [] for r in reviewers}
@@ -76,17 +92,39 @@ def main() -> None:
         chosen = order[: args.copies]
         for r in chosen:
             load[r] += 1
-            packets[r].append({"sample": aid, "run": alias, "file": f"samples/{aid}.txt"})
+            packets[r].append(
+                {"sample": aid, "run": alias, "file": f"samples/{aid}.txt"}
+            )
             pdir = blind / "packets" / f"reviewer-{r}" / "samples"
             pdir.mkdir(parents=True, exist_ok=True)
-            (pdir / f"{aid}.txt").write_text(f"sample: {aid}\nrun: {alias}\n\n{(path / 'report.txt').read_text()}")
-        mapping[aid] = {"sample_id": path.name, "case": meta["case"], "run_alias": alias,
-                        "reviewers": chosen, "round": args.round}
+            (pdir / f"{aid}.txt").write_text(
+                f"sample: {aid}\nrun: {alias}\n\n{(path / 'report.txt').read_text()}"
+            )
+        mapping[aid] = {
+            "sample_id": path.name,
+            "case": meta["case"],
+            "run_alias": alias,
+            "reviewers": chosen,
+            "round": args.round,
+        }
     for r, index in packets.items():
-        (blind / "packets" / f"reviewer-{r}" / "index.json").write_text(json.dumps(index, indent=1))
+        (blind / "packets" / f"reviewer-{r}" / "index.json").write_text(
+            json.dumps(index, indent=1)
+        )
     blind.mkdir(parents=True, exist_ok=True)
-    mapping_path.write_text(json.dumps({"run_alias": run_alias, "samples": mapping}, indent=1))
-    print("runs", run_alias, "new samples", len(samples), "reviewers", reviewers, "load", load)
+    mapping_path.write_text(
+        json.dumps({"run_alias": run_alias, "samples": mapping}, indent=1)
+    )
+    print(
+        "runs",
+        run_alias,
+        "new samples",
+        len(samples),
+        "reviewers",
+        reviewers,
+        "load",
+        load,
+    )
 
 
 if __name__ == "__main__":

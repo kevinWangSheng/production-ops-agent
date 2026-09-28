@@ -40,9 +40,15 @@ def main() -> None:
     args = ap.parse_args()
     work = Path(os.environ["ABLATION_WORK"])
     blind = work / "blind"
-    rng = random.Random(args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big"))
+    rng = random.Random(
+        args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big")
+    )
     mapping_path = blind / "mapping.json"
-    previous = json.load(open(mapping_path)) if args.round > 1 else {"run_alias": None, "samples": {}}
+    previous = (
+        json.load(open(mapping_path))
+        if args.round > 1
+        else {"run_alias": None, "samples": {}}
+    )
     if previous["run_alias"]:
         run_alias = previous["run_alias"]
     else:
@@ -51,8 +57,11 @@ def main() -> None:
         run_alias = {case: f"R{i + 1}" for i, case in enumerate(aliases)}
     done = {m["sample_id"] for m in previous["samples"].values()}
     used_ids = set(previous["samples"])
-    samples = sorted(p for p in (work / "samples").iterdir()
-                     if (p / "report.txt").exists() and p.name not in done)
+    samples = sorted(
+        p
+        for p in (work / "samples").iterdir()
+        if (p / "report.txt").exists() and p.name not in done
+    )
     rng.shuffle(samples)
     anon = {}
     for p in samples:
@@ -61,7 +70,9 @@ def main() -> None:
             aid = f"S{rng.randrange(1000, 9999):04d}"
         anon[aid] = p
     mapping = dict(previous["samples"])
-    first_reviewer = 1 + max((m["reviewer"] for m in previous["samples"].values()), default=0)
+    first_reviewer = 1 + max(
+        (m["reviewer"] for m in previous["samples"].values()), default=0
+    )
     (blind / "views").mkdir(parents=True, exist_ok=True)
     for case in CASES:
         messages = json.load(open(work / "requests" / case / "messages.json"))
@@ -73,9 +84,11 @@ def main() -> None:
                 continue
             view = json.loads(message["content"])
             n += 1
-            (vdir / f"{n:02d}-{view.get('tool')}.json").write_text(json.dumps(view, indent=1, ensure_ascii=False))
+            (vdir / f"{n:02d}-{view.get('tool')}.json").write_text(
+                json.dumps(view, indent=1, ensure_ascii=False)
+            )
     ids = list(anon)
-    per = [ids[i::args.reviewers] for i in range(args.reviewers)]
+    per = [ids[i :: args.reviewers] for i in range(args.reviewers)]
     for r, chunk in enumerate(per, start=first_reviewer):
         pdir = blind / "packets" / f"reviewer-{r}" / "samples"
         pdir.mkdir(parents=True, exist_ok=True)
@@ -84,14 +97,28 @@ def main() -> None:
             path = anon[aid]
             meta = json.load(open(path / "meta.json"))
             alias = run_alias[meta["case"]]
-            mapping[aid] = {"sample_id": path.name, "case": meta["case"], "run_alias": alias,
-                            "reviewer": r, "round": args.round}
+            mapping[aid] = {
+                "sample_id": path.name,
+                "case": meta["case"],
+                "run_alias": alias,
+                "reviewer": r,
+                "round": args.round,
+            }
             text = (path / "report.txt").read_text()
             (pdir / f"{aid}.txt").write_text(f"sample: {aid}\nrun: {alias}\n\n{text}")
             index.append({"sample": aid, "run": alias, "file": f"samples/{aid}.txt"})
         (pdir.parent / "index.json").write_text(json.dumps(index, indent=1))
-    (blind / "mapping.json").write_text(json.dumps({"run_alias": run_alias, "samples": mapping}, indent=1))
-    print("runs", run_alias, "samples", len(mapping), "per reviewer", [len(c) for c in per])
+    (blind / "mapping.json").write_text(
+        json.dumps({"run_alias": run_alias, "samples": mapping}, indent=1)
+    )
+    print(
+        "runs",
+        run_alias,
+        "samples",
+        len(mapping),
+        "per reviewer",
+        [len(c) for c in per],
+    )
 
 
 if __name__ == "__main__":

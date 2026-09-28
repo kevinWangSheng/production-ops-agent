@@ -18,10 +18,16 @@ from opspilot.tools.registry import canonical
 
 def status_key(row: dict[str, Any]) -> str:
     tags = row.get("status_tags")
-    if row.get("status_state") == "not_recorded" or not isinstance(tags, dict) or not tags:
+    if (
+        row.get("status_state") == "not_recorded"
+        or not isinstance(tags, dict)
+        or not tags
+    ):
         return "not_recorded"
-    return ";".join(f"{k}={json.dumps(tags[k])}" if isinstance(tags[k], str) else f"{k}={tags[k]}"
-                    for k in sorted(tags))
+    return ";".join(
+        f"{k}={json.dumps(tags[k])}" if isinstance(tags[k], str) else f"{k}={tags[k]}"
+        for k in sorted(tags)
+    )
 
 
 def span_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

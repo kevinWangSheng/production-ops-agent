@@ -33,9 +33,11 @@ def load_reviews(work: Path) -> dict[tuple[int, str], dict]:
 
 
 def disagree(a: dict, b: dict) -> bool:
-    return (len(a.get("a_errors", [])) != len(b.get("a_errors", []))
-            or len(a.get("e_errors", [])) != len(b.get("e_errors", []))
-            or a.get("verdict") != b.get("verdict"))
+    return (
+        len(a.get("a_errors", [])) != len(b.get("a_errors", []))
+        or len(a.get("e_errors", [])) != len(b.get("e_errors", []))
+        or a.get("verdict") != b.get("verdict")
+    )
 
 
 def main() -> None:
@@ -46,7 +48,9 @@ def main() -> None:
     args = ap.parse_args()
     work = Path(os.environ["ABLATION_WORK"])
     blind = work / "blind2"
-    rng = random.Random(args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big"))
+    rng = random.Random(
+        args.seed if args.seed is not None else int.from_bytes(os.urandom(4), "big")
+    )
     mapping = json.load(open(blind / "mapping.json"))["samples"]
     reviews = load_reviews(work)
     adj_path = blind / "adjudication.json"
@@ -61,8 +65,11 @@ def main() -> None:
         if disagree(*pair):
             todo.append((aid, m, pair))
     rng.shuffle(todo)
-    last = max([int(p.name.split("-")[1]) for p in (blind / "packets").iterdir()]
-               + [int(k) for v in adjudication.values() for k in [v["adjudicator"]]], default=0)
+    last = max(
+        [int(p.name.split("-")[1]) for p in (blind / "packets").iterdir()]
+        + [int(k) for v in adjudication.values() for k in [v["adjudicator"]]],
+        default=0,
+    )
     n_adj = -(-len(todo) // args.per_reviewer)
     for i in range(n_adj):
         num = last + 1 + i
@@ -71,17 +78,34 @@ def main() -> None:
         pdir.mkdir(parents=True, exist_ok=True)
         index = []
         for aid, m, pair in chunk:
-            labelled = [{**p, "sample": aid, "reviewer": label} for p, label in zip(pair, "AB")]
+            labelled = [
+                {**p, "sample": aid, "reviewer": label} for p, label in zip(pair, "AB")
+            ]
             report = (work / "samples" / m["sample_id"] / "report.txt").read_text()
-            (pdir / f"{aid}.txt").write_text(f"sample: {aid}\nrun: {m['run_alias']}\n\n{report}")
-            (pdir / f"{aid}.reviews.json").write_text(json.dumps(labelled, indent=1, ensure_ascii=False))
-            index.append({"sample": aid, "run": m["run_alias"], "file": f"samples/{aid}.txt",
-                          "reviews": f"samples/{aid}.reviews.json"})
+            (pdir / f"{aid}.txt").write_text(
+                f"sample: {aid}\nrun: {m['run_alias']}\n\n{report}"
+            )
+            (pdir / f"{aid}.reviews.json").write_text(
+                json.dumps(labelled, indent=1, ensure_ascii=False)
+            )
+            index.append(
+                {
+                    "sample": aid,
+                    "run": m["run_alias"],
+                    "file": f"samples/{aid}.txt",
+                    "reviews": f"samples/{aid}.reviews.json",
+                }
+            )
             adjudication[aid] = {"adjudicator": num, "round": args.round}
         (pdir.parent / "index.json").write_text(json.dumps(index, indent=1))
     adj_path.write_text(json.dumps(adjudication, indent=1))
-    agreed = sum(1 for aid, m in mapping.items() if m["round"] == args.round) - len(todo)
-    print(f"round {args.round}: {len(todo)} disagreements, {agreed} agreed; adjudicators", [last + 1 + i for i in range(n_adj)])
+    agreed = sum(1 for aid, m in mapping.items() if m["round"] == args.round) - len(
+        todo
+    )
+    print(
+        f"round {args.round}: {len(todo)} disagreements, {agreed} agreed; adjudicators",
+        [last + 1 + i for i in range(n_adj)],
+    )
 
 
 if __name__ == "__main__":

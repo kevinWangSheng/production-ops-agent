@@ -51,7 +51,9 @@ def main() -> None:
         data = json.loads(raw)
         flag = data["flags"].get(args.flag)
         if flag is None or args.variant not in flag["variants"]:
-            raise SystemExit(f"flag {args.flag} / variant {args.variant} not in flagd file")
+            raise SystemExit(
+                f"flag {args.flag} / variant {args.variant} not in flagd file"
+            )
         if flag["defaultVariant"] != "off":
             raise SystemExit("Expected normal flag state not found.")
         for name, other in data["flags"].items():
@@ -63,11 +65,13 @@ def main() -> None:
         changed.write_bytes(payload)
     else:
         if raw != changed.read_bytes():
-            raise SystemExit("Current flags differ from injected snapshot; refuse overwrite.")
+            raise SystemExit(
+                "Current flags differ from injected snapshot; refuse overwrite."
+            )
         payload = original.read_bytes()
     flags.write_bytes(payload)
     entry = {
-        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),  # noqa: TID251 -- engineering fault-injection script, not product code
         "action": args.action,
         "flag": args.flag,
         "variant": args.variant,

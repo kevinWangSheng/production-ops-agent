@@ -65,7 +65,9 @@ def final_step(steps: list[dict]) -> dict:
     return finals[0]
 
 
-def rebuild_case(store: DurableStore, intake_key: str) -> tuple[str, dict, Transcript, dict]:
+def rebuild_case(
+    store: DurableStore, intake_key: str
+) -> tuple[str, dict, Transcript, dict]:
     with store.transaction(snapshot=True) as conn:
         row = conn.execute(
             "SELECT incident_id FROM opspilot_incidents WHERE intake_key=%s",
@@ -104,40 +106,50 @@ def rebuild_case(store: DurableStore, intake_key: str) -> tuple[str, dict, Trans
     body = serialized_request(call)
     request_sha = hashlib.sha256(body).hexdigest()
     recorded_request_sha = final["response"].get("request_sha256")
-    return run_id, final, transcript, {
-        "messages": sent,
-        "params": {
-            "model": call.model,
-            "json_mode": call.json_mode,
-            "response_format": {"type": "json_object"},
-            "max_tokens": call.max_tokens,
-            "tools": None,
-            "thinking": {"type": "enabled"},
-            "reasoning_effort": "high",
-            "stream": False,
-            "timeout_seconds": call.timeout_seconds,
-            "request_bytes_limit": transcript.input.limits.request_bytes,
+    return (
+        run_id,
+        final,
+        transcript,
+        {
+            "messages": sent,
+            "params": {
+                "model": call.model,
+                "json_mode": call.json_mode,
+                "response_format": {"type": "json_object"},
+                "max_tokens": call.max_tokens,
+                "tools": None,
+                "thinking": {"type": "enabled"},
+                "reasoning_effort": "high",
+                "stream": False,
+                "timeout_seconds": call.timeout_seconds,
+                "request_bytes_limit": transcript.input.limits.request_bytes,
+            },
+            "hashes": {
+                "input_snapshot_hash": got,
+                "recorded_input_snapshot_hash": recorded,
+                "request_sha256": request_sha,
+                "recorded_request_sha256": recorded_request_sha,
+                "request_bytes": len(body),
+            },
+            "validation": {
+                "delivered": [
+                    {
+                        **asdict(v),
+                        "target_ids": sorted(v.target_ids),
+                        "time_scope_refs": sorted(v.time_scope_refs),
+                    }
+                    for v in transcript.delivered
+                ],
+                "authorized_targets": sorted(targets),
+                "time_policy_ids": list(
+                    context_time_policy_ids(transcript.evidence_context)
+                ),
+                "target_catalog": context_target_catalog(
+                    transcript.evidence_context, authorized_targets=targets
+                ),
+            },
         },
-        "hashes": {
-            "input_snapshot_hash": got,
-            "recorded_input_snapshot_hash": recorded,
-            "request_sha256": request_sha,
-            "recorded_request_sha256": recorded_request_sha,
-            "request_bytes": len(body),
-        },
-        "validation": {
-            "delivered": [
-                {**asdict(v), "target_ids": sorted(v.target_ids),
-                 "time_scope_refs": sorted(v.time_scope_refs)}
-                for v in transcript.delivered
-            ],
-            "authorized_targets": sorted(targets),
-            "time_policy_ids": list(context_time_policy_ids(transcript.evidence_context)),
-            "target_catalog": context_target_catalog(
-                transcript.evidence_context, authorized_targets=targets
-            ),
-        },
-    }
+    )
 
 
 def main() -> None:
@@ -152,7 +164,9 @@ def main() -> None:
         run_id, final, transcript, built = rebuild_case(store, key)
         out = work / case
         out.mkdir(parents=True, exist_ok=True)
-        (out / "messages.json").write_text(json.dumps(built["messages"], ensure_ascii=False))
+        (out / "messages.json").write_text(
+            json.dumps(built["messages"], ensure_ascii=False)
+        )
         (out / "params.json").write_text(json.dumps(built["params"], indent=1))
         (out / "validation.json").write_text(json.dumps(built["validation"], indent=1))
         original = final["response"]["assistant"].get("content") or ""
@@ -176,7 +190,9 @@ def main() -> None:
     (work / "manifest.json").write_text(json.dumps(manifest, indent=1))
     if evidence:
         Path(evidence).mkdir(parents=True, exist_ok=True)
-        (Path(evidence) / "rebuild-manifest.json").write_text(json.dumps(manifest, indent=1))
+        (Path(evidence) / "rebuild-manifest.json").write_text(
+            json.dumps(manifest, indent=1)
+        )
 
 
 if __name__ == "__main__":

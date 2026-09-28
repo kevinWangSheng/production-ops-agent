@@ -66,8 +66,8 @@ from opspilot.investigation.loop import ModelCall, ModelError, serialized_reques
 from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from span_groups import transform_messages  # noqa: E402
 from group7_transform import transform as group7_transform  # noqa: E402
+from span_groups import transform_messages  # noqa: E402
 
 # Phase 1 ran under 130; the lead raised the ceiling to 250 for phase 2, to
 # 290 for phase C, then to 370 for phase D (280 already spent on groups
@@ -138,8 +138,11 @@ def append_sentences(messages: list[dict], sentences: list[str]) -> list[dict]:
     FINAL_REPORT_INSTRUCTION message in one step -- needed for groups 8/9,
     which add more than one sentence and can't rely on the exact-match probe
     finding an already-modified message."""
-    hits = [i for i, m in enumerate(messages)
-            if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION]
+    hits = [
+        i
+        for i, m in enumerate(messages)
+        if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION
+    ]
     if len(hits) != 1:
         raise SystemExit("final report instruction message not found exactly once")
     out = [dict(m) for m in messages]
@@ -191,15 +194,26 @@ def dealias_text(text: str, alias_map: dict[str, str]) -> str:
 def official_final(messages: list[dict]) -> list[dict]:
     """Group 6: swap the two trailing user messages (coverage first) and
     replace the final instruction text."""
-    hits = [i for i, m in enumerate(messages)
-            if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION]
-    if len(hits) != 1 or hits[0] != len(messages) - 2 or messages[-1].get("role") != "user":
-        raise SystemExit("final instruction + coverage message not found as the trailing pair")
+    hits = [
+        i
+        for i, m in enumerate(messages)
+        if m.get("role") == "user" and m.get("content") == FINAL_REPORT_INSTRUCTION
+    ]
+    if (
+        len(hits) != 1
+        or hits[0] != len(messages) - 2
+        or messages[-1].get("role") != "user"
+    ):
+        raise SystemExit(
+            "final instruction + coverage message not found as the trailing pair"
+        )
     coverage = dict(messages[-1])
     return [*messages[:-2], coverage, {"role": "user", "content": OFFICIAL_INSTRUCTION}]
 
 
-def build_call(group: str, messages: list[dict], params: dict) -> tuple[ModelCall, dict]:
+def build_call(
+    group: str, messages: list[dict], params: dict
+) -> tuple[ModelCall, dict]:
     model = params["model"]
     extra: dict = {}
     if group == 1:
@@ -217,21 +231,28 @@ def build_call(group: str, messages: list[dict], params: dict) -> tuple[ModelCal
     elif group == "6b":
         messages = transform_messages(official_final(messages))
     elif group == 7:
-        body = group7_transform({
-            "model": model,
-            "messages": messages,
-            "max_tokens": params["max_tokens"],
-            "response_format": params["response_format"],
-            "thinking": params["thinking"],
-            "reasoning_effort": params["reasoning_effort"],
-            "stream": params["stream"],
-        })
+        body = group7_transform(
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": params["max_tokens"],
+                "response_format": params["response_format"],
+                "thinking": params["thinking"],
+                "reasoning_effort": params["reasoning_effort"],
+                "stream": params["stream"],
+            }
+        )
         messages = body["messages"]
     elif group == 8:
-        messages = transform_messages(append_sentences(messages, [RULE_SENTENCE, GROUP8_SENTENCE]))
+        messages = transform_messages(
+            append_sentences(messages, [RULE_SENTENCE, GROUP8_SENTENCE])
+        )
     elif group == 9:
         messages = transform_messages(
-            append_sentences(messages, [RULE_SENTENCE, GROUP8_SENTENCE, GROUP9_SENTENCE]))
+            append_sentences(
+                messages, [RULE_SENTENCE, GROUP8_SENTENCE, GROUP9_SENTENCE]
+            )
+        )
         alias_map = build_alias_map(messages)
         messages = apply_alias(messages, alias_map)
         extra["alias_map"] = alias_map
@@ -268,8 +289,15 @@ class Ledger:
                 f.write(json.dumps(entry) + "\n")
 
 
-def run_sample(client: DeepSeekClient, ledger: Ledger, group, case: str,
-               rep: int, work: Path, samples: Path) -> dict:
+def run_sample(
+    client: DeepSeekClient,
+    ledger: Ledger,
+    group,
+    case: str,
+    rep: int,
+    work: Path,
+    samples: Path,
+) -> dict:
     sample_id = f"g{group}-{case}-r{rep}"
     out = samples / sample_id
     if (out / "meta.json").exists():
@@ -283,27 +311,38 @@ def run_sample(client: DeepSeekClient, ledger: Ledger, group, case: str,
     if not ledger.reserve():
         raise SystemExit(f"MAX_CALLS={MAX_CALLS} reached; refusing {sample_id}")
     started = time.monotonic()
-    entry = {"sample_id": sample_id, "group": group, "case": case, "rep": rep,
-             "model": call.model, "request_sha256": request_sha,
-             "request_bytes": len(body), "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    entry = {
+        "sample_id": sample_id,
+        "group": group,
+        "case": case,
+        "rep": rep,
+        "model": call.model,
+        "request_sha256": request_sha,
+        "request_bytes": len(body),
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
     try:
         reply = client.complete(call)
     except ModelError as exc:
-        entry.update({"error": exc.code, "elapsed_s": round(time.monotonic() - started, 2)})
+        entry.update(
+            {"error": exc.code, "elapsed_s": round(time.monotonic() - started, 2)}
+        )
         ledger.append(entry)
         out.mkdir(parents=True, exist_ok=True)
         (out / "meta.json").write_text(json.dumps(entry, indent=1))
         return entry
-    entry.update({
-        "elapsed_s": round(time.monotonic() - started, 2),
-        "response_model": reply.response_model,
-        "response_id": reply.raw.get("id"),
-        "finish_reason": reply.finish_reason,
-        "usage": dict(reply.usage),
-        "content_chars": len(reply.content or ""),
-        "reasoning_chars": len(reply.reasoning_content or ""),
-        "tool_calls": len(reply.tool_calls),
-    })
+    entry.update(
+        {
+            "elapsed_s": round(time.monotonic() - started, 2),
+            "response_model": reply.response_model,
+            "response_id": reply.raw.get("id"),
+            "finish_reason": reply.finish_reason,
+            "usage": dict(reply.usage),
+            "content_chars": len(reply.content or ""),
+            "reasoning_chars": len(reply.reasoning_content or ""),
+            "tool_calls": len(reply.tool_calls),
+        }
+    )
     ledger.append(entry)
     out.mkdir(parents=True, exist_ok=True)
     content = reply.content or ""
@@ -332,23 +371,41 @@ def main() -> None:
     if args.dry_run:
         for case in args.cases:
             req = work / "requests" / case
-            call, extra = build_call(args.group, json.load(open(req / "messages.json")),
-                                      json.load(open(req / "params.json")))
+            call, extra = build_call(
+                args.group,
+                json.load(open(req / "messages.json")),
+                json.load(open(req / "params.json")),
+            )
             body = serialized_request(call)
-            print(case, call.model, len(body), hashlib.sha256(body).hexdigest(),
-                  f"aliases={len(extra['alias_map'])}" if "alias_map" in extra else "")
+            print(
+                case,
+                call.model,
+                len(body),
+                hashlib.sha256(body).hexdigest(),
+                f"aliases={len(extra['alias_map'])}" if "alias_map" in extra else "",
+            )
         return
     client = DeepSeekClient(read_key())
     jobs = [(case, rep) for rep in range(1, args.repeats + 1) for case in args.cases]
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(run_sample, client, ledger, args.group, case, rep, work, samples)
-                   for case, rep in jobs]
+        futures = [
+            pool.submit(
+                run_sample, client, ledger, args.group, case, rep, work, samples
+            )
+            for case, rep in jobs
+        ]
         for future in futures:
             entry = future.result()
             usage = entry.get("usage") or {}
-            print(entry["sample_id"], entry.get("error") or entry.get("finish_reason"),
-                  usage.get("prompt_tokens"), usage.get("prompt_cache_hit_tokens"),
-                  usage.get("completion_tokens"), entry.get("elapsed_s"), flush=True)
+            print(
+                entry["sample_id"],
+                entry.get("error") or entry.get("finish_reason"),
+                usage.get("prompt_tokens"),
+                usage.get("prompt_cache_hit_tokens"),
+                usage.get("completion_tokens"),
+                entry.get("elapsed_s"),
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

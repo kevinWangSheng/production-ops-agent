@@ -50,8 +50,11 @@ def citation_details(report, validation: dict) -> list[str]:
     for c in report.claims:
         if any(e not in by for e in c.evidence_ids):
             found.add("unknown_evidence_id")
-        refs_ok = (all(r in catalog for r in c.target_refs) if catalog is not None
-                   else all(r in authorized for r in c.target_refs))
+        refs_ok = (
+            all(r in catalog for r in c.target_refs)
+            if catalog is not None
+            else all(r in authorized for r in c.target_refs)
+        )
         if not refs_ok:
             found.add("target_ref_not_authorized")
         if c.time_scope_ref is not None and c.time_scope_ref not in policies:
@@ -82,14 +85,24 @@ def check(content: str, finish_reason: str, validation: dict) -> dict:
         time_policy_ids=validation["time_policy_ids"],
         target_catalog=validation["target_catalog"],
     ):
-        return {"accepted": False, "reason": "REPORT_INVALID", "stage": "citations",
-                "details": citation_details(report, validation),
-                "assessment_status": report.assessment_status,
-                "conclusion": report.conclusion, "claims": len(report.claims)}
-    return {"accepted": True, "reason": "", "stage": "",
+        return {
+            "accepted": False,
+            "reason": "REPORT_INVALID",
+            "stage": "citations",
+            "details": citation_details(report, validation),
             "assessment_status": report.assessment_status,
-            "conclusion": report.conclusion, "claims": len(report.claims),
-            "gaps": len(report.gaps)}
+            "conclusion": report.conclusion,
+            "claims": len(report.claims),
+        }
+    return {
+        "accepted": True,
+        "reason": "",
+        "stage": "",
+        "assessment_status": report.assessment_status,
+        "conclusion": report.conclusion,
+        "claims": len(report.claims),
+        "gaps": len(report.gaps),
+    }
 
 
 def main() -> None:
@@ -100,15 +113,28 @@ def main() -> None:
     results = {}
     for sample in sorted((work / "samples").iterdir()):
         meta = json.load(open(sample / "meta.json"))
-        validation = json.load(open(work / "requests" / meta["case"] / "validation.json"))
+        validation = json.load(
+            open(work / "requests" / meta["case"] / "validation.json")
+        )
         if "error" in meta:
-            results[sample.name] = {"accepted": False, "reason": meta["error"], "stage": "http"}
+            results[sample.name] = {
+                "accepted": False,
+                "reason": meta["error"],
+                "stage": "http",
+            }
             continue
         content = (sample / "report.txt").read_text()
         results[sample.name] = check(content, meta["finish_reason"], validation)
     for name, r in results.items():
-        print(name, "ACCEPT" if r["accepted"] else f"REJECT {r['reason']} ({r['stage']}) {r.get('details', '')}",
-              r.get("assessment_status", ""), r.get("conclusion", ""), r.get("claims", ""))
+        print(
+            name,
+            "ACCEPT"
+            if r["accepted"]
+            else f"REJECT {r['reason']} ({r['stage']}) {r.get('details', '')}",
+            r.get("assessment_status", ""),
+            r.get("conclusion", ""),
+            r.get("claims", ""),
+        )
     if args.out:
         Path(args.out).write_text(json.dumps(results, indent=1))
 

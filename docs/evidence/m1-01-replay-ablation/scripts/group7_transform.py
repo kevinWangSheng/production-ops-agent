@@ -3,12 +3,12 @@ import copy
 import json
 
 _STATUS_GUARD = (
-    "Final-report status discipline: status_state=\"not_recorded\" or "
+    'Final-report status discipline: status_state="not_recorded" or '
     "status_tags={} means that this visible span has no status tag (OTel "
     "Unset). It is not status code 0, HTTP 200, or OK. Mention a code or OK "
     "only when that exact key/value is present on the same visible row. "
-    "Missing metric series means unknown, not zero; say \"no series was "
-    "returned\" rather than \"no non-zero code exists.\""
+    'Missing metric series means unknown, not zero; say "no series was '
+    'returned" rather than "no non-zero code exists."'
 )
 
 _FINAL_GUARD = (
@@ -27,6 +27,7 @@ _FINAL_GUARD = (
     "no_data views as gaps."
 )
 
+
 def _add_trace_index(payload):
     if "model_view_index" in payload:
         return False
@@ -36,7 +37,8 @@ def _add_trace_index(payload):
         return False
 
     spans = [
-        row for row in rows
+        row
+        for row in rows
         if isinstance(row, dict)
         and isinstance(row.get("operation"), str)
         and ("duration_us" in row)
@@ -68,9 +70,7 @@ def _add_trace_index(payload):
 
         state = row.get("status_state")
         if isinstance(state, str):
-            g["status_state_counts"][state] = (
-                g["status_state_counts"].get(state, 0) + 1
-            )
+            g["status_state_counts"][state] = g["status_state_counts"].get(state, 0) + 1
 
         tags = row.get("status_tags")
         if not isinstance(tags, dict):
@@ -78,18 +78,18 @@ def _add_trace_index(payload):
         tag_key = json.dumps(
             tags, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         )
-        g["status_tags_counts"][tag_key] = (
-            g["status_tags_counts"].get(tag_key, 0) + 1
-        )
+        g["status_tags_counts"][tag_key] = g["status_tags_counts"].get(tag_key, 0) + 1
 
         duration = row.get("duration_us")
         if isinstance(duration, (int, float)) and not isinstance(duration, bool):
             g["duration_us_min"] = (
-                duration if g["duration_us_min"] is None
+                duration
+                if g["duration_us_min"] is None
                 else min(g["duration_us_min"], duration)
             )
             g["duration_us_max"] = (
-                duration if g["duration_us_max"] is None
+                duration
+                if g["duration_us_max"] is None
                 else max(g["duration_us_max"], duration)
             )
 
@@ -128,15 +128,14 @@ def _add_trace_index(payload):
     }
     return True
 
+
 def transform(request_body: dict) -> dict:
     out = copy.deepcopy(request_body)
     messages = out.get("messages")
     if not isinstance(messages, list):
         raise ValueError("request_body.messages must be a list")
 
-    system = next(
-        (m for m in messages if m.get("role") == "system"), None
-    )
+    system = next((m for m in messages if m.get("role") == "system"), None)
     if not isinstance(system, dict) or not isinstance(system.get("content"), str):
         raise ValueError("system message missing")
     if _STATUS_GUARD not in system["content"]:

@@ -72,17 +72,24 @@ def main() -> None:
         e = ledger[sid]
         r = reviews.get(anon)
         v = validation.get(sid, {})
-        rows.append({
-            "sample_id": sid, "anon": anon, "group": e["group"], "case": m["case"],
-            "model": e["model"], "usage": e.get("usage", {}),
-            "cost_cny": cost_cny(e["model"], e.get("usage", {})),
-            "accepted": v.get("accepted"), "reject_reason": v.get("reason"),
-            "a": None if r is None else len(r.get("a_errors", [])),
-            "e": None if r is None else len(r.get("e_errors", [])),
-            "verdict": None if r is None else r.get("verdict"),
-            "verdict_correct": None if r is None else verdict_correct(m["case"], r),
-            "reviewed": r is not None,
-        })
+        rows.append(
+            {
+                "sample_id": sid,
+                "anon": anon,
+                "group": e["group"],
+                "case": m["case"],
+                "model": e["model"],
+                "usage": e.get("usage", {}),
+                "cost_cny": cost_cny(e["model"], e.get("usage", {})),
+                "accepted": v.get("accepted"),
+                "reject_reason": v.get("reason"),
+                "a": None if r is None else len(r.get("a_errors", [])),
+                "e": None if r is None else len(r.get("e_errors", [])),
+                "verdict": None if r is None else r.get("verdict"),
+                "verdict_correct": None if r is None else verdict_correct(m["case"], r),
+                "reviewed": r is not None,
+            }
+        )
     by_group = defaultdict(list)
     for row in rows:
         by_group[row["group"]].append(row)
@@ -92,7 +99,10 @@ def main() -> None:
         reviewed = [r for r in rs if r["reviewed"]]
         n = len(reviewed)
         entry = {
-            "group": g, "name": GROUPS[g], "samples": len(rs), "reviewed": n,
+            "group": g,
+            "name": GROUPS[g],
+            "samples": len(rs),
+            "reviewed": n,
             "a_total": sum(r["a"] for r in reviewed),
             "e_total": sum(r["e"] for r in reviewed),
             "samples_with_a": sum(1 for r in reviewed if r["a"]),
@@ -100,17 +110,32 @@ def main() -> None:
             "samples_with_a_or_e": sum(1 for r in reviewed if r["a"] or r["e"]),
             "validation_accepted": sum(1 for r in rs if r["accepted"]),
             "verdict_correct": sum(1 for r in reviewed if r["verdict_correct"]),
-            "mean_completion_tokens": round(sum(r["usage"].get("completion_tokens", 0) for r in rs) / max(len(rs), 1)),
-            "mean_reasoning_tokens": round(sum((r["usage"].get("completion_tokens_details") or {}).get("reasoning_tokens", 0) for r in rs) / max(len(rs), 1)),
+            "mean_completion_tokens": round(
+                sum(r["usage"].get("completion_tokens", 0) for r in rs)
+                / max(len(rs), 1)
+            ),
+            "mean_reasoning_tokens": round(
+                sum(
+                    (r["usage"].get("completion_tokens_details") or {}).get(
+                        "reasoning_tokens", 0
+                    )
+                    for r in rs
+                )
+                / max(len(rs), 1)
+            ),
             "cost_cny": round(sum(r["cost_cny"] for r in rs), 3),
             "by_case": {},
         }
         for case in ("normal-1", "normal-2", "fault-1", "fault-2"):
             cs = [r for r in reviewed if r["case"] == case]
             entry["by_case"][case] = {
-                "n": len(cs), "a": sum(r["a"] for r in cs), "e": sum(r["e"] for r in cs),
+                "n": len(cs),
+                "a": sum(r["a"] for r in cs),
+                "e": sum(r["e"] for r in cs),
                 "with_a_or_e": sum(1 for r in cs if r["a"] or r["e"]),
-                "accepted": sum(1 for r in by_group[g] if r["case"] == case and r["accepted"]),
+                "accepted": sum(
+                    1 for r in by_group[g] if r["case"] == case and r["accepted"]
+                ),
                 "verdict_correct": sum(1 for r in cs if r["verdict_correct"]),
             }
         table.append(entry)
@@ -119,7 +144,9 @@ def main() -> None:
         for case, c in t["by_case"].items():
             print("   ", case, c)
     if args.out:
-        Path(args.out).write_text(json.dumps({"groups": table, "samples": rows}, indent=1))
+        Path(args.out).write_text(
+            json.dumps({"groups": table, "samples": rows}, indent=1)
+        )
 
 
 if __name__ == "__main__":
