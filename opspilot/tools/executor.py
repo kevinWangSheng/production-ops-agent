@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
 from .outcomes import (
@@ -1433,32 +1433,65 @@ class ReadOnlyToolExecutor:
             if lookback is None
             else effective_window.start.isoformat(),
             "result_count": len(rows),
-            "returned_count": len(kept),
             "incomplete": incomplete,
-            "truncated": bool(omitted_rows),
-            "omitted_rows": omitted_rows,
-            "omitted_bytes": omitted_bytes,
-            "content": None if not adopted else kept,
         }
         if response.view_fields:
             view.update(response.view_fields)
-        if response.row_unit is not None and response.backend_rows_returned is not None:
-            # Counts with their unit (round 2 rule B): what the source
-            # returned, what this view shows, and the gap between them --
-            # whether the adapter sampled rows out or the byte cap dropped
-            # them, both are rows the model does not see.
-            unit = response.row_unit
-            view[f"backend_{unit}_returned"] = response.backend_rows_returned
-            view[f"{unit}_shown"] = len(kept)
-            view[f"{unit}_omitted"] = response.backend_rows_returned - len(kept)
-        if response.view_augment is not None:
-            # C3: computed from ``kept`` (the rows actually shown, post byte
-            # cap), not ``rows`` -- and before ``view_sha256`` below, so it
-            # counts toward the committed evidence's hash like every other
-            # view field.
-            extra = response.view_augment(kept)
-            if extra:
-                view.update(extra)
+        view.update(
+            _row_dependent_fields(
+                kept,
+                rows=rows,
+                adopted=adopted,
+                row_unit=response.row_unit,
+                backend_rows_returned=response.backend_rows_returned,
+                view_augment=response.view_augment,
+            )
+        )
+        # 2026-09-28 independent-review follow-up (C3 P2-1): ``_fit_rows``
+        # above only bounds ``canonical(kept)`` -- the row array alone -- but
+        # ``view_augment``'s own output (otel_demo's ``span_groups``) adds
+        # real bytes on top, so a view could still exceed ``max_view_bytes``
+        # once assembled. Shrink further here, recomputing every
+        # row-dependent field (including view_augment, so it always reflects
+        # exactly the rows still kept) each time, until "content +
+        # span_groups + everything else" fits under the cap or nothing is
+        # left to drop.
+        #
+        # Gated on ``view_augment is not None``: without one, ``_fit_rows``'s
+        # row-only bound is exactly what every profile and test fixture in
+        # this codebase has always assumed ``max_view_bytes`` means (some
+        # deliberately tiny, to exercise the row-cap mechanism in isolation
+        # -- ``tests/m1_tool_support.py``'s own 512-byte registration, for
+        # one, is far smaller than a real view's fixed fields alone, e.g.
+        # ``evidence_id``/``window``/timestamps). Checking the whole
+        # assembled view unconditionally would silently truncate every row
+        # of those views to nothing, not just the ones a wider budget was
+        # never sized against (bot review finding from this very
+        # follow-up's own first pass -- caught by the generic, non-trace
+        # suite, not the otel_demo-specific tests this batch was written
+        # against).
+        if adopted and response.view_augment is not None:
+            while (
+                kept
+                and len(canonical(view).encode("utf-8")) > registration.max_view_bytes
+            ):
+                kept = kept[:-1]
+                view.update(
+                    _row_dependent_fields(
+                        kept,
+                        rows=rows,
+                        adopted=adopted,
+                        row_unit=response.row_unit,
+                        backend_rows_returned=response.backend_rows_returned,
+                        view_augment=response.view_augment,
+                    )
+                )
+        # Read back from ``view`` rather than the pre-shrink-loop locals:
+        # the loop above may have dropped further rows since the initial
+        # ``_fit_rows`` call, and the record's own audit fields must match
+        # exactly what the committed view says.
+        omitted_rows = cast(int, view["omitted_rows"])
+        omitted_bytes = cast(int, view["omitted_bytes"])
         return EvidenceRecord(
             evidence_id=f"{operation.operation_id}:{dispatch_id}",
             operation=operation,
@@ -1761,3 +1794,63 @@ def _fit_rows(rows: Sequence[object], budget: int) -> tuple[list[object], int, i
         kept.append(row)
         used += size
     return kept, 0, 0
+
+
+def _row_dependent_fields(
+    kept: Sequence[object],
+    *,
+    rows: Sequence[object],
+    adopted: bool,
+    row_unit: str | None,
+    backend_rows_returned: int | None,
+    view_augment: Callable[[Sequence[object]], Mapping[str, object]] | None,
+) -> dict[str, object]:
+    """The view fields that depend on exactly which rows are kept.
+
+    Recomputed from scratch for any candidate ``kept`` (a leading slice of
+    ``rows``) so ``_record()``'s truncation-shrink loop (2026-09-28
+    independent-review follow-up, C3 P2-1) can call this repeatedly and
+    always get a self-consistent set: ``omitted_rows``/``omitted_bytes``
+    against the *current* ``kept``, the round 2 rule B unit counts against
+    its length, and -- the reason this exists -- ``view_augment`` computed
+    from exactly these rows, never a stale larger set.
+    """
+    omitted_rows = len(rows) - len(kept)
+    omitted_bytes = sum(
+        len(canonical(row).encode("utf-8")) for row in rows[len(kept) :]
+    )
+    fields: dict[str, object] = {
+        "returned_count": len(kept),
+        "truncated": bool(omitted_rows),
+        "omitted_rows": omitted_rows,
+        "omitted_bytes": omitted_bytes,
+        "content": None if not adopted else list(kept),
+    }
+    if row_unit is not None and backend_rows_returned is not None:
+        # Counts with their unit (round 2 rule B): what the source returned,
+        # what this view shows, and the gap between them -- whether the
+        # adapter sampled rows out or the byte cap dropped them, both are
+        # rows the model does not see.
+        fields[f"backend_{row_unit}_returned"] = backend_rows_returned
+        fields[f"{row_unit}_shown"] = len(kept)
+        fields[f"{row_unit}_omitted"] = backend_rows_returned - len(kept)
+    if view_augment is not None:
+        extra = view_augment(kept)
+        if extra:
+            # Same rule as ``view_fields``' own collision guard
+            # (``_unit_fields_problem``, ``_GENERIC_VIEW_KEYS``): a
+            # tool-specific augment must never shadow a generic view field
+            # or one of these row-unit fields. ``view_fields`` collides are
+            # model-adjacent (the adapter response drives them) and become
+            # a graceful ``MALFORMED_RESULT`` ``ToolOutcome`` via
+            # ``_inspect()``; ``view_augment`` is entirely
+            # adapter/operator-authored code -- no live response or model
+            # input can trigger this -- so a collision here is a
+            # programming bug in that code, caught the fail-loud way this
+            # module's own vocabulary uses for operator contract violations
+            # (``ToolContractError``), not silently folded into the view.
+            collision = (_GENERIC_VIEW_KEYS | fields.keys()) & extra.keys()
+            if collision:
+                raise ToolContractError("MALFORMED_VIEW_AUGMENT")
+            fields.update(extra)
+    return fields

@@ -712,12 +712,21 @@ def test_c3_span_groups_only_summarize_shown_rows_when_truncated(monkeypatch):
     """Same byte-truncation fixture as
     ``test_m1_view_explicit_contract.py::test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent``
     (measured against the current ``MAX_VIEW_BYTES``, not guessed: 40 heavy
-    spans project to ~139 KB, of which 29 fit the 100 KiB view cap), with one
-    change: duration increases with ``i`` (1000+i), so the omitted rows are
-    exactly the *smallest*-duration ones (the sort's tie-break drops the
-    lowest-duration tail first among equally-erroring spans). If
-    ``span_groups`` were computed over all 40 raw spans instead of the 29
-    actually shown, ``duration_us_min`` would read 1000, not 1011."""
+    spans project to ~139 KB), with one change: duration increases with
+    ``i`` (1000+i), so the omitted rows are exactly the *smallest*-duration
+    ones (the sort's tie-break drops the lowest-duration tail first among
+    equally-erroring spans). If ``span_groups`` were computed over all 40
+    raw spans instead of the rows actually shown, ``duration_us_min`` would
+    read 1000, not its real value below.
+
+    28, not 29, fit: re-measured (2026-09-28 independent-review follow-up,
+    C3 P2-1 -- ``span_groups`` and the view's other fields now count toward
+    ``MAX_VIEW_BYTES`` too, not just the row array
+    ``opspilot.tools.executor._fit_rows`` alone bounded before). The 29th
+    row's own bytes alone still fit the old row-only accounting (measured at
+    102139 B, under the 102400 B cap), but adding this fixture's one
+    ``span_groups`` entry (308 B) and the view's other fields push the total
+    over by a slim margin, so one further row is dropped."""
     start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
 
     def make_span(i: int) -> dict:
@@ -762,14 +771,17 @@ def test_c3_span_groups_only_summarize_shown_rows_when_truncated(monkeypatch):
         _trace_call({"service": "checkout", "limit": SPAN_COUNT})
     )
     view = outcome.model_view
-    assert view["truncated"] is True and view["omitted_rows"] == 11  # sanity, unchanged
-    assert view["spans_shown"] == len(view["content"]) == 29  # sanity, unchanged
+    # 11 -> 12, 29 -> 28: re-measured under P2-1's whole-view byte
+    # accounting (see the docstring above); still a "sanity, unchanged
+    # mechanism" check, just a different fit point.
+    assert view["truncated"] is True and view["omitted_rows"] == 12
+    assert view["spans_shown"] == len(view["content"]) == 28
 
     groups = view["span_groups"]
     assert len(groups) == 1, "every synthetic span shares one (service, operation)"
     (group,) = groups
-    assert group["rows"] == 29, "only the shown rows are summarized, not all 40"
-    assert group["duration_us_min"] == 1011, (
+    assert group["rows"] == 28, "only the shown rows are summarized, not all 40"
+    assert group["duration_us_min"] == 1012, (
         "the omitted (lowest-duration) rows must not leak into duration_us_min: "
         f"{group!r}"
     )

@@ -360,6 +360,29 @@ def _citation_failures(
     return failures
 
 
+def _capped_items(items: Sequence[str], *, what: str) -> str:
+    """C2's shared cap-at-50-with-truncation-note formatting.
+
+    Used by both the citation-failure itemization and the schema-failure
+    itemization below (2026-09-28 independent-review follow-up P2-2: the
+    "最多列 50 条并标注截断" requirement is not specific to citation
+    failures -- a schema-validation failure with many broken claims needs
+    the same treatment, or an unbounded model-authored claims list turns the
+    one-shot retry message itself into an unbounded resend).
+    """
+    if not items:
+        return ""
+    shown = items[:_MAX_FEEDBACK_ITEMS]
+    detail = " " + " ".join(f"{line}." for line in shown)
+    if len(items) > len(shown):
+        omitted = len(items) - len(shown)
+        detail += (
+            f" Truncated: {omitted} more {what} ({len(items)} total); "
+            f"only the first {len(shown)} are listed."
+        )
+    return detail
+
+
 def _json_parse_position_detail(content: str) -> str:
     """A content-free position description for a JSON decode failure (C2's
     third example: "JSON 解析失败的位置描述"), independently re-attempting the
@@ -392,8 +415,7 @@ def _json_parse_position_detail(content: str) -> str:
             else:
                 path = ".".join(str(part) for part in loc) or "report"
                 items.append(f"{path}: schema_error ({error.get('msg', '')})")
-        if items:
-            return " " + "; ".join(items) + "."
+        return _capped_items(items, what="claim(s)/field(s) failed schema validation")
     except ValueError:
         pass
     return ""
@@ -409,22 +431,12 @@ def _citation_failure_detail(
     one, the evidence_id(s) implicated.
     """
     failures = _citation_failures(report, views=views, **citation_kwargs)  # type: ignore[arg-type]
-    if not failures:
-        return ""
-    shown = failures[:_MAX_FEEDBACK_ITEMS]
     lines = [
         f"claim {f.claim_index}: {f.reason}"
         + (f" (evidence_id: {', '.join(f.evidence_ids)})" if f.evidence_ids else "")
-        for f in shown
+        for f in failures
     ]
-    detail = " " + " ".join(f"{line}." for line in lines)
-    if len(failures) > len(shown):
-        omitted = len(failures) - len(shown)
-        detail += (
-            f" Truncated: {omitted} more claim(s) failed citation checks "
-            f"({len(failures)} total); only the first {len(shown)} are listed."
-        )
-    return detail
+    return _capped_items(lines, what="claim(s) failed citation checks")
 
 
 def unsupported_citations(
