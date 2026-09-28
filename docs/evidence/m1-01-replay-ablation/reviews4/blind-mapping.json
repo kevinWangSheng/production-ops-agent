@@ -1,0 +1,1212 @@
+{
+ "run_alias": {
+  "fault-1": "R1",
+  "cart-fault": "R2",
+  "normal-1": "R3",
+  "fault-2": "R4",
+  "normal-2": "R5",
+  "pc-fault": "R6"
+ },
+ "samples": {
+  "S4333": {
+   "sample_id": "g5-pc-fault-r7",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    8,
+    5
+   ],
+   "round": 1
+  },
+  "S9460": {
+   "sample_id": "g8-pc-fault-r8",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    6,
+    7
+   ],
+   "round": 1
+  },
+  "S5873": {
+   "sample_id": "g5-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    2,
+    1
+   ],
+   "round": 1
+  },
+  "S4465": {
+   "sample_id": "g5-cart-fault-r9",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    10,
+    3
+   ],
+   "round": 1
+  },
+  "S8855": {
+   "sample_id": "g8-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    9,
+    4
+   ],
+   "round": 1
+  },
+  "S3518": {
+   "sample_id": "g5-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    10,
+    2
+   ],
+   "round": 1
+  },
+  "S7256": {
+   "sample_id": "g9-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    8,
+    3
+   ],
+   "round": 1
+  },
+  "S6128": {
+   "sample_id": "g5-pc-fault-r8",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    6,
+    4
+   ],
+   "round": 1
+  },
+  "S6232": {
+   "sample_id": "g5-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    7,
+    9
+   ],
+   "round": 1
+  },
+  "S7997": {
+   "sample_id": "g5-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    1,
+    5
+   ],
+   "round": 1
+  },
+  "S2569": {
+   "sample_id": "g9-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    4,
+    7
+   ],
+   "round": 1
+  },
+  "S9676": {
+   "sample_id": "g8-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    6,
+    9
+   ],
+   "round": 1
+  },
+  "S2723": {
+   "sample_id": "g8-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    10,
+    1
+   ],
+   "round": 1
+  },
+  "S3190": {
+   "sample_id": "g9-cart-fault-r9",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    2,
+    8
+   ],
+   "round": 1
+  },
+  "S2862": {
+   "sample_id": "g9-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    5,
+    3
+   ],
+   "round": 1
+  },
+  "S8633": {
+   "sample_id": "g8-cart-fault-r8",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    6,
+    3
+   ],
+   "round": 1
+  },
+  "S9104": {
+   "sample_id": "g9-cart-fault-r4",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    7,
+    4
+   ],
+   "round": 1
+  },
+  "S1105": {
+   "sample_id": "g5-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    8,
+    2
+   ],
+   "round": 1
+  },
+  "S9500": {
+   "sample_id": "g8-cart-fault-r7",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    1,
+    9
+   ],
+   "round": 1
+  },
+  "S8163": {
+   "sample_id": "g8-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    5,
+    10
+   ],
+   "round": 1
+  },
+  "S7023": {
+   "sample_id": "g9-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    2,
+    6
+   ],
+   "round": 1
+  },
+  "S5639": {
+   "sample_id": "g9-fault-2-r1",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    5,
+    7
+   ],
+   "round": 1
+  },
+  "S1677": {
+   "sample_id": "g9-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    4
+   ],
+   "round": 1
+  },
+  "S4222": {
+   "sample_id": "g9-pc-fault-r9",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    8,
+    9
+   ],
+   "round": 1
+  },
+  "S2926": {
+   "sample_id": "g9-cart-fault-r10",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    3,
+    1
+   ],
+   "round": 1
+  },
+  "S2645": {
+   "sample_id": "g9-cart-fault-r7",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    5,
+    2
+   ],
+   "round": 1
+  },
+  "S4943": {
+   "sample_id": "g8-pc-fault-r2",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    3,
+    8
+   ],
+   "round": 1
+  },
+  "S4597": {
+   "sample_id": "g9-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    6,
+    10
+   ],
+   "round": 1
+  },
+  "S6151": {
+   "sample_id": "g5-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    1,
+    4
+   ],
+   "round": 1
+  },
+  "S1493": {
+   "sample_id": "g8-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    9,
+    7
+   ],
+   "round": 1
+  },
+  "S4182": {
+   "sample_id": "g9-pc-fault-r3",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    1,
+    9
+   ],
+   "round": 1
+  },
+  "S6416": {
+   "sample_id": "g9-pc-fault-r6",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    10,
+    5
+   ],
+   "round": 1
+  },
+  "S8710": {
+   "sample_id": "g8-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    7,
+    8
+   ],
+   "round": 1
+  },
+  "S6117": {
+   "sample_id": "g8-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    3,
+    2
+   ],
+   "round": 1
+  },
+  "S9405": {
+   "sample_id": "g8-pc-fault-r7",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    6,
+    4
+   ],
+   "round": 1
+  },
+  "S2430": {
+   "sample_id": "g8-pc-fault-r10",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    4,
+    6
+   ],
+   "round": 1
+  },
+  "S3527": {
+   "sample_id": "g5-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    2,
+    3
+   ],
+   "round": 1
+  },
+  "S1259": {
+   "sample_id": "g9-pc-fault-r7",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    5,
+    8
+   ],
+   "round": 1
+  },
+  "S5507": {
+   "sample_id": "g8-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    7
+   ],
+   "round": 1
+  },
+  "S4732": {
+   "sample_id": "g5-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    1,
+    9
+   ],
+   "round": 1
+  },
+  "S4370": {
+   "sample_id": "g9-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    8,
+    1
+   ],
+   "round": 1
+  },
+  "S4569": {
+   "sample_id": "g8-cart-fault-r9",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    7,
+    6
+   ],
+   "round": 1
+  },
+  "S5338": {
+   "sample_id": "g8-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    4,
+    10
+   ],
+   "round": 1
+  },
+  "S3510": {
+   "sample_id": "g9-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    5,
+    3
+   ],
+   "round": 1
+  },
+  "S7018": {
+   "sample_id": "g9-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    2,
+    9
+   ],
+   "round": 1
+  },
+  "S3071": {
+   "sample_id": "g8-cart-fault-r3",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    10,
+    8
+   ],
+   "round": 1
+  },
+  "S9246": {
+   "sample_id": "g8-fault-2-r4",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    3,
+    1
+   ],
+   "round": 1
+  },
+  "S5838": {
+   "sample_id": "g9-cart-fault-r2",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    6,
+    9
+   ],
+   "round": 1
+  },
+  "S2066": {
+   "sample_id": "g5-pc-fault-r5",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    4,
+    7
+   ],
+   "round": 1
+  },
+  "S1815": {
+   "sample_id": "g8-pc-fault-r6",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    2,
+    5
+   ],
+   "round": 1
+  },
+  "S7248": {
+   "sample_id": "g8-cart-fault-r10",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    7,
+    5
+   ],
+   "round": 1
+  },
+  "S8563": {
+   "sample_id": "g9-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    4,
+    10
+   ],
+   "round": 1
+  },
+  "S2208": {
+   "sample_id": "g8-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    3,
+    6
+   ],
+   "round": 1
+  },
+  "S4718": {
+   "sample_id": "g9-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    1,
+    2
+   ],
+   "round": 1
+  },
+  "S5021": {
+   "sample_id": "g5-cart-fault-r8",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    9,
+    8
+   ],
+   "round": 1
+  },
+  "S3781": {
+   "sample_id": "g5-pc-fault-r9",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    9,
+    2
+   ],
+   "round": 1
+  },
+  "S6196": {
+   "sample_id": "g5-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    4,
+    8
+   ],
+   "round": 1
+  },
+  "S9142": {
+   "sample_id": "g5-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    6
+   ],
+   "round": 1
+  },
+  "S5434": {
+   "sample_id": "g5-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    5,
+    7
+   ],
+   "round": 1
+  },
+  "S1368": {
+   "sample_id": "g5-cart-fault-r5",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    3,
+    1
+   ],
+   "round": 1
+  },
+  "S3626": {
+   "sample_id": "g8-cart-fault-r1",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    2,
+    1
+   ],
+   "round": 1
+  },
+  "S4049": {
+   "sample_id": "g8-cart-fault-r6",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    9,
+    3
+   ],
+   "round": 1
+  },
+  "S2692": {
+   "sample_id": "g8-fault-1-r4",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    10,
+    6
+   ],
+   "round": 1
+  },
+  "S8583": {
+   "sample_id": "g5-cart-fault-r2",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    4,
+    5
+   ],
+   "round": 1
+  },
+  "S9110": {
+   "sample_id": "g9-pc-fault-r1",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    8,
+    7
+   ],
+   "round": 1
+  },
+  "S2092": {
+   "sample_id": "g9-normal-1-r4",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    2
+   ],
+   "round": 1
+  },
+  "S9023": {
+   "sample_id": "g9-pc-fault-r2",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    3,
+    8
+   ],
+   "round": 1
+  },
+  "S9065": {
+   "sample_id": "g8-pc-fault-r4",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    9,
+    5
+   ],
+   "round": 1
+  },
+  "S3722": {
+   "sample_id": "g5-pc-fault-r10",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    4,
+    6
+   ],
+   "round": 1
+  },
+  "S6743": {
+   "sample_id": "g5-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    7,
+    1
+   ],
+   "round": 1
+  },
+  "S8851": {
+   "sample_id": "g5-cart-fault-r6",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    8,
+    5
+   ],
+   "round": 1
+  },
+  "S6227": {
+   "sample_id": "g8-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    1
+   ],
+   "round": 1
+  },
+  "S6868": {
+   "sample_id": "g8-cart-fault-r4",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    3,
+    7
+   ],
+   "round": 1
+  },
+  "S2483": {
+   "sample_id": "g5-cart-fault-r10",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    2,
+    9
+   ],
+   "round": 1
+  },
+  "S4594": {
+   "sample_id": "g5-cart-fault-r1",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    6,
+    4
+   ],
+   "round": 1
+  },
+  "S8918": {
+   "sample_id": "g8-fault-1-r5",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    10,
+    5
+   ],
+   "round": 1
+  },
+  "S9937": {
+   "sample_id": "g5-pc-fault-r2",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    9,
+    8
+   ],
+   "round": 1
+  },
+  "S4094": {
+   "sample_id": "g9-pc-fault-r5",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    7,
+    3
+   ],
+   "round": 1
+  },
+  "S7658": {
+   "sample_id": "g5-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    2,
+    4
+   ],
+   "round": 1
+  },
+  "S8335": {
+   "sample_id": "g9-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    6,
+    1
+   ],
+   "round": 1
+  },
+  "S4800": {
+   "sample_id": "g9-fault-2-r3",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    10,
+    4
+   ],
+   "round": 1
+  },
+  "S9080": {
+   "sample_id": "g5-normal-2-r4",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    2,
+    7
+   ],
+   "round": 1
+  },
+  "S2620": {
+   "sample_id": "g9-normal-2-r5",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    8,
+    5
+   ],
+   "round": 1
+  },
+  "S4543": {
+   "sample_id": "g5-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    9,
+    3
+   ],
+   "round": 1
+  },
+  "S3141": {
+   "sample_id": "g9-pc-fault-r4",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    6,
+    1
+   ],
+   "round": 1
+  },
+  "S9483": {
+   "sample_id": "g5-normal-1-r3",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    1,
+    8
+   ],
+   "round": 1
+  },
+  "S3557": {
+   "sample_id": "g9-pc-fault-r10",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    7,
+    10
+   ],
+   "round": 1
+  },
+  "S3363": {
+   "sample_id": "g5-pc-fault-r6",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    4,
+    6
+   ],
+   "round": 1
+  },
+  "S4189": {
+   "sample_id": "g8-pc-fault-r5",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    5,
+    3
+   ],
+   "round": 1
+  },
+  "S2942": {
+   "sample_id": "g9-cart-fault-r1",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    2,
+    9
+   ],
+   "round": 1
+  },
+  "S1143": {
+   "sample_id": "g8-normal-1-r2",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    2,
+    9
+   ],
+   "round": 1
+  },
+  "S1004": {
+   "sample_id": "g5-pc-fault-r1",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    10,
+    1
+   ],
+   "round": 1
+  },
+  "S1754": {
+   "sample_id": "g9-normal-2-r2",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    7,
+    5
+   ],
+   "round": 1
+  },
+  "S1103": {
+   "sample_id": "g8-pc-fault-r1",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    4,
+    6
+   ],
+   "round": 1
+  },
+  "S9527": {
+   "sample_id": "g5-pc-fault-r4",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    8,
+    3
+   ],
+   "round": 1
+  },
+  "S3140": {
+   "sample_id": "g5-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    4,
+    10
+   ],
+   "round": 1
+  },
+  "S2819": {
+   "sample_id": "g5-cart-fault-r7",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    2,
+    1
+   ],
+   "round": 1
+  },
+  "S8009": {
+   "sample_id": "g9-pc-fault-r8",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    3,
+    8
+   ],
+   "round": 1
+  },
+  "S5002": {
+   "sample_id": "g8-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    9,
+    5
+   ],
+   "round": 1
+  },
+  "S9637": {
+   "sample_id": "g9-cart-fault-r6",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    7,
+    6
+   ],
+   "round": 1
+  },
+  "S2673": {
+   "sample_id": "g8-pc-fault-r3",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    3,
+    4
+   ],
+   "round": 1
+  },
+  "S9458": {
+   "sample_id": "g9-cart-fault-r3",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    10,
+    6
+   ],
+   "round": 1
+  },
+  "S2650": {
+   "sample_id": "g8-fault-1-r2",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    2,
+    1
+   ],
+   "round": 1
+  },
+  "S9825": {
+   "sample_id": "g9-cart-fault-r8",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    8,
+    7
+   ],
+   "round": 1
+  },
+  "S7987": {
+   "sample_id": "g9-cart-fault-r5",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    9,
+    5
+   ],
+   "round": 1
+  },
+  "S9326": {
+   "sample_id": "g5-pc-fault-r3",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    5,
+    4
+   ],
+   "round": 1
+  },
+  "S5438": {
+   "sample_id": "g5-cart-fault-r3",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    7,
+    6
+   ],
+   "round": 1
+  },
+  "S4618": {
+   "sample_id": "g8-fault-2-r5",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    3,
+    1
+   ],
+   "round": 1
+  },
+  "S1490": {
+   "sample_id": "g5-cart-fault-r4",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    9,
+    8
+   ],
+   "round": 1
+  },
+  "S8447": {
+   "sample_id": "g9-normal-1-r5",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    10,
+    2
+   ],
+   "round": 1
+  },
+  "S5762": {
+   "sample_id": "g8-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    2,
+    4
+   ],
+   "round": 1
+  },
+  "S9432": {
+   "sample_id": "g8-cart-fault-r2",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    1,
+    10
+   ],
+   "round": 1
+  },
+  "S2802": {
+   "sample_id": "g9-fault-1-r1",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    6,
+    9
+   ],
+   "round": 1
+  },
+  "S7743": {
+   "sample_id": "g5-normal-2-r1",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    7,
+    5
+   ],
+   "round": 1
+  },
+  "S9615": {
+   "sample_id": "g8-pc-fault-r9",
+   "case": "pc-fault",
+   "run_alias": "R6",
+   "reviewers": [
+    3,
+    8
+   ],
+   "round": 1
+  },
+  "S9925": {
+   "sample_id": "g8-cart-fault-r5",
+   "case": "cart-fault",
+   "run_alias": "R2",
+   "reviewers": [
+    4,
+    10
+   ],
+   "round": 1
+  },
+  "S1032": {
+   "sample_id": "g8-fault-2-r2",
+   "case": "fault-2",
+   "run_alias": "R4",
+   "reviewers": [
+    8,
+    5
+   ],
+   "round": 1
+  },
+  "S5852": {
+   "sample_id": "g9-normal-1-r1",
+   "case": "normal-1",
+   "run_alias": "R3",
+   "reviewers": [
+    6,
+    7
+   ],
+   "round": 1
+  },
+  "S1112": {
+   "sample_id": "g5-fault-1-r3",
+   "case": "fault-1",
+   "run_alias": "R1",
+   "reviewers": [
+    9,
+    3
+   ],
+   "round": 1
+  },
+  "S3162": {
+   "sample_id": "g5-normal-2-r3",
+   "case": "normal-2",
+   "run_alias": "R5",
+   "reviewers": [
+    2,
+    1
+   ],
+   "round": 1
+  }
+ }
+}

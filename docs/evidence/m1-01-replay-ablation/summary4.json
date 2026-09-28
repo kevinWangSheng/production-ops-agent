@@ -1,0 +1,3768 @@
+{
+ "overall": {
+  "samples": 120,
+  "pending_adjudication": 0,
+  "exact_agree": 93,
+  "presence_agree": 108,
+  "verdict_agree": 120,
+  "adjudicated": 27
+ },
+ "groups": [
+  {
+   "scenario": "fault",
+   "group": "5",
+   "name": "rule+span_groups",
+   "n": 10,
+   "a_total": 0,
+   "e_total": 2,
+   "samples_with_a": 0,
+   "samples_with_e": 2,
+   "samples_with_a_or_e": 2,
+   "validation_accepted": 9,
+   "reject_reasons": {
+    "unknown_evidence_id": 1
+   },
+   "verdict_correct": 10,
+   "adjudicated": 1,
+   "exact_agree": 9,
+   "presence_agree": 9,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 9123,
+   "mean_reasoning_tokens": 3685,
+   "cost_cny": 0.4,
+   "by_case": {
+    "fault-1": {
+     "n": 5,
+     "a": 0,
+     "e": 1,
+     "with_a_or_e": 1,
+     "verdict_correct": 5
+    },
+    "fault-2": {
+     "n": 5,
+     "a": 0,
+     "e": 1,
+     "with_a_or_e": 1,
+     "verdict_correct": 5
+    }
+   }
+  },
+  {
+   "scenario": "fault",
+   "group": "8",
+   "name": "rule+span_groups+coverage-style",
+   "n": 10,
+   "a_total": 4,
+   "e_total": 9,
+   "samples_with_a": 4,
+   "samples_with_e": 7,
+   "samples_with_a_or_e": 8,
+   "validation_accepted": 9,
+   "reject_reasons": {
+    "REPORT_INVALID": 1
+   },
+   "verdict_correct": 10,
+   "adjudicated": 3,
+   "exact_agree": 7,
+   "presence_agree": 9,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 8508,
+   "mean_reasoning_tokens": 3331,
+   "cost_cny": 0.374,
+   "by_case": {
+    "fault-1": {
+     "n": 5,
+     "a": 3,
+     "e": 2,
+     "with_a_or_e": 3,
+     "verdict_correct": 5
+    },
+    "fault-2": {
+     "n": 5,
+     "a": 1,
+     "e": 7,
+     "with_a_or_e": 5,
+     "verdict_correct": 5
+    }
+   }
+  },
+  {
+   "scenario": "fault",
+   "group": "9",
+   "name": "rule+span_groups+coverage-style+short-alias",
+   "n": 10,
+   "a_total": 3,
+   "e_total": 4,
+   "samples_with_a": 3,
+   "samples_with_e": 3,
+   "samples_with_a_or_e": 5,
+   "validation_accepted": 8,
+   "reject_reasons": {
+    "fact_cites_non_ok_view": 2
+   },
+   "verdict_correct": 10,
+   "adjudicated": 2,
+   "exact_agree": 8,
+   "presence_agree": 8,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 6122,
+   "mean_reasoning_tokens": 2555,
+   "cost_cny": 0.344,
+   "by_case": {
+    "fault-1": {
+     "n": 5,
+     "a": 1,
+     "e": 2,
+     "with_a_or_e": 2,
+     "verdict_correct": 5
+    },
+    "fault-2": {
+     "n": 5,
+     "a": 2,
+     "e": 2,
+     "with_a_or_e": 3,
+     "verdict_correct": 5
+    }
+   }
+  },
+  {
+   "scenario": "heldout",
+   "group": "5",
+   "name": "rule+span_groups",
+   "n": 20,
+   "a_total": 6,
+   "e_total": 24,
+   "samples_with_a": 6,
+   "samples_with_e": 13,
+   "samples_with_a_or_e": 14,
+   "validation_accepted": 14,
+   "reject_reasons": {
+    "REPORT_INVALID": 1,
+    "fact_cites_non_ok_view": 2,
+    "target_ref_not_observed_by_view": 2,
+    "unknown_evidence_id": 3
+   },
+   "verdict_correct": 20,
+   "adjudicated": 6,
+   "exact_agree": 14,
+   "presence_agree": 17,
+   "verdict_agree": 20,
+   "mean_completion_tokens": 9181,
+   "mean_reasoning_tokens": 3938,
+   "cost_cny": 0.883,
+   "by_case": {
+    "cart-fault": {
+     "n": 10,
+     "a": 5,
+     "e": 13,
+     "with_a_or_e": 7,
+     "verdict_correct": 10
+    },
+    "pc-fault": {
+     "n": 10,
+     "a": 1,
+     "e": 11,
+     "with_a_or_e": 7,
+     "verdict_correct": 10
+    }
+   }
+  },
+  {
+   "scenario": "heldout",
+   "group": "8",
+   "name": "rule+span_groups+coverage-style",
+   "n": 20,
+   "a_total": 5,
+   "e_total": 18,
+   "samples_with_a": 5,
+   "samples_with_e": 12,
+   "samples_with_a_or_e": 16,
+   "validation_accepted": 18,
+   "reject_reasons": {
+    "OUTPUT_LENGTH": 1,
+    "unknown_evidence_id": 1
+   },
+   "verdict_correct": 20,
+   "adjudicated": 6,
+   "exact_agree": 14,
+   "presence_agree": 18,
+   "verdict_agree": 20,
+   "mean_completion_tokens": 9178,
+   "mean_reasoning_tokens": 4134,
+   "cost_cny": 0.805,
+   "by_case": {
+    "cart-fault": {
+     "n": 10,
+     "a": 2,
+     "e": 12,
+     "with_a_or_e": 9,
+     "verdict_correct": 10
+    },
+    "pc-fault": {
+     "n": 10,
+     "a": 3,
+     "e": 6,
+     "with_a_or_e": 7,
+     "verdict_correct": 10
+    }
+   }
+  },
+  {
+   "scenario": "heldout",
+   "group": "9",
+   "name": "rule+span_groups+coverage-style+short-alias",
+   "n": 20,
+   "a_total": 11,
+   "e_total": 11,
+   "samples_with_a": 11,
+   "samples_with_e": 8,
+   "samples_with_a_or_e": 13,
+   "validation_accepted": 18,
+   "reject_reasons": {
+    "fact_cites_non_ok_view": 1,
+    "target_ref_not_authorized": 1,
+    "target_ref_not_observed_by_view": 1
+   },
+   "verdict_correct": 20,
+   "adjudicated": 4,
+   "exact_agree": 16,
+   "presence_agree": 19,
+   "verdict_agree": 20,
+   "mean_completion_tokens": 6388,
+   "mean_reasoning_tokens": 2883,
+   "cost_cny": 0.688,
+   "by_case": {
+    "cart-fault": {
+     "n": 10,
+     "a": 8,
+     "e": 9,
+     "with_a_or_e": 9,
+     "verdict_correct": 10
+    },
+    "pc-fault": {
+     "n": 10,
+     "a": 3,
+     "e": 2,
+     "with_a_or_e": 4,
+     "verdict_correct": 10
+    }
+   }
+  },
+  {
+   "scenario": "normal",
+   "group": "5",
+   "name": "rule+span_groups",
+   "n": 10,
+   "a_total": 6,
+   "e_total": 3,
+   "samples_with_a": 4,
+   "samples_with_e": 3,
+   "samples_with_a_or_e": 5,
+   "validation_accepted": 9,
+   "reject_reasons": {
+    "unknown_evidence_id": 1
+   },
+   "verdict_correct": 10,
+   "adjudicated": 1,
+   "exact_agree": 9,
+   "presence_agree": 10,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 9388,
+   "mean_reasoning_tokens": 3967,
+   "cost_cny": 0.411,
+   "by_case": {
+    "normal-1": {
+     "n": 5,
+     "a": 5,
+     "e": 2,
+     "with_a_or_e": 3,
+     "verdict_correct": 5
+    },
+    "normal-2": {
+     "n": 5,
+     "a": 1,
+     "e": 1,
+     "with_a_or_e": 2,
+     "verdict_correct": 5
+    }
+   }
+  },
+  {
+   "scenario": "normal",
+   "group": "8",
+   "name": "rule+span_groups+coverage-style",
+   "n": 10,
+   "a_total": 2,
+   "e_total": 7,
+   "samples_with_a": 2,
+   "samples_with_e": 6,
+   "samples_with_a_or_e": 6,
+   "validation_accepted": 9,
+   "reject_reasons": {
+    "OUTPUT_LENGTH": 1
+   },
+   "verdict_correct": 9,
+   "adjudicated": 3,
+   "exact_agree": 7,
+   "presence_agree": 8,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 9204,
+   "mean_reasoning_tokens": 4391,
+   "cost_cny": 0.403,
+   "by_case": {
+    "normal-1": {
+     "n": 5,
+     "a": 2,
+     "e": 5,
+     "with_a_or_e": 4,
+     "verdict_correct": 5
+    },
+    "normal-2": {
+     "n": 5,
+     "a": 0,
+     "e": 2,
+     "with_a_or_e": 2,
+     "verdict_correct": 4
+    }
+   }
+  },
+  {
+   "scenario": "normal",
+   "group": "9",
+   "name": "rule+span_groups+coverage-style+short-alias",
+   "n": 10,
+   "a_total": 2,
+   "e_total": 5,
+   "samples_with_a": 2,
+   "samples_with_e": 3,
+   "samples_with_a_or_e": 4,
+   "validation_accepted": 9,
+   "reject_reasons": {
+    "REPORT_INVALID": 1
+   },
+   "verdict_correct": 10,
+   "adjudicated": 1,
+   "exact_agree": 9,
+   "presence_agree": 10,
+   "verdict_agree": 10,
+   "mean_completion_tokens": 8168,
+   "mean_reasoning_tokens": 4013,
+   "cost_cny": 0.436,
+   "by_case": {
+    "normal-1": {
+     "n": 5,
+     "a": 2,
+     "e": 5,
+     "with_a_or_e": 4,
+     "verdict_correct": 5
+    },
+    "normal-2": {
+     "n": 5,
+     "a": 0,
+     "e": 0,
+     "with_a_or_e": 0,
+     "verdict_correct": 5
+    }
+   }
+  }
+ ],
+ "samples": [
+  {
+   "sample_id": "g5-pc-fault-r7",
+   "anon": "S4333",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8580,
+   "reasoning_tokens": 4126,
+   "cost_cny": 0.037712288999999996
+  },
+  {
+   "sample_id": "g8-pc-fault-r8",
+   "anon": "S9460",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 11872,
+   "reasoning_tokens": 5334,
+   "cost_cny": 0.0516334791
+  },
+  {
+   "sample_id": "g5-fault-1-r5",
+   "anon": "S5873",
+   "group": "5",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7092,
+   "reasoning_tokens": 2622,
+   "cost_cny": 0.031260305999999995
+  },
+  {
+   "sample_id": "g5-cart-fault-r9",
+   "anon": "S4465",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 3,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8620,
+   "reasoning_tokens": 3380,
+   "cost_cny": 0.0379151076
+  },
+  {
+   "sample_id": "g8-fault-2-r3",
+   "anon": "S8855",
+   "group": "8",
+   "case": "fault-2",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8345,
+   "reasoning_tokens": 2938,
+   "cost_cny": 0.036715917599999995
+  },
+  {
+   "sample_id": "g5-fault-2-r5",
+   "anon": "S3518",
+   "group": "5",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10862,
+   "reasoning_tokens": 5390,
+   "cost_cny": 0.04740851759999999
+  },
+  {
+   "sample_id": "g9-fault-2-r2",
+   "anon": "S7256",
+   "group": "9",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7271,
+   "reasoning_tokens": 3148,
+   "cost_cny": 0.032109281399999995
+  },
+  {
+   "sample_id": "g5-pc-fault-r8",
+   "anon": "S6128",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "REPORT_INVALID"
+   ],
+   "completion_tokens": 7488,
+   "reasoning_tokens": 3192,
+   "cost_cny": 0.033060369000000006
+  },
+  {
+   "sample_id": "g5-fault-2-r1",
+   "anon": "S6232",
+   "group": "5",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8843,
+   "reasoning_tokens": 3149,
+   "cost_cny": 0.039341952
+  },
+  {
+   "sample_id": "g5-fault-2-r2",
+   "anon": "S7997",
+   "group": "5",
+   "case": "fault-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7442,
+   "reasoning_tokens": 2675,
+   "cost_cny": 0.032839317599999994
+  },
+  {
+   "sample_id": "g9-fault-2-r4",
+   "anon": "S2569",
+   "group": "9",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 4998,
+   "reasoning_tokens": 2138,
+   "cost_cny": 0.022426301399999998
+  },
+  {
+   "sample_id": "g8-fault-2-r1",
+   "anon": "S9676",
+   "group": "8",
+   "case": "fault-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8221,
+   "reasoning_tokens": 3029,
+   "cost_cny": 0.036588458399999996
+  },
+  {
+   "sample_id": "g8-normal-2-r2",
+   "anon": "S2723",
+   "group": "8",
+   "case": "normal-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7558,
+   "reasoning_tokens": 2406,
+   "cost_cny": 0.033115450799999994
+  },
+  {
+   "sample_id": "g9-cart-fault-r9",
+   "anon": "S3190",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    2,
+    2
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "target_ref_not_authorized",
+    "target_ref_not_observed_by_view"
+   ],
+   "completion_tokens": 8233,
+   "reasoning_tokens": 4092,
+   "cost_cny": 0.03630798
+  },
+  {
+   "sample_id": "g9-normal-1-r3",
+   "anon": "S2862",
+   "group": "9",
+   "case": "normal-1",
+   "a": 0,
+   "e": 2,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    2
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "REPORT_INVALID"
+   ],
+   "completion_tokens": 9382,
+   "reasoning_tokens": 5164,
+   "cost_cny": 0.04113098159999999
+  },
+  {
+   "sample_id": "g8-cart-fault-r8",
+   "anon": "S8633",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 3,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    3,
+    3
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8775,
+   "reasoning_tokens": 3494,
+   "cost_cny": 0.0386052276
+  },
+  {
+   "sample_id": "g9-cart-fault-r4",
+   "anon": "S9104",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6086,
+   "reasoning_tokens": 2875,
+   "cost_cny": 0.027161759999999997
+  },
+  {
+   "sample_id": "g5-fault-1-r2",
+   "anon": "S1105",
+   "group": "5",
+   "case": "fault-1",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10929,
+   "reasoning_tokens": 5304,
+   "cost_cny": 0.04760592599999999
+  },
+  {
+   "sample_id": "g8-cart-fault-r7",
+   "anon": "S9500",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 14405,
+   "reasoning_tokens": 7027,
+   "cost_cny": 0.0625890276
+  },
+  {
+   "sample_id": "g8-fault-1-r1",
+   "anon": "S8163",
+   "group": "8",
+   "case": "fault-1",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6474,
+   "reasoning_tokens": 1840,
+   "cost_cny": 0.029058226799999996
+  },
+  {
+   "sample_id": "g9-normal-2-r1",
+   "anon": "S7023",
+   "group": "9",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 4951,
+   "reasoning_tokens": 1919,
+   "cost_cny": 0.05262821039999999
+  },
+  {
+   "sample_id": "g9-fault-2-r1",
+   "anon": "S5639",
+   "group": "9",
+   "case": "fault-2",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "fact_cites_non_ok_view"
+   ],
+   "completion_tokens": 5595,
+   "reasoning_tokens": 1922,
+   "cost_cny": 0.06571556939999999
+  },
+  {
+   "sample_id": "g9-normal-1-r2",
+   "anon": "S1677",
+   "group": "9",
+   "case": "normal-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 11406,
+   "reasoning_tokens": 6387,
+   "cost_cny": 0.049753221599999994
+  },
+  {
+   "sample_id": "g9-pc-fault-r9",
+   "anon": "S4222",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7610,
+   "reasoning_tokens": 3746,
+   "cost_cny": 0.033541962
+  },
+  {
+   "sample_id": "g9-cart-fault-r10",
+   "anon": "S2926",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6950,
+   "reasoning_tokens": 3401,
+   "cost_cny": 0.030842399999999996
+  },
+  {
+   "sample_id": "g9-cart-fault-r7",
+   "anon": "S2645",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6981,
+   "reasoning_tokens": 3272,
+   "cost_cny": 0.030974459999999995
+  },
+  {
+   "sample_id": "g8-pc-fault-r2",
+   "anon": "S4943",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 11237,
+   "reasoning_tokens": 5538,
+   "cost_cny": 0.048928379099999995
+  },
+  {
+   "sample_id": "g9-fault-1-r3",
+   "anon": "S4597",
+   "group": "9",
+   "case": "fault-1",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7615,
+   "reasoning_tokens": 3583,
+   "cost_cny": 0.0334389126
+  },
+  {
+   "sample_id": "g5-fault-2-r4",
+   "anon": "S6151",
+   "group": "5",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10392,
+   "reasoning_tokens": 4922,
+   "cost_cny": 0.045406317599999996
+  },
+  {
+   "sample_id": "g8-normal-2-r4",
+   "anon": "S1493",
+   "group": "8",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6746,
+   "reasoning_tokens": 2081,
+   "cost_cny": 0.029656330800000002
+  },
+  {
+   "sample_id": "g9-pc-fault-r3",
+   "anon": "S4182",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 4593,
+   "reasoning_tokens": 1552,
+   "cost_cny": 0.020689541999999995
+  },
+  {
+   "sample_id": "g9-pc-fault-r6",
+   "anon": "S6416",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5271,
+   "reasoning_tokens": 2101,
+   "cost_cny": 0.023577821999999995
+  },
+  {
+   "sample_id": "g8-normal-1-r4",
+   "anon": "S8710",
+   "group": "8",
+   "case": "normal-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8219,
+   "reasoning_tokens": 3367,
+   "cost_cny": 0.03626278139999999
+  },
+  {
+   "sample_id": "g8-normal-2-r5",
+   "anon": "S6117",
+   "group": "8",
+   "case": "normal-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "other",
+   "verdict_correct": false,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6396,
+   "reasoning_tokens": 1944,
+   "cost_cny": 0.028165330799999996
+  },
+  {
+   "sample_id": "g8-pc-fault-r7",
+   "anon": "S9405",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7674,
+   "reasoning_tokens": 3360,
+   "cost_cny": 0.0337499991
+  },
+  {
+   "sample_id": "g8-pc-fault-r10",
+   "anon": "S2430",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7865,
+   "reasoning_tokens": 2125,
+   "cost_cny": 0.0345636591
+  },
+  {
+   "sample_id": "g5-fault-2-r3",
+   "anon": "S3527",
+   "group": "5",
+   "case": "fault-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10867,
+   "reasoning_tokens": 3826,
+   "cost_cny": 0.04742981759999999
+  },
+  {
+   "sample_id": "g9-pc-fault-r7",
+   "anon": "S1259",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6932,
+   "reasoning_tokens": 3587,
+   "cost_cny": 0.030653681999999998
+  },
+  {
+   "sample_id": "g8-normal-1-r1",
+   "anon": "S5507",
+   "group": "8",
+   "case": "normal-1",
+   "a": 0,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7945,
+   "reasoning_tokens": 2810,
+   "cost_cny": 0.0353627286
+  },
+  {
+   "sample_id": "g5-fault-1-r4",
+   "anon": "S4732",
+   "group": "5",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7354,
+   "reasoning_tokens": 2570,
+   "cost_cny": 0.03237642599999999
+  },
+  {
+   "sample_id": "g9-fault-1-r5",
+   "anon": "S4370",
+   "group": "9",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5597,
+   "reasoning_tokens": 2143,
+   "cost_cny": 0.0248422326
+  },
+  {
+   "sample_id": "g8-cart-fault-r9",
+   "anon": "S4569",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8684,
+   "reasoning_tokens": 3222,
+   "cost_cny": 0.038217567599999995
+  },
+  {
+   "sample_id": "g8-normal-1-r3",
+   "anon": "S5338",
+   "group": "8",
+   "case": "normal-1",
+   "a": 1,
+   "e": 2,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8726,
+   "reasoning_tokens": 3301,
+   "cost_cny": 0.03842260139999999
+  },
+  {
+   "sample_id": "g9-fault-1-r4",
+   "anon": "S3510",
+   "group": "9",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5491,
+   "reasoning_tokens": 2301,
+   "cost_cny": 0.0243906726
+  },
+  {
+   "sample_id": "g9-fault-2-r5",
+   "anon": "S7018",
+   "group": "9",
+   "case": "fault-2",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8530,
+   "reasoning_tokens": 4603,
+   "cost_cny": 0.037472621399999996
+  },
+  {
+   "sample_id": "g8-cart-fault-r3",
+   "anon": "S3071",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7048,
+   "reasoning_tokens": 2344,
+   "cost_cny": 0.031248207599999998
+  },
+  {
+   "sample_id": "g8-fault-2-r4",
+   "anon": "S9246",
+   "group": "8",
+   "case": "fault-2",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    1
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "REPORT_INVALID"
+   ],
+   "completion_tokens": 10807,
+   "reasoning_tokens": 4780,
+   "cost_cny": 0.0472040376
+  },
+  {
+   "sample_id": "g9-cart-fault-r2",
+   "anon": "S5838",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "fact_cites_non_ok_view"
+   ],
+   "completion_tokens": 9692,
+   "reasoning_tokens": 5773,
+   "cost_cny": 0.042523319999999996
+  },
+  {
+   "sample_id": "g5-pc-fault-r5",
+   "anon": "S2066",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8962,
+   "reasoning_tokens": 3709,
+   "cost_cny": 0.039339609
+  },
+  {
+   "sample_id": "g8-pc-fault-r6",
+   "anon": "S1815",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8731,
+   "reasoning_tokens": 3826,
+   "cost_cny": 0.038252819099999995
+  },
+  {
+   "sample_id": "g8-cart-fault-r10",
+   "anon": "S7248",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9663,
+   "reasoning_tokens": 3741,
+   "cost_cny": 0.042388107599999995
+  },
+  {
+   "sample_id": "g9-normal-2-r4",
+   "anon": "S8563",
+   "group": "9",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6677,
+   "reasoning_tokens": 2694,
+   "cost_cny": 0.029254442399999997
+  },
+  {
+   "sample_id": "g8-fault-1-r3",
+   "anon": "S2208",
+   "group": "8",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6051,
+   "reasoning_tokens": 1042,
+   "cost_cny": 0.026721872399999996
+  },
+  {
+   "sample_id": "g9-normal-2-r3",
+   "anon": "S4718",
+   "group": "9",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9569,
+   "reasoning_tokens": 4948,
+   "cost_cny": 0.041574362399999995
+  },
+  {
+   "sample_id": "g5-cart-fault-r8",
+   "anon": "S5021",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9717,
+   "reasoning_tokens": 4262,
+   "cost_cny": 0.042588327599999996
+  },
+  {
+   "sample_id": "g5-pc-fault-r9",
+   "anon": "S3781",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 13932,
+   "reasoning_tokens": 7706,
+   "cost_cny": 0.060511808999999986
+  },
+  {
+   "sample_id": "g5-fault-1-r1",
+   "anon": "S6196",
+   "group": "5",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10176,
+   "reasoning_tokens": 4164,
+   "cost_cny": 0.0447989268
+  },
+  {
+   "sample_id": "g5-normal-1-r1",
+   "anon": "S9142",
+   "group": "5",
+   "case": "normal-1",
+   "a": 2,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    2
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10009,
+   "reasoning_tokens": 4401,
+   "cost_cny": 0.0441255486
+  },
+  {
+   "sample_id": "g5-normal-1-r4",
+   "anon": "S5434",
+   "group": "5",
+   "case": "normal-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 11321,
+   "reasoning_tokens": 4767,
+   "cost_cny": 0.04944748139999999
+  },
+  {
+   "sample_id": "g5-cart-fault-r5",
+   "anon": "S1368",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10032,
+   "reasoning_tokens": 4487,
+   "cost_cny": 0.043930227599999996
+  },
+  {
+   "sample_id": "g8-cart-fault-r1",
+   "anon": "S3626",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8093,
+   "reasoning_tokens": 3908,
+   "cost_cny": 0.036100688400000004
+  },
+  {
+   "sample_id": "g8-cart-fault-r6",
+   "anon": "S4049",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7549,
+   "reasoning_tokens": 3590,
+   "cost_cny": 0.03338246759999999
+  },
+  {
+   "sample_id": "g8-fault-1-r4",
+   "anon": "S2692",
+   "group": "8",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6431,
+   "reasoning_tokens": 2099,
+   "cost_cny": 0.0283406724
+  },
+  {
+   "sample_id": "g5-cart-fault-r2",
+   "anon": "S8583",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7454,
+   "reasoning_tokens": 2921,
+   "cost_cny": 0.0329479476
+  },
+  {
+   "sample_id": "g9-pc-fault-r1",
+   "anon": "S9110",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7261,
+   "reasoning_tokens": 3115,
+   "cost_cny": 0.06999580439999999
+  },
+  {
+   "sample_id": "g9-normal-1-r4",
+   "anon": "S2092",
+   "group": "9",
+   "case": "normal-1",
+   "a": 1,
+   "e": 2,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6707,
+   "reasoning_tokens": 3250,
+   "cost_cny": 0.029735481599999995
+  },
+  {
+   "sample_id": "g9-pc-fault-r2",
+   "anon": "S9023",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6374,
+   "reasoning_tokens": 2201,
+   "cost_cny": 0.0662171844
+  },
+  {
+   "sample_id": "g8-pc-fault-r4",
+   "anon": "S9065",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10416,
+   "reasoning_tokens": 4486,
+   "cost_cny": 0.045430919099999995
+  },
+  {
+   "sample_id": "g5-pc-fault-r10",
+   "anon": "S3722",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7087,
+   "reasoning_tokens": 2055,
+   "cost_cny": 0.031352109
+  },
+  {
+   "sample_id": "g5-normal-2-r5",
+   "anon": "S6743",
+   "group": "5",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9176,
+   "reasoning_tokens": 3800,
+   "cost_cny": 0.03997831079999999
+  },
+  {
+   "sample_id": "g5-cart-fault-r6",
+   "anon": "S8851",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "fact_cites_non_ok_view"
+   ],
+   "completion_tokens": 10600,
+   "reasoning_tokens": 4462,
+   "cost_cny": 0.0463499076
+  },
+  {
+   "sample_id": "g8-normal-1-r5",
+   "anon": "S6227",
+   "group": "8",
+   "case": "normal-1",
+   "a": 0,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9947,
+   "reasoning_tokens": 4469,
+   "cost_cny": 0.04362406139999999
+  },
+  {
+   "sample_id": "g8-cart-fault-r4",
+   "anon": "S6868",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7958,
+   "reasoning_tokens": 3082,
+   "cost_cny": 0.0351248076
+  },
+  {
+   "sample_id": "g5-cart-fault-r10",
+   "anon": "S2483",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "fact_cites_non_ok_view"
+   ],
+   "completion_tokens": 6837,
+   "reasoning_tokens": 1655,
+   "cost_cny": 0.030319527599999993
+  },
+  {
+   "sample_id": "g5-cart-fault-r1",
+   "anon": "S4594",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9795,
+   "reasoning_tokens": 5326,
+   "cost_cny": 0.0876744636
+  },
+  {
+   "sample_id": "g8-fault-1-r5",
+   "anon": "S8918",
+   "group": "8",
+   "case": "fault-1",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9049,
+   "reasoning_tokens": 3288,
+   "cost_cny": 0.039493352399999994
+  },
+  {
+   "sample_id": "g5-pc-fault-r2",
+   "anon": "S9937",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "target_ref_not_observed_by_view",
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 6850,
+   "reasoning_tokens": 1988,
+   "cost_cny": 0.030342488999999997
+  },
+  {
+   "sample_id": "g9-pc-fault-r5",
+   "anon": "S4094",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5877,
+   "reasoning_tokens": 3097,
+   "cost_cny": 0.026159381999999995
+  },
+  {
+   "sample_id": "g5-normal-1-r2",
+   "anon": "S7658",
+   "group": "5",
+   "case": "normal-1",
+   "a": 2,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    2
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 12245,
+   "reasoning_tokens": 6580,
+   "cost_cny": 0.053383721399999993
+  },
+  {
+   "sample_id": "g9-fault-1-r2",
+   "anon": "S8335",
+   "group": "9",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5327,
+   "reasoning_tokens": 1590,
+   "cost_cny": 0.0236920326
+  },
+  {
+   "sample_id": "g9-fault-2-r3",
+   "anon": "S4800",
+   "group": "9",
+   "case": "fault-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5415,
+   "reasoning_tokens": 2353,
+   "cost_cny": 0.0242027214
+  },
+  {
+   "sample_id": "g5-normal-2-r4",
+   "anon": "S9080",
+   "group": "5",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8537,
+   "reasoning_tokens": 2528,
+   "cost_cny": 0.037256170799999995
+  },
+  {
+   "sample_id": "g9-normal-2-r5",
+   "anon": "S2620",
+   "group": "9",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6286,
+   "reasoning_tokens": 2750,
+   "cost_cny": 0.027588782399999994
+  },
+  {
+   "sample_id": "g5-normal-2-r2",
+   "anon": "S4543",
+   "group": "5",
+   "case": "normal-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7180,
+   "reasoning_tokens": 2920,
+   "cost_cny": 0.0314753508
+  },
+  {
+   "sample_id": "g9-pc-fault-r4",
+   "anon": "S3141",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5169,
+   "reasoning_tokens": 1708,
+   "cost_cny": 0.023143301999999998
+  },
+  {
+   "sample_id": "g5-normal-1-r3",
+   "anon": "S9483",
+   "group": "5",
+   "case": "normal-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 12325,
+   "reasoning_tokens": 5571,
+   "cost_cny": 0.053724521399999996
+  },
+  {
+   "sample_id": "g9-pc-fault-r10",
+   "anon": "S3557",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 4919,
+   "reasoning_tokens": 1594,
+   "cost_cny": 0.022078301999999998
+  },
+  {
+   "sample_id": "g5-pc-fault-r6",
+   "anon": "S3363",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9753,
+   "reasoning_tokens": 4203,
+   "cost_cny": 0.042709269
+  },
+  {
+   "sample_id": "g8-pc-fault-r5",
+   "anon": "S4189",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7945,
+   "reasoning_tokens": 3016,
+   "cost_cny": 0.0349044591
+  },
+  {
+   "sample_id": "g9-cart-fault-r1",
+   "anon": "S2942",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6723,
+   "reasoning_tokens": 3444,
+   "cost_cny": 0.07369408079999998
+  },
+  {
+   "sample_id": "g8-normal-1-r2",
+   "anon": "S1143",
+   "group": "8",
+   "case": "normal-1",
+   "a": 1,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 12234,
+   "reasoning_tokens": 5474,
+   "cost_cny": 0.05336668139999999
+  },
+  {
+   "sample_id": "g5-pc-fault-r1",
+   "anon": "S1004",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 4,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    4,
+    4
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7507,
+   "reasoning_tokens": 2714,
+   "cost_cny": 0.06533736659999999
+  },
+  {
+   "sample_id": "g9-normal-2-r2",
+   "anon": "S1754",
+   "group": "9",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7838,
+   "reasoning_tokens": 3929,
+   "cost_cny": 0.0342003024
+  },
+  {
+   "sample_id": "g8-pc-fault-r1",
+   "anon": "S1103",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10007,
+   "reasoning_tokens": 4397,
+   "cost_cny": 0.04395472259999999
+  },
+  {
+   "sample_id": "g5-pc-fault-r4",
+   "anon": "S9527",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 10777,
+   "reasoning_tokens": 4843,
+   "cost_cny": 0.047071509
+  },
+  {
+   "sample_id": "g5-normal-1-r5",
+   "anon": "S3140",
+   "group": "5",
+   "case": "normal-1",
+   "a": 1,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8271,
+   "reasoning_tokens": 3530,
+   "cost_cny": 0.036454481399999995
+  },
+  {
+   "sample_id": "g5-cart-fault-r7",
+   "anon": "S2819",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9445,
+   "reasoning_tokens": 4361,
+   "cost_cny": 0.0414296076
+  },
+  {
+   "sample_id": "g9-pc-fault-r8",
+   "anon": "S8009",
+   "group": "9",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 4793,
+   "reasoning_tokens": 1196,
+   "cost_cny": 0.021541541999999997
+  },
+  {
+   "sample_id": "g8-normal-2-r3",
+   "anon": "S5002",
+   "group": "8",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "OUTPUT_LENGTH",
+   "reject_details": [
+    "OUTPUT_LENGTH"
+   ],
+   "completion_tokens": 16384,
+   "reasoning_tokens": 14708,
+   "cost_cny": 0.0707142108
+  },
+  {
+   "sample_id": "g9-cart-fault-r6",
+   "anon": "S9637",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5016,
+   "reasoning_tokens": 2063,
+   "cost_cny": 0.022603559999999998
+  },
+  {
+   "sample_id": "g8-pc-fault-r3",
+   "anon": "S2673",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5869,
+   "reasoning_tokens": 1106,
+   "cost_cny": 0.0260606991
+  },
+  {
+   "sample_id": "g9-cart-fault-r3",
+   "anon": "S9458",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 8026,
+   "reasoning_tokens": 3957,
+   "cost_cny": 0.03542615999999999
+  },
+  {
+   "sample_id": "g8-fault-1-r2",
+   "anon": "S2650",
+   "group": "8",
+   "case": "fault-1",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 11216,
+   "reasoning_tokens": 6174,
+   "cost_cny": 0.04872477239999999
+  },
+  {
+   "sample_id": "g9-cart-fault-r8",
+   "anon": "S9825",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5588,
+   "reasoning_tokens": 2468,
+   "cost_cny": 0.025040279999999995
+  },
+  {
+   "sample_id": "g9-cart-fault-r5",
+   "anon": "S7987",
+   "group": "9",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    2,
+    1
+   ],
+   "reviewer_e": [
+    2,
+    2
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 5660,
+   "reasoning_tokens": 2418,
+   "cost_cny": 0.025346999999999998
+  },
+  {
+   "sample_id": "g5-pc-fault-r3",
+   "anon": "S9326",
+   "group": "5",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    2,
+    1
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "target_ref_not_observed_by_view",
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 8281,
+   "reasoning_tokens": 3962,
+   "cost_cny": 0.036438549
+  },
+  {
+   "sample_id": "g5-cart-fault-r3",
+   "anon": "S5438",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 4,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    4,
+    4
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 11915,
+   "reasoning_tokens": 5534,
+   "cost_cny": 0.0519518076
+  },
+  {
+   "sample_id": "g8-fault-2-r5",
+   "anon": "S4618",
+   "group": "8",
+   "case": "fault-2",
+   "a": 1,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9212,
+   "reasoning_tokens": 3974,
+   "cost_cny": 0.0404093376
+  },
+  {
+   "sample_id": "g5-cart-fault-r4",
+   "anon": "S1490",
+   "group": "5",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 9993,
+   "reasoning_tokens": 3882,
+   "cost_cny": 0.043764087599999994
+  },
+  {
+   "sample_id": "g9-normal-1-r5",
+   "anon": "S8447",
+   "group": "9",
+   "case": "normal-1",
+   "a": 1,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9119,
+   "reasoning_tokens": 4743,
+   "cost_cny": 0.040010601599999994
+  },
+  {
+   "sample_id": "g8-normal-2-r1",
+   "anon": "S5762",
+   "group": "8",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7889,
+   "reasoning_tokens": 3354,
+   "cost_cny": 0.03479269799999999
+  },
+  {
+   "sample_id": "g8-cart-fault-r2",
+   "anon": "S9432",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    2
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 6830,
+   "reasoning_tokens": 2515,
+   "cost_cny": 0.030319527599999993
+  },
+  {
+   "sample_id": "g9-fault-1-r1",
+   "anon": "S2802",
+   "group": "9",
+   "case": "fault-1",
+   "a": 0,
+   "e": 2,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": true,
+   "exact_agree": false,
+   "presence_agree": false,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    2
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "fact_cites_non_ok_view"
+   ],
+   "completion_tokens": 5383,
+   "reasoning_tokens": 1769,
+   "cost_cny": 0.05599305659999999
+  },
+  {
+   "sample_id": "g5-normal-2-r1",
+   "anon": "S7743",
+   "group": "5",
+   "case": "normal-2",
+   "a": 1,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7322,
+   "reasoning_tokens": 2993,
+   "cost_cny": 0.032347457999999996
+  },
+  {
+   "sample_id": "g8-pc-fault-r9",
+   "anon": "S9615",
+   "group": "8",
+   "case": "pc-fault",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 6558,
+   "reasoning_tokens": 1844,
+   "cost_cny": 0.028995839099999997
+  },
+  {
+   "sample_id": "g8-cart-fault-r5",
+   "anon": "S9925",
+   "group": "8",
+   "case": "cart-fault",
+   "a": 1,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    1,
+    1
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "OUTPUT_LENGTH",
+   "reject_details": [
+    "OUTPUT_LENGTH"
+   ],
+   "completion_tokens": 16384,
+   "reasoning_tokens": 14733,
+   "cost_cny": 0.0710195676
+  },
+  {
+   "sample_id": "g8-fault-2-r2",
+   "anon": "S1032",
+   "group": "8",
+   "case": "fault-2",
+   "a": 0,
+   "e": 1,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9272,
+   "reasoning_tokens": 4146,
+   "cost_cny": 0.0406649376
+  },
+  {
+   "sample_id": "g9-normal-1-r1",
+   "anon": "S5852",
+   "group": "9",
+   "case": "normal-1",
+   "a": 0,
+   "e": 1,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    1,
+    1
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 9745,
+   "reasoning_tokens": 4346,
+   "cost_cny": 0.0902366832
+  },
+  {
+   "sample_id": "g5-fault-1-r3",
+   "anon": "S1112",
+   "group": "5",
+   "case": "fault-1",
+   "a": 0,
+   "e": 0,
+   "verdict": "failure_located",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": false,
+   "reject_reason": "REPORT_INVALID",
+   "reject_details": [
+    "unknown_evidence_id"
+   ],
+   "completion_tokens": 7269,
+   "reasoning_tokens": 2224,
+   "cost_cny": 0.032014325999999996
+  },
+  {
+   "sample_id": "g5-normal-2-r3",
+   "anon": "S3162",
+   "group": "5",
+   "case": "normal-2",
+   "a": 0,
+   "e": 0,
+   "verdict": "no_failure",
+   "verdict_correct": true,
+   "adjudicated": false,
+   "exact_agree": true,
+   "presence_agree": true,
+   "verdict_agree": true,
+   "reviewer_a": [
+    0,
+    0
+   ],
+   "reviewer_e": [
+    0,
+    0
+   ],
+   "accepted": true,
+   "reject_reason": "",
+   "reject_details": [],
+   "completion_tokens": 7497,
+   "reasoning_tokens": 2577,
+   "cost_cny": 0.0328257708
+  }
+ ]
+}

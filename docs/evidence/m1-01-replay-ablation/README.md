@@ -190,3 +190,69 @@
 ## 目录（阶段 C 新增）
 
 `summary3.json`、`reviews3/`（reviewer-1…16、adjudicator-17…21 的 jsonl，`blind-mapping.json`、`adjudication.json`）、`reviews2/phase-c-fable-partial-superseded/`（中断前 8 个 Fable 评审者原文 + `NOTE.md` + `blind2-mapping-snapshot.json`，保留不用于比较）、`samples/g6-*`、`samples/g6b-*`、`samples/g7-*`、`heldout/deepseek-balance-after-phase-c.json`、`heldout/deepseek-balance-after-group7.json`、`scripts/`（新增 `group7_transform.py`、`blind_pack3.py`、`adjudicate_pack3.py`、`summarize3.py`；`replay.py` 新增组 6/6b/7 与 290 上限）。
+
+# 第四阶段（阶段 D）：覆盖式转述句、短引用别名、评审稳定性核验（2026-09-27 UTC 21:35–22:24）
+
+授权：lead 阶段 D 指令，模型 HTTP 本任务上限 90（实际 81 次：组 8/9 各 40，另 1 次 `MODEL_UNAVAILABLE` 重试）。产品代码零改动（`git status opspilot/` 为空）。DeepSeek 余额：生成前 30.80 → 生成后 28.12（`heldout/deepseek-balance-before-phase-d.json`／`deepseek-balance-after-phase-d.json`，2.68 CNY／81 次）。评审与裁决仍用 Agent 工具（`model: opus`），不耗 DeepSeek 额度。
+
+## 两个新组
+
+- **组 8**：组 5（`RULE_SENTENCE` + `span_groups`，原文与算法不变）在同一条最终报告指令末尾、`RULE_SENTENCE` 之后再追加一句（`GROUP8_SENTENCE`，原文固定）："When summarizing multiple rows, use the counts, ranges, and grouped summaries provided by the view; do not recalculate them from individual rows."（`scripts/replay.py` 新增 `append_sentences`，一次性把多句拼到原始 `FINAL_REPORT_INSTRUCTION` 消息，避免组 9 需要三次追加时对"已改过的消息"做精确匹配失败）。
+- **组 9**：组 8 + 短引用别名的确定性变换（`build_alias_map`／`apply_alias`／`dealias_text`）。按交付顺序给每个出现过的 `evidence_id`（取自各 `tool` 消息 JSON 的 `evidence_id` 字段，去重后编号）分配 `E1`、`E2`…；把整份序列化请求文本中每个完整 id 的逐字出现（不止工具视图本身的 `evidence_id` 字段，也包括覆盖消息里引用的 id，如"Views with incomplete true: <id>"）替换为别名（按长度降序替换，避免前缀互相覆盖）；在最终指令末尾再追加一句（`GROUP9_SENTENCE`，原文固定）："Cite evidence by its short id exactly as shown (for example E3)."。模型只看到别名，看不到完整 id。回复到手后先用 `\bE\d+\b` 正则把别名映射回完整 id（未登记的别名原样保留，交给下游校验判成 `unknown_evidence_id`，等价于模型编造了一个不存在的短 id）——`report.txt`（校验与评审都用这份）永远是映射回完整 id 后的文本；模型原始输出另存 `report.aliased.txt`；`meta.json` 记录 `alias_count` 与完整的 `alias_map`。
+- 抽查（`normal-1` 基线请求）：组 9 的别名数 18，替换后序列化请求里找不到任何一个完整 id（零泄漏），18 个别名全部出现；覆盖消息里的 id 引用也被正确替换。40 个组 9 样本的 `report.txt` 逐一扫描，没有一个残留未映射的 `E<n>` token——模型全程只引用了实际存在的别名，没有编造。
+
+组 8/9 各在 6f 四个上下文（4 Run × 5 次）与两个留出上下文（2 Run × 10 次）生成 20 个样本，共 80（`ledger.jsonl` 累计 361 条，含 1 条失败重试）。`validation.json` 覆盖全部成功样本（360）。`MAX_CALLS` 上调到 370。
+
+## 统一复评：组 5/8/9，Opus，120 样本（含组 5 稳定性核验）
+
+方法与阶段 C 完全相同（`scripts/blind_pack4.py`／`adjudicate_pack4.py`／`summarize4.py`，逻辑与阶段 C 的 `blind_pack3.py` 等一致，只换目录名）：120 个样本（组 5 已有的 40 个 + 组 8/9 各 40 个新样本）随机打乱、匿名编号，6 个 Run 别名重新随机映射（与阶段 C 的映射不复用）；10 位全新上下文的 Opus 评审者，每人 24 个样本、每个样本 2 位独立评审；120 个样本中 27 个不一致，交 3 位全新上下文的 Opus 裁决者（每人 9 个）。
+
+**组 5 的 40 个样本是阶段 C 已经生成、已经验证过的原始产物，这一步只是重新匿名、重新分配给全新的 Opus 评审者复评一次**，用来检验"同一批报告、不同评审者、不同匿名编号"是否给出接近的计数——不是重跑模型。
+
+评审一致率（120 样本，`summary4.json` `overall`）：a/e 计数完全一致 93/120（77.5%）；错误有无一致 108/120（90%）；verdict 一致 120/120（100%）——均高于阶段 C 的 200 样本轮（76%／86%／98.5%）。
+
+**组 5 稳定性**：阶段 C（`summary3.json`）到阶段 D 重评（`summary4.json`）——6f：a 7→6、e 5→5；留出：a 6→6、e 26→24。两轮独立匿名、独立评审者、a 类几乎不变，e 类差 1–2，在阶段 C 已报告的评审噪声范围内（阶段 A/B 观察到的评审者尺度差异同量级），说明这套双盲+裁决流程对同一批报告的计数是稳定的。
+
+## 结果：6f（4 上下文 × 5 次，n=20／组）
+
+| 组 | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | fault 窗含错（n=10） | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|---|
+| 5 规则句+span_groups | 6 | **5** | **7/20** | **2/10** | 18/20 | 20/20 | 9,255 |
+| 8 组5+覆盖式转述句 | 6 | 16 | 14/20 | 8/10 | 18/20 | 19/20 | 8,856 |
+| 9 组8+短引用别名 | **5** | 9 | 9/20 | 5/10 | 17/20 | 20/20 | **7,145** |
+
+## 结果：留出（2 上下文 × 10 次，n=20／组，全部为 fault 窗）
+
+| 组 | a 类 | e 类 | 含 ≥1 个 a/e 的样本 | 校验通过 | 上游口径 | 平均 completion token |
+|---|---|---|---|---|---|---|
+| 5 规则句+span_groups | 6 | 24 | 14/20 | 14/20 | 20/20 | 9,181 |
+| 8 组5+覆盖式转述句 | **5** | 18 | 16/20 | 18/20 | 20/20 | 9,178 |
+| 9 组8+短引用别名 | 11 | **11** | 13/20 | 18/20 | 20/20 | **6,388** |
+
+## 校验失败原因分布
+
+6f：组 5 = `unknown_evidence_id`×2；组 8 = `REPORT_INVALID`（JSON 解析错误）×1、`OUTPUT_LENGTH`×1；组 9 = `REPORT_INVALID`×1、`fact_cites_non_ok_view`×2。
+
+留出：组 5 = `REPORT_INVALID`×1、`fact_cites_non_ok_view`×2、`target_ref_not_observed_by_view`×2、`unknown_evidence_id`×3；组 8 = `unknown_evidence_id`×1、`OUTPUT_LENGTH`×1；组 9 = `target_ref_not_authorized`×1、`target_ref_not_observed_by_view`×1、`fact_cites_non_ok_view`×1。
+
+**`unknown_evidence_id` 在组 9 两个场景都是 0**（组 5 两场景合计 5 次、组 8 合计 1 次），对应生成阶段的独立核验（40 个组 9 样本无一残留未映射的别名 token）——短别名结构性消除了"完整 UUID 抄漏一个字符"这类引用失败，但没有消除其他引用绑定失败（`fact_cites_non_ok_view`、`target_ref_not_authorized`、`target_ref_not_observed_by_view` 仍在组 9 出现）。
+
+## 结论（阶段 D）
+
+- **组 5 仍是两个场景里 a/e 双指标最均衡的基线**：6f 上 a/e 都是三组最低或次低（a=6 并列最低、e=5 最低），fault 窗含错比例（2/10）也最低；留出上 a 类第二低（6，仅比组 8 的 5 高 1）。
+- **组 8 的追加句在两个场景效果相反**：6f 上 e 类不降反升（5→16，接近三倍），fault 窗含错从 2/10 升到 8/10；留出上 e 类反而下降（24→18）、含错样本略升（14→16 但校验通过率提高到 18/20）。样本量小（每格 n=10 或 20），但方向相反本身是数据支持的观察，不是噪声能完全解释的（6f 的变化幅度远超阶段 C 报告的评审噪声区间）。
+- **组 9（短别名）把 6f 的 e 类从组 8 的 16 拉回到 9**（仍高于组 5 的 5），**留出场景 e 类进一步压到 11（三组最低）**，但留出 a 类升到 11（三组最高，高于组 5 的 6 和组 8 的 5）——短别名似乎减轻了组 8 引入的数值转述负担，代价是留出场景的状态默认填充类错误更多。
+- **`unknown_evidence_id` 按预期在组 9 消失**（两场景均 0），验证短别名替换即使在 40 个真实样本上也没有让模型引用一个不存在的别名。
+- **组 9 的输出 token 明显更短**：6f 7,145（比组 5 少 23%、比组 8 少 19%），留出 6,388（比组 5 少 30%、比组 8 少 30%）——用几个字符的别名替代 70+ 字符的复合 UUID 引用，直接压低了输出长度，这本身不是错误率指标，但是产品侧若采用该方案的一个直接收益（更低的 completion token 成本）。
+- 上游口径在所有格子都是 19–20/20，与阶段 A/B/C 结论一致，不因组别系统性变化。
+- **组 5 双轮评审结果高度一致**（见上），支持把阶段 C 与阶段 D 报告的绝对计数当作可比数字看待，而不只是同一轮内部的相对排序。
+
+## 局限（阶段 D）
+
+- 每组每场景仍是 20 个样本，组 8 在 6f 上的效应（e 类三倍）主要来自 fault-2 一个 Run（`e` 从组 5 的 1 升到组 8 的 7，按 Run 拆分未在本节展开）；结论中"方向相反"的判断基于组间对比，不代表单个 Run 外的普遍规律。
+- 组 9 的别名替换只处理了 `evidence_id`；`target_id`、`time_scope_ref` 等其他引用字段未做同类处理，留出场景新增的 `target_ref_not_authorized`／`target_ref_not_observed_by_view` 失败与别名机制本身无关。
+- 复评仍是每样本 2 位 Opus + 不一致裁决，一致率（77.5%／90%／100%）与阶段 C 同量级；组 5 的稳定性核验只做了一次重评，不是多轮重复实验。
+
+## 目录（阶段 D 新增）
+
+`summary4.json`、`reviews4/`（reviewer-1…10、adjudicator-11…13 的 jsonl，`blind-mapping.json`、`adjudication.json`）、`samples/g8-*`、`samples/g9-*`（`g9-*` 额外含 `report.aliased.txt`）、`heldout/deepseek-balance-before-phase-d.json`、`heldout/deepseek-balance-after-phase-d.json`、`scripts/`（新增 `blind_pack4.py`、`adjudicate_pack4.py`、`summarize4.py`；`replay.py` 新增组 8/9、`append_sentences`、别名三件套与 370 上限）。
