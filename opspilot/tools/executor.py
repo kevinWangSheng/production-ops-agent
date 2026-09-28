@@ -348,11 +348,26 @@ class TransportResponse:
     substitute the requested window/data_as_of. The adapter must derive these
     timestamps from source semantics, never model-supplied parameters.
 
+    ``query_window`` is the absolute window the adapter actually queried,
+    when that can differ from the top-level authorized ``TransportRequest
+    .window`` the executor bounds every call to (batch B, B2 review
+    disposition P1: a profile whose tool lets the model pick a narrower
+    window inside a wider authorized frame -- ``opspilot.tools.otel_demo``'s
+    ``start``/``end`` parameters are the first such case). ``None`` means the
+    adapter queried the full authorized window verbatim (every profile
+    before B2, and any call with no narrower selection); the executor then
+    falls back to ``TransportRequest.window`` for the view's own ``window``
+    field, unchanged from before this field existed. When given, must be
+    contained in ``TransportRequest.window``; a wider or disjoint claim is
+    MALFORMED_RESULT, the same fail-closed treatment as an over-long
+    ``lookback_seconds``.
+
     ``lookback_seconds`` is how far back each returned point reads (the
     longest PromQL range selector), derived by the adapter from the query it
     sent; ``None`` when the adapter does not report it. The adapter starts
-    its evaluation that far after the requested window start, so the earliest
-    instant any point reads is the window start itself, shown to the model as
+    its evaluation that far after the *query* window's start (``query_window``
+    when given, else the full authorized window), so the earliest instant any
+    point reads is that query window's start itself, shown to the model as
     ``lookback_start_at``. It is not part of ``source_start_at``: that
     interval stays the returned samples the scope and time-policy checks
     bound (v4 acceptance packet, normal-1 review P2-3; v4 rerun P2).
@@ -384,6 +399,7 @@ class TransportResponse:
     row_unit: str | None = None
     backend_rows_returned: int | None = None
     view_fields: Mapping[str, object] | None = None
+    query_window: Window | None = None
 
 
 @runtime_checkable
@@ -945,7 +961,9 @@ class ReadOnlyToolExecutor:
                 )
             if settlement_denied:
                 return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
-            return self._refuse(operation, status, reason, contact)
+            return self._refuse(
+                operation, status, reason, contact, detail=_refusal_detail(reason, plan)
+            )
 
         try:
             charged = self._charge(operation.operation_id, elapsed, dispatch_id)
@@ -1183,14 +1201,27 @@ class ReadOnlyToolExecutor:
             )
         ):
             return _problem("error", "MALFORMED_RESULT")
+        query_window = response.query_window
+        if query_window is not None and (
+            not isinstance(query_window, Window)
+            or not plan.window.contains(query_window)
+        ):
+            # B2 review disposition P1: the adapter may report a narrower
+            # window it actually queried (otel_demo's start/end params), but
+            # never one wider than or outside what it was authorized for --
+            # the same fail-closed treatment as an over-long lookback below.
+            return _problem("error", "MALFORMED_RESULT")
+        effective_window = query_window if query_window is not None else plan.window
         lookback = response.lookback_seconds
         if lookback is not None and (
-            type(lookback) is not int or lookback < 0 or lookback > plan.window.seconds
+            type(lookback) is not int
+            or lookback < 0
+            or lookback > effective_window.seconds
         ):
             # The adapter may not claim a per-point read longer than the
-            # window it was asked for (the PromQL guard refuses longer
-            # selectors before any request, and a longer one could not start
-            # inside the window).
+            # (query) window it was asked for (the PromQL guard refuses
+            # longer selectors before any request, and a longer one could
+            # not start inside that window).
             return _problem("error", "MALFORMED_RESULT")
         if _unit_fields_problem(response, len(rows)):
             return _problem("error", "MALFORMED_RESULT")
@@ -1332,6 +1363,12 @@ class ReadOnlyToolExecutor:
             None if data_as_of is None else (observed_at - data_as_of).total_seconds()
         )
         lookback = response.lookback_seconds
+        # B2 review disposition P1: the view's window (and, below,
+        # lookback_start_at) is the window actually queried, not the wider
+        # authorized frame ``plan.window`` always carries -- validated
+        # in ``_inspect()`` to be no wider than and contained in it.
+        query_window = response.query_window
+        effective_window = query_window if query_window is not None else plan.window
         view: dict[str, object] = {
             # One identity per dispatched observation, not per stable
             # operation: the per-dispatch charging protocol permits the same
@@ -1361,7 +1398,7 @@ class ReadOnlyToolExecutor:
             "tool_registry_revision": operation.tool_registry_revision,
             "projection_revision": PROJECTION_REVISION,
             "query": dict(plan.params),
-            "window": plan.window.as_json(),
+            "window": effective_window.as_json(),
             "observed_at": observed_at.isoformat(),
             "dispatch_started_at": None
             if operation.started_at is None
@@ -1376,11 +1413,11 @@ class ReadOnlyToolExecutor:
             "freshness_seconds": freshness,
             "lookback_seconds": lookback,
             # The earliest instant any returned point reads: the adapter
-            # starts evaluating ``lookback`` after the window start, so the
-            # first point's ``[t - lookback, t]`` begins exactly there.
+            # starts evaluating ``lookback`` after the query window's start,
+            # so the first point's ``[t - lookback, t]`` begins exactly there.
             "lookback_start_at": None
             if lookback is None
-            else plan.window.start.isoformat(),
+            else effective_window.start.isoformat(),
             "result_count": len(rows),
             "returned_count": len(kept),
             "incomplete": incomplete,
@@ -1431,8 +1468,15 @@ class ReadOnlyToolExecutor:
         contact: SourceContact = "none",
         *,
         evidence: EvidenceRecord | None = None,
+        detail: Mapping[str, object] | None = None,
     ) -> ToolOutcome:
-        """Build a refusal outcome whose model view carries no source content."""
+        """Build a refusal outcome whose model view carries no source content.
+
+        ``detail`` (B1 review disposition P2) adds fixed, reason-specific,
+        content-free extra fields -- never a source's own bytes -- so a
+        refusal the model can act on (retry with a smaller ``limit`` or a
+        narrower window) is not just a bare code.
+        """
 
         view: dict[str, object] = {
             "operation_id": operation.operation_id,
@@ -1449,6 +1493,8 @@ class ReadOnlyToolExecutor:
             else None,
             "content": None,
         }
+        if detail:
+            view.update(detail)
         return ToolOutcome(
             operation=operation,
             status=status,
@@ -1461,6 +1507,30 @@ class ReadOnlyToolExecutor:
 
 def _status_for(problem: str) -> ToolStatus:
     return "denied" if problem == "PARAM_NOT_ALLOWED" else "error"
+
+
+def _refusal_detail(reason: str, plan: _Plan) -> Mapping[str, object] | None:
+    """B1 review disposition P2: an actionable ``RESULT_TOO_LARGE`` refusal.
+
+    Upstream's own oversized-result tools return a hint the model can act on
+    rather than a bare error (the Prometheus toolset returns a summary
+    instead of raw data when a result is too large). This project keeps
+    ``RESULT_TOO_LARGE`` a refusal -- adopting no content either way -- but
+    states the byte ceiling that was crossed and suggests a smaller
+    ``limit`` or a narrower window, generically (not otel_demo-specific: any
+    registration whose ``max_result_bytes`` a call exceeds gets the same
+    actionable text). Every other reason gets no detail, unchanged.
+    """
+    if reason != "RESULT_TOO_LARGE":
+        return None
+    ceiling = plan.registration.max_result_bytes
+    return {
+        "max_result_bytes": ceiling,
+        "message": (
+            f"The result exceeded the {ceiling}-byte limit for this tool. "
+            "Retry with a smaller limit or a narrower window."
+        ),
+    }
 
 
 def _accept_params(

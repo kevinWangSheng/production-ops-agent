@@ -260,9 +260,10 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "source_start_at is the first returned sample inside the "
                 "query window. "
                 "A whole-window total, maximum or minimum comes from one "
-                "evaluation of a window-length selector, such as "
-                "increase(x[300s]), max_over_time(x[300s]) or "
-                "min_over_time(x[300s]). "
+                "evaluation of a range selector equal to the query window's "
+                "length in seconds, written as increase(x[Ws]), "
+                "max_over_time(x[Ws]) or min_over_time(x[Ws]) where W is "
+                "that many seconds. "
                 "Do not compute totals, maxima or minima from the point list "
                 "yourself. "
                 "A range selector longer than the query window is refused. "
@@ -983,6 +984,9 @@ class OtelDemoTransport:
             source_start_at=start_at,
             source_end_at=end_at,
             lookback_seconds=lookback,
+            # B2 review disposition P1: the view must record the window
+            # actually queried, not the wider authorized frame.
+            query_window=window,
         )
 
     # -- traces -------------------------------------------------------------
@@ -1037,6 +1041,9 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
+            # B2 review disposition P1: the view must record the window
+            # actually searched, not the wider authorized frame.
+            query_window=window,
             # Round 2 rule B: counts with their unit, from the record's own
             # fields; the executor adds spans_shown / spans_omitted once it
             # knows how many sampled spans fit the view.
