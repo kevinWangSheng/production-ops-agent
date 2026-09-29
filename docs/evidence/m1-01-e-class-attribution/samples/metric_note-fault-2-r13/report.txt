@@ -1,0 +1,1 @@
+Let me establish a baseline to judge whether error rates and latency are actually elevated.

@@ -1,0 +1,1 @@
+Let me get a comparable baseline from the preceding equal-length window before saying anything about latency.

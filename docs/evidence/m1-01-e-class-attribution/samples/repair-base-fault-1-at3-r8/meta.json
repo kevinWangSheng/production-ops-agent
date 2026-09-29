@@ -1,0 +1,38 @@
+{
+ "sample_id": "repair-base-fault-1-at3-r8",
+ "variant": "repair",
+ "request_bytes": 772936,
+ "elapsed_s": 32.89,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 225168,
+  "completion_tokens": 8766,
+  "total_tokens": 233934,
+  "prompt_tokens_details": {
+   "cached_tokens": 219392
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2993
+  },
+  "prompt_cache_hit_tokens": 219392,
+  "prompt_cache_miss_tokens": 5776
+ },
+ "findings_before": [
+  [
+   9,
+   "5313"
+  ],
+  [
+   9,
+   "7577"
+  ],
+  [
+   9,
+   "13371"
+  ],
+  [
+   9,
+   "18675"
+  ]
+ ]
+}

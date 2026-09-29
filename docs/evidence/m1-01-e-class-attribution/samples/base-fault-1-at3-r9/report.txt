@@ -1,0 +1,1 @@
+The far-past baseline returned no data. Let me probe a few baseline windows closer to the incident window.

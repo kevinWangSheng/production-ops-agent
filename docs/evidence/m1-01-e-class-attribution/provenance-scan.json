@@ -1,0 +1,356 @@
+[
+ {
+  "batch": "6f",
+  "run": "fault-1",
+  "claims": 14,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "6f",
+  "run": "fault-2",
+  "claims": 15,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "6f",
+  "run": "normal-1",
+  "claims": 22,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "6f",
+  "run": "normal-2",
+  "claims": 14,
+  "flagged_numbers": 1,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 4,
+    "kind": "fact",
+    "number": "1.64",
+    "in_other_views": [],
+    "in_review": false
+   }
+  ]
+ },
+ {
+  "batch": "batch1",
+  "run": "cart-fault",
+  "claims": 16,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch1",
+  "run": "fault-1",
+  "claims": 20,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch1",
+  "run": "fault-2",
+  "claims": 14,
+  "flagged_numbers": 1,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 13,
+    "kind": "rejected_hypothesis",
+    "number": "11.25",
+    "in_other_views": [
+     "0a0bebb9-t1",
+     "eba054f1-t1"
+    ],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch1",
+  "run": "normal-1",
+  "claims": 19,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch1",
+  "run": "normal-2",
+  "claims": 12,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch1",
+  "run": "pc-fault",
+  "claims": 11,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch2",
+  "run": "cart-fault",
+  "claims": 11,
+  "flagged_numbers": 2,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 0,
+    "kind": "fact",
+    "number": "10.05",
+    "in_other_views": [],
+    "in_review": true
+   },
+   {
+    "claim": 0,
+    "kind": "fact",
+    "number": "12.46",
+    "in_other_views": [],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch2",
+  "run": "fault-1",
+  "claims": 15,
+  "flagged_numbers": 3,
+  "flagged_claims": 3,
+  "findings": [
+   {
+    "claim": 8,
+    "kind": "fact",
+    "number": "3975",
+    "in_other_views": [],
+    "in_review": true
+   },
+   {
+    "claim": 11,
+    "kind": "hypothesis",
+    "number": "3975",
+    "in_other_views": [],
+    "in_review": true
+   },
+   {
+    "claim": 13,
+    "kind": "counter_evidence",
+    "number": "3975",
+    "in_other_views": [],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch2",
+  "run": "fault-2",
+  "claims": 20,
+  "flagged_numbers": 4,
+  "flagged_claims": 3,
+  "findings": [
+   {
+    "claim": 9,
+    "kind": "fact",
+    "number": "6.334138365279",
+    "in_other_views": [],
+    "in_review": true
+   },
+   {
+    "claim": 16,
+    "kind": "counter_evidence",
+    "number": "3400.0000000000005",
+    "in_other_views": [
+     "f6a7d716-t3"
+    ],
+    "in_review": false
+   },
+   {
+    "claim": 19,
+    "kind": "recommendation",
+    "number": "2500",
+    "in_other_views": [
+     "1c2ba980-t0",
+     "1c2ba980-t1"
+    ],
+    "in_review": true
+   },
+   {
+    "claim": 19,
+    "kind": "recommendation",
+    "number": "5000",
+    "in_other_views": [
+     "1c2ba980-t0",
+     "1c2ba980-t1"
+    ],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch2",
+  "run": "normal-1",
+  "claims": 10,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch2",
+  "run": "normal-2",
+  "claims": 16,
+  "flagged_numbers": 2,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 8,
+    "kind": "fact",
+    "number": "0.05",
+    "in_other_views": [],
+    "in_review": false
+   },
+   {
+    "claim": 8,
+    "kind": "fact",
+    "number": "4.32",
+    "in_other_views": [],
+    "in_review": false
+   }
+  ]
+ },
+ {
+  "batch": "batch2",
+  "run": "pc-fault",
+  "claims": 19,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch3",
+  "run": "cart-fault",
+  "claims": 12,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch3",
+  "run": "fault-1",
+  "claims": 17,
+  "flagged_numbers": 4,
+  "flagged_claims": 2,
+  "findings": [
+   {
+    "claim": 9,
+    "kind": "fact",
+    "number": "128935",
+    "in_other_views": [
+     "fac80892-t0",
+     "fac80892-t3",
+     "fac80892-t4",
+     "fac80892-t5"
+    ],
+    "in_review": true
+   },
+   {
+    "claim": 9,
+    "kind": "fact",
+    "number": "148885",
+    "in_other_views": [
+     "fac80892-t0",
+     "fac80892-t3",
+     "fac80892-t4",
+     "fac80892-t5"
+    ],
+    "in_review": true
+   },
+   {
+    "claim": 10,
+    "kind": "counter_evidence",
+    "number": "5386",
+    "in_other_views": [
+     "fac80892-t0",
+     "fac80892-t3",
+     "fac80892-t4"
+    ],
+    "in_review": true
+   },
+   {
+    "claim": 10,
+    "kind": "counter_evidence",
+    "number": "9662",
+    "in_other_views": [
+     "fac80892-t0",
+     "fac80892-t3",
+     "fac80892-t4",
+     "fac80892-t5"
+    ],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch3",
+  "run": "fault-2",
+  "claims": 12,
+  "flagged_numbers": 1,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 7,
+    "kind": "fact",
+    "number": "0.59",
+    "in_other_views": [],
+    "in_review": false
+   }
+  ]
+ },
+ {
+  "batch": "batch3",
+  "run": "normal-1",
+  "claims": 19,
+  "flagged_numbers": 1,
+  "flagged_claims": 1,
+  "findings": [
+   {
+    "claim": 12,
+    "kind": "fact",
+    "number": "27542",
+    "in_other_views": [
+     "3c32e307-t2",
+     "a6f7eea4-t1",
+     "a6f7eea4-t2",
+     "a6f7eea4-t5",
+     "a6f7eea4-t6"
+    ],
+    "in_review": true
+   }
+  ]
+ },
+ {
+  "batch": "batch3",
+  "run": "normal-2",
+  "claims": 11,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ },
+ {
+  "batch": "batch3",
+  "run": "pc-fault",
+  "claims": 18,
+  "flagged_numbers": 0,
+  "flagged_claims": 0,
+  "findings": []
+ }
+]

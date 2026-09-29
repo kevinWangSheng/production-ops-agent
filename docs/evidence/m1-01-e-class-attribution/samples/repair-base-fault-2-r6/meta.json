@@ -1,0 +1,30 @@
+{
+ "sample_id": "repair-base-fault-2-r6",
+ "variant": "repair",
+ "request_bytes": 258563,
+ "elapsed_s": 22.35,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 74798,
+  "completion_tokens": 6216,
+  "total_tokens": 81014,
+  "prompt_tokens_details": {
+   "cached_tokens": 640
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2656
+  },
+  "prompt_cache_hit_tokens": 640,
+  "prompt_cache_miss_tokens": 74158
+ },
+ "findings_before": [
+  [
+   9,
+   "1460"
+  ],
+  [
+   9,
+   "21371"
+  ]
+ ]
+}

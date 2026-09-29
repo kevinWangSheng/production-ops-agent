@@ -1,0 +1,1 @@
+Baseline 24h prior returned no data. Let me check an earlier in-window baseline and the payment transaction counter.

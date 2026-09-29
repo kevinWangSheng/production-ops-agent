@@ -1,0 +1,517 @@
+[
+ {
+  "sample": "metric_note-fault-1-at3-r1",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": [
+   {
+    "claim": 18,
+    "kind": "counter_evidence",
+    "number": "4340",
+    "in_other_views": []
+   },
+   {
+    "claim": 18,
+    "kind": "counter_evidence",
+    "number": "5313",
+    "in_other_views": [
+     "fac80892-t0",
+     "fac80892-t4"
+    ]
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r10",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r11",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r12",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r13",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": [
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "5.008",
+    "in_other_views": [
+     "fac80892-t7"
+    ]
+   },
+   {
+    "claim": 6,
+    "kind": "fact",
+    "number": "2.85",
+    "in_other_views": []
+   },
+   {
+    "claim": 6,
+    "kind": "fact",
+    "number": "6.27",
+    "in_other_views": []
+   },
+   {
+    "claim": 6,
+    "kind": "fact",
+    "number": "7.58",
+    "in_other_views": []
+   },
+   {
+    "claim": 6,
+    "kind": "fact",
+    "number": "17.18",
+    "in_other_views": []
+   },
+   {
+    "claim": 6,
+    "kind": "fact",
+    "number": "18.68",
+    "in_other_views": []
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r14",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r15",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": [
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "2.85",
+    "in_other_views": []
+   },
+   {
+    "claim": 8,
+    "kind": "counter_evidence",
+    "number": "2.85",
+    "in_other_views": []
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r16",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r2",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r3",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": [
+    3
+   ]
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r4",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": [
+   {
+    "claim": 15,
+    "kind": "fact",
+    "number": "27000",
+    "in_other_views": []
+   },
+   {
+    "claim": 15,
+    "kind": "fact",
+    "number": "86500",
+    "in_other_views": []
+   },
+   {
+    "claim": 15,
+    "kind": "fact",
+    "number": "143900",
+    "in_other_views": []
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r5",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r6",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r7",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": [
+   {
+    "claim": 7,
+    "kind": "fact",
+    "number": "5.007639519670669",
+    "in_other_views": [
+     "fac80892-t7"
+    ]
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r8",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r9",
+  "case": "fault-1-at3",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E2": [],
+   "E3": [],
+   "E4": [],
+   "E5": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r1",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": [
+    6
+   ]
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r10",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r11",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r12",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r13",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r14",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r15",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": [
+   {
+    "claim": 10,
+    "kind": "fact",
+    "number": "3361",
+    "in_other_views": [
+     "a9e09977-t0"
+    ]
+   },
+   {
+    "claim": 10,
+    "kind": "fact",
+    "number": "5313",
+    "in_other_views": [
+     "a9e09977-t0"
+    ]
+   },
+   {
+    "claim": 10,
+    "kind": "fact",
+    "number": "21371",
+    "in_other_views": [
+     "a9e09977-t0"
+    ]
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-2-r16",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r2",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r3",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": [
+   {
+    "claim": 2,
+    "kind": "fact",
+    "number": "16.666",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "1.460",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "3.361",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "4.822",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "6.766",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "21.371",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "22.223",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "25.658",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "27.017",
+    "in_other_views": []
+   },
+   {
+    "claim": 5,
+    "kind": "fact",
+    "number": "57.056",
+    "in_other_views": []
+   }
+  ]
+ },
+ {
+  "sample": "metric_note-fault-2-r4",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r5",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r6",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "stop",
+  "report": true,
+  "flags": {
+   "E6": []
+  },
+  "provenance": []
+ },
+ {
+  "sample": "metric_note-fault-2-r7",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r8",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ },
+ {
+  "sample": "metric_note-fault-2-r9",
+  "case": "fault-2",
+  "fenced": false,
+  "finish": "tool_calls",
+  "report": false
+ }
+]
