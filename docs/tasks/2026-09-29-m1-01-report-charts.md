@@ -112,3 +112,4 @@ trace/span 图；发布观察页；交互（缩放、悬停、JS）；模型选�
 - **P2-1（已修）**：全为负的常数 series 且 |值| 大于约 9e15（如 `-1e20`）时 `low + 1.0 == low`，除零冒泡使整页 500；跨度溢出（±1.5e308）时坐标为 nan。修复：常数补偿按量级 `max(1, |low|·1e-6)`；跨度或坐标不有限时输出 `chart-unavailable`（`unplottable_range`）；`service._charts` 对单张图异常隔离并记日志，不拖垮整页。回归 `tests/test_m1_report_charts_robustness.py`（9 例，撤回修复后 6 红，恢复后全绿）；合同测试未改。
 - 可选 1、2、3 已采纳：`omitted_rows` 转义；`_step` 加 `isfinite`；未绘序列存在时，「跳过/窗外」计数后注明「counted over all series, including those not drawn」（合同精确串未受影响）。
 - 可选 4–7 仅记录，不改。
+- Codex 机器人 P2（PR #62）：超大整数时间戳 `float(ts)` 抛 `OverflowError`，页面静默丢图。可复现，已采纳：溢出与非有限时间戳按 `unrecognized_shape` 出占位，回归入 robustness 测试。

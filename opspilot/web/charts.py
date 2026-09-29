@@ -173,7 +173,13 @@ def _series(
                 raise _Shape
             if not isinstance(raw, str):
                 raise _Shape
-            points.append((float(ts), raw))
+            try:
+                seconds = float(ts)
+            except OverflowError:
+                raise _Shape from None
+            if not isfinite(seconds):
+                raise _Shape
+            points.append((seconds, raw))
         out.append((metric, points))
     return out
 

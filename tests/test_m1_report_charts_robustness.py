@@ -82,3 +82,13 @@ def test_page_survives_an_unplottable_chart_and_a_crashing_one(monkeypatch):
     again = fetch(page.app, page.workbench, page.incident, page.store)
     assert again.status == 200
     assert [f.attrs["data-evidence-id"] for f in again.figures()] == ["ev-b"]
+
+
+@pytest.mark.parametrize("ts", [10**400, float("inf"), float("nan")])
+def test_out_of_range_timestamp_is_unrecognized_shape(ts):
+    ev = evidence(
+        content=[{"metric": {"job": "a"}, "values": [[ts, "1"]]}],
+    )
+    root = parse(render_evidence_chart(ev, ["facts"]))
+    (node,) = root.find_all("p", cls="chart-unavailable")
+    assert node.attrs["data-reason"] == "unrecognized_shape"
