@@ -1,7 +1,7 @@
 # M1-01 整视图 token 计量与超限拒绝：有界真实 Run（otel-demo profile）
 
 - 日期：2026-09-29 UTC 11:16–11:52（本机 04:16–04:52 PDT）。
-- 被测代码：`2662076`（含 `3012cfe` 的整视图 token 计量与 `RESULT_TOO_LARGE` 拒绝，合同见 [任务记录](../../tasks/2026-09-29-m1-01-view-bytes-timeout.md) A 节）。`worker.log` 首行 `versions`：`prompt-replay-candidate-bd28790117a0` / `ctx-ctx-policy-v1-a30e65ea52f4` / `otel-demo-34bc78980747`。拒绝视图的 `window`/`query` 回显（见"发现的产品缺陷"）在这些 Run **之后**才修，未重跑。
+- 被测代码：等于 PR 分支 HEAD 去掉"拒绝视图回显窗口与 query"这处修复，即 `executor.py` 的 +36/−5（Run 时的提交只在未推送的旧分支上，外部解析不到；整视图 token 计量与 `RESULT_TOO_LARGE` 拒绝，合同见 [任务记录](../../tasks/2026-09-29-m1-01-view-bytes-timeout.md) A 节）。`worker.log` 首行 `versions`：`prompt-replay-candidate-bd28790117a0` / `ctx-ctx-policy-v1-a30e65ea52f4` / `otel-demo-34bc78980747`。拒绝视图的 `window`/`query` 回显（见"发现的产品缺陷"）在这些 Run **之后**才修，未重跑。
 - 授权：AGENTS.md「费用与真实调用」常设授权；拿 lab 锁（11:16Z 起，PG 集成与审查完成后释放），本 worktree 的 lab PostgreSQL 55431，colima `m0-otel`。用完已 `stop` 两者，数据保留。
 - 流程：与第三批效果测量相同（[alignment-c-effect/run.md](../m1-01-alignment-c-effect/run.md)）：`otel_demo_observe.py` 独立观察 → `POST /intake/ui` → 常驻 `worker_main` → `InvestigationRunner`；问题文本与第三批相同（"for the last 5 minutes"）。新增 1 个宽查询 Run：`vt-broad-question.txt`（开发脚本给出的问题，跨全部授权服务、24 h 窗口、要求 15 s 步长与 limit≥50），不改产品代码。
 - 费用：DeepSeek 余额 12.70 → 11.19 CNY（`deepseek-balance-before/after.json`），差 1.51 CNY，含 6 个真实 Run（含 1 个作废）与本机同时段全部调用；账户有其他并发使用，未做独立对账。
@@ -58,7 +58,7 @@
 - `traces_search` 在 checkout 上体量很重：`limit=5` 也有 33k–43k tokens，`limit` 提示只在 limit 低于窗口内 trace 数时有效。模型只能缩到 1–2 分钟或 limit 1–3，样本因此很小。这是否影响调查质量、要不要在拒绝信息里给出窗口内实际 trace 数或 span 数的提示，未做，留待后续。
 - 审查者用 Sonnet，与前几批的 Opus 不同；核心 4 场景 P2 +1 不能区分产品影响与审查粒度。
 - 每种场景只有 1–2 个 Run，无统计意义；宽查询 Run 在只运行了约 10 分钟的实验环境上执行，24 h 窗口大部分为空，不代表长期运行的实验环境。
-- 未覆盖：暂停/取消下的控制拒绝演示、重启恢复（有确定性与 PG 合同用例，PG 集成全套已跑：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_CONTROL_POSTGRES=1 M0_STEP_POSTGRES=1`，含 `tests/integration` 220 passed，全量仅剩 9 个待测试作者补断言的合同用例失败）。
+- 未覆盖：暂停/取消下的控制拒绝演示、重启恢复（有确定性与 PG 合同用例，PG 集成全套已跑：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_CONTROL_POSTGRES=1 M0_STEP_POSTGRES=1`，含 `tests/integration` 220 passed，当时全量仅剩 9 个待测试作者补断言的合同用例失败，此后已修订，全量 pytest 现为 0 失败）。
 - 拒绝时 raw 不落库（合同决定）；因此拒绝时无法事后核对源返回了什么，只有 `view_tokens`。
 - 费用未对账（账户有并发使用）。
 

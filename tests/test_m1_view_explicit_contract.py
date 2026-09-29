@@ -453,9 +453,13 @@ def test_c_a_historical_v5_truncated_view_is_listed_and_the_other_categories_are
     """M1-01 A (v3) contract change: the executor no longer truncates rows, so
     a Run can no longer *produce* a view with ``truncated: true`` (this test
     used to make one with 30 rows under the old default cap). The category is
-    not dead, though: a view committed by a pre-upgrade (projection v5) Run may
-    carry ``truncated: true``, and rebuilding the transcript from stored rows
-    must still classify it. So the view is made historical by hand: run
+    kept for stored views written by a pre-upgrade (projection v5) Run, which
+    may carry ``truncated: true``. Premise, stated exactly: on the otel-demo
+    profile such a Run cannot be resumed (the ``tool_schema_revision`` version
+    gate blocks it), so this only matters where a v5 view can still be
+    rebuilt -- the fixture profile. The classification code (``delivered_view``
+    + ``run_coverage_message``) stays and stays tested. The view is made
+    historical by hand: run
     once, take the stored result, mark it as v5 wrote a truncated one, derive
     the ``DeliveredView`` the way the rebuild path does (``delivered_view``)
     and feed it through the single-source ``run_coverage_message``."""

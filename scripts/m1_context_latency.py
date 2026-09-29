@@ -37,7 +37,6 @@ from opspilot.investigation.messages import assistant_message, pair_tool_results
 from opspilot.tools.registry import canonical
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN_ENV = Path("/Users/shenghuikevin/dev/AI/production-ops-agent/.env")
 OUT_DIR = ROOT / "docs/evidence/m1-01-view-bytes-timeout"
 
 TOOL = {
@@ -73,7 +72,6 @@ def read_key() -> str:
     explicit = os.environ.get("M0_ENV_FILE")
     for path in [Path(p).expanduser() for p in [explicit] if p] + [
         ROOT / ".env",
-        MAIN_ENV,
     ]:
         if path.is_file():
             for line in path.read_text().splitlines():
@@ -81,7 +79,7 @@ def read_key() -> str:
                     value = line.split("=", 1)[1].strip().strip("'\"")
                     if value:
                         return value
-    raise SystemExit("credential file unavailable")
+    raise SystemExit("credential file unavailable: set M0_ENV_FILE or add .env")
 
 
 def balance(key: str) -> dict:

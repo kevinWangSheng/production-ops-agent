@@ -1,10 +1,10 @@
 # M1-01 限制审计剩余项：整视图字节计量与 1M 上下文单次请求超时
 
-- 状态：进行中（合同 v3：A 为 tokenizer 口径 + 超限拒绝；实现未开始）
+- 状态：进行中（实现、测试与有界真实 Run 已完成；待独立审查处置、CI 与用户合并）
 - 更新日期：2026-09-29
 - 依据：[收口记录后续项 4](2026-09-28-m1-01-closure.md)；[限制](2026-09-28-m1-01-loop-limits.md)、[对齐第二批 B1/B4/B6](2026-09-28-m1-01-upstream-alignment-b.md)、[对齐第三批 C3](2026-09-28-m1-01-alignment-c.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-view-bytes`，PR 分支 `feature/m1-01-view-tokens`（从 origin/main 分层重提：文档、测试、产品代码与依赖）；工作分支 `feature/m1-01-view-bytes-timeout`（起点 origin/main f0038dd）原样保留、不推送，提交历史留作审计。换分支的原因：旧分支早期提交里的十六进制摘要标识符触发 gitleaks `generic-api-key`，CI 扫全部历史且禁止豁免，又不改写历史
-- 证据：[docs/evidence/m1-01-view-bytes-timeout/](../evidence/m1-01-view-bytes-timeout/run.md)
+- 证据：调研与延迟实测 [m1-01-view-bytes-timeout](../evidence/m1-01-view-bytes-timeout/run.md)；有界真实 Run [m1-01-view-tokens-effect](../evidence/m1-01-view-tokens-effect/run.md)
 
 ## 结论
 
@@ -129,9 +129,16 @@ A 与 B 是独立问题，B 无 PR。`tests/test_m1_whole_view_bytes_contract.py
 
 - 估算器按 `canonical(message)` 字节 ×0.25（`context.py:174-195`），975k 真实 tokens 的请求约 2.46 MB，估算约 61 万，低估约 1.6 倍（推断，估算值未直接测）。校准因子只在每次响应后按 `usage.prompt_tokens` 上调（`context.py:197-205`），所以压缩阈值 0.95×1M 在一轮内会滞后；同一轮多个并行 tool 结果各按 ≤100 KiB 计入，最坏可在校准前越过 1M。未验证是否会在真实 Run 中出现，也未验证提供方在 >1M 时的拒绝行为。
 
+## 结果小结（2026-09-29）
+
+- A 已实现：整视图按 DeepSeek V4.1 Flash 真实 token 计量（vendored tokenizer + `tokenizers==0.23.2`），上限 25,000；超限整份拒绝为 `RESULT_TOO_LARGE`（对应上游兜底分支，不落盘），拒绝视图回显实际查询窗与 `query`；删除 `_fit_rows`、收缩循环、`view_augment` 与字节上限。B 无需修改。
+- 有界真实 Run（[run.md](../evidence/m1-01-view-tokens-effect/run.md)）：11 次拒绝全部是 `traces_search`，无原样重试、无引用被拒数据；核心 4 场景审查 P2 7 对基线 6（无改善，审查者换为 Sonnet 有噪声）；prompt tokens 约 69 万对 231 万；`window`/`query` 回显缺陷由真实 Run 审查发现，已修但未重跑。
+- 计数器加载时机：`otel_demo_executor_factory` 在构建工厂时（worker 启动时）加载并 fail-closed；`fixture_executor_factory` 没有预加载，首个 Run 构造执行器时才加载。worker 启动时统一预加载 fixture 的计数器是可选项，不在本 PR 改。
+- 决策点（留给用户）：拒绝视图不进覆盖摘要（`context.py:289`），模型因此少了"在 gaps 披露被拒"的提示，normal-1 与 fault-2 的报告都没有点名拒绝原因；按合同这是设计内行为，本 PR 不改。是否在 run_coverage 消息里列出被拒绝的调用，待用户定。
+
 ## 待决
 
-1. lead 重新派合同测试作者（按合同 v3），并处理"既有测试影响评估"中的合同变更项；其间 `tests/test_m1_whole_view_bytes_contract.py` 与 `tests/test_m1_whole_view_tokens_contract.py` 需替换或删除。
+1. 合同测试与既有测试调整：已完成（独立测试作者按合同 v3 重写并逐条记录调整；字节口径文件已删除）。
 2. 新增第三方运行时依赖（`tokenizers` 及约 9 个传递包，产品运行时首次）与 6.4 MB 入库文件：用户已批准方向；具体包与文件在 PR 简报里再列一次。
 3. 推翻 B1 的截断决定、删除 `view_augment`（公共接口，C3 合同项）：已由用户决定（拒绝），`view_augment` 的删除是本合同据此作出的推论，简报里单列请用户确认。
 4. PR-1 改工具面、注册修订与视图语义，属用户门；附有界真实 Run（正常、故障、广域各至少 1 次），需要 lab 锁。
