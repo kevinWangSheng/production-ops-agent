@@ -125,8 +125,9 @@ def _registration() -> ToolRegistration:
                 "as {values}; any other label value is refused."
             ),
             limits=(
-                "Truncated at the registered max_view_bytes; excess points are "
-                "dropped, not summarized or averaged."
+                "The whole view is limited to the registered max_view_tokens; a "
+                "larger result is refused with RESULT_TOO_LARGE, never "
+                "truncated, summarized or averaged."
             ),
             cannot_prove=(
                 "A non-zero rate over this window does not by itself prove a "
@@ -149,7 +150,8 @@ def _registration() -> ToolRegistration:
         result_path=("data", "result"),
         request_timeout_seconds=10.0,
         max_result_bytes=4096,
-        max_view_bytes=512,
+        # Same limit as the shipped OTel Demo tools (upstream's 25,000 tokens).
+        max_view_tokens=25_000,
         max_window_seconds=3600,
         error_classes={"503": "SOURCE_UNAVAILABLE", "400": "INVALID_PARAMS"},
         incomplete_marker="partial",
