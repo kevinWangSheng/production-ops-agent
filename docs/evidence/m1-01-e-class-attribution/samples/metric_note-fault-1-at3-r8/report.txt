@@ -1,0 +1,1 @@
+Baseline day returned no data. Let me try an earlier same-day window to see whether the error pattern is recent or persistent.

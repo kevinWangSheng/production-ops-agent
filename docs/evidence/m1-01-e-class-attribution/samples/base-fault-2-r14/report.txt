@@ -1,0 +1,1 @@
+Let me establish latency baselines with a comparable earlier window, and check email/cart spans.

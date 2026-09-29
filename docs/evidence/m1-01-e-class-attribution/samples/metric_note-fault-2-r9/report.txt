@@ -1,0 +1,1 @@
+Let me gather a comparable baseline for latency and payment transaction signals.

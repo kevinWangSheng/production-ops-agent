@@ -1,0 +1,28 @@
+{
+ "sample_id": "base-fault-1-at3-r2",
+ "variant": "base",
+ "case": "fault-1-at3",
+ "rep": 2,
+ "request_sha256": "7f3678c69e9c015529eea1da70c9265dcf249323caa5b294230f62ba70fa0368",
+ "request_bytes": 761273,
+ "started_utc": "2026-09-29T10:18:51Z",
+ "elapsed_s": 10.67,
+ "response_model": "deepseek-flash",
+ "finish_reason": "tool_calls",
+ "usage": {
+  "prompt_tokens": 221114,
+  "completion_tokens": 1326,
+  "total_tokens": 222440,
+  "prompt_tokens_details": {
+   "cached_tokens": 2176
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 814
+  },
+  "prompt_cache_hit_tokens": 2176,
+  "prompt_cache_miss_tokens": 218938
+ },
+ "content_chars": 142,
+ "reasoning_chars": 3430,
+ "tool_calls": 3
+}

@@ -1,0 +1,173 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "Within the authorized last-5-minute window (2026-09-28T17:43:19Z–17:48:19Z), checkout shows genuine failures: its PlaceOrder spans carry ERROR status (grpc code 13) in 6 of the 8 shown checkout PlaceOrder spans, and the checkout span metric returns a nonzero STATUS_CODE_ERROR value alongside STATUS_CODE_UNSET. The failures originate on the payment dependency path: the payment Charge spans interleaved in those same traces are ERROR with 'Payment request failed. Invalid token', payment's span metric returns a nonzero STATUS_CODE_ERROR value, and the parent references supplied show checkout's Charge client span as parent of the payment Charge server span. The failure surfaces as HTTP 500 in frontend, frontend-proxy and load-generator spans of the same trace ids. The other queried dependencies (cart, currency, product-catalog, shipping, email) returned spans with only success/unspecified statuses and no ERROR series in the queried window, so no failure is visible on them; email appears only in successful traces. Latency cannot be judged as elevated: no comparable baseline was retrievable (the 24-hour-prior window returned no data), and inside the window the two longest checkout PlaceOrder spans (143,915 µs and 110,411 µs) belong to successful grpc-code-0 traces, not to the failing ones.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In the sampled trace view for checkout, the checkout service's oteldemo.CheckoutService/PlaceOrder group shows 8 rows with 6 error rows; the 6 ERROR spans carry status tags error=true, otel.status_code=ERROR, rpc.grpc.status_code=13 and an otel.status_description of 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold'. The failing trace ids include 0931482f30a111dff1b38a6e1eb6fa35, 4be857e119ab4c3c497f789edaeb1d99, f25c5949b9b6695c1f5f8a95de42c1a1, b56fac82b71e1bfd217fc188352d84da, cb5a57b684d9fd6e2511ec786175286c and 617873487e24349292ef1a624653483d.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Over the same 300-second window, the range query increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[300s]) returned two series for checkout: status_code=STATUS_CODE_ERROR with value 9.935666666666666 and status_code=STATUS_CODE_UNSET with value 67.5; both are nonzero, so ERROR-coded checkout spans are present in the window and are a minority relative to the UNSET series.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t1:46c6dc07-39fd-4174-81c5-138bffe591e2"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's outbound client metric returned rpc_grpc_status_code=2 at value 5.007639519670669 and rpc_grpc_status_code=0 at value 52.5 for the queried window, i.e. a nonzero gRPC status-2 (UNKNOWN) client outcome count for checkout, consistent with the ERROR PlaceOrder spans that report rpc.grpc.status_code=13 on the server side and status 2 on the checkout-to-payment client span.",
+      "evidence_ids": [
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t7:f8b91d59-af8e-4b0b-822f-428870d7c7f6"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The payment dependency returned failures rather than only checkout-side errors: service payment's grpc.oteldemo.PaymentService/Charge spans in the sampled traces show 8 rows with 6 error rows and error details 'Payment request failed. Invalid token. app.loyalty.level=gold' plus a stacktrace referencing /usr/src/app/charge.js:37, and the range query for payment returned status_code=STATUS_CODE_ERROR at 4.967833333333333 while the same service returned STATUS_CODE_UNSET at 11.25.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0",
+        "c457377c-8641-4c47-91a8-1afacee545db-t2:daa73c28-9bcc-4b69-a8bd-c9945b2a5b7c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Supplied parent references show a checkout-issued client span as parent of the failing payment server span: payment span f39b005ff3953014 (operation grpc.oteldemo.PaymentService/Charge, error=true, otel.status_code=ERROR) has parent spanID 13e908728553c553 in trace 0931482f30a111dff1b38a6e1eb6fa35, and that parent span is itself a checkout-service oteldemo.PaymentService/Charge span whose parent is checkout's PlaceOrder span 576d8e86bfbb318b. The same pattern appears for the other failing traces.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The checkout failure is visible upstream in the same trace ids: in the checkout trace view, frontend POST /api/checkout and 'executing api route (pages) /api/checkout' spans, frontend-proxy 'ingress' and 'router frontend egress' spans, and load-generator POST spans all show error=true with http.status_code 500 for the six failing traces.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "No ERROR-coded spans or ERROR status_code series were observed for cart, currency, product-catalog, shipping or email in the queried window: product-catalog's own spans were 37 rows of oteldemo.ProductCatalogService/GetProduct and 5 rows of ListProducts all with rpc.grpc.status_code=0; cart's spans (GetCart, AddItem, HGET, HMSET, EXPIRE) were all status_state not_recorded with zero error rows and sub-20 ms durations; shipping's GetQuote and ShipOrder spans were all rpc.grpc.status_code=0 with HTTP 200; currency's Currency/Convert spans were 21 rows all otel.status_code=\"OK\" with rpc.grpc.status_code=0; email's POST /send_order_confirmation spans were HTTP 200. The range query returned only STATUS_CODE_UNSET for cart (163.75), email (10), product-catalog (96.25) and shipping (17.5), and only STATUS_CODE_OK for currency (18.75) — no ERROR series for any of these services.",
+      "evidence_ids": [
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t1:03747056-b80b-4b58-9372-0006f502a722",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t2:3f6765fa-8ff5-4ff6-92d7-7ea65645cb63",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t4:e4487afa-5f7d-4ce1-b093-831452d51374",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t5:7b2b3b09-71d1-454b-87a2-a55f39128600",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t3:fb7bfff2-b536-4e0a-8f62-09c6c745af97",
+        "c457377c-8641-4c47-91a8-1afacee545db-t2:daa73c28-9bcc-4b69-a8bd-c9945b2a5b7c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Email was visible only on the successful checkout traces: the email view returned 2 traces / 92 spans covering 17:43:31–17:43:40 with POST /send_order_confirmation HTTP 200 and no error rows, and the traces carrying email spans are f37767a4c701d3c2ab288c61462ac693 and a15e6f57fd8c50b8686c2de658aac53b — the same two traces whose checkout PlaceOrder spans show rpc.grpc.status_code=0.",
+      "evidence_ids": [
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t3:fb7bfff2-b536-4e0a-8f62-09c6c745af97"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The proximate cause of the checkout PlaceOrder failures in this window is the payment Charge call rejecting the request with a business/validation error ('Invalid token'), which checkout wraps as gRPC 13 and which the frontend stack returns as HTTP 500. This is a hypothesis, not a verified root cause: the evidence shows the failing edge and the error text, but no deployment change, config, flag state or payment-side dependency (for example the token issuer or the flagd-resolved value carrying app.loyalty.level=gold) was queried, so what makes the token invalid remains unknown.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0",
+        "c457377c-8641-4c47-91a8-1afacee545db-t2:daa73c28-9bcc-4b69-a8bd-c9945b2a5b7c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "The failures are not uniformly distributed across the window and are not total: the same checkout view shows 2 of 8 checkout PlaceOrder spans with rpc.grpc.status_code=0 and trace ids f37767a4c701d3c2ab288c61462ac693 and a15e6f57fd8c50b8686c2de658aac53b, and payment's Charge spans include 2 non-error rows; checkout's client metric also returns a larger rpc_grpc_status_code=0 series (52.5) than its status-2 series (5.0076). A reported 'elevated errors' state therefore coexists with successful checkout traffic in the same 5-minute window.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t7:f8b91d59-af8e-4b0b-822f-428870d7c7f6"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Within the shown sample, slow checkout latency does not coincide with failure: the two longest checkout PlaceOrder spans are 143915 µs and 110411 µs, and both belong to successful traces (f37767a4c701d3c2ab288c61462ac693 with rpc.grpc.status_code=0 and a15e6f57fd8c50b8686c2de658aac53b with rpc.grpc.status_code=0), while the six ERROR PlaceOrder spans are shorter (27017–57056 µs). This argues against describing the window as a checkout latency incident on the basis of duration alone.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "The hypothesis that checkout's other dependencies (product-catalog, cart, currency, shipping, email) were also failing in this window is not supported: their spans showed only success or unspecified statuses, their durations stayed small (for example product-catalog GetProduct 29–2852 µs, cart HGET/HMSET/EXPIRE 85–5336 µs, currency Convert 292–7577 µs, shipping GetQuote 5313–18675 µs), and no ERROR status_code series came back for any of them. These are the dependencies' own span views inside the queried window; the absence of an ERROR series for them is a query result for this window, not proof of health at other times.",
+      "evidence_ids": [
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t1:03747056-b80b-4b58-9372-0006f502a722",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t2:3f6765fa-8ff5-4ff6-92d7-7ea65645cb63",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t4:e4487afa-5f7d-4ce1-b093-831452d51374",
+        "fac80892-7436-4cdb-ab3d-fb1036e254c8-t5:7b2b3b09-71d1-454b-87a2-a55f39128600",
+        "c457377c-8641-4c47-91a8-1afacee545db-t2:daa73c28-9bcc-4b69-a8bd-c9945b2a5b7c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "recommendation",
+      "text": "For a human reviewer, the evidence points at the checkout→payment Charge path (payment returning 'Payment request failed. Invalid token') rather than at product-catalog, cart, currency, shipping or email. Suggested follow-up for an authorized operator: inspect the payment token/loyalty-tier configuration and any recent configuration or deployment change on payment, and compare against a longer window with a retrievable baseline; no remediation is executed or certified here.",
+      "evidence_ids": [
+        "c457377c-8641-4c47-91a8-1afacee545db-t0:87ec89a6-f168-4380-8b93-e37d70fb2ca0",
+        "c457377c-8641-4c47-91a8-1afacee545db-t2:daa73c28-9bcc-4b69-a8bd-c9945b2a5b7c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No comparable baseline was obtained: a query of the same span metric 24 hours earlier (window 2026-09-27T17:48:19Z–17:53:19Z) returned status no_data with zero series, and an out-of-range attempt was refused. Without a baseline, an elevated-error or elevated-latency claim relative to normal operation cannot be established, only the presence of failures inside the queried 5 minutes."
+  ],
+  "next_steps": [
+    "Re-run the same span-status and client-status queries over a longer authorized window (and an earlier comparable window) to establish a baseline ERROR ratio for checkout and payment before describing the change as 'elevated'.",
+    "Query payment-side configuration/token state or the flag resolution path behind the loyalty-tier attribute referenced in the error text to determine why 'Invalid token' is returned; this was not queried here.",
+    "Retrieve latency distribution series (duration buckets/percentiles) for checkout and payment so latency can be compared properly instead of inferred from a handful of sampled span durations.",
+    "Re-query the dependency services with a higher trace limit and pagination to reduce sampling bias, since every non-email trace view was truncated (truncated=true with omitted_rows of 144–193) and the shown spans are a biased sample, not a complete call graph or unique-request count."
+  ]
+}

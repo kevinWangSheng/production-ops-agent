@@ -1,0 +1,452 @@
+[
+ {
+  "sample": "base-fault-1-at3-r15",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [
+   [
+    6,
+    "21000"
+   ]
+  ],
+  "flags_after": {},
+  "claims_after": 14
+ },
+ {
+  "sample": "base-fault-1-at3-r4",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5.01"
+  ],
+  "named_still_in_report": [],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 11
+ },
+ {
+  "sample": "base-fault-1-at3-r6",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "127609",
+   "148885"
+  ],
+  "named_still_in_report": [],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 12
+ },
+ {
+  "sample": "base-fault-1-at3-r7",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5336"
+  ],
+  "named_still_in_report": [
+   "5336"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    4
+   ]
+  },
+  "claims_after": 13
+ },
+ {
+  "sample": "base-fault-1-at3-r8",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5313",
+   "7577",
+   "13371",
+   "18675"
+  ],
+  "named_still_in_report": [
+   "5313",
+   "7577",
+   "13371",
+   "18675"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 16
+ },
+ {
+  "sample": "base-fault-1-r1",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r2",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r3",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r4",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E2": [
+    9
+   ],
+   "E5": [
+    11
+   ]
+  },
+  "claims_after": 18
+ },
+ {
+  "sample": "base-fault-1-r5",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r6",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r7",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E2": [
+    9
+   ],
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 17
+ },
+ {
+  "sample": "base-fault-1-r8",
+  "case": "fault-1",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "named_still_in_report": [
+   "128935",
+   "148885",
+   "5386",
+   "9662"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {
+   "E2": [
+    9
+   ],
+   "E5": [
+    10
+   ]
+  },
+  "claims_after": 18
+ },
+ {
+  "sample": "base-fault-2-r6",
+  "case": "fault-2",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "1460",
+   "21371"
+  ],
+  "named_still_in_report": [
+   "1460"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 12
+ },
+ {
+  "sample": "base-normal-1-at4-r6",
+  "case": "normal-1-at4",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "27542"
+  ],
+  "named_still_in_report": [],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 19
+ },
+ {
+  "sample": "base-normal-2-r3",
+  "case": "normal-2",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "100.23"
+  ],
+  "named_still_in_report": [],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 11
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r1",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5313"
+  ],
+  "named_still_in_report": [
+   "5313"
+  ],
+  "cross_view_after": [
+   [
+    18,
+    "5313"
+   ],
+   [
+    18,
+    "18675"
+   ]
+  ],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 21
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r13",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5.008"
+  ],
+  "named_still_in_report": [
+   "5.008"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [
+   [
+    6,
+    "2.85"
+   ],
+   [
+    6,
+    "6.27"
+   ],
+   [
+    6,
+    "7.58"
+   ],
+   [
+    6,
+    "17.18"
+   ],
+   [
+    6,
+    "18.68"
+   ]
+  ],
+  "flags_after": {},
+  "claims_after": 12
+ },
+ {
+  "sample": "metric_note-fault-1-at3-r7",
+  "case": "fault-1-at3",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "5.007639519670669"
+  ],
+  "named_still_in_report": [
+   "5.007639519670669"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 12
+ },
+ {
+  "sample": "metric_note-fault-2-r15",
+  "case": "fault-2",
+  "finish": "stop",
+  "parsed": true,
+  "named": [
+   "3361",
+   "5313",
+   "21371"
+  ],
+  "named_still_in_report": [
+   "3361",
+   "5313",
+   "21371"
+  ],
+  "cross_view_after": [],
+  "other_flags_after": [],
+  "flags_after": {},
+  "claims_after": 18
+ }
+]
