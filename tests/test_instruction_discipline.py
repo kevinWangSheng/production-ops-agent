@@ -249,7 +249,7 @@ def test_module_constants_still_match_the_historical_script_literals() -> None:
 
 
 def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
-    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 14 句。
+    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 13 句。
 
     这些数字是分层分析的结论（任务记录 F1/P2-2/P2-4）。收敛只准搬运不准增删，
     所以普查在这里固定下来；有人顺手补一句纪律，这条会先转红。
@@ -258,6 +258,12 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     共享的 :data:`d.READ_ONLY_OPENING`（6 句，含两句预算句）换成候选臂专用的
     :data:`d.REPLAY_OPENING`（5 句，无预算句，多一句停止规则），净减一句；两个
     baseline 变体仍用 ``READ_ONLY_OPENING``，不受影响。
+
+    14 → 13 是同一天晚些时候的第二次有意变化（第三批，
+    docs/tasks/2026-09-28-m1-01-alignment-c.md C1）：候选臂的 ``_WINDOW``
+    段被整句删掉——第二批 B2 把时间窗改成工具参数后，"不得提供 start/end
+    参数"这句与产品当前行为矛盾；两个 baseline 变体仍逐字节锚定 M0 脚本，
+    继续保留同一句文字（``_WINDOW_SCOPED``），不受影响。
     """
 
     def sentences(text: str) -> int:
@@ -272,7 +278,7 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 14
+    assert variant_sentences("replay-candidate") == 13
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)
     assert shared == 18
@@ -599,8 +605,14 @@ def test_scope_conditional_segments_are_structural_not_a_suffix_trim() -> None:
     """无 scope 时窗口句与服务列表整段消失，且该行为由 ``scoped`` 标记决定。
 
     早先的实现是「渲染完再按后缀裁掉」：只要 segment 顺序变一下，裁剪就静默失效，
-    而失效的表现是字节错了却没人报错。改成结构判定后，候选臂那句**无条件**的窗口句
-    不受影响——同一段文字在两类变体里的条件性不同，这一点必须保住。
+    而失效的表现是字节错了却没人报错。改成结构判定后即可验证：baseline 的窗口句
+    只在有 scope 时出现，且由 ``scoped`` 标记（不是位置）决定。
+
+    候选臂不再是这条护栏的对照组：``_WINDOW`` 曾在候选臂里无条件出现，与
+    baseline 的 scoped 版本形成条件性对照；第三批（2026-09-28 用户决定，
+    docs/tasks/2026-09-28-m1-01-alignment-c.md C1）整句删掉了候选臂的窗口句
+    （第二批 B2 把时间窗改成工具参数后，这句与产品当前行为矛盾），对照本身
+    不再成立——候选臂现在不论 scope 都不含这句。
     """
     contract = report_instruction(version=REPORT_VERSION)
     unscoped = d.render(
@@ -610,7 +622,9 @@ def test_scope_conditional_segments_are_structural_not_a_suffix_trim() -> None:
     assert d.AUTHORIZED_SERVICES_PREFIX not in unscoped
 
     candidate = d.render("replay-candidate", model_requests=2, report_contract=contract)
-    assert d.FIXED_WINDOW in candidate, "候选臂的窗口句是无条件的，不得被一并裁掉"
+    assert d.FIXED_WINDOW not in candidate, (
+        "C1 removed the candidate's window sentence entirely"
+    )
 
     scoped_keys = {s.key for s in d.VARIANTS["baseline-multi-step"] if s.scoped}
     assert scoped_keys == {

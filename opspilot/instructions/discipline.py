@@ -165,11 +165,15 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
     # 不含 PROJECTION_DISCIPLINE，且窗口句在报告契约之前。M1-01（2026-09-28 用户
     # 决定）起，开场换成不含预算句的 REPLAY_OPENING，不再需要 {steps} 槽位——
     # 唯一的调查上限是 loop 的 model_requests 计数，不在提示词里报数。
+    # 第三批（2026-09-28 用户决定，docs/tasks/2026-09-28-m1-01-alignment-c.md
+    # C1）：去掉 _WINDOW——第二批 B2 已经把时间窗改成工具参数（start/end 可选，
+    # runner 在授权外框内校验），"不得提供 start/end 参数"这句与产品当前行为
+    # 矛盾。两个历史 baseline 变体逐字节锚定 M0 脚本字面量，不受影响，继续用
+    # _WINDOW_SCOPED（同一句文字）。
     "replay-candidate": (
         _OPENING_REPLAY,
         _EVIDENCE,
         _MISSING,
-        _WINDOW,
         _REPORT_SLOT,
     ),
 }

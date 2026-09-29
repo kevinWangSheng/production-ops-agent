@@ -323,16 +323,20 @@ def test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent(monkeypa
     )
     view = outcome.model_view
     # Measured (not guessed) against the current MAX_VIEW_BYTES: each of
-    # these ~3.48 KB heavy spans, 40 of them project to ~139 KB, of which 29
-    # fit the 100 KiB view cap.
-    assert view["truncated"] is True and view["omitted_rows"] == 11
+    # these ~3.48 KB heavy spans, 40 of them project to ~139 KB, of which 28
+    # fit the 100 KiB view cap. 29 (not 28) fit under the row array's own
+    # bytes alone, but C3's span_groups (2026-09-28 independent-review
+    # follow-up, P2-1: opspilot.tools.executor._row_dependent_fields) now
+    # counts toward the same cap, so one further row is dropped to make room
+    # for it.
+    assert view["truncated"] is True and view["omitted_rows"] == 12
     record = json.loads(outcome.evidence.raw)
     # B1: no row cap at the projection layer any more -- every backend span
     # is always sampled here regardless of count.
     assert record["omitted_span_count"] == 0
     assert view["backend_spans_returned"] == SPAN_COUNT
-    assert view["spans_shown"] == len(view["content"]) == 29
-    assert view["spans_omitted"] == 11
+    assert view["spans_shown"] == len(view["content"]) == 28
+    assert view["spans_omitted"] == 12
     assert view["incomplete_reason"] is not None  # SPAN_COUNT traces >= limit
 
 
