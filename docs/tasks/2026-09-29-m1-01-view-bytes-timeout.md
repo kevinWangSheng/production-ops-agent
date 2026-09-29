@@ -55,7 +55,8 @@ A 与 B 是独立问题，B 无 PR。`tests/test_m1_whole_view_bytes_contract.py
 8. 注册校验：`max_view_tokens` 必须是 `int` 且 ≥ 1（`bool` 不算），否则 `VIEW_LIMIT_OUT_OF_RANGE`；不再要求不超过 `max_result_bytes`；`max_view_bytes` 是改名而非新增，传入旧字段名是 `TypeError`，不留别名。
 9. 时限：计数每个 adopted 视图恰一次（不再有收缩循环），1 MiB 视图约 0.6 s（实测），不设另外的行级重算。
 10. 真实路径：用真实计数器，`metrics_range_query` 与 `traces_search` 在正常输入下整视图计数 ≤ 25,000 且不拒绝（例如 `traces20heavy` 19,895 tokens）；超过（例如 1200 行指标 29,232 tokens、40 个重 span 27,630 tokens）时得到第 2 条的拒绝，`view_tokens` 与真实计数一致。
-11. 模型可见文案：`otel_demo` 各处的截断说明改为拒绝说明（`otel_demo.py:274、343、448、543` 一带，含 "reports omitted_rows"、"dropping trailing spans"、"Truncated at the registered max_view_bytes"）；工具面、`tool_registry_revision`、face 哈希随之变化（`registry.py:806` 的导出含该字段）；`PROJECTION_REVISION`（`outcomes.py:56`，v5）应升一版，因为视图语义变了（行不再被截断）。部署时旧修订下未完成的 Run 按既有规则记为 `blocked(INCOMPATIBLE_STATE)`，PR 正文注明。
+11. 模型可见文案与版本：`otel_demo` 各处的截断说明改为拒绝说明（`otel_demo.py:274、343、448、543` 一带，含 "reports omitted_rows"、"dropping trailing spans"、"Truncated at the registered max_view_bytes"），`fixture.py` 的工具描述同样改为拒绝语义。两个 profile 的工具面随之变化：`tool_registry_revision` 与 face 哈希变动（`registry.py:806` 的导出含该字段）；`versions` 里的 `tool_schema_revision` 是旧 Run 被挡住的机制：`otel-demo` 由 schema 内容哈希自然变化（实测 `otel-demo-a08b…` → `otel-demo-34bc…`），`fixture` 是手写常量，须由 `fixture-1` 升到 `fixture-2`。`PROJECTION_REVISION`（`outcomes.py:56`，v5 → v6）另行记录视图语义变化（行不再被截断），不在 `versions` 里，不起挡旧 Run 的作用。部署时旧修订下未完成的 Run 按既有规则记为 `blocked(INCOMPATIBLE_STATE)`，PR 正文注明。
+12. 未采纳（人工暂停作废、只作历史保留）的视图：不带适配器的 `view_fields`（含 `span_groups`、`span_groups_note`、`traces_requested` 等），因为其中有的汇总行内容（`span_groups`），而这类视图不给模型看任何行；`content is None`。改动前 `span_groups` 在这类视图里是 `[]`。
 
 **拒绝路径的逐项澄清**（回应测试作者）
 - 错误码：并入 `RESULT_TOO_LARGE`，不新增；`status == "error"`。

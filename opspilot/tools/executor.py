@@ -381,7 +381,7 @@ class TransportResponse:
 
     ``row_unit`` names what one result row is (``"spans"``) and
     ``backend_rows_returned`` how many such rows the source returned before
-    the adapter sampled and the executor truncated; the view then carries
+    the adapter sampled; the view then carries
     ``backend_<unit>_returned``, ``<unit>_shown`` (rows in the view) and
     ``<unit>_omitted`` (the difference), so a count always states its unit
     (round 2 rule B). ``view_fields`` are further adapter-verified,
@@ -1477,7 +1477,11 @@ class ReadOnlyToolExecutor:
             "result_count": len(rows),
             "incomplete": incomplete,
         }
-        if response.view_fields:
+        if response.view_fields and adopted:
+            # An invalidated observation's view keeps none of the adapter's
+            # fields: some summarise the rows (``traces_search``'s
+            # ``span_groups``), and this view withholds every row, so such a
+            # field would describe rows the model is not shown.
             view.update(response.view_fields)
         view.update(
             _row_dependent_fields(
@@ -1727,7 +1731,7 @@ def _result_rows(
         # A `\uD800`-style escape decodes into a Python str holding a lone
         # surrogate codepoint -- json.loads accepts it without error -- but
         # re-encoding it to UTF-8 for canonicalization (here, and later in
-        # _fit_rows()) raises UnicodeEncodeError, a ValueError subclass. This
+        # _record()) raises UnicodeEncodeError, a ValueError subclass. This
         # is a fresh failure mode past decoding succeeding, not a duplicate
         # of the decoder-limit check above (bot review finding).
         #

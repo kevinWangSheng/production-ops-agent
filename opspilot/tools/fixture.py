@@ -76,7 +76,7 @@ FIXTURE_TARGET = "checkout-prod"
 FIXTURE_EXPR = "rate(http_errors[5m])"
 WINDOW_START = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
 WINDOW_END = datetime(2026, 9, 14, 1, 0, tzinfo=timezone.utc)
-TOOL_SCHEMA_REVISION = "fixture-1"
+TOOL_SCHEMA_REVISION = "fixture-2"
 _TIME_POLICY = "policy-window-1"
 _CANNED_BODY = b'{"data": {"result": [{"metric": "http_errors_rate", "value": 0.042}]}}'
 
@@ -91,7 +91,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "missing series is unknown, not zero. Listing a series does "
                 "not prove health. Available expressions: "
                 f'["{FIXTURE_EXPR}"]; any other value returns an error. '
-                "At most 512 view bytes; truncated views set truncated true."
+                "A result whose whole view exceeds 25,000 tokens is refused with "
+                "RESULT_TOO_LARGE and no rows; it is never truncated."
             ),
             "parameters": {
                 "type": "object",
