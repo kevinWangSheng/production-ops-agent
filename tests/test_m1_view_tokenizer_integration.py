@@ -367,3 +367,91 @@ def test_a_one_mebibyte_result_is_counted_and_refused_in_bounded_time():
     assert sink.records == []
     # One count of about a megabyte takes about 0.6 s (task record).
     assert elapsed < 5, f"{elapsed:.1f}s"
+
+
+# -- factory: the counter is loaded when the executor is built ----------------
+
+_FACTORY_CHILD = textwrap.dedent(
+    """
+    import sys
+    {block_import}
+    sys.path.insert(0, ".")
+    from datetime import timedelta
+    from opspilot.tools import ToolContractError
+    from opspilot.tools.otel_demo import OtelDemoConfig, otel_demo_executor_factory
+    from tests.test_m1_otel_demo_contract import (
+        NOW, FakeStore, _input, _lease, FakeClock, RecordingSink,
+    )
+    store = FakeStore(_lease(), deadline=NOW + timedelta(minutes=10))
+    config = OtelDemoConfig(
+        prometheus_url="http://127.0.0.1:19090",
+        jaeger_url="http://127.0.0.1:16686/jaeger/ui",
+        token=None,
+    )
+    stage = "factory"
+    try:
+        factory = otel_demo_executor_factory(
+            store, evidence=RecordingSink(), clock=FakeClock(start=NOW), config=config
+        )
+        stage = "executor"
+        factory(store.lease, _input(str(store.lease.run_id)))
+        stage = "built"
+    except ToolContractError as error:
+        print("REFUSED", stage, error)
+        sys.exit(0)
+    print("BUILT", stage)
+    """
+)
+
+
+def _factory_child(workdir: Path, *, block_import: bool = False) -> str:
+    block = "sys.modules['tokenizers'] = None" if block_import else ""
+    completed = subprocess.run(
+        [sys.executable, "-c", _FACTORY_CHILD.format(block_import=block)],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=_child_env(workdir),
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    return completed.stdout.strip()
+
+
+@pytest.fixture()
+def repo_copy(package_copy):
+    """``package_copy`` plus the test modules the factory child imports."""
+
+    shutil.copytree(
+        REPO_ROOT / "tests",
+        package_copy / "tests",
+        ignore=shutil.ignore_patterns("__pycache__", "fixtures_big*"),
+    )
+    return package_copy
+
+
+def test_control_the_factory_builds_with_an_untouched_copy(repo_copy):
+    assert _factory_child(repo_copy) == "BUILT built"
+
+
+def test_a_deleted_tokenizer_file_fails_when_the_factory_is_built(repo_copy):
+    """Contract 7: with no counter injected, the real one is loaded while the
+    factory is built (worker start), not on the first ``execute``. The child
+    never reaches an executor, so no tool call could have run."""
+
+    _copied_tokenizer(repo_copy).unlink()
+    assert _factory_child(repo_copy) == "REFUSED factory TOKENIZER_UNAVAILABLE"
+
+
+def test_a_tampered_tokenizer_file_fails_when_the_factory_is_built(repo_copy):
+    path = _copied_tokenizer(repo_copy)
+    data = path.read_bytes()
+    path.write_bytes(data[:-1] + (b" " if data[-1:] != b" " else b"\n"))
+    assert _factory_child(repo_copy) == "REFUSED factory TOKENIZER_UNAVAILABLE"
+
+
+def test_an_unimportable_tokenizers_package_fails_when_the_factory_is_built(
+    repo_copy,
+):
+    output = _factory_child(repo_copy, block_import=True)
+    assert output == "REFUSED factory TOKENIZER_UNAVAILABLE"

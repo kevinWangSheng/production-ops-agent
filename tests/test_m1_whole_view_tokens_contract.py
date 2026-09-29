@@ -77,6 +77,7 @@ from tests.test_m1_otel_demo_contract import (
     FakeOpener,
     FakeStore,
     _call,
+    _executor,
     _input,
     _lease,
 )
@@ -904,3 +905,52 @@ def test_a_refusal_without_start_end_reports_the_default_one_hour_query_window(
     assert view["window"] == default.as_json() == ok["window"]
     assert view["window"] != frame.as_json()
     assert view["query"] == ok["query"]
+
+
+# -- a paused Run keeps a history record, not a summary of withheld rows --------
+
+
+class _SuspendingOpener(FakeOpener):
+    """Serves the recorded bytes, and lets a human pause the Run while the read
+    is in flight (the control state flips before the response is returned)."""
+
+    def __init__(self, store_box, **kwargs):
+        super().__init__(**kwargs)
+        self._store_box = store_box
+
+    def open(self, request, timeout=None):
+        (store,) = self._store_box
+        store.control = {
+            **store.control,
+            "global_suspended": True,
+            "global_generation": 5,
+        }
+        return super().open(request, timeout=timeout)
+
+
+def test_a_traces_read_paused_in_flight_leaves_a_history_view_without_span_group_rows(
+    monkeypatch,
+):
+    """Review P2-2: ``span_groups`` is computed by the adapter over every
+    extracted row, before the executor knows whether the view will be
+    adopted. When a pause lands during the read, the observation survives as
+    history only (``adopted`` false, ``content`` None): no rows are handed to
+    the model, so the history view must not carry a ``span_groups`` that
+    summarizes the withheld rows -- it is absent, or empty."""
+
+    box: list = []
+    opener = _SuspendingOpener(box, routes={"/api/traces": CHECKOUT_TRACES})
+    executor, sink, _lease_, store = _executor(monkeypatch, opener)
+    box.append(store)
+
+    outcome = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": 2}))
+
+    assert (outcome.status, outcome.reason) == ("denied", "SUSPENDED")
+    assert opener.called and outcome.source_contact == "confirmed"
+    (record,) = sink.records
+    assert record.adopted is False
+    for view in (outcome.model_view, record.view):
+        assert view["content"] is None
+        groups = view.get("span_groups", [])
+        assert groups == [], f"withheld rows were summarized: {groups!r}"
+        assert sum(g["rows"] for g in groups) == 0
