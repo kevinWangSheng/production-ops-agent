@@ -1,0 +1,1 @@
+The baseline window returned `no_data`, so no comparable baseline exists. Let me capture absolute latency and the payment transaction counter.

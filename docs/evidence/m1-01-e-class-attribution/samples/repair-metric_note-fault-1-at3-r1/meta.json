@@ -1,0 +1,26 @@
+{
+ "sample_id": "repair-metric_note-fault-1-at3-r1",
+ "variant": "repair",
+ "request_bytes": 772424,
+ "elapsed_s": 28.81,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 225062,
+  "completion_tokens": 7959,
+  "total_tokens": 233021,
+  "prompt_tokens_details": {
+   "cached_tokens": 219392
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2878
+  },
+  "prompt_cache_hit_tokens": 219392,
+  "prompt_cache_miss_tokens": 5670
+ },
+ "findings_before": [
+  [
+   18,
+   "5313"
+  ]
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "sample_id": "base-normal-1-at4-r4",
+ "variant": "base",
+ "case": "normal-1-at4",
+ "rep": 4,
+ "request_sha256": "ac6b5a0f94d8ea151e1a0792628bd2b980ad74b43b0e01e7d07ea790b3fb48e8",
+ "request_bytes": 826589,
+ "started_utc": "2026-09-29T10:19:30Z",
+ "elapsed_s": 35.47,
+ "response_model": "deepseek-flash",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 247063,
+  "completion_tokens": 8811,
+  "total_tokens": 255874,
+  "prompt_tokens_details": {
+   "cached_tokens": 246912
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 4192
+  },
+  "prompt_cache_hit_tokens": 246912,
+  "prompt_cache_miss_tokens": 151
+ },
+ "content_chars": 12578,
+ "reasoning_chars": 13698,
+ "tool_calls": 0
+}

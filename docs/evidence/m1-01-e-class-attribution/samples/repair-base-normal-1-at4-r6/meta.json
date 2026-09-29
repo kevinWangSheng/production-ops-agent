@@ -1,0 +1,26 @@
+{
+ "sample_id": "repair-base-normal-1-at4-r6",
+ "variant": "repair",
+ "request_bytes": 838449,
+ "elapsed_s": 27.51,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 251893,
+  "completion_tokens": 8149,
+  "total_tokens": 260042,
+  "prompt_tokens_details": {
+   "cached_tokens": 245376
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2367
+  },
+  "prompt_cache_hit_tokens": 245376,
+  "prompt_cache_miss_tokens": 6517
+ },
+ "findings_before": [
+  [
+   8,
+   "27542"
+  ]
+ ]
+}

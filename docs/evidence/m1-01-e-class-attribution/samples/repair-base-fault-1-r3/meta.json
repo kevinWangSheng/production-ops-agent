@@ -1,0 +1,38 @@
+{
+ "sample_id": "repair-base-fault-1-r3",
+ "variant": "repair",
+ "request_bytes": 792197,
+ "elapsed_s": 32.92,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 231040,
+  "completion_tokens": 9316,
+  "total_tokens": 240356,
+  "prompt_tokens_details": {
+   "cached_tokens": 224896
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 4180
+  },
+  "prompt_cache_hit_tokens": 224896,
+  "prompt_cache_miss_tokens": 6144
+ },
+ "findings_before": [
+  [
+   9,
+   "128935"
+  ],
+  [
+   9,
+   "148885"
+  ],
+  [
+   10,
+   "5386"
+  ],
+  [
+   10,
+   "9662"
+  ]
+ ]
+}

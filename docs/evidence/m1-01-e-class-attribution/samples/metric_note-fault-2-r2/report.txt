@@ -1,0 +1,1 @@
+Let me gather a comparable earlier-window baseline for checkout latency and confirm dependency-side error series.

@@ -1,0 +1,26 @@
+{
+ "sample_id": "repair-base-normal-2-r3",
+ "variant": "repair",
+ "request_bytes": 533002,
+ "elapsed_s": 25.88,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 161664,
+  "completion_tokens": 6766,
+  "total_tokens": 168430,
+  "prompt_tokens_details": {
+   "cached_tokens": 640
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2971
+  },
+  "prompt_cache_hit_tokens": 640,
+  "prompt_cache_miss_tokens": 161024
+ },
+ "findings_before": [
+  [
+   6,
+   "100.23"
+  ]
+ ]
+}
