@@ -22,12 +22,12 @@ import time
 from pathlib import Path
 
 import pytest
-from opspilot.tools.tokens import count_tokens, load_deepseek_counter
 
 import opspilot
 from opspilot.tools import ToolContractError, TransportResponse
 from opspilot.tools.otel_demo import MAX_VIEW_TOKENS, METRICS_TOOL, TRACES_TOOL
 from opspilot.tools.registry import canonical
+from opspilot.tools.tokens import count_tokens, load_deepseek_counter
 from tests.m1_tool_support import body, request
 from tests.test_m1_otel_demo_contract import (
     CHECKOUT_TRACES,
