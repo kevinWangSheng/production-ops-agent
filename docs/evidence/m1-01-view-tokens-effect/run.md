@@ -1,7 +1,7 @@
 # M1-01 整视图 token 计量与超限拒绝：有界真实 Run（otel-demo profile）
 
 - 日期：2026-09-29 UTC 11:16–11:52（本机 04:16–04:52 PDT）。
-- 被测代码：等于 PR 分支 HEAD 去掉"拒绝视图回显窗口与 query"这处修复，即 `executor.py` 的 +36/−5（Run 时的提交只在未推送的旧分支上，外部解析不到；整视图 token 计量与 `RESULT_TOO_LARGE` 拒绝，合同见 [任务记录](../../tasks/2026-09-29-m1-01-view-bytes-timeout.md) A 节）。`worker.log` 首行 `versions`：`prompt-replay-candidate-bd28790117a0` / `ctx-ctx-policy-v1-a30e65ea52f4` / `otel-demo-34bc78980747`。拒绝视图的 `window`/`query` 回显（见"发现的产品缺陷"）在这些 Run **之后**才修，未重跑。
+- 被测代码：等于 PR 分支 HEAD 去掉"拒绝视图回显窗口与 query"这处修复，即 `executor.py` 的 +36/−5；此后还有独立审查后的两处小修（fixture 工具文案与 `fixture-2`、未采纳的历史视图不带适配器 `view_fields`），都不影响 otel-demo 的 ok 视图与拒绝路径（Run 时的提交只在未推送的旧分支上，外部解析不到；整视图 token 计量与 `RESULT_TOO_LARGE` 拒绝，合同见 [任务记录](../../tasks/2026-09-29-m1-01-view-bytes-timeout.md) A 节）。`worker.log` 首行 `versions`：`prompt-replay-candidate-bd28790117a0` / `ctx-ctx-policy-v1-a30e65ea52f4` / `otel-demo-34bc78980747`。拒绝视图的 `window`/`query` 回显（见"发现的产品缺陷"）在这些 Run **之后**才修，未重跑。
 - 授权：AGENTS.md「费用与真实调用」常设授权；拿 lab 锁（11:16Z 起，PG 集成与审查完成后释放），本 worktree 的 lab PostgreSQL 55431，colima `m0-otel`。用完已 `stop` 两者，数据保留。
 - 流程：与第三批效果测量相同（[alignment-c-effect/run.md](../m1-01-alignment-c-effect/run.md)）：`otel_demo_observe.py` 独立观察 → `POST /intake/ui` → 常驻 `worker_main` → `InvestigationRunner`；问题文本与第三批相同（"for the last 5 minutes"）。新增 1 个宽查询 Run：`vt-broad-question.txt`（开发脚本给出的问题，跨全部授权服务、24 h 窗口、要求 15 s 步长与 limit≥50），不改产品代码。
 - 费用：DeepSeek 余额 12.70 → 11.19 CNY（`deepseek-balance-before/after.json`），差 1.51 CNY，含 6 个真实 Run（含 1 个作废）与本机同时段全部调用；账户有其他并发使用，未做独立对账。
