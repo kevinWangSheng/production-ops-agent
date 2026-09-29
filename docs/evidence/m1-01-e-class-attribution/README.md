@@ -22,7 +22,8 @@
 | fault-2 第 4 轮（带工具，自行结束） | 72,584 | 74,703 | −2,119（丢失 2,164） | 加回后差 +45 |
 | normal-2 第 6 轮（带工具，自行结束） | 158,827 | 163,022 | −4,195（丢失 4,270） | 加回后差 +75 |
 
-- 含义：**强制最终请求（2/2）token 数逐位相同；带工具请求只缺历史 reasoning 文本（≤0.05% 的余差）。** 没有旁证说明其余字节不同，但也没有逐字节证明（哈希不可复算）：这是「等价重建」，不是「字节级还原」。
+- 含义：**强制最终请求（2/2）token 数逐位相同；带工具请求补回丢失 reasoning 后的余差（+45/+60/+45/+75）恰为占位符本身的 token 数（15 × 占位符消息数 3/4/3/5）**，即余差来自重放里多出的占位符文本，没有其他字节差异的迹象；也没有逐字节证明（哈希不可复算）：这是「等价重建」，不是「字节级还原」。
+- **带工具形态的重放里，模型看不到早期推理，而原 Run 的模型看得到**，所以这些形态的首次生成比率（E1、E2、E5 等）只是缺 reasoning 条件下的近似，不能当作原 Run 的真实比率；强制最终形态（请求逐位相同）的结论不受影响。
 - 已知偏差：带工具的请求在重放里常选择继续调工具而不是写报告（fault-2 9/16、normal-2 6/8、fault-1@3 3/16），原始 Run 在同一位置选择了写报告。缺失的 reasoning 是最可能的原因（未验证）。这些样本不计入错误率分母。
 - 因为强制最终请求的历史里有模型自己被拒的上一份回复，重放时必须同时重放「首次生成」那一轮（`fault-1@3`、`normal-1@4`：被拒轮的请求）和「重试」那一轮，两者结论不同（见三）。
 
@@ -33,9 +34,9 @@
 | # | Run / 位置 | 模型写的原文 | 正确值 | 正确值在输入里的位置 | 归类 | 证据强度 |
 |---|---|---|---|---|---|---|
 | E1 | normal-1 第 6 轮（C2 重试）claim 12，引 `a6f7-t4` | "cart spans … 73-27,542 microseconds" | 73–18,908（`a6f7-t4` span_groups：cart 各分组 max 最大 18,908，min 最小 73） | 在被引视图里，`span_groups` 与原行都有。27,542 是同一个 cart `EmptyCart` 在别的视图里的 max：`3c32-t2`、`a6f7-t1/t2/t5/t6` 都含 27542，`t4` 不含 | **视图重叠**：同一批 trace 的 span 出现在多个 traces_search 视图，各视图截断不同。第 5 轮 claim 9 引用 t3–t6 四个视图，并集 max 确为 27,542；第 6 轮拆成一视图一条 claim 后沿用了并集区间 | 中：值位置逐一核对；重放只复现 1/8（首次生成 1/8，重试 0/8），单次事件 |
-| E2 | fault-1 第 4→5 轮 claim 9，引 `c457-t0` | "failing frontend 'POST /api/checkout' spans 30261 to 94302" | 30624–94302 | `c457-t0` span_groups：frontend / `POST /api/checkout`，`duration_us_min=30624`。30261 是同一视图里相邻分组 `executing api route (pages) /api/checkout` 的 min | **读对了却写错**：正确值以模型最容易用的形态（分组摘要）就在被引视图里；写成了邻组的 min | 中：首次生成重放 0/13（不复现），重试重放 8/8 复现（复制自己被拒的上一份回复）。所以是首次生成的一次随机失误，被重试冻结 |
-| E3 | 同上 claim 9 | "successful frontend 'POST /api/checkout' spans 128935 and 148885" | 这两个值本身正确（frontend POST /api/checkout，http 200，trace a15e6f57 / f37767a4） | 不在被引 `c457-t0`（278 行只展示 134 行，这两行被截掉）；在 `fac8-t0/t3/t4/t5` | **视图重叠**（值是真的，来源挂错视图）；与 E1、E4 同一机制 | 强：确定性数值溯源检查命中；首次生成重放 1/13，重试 8/8（复制） |
-| E4 | fault-1 claim 10，引 `c457-t0`、`c457-t1` | "payment Charge calls returned rpc.grpc.status_code=0 at 9662 and 5386 microseconds" | 值正确（payment Charge，trace a15e6f57 / f37767a4） | `c457-t0` 只含 payment Charge 的 6 条 ERROR 行；成功行在 `fac8-t0/t3/t4/t5` | **视图重叠**，同 E3 | 强：同上；首次生成 1/13，重试 8/8 |
+| E2 | fault-1 第 4→5 轮 claim 9，引 `c457-t0` | "failing frontend 'POST /api/checkout' spans 30261 to 94302" | 30624–94302 | `c457-t0` span_groups：frontend / `POST /api/checkout`，`duration_us_min=30624`。30261 是同一视图里相邻分组 `executing api route (pages) /api/checkout` 的 min | **读对了却写错**：正确值以模型最容易用的形态（分组摘要）就在被引视图里；写成了邻组的 min | 中：首次生成重放 0/13（不复现，缺 reasoning），重试重放 8/8 保留该错误（3/8 逐字相同，其余改写后仍含错值）。首次生成重放不复现，是否随机失误未确定 |
+| E3 | 同上 claim 9 | "successful frontend 'POST /api/checkout' spans 128935 and 148885" | 这两个值本身正确（frontend POST /api/checkout，http 200，trace a15e6f57 / f37767a4） | 不在被引 `c457-t0`（278 行只展示 134 行，这两行被截掉）；在 `fac8-t0/t3/t4/t5` | **视图重叠**（值是真的，来源挂错视图）；与 E1、E4 同一机制 | 强：确定性数值溯源检查命中；首次生成重放 1/13，重试 8/8 保留 |
+| E4 | fault-1 claim 10，引 `c457-t0`、`c457-t1` | "payment Charge calls returned rpc.grpc.status_code=0 at 9662 and 5386 microseconds" | 值正确（payment Charge，trace a15e6f57 / f37767a4） | `c457-t0` 只含 payment Charge 的 6 条 ERROR 行；成功行在 `fac8-t0/t3/t4/t5` | **视图重叠**，同 E3 | 强：同上；首次生成 1/13，重试 8/8 保留 |
 | E5 | fault-1 claim 10 | "checkout STATUS_CODE_UNSET metric value (67.5) exceeds the ERROR value (9.94)" 用来论证 "failures are not total" | 数值本身对；推论错：UNSET 计的是 checkout 所有 span（GetCart、Convert、prepareOrderItems…），不是成功的 PlaceOrder 数 | `c457-t1` 有这两个数，但视图没有任何字段说明 `traces_span_metrics_calls_total` 数的是「各操作的 span」，模型自选的 `sum by (service_name, status_code)` 又抹掉了 span_name | **视图语义有歧义**：view 与工具描述都没有说明该序列数什么、UNSET 是什么 | 强：加一句系列说明后 5/20 → 0/18（p=0.048，见四） |
 | E6 | fault-2 claim 4、11 | "payment … STATUS_CODE_UNSET increase 10.00 alongside its 8.33 ERROR … part of the observed span volume is non-error … not a complete failure rate" | 同 E5；且 10.0 = 内部 `charge` 8.75 + flagd `ResolveFloat` 1.25，Charge 自身 UNSET 为 0 | 已交付：`47d9-t2`（按 span_name 拆的 payment 序列）逐项给出；`a9e0-t1` 给出 PlaceOrder code 0 = 0 | **视图语义有歧义**（同 E5）。这里反例数据已在输入里，仍写错，说明没有语义说明时模型不会自己去交叉核对 | 中：同一机制的重放 0/7（有说明）对 2/7（无说明），样本小 |
 
@@ -57,10 +58,10 @@
 | normal-2 第 6 轮（自行结束，对照，原 Run 无 e） | 8 / 2 / 6 | | | | | | 1/2 |
 
 读法：
-- **重试不改错、只复制错**：fault-1 重试 8/8 逐字复现 E2–E5，因为被拒的首次回复就在上下文里（C2 反馈只说了 "JSON parse error … char 0"，没有指出是 Markdown 围栏，`retry-feedback/fault-1.txt`）。同样的四处错误在首次生成里每个只有 0–1/13。也就是说 fault-1 的 4 个 P2 是**一次首次生成事件**，被重试保留成 4 个。
-- 重试也会**新引入**错误：normal-1 的 E1 是第 6 轮拆分 claim 时新出现的；第二批 fault-2 的 P2-1、P2-3 同为第 9 轮（重试）新增。
+- **重试保留错误**：fault-1 重试 8/8 保留了 E2–E5 的错误数字与 evidence_id（判定按数字与引用，文本部分被改写：含 30261 的 claim 只有 3/8 与原文逐字相同）。被拒的首次回复就在上下文里，C2 反馈只说了 "JSON parse error … char 0"，没有指出是 Markdown 围栏（`retry-feedback/fault-1.txt`）。在（缺 reasoning 的）首次生成重放里，同样四处错误每个只有 0–1/13。所以 fault-1 的 4 个 P2 更像**一次首次生成事件**，被重试保留；首次生成的真实比率未确定（见一）。
+- 重试也可能**新引入**错误：normal-1 的 E1 是第 6 轮拆分 claim 时新出现的；第二批 fault-2 的 P2-1、P2-3 同为第 9 轮（重试）新增。
 - 首次生成里，「有至少一个数字在别的视图、不在被引视图」的报告：fault-1 首次 5/13、fault-2 1/7、normal-2 1/2、normal-1 首次 1/8，合计 8/30（27%）。这是检查器命中数（含个别误报），审查者只抓到其中一部分。
-- E2 首次生成 0/13、E1 首次 1/8、重试 0/8：这两处是低概率的一次性失误，无法用重放做因果检验，不应据此提修复。
+- E2 首次生成 0/13、E1 首次 1/8、重试 0/8（均缺 reasoning）：这两处在重放里几乎不复现，**是否随机失误未确定**，无法做因果检验，不据此提修复。
 
 ### 3.2 最小上下文改动：给 `traces_span_metrics_calls_total` 视图加一句系列说明（`metric_note`）
 
@@ -82,8 +83,8 @@
 
 设想的检查：报告每条 claim 文字里的数字，必须能在该 claim 引用的视图里找到。脚本 `scripts/provenance.py`（≥4 位整数或 ≥2 位小数才检查，去掉 id 与时间戳，小数按写出的位数取整比较）。
 
-- 真实 Run 扫描（`provenance-scan.json`，24 个已审查 Run 的已发布报告）：命中 E1、E3、E4，共 3 处（24 处 e 类中的 3 处）；E2、E5、E6 与第二批、6f 的区间混用类不会命中，因为那些数字都在被引视图里。另有 9 条 claim 命中：多为单位换算（µs→ms）、由直方图求出的分位数、四舍五入（误报）；其中第一批 fault-2 的 11.25 与第二批 fault-2 的 3400/2500/5000 数字出现在别的视图，审查者未列为 P2，未核实是否真错。
-- 若强制最终请求也按 C2 的模板告诉模型「哪条 claim 的哪些数字不在被引视图里、在哪些已交付视图里」（`feedback()`，模板沿用 `REPORT_RETRY_TEMPLATE`，reason 为 `numbers_not_in_cited_views`）：对 20 个含跨视图数字的样本（12 个首次生成 + 8 个 fault-1 重试复制）各重放 1 次，**19/20 修复后跨视图数字全部通过溯源**（数字被删除，或补引了含该数字的视图），1/20 未修好并新增 1 个数字（`score-repair.json`）。fault-1 的 8 个里，E3、E4 全部消除；E5 仍 8/8 保留，E2 仍 3/8 保留：**该检查只能修跨视图归属，修不了语义与邻组误读。**
+- 真实 Run 扫描（`provenance-scan.json`，22 个已审查 Run 的已发布报告）：命中 E1、E3、E4，共 3 处（24 处 e 类错误中的 3 处）；E2、E5、E6 与第二批、6f 的区间混用类不会命中，因为那些数字都在被引视图里。另有 11 条 claim 命中（共 14 条，分布在 9 个 Run）：多为单位换算（µs→ms）、由直方图求出的分位数、四舍五入（误报）；其中第一批 fault-2 的 11.25 与第二批 fault-2 的 3400/2500/5000 数字出现在别的视图，审查者未列为 P2，未核实是否真错。
+- 若强制最终请求也按 C2 的模板告诉模型「哪条 claim 的哪些数字不在被引视图里、在哪些已交付视图里」（`feedback()`，模板沿用 `REPORT_RETRY_TEMPLATE`，reason 为 `numbers_not_in_cited_views`）：对 20 个含跨视图数字的样本（12 个首次生成 + 8 个 fault-1 重试样本）各重放 1 次，**19/20 修复后跨视图数字全部通过溯源**（数字被删除，或补引了含该数字的视图），1/20 未修好并新增 1 个数字（`score-repair.json`）。fault-1 的 8 个里，E3、E4 全部消除；E5 仍 8/8 保留，E2 仍 3/8 保留：**该检查只能修跨视图归属，修不了语义与邻组误读。**
 - 未验证：修复后被保留下来的数字是否真的属于那条 claim 的对象（如 E2，值在被引视图里但归错分组，溯源检查看不出）。
 
 ## 四、其余批次的归类（较弱证据：审查原文 + 抽查 ledger）
@@ -102,24 +103,24 @@
 | 第三批 pc-fault ×3 | 多点时间序列被写成"平坦"（实际有 220 ms、7.25 ms 尖点）×2；claim 引用的是 ok 视图，内容却是 no_data 视图 | 形态（要扫描多点序列）；引用挂错 | 审查原文 |
 | 第三批 cart-fault ×1 | 把"缺失的 ERROR 序列 + UNSET 序列"写成 cart 埋点缺陷 | 视图语义（UNSET/缺失序列） | 审查原文 |
 
-按类合计（24 处，含上表与第二节）：视图重叠/引用挂错 7；视图语义（UNSET 与缺失序列）4；上下文有但形态难用 9；读对了却写错 3；其他 1；**上下文缺失 0**。第二批、6f 的「形态难用」在第三批降到 pc-fault 的多点序列 2 处，`span_groups` 类型的区间混用降到 E2 一处（邻组），与 C3 的设计方向一致；但第三批核心 4 Run 的总数没降（6），因为归属类、语义类原本就在，且重试路径把它们放大。
+按类合计（24 处，含上表与第二节）：视图重叠/引用挂错 7；视图语义（UNSET 与缺失序列）4；上下文有但形态难用 9；读对了却写错 3；其他 1。**上下文缺失：第三批核心 6 处已逐条核对，0；其余 18 处依审查原文，未见缺失，未复算。**第二批、6f 的「形态难用」在第三批降到 pc-fault 的多点序列 2 处，`span_groups` 类型的区间混用降到 E2 一处（邻组），与 C3 的设计方向一致；但第三批核心 4 Run 的总数没降（6），因为归属类、语义类原本就在，且重试路径把它们放大。
 
 ## 五、对照上游 HolmesGPT（a045ec7，2026-09-28）
 
 上游没有「逐条 claim 挂 evidence_id」的合同，最终回答是自由文本，因此没有与 E1/E3/E4（来源挂错）对应的错误类别；它在数值转述上的处理是**靠提示词与查询下推**，没有确定性数值校验：
 
 - 提示词：`holmes/plugins/prompts/generic_ask.jinja2:42` 最终作答前自检"trace each claim to specific tool output and hedge anything unverified"（只在 TodoWrite 段启用）；`holmes/plugins/toolsets/prometheus/prometheus_instructions.jinja2:35-36`"NEVER answer based on truncated Prometheus data … Do not answer about metric values you haven't seen"；`:22` 延迟优先用 `rate(_sum)/rate(_count)` 而不是 bucket。
-- 大结果不给残缺数据：`holmes/plugins/toolsets/prometheus/prometheus.py:767`（`create_data_summary_for_large_result`）与 `:1676-1696`、`:1936-1951`：超过 token 上限时返回汇总（序列数、标签基数）并要求收窄查询，而不是返回被截断的部分行。本项目的 traces_search 视图是「展示部分行 + 省略计数」，不同服务的搜索各自截断，正是 E1/E3/E4 的来源。
+- 大结果的处理（对所有工具生效）：`holmes/core/tools_utils/tool_context_window_limiter.py:33` `spill_oversized_tool_result`：超过单工具 token 上限时，完整结果落盘，模型拿到文件指针加一段预览并可用 `cat`/`jq` 读全量（:76-86 附近的存储分支）；存储不可用时丢弃数据并返回错误，要求收窄查询（:131-140 附近）。Prometheus 另有 `holmes/plugins/toolsets/prometheus/prometheus.py:767`（`create_data_summary_for_large_result`）与 `:1676-1696`、`:1936-1951`，超限返回汇总而不是残缺数据。本项目的 traces_search 视图是「展示部分行 + 省略计数」，各服务的搜索各自截断且模型读不到全量，正是 E1/E3/E4 的来源；上游没有这种「多个各自截断的部分视图」。
 - 聚合交给后端：`holmes/plugins/toolsets/grafana/toolset_grafana_tempo.jinja2:147-203` 指示用 TraceQL metrics（`rate()`、`quantile_over_time`、`by (...)`）让后端算分组的数量与分位数；`holmes/plugins/toolsets/grafana/trace_parser.py:103-109` 把 trace 展示为带每个 span 耗时的树。这与本项目 C3 的 `span_groups`（代码汇总）同向，本项目是在工具结果里做，上游是让模型写查询。
 - 指标语义：上游仓库中检索不到 `spanmetrics` / `STATUS_CODE_UNSET`（`grep` 无结果），没有对应说明，不能作为 E5/E6 的上游做法引用。
 - 上游是否把数据返回给模型：`prometheus.py:165-169` 的 `tool_calls_return_data` 默认 `True`（返回原始数据），但 `prometheus_instructions.jinja2` 说"The tool call returns no data to you"并靠图表嵌入，两处描述不一致，未确认实际行为。
 
 ## 六、证据强度与局限
 
-- 强：E3、E4（确定性检查命中 + 首次生成/重试重放 + ledger 位置核对）；E5/E6 的因果（加说明后 5/20→0/18，边缘显著，非盲评）；「重试复制错误」（fault-1 8/8）。
+- 强：E3、E4（确定性检查命中 + 首次生成/重试重放 + ledger 位置核对）；E5/E6 的因果（加说明后 5/20→0/18，边缘显著，非盲评）；「重试保留错误」（fault-1 8/8，数字与引用层面）。
 - 中：E1、E2、E6（位置核对；重放只复现 0–1 次，属低频失误）；第二批 fault-1 的形态归类（值位置核对，无重放）。
 - 弱：第二批其余条目、6f、pc/cart 的归类（审查原文，未逐条复算）。
-- 局限：带工具形态的重放缺历史 reasoning，且模型更常选择继续调工具（分母已剔除）；错误谓词为关键词 + 人工判读；数值溯源检查有误报（单位换算、派生值）；每格 N=7–16，多数差异在噪声内，只有「重试复制」与「有无系列说明」差异足够大；模型是 `deepseek-flash` 同一族，结论不外推到其他模型。
+- 局限：带工具形态的重放缺历史 reasoning，且模型更常选择继续调工具（分母已剔除）；错误谓词为关键词 + 人工判读；数值溯源检查有误报（单位换算、派生值）；每格 N=7–16，多数差异在噪声内，只有「重试保留错误」与「有无系列说明」差异足够大；模型是 `deepseek-flash` 同一族，结论不外推到其他模型。
 - 修复建议见 [任务记录](../../tasks/2026-09-29-m1-01-e-class-attribution.md)。
 
 ## 七、费用

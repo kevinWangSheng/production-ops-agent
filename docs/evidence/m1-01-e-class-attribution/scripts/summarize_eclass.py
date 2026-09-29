@@ -4,7 +4,7 @@ usage: ECLASS_WORK=<dir> OUT=<evidence dir> python summarize_eclass.py
 
 Inputs: samples/<variant>-<case>-r<n>/{meta.json,report.txt}, ledger.jsonl.
 The UNSET misread labels are a manual reading (see UNSET_MISREAD): the claims
-are printed by unset_scan.py and copied to unset-adjudication.json so a
+are printed by unset_claims.py and copied to unset-adjudication.json so a
 reviewer can re-label them blind.
 """
 
