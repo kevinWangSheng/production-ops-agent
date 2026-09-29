@@ -136,6 +136,10 @@ A 与 B 是独立问题，B 无 PR。`tests/test_m1_whole_view_bytes_contract.py
 - 计数器加载时机：`otel_demo_executor_factory` 在构建工厂时（worker 启动时）加载并 fail-closed；`fixture_executor_factory` 没有预加载，首个 Run 构造执行器时才加载。worker 启动时统一预加载 fixture 的计数器是可选项，不在本 PR 改。
 - 决策点（留给用户）：拒绝视图不进覆盖摘要（`context.py:289`），模型因此少了"在 gaps 披露被拒"的提示，normal-1 与 fault-2 的报告都没有点名拒绝原因；按合同这是设计内行为，本 PR 不改。是否在 run_coverage 消息里列出被拒绝的调用，待用户定。
 
+## 合并 main（#61、#62）
+
+2026-09-29 把 origin/main（5708093）merge 进 PR 分支，无冲突（`git merge origin/main`，不 rebase、不 force-push）。核查 #62 的 `opspilot/web/charts.py` 与 `service.py` 是否依赖这次删改的东西：图表按已登记证据的视图（`evidence`）画，`view.status == "ok"` 且 `content` 非空才出图，否则输出 chart-unavailable `not_ok`（`charts.py:87-94`）。超限拒绝不登记证据、没有 `evidence_id`，报告不能引用，因此拒绝视图根本到不了图表；未采纳的历史视图 `content is None`，同样走 `not_ok`。`charts.py:299` 的 `truncated`/`omitted_rows` 提示只对旧版本视图有意义（v6 起 adopted 视图恒为 False/0），保留兼容，无需改。合并后 `make check` 2498 passed。
+
 ## 待决
 
 1. 合同测试与既有测试调整：已完成（独立测试作者按合同 v3 重写并逐条记录调整；字节口径文件已删除）。
