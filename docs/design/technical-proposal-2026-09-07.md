@@ -69,7 +69,7 @@ Worker 的业务变更通过 Controller 提交。框架缓存如需独立存储�
 
 - `Integration / Target`：接入信息及不可变目标身份。
 - `InputEvent`：来源事件、投递去重信息和接收时间。
-- `Incident`：事故生命周期、人工控制版本、当前调查 Run。
+- `Incident`：事故生命周期、人工控制版本、当前调查 Run（事故行 `state` 的语义见下文「事故与发布观察分开建模」）。
 - `ReleaseObservation`：发布身份、目标、发布版本、观察状态及关联事故。
 - `Run`：所属主体、执行状态、模型配置、累计预算、输入水位和执行 epoch。
 - `ModelStep`：稳定步骤 ID、输入快照、完整模型响应及工具计划。
@@ -82,6 +82,8 @@ Worker 的业务变更通过 Controller 提交。框架缓存如需独立存储�
 ### 事故与发布观察分开建模
 
 事故生命周期：`open → observing_recovery → resolved → closed`，支持人工重新打开。人工关闭不等于系统独立确认恢复。
+
+事故行上的持久化 `state` 不是事故的第二套状态，只是人工控制（暂停、全局或目标挂起、取消当前 Run）在事故行上的镜像，语义为进行中 / 已暂停 / 已取消；它不表达调查执行进度，也不改变生命周期（取消 Run 后事故仍为 `open`）。执行进度以当前 Run 状态为准，调查结果以结论为准，界面据此展示（2026-09-29 用户决定，见[任务记录](../tasks/2026-09-29-m1-01-incident-state.md)）。
 
 发布观察状态：`pending / observing / healthy / anomalous / unknown / cancelled`，后四种为终态。正常发布拥有独立观察记录，**不需要先创建一个事故**。发现异常后，再创建或关联 Incident。
 
