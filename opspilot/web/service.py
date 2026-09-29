@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4, uuid5
 
+from markupsafe import Markup
+
 from opspilot.intake import (
     IntakeEnvelope,
     IntakeRequest,
@@ -56,6 +58,7 @@ from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
+from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
 from opspilot.web.store import (
@@ -88,6 +91,14 @@ _EVENT_PAGE = 1000
 ControlAction = Literal["follow_up", "correct", "cancel", "pause", "resume", "new_run"]
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {"follow_up", "correct", "cancel", "pause", "resume", "new_run"}
+)
+#: Report claim categories in page order; chart order follows it.
+CHART_CATEGORIES = (
+    "facts",
+    "hypotheses",
+    "counter_evidence",
+    "rejected_hypotheses",
+    "recommendations",
 )
 _TEXT_ACTIONS = frozenset({"follow_up", "correct"})
 
@@ -765,6 +776,7 @@ class Workbench:
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
             "handoff_report": handoff_report,
+            "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": self._controls(incident_id),
             "events": [_event_view(e) for e in events[-50:]],
@@ -772,6 +784,41 @@ class Workbench:
             if events
             else self.events.latest(incident_id),
         }
+
+    def _charts(
+        self, incident_id: UUID, report: Mapping[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Charts for the metrics evidence the displayed report cites.
+
+        Derived from the claims' citations and read from the stored evidence
+        view only; the model chooses nothing here. ``None`` when there is no
+        parsed report or nothing cited turned into a chart or placeholder.
+        """
+        if report is None or not report.get("parsed"):
+            return None
+        cited: dict[str, list[str]] = {}
+        for category in CHART_CATEGORIES:
+            for claim in report.get(category, ()):
+                for evidence_id in claim["evidence_ids"]:
+                    kinds = cited.setdefault(evidence_id, [])
+                    if category not in kinds:
+                        kinds.append(category)
+        items: list[Markup] = []
+        figures = overflow = 0
+        for evidence_id, kinds in cited.items():
+            record = self.evidence_for(incident_id, evidence_id)
+            fragment = None if record is None else evidence_chart(record, kinds)
+            if fragment is None:
+                continue
+            if fragment.kind == "figure":
+                figures += 1
+                if figures > MAX_FIGURES:
+                    overflow += 1
+                    continue
+            items.append(fragment.html)
+        if not items and not overflow:
+            return None
+        return {"items": items, "overflow": overflow}
 
     def evidence_for(
         self, incident_id: UUID, evidence_id: str

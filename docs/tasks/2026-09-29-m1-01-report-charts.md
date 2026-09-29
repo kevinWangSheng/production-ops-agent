@@ -1,6 +1,6 @@
 # M1-01 后续项 2：报告证据图表
 
-- 状态：进行中（第一阶段：调研与合同；实现待合同测试就绪后开始）
+- 状态：进行中（实现完成，待独立审查；合同测试 `tests/test_m1_report_charts_contract.py` 为独立作者所写）
 - 更新日期：2026-09-29
 - 依据：[收口记录「后续项」第 2 条](2026-09-28-m1-01-closure.md)；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Evidence and context requirements」（报告链接须解析到已捕获的证据，模型文字不是权威）与「Data flow contract」；[C3](../design/technical-proposal-2026-09-07.md) §2（页面为 Jinja、少量 JavaScript、SSE）
 - 工作区：`feature/m1-01-report-charts`，worktree `../production-ops-agent-report-charts`（基线 `main` `f0038dd`）
@@ -55,6 +55,15 @@
 8. 上限：最多 6 张图，超出部分不绘，`#evidence-charts` 内写「N more cited metrics evidence not charted」；每图最多 10 条 series，超出写在图注。
 9. 无报告、报告不可解析（`report-unparseable`）、或无被引用的 metrics 证据：页面不含任何 `figure.evidence-chart` 或 `chart-unavailable`；现有元素 id 与证据链接不变。
 
+### 合同裁定（测试作者发现的含糊，lead 2026-09-29 确认）
+
+- 证据链接 `/incidents/{evidence.subject_id}/evidence/{eid}`：已核实 `subject_id` 即事故 id（`tools/fixture.py:250`、`otel_demo.py:1495` 取 `lease.incident_id`）。id 按 URL 转义，冒号保留。
+- 断线只看「已画出的点」是否相邻：夹在中间的 NaN 或窗外点使线断开；间隔恰好 1.5×step 不断。
+- 窗口边界为闭区间。
+- 10 条 series 上限只计可画的 series；6 图上限不计 `chart-unavailable` 占位。
+- 值越大越靠上；全部值非负时 y 轴含 0，否则取实际最小值；全常数时上界补 1，保证 `data-y-min < data-y-max`。
+- series 标签为 `k="v", …`（无标签为 `{}`），超 80 字符截断。
+
 ### 输入与安全边界
 
 - 数据源仅为 `Workbench.evidence_for(...)` 返回的 `StoredEvidence.view`（已落库投影，与模型看到的同一份）。不读 `raw`、不读报告文字里的数字、不发起任何 Prometheus 请求。
@@ -87,3 +96,10 @@ trace/span 图；发布观察页；交互（缩放、悬停、JS）；模型选�
 - 完成条件：合同测试（全新上下文 Agent 依本节写出，先红后绿）；`make check`；一次有界真实 Run 或对已录真实证据（如 `docs/evidence/m1-01-window-points-rerun/*/ledger.json` 的 metrics 视图）渲染出的页面截图/HTML 作为可观察证据；独立审查处置；PR 至 `main`，CI 与机器人分诊一次，**不合并**。
 - 下一步：lead 派测试 Agent 按合同写测试 → 通知实现。实现落点预计：新增 `opspilot/web/charts.py`，`service.snapshot` 收集被引用证据，`incident.html` 加一段。
 - 未验证：Robusta UI 侧标记解析（闭源，未确认）；真实 Run 的 metrics 视图在页面上的观感（实现后以真实证据渲染核对）。
+
+## 实现与证据（第二阶段）
+
+- 实现：`opspilot/web/charts.py`（纯函数 `render_evidence_chart`、`evidence_chart`）、`service.py` `_charts`（按 claim 引用收集、6 图上限）、`incident.html` 新增 `#evidence-charts` 段。
+- 合同测试：72 用例全绿。其中页面顺序用例原断言 7 张图，与 6 图上限冲突，已报 lead，由测试作者在 `c48e1d5` 改为 6 个证据；实现未因此改动。
+- 真实证据离线渲染：用 [alignment-c 故障 Run 的 ledger](../evidence/m1-01-alignment-c-effect/) 中记录的报告与 metrics 视图，经 `docs/evidence/m1-01-report-charts/render_offline.py` 渲染事故页（`pc-fault.html` 5 图、`fault-2.html` 6 图、0 占位），截图 `pc-fault-charts.png`。ledger 只存 raw 的 SHA-256 不存字节，脚本先按 `view_sha256` 校验视图再渲染；页头的事故元数据来自内存测试夹具，不是那次 Run 的真实元数据。截图显示：单点聚合以圆点显示并在图注给数值，31 个 series 只画 10 条并写明，图注如实写「2 non-finite point(s) skipped」。
+- 未验证：`make check` 见提交说明；未新跑真实调查（本项不改调查 loop）。
