@@ -452,17 +452,17 @@ def test_c_an_incomplete_view_is_listed_and_the_other_categories_are_none():
 def test_c_a_historical_v5_truncated_view_is_listed_and_the_other_categories_are_none():
     """M1-01 A (v3) contract change: the executor no longer truncates rows, so
     a Run can no longer *produce* a view with ``truncated: true`` (this test
-    used to make one with 30 rows under the old default cap). The category is
-    kept for stored views written by a pre-upgrade (projection v5) Run, which
-    may carry ``truncated: true``. Premise, stated exactly: on the otel-demo
-    profile such a Run cannot be resumed (the ``tool_schema_revision`` version
-    gate blocks it), so this only matters where a v5 view can still be
-    rebuilt -- the fixture profile. The classification code (``delivered_view``
-    + ``run_coverage_message``) stays and stays tested. The view is made
-    historical by hand: run
-    once, take the stored result, mark it as v5 wrote a truncated one, derive
-    the ``DeliveredView`` the way the rebuild path does (``delivered_view``)
-    and feed it through the single-source ``run_coverage_message``."""
+    used to make one with 30 rows under the old default cap). What this test
+    pins is only the classification logic: ``delivered_view`` plus
+    ``run_coverage_message`` list a stored view that carries ``truncated:
+    true`` under "truncated" and leave the other categories at none. It is not
+    a reachable resume path: a projection-v5 Run is blocked by the
+    ``tool_schema_revision`` version gate on otel-demo, and the fixture
+    profile was moved to ``fixture-2``, which blocks it there too. The view is
+    made historical by hand: run once, take the stored result, mark it as v5
+    wrote a truncated one, derive the ``DeliveredView`` the way the rebuild
+    path does (``delivered_view``) and feed it through the single-source
+    ``run_coverage_message``."""
     from opspilot.investigation.reports import run_coverage_message
 
     loop, request, model, transport, store, _ = assemble(
