@@ -102,4 +102,5 @@ trace/span 图；发布观察页；交互（缩放、悬停、JS）；模型选�
 - 实现：`opspilot/web/charts.py`（纯函数 `render_evidence_chart`、`evidence_chart`）、`service.py` `_charts`（按 claim 引用收集、6 图上限）、`incident.html` 新增 `#evidence-charts` 段。
 - 合同测试：72 用例全绿。其中页面顺序用例原断言 7 张图，与 6 图上限冲突，已报 lead，由测试作者在 `c48e1d5` 改为 6 个证据；实现未因此改动。
 - 真实证据离线渲染：用 [alignment-c 故障 Run 的 ledger](../evidence/m1-01-alignment-c-effect/) 中记录的报告与 metrics 视图，经 `docs/evidence/m1-01-report-charts/render_offline.py` 渲染事故页（`pc-fault.html` 5 图、`fault-2.html` 6 图、0 占位），截图 `pc-fault-charts.png`。ledger 只存 raw 的 SHA-256 不存字节，脚本先按 `view_sha256` 校验视图再渲染；页头的事故元数据来自内存测试夹具，不是那次 Run 的真实元数据。截图显示：单点聚合以圆点显示并在图注给数值，31 个 series 只画 10 条并写明，图注如实写「2 non-finite point(s) skipped」。
-- 未验证：`make check` 见提交说明；未新跑真实调查（本项不改调查 loop）。
+- `make check`：ruff、format、mypy、pytest 全过（2372 passed，258 skipped，2 xfailed）。
+- 未验证：未新跑真实调查（本项不改调查 loop）。
