@@ -1,0 +1,133 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Evidence reviewed showed no observed failures in checkout or its dependency calls within the authorized window: sampled spans had no visible error tags, gRPC status codes were 0, and error metric increases were zero where present. Latency values were observed (checkout server p95 167.5 ms; checkout client p95 up to 61.25 ms) but no baseline is available to determine elevation.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "During the authorized window, checkout's server-side rpc_server_duration p95 was 167.5 ms.",
+      "evidence_ids": [
+        "fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t2:01155672-8d46-44fa-8846-b6f479756dba"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's client-side p95 rpc durations to dependency services ranged from 4.75 ms (GetCart, GetProduct, ShipOrder) to 61.25 ms (CartService/EmptyCart); PaymentService/Charge was 23.82 ms.",
+      "evidence_ids": [
+        "cadb191e-c0b6-4b06-b14a-dee0ef87f365-t1:8372506f-7d38-4d00-99d0-90ae0d141ea9"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's rpc_client_duration_milliseconds_count to all dependency methods recorded rpc_grpc_status_code 0 during the window.",
+      "evidence_ids": [
+        "044fbee8-35a3-4e7b-9a22-481c27cfa787-t2:450a55b1-17bf-467f-af7c-875a58a4e8fb"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The payment service span metric traces_span_metrics_calls_total with status_code STATUS_CODE_ERROR increased by 0 over the window; payment also showed 27.5 calls with STATUS_CODE_UNSET.",
+      "evidence_ids": [
+        "044fbee8-35a3-4e7b-9a22-481c27cfa787-t0:015e5678-dd3e-4e09-bb50-ef38f40082c5",
+        "cadb191e-c0b6-4b06-b14a-dee0ef87f365-t0:c3ddc7a3-9769-4e8e-a083-3036f91c9f36"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled checkout spans returned in trace search (trace ids 0d1e30bb1d072a496fe68b779d417ccc, d08e12cadcf0ce590a35daeda487ca1b, 2f32f9f00af38d6a3e46c0497e4d50c6, etc.) showed error_by_visible_tags false and rpc.grpc.status_code 0.",
+      "evidence_ids": [
+        "044fbee8-35a3-4e7b-9a22-481c27cfa787-t3:000e6772-d65d-4330-b8a6-c55af6cba439"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled payment spans (trace ids 7c9ce91297fb737eb342a6e17efb2c31, 2f32f9f00af38d6a3e46c0497e4d50c6, etc.) showed error_by_visible_tags false and rpc.grpc.status_code 0.",
+      "evidence_ids": [
+        "cadb191e-c0b6-4b06-b14a-dee0ef87f365-t2:9a6c66d9-026e-4f5e-a12e-9e0fab13944c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled email spans showed http.status_code 200 and error_by_visible_tags false.",
+      "evidence_ids": [
+        "fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t5:32d8b56c-fad8-4a1d-ae4a-3ff22f3e0838"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled product-catalog spans showed rpc.grpc.status_code 0 and error_by_visible_tags false (view returned only a limited set of many possible traces, incomplete).",
+      "evidence_ids": [
+        "cadb191e-c0b6-4b06-b14a-dee0ef87f365-t3:171381d4-33c0-445c-b235-8a3587f66a41"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Sampled cart spans showed error_by_visible_tags false; a flagd.evaluation.v1.Service/ResolveBoolean child span in trace 0d1e30bb1d072a496fe68b779d417ccc had rpc.grpc.status_code 0 (view incomplete).",
+      "evidence_ids": [
+        "fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t4:28e37eec-35a9-4381-85c8-d01dbdb9b98a"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Currency service span metric for Currency/Convert had status_code STATUS_CODE_OK; shipping span metrics had STATUS_CODE_UNSET with no error series returned.",
+      "evidence_ids": [
+        "fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t0:4f59b6e6-0bf1-4679-90bc-3c3148b22296"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No data was returned for frontend rpc_client_duration_milliseconds_count (view fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t1:32f21e4c-e637-41bb-b3b2-383462a64a42 status no_data), so caller-side dependency latency for frontend is unknown.",
+    "No data was returned for http_server_request_duration_seconds_count (view fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t3:7d379873-8d2b-49db-8ce6-5debd50dd45b status no_data), so HTTP 5xx failure counts could not be assessed.",
+    "The product-catalog trace search view (cadb191e-c0b6-4b06-b14a-dee0ef87f365-t3:171381d4-33c0-445c-b235-8a3587f66a41) was incomplete because it returned as many traces as requested; more product-catalog spans may exist and were not observed.",
+    "The cart trace search view (fa63a1cd-5fbb-443a-af3c-4e653d1d7cea-t4:28e37eec-35a9-4381-85c8-d01dbdb9b98a) was incomplete because it returned as many traces as requested; more cart spans may exist and were not observed.",
+    "No checkout STATUS_CODE_ERROR span metric series was returned; checkout error volume remains unknown rather than zero.",
+    "No baseline or historical latency data was available in this 300-second window, so whether the observed p95 latencies (e.g., checkout server 167.5 ms) are elevated cannot be determined.",
+    "Currency and shipping services were not searched at trace level; their absence of errors is based only on span metrics showing successful or unset statuses."
+  ],
+  "next_steps": [
+    "Advisory: obtain a baseline latency window or SLO threshold to compare against the observed checkout p95 of 167.5 ms and determine if it is elevated.",
+    "Advisory: expand trace searches for currency, shipping, and the incomplete product-catalog/cart views to confirm absence of error spans across the full window.",
+    "Advisory: query HTTP server metrics with a different metric name or source if frontend reliance on rpc client metrics is unavailable."
+  ]
+}

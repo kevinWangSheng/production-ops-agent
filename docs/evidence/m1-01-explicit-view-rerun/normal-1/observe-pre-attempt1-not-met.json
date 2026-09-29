@@ -1,0 +1,96 @@
+{
+ "script": "scripts/otel_demo_observe.py",
+ "window": {
+  "start": "2026-09-27T14:58:16+00:00",
+  "end": "2026-09-27T15:03:16+00:00",
+  "seconds": 300
+ },
+ "observed_at": "2026-09-27T15:03:16.582452+00:00",
+ "sources": {
+  "prometheus": "http://127.0.0.1:19090",
+  "jaeger": "http://127.0.0.1:16686/jaeger/ui"
+ },
+ "expect": "normal",
+ "authorized_dependencies": [
+  "cart",
+  "currency",
+  "email",
+  "payment",
+  "product-catalog",
+  "shipping"
+ ],
+ "metrics": {
+  "checkout_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[300s])",
+   "evaluated_at": "2026-09-27T15:03:16+00:00",
+   "series": []
+  },
+  "payment_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"payment\"}[300s])",
+   "evaluated_at": "2026-09-27T15:03:16+00:00",
+   "series": []
+  },
+  "checkout_client_calls_by_peer": {
+   "expr": "sum by (span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[300s]))",
+   "evaluated_at": "2026-09-27T15:03:16+00:00",
+   "series": []
+  },
+  "all_services_error_calls": {
+   "expr": "sum by (service_name) (increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[300s]))",
+   "evaluated_at": "2026-09-27T15:03:16+00:00",
+   "series": []
+  }
+ },
+ "positive_series_count": {
+  "checkout_calls_by_span_status": 0,
+  "payment_calls_by_span_status": 0,
+  "checkout_client_calls_by_peer": 0,
+  "all_services_error_calls": 0
+ },
+ "jaeger": {
+  "query": {
+   "service": "checkout",
+   "limit": 500
+  },
+  "returned_traces": 4,
+  "traces_in_window": 4,
+  "distinct_trace_ids": 4,
+  "traces_with_checkout_error_and_failed_dependency_child": 0,
+  "failed_dependency_services": [],
+  "traces": [
+   {
+    "trace_id": "46209761c524623992b97e76df59643f",
+    "span_count": 52,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "dc796eaf84515ad7c5f758ac3e61ff6f",
+    "span_count": 64,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "fd80a011f973ddd1415592c459e3400f",
+    "span_count": 52,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "e0c0a1bba5d753eef0a9d4ec7acd313b",
+    "span_count": 54,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   }
+  ]
+ },
+ "precondition": {
+  "control_window_ok": false,
+  "dependency_traffic": false,
+  "fault_confirmed": false
+ }
+}

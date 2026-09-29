@@ -1,0 +1,13 @@
+{
+ "is_available": true,
+ "balance_infos": [
+  {
+   "currency": "CNY",
+   "total_balance": "30.80",
+   "granted_balance": "0.00",
+   "topped_up_balance": "30.80"
+  }
+ ],
+ "queried_at_utc": "2026-09-28T04:35:45Z",
+ "note": "before phase D groups 8/9 replays (80 calls planned)"
+}

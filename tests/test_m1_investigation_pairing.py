@@ -108,11 +108,13 @@ def test_loop_pairs_executor_views_into_the_next_model_request():
     assert transport.called is True
     assert len(model.calls) == 2
     roles = [m["role"] for m in model.calls[1].messages]
-    assert roles[-3:] == ["assistant", "tool", "user"]
-    tool_msg = model.calls[1].messages[-2]
+    # Round 2 rule C: the final report instruction is followed by the run
+    # coverage summary, a second trailing user message.
+    assert roles[-4:] == ["assistant", "tool", "user", "user"]
+    tool_msg = model.calls[1].messages[-3]
     assert tool_msg["tool_call_id"] == "call-1"
     assert "evidence_id" in tool_msg["content"]
-    assert model.calls[1].messages[-3]["reasoning_content"] == "reasoned"
+    assert model.calls[1].messages[-4]["reasoning_content"] == "reasoned"
 
 
 def test_report_contract_contains_the_vendor_required_json_example():

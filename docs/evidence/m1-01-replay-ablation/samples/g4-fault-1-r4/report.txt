@@ -1,0 +1,93 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Checkout shows ERROR spans for PlaceOrder caused by payment Charge failures with 'Payment request failed. Invalid token. app.loyalty.level=gold' across eight visible trace IDs. Currency, product-catalog, cart, and shipping sampled spans showed no visible errors; email trace search returned no_data. Observed checkout p95 client latencies for dependencies ranged from 4.75ms to 70.28ms, but no baseline was available to determine whether these are elevated.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Metric span call counts in the 300-second window show error-status spans for checkout's oteldemo.CheckoutService/PlaceOrder (increase 8.484) and checkout's oteldemo.PaymentService/Charge (increase 8.484), plus error-status spans on frontend and frontend-proxy ingress.",
+      "evidence_ids": ["13e19cff-ace5-4c7a-8924-e34ee1788fd6-t0:44bddd82-11df-4bf9-b57a-1537f1476909"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's RPC client count series shows oteldemo.PaymentService/Charge with grpc_status_code 2 and 8.472 increase, while CurrencyService/Convert, CartService/GetCart, ProductCatalogService/GetProduct, and ShippingService/GetQuote show grpc_status_code 0.",
+      "evidence_ids": ["13e19cff-ace5-4c7a-8924-e34ee1788fd6-t1:39252331-0f91-4bb8-bd7e-4ebd6a041a95"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Eight checkout oteldemo.CheckoutService/PlaceOrder spans in the returned trace sample had ERROR status with description 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold' and rpc.grpc.status_code 13. Trace IDs: f5e6e49ac3f1873e3954caee9c80afef, 77eebbed936ab37295df0a781f0cb3a7, 18a540addad8eb71ce0f988d05152dd5, 9c8d5db3848d4e773cb1bcbb6895f1df, 926810c6f5b5fd4a5366f26175d23300, b31c605312927fe1f04529176f16e505, d2a0d855a77d02ef32a3d6aab7b43813, 1422d7a06dd9a15c117854f5f94d9d05.",
+      "evidence_ids": ["13e19cff-ace5-4c7a-8924-e34ee1788fd6-t3:6faca3ae-e203-45e8-a54d-a4c48324e824"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment service spans in the returned sample show grpc.oteldemo.PaymentService/Charge ERROR with grpc.error_message 'Payment request failed. Invalid token. app.loyalty.level=gold'. Visible payment error spans share the failing checkout trace IDs.",
+      "evidence_ids": ["125aae6f-4614-4540-b52a-40bd7ad3b83e-t2:e6f2cc9a-33e4-4eea-9829-84f8f1f0adca"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Currency Convert spans in the metric span call view show STATUS_CODE_OK with a 300-second increase of 24.999, and checkout's client count to CurrencyService/Convert shows grpc_status_code 0; no error status was observed for currency in these views.",
+      "evidence_ids": [
+        "13e19cff-ace5-4c7a-8924-e34ee1788fd6-t0:44bddd82-11df-4bf9-b57a-1537f1476909",
+        "13e19cff-ace5-4c7a-8924-e34ee1788fd6-t1:39252331-0f91-4bb8-bd7e-4ebd6a041a95"
+      ],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the returned sample of product-catalog spans, all spans had error_by_visible_tags false and rpc.grpc.status_code 0; no product-catalog error was observed in the trace sample.",
+      "evidence_ids": ["125aae6f-4614-4540-b52a-40bd7ad3b83e-t3:d525a356-3971-4f64-b3f3-72d0e8ef56af"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the returned sample for service=cart, cart-service spans had error_by_visible_tags false; no cart error span was shown in that sample.",
+      "evidence_ids": ["eebeba6a-d87c-4b16-9573-21495363248b-t0:f4994799-78a8-4ee3-b5a5-8e90c98d5d8b"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the returned sample for service=shipping, oteldemo.ShippingService/GetQuote spans had rpc.grpc.status_code 0 and their HTTP POST child spans had http.status_code 200; no shipping error was shown in the sample.",
+      "evidence_ids": ["eebeba6a-d87c-4b16-9573-21495363248b-t1:40ab9a11-a83a-496f-86a4-c2d853ccb8e8"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In the fixed window, checkout's p95 RPC client latency was 70.28ms for PaymentService/Charge, 10ms for CurrencyService/Convert, 19.75ms for CartService/GetCart, 4.75ms for ProductCatalogService/GetProduct, and 41.25ms for ShippingService/GetQuote.",
+      "evidence_ids": ["125aae6f-4614-4540-b52a-40bd7ad3b83e-t0:b67a6263-5ebc-47b1-bc0c-e31bf7b544e6"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Server p95 latency in the fixed window was 221.70ms for checkout PlaceOrder and 4.75ms for product-catalog GetProduct.",
+      "evidence_ids": ["eebeba6a-d87c-4b16-9573-21495363248b-t3:13c1f700-5526-4921-a114-0532dbab8439"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Email service could not be observed: traces_search for service=email returned status no_data (evidence_id eebeba6a-d87c-4b16-9573-21495363248b-t2:e5757ca0-3140-425b-8bb5-9436cc261d6f), and the span metric view reported zero for email spans (POST /send_order_confirmation, send_email, sinatra.render_template). That is not evidence of email success or failure; email visibility is missing.",
+    "No latency baseline was supplied outside the authorized 300-second window, so the observed p95 values cannot be classified as elevated; the run did not include a comparable pre-incident latency series.",
+    "Trace coverage is incomplete: checkout trace search was truncated and returned 17 of 20 result rows; payment trace search was truncated and returned 15 of 20; product-catalog, cart, and shipping searches were incomplete true. Some spans/traces may be missing, so negative statements about those services are limited to returned samples.",
+    "The app_payment_transactions_total metric returned 0 for both USD and CAD in the window (evidence_id 13e19cff-ace5-4c7a-8924-e34ee1788fd6-t2:2431046b-e943-4c25-bace-3fc3f434f6bc). Without a baseline or explanation, that zero cannot support a current claim about successful payment transaction volume."
+  ],
+  "next_steps": [
+    "Inspect payment service logic and loyalty flag configuration for 'app.loyalty.level=gold' and token validation; the observed error message points to an invalid token.",
+    "Check email service logs or traces outside the authorized no-data window to determine if confirmation emails are sent for failed checkouts.",
+    "Fetch a historical latency baseline for checkout's dependencies to assess whether the observed p95s are elevated.",
+    "Re-run trace search with pagination to cover omitted spans and confirm the complete call chain."
+  ]
+}

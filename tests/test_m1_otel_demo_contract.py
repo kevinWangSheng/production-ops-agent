@@ -874,7 +874,12 @@ def test_transport_metrics_request_and_response():
     assert query["query"] == [GOOD_EXPR]
     # Epoch seconds of the request window (Prometheus accepts "1790431090"
     # and "1790431090.000" alike; the instant is what the contract fixes).
-    assert float(query["start"][0]) == WINDOW.start.timestamp()
+    # ``start`` is the window start plus the longest range selector (300 s
+    # here), so every point reads in-window samples only (window-points
+    # contract, rule 1).
+    assert (
+        float(query["start"][0]) == (WINDOW.start + timedelta(seconds=300)).timestamp()
+    )
     assert float(query["end"][0]) == WINDOW.end.timestamp()
     assert query["step"] == ["30"]
     assert "timeout" in query

@@ -1,0 +1,30 @@
+{
+ "sample_id": "g2-fault-2-r4",
+ "group": 2,
+ "case": "fault-2",
+ "rep": 4,
+ "model": "deepseek-flash",
+ "request_sha256": "a089ef5ef200dd87abdea1b30f6658d60a88b319e41e416c02c2d69b4aff1425",
+ "request_bytes": 159517,
+ "started_utc": "2026-09-27T17:44:05Z",
+ "elapsed_s": 33.74,
+ "response_model": "deepseek-flash",
+ "response_id": "890c3459-0244-4b70-ab04-494f5c1d9fb9",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 44900,
+  "completion_tokens": 9280,
+  "total_tokens": 54180,
+  "prompt_tokens_details": {
+   "cached_tokens": 44672
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 3569
+  },
+  "prompt_cache_hit_tokens": 44672,
+  "prompt_cache_miss_tokens": 228
+ },
+ "content_chars": 15835,
+ "reasoning_chars": 10410,
+ "tool_calls": 0
+}

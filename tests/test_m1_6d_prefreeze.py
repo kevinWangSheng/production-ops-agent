@@ -26,7 +26,7 @@ regression pins.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 
@@ -407,15 +407,14 @@ def test_enormous_lookback_is_a_malformed_result_without_overflow():
 def test_lookback_equal_to_the_requested_window_is_accepted():
     """Boundary: a selector of exactly the window length is what
     ``promql_problem`` admits, so the executor must accept it too.
-    ``lookback_start_at`` is then window start minus the window length."""
+    ``lookback_start_at`` is the earliest instant read, the window start
+    (window-points contract, rule 3)."""
     outcome, _ = _execute_with_lookback(WINDOW_SECONDS)
 
     assert (outcome.status, outcome.reason) == ("ok", None)
     view = outcome.model_view
     assert view["lookback_seconds"] == WINDOW_SECONDS
-    assert datetime.fromisoformat(view["lookback_start_at"]) == (
-        WINDOW_START - timedelta(seconds=WINDOW_SECONDS)
-    )
+    assert datetime.fromisoformat(view["lookback_start_at"]) == WINDOW_START
     assert outcome.evidence.view["lookback_start_at"] == view["lookback_start_at"]
 
 

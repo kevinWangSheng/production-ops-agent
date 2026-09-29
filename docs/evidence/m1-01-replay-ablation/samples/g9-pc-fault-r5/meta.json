@@ -1,0 +1,46 @@
+{
+ "sample_id": "g9-pc-fault-r5",
+ "group": 9,
+ "case": "pc-fault",
+ "rep": 5,
+ "model": "deepseek-flash",
+ "request_sha256": "4c75dabf33c4523b89eb679fec02c09c0c07d21ccb2308de8329a0666240cf09",
+ "request_bytes": 151919,
+ "started_utc": "2026-09-28T04:49:57Z",
+ "elapsed_s": 25.13,
+ "response_model": "deepseek-flash",
+ "response_id": "8debee12-5f94-43fa-ad6a-11921fe7e317",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 42450,
+  "completion_tokens": 5877,
+  "total_tokens": 48327,
+  "prompt_tokens_details": {
+   "cached_tokens": 42240
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 3097
+  },
+  "prompt_cache_hit_tokens": 42240,
+  "prompt_cache_miss_tokens": 210
+ },
+ "content_chars": 9870,
+ "reasoning_chars": 10514,
+ "tool_calls": 0,
+ "alias_count": 13,
+ "alias_map": {
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t0:0825fd7f-e8b2-4cad-af3e-ddcfdcd8d253": "E1",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t1:91b291d3-a675-4d80-8a48-74e42204785a": "E2",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t2:0097ec40-131f-4282-a3f7-88c17250dd91": "E3",
+  "4102f5b7-6c86-42d9-a2c1-6cdedf790458-t3:358a433c-a60d-46ed-b3ab-0be7b81cb9cc": "E4",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t0:c47b40fa-c1c5-4f0d-b0b5-ee269c1a4e63": "E5",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t1:86363400-7037-4c85-9527-5582f06a688d": "E6",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t2:f0eb25c5-2b1a-4b27-bfc6-cc94df224fab": "E7",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t3:74c8a75b-a004-4e51-91fe-963ce6543062": "E8",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t4:187dcefc-3745-4b6a-a5d2-9698d3cce12b": "E9",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t5:04967e42-6e2c-44fc-8d50-b288021d651a": "E10",
+  "7fd10a55-980f-434b-8a82-028a3236a29b-t6:5a77c44c-6f30-4517-b037-3d23c03e53d1": "E11",
+  "045042ec-a09a-41d5-893e-2a350a9aad3f-t0:23be0bd0-1370-4a76-93de-182c171e2abd": "E12",
+  "045042ec-a09a-41d5-893e-2a350a9aad3f-t1:47d44dff-767f-49eb-b673-2c79995ac687": "E13"
+ }
+}

@@ -1,0 +1,60 @@
+[
+ {
+  "case": "pc-fault",
+  "intake_key": "intake:ho-pc-fault-1",
+  "run_id": "5e571762-5858-5eb8-979d-4e3825a0d274",
+  "final_logical_key": "ctx0:round-4",
+  "final_finish_reason": "stop",
+  "message_count": 21,
+  "tool_result_messages": 13,
+  "delivered_views": 13,
+  "original_report_sha256": "dcfebd864e75d031e86672ce33223c589f56d99ad08453355a43db01468b016a",
+  "original_usage": {
+   "total_tokens": 46830,
+   "prompt_tokens": 41575,
+   "completion_tokens": 5255,
+   "prompt_tokens_details": {
+    "cached_tokens": 640
+   },
+   "prompt_cache_hit_tokens": 640,
+   "prompt_cache_miss_tokens": 40935,
+   "completion_tokens_details": {
+    "reasoning_tokens": 1069
+   }
+  },
+  "input_snapshot_hash": "d46960374b5d517d9aa6b1ada8675a3b28e5eff310ba91fb015c42b80a840f78",
+  "recorded_input_snapshot_hash": "d46960374b5d517d9aa6b1ada8675a3b28e5eff310ba91fb015c42b80a840f78",
+  "request_sha256": "6acd68960a88cd2d9b18a3a160accc8027f4d2370f8cd5e2403b3398d85ee82d",
+  "recorded_request_sha256": "6acd68960a88cd2d9b18a3a160accc8027f4d2370f8cd5e2403b3398d85ee82d",
+  "request_bytes": 146827
+ },
+ {
+  "case": "cart-fault",
+  "intake_key": "intake:ho-cart-fault-1",
+  "run_id": "46bf55e1-c799-57e8-a61d-44d6a9c5384a",
+  "final_logical_key": "ctx0:round-4",
+  "final_finish_reason": "stop",
+  "message_count": 26,
+  "tool_result_messages": 18,
+  "delivered_views": 18,
+  "original_report_sha256": "389578f4f493bf80c7025c47354fb66681fd697f82eee5cd721815252316a564",
+  "original_usage": {
+   "total_tokens": 56667,
+   "prompt_tokens": 47507,
+   "completion_tokens": 9160,
+   "prompt_tokens_details": {
+    "cached_tokens": 640
+   },
+   "prompt_cache_hit_tokens": 640,
+   "prompt_cache_miss_tokens": 46867,
+   "completion_tokens_details": {
+    "reasoning_tokens": 4592
+   }
+  },
+  "input_snapshot_hash": "c12f762a194aca209721f281ee2d26f20967d3ea91faa7343440021a6b86d09f",
+  "recorded_input_snapshot_hash": "c12f762a194aca209721f281ee2d26f20967d3ea91faa7343440021a6b86d09f",
+  "request_sha256": "c0921138ceddd6c4cf650be45db3c964bb094f04d6706a35efb0fd97940a9a17",
+  "recorded_request_sha256": "c0921138ceddd6c4cf650be45db3c964bb094f04d6706a35efb0fd97940a9a17",
+  "request_bytes": 181353
+ }
+]

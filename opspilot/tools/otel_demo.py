@@ -16,10 +16,12 @@ What a Run may read (technical plan §8):
   window. The raw evidence is the exact Prometheus response; the model view
   is its leading ``data.result`` series. ``offset``, ``@`` and a range
   selector longer than the window are refused before any request goes out;
-  a selector up to the window length is allowed and, evaluated at the window
-  start, reads that far back before it (upstream Holmes issues the same
-  queries) -- the view reports that read as ``lookback_seconds`` /
-  ``lookback_start_at`` next to the in-window ``source_start_at``;
+  a selector up to the window length is allowed and the query's ``start``
+  is pushed forward by its length, so every evaluated point reads samples
+  from inside the window only (a window-length selector evaluates once, at
+  the window end, as the whole-window aggregate) -- the view reports the
+  length as ``lookback_seconds`` and the earliest instant read as
+  ``lookback_start_at`` (the window start) next to ``source_start_at``;
 * ``traces_search``: Jaeger's trace search for one service in the window.
   Raw Jaeger responses are 300 KB-600 KB for 20 traces, so the raw evidence
   here is the transport's projected observation record -- the M0 trace
@@ -157,6 +159,11 @@ MIN_STEP_SECONDS = 15
 MAX_PROMQL_CHARS = 2000
 DEFAULT_TRACE_LIMIT = 10
 MAX_TRACE_LIMIT = 20
+# The one reason a trace search is ``incomplete`` (round 2 rule B): Jaeger
+# answered with as many traces as were asked for.
+TRACES_INCOMPLETE_REASON = (
+    "backend returned as many traces as requested; more may exist"
+)
 #: Jaeger's response for 20 traces has been 300-600 KB in this lab; the
 #: transport stops reading past this and the operation fails as
 #: ``RESULT_TOO_LARGE`` rather than projecting a partial body.
@@ -181,7 +188,6 @@ _DETAIL_KEYS = frozenset(
     }
 )
 _STATUS_KEYS = ("error", "otel.status_code", "rpc.grpc.status_code", "http.status_code")
-_RANGE_SELECTOR = re.compile(r"\[([^\]]+)\]")
 _DURATION = re.compile(r"[1-9][0-9]*[smh]")
 _DURATIONS = {"s": 1, "m": 60, "h": 3600}
 
@@ -199,14 +205,25 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "Wrap a counter in rate() or increase() for per-window "
                 "activity. "
                 "A range selector may be at most the window length. "
-                "A range selector evaluated at the window start reads that "
-                "far back before the window. "
-                "The view reports that read as lookback_seconds and "
-                "lookback_start_at. "
+                "A point at time t with range selector [r] covers [t - r, t]. "
+                "A subquery (inner)[a:b] covers a plus what inner covers, "
+                "and that total may be at most the window length. "
+                "Every point covers samples inside the window only. "
+                "No point reads samples from before the window. "
+                "The expression's total lookback is its longest range "
+                "selector, or a subquery range plus its inner lookback. "
+                "The first point is at the window start plus the total "
+                "lookback. "
+                "The view reports the total lookback as lookback_seconds "
+                "and the earliest instant read as lookback_start_at. "
                 "source_start_at is the first returned sample inside the "
                 "window. "
-                "A value at the first points may therefore reflect samples "
-                "from before the window. "
+                "A whole-window total, maximum or minimum comes from one "
+                "evaluation of a window-length selector, such as "
+                "increase(x[300s]), max_over_time(x[300s]) or "
+                "min_over_time(x[300s]). "
+                "Do not compute totals, maxima or minima from the point list "
+                "yourself. "
                 "A range selector longer than the window is refused. "
                 "offset is refused. "
                 "@ is refused. "
@@ -260,9 +277,22 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "operation, start_us, duration_us, status tags, parent "
                 "references and up to 4 clipped error detail fields. At most "
                 "16 KiB of sampled spans are shown; when truncated the view "
-                "sets truncated true and reports omitted_rows. Backend trace "
-                "and span counts are kept in the stored evidence record, not "
-                "in this view. This is a biased sample, not the complete "
+                "sets truncated true and reports omitted_rows. "
+                "traces_requested is the number of traces asked of the "
+                "backend. "
+                "backend_traces_returned is the number of traces the backend "
+                "returned. "
+                "backend_spans_returned is the number of spans in those "
+                "traces. "
+                "spans_shown is the number of span rows in this view. "
+                "spans_omitted is the number of backend spans not shown, "
+                "whether sampled out or truncated. "
+                "incomplete_reason states why incomplete is true, or is null. "
+                "status_state is recorded when the row has at least one "
+                "status tag and not_recorded when it has none. "
+                "not_recorded means the span carries no status tag, which is "
+                "Unset in OTel terms, not status code 0 and not OK. "
+                "This is a biased sample, not the complete "
                 "trace graph or a failure rate: an omitted span is unknown, "
                 "an error detail applies only to the span it is shown on, and "
                 "an empty result means no trace of that service was returned "
@@ -318,8 +348,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "offset is refused. "
                 "@ is refused. "
                 "A range selector longer than the window is refused. "
-                "A range selector up to the window length reads that far "
-                "back before the window start."
+                "A range selector up to the window length moves the first "
+                "evaluated point forward by its length, so every point reads "
+                "samples inside the window only."
             ),
             limits=(
                 "Truncated at the registered max_view_bytes: whole leading "
@@ -329,9 +360,8 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
                 "unhealthy, and a series that is not returned is unknown, not "
-                "zero; cumulative counters are not rates; a value at the first "
-                "points is not an in-window event when lookback_seconds is "
-                "nonzero."
+                "zero; cumulative counters are not rates; a per-step point is "
+                "not a whole-window total, maximum or minimum."
             ),
         ),
         may_contain_secrets=False,
@@ -373,9 +403,13 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         description=ToolDescription(
             returns=(
                 "A projected observation record over the Jaeger trace search "
-                "for one service: sampled spans under data.sampled_spans, "
-                "backend trace/span counts per service, and the SHA-256 and "
-                "byte count of the wire response it was projected from."
+                "for one service: sampled spans under data.sampled_spans, each "
+                "with status_state recorded or not_recorded, backend "
+                "trace/span counts per service, and the SHA-256 and byte "
+                "count of the wire response it was projected from; the view "
+                "adds traces_requested, backend_traces_returned, "
+                "backend_spans_returned, spans_shown, spans_omitted and "
+                "incomplete_reason."
             ),
             window_format=(
                 "The authorized absolute query window, appended as {window}; "
@@ -605,11 +639,13 @@ class DurableControl:
 def promql_problem(expr: str, window_seconds: float) -> str | None:
     """Why this PromQL must not be sent, or ``None`` (M0 ``read_proxy`` rules).
 
-    ``offset`` and ``@`` move the evaluation outside the window and a range
-    selector longer than the window is refused; a selector at the window
-    start still looks back up to its own length before it (plus Prometheus'
-    lookback delta), which is bounded and stays on the dedicated instance --
-    the returned sample timestamps are what the executor checks against the
+    ``offset`` and ``@`` move the evaluation outside the window and an
+    expression whose one-point read (``_promql_lookback``: range selectors,
+    nested subqueries added up) is longer than the window is refused; a
+    read up to the window length is accepted and ``_metrics`` starts the
+    evaluation that far after the window start, so no point reads before it
+    (Prometheus' staleness lookback for instant selectors aside) -- the
+    returned sample timestamps are what the executor checks against the
     scope. Any ``[...]`` that is not ``<n>[smh]`` is refused too (a label
     regex such as ``[a-z]+`` is over-refused, safely).
     """
@@ -619,32 +655,76 @@ def promql_problem(expr: str, window_seconds: float) -> str | None:
     # is matched case-folded (fresh-context contract test finding).
     if "@" in expr or re.search(r"\boffset\b", expr, re.IGNORECASE):
         return "QUERY_OUT_OF_WINDOW"
-    for selector in _RANGE_SELECTOR.findall(expr):
-        for part in selector.split(":"):
-            if not part:
-                continue
-            if not _DURATION.fullmatch(part):
-                return "QUERY_OUT_OF_WINDOW"
-            if int(part[:-1]) * _DURATIONS[part[-1]] > window_seconds:
-                return "QUERY_OUT_OF_WINDOW"
+    lookback = _promql_lookback(expr, window_seconds)
+    if lookback is None or lookback > window_seconds:
+        return "QUERY_OUT_OF_WINDOW"
     return None
 
 
-def promql_lookback_seconds(expr: str) -> int:
-    """How far before the window start an accepted expression reads, in seconds.
+def _promql_lookback(expr: str, window_seconds: float) -> int | None:
+    """Total seconds one evaluation point of ``expr`` reads back, or ``None``.
 
-    The largest ``<n>[smh]`` range or subquery selector in ``expr``; 0 when
-    there is none. Only meaningful for an expression ``promql_problem``
-    accepted, so every selector here already parses and is at most the
-    window length. Prometheus' staleness lookback for instant selectors is
-    not counted: it is a server default the query does not state.
+    A range selector ``x[r]`` reads ``r``; a subquery ``(<inner>)[a:b]``
+    reads ``a`` plus what one point of ``inner`` reads, so nesting adds up
+    (independent review P2: ``max_over_time(rate(x[1m])[5m:30s])`` reads
+    360 s, not 300). Parallel selectors take the maximum. ``None`` when a
+    ``[...]`` is not ``<n>[smh]`` parts, a part alone exceeds the window
+    (``m[5m:6m]`` stays refused), or a ``)`` has no ``(`` -- all refused by
+    ``promql_problem``.
+
+    The walk is a bracket-depth scan, not a PromQL parser: a selector
+    applies to the operand just before it, which is a parenthesised group
+    (its own max lookback) or a bare selector/metric name (0).
     """
-    longest = 0
-    for selector in _RANGE_SELECTOR.findall(expr):
-        for part in selector.split(":"):
-            if part and _DURATION.fullmatch(part):
-                longest = max(longest, int(part[:-1]) * _DURATIONS[part[-1]])
-    return longest
+    frames: list[int] = [0]  # max lookback seen inside each open ``(``
+    last = 0  # lookback of the operand a following ``[...]`` applies to
+    index = 0
+    while index < len(expr):
+        char = expr[index]
+        if char == "(":
+            frames.append(0)
+            last = 0
+        elif char == ")":
+            if len(frames) == 1:
+                return None
+            last = frames.pop()
+            frames[-1] = max(frames[-1], last)
+        elif char == "[":
+            close = expr.find("]", index)
+            if close < 0:
+                return None
+            parts = [part for part in expr[index + 1 : close].split(":") if part]
+            if not parts:
+                return None
+            seconds: list[int] = []
+            for part in parts:
+                if not _DURATION.fullmatch(part):
+                    return None
+                seconds.append(int(part[:-1]) * _DURATIONS[part[-1]])
+                if seconds[-1] > window_seconds:
+                    return None
+            last = seconds[0] + last
+            frames[-1] = max(frames[-1], last)
+            index = close
+        elif not char.isspace():
+            last = 0
+        index += 1
+    return max(frames)
+
+
+def promql_lookback_seconds(expr: str) -> int:
+    """How far each evaluated point of an accepted expression reads back, in seconds.
+
+    ``_promql_lookback`` with an unbounded window: the total of nested range
+    and subquery selectors, the maximum over parallel ones; 0 when there is
+    none. ``_metrics`` starts the range query this far after the window
+    start so the first point's read begins at the window start. Only
+    meaningful for an expression ``promql_problem`` accepted, which used the
+    same computation, so the value is at most the window length. Prometheus'
+    staleness lookback for instant selectors is not counted: it is a server
+    default the query does not state.
+    """
+    return _promql_lookback(expr, float("inf")) or 0
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -735,10 +815,17 @@ class OtelDemoTransport:
             or step > int(window.seconds)
         ):
             return _refused("INVALID_STEP")
+        # Evaluate from window start + longest range selector, so every
+        # point's ``[t - range, t]`` lies inside the window; a window-length
+        # selector gives start == end, one point: the whole-window aggregate
+        # (v4 rerun, 3 of 4 Runs reported the pre-window first point as
+        # in-window).
+        lookback = promql_lookback_seconds(expr)
+        start = window.start + timedelta(seconds=lookback)
         url = f"{request.endpoint}/api/v1/query_range?" + urllib.parse.urlencode(
             {
                 "query": expr,
-                "start": f"{window.start.timestamp():.3f}",
+                "start": f"{start.timestamp():.3f}",
                 "end": f"{window.end.timestamp():.3f}",
                 "step": str(step),
                 "timeout": f"{int(request.timeout_seconds)}s",
@@ -755,7 +842,7 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
-            lookback_seconds=promql_lookback_seconds(expr),
+            lookback_seconds=lookback,
         )
 
     # -- traces -------------------------------------------------------------
@@ -805,6 +892,18 @@ class OtelDemoTransport:
             data_as_of=end_at,
             source_start_at=start_at,
             source_end_at=end_at,
+            # Round 2 rule B: counts with their unit, from the record's own
+            # fields; the executor adds spans_shown / spans_omitted once it
+            # knows how many sampled spans fit the view.
+            row_unit="spans",
+            backend_rows_returned=record["backend_returned_span_count"],
+            view_fields={
+                "traces_requested": limit,
+                "backend_traces_returned": record["backend_returned_trace_count"],
+                "incomplete_reason": TRACES_INCOMPLETE_REASON
+                if record["incomplete"]
+                else None,
+            },
         )
 
 
@@ -984,6 +1083,12 @@ def project_traces(
                     "duration_us": span.get("duration"),
                     "error_by_visible_tags": error,
                     "status_tags": {k: tags[k] for k in _STATUS_KEYS if k in tags},
+                    # Round 2 rule A: a span with no status key is Unset in
+                    # OTel terms, not status 0 / OK; say so instead of leaving
+                    # an empty mapping to be read as "no error".
+                    "status_state": "recorded"
+                    if any(k in tags for k in _STATUS_KEYS)
+                    else "not_recorded",
                     "parent_references": [
                         {k: ref.get(k) for k in ("refType", "traceID", "spanID")}
                         for ref in span.get("references") or []

@@ -1,0 +1,13 @@
+{
+ "is_available": true,
+ "balance_infos": [
+  {
+   "currency": "CNY",
+   "total_balance": "31.63",
+   "granted_balance": "0.00",
+   "topped_up_balance": "31.63"
+  }
+ ],
+ "queried_at_utc": "2026-09-28T03:32:05Z",
+ "note": "after phase C group 7 replays (40 calls); before was 35.26"
+}

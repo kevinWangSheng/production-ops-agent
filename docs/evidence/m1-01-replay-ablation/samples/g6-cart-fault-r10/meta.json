@@ -1,0 +1,30 @@
+{
+ "sample_id": "g6-cart-fault-r10",
+ "group": "6",
+ "case": "cart-fault",
+ "rep": 10,
+ "model": "deepseek-flash",
+ "request_sha256": "fb6077064ae61a433b086860f96cb1a4cc28158eab0921063d981958be583829",
+ "request_bytes": 181769,
+ "started_utc": "2026-09-27T20:58:57Z",
+ "elapsed_s": 39.36,
+ "response_model": "deepseek-flash",
+ "response_id": "a190b03e-a3fc-4deb-99d1-3e0caaa0fc02",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 47595,
+  "completion_tokens": 10196,
+  "total_tokens": 57791,
+  "prompt_tokens_details": {
+   "cached_tokens": 47360
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 4848
+  },
+  "prompt_cache_hit_tokens": 47360,
+  "prompt_cache_miss_tokens": 235
+ },
+ "content_chars": 15534,
+ "reasoning_chars": 15478,
+ "tool_calls": 0
+}

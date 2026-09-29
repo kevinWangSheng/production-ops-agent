@@ -189,6 +189,45 @@ class DeliveredView:
     # exactly what the L2 contract tells the model (PR #56 bot review P2): an
     # ``ok`` view whose flag is false is not fact evidence. Fail-closed default.
     citable_as_fact: bool = False
+    # The view's own ``incomplete``/``truncated`` flags, carried for the run
+    # coverage summary (round 2 rule C); ``inherited`` marks a view seeded
+    # from the evidence context rather than collected by this Run, which the
+    # summary leaves out.
+    incomplete: bool = False
+    truncated: bool = False
+    inherited: bool = False
+
+
+# Round 2 rule C: the fixed template of the user message sent right after
+# ``FINAL_REPORT_INSTRUCTION``, filled from the structured fields of the views
+# this Run delivered, in delivery order. Part of ``prompt_revision``. The
+# word "none" appears only as a category's empty value.
+RUN_COVERAGE_TEMPLATE = (
+    "Run coverage summary, computed from the structured fields of the "
+    "{total} view(s) this Run delivered, in delivery order. "
+    "Views with incomplete true: {incomplete}. "
+    "Views with truncated true: {truncated}. "
+    "Views whose status is not ok: {non_ok}. "
+    "A view listed here is a stated limit of what this Run observed; report "
+    "it in gaps instead of treating that view as complete."
+)
+
+
+def run_coverage_message(views: Sequence[DeliveredView]) -> str:
+    """``RUN_COVERAGE_TEMPLATE`` filled for the views this Run collected."""
+    own = [view for view in views if not view.inherited]
+
+    def listed(ids: Sequence[str]) -> str:
+        return ", ".join(ids) if ids else "none"
+
+    return RUN_COVERAGE_TEMPLATE.format(
+        total=len(own),
+        incomplete=listed([v.evidence_id for v in own if v.incomplete]),
+        truncated=listed([v.evidence_id for v in own if v.truncated]),
+        non_ok=listed(
+            [f"{v.evidence_id} (status {v.status})" for v in own if v.status != "ok"]
+        ),
+    )
 
 
 # Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
@@ -771,6 +810,7 @@ def delivered_from_context(context: object, *, run_id: str) -> list[DeliveredVie
                 # non-bool value (PR #56 bot review P2, user decision
                 # 2026-09-27).
                 citable_as_fact=binding.get("citable_as_fact") is True,
+                inherited=True,
             )
         )
     return delivered

@@ -1,0 +1,106 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within the authorized 300-second window, checkout and payment show observed failures. Checkout PlaceOrder spans report ERROR with rpc.grpc.status_code 13 and a payment charge error referencing 'Invalid token. app.loyalty.level=gold'; payment Charge spans independently report the same token error. Frontend checkout API traces return HTTP 500 and propagate the same INTERNAL error. Observed trace metrics count 10 error PlaceOrder spans and 10 error Payment Charge spans. Latency values are observable but cannot be classified as elevated because no baseline is supplied. Email trace search returned no data, and several trace views are truncated or incomplete, so dependency coverage remains partial.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In the returned checkout trace sample, oteldemo.CheckoutService/PlaceOrder spans show otel.status_code=ERROR, rpc.grpc.status_code=13, and error descriptions such as 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold'; visible trace IDs include 5fd90e05ef3a63339b1bd77929712361, 8a33eaf4fb189f7cd69c72a4956dcd62, ff58c04064576096e2d66e68efdf0b1b, 02ae5a91b6122eb2d0669729118a767b, 189df5b38366ef5a5fb81295d37c8b19, 8b39324e8f9fa7a50bad6ebf51180d62, 53cefa5690bcd64104321936d68c14a0, 533e0c6f415c72c0771ad85ea5751b85, fffd99e0fc8192ef1ab5fe5a31fb5bfd, and c6f08f9b4564afa6961856e92aad777a.",
+      "evidence_ids": [
+        "62ee48e8-d7b5-41cd-a627-94f30431793e-t0:237a4f31-c706-4344-8bf6-a4c9b25c3c14"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment trace sample contains grpc.oteldemo.PaymentService/Charge spans with otel.status_code=ERROR, error_by_visible_tags=true, and error message 'Payment request failed. Invalid token. app.loyalty.level=gold'; visible trace IDs include 8a33eaf4fb189f7cd69c72a4956dcd62, ff58c04064576096e2d66e68efdf0b1b, 189df5b38366ef5a5fb81295d37c8b19, 53cefa5690bcd64104321936d68c14a0, 8b39324e8f9fa7a50bad6ebf51180d62, fffd99e0fc8192ef1ab5fe5a31fb5bfd, 02ae5a91b6122eb2d0669729118a767b, 5fd90e05ef3a63339b1bd77929712361, 533e0c6f415c72c0771ad85ea5751b85, and c6f08f9b4564afa6961856e92aad777a.",
+      "evidence_ids": [
+        "62ee48e8-d7b5-41cd-a627-94f30431793e-t1:07007b9c-38f3-42c3-a854-74a4d9522ff5"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout span count metrics show 10 oteldemo.CheckoutService/PlaceOrder spans with STATUS_CODE_ERROR and 10 oteldemo.PaymentService/Charge spans with STATUS_CODE_ERROR during the 300-second window; total checkout span error count is 20.",
+      "evidence_ids": [
+        "4f2c7823-0e7d-4179-80f1-122beb4b6299-t3:286d8330-4289-4f22-9deb-768b819a4170",
+        "62ee48e8-d7b5-41cd-a627-94f30431793e-t4:9635111e-257e-456d-854d-027be5c48aa0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Frontend trace sample shows POST /api/checkout and executing api route (pages) /api/checkout spans returning HTTP 500 and otel.status_code=ERROR; visible traces 533e0c6f415c72c0771ad85ea5751b85 and fffd99e0fc8192ef1ab5fe5a31fb5bfd carry error '13 INTERNAL: failed to charge card ... Payment request failed. Invalid token. app.loyalty.level=gold', and dependency span metrics count 10 error spans for frontend executing api route (pages) /api/checkout and 10 error spans for frontend grpc.oteldemo.CheckoutService/PlaceOrder.",
+      "evidence_ids": [
+        "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t0:849f0eb6-6ec5-43e6-9b4d-fcc89e172b08",
+        "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t3:0a626238-d19e-4961-9d4e-37ebf783cd8b"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Observed server-side latency metrics for checkout PlaceOrder in the window are p95 189.99999999999991 ms, sum 519.6609447854294 ms, and count 10.000375014063026; this is a current observation only and does not by itself establish elevated latency without a comparable baseline.",
+      "evidence_ids": [
+        "4f2c7823-0e7d-4179-80f1-122beb4b6299-t4:32769389-9f54-45a1-81cb-3cb479527b0d",
+        "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t1:e83467ee-fc74-41fd-a28e-f38265625cda",
+        "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t2:83243fe0-38d1-4d86-a2fc-61419eb44cb0"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In returned traces, product-catalog oteldemo.ProductCatalogService/GetProduct and ListProducts spans, currency Currency/Convert spans, shipping oteldemo.ShippingService/GetQuote spans, and cart AddItem/GetCart/Redis spans show no visible error tags; product-catalog and currency spans show rpc.grpc.status_code=0 in the returned samples. These trace samples are incomplete, so this does not rule out unseen failures.",
+      "evidence_ids": [
+        "62ee48e8-d7b5-41cd-a627-94f30431793e-t2:a44ffc56-bc5c-4b9e-a4ed-ba9fe715fd5a",
+        "4f2c7823-0e7d-4179-80f1-122beb4b6299-t0:d8956fb4-4a91-486c-81f1-c74bcb65ce52",
+        "4f2c7823-0e7d-4179-80f1-122beb4b6299-t1:e3007911-7fba-4acc-a63a-47b33c5c0ea1",
+        "62ee48e8-d7b5-41cd-a627-94f30431793e-t3:b5a03d6a-1650-4df5-bdf2-503b5f9adda3"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Dependency span metrics show count 0 for email span names POST /send_order_confirmation, send_email, and sinatra.render_template in the observed window.",
+      "evidence_ids": [
+        "3e4c894f-6fd7-42be-ae2e-10e74dfd630f-t3:0a626238-d19e-4961-9d4e-37ebf783cd8b"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Trace search for email returned no_data (4f2c7823-0e7d-4179-80f1-122beb4b6299-t2:c40239ae-6b72-4d87-a01d-c65d7ae6b606); no email trace spans were visible, so email failure or success cannot be assessed from traces.",
+    "Checkout trace view is truncated (62ee48e8-d7b5-41cd-a627-94f30431793e-t0:237a4f31-c706-4344-8bf6-a4c9b25c3c14) and payment trace view is truncated (62ee48e8-d7b5-41cd-a627-94f30431793e-t1:07007b9c-38f3-42c3-a854-74a4d9522ff5); product-catalog, cart, and frontend trace views are marked incomplete because backend returned as many traces as requested, so complete call-chain coverage is unknown.",
+    "Missing STATUS_CODE_ERROR metric series for cart, currency, product-catalog, shipping, and email in the span-call metrics means absence of observed errors cannot be treated as proof of zero failures for those services.",
+    "No baseline or comparable prior-window latency metrics were provided, so the observed 190 ms p95 for checkout PlaceOrder cannot be classified as elevated.",
+    "Trace span counts are sampled and some views are truncated; they do not represent unique request counts, and incomplete parent references mean the full checkout call chain is not proven from this view."
+  ],
+  "next_steps": [
+    "Query payment service logs and configuration for why app.loyalty.level=gold tokens are rejected as invalid.",
+    "Compare checkout and payment latency distributions against a fixed baseline window or service SLO to determine whether latency is elevated.",
+    "Run a wider trace search with pagination or higher limits for checkout, payment, product-catalog, cart, and frontend to reduce truncation and incomplete results.",
+    "Investigate email service health directly via logs or HTTP metrics because trace search returned no email spans.",
+    "Review token issuance and loyalty validation path in payment service to confirm the invalid-token failure is application-level rather than transport-level."
+  ]
+}

@@ -1,0 +1,678 @@
+{
+ "script": "scripts/otel_demo_observe.py",
+ "window": {
+  "start": "2026-09-27T19:24:12+00:00",
+  "end": "2026-09-27T19:29:12+00:00",
+  "seconds": 300
+ },
+ "observed_at": "2026-09-27T19:29:12.120842+00:00",
+ "sources": {
+  "prometheus": "http://127.0.0.1:19090",
+  "jaeger": "http://127.0.0.1:16686/jaeger/ui"
+ },
+ "expect": "fault",
+ "authorized_dependencies": [
+  "cart",
+  "currency",
+  "email",
+  "payment",
+  "product-catalog",
+  "shipping"
+ ],
+ "metrics": {
+  "checkout_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[300s])",
+   "evaluated_at": "2026-09-27T19:29:12+00:00",
+   "series": [
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 18.750078125325523
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 26.250109375455732
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.500052083550347
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "prepareOrderItemsAndShippingQuoteFromCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.500052083550347
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_PRODUCER",
+      "span_name": "orders publish",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 5.000020833420139
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/checkout",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 5.000020833420139
+    }
+   ]
+  },
+  "payment_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"payment\"}[300s])",
+   "evaluated_at": "2026-09-27T19:29:12+00:00",
+   "series": [
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "GET",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "job": "opentelemetry-demo/payment",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    }
+   ]
+  },
+  "checkout_client_calls_by_peer": {
+   "expr": "sum by (span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[300s]))",
+   "evaluated_at": "2026-09-27T19:29:12+00:00",
+   "series": [
+    {
+     "metric": {
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 18.750078125325523
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 26.250109375455732
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.500052083550347
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.500031250130209
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 5.000020833420139
+    }
+   ]
+  },
+  "all_services_error_calls": {
+   "expr": "sum by (service_name) (increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[300s]))",
+   "evaluated_at": "2026-09-27T19:29:12+00:00",
+   "series": [
+    {
+     "metric": {
+      "service_name": "frontend"
+     },
+     "value": 41.25017187571615
+    },
+    {
+     "metric": {
+      "service_name": "payment"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "load-generator"
+     },
+     "value": 13.750057291905383
+    },
+    {
+     "metric": {
+      "service_name": "frontend-proxy"
+     },
+     "value": 27.500114583810767
+    },
+    {
+     "metric": {
+      "service_name": "product-catalog"
+     },
+     "value": 13.750057291905383
+    },
+    {
+     "metric": {
+      "service_name": "checkout"
+     },
+     "value": 10.000041666840279
+    },
+    {
+     "metric": {
+      "service_name": "recommendation"
+     },
+     "value": 0.0
+    }
+   ]
+  }
+ },
+ "positive_series_count": {
+  "checkout_calls_by_span_status": 13,
+  "payment_calls_by_span_status": 2,
+  "checkout_client_calls_by_peer": 9,
+  "all_services_error_calls": 5
+ },
+ "jaeger": {
+  "query": {
+   "service": "checkout",
+   "limit": 500
+  },
+  "returned_traces": 10,
+  "traces_in_window": 10,
+  "distinct_trace_ids": 10,
+  "traces_with_checkout_error_and_failed_dependency_child": 4,
+  "failed_dependency_services": [
+   "product-catalog"
+  ],
+  "traces": [
+   {
+    "trace_id": "fafb0d54d648ed5d7dfd1f059d793aae",
+    "span_count": 52,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "f4b7f0572a8dcd6443f1d051651d786e",
+    "span_count": 58,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "7d423ba7e7dc15753586111888269adb",
+    "span_count": 46,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "d4ddd2e209532dc0ca2deef260966efb",
+    "span_count": 18,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "6dd66154f78d793b",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1790537084583481,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to prepare order: failed to get product #\"OLJCESPC7Z\"",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "7219fdce06c286bf",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537084598336,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "18ed0c0d20a3834c",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537084598446,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      },
+      "service": "product-catalog",
+      "parent_span_ids": [
+       "7219fdce06c286bf"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "08d23f5398aab0fed145b2ae69d1361c",
+    "span_count": 14,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "c272c8376e206719",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1790537164553660,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to prepare order: failed to get product #\"OLJCESPC7Z\"",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "a9dcfe879196a885",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537164557787,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "9bef2e59e52f874c",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537164559391,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      },
+      "service": "product-catalog",
+      "parent_span_ids": [
+       "a9dcfe879196a885"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "b6647bab99b134fb3b4fe9f84371fb03",
+    "span_count": 14,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "6e7369d7115bc0fe",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537212547620,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "41062be554165b4a",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1790537212545762,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to prepare order: failed to get product #\"OLJCESPC7Z\"",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "ba8bc3773793e934",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537212548059,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      },
+      "service": "product-catalog",
+      "parent_span_ids": [
+       "6e7369d7115bc0fe"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "c5189fff323a16fd4372ec70ba946d68",
+    "span_count": 58,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "878ee66393d7a449be43d8a0a682c4bf",
+    "span_count": 14,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "877471338f933fa9",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1790537253638882,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to prepare order: failed to get product #\"OLJCESPC7Z\"",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     },
+     {
+      "span_id": "2ec77448e04d5dd7",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537253640078,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "831cff4b2ecd0bc5",
+      "operation": "oteldemo.ProductCatalogService/GetProduct",
+      "start_us": 1790537253641661,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Error: Product Catalog Fail Feature Flag Enabled",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      },
+      "service": "product-catalog",
+      "parent_span_ids": [
+       "2ec77448e04d5dd7"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "cff446d219fade9e3bb0b85726490294",
+    "span_count": 46,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "a1e235e672718c6824223d8a89eaab85",
+    "span_count": 64,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   }
+  ]
+ },
+ "precondition": {
+  "control_window_ok": true,
+  "dependency_traffic": true,
+  "fault_confirmed": true
+ }
+}

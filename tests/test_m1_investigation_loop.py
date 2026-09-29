@@ -1078,7 +1078,9 @@ def test_exploration_retry_does_not_consume_the_final_slot():
     assert len(model.calls) == 2
     assert model.calls[0].json_mode is False
     assert model.calls[1].json_mode is True
-    assert model.calls[1].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
+    # Round 2 rule C: the run coverage summary follows the instruction.
+    assert model.calls[1].messages[-2]["content"] == FINAL_REPORT_INSTRUCTION
+    assert model.calls[1].messages[-1]["content"].startswith("Run coverage summary")
     assert outcome.execution == "completed"
 
 
@@ -1726,7 +1728,9 @@ def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     assert model.calls[0].json_mode is False
     assert model.calls[1].tools is None
     assert model.calls[1].json_mode is True
-    assert model.calls[1].messages[-1]["content"] == FINAL_REPORT_INSTRUCTION
+    # Round 2 rule C: the run coverage summary follows the instruction.
+    assert model.calls[1].messages[-2]["content"] == FINAL_REPORT_INSTRUCTION
+    assert model.calls[1].messages[-1]["content"].startswith("Run coverage summary")
     assert store.steps["ctx0:round-1"]["status"] == "tool_result_committed"
     assert store.steps["ctx0:round-2"]["status"] == "response_committed"
     assert outcome.evidence_ids

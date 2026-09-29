@@ -1,0 +1,31 @@
+Traceback (most recent call last):
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/persistence.py", line 200, in transaction
+    yield conn
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/persistence.py", line 214, in install
+    conn.execute("""
+  File "<home>/dev/AI/production-ops-agent-window-points/.venv/lib/python3.12/site-packages/psycopg/connection.py", line 300, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+DETAIL:  Key (typname, typnamespace)=(opspilot_incidents, 2200) already exists.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/web/__main__.py", line 123, in <module>
+    sys.exit(main(sys.argv))
+             ^^^^^^^^^^^^^^
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/web/__main__.py", line 111, in main
+    return _serve()
+           ^^^^^^^^
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/web/__main__.py", line 81, in _serve
+    store.install()
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/persistence.py", line 213, in install
+    with self.transaction() as conn:
+         ^^^^^^^^^^^^^^^^^^
+  File "<home>/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "<home>/dev/AI/production-ops-agent-window-points/opspilot/persistence.py", line 202, in transaction
+    raise PersistenceError(self._error_code(exc)) from exc
+opspilot.persistence.PersistenceError: IDENTITY_CONFLICT

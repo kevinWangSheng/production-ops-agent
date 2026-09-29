@@ -1,0 +1,20 @@
+INFO:     Started server process [23310]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:65264 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49339 - "GET /incidents/34d23902-8708-5a68-b563-036e9b07297f/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49433 - "GET /incidents/34d23902-8708-5a68-b563-036e9b07297f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50288 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:50810 - "GET /incidents/dc2bce70-6ecb-5355-b0c5-3cd3931ab52b/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50904 - "GET /incidents/dc2bce70-6ecb-5355-b0c5-3cd3931ab52b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52178 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52745 - "GET /incidents/2892bfb0-8ccf-5a7c-b049-da81402a238f/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52894 - "GET /incidents/2892bfb0-8ccf-5a7c-b049-da81402a238f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53649 - "POST /intake/ui HTTP/1.1" 201 Created
+INFO:     127.0.0.1:54073 - "GET /incidents/99943dbe-2357-5298-b6be-e0cea3cc8457/events?cursor=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54234 - "GET /incidents/99943dbe-2357-5298-b6be-e0cea3cc8457 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23310]

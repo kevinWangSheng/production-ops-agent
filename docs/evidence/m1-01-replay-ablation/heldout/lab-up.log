@@ -1,0 +1,163 @@
++ colima start m0-otel --cpu 4 --memory 6 --disk 24 --activate=false --ssh-agent=false --ssh-config=false --mount <home>/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment:w
+time="2026-09-27T12:02:46-07:00" level=info msg="starting colima [profile=m0-otel]"
+time="2026-09-27T12:02:46-07:00" level=info msg="runtime: docker"
+time="2026-09-27T12:02:48-07:00" level=info msg="starting ..." context=vm
+time="2026-09-27T12:02:48-07:00" level=info msg="Using the existing instance \"colima-m0-otel\""
+time="2026-09-27T12:02:49-07:00" level=info msg="Starting the instance \"colima-m0-otel\" with internal VM driver \"vz\""
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Replacing \"HTTP_PROXY\" value \"http://127.0.0.1:1087\" with \"http://192.168.5.2:1087\""
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Replacing \"HTTPS_PROXY\" value \"http://127.0.0.1:1087\" with \"http://192.168.5.2:1087\""
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Replacing \"HTTP_PROXY\" value \"http://127.0.0.1:1087\" with \"http://192.168.5.2:1087\""
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Replacing \"HTTPS_PROXY\" value \"http://127.0.0.1:1087\" with \"http://192.168.5.2:1087\""
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] hostagent socket created at <home-volume>/.colima/_lima/colima-m0-otel/ha.sock"
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Starting VZ (hint: to watch the boot progress, see \"<home-volume>/.colima/_lima/colima-m0-otel/serial*.log\")"
+time="2026-09-27T12:02:49-07:00" level=info msg="[hostagent] Mounting disk \"colima-m0-otel\" on \"/mnt/lima-colima-m0-otel\""
+time="2026-09-27T12:02:50-07:00" level=info msg="[hostagent] [VZ] - vm state change: running"
+time="2026-09-27T12:02:54-07:00" level=info msg="[hostagent] SSH server does not seem to be running on vsock port, using usernet forwarder"
+time="2026-09-27T12:02:54-07:00" level=info msg="SSH Local Port: 63083"
+time="2026-09-27T12:02:54-07:00" level=info msg="[hostagent] Waiting for the essential requirement 1 of 3: \"ssh\""
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] The essential requirement 1 of 3 is satisfied"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Waiting for the essential requirement 2 of 3: \"user session is ready for ssh\""
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] The essential requirement 2 of 3 is satisfied"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Waiting for the essential requirement 3 of 3: \"Explicitly start ssh ControlMaster\""
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] The essential requirement 3 of 3 is satisfied"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Waiting for the guest agent to be running"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding \"/var/run/docker.sock\" (guest) to \"<home>/.colima/m0-otel/docker.sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding \"/var/run/containerd/containerd.sock\" (guest) to \"<home>/.colima/m0-otel/containerd.sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Guest agent is running"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Waiting for the final requirement 1 of 1: \"boot scripts must have finished\""
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding TCP from 127.0.0.1:53 to 127.0.0.1:53"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding \"127.0.0.1:53\" (guest) to \"/tmp/lima-psl-127.0.0.1-53-876209571/sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Stopping forwarding \"127.0.0.1:53\" (guest) to \"/tmp/lima-psl-127.0.0.1-53-876209571/sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=warning msg="[hostagent] failed to set up forwarding tcp port 53 (negligible if already forwarded)" error="listen tcp 0.0.0.0:53: bind: address already in use"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Not forwarding TCP 192.168.5.1:53"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Not forwarding TCP 0.0.0.0:22"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding TCP from [::1]:53 to 127.0.0.1:53"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Forwarding \"[::1]:53\" (guest) to \"/tmp/lima-psl-127.0.0.1-53-3530053420/sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Stopping forwarding \"[::1]:53\" (guest) to \"/tmp/lima-psl-127.0.0.1-53-3530053420/sock\" (host)"
+time="2026-09-27T12:02:55-07:00" level=warning msg="[hostagent] failed to set up forwarding tcp port 53 (negligible if already forwarded)" error="listen tcp 0.0.0.0:53: bind: address already in use"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Not forwarding TCP [fe80::5055:55ff:fe92:915b]:53"
+time="2026-09-27T12:02:55-07:00" level=info msg="[hostagent] Not forwarding TCP [::]:22"
+time="2026-09-27T12:02:58-07:00" level=info msg="[hostagent] The final requirement 1 of 1 is satisfied"
+time="2026-09-27T12:02:58-07:00" level=info msg="READY. Run `limactl shell colima-m0-otel` to open the shell."
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+installing: 386 OK
+installing: amd64 OK
+{
+  "supported": [
+    "linux/arm64",
+    "linux/amd64",
+    "linux/386"
+  ],
+  "emulators": [
+    "python3.12",
+    "qemu-i386",
+    "qemu-x86_64"
+  ]
+}
+time="2026-09-27T12:02:58-07:00" level=info msg="provisioning ..." context=docker
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+colima-m0-otel
+Successfully created context "colima-m0-otel"
+time="2026-09-27T12:03:00-07:00" level=info msg="starting ..." context=docker
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+bash: line 1: cd: <home>/dev/AI/production-ops-agent-window-points: No such file or directory
+time="2026-09-27T12:03:01-07:00" level=info msg=done
++ docker --context colima-m0-otel compose -p opspilot-m0 -f <home>/dev/AI/production-ops-agent-m0-environment/tmp/m0-environment/compose-pinned.json up -d --no-build --pull never
+ Container opspilot-m0-jaeger Starting 
+ Container opspilot-m0-valkey-cart Starting 
+ Container opspilot-m0-kafka Starting 
+ Container opspilot-m0-opensearch Starting 
+ Container opspilot-m0-read-proxy Starting 
+ Container opspilot-m0-flagd Starting 
+ Container opspilot-m0-prometheus Starting 
+ Container opspilot-m0-grafana Starting 
+ Container opspilot-m0-opensearch Started 
+ Container opspilot-m0-jaeger Started 
+ Container opspilot-m0-opensearch Waiting 
+ Container opspilot-m0-prometheus Started 
+ Container opspilot-m0-grafana Started 
+ Container opspilot-m0-valkey-cart Started 
+ Container opspilot-m0-flagd Started 
+ Container opspilot-m0-kafka Started 
+ Container opspilot-m0-read-proxy Started 
+ Container opspilot-m0-opensearch Healthy 
+ Container opspilot-m0-otel-collector Starting 
+ Container opspilot-m0-otel-collector Started 
+ Container opspilot-m0-quote Starting 
+ Container opspilot-m0-cart Starting 
+ Container opspilot-m0-image-provider Starting 
+ Container opspilot-m0-payment Starting 
+ Container opspilot-m0-flagd-ui Starting 
+ Container opspilot-m0-kafka Waiting 
+ Container opspilot-m0-ad Starting 
+ Container opspilot-m0-currency Starting 
+ Container opspilot-m0-product-catalog Starting 
+ Container opspilot-m0-email Starting 
+ Container opspilot-m0-kafka Waiting 
+ Container opspilot-m0-shipping Starting 
+ Container opspilot-m0-cart Started 
+ Container opspilot-m0-currency Started 
+ Container opspilot-m0-ad Started 
+ Container opspilot-m0-kafka Healthy 
+ Container opspilot-m0-fraud-detection Starting 
+ Container opspilot-m0-kafka Healthy 
+ Container opspilot-m0-accounting Starting 
+ Container opspilot-m0-payment Started 
+ Container opspilot-m0-quote Started 
+ Container opspilot-m0-image-provider Started 
+ Container opspilot-m0-email Started 
+ Container opspilot-m0-product-catalog Started 
+ Container opspilot-m0-recommendation Starting 
+ Container opspilot-m0-flagd-ui Started 
+ Container opspilot-m0-shipping Started 
+ Container opspilot-m0-kafka Waiting 
+ Container opspilot-m0-accounting Started 
+ Container opspilot-m0-kafka Healthy 
+ Container opspilot-m0-checkout Starting 
+ Container opspilot-m0-fraud-detection Started 
+ Container opspilot-m0-recommendation Started 
+ Container opspilot-m0-checkout Started 
+ Container opspilot-m0-frontend Starting 
+ Container opspilot-m0-frontend Started 
+ Container opspilot-m0-load-generator Starting 
+ Container opspilot-m0-load-generator Started 
+ Container opspilot-m0-frontend-proxy Starting 
+ Container opspilot-m0-frontend-proxy Started 
+{
+  "prometheus": {
+    "url": "http://127.0.0.1:19090",
+    "status": 200,
+    "ok": true
+  },
+  "jaeger": {
+    "url": "http://127.0.0.1:16686/jaeger/ui",
+    "status": 200,
+    "ok": true,
+    "services": [
+      "accounting",
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "flagd",
+      "fraud-detection",
+      "frontend",
+      "frontend-proxy",
+      "jaeger-all-in-one",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping"
+    ]
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:18080/",
+    "status": 200
+  },
+  "ok": true
+}
