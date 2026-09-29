@@ -2,16 +2,23 @@
 mentions STATUS_CODE_UNSET together with a comparison/interpretation word, so a
 reviewer can label them without knowing the variant.
 
-usage: ECLASS_WORK=<dir> python unset_claims.py > unset-adjudication.json
+usage: ECLASS_WORK=<dir> OUT=<dir> python unset_claims.py
 
-Output rows carry a random-looking but stable id (sha1 of the sample name) and
-the claim text; the variant key is kept in a separate 'key' map at the end.
+Writes two files into OUT:
+
+* unset-adjudication.json      shuffled sample ids (S001...) and claim texts
+                                only; nothing that names the variant
+* unset-adjudication-key.json  id -> sample name (which carries the variant)
+
+Blind reading: the reviewer labels the first file, then opens the key.
+Ids are assigned after a seeded shuffle of the sample names, so they neither
+follow the variant nor the replay order and cannot be hashed back to a name.
 """
 
 import glob
-import hashlib
 import json
 import os
+import random
 import re
 
 work = os.environ["ECLASS_WORK"]
@@ -20,7 +27,7 @@ pat = re.compile(
     r"most of|not a complete|not every|success|fraction|ratio|share",
     re.I,
 )
-rows, key = [], {}
+by_sample: dict[str, list[dict]] = {}
 for var in ("base", "metric_note"):
     for case in ("fault-1-at3", "fault-2"):
         for d in sorted(glob.glob(f"{work}/samples/{var}-{case}-r*")):
@@ -28,29 +35,21 @@ for var in ("base", "metric_note"):
             if meta["finish_reason"] != "stop":
                 continue
             try:
-                r = json.loads(
-                    re.sub(
-                        r"^```[a-z]*\s*|\s*```$",
-                        "",
-                        open(d + "/report.txt").read().strip(),
-                    )
-                )
+                text = open(d + "/report.txt").read().strip()
+                r = json.loads(re.sub(r"^```[a-z]*\s*|\s*```$", "", text))
             except ValueError:
                 continue
-            name = os.path.basename(d)
-            sid = hashlib.sha1(name.encode()).hexdigest()[:8]
-            key[sid] = name
-            for i, c in enumerate(
-                r["claims"] + [{"kind": "summary", "text": r.get("summary", "")}]
-            ):
-                if "UNSET" in c["text"] and pat.search(c["text"]):
-                    rows.append(
-                        {
-                            "id": sid,
-                            "claim_index": i,
-                            "kind": c["kind"],
-                            "text": c["text"],
-                        }
-                    )
-rows.sort(key=lambda x: (x["id"], x["claim_index"]))
-print(json.dumps({"claims": rows, "key": key}, indent=1))
+            items = r["claims"] + [{"kind": "summary", "text": r.get("summary", "")}]
+            rows = [
+                {"claim_index": i, "kind": c["kind"], "text": c["text"]}
+                for i, c in enumerate(items)
+                if "UNSET" in c["text"] and pat.search(c["text"])
+            ]
+            by_sample[os.path.basename(d)] = rows
+names = sorted(by_sample)
+random.Random(20260929).shuffle(names)
+key = {f"S{i + 1:03d}": n for i, n in enumerate(names)}
+claims = [{"id": sid, **row} for sid, n in key.items() for row in by_sample[n]]
+out = os.environ["OUT"]
+json.dump({"claims": claims}, open(f"{out}/unset-adjudication.json", "w"), indent=1)
+json.dump(key, open(f"{out}/unset-adjudication-key.json", "w"), indent=1)

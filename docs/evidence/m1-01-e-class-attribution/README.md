@@ -9,8 +9,8 @@
 
 **结论：足够重建，唯一缺口是历史轮次的 `reasoning_content`（导出时替换为占位符，见 `ledger.json` steps[].response.assistant.reasoning_content = "[reasoning_content withheld: private protocol field, C3 §12]"）。**
 
-- lab PG 数据目录已被误删，所以写了离线重建器 `scripts/rebuild_offline.py`：把 `ledger.json` 的 `runs / steps / inputs / incident` 转成 `DurableStore.rebuild` 同形的快照，调产品自己的 `rebuild_transcript`、`FINAL_REPORT_INSTRUCTION`、`run_coverage_message`、`report_retry_feedback`，不需要 PG，不占 lab 锁。第 1 轮输入（系统提示 + 任务）的 `input_snapshot_hash` 与记录一致（重建通过 `_check_snapshot_hash` 的第 1 步），证明起点字节一致。
-- 第 2 轮起的哈希无法复算（哈希覆盖被占位的 reasoning_content），重建器对该检查做了打桩，只在脚本内，产品代码未动。
+- lab PG 数据目录已被误删，所以写了离线重建器 `scripts/rebuild_offline.py`：把 `ledger.json` 的 `runs / steps / inputs / incident` 转成 `DurableStore.rebuild` 同形的快照，调产品自己的 `rebuild_transcript`、`FINAL_REPORT_INSTRUCTION`、`run_coverage_message`、`report_retry_feedback`，不需要 PG，不占 lab 锁。重建器先**用产品原本的 `_check_snapshot_hash` 单独校验第 1 轮**（第 1 轮没有更早的 reasoning，哈希可复算），不一致即报错停止；6 个形态重跑后全部通过（`rebuild-manifest.json` 的 `round1_input_snapshot_hash_verified`），`request_sha256` 与首次重建一致。
+- 第 2 轮起的哈希无法复算（哈希覆盖被占位的 reasoning_content），只对这些轮次把该检查放宽（脚本内打桩，产品代码未动），并以下面的 token 数核对代替。
 - 用 DeepSeek 返回的 `prompt_tokens` 做替代核对（`rebuild-manifest.json`、`ledger.jsonl`）：
 
 | 请求形态 | 重放 prompt_tokens | 原始记录 | 差 | 说明 |
@@ -75,7 +75,7 @@
 | fault-2 第 4 轮 | metric_note | 7 | **0/7** | 1/7 |
 | 合计 | base → metric_note | 20 → 18 | **5/20 → 0/18**（Fisher 双侧 p=0.048） | 6/20 → 4/18（无差别） |
 
-- 判定为人工判读（我读的，不是盲评）：命中的 5 条原文、以及 48 条含 UNSET 的对照文本在 `unset-adjudication.json`（已按样本 id 打乱、变体另存 `key`），可让独立审查者盲评复核。
+- 判定为人工判读（我读的，不是盲评）：命中的 5 条原文、以及 48 条含 UNSET 的对照文本在 `unset-adjudication.json`（样本 id 为种子打乱后的 S001…，变体映射另存 `unset-adjudication-key.json`；盲评做法：评审者先只看 `unset-adjudication.json` 判完，再打开 key），可让独立审查者盲评复核。
 - 有说明后，模型多次在报告里复述该说明（"not request counts; UNSET does not mean success"）；没有出现新的错误类型；跨视图数字率不变，说明该改动只影响语义类，不影响归属类。
 - 局限：p=0.048 边缘；每个形态单独看不显著（3/13 对 0/11，p=0.22；2/7 对 0/7，p=0.46）；只有一种措辞；非盲评。
 
@@ -130,4 +130,4 @@
 
 ## 目录
 
-`README.md`；`rebuild-manifest.json`（六种请求形态的哈希、token 核对）；`retry-feedback/`（重建的 C2 反馈文本）；`ledger.jsonl`（重放调用账本）；`summary.json`、`score-base.json`、`score-metric_note.json`、`score-repair.json`（判定结果）；`provenance-scan.json`（22 个真实 Run 的溯源扫描）；`unset-adjudication.json`（待盲评的 UNSET 语句）；`samples/`（各样本 `report.txt` 与 `meta.json`，不含 reasoning_content；`repair-*/` 含反馈文本）；`deepseek-balance-before/after.json`；`scripts/`（`rebuild_offline.py`、`replay_eclass.py`、`replay_repair.py`、`check_samples.py`、`provenance.py`、`summarize_eclass.py`、`score_repair.py`、`scan_real_runs.py`、`unset_claims.py`、`balance.py`）。复现：`PYTHONPATH=. .venv/bin/python scripts/rebuild_offline.py <ledger.json> <名称>[@轮次]…`，再 `M0_ENV_FILE=<私有 .env> ECLASS_WORK=<工作目录> … replay_eclass.py --variant base|metric_note --cases … --repeats N`。
+`README.md`；`rebuild-manifest.json`（六种请求形态的哈希、token 核对）；`retry-feedback/`（重建的 C2 反馈文本）；`ledger.jsonl`（重放调用账本）；`summary.json`、`score-base.json`、`score-metric_note.json`、`score-repair.json`（判定结果）；`provenance-scan.json`（22 个真实 Run 的溯源扫描）；`unset-adjudication.json`（待盲评的 UNSET 语句，不含变体）、`unset-adjudication-key.json`（id 到样本名，判完再看）；`samples/`（各样本 `report.txt` 与 `meta.json`，不含 reasoning_content；`repair-*/` 含反馈文本）；`deepseek-balance-before/after.json`；`scripts/`（`rebuild_offline.py`、`replay_eclass.py`、`replay_repair.py`、`check_samples.py`、`provenance.py`、`summarize_eclass.py`、`score_repair.py`、`scan_real_runs.py`、`unset_claims.py`、`balance.py`）。复现：`PYTHONPATH=. .venv/bin/python scripts/rebuild_offline.py <ledger.json> <名称>[@轮次]…`，再 `M0_ENV_FILE=<私有 .env> ECLASS_WORK=<工作目录> … replay_eclass.py --variant base|metric_note --cases … --repeats N`。

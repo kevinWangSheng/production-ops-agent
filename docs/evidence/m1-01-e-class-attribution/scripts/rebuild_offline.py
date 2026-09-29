@@ -112,8 +112,20 @@ def rebuild(ledger_path: str, *, upto: int | None = None) -> dict:
     last = steps[-1] if upto is None else steps[upto]
     before = [s for s in snap["steps"] if s["sequence"] < last["sequence"]]
     targets = frozenset(run["input"]["scope_facts"]["target_ids"])
+    # Round 1 has no earlier reasoning_content, so its recorded
+    # input_snapshot_hash is still checkable: rebuild the first step with the
+    # product's own check enabled. A mismatch raises ContextError and stops.
+    rebuild_transcript(
+        {**snap, "steps": before[:1], "conclusion": None},
+        run_id=str(run["run_id"]),
+        authorized_targets=targets,
+    )
+    # From round 2 on the hash covers reasoning_content that the export
+    # replaced with a placeholder, so the check cannot pass; it is disabled
+    # for the rebuild below (README section 1 gives the token-count check
+    # that stands in for it).
     orig = ctx._check_snapshot_hash
-    ctx._check_snapshot_hash = lambda *a, **k: None  # see module docstring
+    ctx._check_snapshot_hash = lambda *a, **k: None
     try:
         transcript = rebuild_transcript(
             {**snap, "steps": before, "conclusion": None},
@@ -166,6 +178,7 @@ def rebuild(ledger_path: str, *, upto: int | None = None) -> dict:
         "transcript": transcript,
         "feedback": feedback,
         "info": {
+            "round1_input_snapshot_hash_verified": True,
             "last_logical_key": last["logical_key"],
             "recorded_prompt_tokens": last["response"]["usage"]["prompt_tokens"],
             "recorded_completion_tokens": last["response"]["usage"][
