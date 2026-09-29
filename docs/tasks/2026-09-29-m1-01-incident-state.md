@@ -1,6 +1,6 @@
 # M1-01 后续项 3：发布后事故状态显示 `queued`
 
-- 状态：进行中（用户 2026-09-29 选定 A；合同已写，实现待第二阶段后半）
+- 状态：进行中（选 A 已实现，独立审查无 P1/P2，待 PR 与用户合并）
 - 更新日期：2026-09-29
 - 依据：[收口记录](2026-09-28-m1-01-closure.md) 后续项 3；C3 §4；[ADR-0005](../adr/0005-handoff-and-deadline-terminal.md)
 - 工作区：分支 `feature/m1-01-incident-state`，worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-incident-state`
@@ -83,3 +83,9 @@
 - 不改现有测试断言；`test_m1_web_workbench.py` 若断言了 `State` 标签或事故级徽标，按合同变更处理并报告（当前仅见 `run-state`、`conclusion` 断言，未见事故级断言，未运行）。
 
 库值 `completed` 属「其他值」，按进行中处理（lead 裁定）。控制标记元素文本恰为 `paused`/`cancelled`，摘要区不写含 "state" 的词。
+
+## 独立审查与待决
+
+- 独立审查（全新上下文 Opus）：无 P1/P2。自跑单元 29、web 218、PG 11+22 均通过；`git apply -R` 产品 diff 后合同测试变红，确认断言非空洞。
+- 处置：采纳 状态行更新、C3 :72 增加指向 :86 的一句；可选 3 只记录；可选 1 不改，作为待决。
+- **待用户决定：** 列表页区分不出「交接等待人工」与「进行中」（不显示 Run 状态）。是否给列表页加 Run 状态列？本 PR 不做。

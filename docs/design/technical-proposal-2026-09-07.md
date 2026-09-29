@@ -69,7 +69,7 @@ Worker 的业务变更通过 Controller 提交。框架缓存如需独立存储�
 
 - `Integration / Target`：接入信息及不可变目标身份。
 - `InputEvent`：来源事件、投递去重信息和接收时间。
-- `Incident`：事故生命周期、人工控制版本、当前调查 Run。
+- `Incident`：事故生命周期、人工控制版本、当前调查 Run（事故行 `state` 的语义见下文「事故与发布观察分开建模」）。
 - `ReleaseObservation`：发布身份、目标、发布版本、观察状态及关联事故。
 - `Run`：所属主体、执行状态、模型配置、累计预算、输入水位和执行 epoch。
 - `ModelStep`：稳定步骤 ID、输入快照、完整模型响应及工具计划。
