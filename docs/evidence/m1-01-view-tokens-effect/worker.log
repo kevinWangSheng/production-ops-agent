@@ -1,0 +1,10 @@
+2026-09-29 04:21:01,788 opspilot.worker INFO worker owner=36cb7e14-fb83-49b6-9e54-7156b1fd916c profile=otel-demo versions={'prompt_revision': 'prompt-replay-candidate-bd28790117a0', 'context_policy_revision': 'ctx-ctx-policy-v1-a30e65ea52f4', 'tool_schema_revision': 'otel-demo-34bc78980747'}
+2026-09-29 04:21:01,788 opspilot.worker INFO worker started
+2026-09-29 04:23:59,115 opspilot.worker INFO attempt incident=763f3a7d-2db1-54a8-a3f7-4799b60aefc1 status=published reason=None
+2026-09-29 04:28:56,193 opspilot.worker INFO attempt incident=1153caae-18ad-5c37-bdd8-7e8159baceec status=published reason=None
+2026-09-29 04:33:38,194 opspilot.worker INFO attempt incident=fd313e54-4726-5357-856c-b60c0b06fa05 status=published reason=None
+2026-09-29 04:40:40,794 opspilot.worker INFO attempt incident=783e3396-9800-529b-ab82-d2cfe0c67c18 status=published reason=None
+2026-09-29 04:43:10,614 opspilot.worker INFO attempt incident=a9127a07-47ea-52b1-a39c-abe83086eae0 status=published reason=None
+2026-09-29 04:45:49,398 opspilot.worker INFO attempt incident=5e0939b7-2e1d-56c7-9fb7-593dbd0683c4 status=published reason=None
+2026-09-29 04:50:26,717 opspilot.worker INFO signal=15: stop claiming, finishing the in-flight attempt
+2026-09-29 04:50:26,735 opspilot.worker INFO worker stopped
