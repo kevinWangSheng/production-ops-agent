@@ -5,8 +5,8 @@
 {% block body %}
 <h1>Incident <code>{{ inc.incident_id }}</code></h1>
 <p>
-  State <span class="badge" id="incident-state">{{ inc.state }}</span>
-  · lifecycle <span class="badge">{{ inc.lifecycle }}</span>
+  {% if inc.control %}control <span class="badge" id="incident-control">{{ inc.control }}</span>
+  · {% endif %}lifecycle <span class="badge">{{ inc.lifecycle }}</span>
   · <span class="badge" id="concluded">{{ "concluded" if inc.concluded else "no conclusion" }}</span>
   · control generation <strong id="control-generation">{{ inc.control_generation }}</strong>
   · run <code>{{ run.run_id }}</code> <span class="badge" id="run-state">{{ run.state }}</span>
@@ -94,6 +94,15 @@
     <h3>Advisory next steps</h3>
     {% if report.next_steps %}<ul>{% for step in report.next_steps %}<li>{{ step }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
   </section>
+{% endif %}
+
+{% if snapshot.charts %}
+<section id="evidence-charts">
+  <h2>Evidence charts</h2>
+  <p class="muted">Drawn from the stored view of metrics evidence the report cites; gaps are left as gaps.</p>
+  {% for item in snapshot.charts["items"] %}{{ item }}{% endfor %}
+  {% if snapshot.charts["overflow"] %}<p class="muted">{{ snapshot.charts["overflow"] }} more cited metrics evidence not charted; see the evidence links above.</p>{% endif %}
+</section>
 {% endif %}
 
 <h2>Steps</h2>

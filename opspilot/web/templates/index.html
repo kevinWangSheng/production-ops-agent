@@ -15,12 +15,12 @@
 <h2>Known incidents</h2>
 {% if incidents %}
 <table>
-  <thead><tr><th>Incident</th><th>State</th><th>Lifecycle</th><th>Generation</th><th>Concluded</th><th>Created</th></tr></thead>
+  <thead><tr><th>Incident</th><th>Control</th><th>Lifecycle</th><th>Generation</th><th>Concluded</th><th>Created</th></tr></thead>
   <tbody>
   {% for item in incidents %}
     <tr>
       <td><a href="/incidents/{{ item.incident_id }}"><code>{{ item.incident_id }}</code></a></td>
-      <td><span class="badge">{{ item.state }}</span></td>
+      <td>{% if item.control %}<span class="badge">{{ item.control }}</span>{% endif %}</td>
       <td>{{ item.lifecycle }}</td>
       <td>{{ item.control_generation }}</td>
       <td>{{ "yes" if item.concluded else "no" }}</td>
