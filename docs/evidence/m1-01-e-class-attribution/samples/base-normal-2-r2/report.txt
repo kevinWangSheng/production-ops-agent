@@ -1,0 +1,1 @@
+Counters begin at ~17:37, so no pre-window baseline exists. Let me do one final check on error/status labels and the cart service.

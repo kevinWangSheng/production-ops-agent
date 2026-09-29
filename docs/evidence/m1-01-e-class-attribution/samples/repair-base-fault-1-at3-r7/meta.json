@@ -1,0 +1,26 @@
+{
+ "sample_id": "repair-base-fault-1-at3-r7",
+ "variant": "repair",
+ "request_bytes": 770250,
+ "elapsed_s": 26.77,
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 224337,
+  "completion_tokens": 7100,
+  "total_tokens": 231437,
+  "prompt_tokens_details": {
+   "cached_tokens": 219392
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2601
+  },
+  "prompt_cache_hit_tokens": 219392,
+  "prompt_cache_miss_tokens": 4945
+ },
+ "findings_before": [
+  [
+   11,
+   "5336"
+  ]
+ ]
+}

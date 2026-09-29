@@ -1,0 +1,155 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Within the last 5 minutes of the authorized window (2026-09-28T17:36:15Z to 2026-09-28T17:41:15Z) on target m0-otel-20260909, the sampled metrics and traces show no failures for checkout or its dependency calls, and no evidence of elevated latency relative to any comparable baseline (none was obtainable). Checkout's span-status series in the window carried only STATUS_CODE_UNSET (~125 spans), checkout's recorded client RPCs for Charge, Convert, EmptyCart, GetCart, GetProduct, GetQuote and ShipOrder all carried rpc_grpc_status_code=0, and the sampled checkout traces (8 traces / 416 backend spans, 172 shown, truncated) contained zero error_rows with PlaceOrder spans at rpc.grpc.status_code=0. Dependency-side spans observed for payment, product-catalog, cart, currency, shipping and email likewise showed grpc status 0 or HTTP 200 with no error rows. The reported elevated errors are therefore not corroborated by this evidence, but the view is a biased, truncated sample and no baseline window existed, so checkout health cannot be certified and a latency trend cannot be assessed.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Checkout's span-call series in the 5-minute window carried only the status_code STATUS_CODE_UNSET label set, with an increase of about 124.998 spans; no checkout series with an OK or ERROR status_code label was returned.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t0:a1f46013-c580-4767-bad7-ca5a41d574e6"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "All recorded checkout client RPC series in the window carried rpc_grpc_status_code=0: Charge and ShippingService/GetQuote and CartService/EmptyCart at about 8.76 calls each, CartService/GetCart 8.76, Convert 27.52, ProductCatalogService/GetProduct 18.76, ShipOrder 8.76; no non-zero gRPC status label appeared.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t1:7d994155-f153-4ddb-99c7-3d995307fb48"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Across all services, the only non-UNSET span-status series returned for the 5-minute window were currency STATUS_CODE_OK (about 27.5) and STATUS_CODE_ERROR series equal to 0 for frontend, frontend-proxy, load-generator and payment; no series was returned for checkout, cart, product-catalog, shipping or email, so their non-UNSET status counts remain unknown rather than zero.",
+      "evidence_ids": ["52365e55-a98d-41db-9ff3-34849d6196fc-t0:41c5d2d3-6d93-4a05-ae9b-f9544d6e1b4b"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Over a 1-hour lookback (16:41:15Z to 17:41:15Z) the increase in STATUS_CODE_ERROR spans was 0 for frontend, frontend-proxy, load-generator and payment; no error-status series existed for checkout or the other dependencies.",
+      "evidence_ids": ["12e2e155-236a-42e9-b06c-5daa6addda7c-t1:a3821d17-072d-4729-9fac-95b07cab3d75"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The checkout trace sample returned 8 backend traces containing 416 spans (172 shown, 244 omitted, truncated=true), and every span group summarised had error_rows=0; checkout PlaceOrder spans (58,469-165,554 us) all carry rpc.grpc.status_code=0 and checkout HTTP POST spans carry http.status_code=200.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t2:f250ccf9-bb8c-4d94-9ac5-7a66839b9b5c"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout PlaceOrder spans with grpc status 0 were observed in trace ids e1295a524e9ab66936faac5571cd7451, 7a7650c64697c0d23347dd2bc857cd77, 5c3ff45b1e48946f0c91c76bef05c5cb, 6a542cb7dd43d49169b241c33a1a1e83, 1336d0270b79000be40e14a58f3cebea, 30a198d13dbb3cb9918de18b21f42ee0, 8638ae469fda109be78c926fb225568e and 87bd42a1f8c4ff498e8c8354e12416ef.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t2:f250ccf9-bb8c-4d94-9ac5-7a66839b9b5c"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment spans in the window (grpc.oteldemo.PaymentService/Charge, 8 rows) and nested charge spans all carried rpc.grpc.status_code=0 with error_rows=0, in the same checkout trace ids, e.g. e1295a524e9ab66936faac5571cd7451, 7a7650c64697c0d23347dd2bc857cd77, 5c3ff45b1e48946f0c91c76bef05c5cb.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t1:4550d1e7-965c-4025-b07f-bf047d106db8"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Email spans (POST /send_order_confirmation, http.status_code=200, 5-8 rows shown) and nested send_email/sinatra.render_template spans showed error_rows=0 across the sampled traces.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t2:7b35df13-e160-4d5b-9c58-76babdbd9691"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Cart spans returned for the window (AddItem, GetCart, EmptyCart, HGET/HMSET/EXPIRE, flagd ResolveBoolean) showed error_rows=0; the only recorded status tags were rpc.grpc.status_code=0 on flagd.evaluation.v1.Service/ResolveBoolean rows, the remaining cart rows being not_recorded.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t4:1ffc11c2-efdc-4431-ad0d-d5bcf2ae02f6"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Shipping spans (oteldemo.ShippingService/GetQuote and ShipOrder, and nested HTTP POST rows with http.status_code 200) showed error_rows=0; all returned grpc status tags were rpc.grpc.status_code=0.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t5:1f8826ec-1239-4280-8e2b-43778e655506"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Currency spans (Currency/Convert, 24 rows) carried status tags otel.status_code=OK and rpc.grpc.status_code=0 with error_rows=0; durations ranged from 233 us to 4,992 us.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t6:301196de-0d91-4a2d-a0aa-5c9e8bb73fad"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Product-catalog spans (GetProduct and ListProducts) returned grpc status 0 with error_rows=0; this trace view reported incomplete=true because the backend returned as many traces as requested, so more traces may exist.",
+      "evidence_ids": ["a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t3:a7b09e07-032c-421a-9bc3-c06bc3068129"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's mean recorded client-call duration in the window was low for every dependency: Charge 15.64 ms, Convert 3.91 ms, EmptyCart 15.08 ms, GetCart 2.98 ms, GetProduct 1.02 ms, GetQuote 16.11 ms, ShipOrder 0.34 ms.",
+      "evidence_ids": ["52365e55-a98d-41db-9ff3-34849d6196fc-t2:55cacf46-9121-41ba-874b-3562eb20bb25"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout client-call p95 values computed from histogram buckets in the window were 41.25 ms (Charge), 41.25 ms (EmptyCart), 41.25 ms (GetQuote), 9.92 ms (Convert), 8.25 ms (GetCart), 4.75 ms (GetProduct) and 4.75 ms (ShipOrder).",
+      "evidence_ids": ["12e2e155-236a-42e9-b06c-5daa6addda7c-t0:2a4dd4f9-ae8d-42df-b80a-59730b4790f3"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Against the report of elevated checkout errors: the sampled checkout traces contain no errored spans (error_rows=0 in every span group; PlaceOrder grpc status 0; frontend/api checkout endpoints HTTP 200), and no checkout non-UNSET status series appears in the 5-minute or 1-hour status queries.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t2:f250ccf9-bb8c-4d94-9ac5-7a66839b9b5c", "52365e55-a98d-41db-9ff3-34849d6196fc-t0:41c5d2d3-6d93-4a05-ae9b-f9544d6e1b4b"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "The hypothesis that checkout's dependency calls to payment, product-catalog, cart, currency, shipping or email were failing in the window is not supported: every returned dependency span carried grpc status 0 or HTTP 200, and all checkout client-call series carried rpc_grpc_status_code=0.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t1:7d994155-f153-4ddb-99c7-3d995307fb48", "a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t1:4550d1e7-965c-4025-b07f-bf047d106db8", "a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t4:1ffc11c2-efdc-4431-ad0d-d5bcf2ae02f6", "a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t5:1f8826ec-1239-4280-8e2b-43778e655506", "a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t6:301196de-0d91-4a2d-a0aa-5c9e8bb73fad"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The reported checkout errors could lie outside the 5-minute window or fall inside the omitted portion of the biased sample (244 of 416 returned spans were not shown, and the backend returned as many traces as requested so more may exist); this is not verifiable from the delivered evidence.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t2:f250ccf9-bb8c-4d94-9ac5-7a66839b9b5c", "a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t3:a7b09e07-032c-421a-9bc3-c06bc3068129"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "Checkout span statuses appear largely unrecorded (only STATUS_CODE_UNSET returned, and internal spans such as prepareOrderItemsAndShippingQuoteFromCart and orders publish are not_recorded), so the absence of an ERROR status series for checkout may reflect instrumentation rather than absence of failures; this remains unverified.",
+      "evidence_ids": ["3c32e307-4cd1-4a85-99a8-d266aaf174a1-t0:a1f46013-c580-4767-bad7-ca5a41d574e6", "3c32e307-4cd1-4a85-99a8-d266aaf174a1-t2:f250ccf9-bb8c-4d94-9ac5-7a66839b9b5c"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "recommendation",
+      "text": "For human follow-up, re-check the claim against a window supplied by the reporting party and against the exact checkout error rate/alert definition, and confirm whether the alert source is span status, gRPC status, HTTP status or an SLO rule, since no errored checkout signal appears in this window.",
+      "evidence_ids": ["52365e55-a98d-41db-9ff3-34849d6196fc-t0:41c5d2d3-6d93-4a05-ae9b-f9544d6e1b4b", "12e2e155-236a-42e9-b06c-5daa6addda7c-t1:a3821d17-072d-4729-9fac-95b07cab3d75"],
+      "target_refs": ["m0-otel-20260909"],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "No comparable baseline was available: the same checkout p95 query run over 2026-09-28T16:36:15Z-16:41:15Z (evidence_id a6f7eea4-1bf4-4bf7-9cd9-644f7d15d89a-t0:d52fcfec-8250-4d89-aad3-6d601b62afd2) and over 2026-09-28T15:36:15Z-15:41:15Z (evidence_id 12e2e155-236a-42e9-b06c-5daa6addda7c-t2:b4f419e3-74db-4c45-a04e-1f4098e7fede) both returned status no_data, so no latency trend or latency elevation can be assessed.",
+    "The query for checkout client RPCs with non-zero gRPC status, increase(rpc_client_duration_milliseconds_count{rpc_grpc_status_code!=\"0\"}[300s]), returned status no_data (evidence_id 52365e55-a98d-41db-9ff3-34849d6196fc-t3:3426f110-3e14-44a2-a633-5c5e8fc008ad); it neither confirms zero failed RPCs nor shows any failed RPC.",
+    "No non-UNSET span-status series was returned for checkout, cart, product-catalog, shipping or email; a series that is not returned is unknown, not zero, so their error counts are unknown.",
+    "Trace sampling was biased and truncated: for the checkout query 244 of 416 returned spans were not shown, and the product-catalog query reported incomplete=true with 83 spans omitted, so any span not shown remains unknown and no complete call chain can be claimed.",
+    "No metric series for email or shipping client-side calls originating from checkout beyond those returned, and no payment client-call counts are visible in this context other than grpc status 0, so error-free status for those edges is not exhaustively established.",
+    "The evidence context did not supply the alert definition, SLO rule or the exact time window of the reported checkout errors, so the claim could neither be fully reproduced nor fully refuted."
+  ],
+  "next_steps": [
+    "Ask the reporting party for the alert definition, its evaluation window and the checkout error metric or trace query that fired, then re-run a matching query over that window.",
+    "If the claim is about failed orders, confirm whether failures are surfaced as business metrics (orders not placed, payment declines) rather than gRPC/HTTP span status, and query that series explicitly.",
+    "If more certainty on tail latency is needed, capture an explicit baseline interval and compare the same p95 histogram query over equal-length windows before and during the reported incident period.",
+    "Review the checkout instrumentation to determine why its span-status series carried only STATUS_CODE_UNSET and internal spans were not_recorded, before treating missing ERROR series as evidence of health."
+  ]
+}

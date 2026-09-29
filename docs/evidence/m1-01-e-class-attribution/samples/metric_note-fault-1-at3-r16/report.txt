@@ -1,0 +1,1 @@
+Baseline at that point returned no data. Let me try an earlier same-day baseline and check latency series.

@@ -1,0 +1,1 @@
+Let me confirm the remaining dependencies and whether email/cart/currency show any failures.

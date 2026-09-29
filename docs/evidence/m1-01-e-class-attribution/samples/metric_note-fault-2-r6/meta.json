@@ -1,0 +1,28 @@
+{
+ "sample_id": "metric_note-fault-2-r6",
+ "variant": "metric_note",
+ "case": "fault-2",
+ "rep": 6,
+ "request_sha256": "fe3c01e9a507db03909953d9b9585e54860bcb77ede1032fe42d8f13be365098",
+ "request_bytes": 253094,
+ "started_utc": "2026-09-29T10:26:40Z",
+ "elapsed_s": 23.63,
+ "response_model": "deepseek-flash",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 72791,
+  "completion_tokens": 6098,
+  "total_tokens": 78889,
+  "prompt_tokens_details": {
+   "cached_tokens": 72576
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 1691
+  },
+  "prompt_cache_hit_tokens": 72576,
+  "prompt_cache_miss_tokens": 215
+ },
+ "content_chars": 13529,
+ "reasoning_chars": 5078,
+ "tool_calls": 0
+}

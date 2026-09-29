@@ -1,0 +1,1 @@
+Let me pull a comparable baseline window an hour earlier to judge whether latency or error rates are elevated.
