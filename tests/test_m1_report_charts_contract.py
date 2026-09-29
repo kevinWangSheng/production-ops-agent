@@ -903,25 +903,26 @@ def test_page_figure_link_targets_the_incident_evidence_route():
 
 
 def test_page_order_follows_claim_categories_then_claim_order_then_id_order():
+    # Six charted ids: exactly the cap. The recommendation re-cites an id that a
+    # fact already charts, so it adds a category without a seventh figure.
     claims = [
-        ("recommendation", ["ev-rec"]),
+        ("recommendation", ["ev-f1"]),
         ("rejected_hypothesis", ["ev-rej"]),
         ("counter_evidence", ["ev-cnt"]),
         ("hypothesis", ["ev-hyp"]),
-        ("fact", ["ev-f2", "ev-f1"]),
-        ("fact", ["ev-f3"]),
+        ("fact", ["ev-f2"]),
+        ("fact", ["ev-f3", "ev-f1"]),
     ]
     records = [
-        ok_metrics(e)
-        for e in ("ev-rec", "ev-rej", "ev-cnt", "ev-hyp", "ev-f1", "ev-f2", "ev-f3")
+        ok_metrics(e) for e in ("ev-rej", "ev-cnt", "ev-hyp", "ev-f1", "ev-f2", "ev-f3")
     ]
     page = published_page(claims, records)
     assert order_of(page) == [
-        "ev-f2", "ev-f1", "ev-f3", "ev-hyp", "ev-cnt", "ev-rej", "ev-rec",
+        "ev-f2", "ev-f3", "ev-f1", "ev-hyp", "ev-cnt", "ev-rej",
     ]  # fmt: skip
     words = {f.attrs["data-evidence-id"]: caption(f).lower() for f in page.figures()}
     assert "counter" in words["ev-cnt"] and "rejected" in words["ev-rej"]
-    assert "recommend" in words["ev-rec"]
+    assert "fact" in words["ev-f1"] and "recommend" in words["ev-f1"]
 
 
 def test_page_does_not_chart_metrics_evidence_no_claim_cites():
