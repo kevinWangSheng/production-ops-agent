@@ -19,6 +19,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any
 from urllib.parse import quote
 
@@ -60,6 +61,10 @@ class ChartFragment:
 
 class _Shape(Exception):
     pass
+
+
+class _Unplottable(Exception):
+    """Values or their span cannot be mapped to finite coordinates."""
 
 
 def render_evidence_chart(
@@ -111,10 +116,13 @@ def evidence_chart(
             empty += 1
     if not plotted:
         return _unavailable(evidence, "no_series")
-    return ChartFragment(
-        "figure",
-        _figure(evidence, cited_by, window, step, plotted, skipped, outside, empty),
-    )
+    try:
+        html = _figure(
+            evidence, cited_by, window, step, plotted, skipped, outside, empty
+        )
+    except _Unplottable:
+        return _unavailable(evidence, "unplottable_range")
+    return ChartFragment("figure", html)
 
 
 # -- parsing ----------------------------------------------------------------
@@ -139,9 +147,9 @@ def _window(view: Mapping[str, Any]) -> tuple[float, float]:
 def _step(view: Mapping[str, Any]) -> float | None:
     query = view.get("query")
     step = query.get("step_seconds") if isinstance(query, Mapping) else None
-    if isinstance(step, bool) or not isinstance(step, (int, float)) or step <= 0:
+    if isinstance(step, bool) or not isinstance(step, (int, float)):
         return None
-    return float(step)
+    return float(step) if isfinite(step) and step > 0 else None
 
 
 def _series(
@@ -199,7 +207,11 @@ def _figure(
         low = 0.0
     high = max(values)
     if high <= low:
-        high = low + 1.0
+        # A constant series: widen by a magnitude-relative amount so the span
+        # survives float precision (``-1e20 + 1.0 == -1e20``).
+        high = low + max(1.0, abs(low) * 1e-6)
+    if not isfinite(high - low) or high <= low:
+        raise _Unplottable
     t0, t1 = window
 
     def px(ts: float) -> float:
@@ -209,6 +221,10 @@ def _figure(
         return round(_BOTTOM - (value - low) / (high - low) * (_BOTTOM - _TOP), 2)
 
     eid = str(escape(evidence.evidence_id))
+    if not all(isfinite(px(ts)) for _, pts in shown for ts, _ in pts) or not all(
+        isfinite(py(v)) for v in values
+    ):
+        raise _Unplottable
     expr = _expr(evidence.view)
     groups, legend, singles = [], [], []
     for index, (labels, points) in enumerate(shown):
@@ -257,22 +273,27 @@ def _figure(
         f"<title>Time series for {eid}: {escape(expr)}</title>"
         f"{axis}{''.join(groups)}</svg>"
     )
+    everywhere = (
+        " (counted over all series, including those not drawn)" if hidden > 0 else ""
+    )
     notes = []
     if step is not None:
         notes.append(f"step {_num(step)} s")
     if singles:
         notes.append("single-point series: " + "; ".join(singles))
     if skipped:
-        notes.append(f"{skipped} non-finite point(s) skipped")
+        notes.append(f"{skipped} non-finite point(s) skipped{everywhere}")
     if outside:
-        notes.append(f"{outside} point(s) out of window not drawn")
+        notes.append(f"{outside} point(s) out of window not drawn{everywhere}")
     if empty:
         notes.append(f"{empty} series without plottable points")
     if hidden > 0:
         notes.append(f"{hidden} series not drawn (limit {MAX_SERIES})")
     view = evidence.view
     if view.get("truncated"):
-        notes.append(f"series truncated, omitted_rows={view.get('omitted_rows')}")
+        notes.append(
+            f"series truncated, omitted_rows={escape(str(view.get('omitted_rows')))}"
+        )
     cited = ", ".join(str(escape(c)) for c in cited_by)
     caption = (
         f"<figcaption>{_link(evidence)} · <code>{escape(expr)}</code> · "

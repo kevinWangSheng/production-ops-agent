@@ -50,7 +50,7 @@
    - 值为 `NaN`/`±Inf`/非数字串的点不绘制，图注写明跳过个数。
    - 视图 `truncated` 为真时图注写明「series truncated, omitted_rows=N」；因图上 series 数超上限而未绘制的，写明未绘个数。
    - 某条 series `values` 为空或全部点被跳过：该 series 不出现在图中（无 `g.series`），图注写「N series without plottable points」。
-6. 无法出图时不出空图，出 `<p class="chart-unavailable" data-evidence-id="…" data-reason="…">`，`data-reason` 取：`not_ok`（status 非 ok 或未 adopted）、`no_series`（无任何可绘 series，含 content 为空/为 null）、`unrecognized_shape`（content 行不符合 `{metric: 对象, values: [[数, 字符串], …]}`，如夹具形状）、`hash_mismatch`（`hashes_verified` 为假）。这些情形都不得让页面出错（状态码仍 200，其余报告内容照常渲染）。
+6. 无法出图时不出空图，出 `<p class="chart-unavailable" data-evidence-id="…" data-reason="…">`，`data-reason` 取：`not_ok`（status 非 ok 或未 adopted）、`no_series`（无任何可绘 series，含 content 为空/为 null）、`unrecognized_shape`（content 行不符合 `{metric: 对象, values: [[数, 字符串], …]}`，如夹具形状）、`hash_mismatch`（`hashes_verified` 为假）、`unplottable_range`（值或其跨度在浮点下无法映射为有限坐标，如 ±1.5e308；独立审查后新增）。这些情形都不得让页面出错（状态码仍 200，其余报告内容照常渲染）。
 7. 被引用但不是 `metrics_range_query` 的证据（如 `traces_search`）、`evidence_for` 返回 `None` 的 id（不属于本事故或不存在）：不出图也不出占位（链接行为不变）。
 8. 上限：最多 6 张图，超出部分不绘，`#evidence-charts` 内写「N more cited metrics evidence not charted」；每图最多 10 条 series，超出写在图注。
 9. 无报告、报告不可解析（`report-unparseable`）、或无被引用的 metrics 证据：页面不含任何 `figure.evidence-chart` 或 `chart-unavailable`；现有元素 id 与证据链接不变。
@@ -102,5 +102,13 @@ trace/span 图；发布观察页；交互（缩放、悬停、JS）；模型选�
 - 实现：`opspilot/web/charts.py`（纯函数 `render_evidence_chart`、`evidence_chart`）、`service.py` `_charts`（按 claim 引用收集、6 图上限）、`incident.html` 新增 `#evidence-charts` 段。
 - 合同测试：72 用例全绿。其中页面顺序用例原断言 7 张图，与 6 图上限冲突，已报 lead，由测试作者在 `c48e1d5` 改为 6 个证据；实现未因此改动。
 - 真实证据离线渲染：用 [alignment-c 故障 Run 的 ledger](../evidence/m1-01-alignment-c-effect/) 中记录的报告与 metrics 视图，经 `docs/evidence/m1-01-report-charts/render_offline.py` 渲染事故页（`pc-fault.html` 5 图、`fault-2.html` 6 图、0 占位），截图 `pc-fault-charts.png`。ledger 只存 raw 的 SHA-256 不存字节，脚本先按 `view_sha256` 校验视图再渲染；页头的事故元数据来自内存测试夹具，不是那次 Run 的真实元数据。截图显示：单点聚合以圆点显示并在图注给数值，31 个 series 只画 10 条并写明，图注如实写「2 non-finite point(s) skipped」。
-- `make check`：ruff、format、mypy、pytest 全过（2372 passed，258 skipped，2 xfailed）。
+- `make check`：ruff、format、mypy、pytest 全过（2381 passed，258 skipped，2 xfailed）。
 - 未验证：未新跑真实调查（本项不改调查 loop）。
+
+## 独立审查（全新上下文 Opus，2026-09-29）
+
+审查者依合同与合同测试读实现并构造边界输入。结果：P1 0，P2 1，可选 7。
+
+- **P2-1（已修）**：全为负的常数 series 且 |值| 大于约 9e15（如 `-1e20`）时 `low + 1.0 == low`，除零冒泡使整页 500；跨度溢出（±1.5e308）时坐标为 nan。修复：常数补偿按量级 `max(1, |low|·1e-6)`；跨度或坐标不有限时输出 `chart-unavailable`（`unplottable_range`）；`service._charts` 对单张图异常隔离并记日志，不拖垮整页。回归 `tests/test_m1_report_charts_robustness.py`（9 例，撤回修复后 6 红，恢复后全绿）；合同测试未改。
+- 可选 1、2、3 已采纳：`omitted_rows` 转义；`_step` 加 `isfinite`；未绘序列存在时，「跳过/窗外」计数后注明「counted over all series, including those not drawn」（合同精确串未受影响）。
+- 可选 4–7 仅记录，不改。

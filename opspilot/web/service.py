@@ -807,7 +807,16 @@ class Workbench:
         figures = overflow = 0
         for evidence_id, kinds in cited.items():
             record = self.evidence_for(incident_id, evidence_id)
-            fragment = None if record is None else evidence_chart(record, kinds)
+            fragment = None
+            if record is not None:
+                try:
+                    fragment = evidence_chart(record, kinds)
+                except Exception:
+                    # A chart is decoration: one that cannot be drawn must
+                    # not take the incident page down.
+                    logging.getLogger(__name__).exception(
+                        "chart rendering failed for %s", evidence_id
+                    )
             if fragment is None:
                 continue
             if fragment.kind == "figure":
