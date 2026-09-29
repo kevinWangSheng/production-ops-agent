@@ -32,6 +32,8 @@ from hashlib import sha256
 
 import pytest
 
+from opspilot.investigation.inputs import ToolFace
+from opspilot.investigation.loop import DISCIPLINE_VARIANT
 from opspilot.tools import (
     PROJECTION_REVISION,
     ControlSnapshot,
@@ -45,6 +47,7 @@ from opspilot.tools import (
 from opspilot.tools.otel_demo import (
     MAX_VIEW_TOKENS,
     METRICS_TOOL,
+    TARGET_ID,
     TOOL_SCHEMAS,
     TRACES_TOOL,
     OtelDemoConfig,
@@ -810,3 +813,94 @@ def test_a_refusal_reports_the_queried_window_and_query_not_the_authorized_frame
     # The narrowed window, not the authorized frame the call carried.
     assert view["window"] == Window(start, end).as_json()
     assert view["window"] != WINDOW.as_json()
+
+
+def _wide_frame_executor(monkeypatch, opener, frame, counter):
+    """Like ``_factory_executor`` but with the Run's authorized frame set to
+    ``frame`` (the default one is ``WINDOW``, only five minutes)."""
+
+    store = FakeStore(_lease(), deadline=NOW + timedelta(minutes=10))
+    lease = store.lease
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *handlers: opener)
+    config = OtelDemoConfig(
+        prometheus_url=PROMETHEUS_URL, jaeger_url=JAEGER_URL, token=None
+    )
+    face = ToolFace(
+        tool_schemas=TOOL_SCHEMAS,
+        variant_id=DISCIPLINE_VARIANT,
+        evidence_context=lambda run_id: {
+            "type": "opspilot-evidence-context-v4",
+            "run_id": run_id,
+            "time_policies": [
+                {
+                    "id": "policy-window-1",
+                    "mode": "historical_window",
+                    "all_authorized_targets": True,
+                    "window": frame.as_json(),
+                }
+            ],
+        },
+    )
+    investigation_input = face.input_for(
+        run_id=str(lease.run_id),
+        question="Why is checkout erroring?",
+        target_id=TARGET_ID,
+        deadline=NOW + timedelta(minutes=10),
+        model_requests=2,
+    )
+    factory = otel_demo_executor_factory(
+        store,
+        evidence=RecordingSink(),
+        clock=FakeClock(start=NOW),
+        config=config,
+        token_counter=counter,
+    )
+    return factory(lease, investigation_input)
+
+
+@pytest.mark.parametrize(
+    ("opener", "call"),
+    [
+        pytest.param(
+            lambda: FakeOpener(by_query={"up": _matrix(_series(20, pad=10))}),
+            lambda frame: _call(METRICS_TOOL, {"expr": "up"}, window=frame),
+            id="metrics_range_query",
+        ),
+        pytest.param(
+            lambda: FakeOpener(routes={"/api/traces": CHECKOUT_TRACES}),
+            lambda frame: _call(
+                TRACES_TOOL, {"service": "checkout", "limit": 2}, window=frame
+            ),
+            id="traces_search",
+        ),
+    ],
+)
+def test_a_refusal_without_start_end_reports_the_default_one_hour_query_window(
+    monkeypatch, opener, call
+):
+    """No ``start``/``end`` given: the query window is the default one (batch
+    B: the hour ending at the frame's end), so a refusal reports that hour --
+    the same ``window`` the ok view of the same call carries -- and not the
+    whole authorized frame. The frame here is three hours, so the two differ."""
+
+    frame = Window(WINDOW.end - timedelta(hours=3), WINDOW.end)
+    default = Window(WINDOW.end - timedelta(hours=1), WINDOW.end)
+    probe = _Recording(divisor=4)
+    ok = (
+        _wide_frame_executor(monkeypatch, opener(), frame, probe)
+        .execute(call(frame))
+        .model_view
+    )
+    assert ok["status"] == "ok", ok
+    assert ok["window"] == default.as_json()
+    natural = probe(probe.texts[0])
+
+    over = _Recording(offset=MAX_VIEW_TOKENS - natural + 1, divisor=4)
+    refused = _wide_frame_executor(monkeypatch, opener(), frame, over).execute(
+        call(frame)
+    )
+    view = refused.model_view
+    assert (refused.status, refused.reason) == ("error", "RESULT_TOO_LARGE")
+    assert view["window"] == default.as_json() == ok["window"]
+    assert view["window"] != frame.as_json()
+    assert view["query"] == ok["query"]
