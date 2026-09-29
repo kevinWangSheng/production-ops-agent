@@ -18,7 +18,9 @@ import sys
 from decimal import Decimal, InvalidOperation
 
 NUM = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\w])")
-UUIDISH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-t\d+)?(?::[0-9a-f-]{36})?")
+UUIDISH = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-t\d+)?(?::[0-9a-f-]{36})?"
+)
 HEX = re.compile(r"\b(?=[0-9a-f]*[a-f])[0-9a-f]{12,}\b")
 TS = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z?")
 
@@ -109,4 +111,11 @@ def views_of(ledger: dict) -> dict[str, dict]:
 if __name__ == "__main__":
     led = json.load(open(sys.argv[1]))
     rep = json.load(open(sys.argv[2])) if len(sys.argv) > 2 else None
-    print(json.dumps(check(rep["report_parsed"] if "report_parsed" in rep else rep, views_of(led)), indent=1))
+    print(
+        json.dumps(
+            check(
+                rep["report_parsed"] if "report_parsed" in rep else rep, views_of(led)
+            ),
+            indent=1,
+        )
+    )

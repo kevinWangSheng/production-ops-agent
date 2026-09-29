@@ -39,7 +39,11 @@ import rebuild_offline as R  # noqa: E402
 import replay_eclass as E  # noqa: E402
 
 from opspilot.investigation.client import DeepSeekClient  # noqa: E402
-from opspilot.investigation.loop import ModelCall, ModelError, serialized_request  # noqa: E402
+from opspilot.investigation.loop import (  # noqa: E402
+    ModelCall,
+    ModelError,
+    serialized_request,
+)
 from opspilot.investigation.reports import (  # noqa: E402
     FINAL_REPORT_INSTRUCTION,
     REPORT_RETRY_TEMPLATE,
@@ -155,7 +159,11 @@ def main() -> None:
         if not ledger.reserve():
             raise SystemExit("MAX_CALLS reached")
         started = time.monotonic()
-        entry = {"sample_id": f"repair-{name}", "variant": "repair", "request_bytes": len(serialized_request(call))}
+        entry = {
+            "sample_id": f"repair-{name}",
+            "variant": "repair",
+            "request_bytes": len(serialized_request(call)),
+        }
         out.mkdir(parents=True, exist_ok=True)
         try:
             reply = client.complete(call)
@@ -182,7 +190,13 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for e in pool.map(run, jobs):
             u = e.get("usage") or {}
-            print(e["sample_id"], e.get("error") or e.get("finish_reason"), u.get("prompt_tokens"), u.get("completion_tokens"), flush=True)
+            print(
+                e["sample_id"],
+                e.get("error") or e.get("finish_reason"),
+                u.get("prompt_tokens"),
+                u.get("completion_tokens"),
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

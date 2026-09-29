@@ -140,7 +140,9 @@ def run_sample(client, ledger, variant, case, rep, work, samples) -> dict:
     try:
         reply = client.complete(call)
     except ModelError as exc:
-        entry.update({"error": exc.code, "elapsed_s": round(time.monotonic() - started, 2)})
+        entry.update(
+            {"error": exc.code, "elapsed_s": round(time.monotonic() - started, 2)}
+        )
         ledger.append(entry)
         return entry  # no meta.json: a failed call is retried on the next run
     entry.update(

@@ -44,7 +44,9 @@ for d in sorted((work / "samples").glob("*-*-r*")):
     a = agg[(variant, key)]
     a["samples"] += 1
     a["completion_tokens"] += meta["usage"]["completion_tokens"]
-    report = C.load_report(d / "report.txt") if meta["finish_reason"] == "stop" else None
+    report = (
+        C.load_report(d / "report.txt") if meta["finish_reason"] == "stop" else None
+    )
     if meta["finish_reason"] != "stop":
         a["tool_calls_instead_of_report"] += 1
         continue
@@ -67,10 +69,16 @@ for d in sorted((work / "samples").glob("*-*-r*")):
         {
             "sample": d.name,
             "cross_view": [(f["claim"], f["number"]) for f in cross],
-            "other_unmatched": [(f["claim"], f["number"]) for f in s["provenance"] if not f["in_other_views"]],
+            "other_unmatched": [
+                (f["claim"], f["number"])
+                for f in s["provenance"]
+                if not f["in_other_views"]
+            ],
         }
     )
 out = {f"{v}/{k}": dict(a) for (v, k), a in sorted(agg.items())}
-Path(os.environ["OUT"], "summary.json").write_text(json.dumps({"groups": out, "detail": detail}, indent=1))
+Path(os.environ["OUT"], "summary.json").write_text(
+    json.dumps({"groups": out, "detail": detail}, indent=1)
+)
 for k, a in out.items():
     print(k, a)

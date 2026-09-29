@@ -28,14 +28,29 @@ for var in ("base", "metric_note"):
             if meta["finish_reason"] != "stop":
                 continue
             try:
-                r = json.loads(re.sub(r"^```[a-z]*\s*|\s*```$", "", open(d + "/report.txt").read().strip()))
+                r = json.loads(
+                    re.sub(
+                        r"^```[a-z]*\s*|\s*```$",
+                        "",
+                        open(d + "/report.txt").read().strip(),
+                    )
+                )
             except ValueError:
                 continue
             name = os.path.basename(d)
             sid = hashlib.sha1(name.encode()).hexdigest()[:8]
             key[sid] = name
-            for i, c in enumerate(r["claims"] + [{"kind": "summary", "text": r.get("summary", "")}]):
+            for i, c in enumerate(
+                r["claims"] + [{"kind": "summary", "text": r.get("summary", "")}]
+            ):
                 if "UNSET" in c["text"] and pat.search(c["text"]):
-                    rows.append({"id": sid, "claim_index": i, "kind": c["kind"], "text": c["text"]})
+                    rows.append(
+                        {
+                            "id": sid,
+                            "claim_index": i,
+                            "kind": c["kind"],
+                            "text": c["text"],
+                        }
+                    )
 rows.sort(key=lambda x: (x["id"], x["claim_index"]))
 print(json.dumps({"claims": rows, "key": key}, indent=1))

@@ -64,20 +64,27 @@ def score(case: str, report: dict, views: dict) -> dict:
         flags["E2"] = [
             i
             for i, c in enumerate(claims)
-            if re.search(r"POST /api/checkout[^.;]{0,160}30261|30261[^.;]{0,60}POST /api/checkout", c["text"])
+            if re.search(
+                r"POST /api/checkout[^.;]{0,160}30261|30261[^.;]{0,60}POST /api/checkout",
+                c["text"],
+            )
         ]
         flags["E3"] = [c for c, n in nums if n in ("128935", "148885")]
         flags["E4"] = [c for c, n in nums if n in ("9662", "5386")]
         flags["E5"] = [
             i
             for i, c in enumerate(claims)
-            if "UNSET" in c["text"] and ("67.5" in c["text"] or "9.94" in c["text"]) and UNSET_ARG.search(c["text"])
+            if "UNSET" in c["text"]
+            and ("67.5" in c["text"] or "9.94" in c["text"])
+            and UNSET_ARG.search(c["text"])
         ]
     if case == "fault-2":
         flags["E6"] = [
             i
             for i, c in enumerate(claims)
-            if "UNSET" in c["text"] and re.search(r"\b(10\.0|65\.0|65)\b", c["text"]) and UNSET_ARG.search(c["text"])
+            if "UNSET" in c["text"]
+            and re.search(r"\b(10\.0|65\.0|65)\b", c["text"])
+            and UNSET_ARG.search(c["text"])
         ]
     return {
         "flags": {k: sorted(set(v)) for k, v in flags.items()},
@@ -97,9 +104,19 @@ def main() -> None:
     for d in sorted((work / "samples").glob(f"{variant}-*")):
         case = re.match(rf"{re.escape(variant)}-(.+)-r\d+", d.name).group(1)
         meta = json.load(open(d / "meta.json"))
-        rep = load_report(d / "report.txt") if meta.get("finish_reason") == "stop" else None
+        rep = (
+            load_report(d / "report.txt")
+            if meta.get("finish_reason") == "stop"
+            else None
+        )
         base = case.split("-at")[0]
-        row = {"sample": d.name, "case": case, "fenced": bool(rep and rep.get("_fenced")), "finish": meta.get("finish_reason"), "report": rep is not None}
+        row = {
+            "sample": d.name,
+            "case": case,
+            "fenced": bool(rep and rep.get("_fenced")),
+            "finish": meta.get("finish_reason"),
+            "report": rep is not None,
+        }
         if rep is not None:
             s = score(base, rep, views[base])
             row.update(s)
@@ -126,8 +143,12 @@ def main() -> None:
             if r["case"] == case and r["report"]:
                 for k, v in r["flags"].items():
                     errs[k] = errs.get(k, 0) + (1 if v else 0)
-        prov = sum(1 for r in rows if r["case"] == case and r["report"] and r["provenance"])
-        print(f"{case}: reports={n} no_report={none} flagged={errs} provenance_flagged_reports={prov}")
+        prov = sum(
+            1 for r in rows if r["case"] == case and r["report"] and r["provenance"]
+        )
+        print(
+            f"{case}: reports={n} no_report={none} flagged={errs} provenance_flagged_reports={prov}"
+        )
 
 
 if __name__ == "__main__":

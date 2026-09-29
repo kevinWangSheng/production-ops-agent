@@ -6,7 +6,6 @@ usage: python scan_real_runs.py > provenance-scan.json
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 

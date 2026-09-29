@@ -35,13 +35,23 @@ for d in sorted((work / "samples").glob("repair-*")):
     )
     rep = C.load_report(d / "report.txt")
     before = [n for _, n in meta["findings_before"]]
-    row = {"sample": src, "case": key, "finish": meta["finish_reason"], "parsed": rep is not None, "named": before}
+    row = {
+        "sample": src,
+        "case": key,
+        "finish": meta["finish_reason"],
+        "parsed": rep is not None,
+        "named": before,
+    }
     if rep is not None:
         text = json.dumps(rep, ensure_ascii=False)
         after = P.check(rep, views)
         row["named_still_in_report"] = [n for n in before if n in text.replace(",", "")]
-        row["cross_view_after"] = [(f["claim"], f["number"]) for f in after if f["in_other_views"]]
-        row["other_flags_after"] = [(f["claim"], f["number"]) for f in after if not f["in_other_views"]]
+        row["cross_view_after"] = [
+            (f["claim"], f["number"]) for f in after if f["in_other_views"]
+        ]
+        row["other_flags_after"] = [
+            (f["claim"], f["number"]) for f in after if not f["in_other_views"]
+        ]
         s = C.score(case, rep, views)["flags"]
         row["flags_after"] = {k: v for k, v in s.items() if v}
         row["claims_after"] = len(rep["claims"])
