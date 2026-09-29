@@ -64,6 +64,7 @@
 | 交接或超时清扫后 | queued 或 running / waiting_human | `run-state`=waiting_human，`concluded`=no conclusion，lifecycle open，`handoff-report` 或 `report-missing` 沿用 | `incident-control` |
 | cancel 后 | cancelled / cancelled | `incident-control`=cancelled，`run-state`=cancelled，lifecycle **open** | `incident-state`；lifecycle 不得为 closed |
 | 人工 pause 后 | paused / paused | `incident-control`=paused，`run-state`=paused | 事故级 `queued`/`running` |
+| 暂停尚未被领取的 queued Run | paused / **queued 或 paused**（以库行为准） | `incident-control`=paused；`run-state` 显示库中 Run 状态，可为 `queued`（不改写路径，属预期，lead 裁定） | 事故级 `queued`/`running` |
 | 全局或目标挂起后（结论未发布） | paused / paused | 同 pause（页面不区分来源） | 同上 |
 | 挂起时已发布的事故 | 不被挂起写入（挂起只改无结论事故）/ completed | 同「发布后」 | `incident-control` |
 | 解除挂起后 | 仍 paused / 仍 paused | `incident-control`=paused（要人工 resume） | 自动变回进行中 |
@@ -80,3 +81,5 @@
 - 不删 `'completed'` 死分支（:482,769,1162,1538,1801）：删除不是 A 所必需，仅在此记录。
 - 不新增 JSON 投影、不区分暂停来源、不显示挂起横幅、不给列表页加 Run 状态、不改 lifecycle 语义（观察属 M2）。
 - 不改现有测试断言；`test_m1_web_workbench.py` 若断言了 `State` 标签或事故级徽标，按合同变更处理并报告（当前仅见 `run-state`、`conclusion` 断言，未见事故级断言，未运行）。
+
+库值 `completed` 属「其他值」，按进行中处理（lead 裁定）。控制标记元素文本恰为 `paused`/`cancelled`，摘要区不写含 "state" 的词。
