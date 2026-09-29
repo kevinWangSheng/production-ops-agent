@@ -237,9 +237,10 @@ def test_b_complete_search_reports_backend_and_shown_counts(monkeypatch):
     executor = _trace_executor(monkeypatch, opener)
     outcome = executor.execute(_trace_call({"service": "checkout", "limit": 10}))
     view = outcome.model_view
-    assert (
-        view["result_count"] == 20 and view["returned_count"] == 20
-    )  # sanity: unchanged
+    # B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) removed the
+    # old 20-span sampling cap; CHECKOUT_TRACES' 90 spans stay well under the
+    # widened view byte cap (MAX_VIEW_BYTES), so none are truncated either.
+    assert view["result_count"] == 90 and view["returned_count"] == 90
     assert (
         view["incomplete"] is False and view["query"]["limit"] == 10
     )  # sanity: unchanged
@@ -251,7 +252,7 @@ def test_b_complete_search_reports_backend_and_shown_counts(monkeypatch):
     assert view["backend_spans_returned"] == record["backend_returned_span_count"] == 90
     assert view["spans_shown"] == len(view["content"]) == view["returned_count"]
     assert view["spans_omitted"] == view["backend_spans_returned"] - view["spans_shown"]
-    assert view["spans_omitted"] == 70
+    assert view["spans_omitted"] == 0
     assert view["incomplete_reason"] is None
 
 
@@ -269,9 +270,14 @@ def test_b_a_full_limit_search_reports_a_nonnull_incomplete_reason(monkeypatch):
 
 def test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent(monkeypatch):
     """A synthetic backend response whose 20 sampled spans do not all fit the
-    16 KiB view budget: the view still truncates (rule unchanged), and the
-    new fields must account for the whole gap between what the backend
-    returned and what the view actually shows, not just the sampling cap."""
+    100 KiB view budget (widened by B1,
+    docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md, from the original
+    16 KiB this test was written against -- 40 heavy spans instead of 20 so
+    the byte cap is still exceeded): the view still truncates (rule
+    unchanged), and the new fields must account for the whole gap between
+    what the backend returned and what the view actually shows, not just
+    the sampling cap (B1 also removed that separate 20-span cap, so the gap
+    here is entirely the byte truncation)."""
     start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
 
     def make_span(i: int) -> dict:
@@ -300,26 +306,34 @@ def test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent(monkeypa
             "references": [],
         }
 
+    SPAN_COUNT = 40
     traces = [
         {
             "traceID": f"trace{i:04x}",
             "spans": [make_span(i)],
             "processes": {"p1": {"serviceName": "checkout", "tags": []}},
         }
-        for i in range(20)
+        for i in range(SPAN_COUNT)
     ]
     synthetic_body = json.dumps({"data": traces}).encode()
     opener = FakeOpener(routes={"/api/traces": synthetic_body})
     executor = _trace_executor(monkeypatch, opener)
-    outcome = executor.execute(_trace_call({"service": "checkout", "limit": 20}))
+    outcome = executor.execute(
+        _trace_call({"service": "checkout", "limit": SPAN_COUNT})
+    )
     view = outcome.model_view
-    assert view["truncated"] is True and view["omitted_rows"] == 16  # sanity: unchanged
+    # Measured (not guessed) against the current MAX_VIEW_BYTES: each of
+    # these ~3.48 KB heavy spans, 40 of them project to ~139 KB, of which 29
+    # fit the 100 KiB view cap.
+    assert view["truncated"] is True and view["omitted_rows"] == 11
     record = json.loads(outcome.evidence.raw)
-    assert record["omitted_span_count"] == 0  # all 20 spans were sampled
-    assert view["backend_spans_returned"] == 20
-    assert view["spans_shown"] == len(view["content"]) == 4
-    assert view["spans_omitted"] == 16
-    assert view["incomplete_reason"] is not None  # 20 traces >= limit 20
+    # B1: no row cap at the projection layer any more -- every backend span
+    # is always sampled here regardless of count.
+    assert record["omitted_span_count"] == 0
+    assert view["backend_spans_returned"] == SPAN_COUNT
+    assert view["spans_shown"] == len(view["content"]) == 29
+    assert view["spans_omitted"] == 11
+    assert view["incomplete_reason"] is not None  # SPAN_COUNT traces >= limit
 
 
 def test_b_traces_tool_description_documents_the_new_count_fields():
@@ -482,7 +496,14 @@ def test_c_two_incomplete_views_are_listed_in_delivery_order():
     loop, request, model, transport, store, _ = assemble(
         replies=[
             reply(tool_calls=[tool_call("c1")], finish="tool_calls"),
-            reply(tool_calls=[tool_call("c2")], finish="tool_calls"),
+            # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md):
+            # distinct params -- an exact repeat of c1 would be deduped to
+            # the same evidence_id, collapsing this test's two distinct
+            # delivered views into one.
+            reply(
+                tool_calls=[tool_call("c2", arguments='{"expr":"up"}')],
+                finish="tool_calls",
+            ),
             reply(content=json.dumps(_CLEAN_REPORT), finish="stop"),
         ],
         model_requests=3,

@@ -1,0 +1,212 @@
+{
+ "run_id": "78380522-60ff-5623-be80-3c6060ac60c3",
+ "step_id": "25a62f32-e12b-4e59-98ad-490e62ffc488",
+ "logical_key": "conclusion:g0:ctx0:round-4",
+ "observed_at": "2026-09-28T03:19:31.169565-07:00",
+ "execution": "completed",
+ "handoff": false,
+ "handoff_reasons": [],
+ "rounds": 4,
+ "model_requests_used": 4,
+ "model_seconds_used": 43.78462600125931,
+ "evidence_ids": [
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t2:a1dd67ab-9ddc-4c35-9c3d-e30b00f4222f",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t3:703c16dd-71ee-4146-a2f8-e110280f57cc",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t4:8087ebca-adbd-4a44-a177-22c5787aa70f",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t5:dbb934cc-54dc-4f75-a891-cb94618dc739",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t6:a6f6d0a8-1242-4472-86ca-2dd9c7fa8b61",
+  "ee88f090-da63-4c57-86be-bb746dfefcaa-t7:14a032b9-079e-450a-a8d5-c687c1b8785e",
+  "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e",
+  "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t1:9654221f-3fe7-40a6-9540-9dd52321ceb8",
+  "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t2:3a829a72-0e2a-4861-90b7-88060b68b0db",
+  "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t3:55734eca-67e7-4538-aec0-0d874b7f2c0a",
+  "a6aa4f71-6837-48c3-86e8-a9e18de0d289-t0:a38f291f-4adb-490c-b5c6-80ef09b75c84"
+ ],
+ "report_sha256": "3e6cf80079a01b7b6f377cbd6617a03cc81215b31c6f6418db8f099e3658a902",
+ "report_bytes": 12156,
+ "report_text": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Across the authorized 300-second window (2026-09-28T10:13:44Z to 2026-09-28T10:18:44Z) the returned evidence does not corroborate the report of elevated checkout errors. All 20 checkout spans shown in the sampled traces carry rpc.grpc.status_code 0 or no status tag, and the 6 sampled checkout traces (e.g. 1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be) show a completed load-generator -> frontend-proxy -> frontend -> checkout PlaceOrder path ending in HTTP 200 / gRPC status 0. The only STATUS_CODE_ERROR series returned anywhere in the window are frontend, frontend-proxy, load-generator and payment (GET, dns.lookup, tcp.connect), each with increase 0; no STATUS_CODE_ERROR series was returned for checkout, cart, currency, shipping, email or product-catalog. Checkout's own span metric series are all STATUS_CODE_UNSET, and its client-side rpc_client_duration_milliseconds_count series appear only with rpc_grpc_status_code 0. Sampled dependency spans (payment, product-catalog, cart, currency, shipping, email) show no error tags, and checkout client-call p95 latencies are in the low tens of milliseconds (max ~46.9 ms for Charge and GetQuote). This is a determination about what was observed, not certification of health: sampling is biased and small, the absence of error series is an unknown rather than a zero, and no prior comparable window was available to judge latency trends.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"In the sampled checkout traces, every checkout span has status rpc.grpc.status_code 0 or no status tag (status_state not_recorded); the 20 spans shown span 6 distinct trace ids (1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be) and none carries an error status tag.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Trace 1be8524e6fe84eafe094ffcd4074fed6 shows a completed checkout call path: load-generator POST (http.status_code 200, 166060 us) -> frontend-proxy ingress -> frontend POST /api/checkout (http.status_code 200) -> frontend grpc oteldemo.CheckoutService/PlaceOrder span 2e1eb53a0454b3fd -> checkout span dbbb77c73d69df26 (oteldemo.CheckoutService/PlaceOrder, rpc.grpc.status_code 0, duration 139223 us), with checkout's children prepareOrderItemsAndShippingQuoteFromCart (63873 us), oteldemo.PaymentService/Charge (35757 us), oteldemo.CartService/EmptyCart (19329 us) also status 0.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Checkout span-level call counts in the window are reported only with status_code STATUS_CODE_UNSET (no OK or ERROR series for checkout), with estimated per-window increases such as oteldemo.CheckoutService/PlaceOrder 7.5, prepareOrderItemsAndShippingQuoteFromCart 7.5, oteldemo.PaymentService/Charge 7.5, oteldemo.ShippingService/GetQuote 7.5, oteldemo.ShippingService/ShipOrder 7.5, oteldemo.CartService/GetCart 7.5, oteldemo.CartService/EmptyCart 7.5, oteldemo.CurrencyService/Convert 22.5, oteldemo.ProductCatalogService/GetProduct 15.0, HTTP POST 7.5, orders publish 7.5.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t7:14a032b9-079e-450a-a8d5-c687c1b8785e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The only STATUS_CODE_ERROR span series returned in the window are frontend (GET, executing api route (pages) /api/data, grpc.oteldemo.AdService/GetAds, tcp.connect), frontend-proxy (ingress, router frontend egress), load-generator (GET) and payment (GET, dns.lookup, tcp.connect); each has an increase of 0 over 300s, and no STATUS_CODE_ERROR series was returned for checkout, cart, currency, shipping, email or product-catalog.\",\"evidence_ids\":[\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t7:14a032b9-079e-450a-a8d5-c687c1b8785e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Client-side RPC call counts for checkout were returned only with rpc_grpc_status_code 0 (no non-zero gRPC status series): estimated 300s increases were oteldemo.PaymentService/Charge 6.25, oteldemo.CurrencyService/Convert 20.0, oteldemo.CartService/GetCart 6.25, oteldemo.CartService/EmptyCart 6.25, oteldemo.ProductCatalogService/GetProduct 13.75, oteldemo.ShippingService/GetQuote 6.25, oteldemo.ShippingService/ShipOrder 6.25.\",\"evidence_ids\":[\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t1:9654221f-3fe7-40a6-9540-9dd52321ceb8\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"p95 of checkout's client-call durations from rpc_client_duration_milliseconds_bucket over the window were low in absolute terms: oteldemo.PaymentService/Charge 46.875 ms, oteldemo.ShippingService/GetQuote 46.875 ms, oteldemo.CurrencyService/Convert 30.0 ms, oteldemo.CartService/EmptyCart 23.75 ms, oteldemo.CartService/GetCart 8.75 ms, oteldemo.ProductCatalogService/GetProduct 4.75 ms, oteldemo.ShippingService/ShipOrder 4.75 ms; flagd series returned NaN (no samples).\",\"evidence_ids\":[\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t2:3a829a72-0e2a-4861-90b7-88060b68b0db\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Sampled dependency spans show no error status: payment grpc.oteldemo.PaymentService/Charge spans carry rpc.grpc.status_code 0 with durations 943-11037 us in traces 1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be; currency Currency/Convert spans carry otel.status_code OK; shipping GetQuote spans carry rpc.grpc.status_code 0 and http.status_code 200; email POST /send_order_confirmation spans carry http.status_code 200; product-catalog GetProduct/ListProducts spans carry rpc.grpc.status_code 0; cart CartService/GetCart, AddItem and EmptyCart spans carry no error tag.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t4:8087ebca-adbd-4a44-a177-22c5787aa70f\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t5:dbb934cc-54dc-4f75-a891-cb94618dc739\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t6:a6f6d0a8-1242-4472-86ca-2dd9c7fa8b61\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t2:a1dd67ab-9ddc-4c35-9c3d-e30b00f4222f\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t3:703c16dd-71ee-4146-a2f8-e110280f57cc\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The payment transaction counter app_payment_transactions_total increased over the window only for currency USD (estimated 4.9998) and CAD (0); no failure/status-labelled series was returned for it.\",\"evidence_ids\":[\"a6aa4f71-6837-48c3-86e8-a9e18de0d289-t0:a38f291f-4adb-490c-b5c6-80ef09b75c84\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The checkout trace view is an explicitly biased sample: only 6 backend traces and 20 of 312 backend spans were shown (292 spans omitted), so the absence of error-tagged spans in the view does not establish a failure rate for checkout, and an omitted span remains unknown.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Hypothesis that checkout's dependency calls (payment, product-catalog, cart, currency, shipping, email) were failing during this window is not supported by the returned evidence: no dependency span shown carries an error tag, checkout's client RPC series show only rpc_grpc_status_code 0, and the only ERROR-labelled series returned (frontend, frontend-proxy, load-generator, payment GET/dns.lookup/tcp.connect) are all 0.\",\"evidence_ids\":[\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e\",\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t1:9654221f-3fe7-40a6-9540-9dd52321ceb8\",\"ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The reported checkout error elevation may refer to a different time window, a different error definition (for example client-observed failures in the load generator or frontend rather than checkout server spans), or to errors that fell inside the 292 omitted spans and were therefore not sampled; this run's evidence cannot distinguish among these.\",\"evidence_ids\":[\"ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d\",\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"recommendation\",\"text\":\"Human follow-up should reproduce the checkout error signal against an adjacent baseline window, use a non-sampled error-rate view (for example checkout span error counts by status_code including any span_name that is absent here), and check whether the report originates from load-generator/frontend client-side failures rather than checkout server spans.\",\"evidence_ids\":[\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e\",\"50d01ffe-7f6a-4059-9b92-6d140dc2b700-t2:3a829a72-0e2a-4861-90b7-88060b68b0db\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"No comparable baseline window was supplied, so no latency trend can be inferred; only absolute in-window durations (checkout PlaceOrder spans 49-139 ms; client-call p95 up to ~46.9 ms) are observable.\",\"No STATUS_CODE_ERROR series was returned for checkout or for cart, currency, shipping, email and product-catalog; a missing series is unknown, not zero, so absence of a checkout error series does not prove zero checkout errors.\",\"The checkout, payment, currency, shipping and email trace views returned only 6 backend traces each (20 of 312 spans shown); the product-catalog and cart views were marked incomplete ('backend returned as many traces as requested; more may exist'), so these sampled views cannot establish a failure rate or a complete call graph.\",\"Error/latency metrics were only available for checkout's own client-side RPC calls and span-status counters; no server-side error metric for the dependencies (payment, product-catalog, cart, currency, shipping, email) was retrieved.\",\"http_server_request_duration_seconds_count returned a single series (cart) in this window, so checkout/dependency HTTP server latency could not be assessed from that metric.\",\"m0-otel-20260909 is the only delivered target; the reported checkout error claim has no supplied source timing or provenance against which to align the window.\"],\"next_steps\":[\"Re-run the same queries for an adjacent equal-length window to obtain a latency and error baseline for comparison.\",\"Query checkout and dependency span-error counters directly (per span_name and status_code, including dependencies) in an unscoped or longer window to confirm whether any non-zero error counts exist outside the sampled view.\",\"Verify the origin of the 'elevated checkout errors' report (source dashboard, alert or trace query and its time range) before attributing it to checkout server-side failures.\",\"Inspect the omitted spans from the sampled checkout traces (for example by fetching the full traces for the cited trace ids) to confirm no failing child span was sampled out.\"]}",
+ "report_parsed": {
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Across the authorized 300-second window (2026-09-28T10:13:44Z to 2026-09-28T10:18:44Z) the returned evidence does not corroborate the report of elevated checkout errors. All 20 checkout spans shown in the sampled traces carry rpc.grpc.status_code 0 or no status tag, and the 6 sampled checkout traces (e.g. 1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be) show a completed load-generator -> frontend-proxy -> frontend -> checkout PlaceOrder path ending in HTTP 200 / gRPC status 0. The only STATUS_CODE_ERROR series returned anywhere in the window are frontend, frontend-proxy, load-generator and payment (GET, dns.lookup, tcp.connect), each with increase 0; no STATUS_CODE_ERROR series was returned for checkout, cart, currency, shipping, email or product-catalog. Checkout's own span metric series are all STATUS_CODE_UNSET, and its client-side rpc_client_duration_milliseconds_count series appear only with rpc_grpc_status_code 0. Sampled dependency spans (payment, product-catalog, cart, currency, shipping, email) show no error tags, and checkout client-call p95 latencies are in the low tens of milliseconds (max ~46.9 ms for Charge and GetQuote). This is a determination about what was observed, not certification of health: sampling is biased and small, the absence of error series is an unknown rather than a zero, and no prior comparable window was available to judge latency trends.",
+  "claims": [
+   {
+    "kind": "fact",
+    "text": "In the sampled checkout traces, every checkout span has status rpc.grpc.status_code 0 or no status tag (status_state not_recorded); the 20 spans shown span 6 distinct trace ids (1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be) and none carries an error status tag.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Trace 1be8524e6fe84eafe094ffcd4074fed6 shows a completed checkout call path: load-generator POST (http.status_code 200, 166060 us) -> frontend-proxy ingress -> frontend POST /api/checkout (http.status_code 200) -> frontend grpc oteldemo.CheckoutService/PlaceOrder span 2e1eb53a0454b3fd -> checkout span dbbb77c73d69df26 (oteldemo.CheckoutService/PlaceOrder, rpc.grpc.status_code 0, duration 139223 us), with checkout's children prepareOrderItemsAndShippingQuoteFromCart (63873 us), oteldemo.PaymentService/Charge (35757 us), oteldemo.CartService/EmptyCart (19329 us) also status 0.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Checkout span-level call counts in the window are reported only with status_code STATUS_CODE_UNSET (no OK or ERROR series for checkout), with estimated per-window increases such as oteldemo.CheckoutService/PlaceOrder 7.5, prepareOrderItemsAndShippingQuoteFromCart 7.5, oteldemo.PaymentService/Charge 7.5, oteldemo.ShippingService/GetQuote 7.5, oteldemo.ShippingService/ShipOrder 7.5, oteldemo.CartService/GetCart 7.5, oteldemo.CartService/EmptyCart 7.5, oteldemo.CurrencyService/Convert 22.5, oteldemo.ProductCatalogService/GetProduct 15.0, HTTP POST 7.5, orders publish 7.5.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t7:14a032b9-079e-450a-a8d5-c687c1b8785e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The only STATUS_CODE_ERROR span series returned in the window are frontend (GET, executing api route (pages) /api/data, grpc.oteldemo.AdService/GetAds, tcp.connect), frontend-proxy (ingress, router frontend egress), load-generator (GET) and payment (GET, dns.lookup, tcp.connect); each has an increase of 0 over 300s, and no STATUS_CODE_ERROR series was returned for checkout, cart, currency, shipping, email or product-catalog.",
+    "evidence_ids": [
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t7:14a032b9-079e-450a-a8d5-c687c1b8785e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Client-side RPC call counts for checkout were returned only with rpc_grpc_status_code 0 (no non-zero gRPC status series): estimated 300s increases were oteldemo.PaymentService/Charge 6.25, oteldemo.CurrencyService/Convert 20.0, oteldemo.CartService/GetCart 6.25, oteldemo.CartService/EmptyCart 6.25, oteldemo.ProductCatalogService/GetProduct 13.75, oteldemo.ShippingService/GetQuote 6.25, oteldemo.ShippingService/ShipOrder 6.25.",
+    "evidence_ids": [
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t1:9654221f-3fe7-40a6-9540-9dd52321ceb8"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "p95 of checkout's client-call durations from rpc_client_duration_milliseconds_bucket over the window were low in absolute terms: oteldemo.PaymentService/Charge 46.875 ms, oteldemo.ShippingService/GetQuote 46.875 ms, oteldemo.CurrencyService/Convert 30.0 ms, oteldemo.CartService/EmptyCart 23.75 ms, oteldemo.CartService/GetCart 8.75 ms, oteldemo.ProductCatalogService/GetProduct 4.75 ms, oteldemo.ShippingService/ShipOrder 4.75 ms; flagd series returned NaN (no samples).",
+    "evidence_ids": [
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t2:3a829a72-0e2a-4861-90b7-88060b68b0db"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Sampled dependency spans show no error status: payment grpc.oteldemo.PaymentService/Charge spans carry rpc.grpc.status_code 0 with durations 943-11037 us in traces 1be8524e6fe84eafe094ffcd4074fed6, 4db11a2ec15cffad00b5c06d9c4cc1c7, aa1b34b2e393946eaaaef3c64e25e26a, acb7e93ba3c58485ecf45a6b826671f5, 5c7cc9bb02fb711e76dec4089fb380ce, 255d6fe7cd17f1a28f986bd49dc462be; currency Currency/Convert spans carry otel.status_code OK; shipping GetQuote spans carry rpc.grpc.status_code 0 and http.status_code 200; email POST /send_order_confirmation spans carry http.status_code 200; product-catalog GetProduct/ListProducts spans carry rpc.grpc.status_code 0; cart CartService/GetCart, AddItem and EmptyCart spans carry no error tag.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t4:8087ebca-adbd-4a44-a177-22c5787aa70f",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t5:dbb934cc-54dc-4f75-a891-cb94618dc739",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t6:a6f6d0a8-1242-4472-86ca-2dd9c7fa8b61",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t2:a1dd67ab-9ddc-4c35-9c3d-e30b00f4222f",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t3:703c16dd-71ee-4146-a2f8-e110280f57cc"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The payment transaction counter app_payment_transactions_total increased over the window only for currency USD (estimated 4.9998) and CAD (0); no failure/status-labelled series was returned for it.",
+    "evidence_ids": [
+     "a6aa4f71-6837-48c3-86e8-a9e18de0d289-t0:a38f291f-4adb-490c-b5c6-80ef09b75c84"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "The checkout trace view is an explicitly biased sample: only 6 backend traces and 20 of 312 backend spans were shown (292 spans omitted), so the absence of error-tagged spans in the view does not establish a failure rate for checkout, and an omitted span remains unknown.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Hypothesis that checkout's dependency calls (payment, product-catalog, cart, currency, shipping, email) were failing during this window is not supported by the returned evidence: no dependency span shown carries an error tag, checkout's client RPC series show only rpc_grpc_status_code 0, and the only ERROR-labelled series returned (frontend, frontend-proxy, load-generator, payment GET/dns.lookup/tcp.connect) are all 0.",
+    "evidence_ids": [
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e",
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t1:9654221f-3fe7-40a6-9540-9dd52321ceb8",
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t1:73aa6ed5-bbf8-47ee-9c18-b2dfa1ff2613"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The reported checkout error elevation may refer to a different time window, a different error definition (for example client-observed failures in the load generator or frontend rather than checkout server spans), or to errors that fell inside the 292 omitted spans and were therefore not sampled; this run's evidence cannot distinguish among these.",
+    "evidence_ids": [
+     "ee88f090-da63-4c57-86be-bb746dfefcaa-t0:0c8ee146-41a3-4aac-9e89-ad975d0ae42d",
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "recommendation",
+    "text": "Human follow-up should reproduce the checkout error signal against an adjacent baseline window, use a non-sampled error-rate view (for example checkout span error counts by status_code including any span_name that is absent here), and check whether the report originates from load-generator/frontend client-side failures rather than checkout server spans.",
+    "evidence_ids": [
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t0:3299166b-3f5c-4e37-aba3-05f60bcd214e",
+     "50d01ffe-7f6a-4059-9b92-6d140dc2b700-t2:3a829a72-0e2a-4861-90b7-88060b68b0db"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   }
+  ],
+  "gaps": [
+   "No comparable baseline window was supplied, so no latency trend can be inferred; only absolute in-window durations (checkout PlaceOrder spans 49-139 ms; client-call p95 up to ~46.9 ms) are observable.",
+   "No STATUS_CODE_ERROR series was returned for checkout or for cart, currency, shipping, email and product-catalog; a missing series is unknown, not zero, so absence of a checkout error series does not prove zero checkout errors.",
+   "The checkout, payment, currency, shipping and email trace views returned only 6 backend traces each (20 of 312 spans shown); the product-catalog and cart views were marked incomplete ('backend returned as many traces as requested; more may exist'), so these sampled views cannot establish a failure rate or a complete call graph.",
+   "Error/latency metrics were only available for checkout's own client-side RPC calls and span-status counters; no server-side error metric for the dependencies (payment, product-catalog, cart, currency, shipping, email) was retrieved.",
+   "http_server_request_duration_seconds_count returned a single series (cart) in this window, so checkout/dependency HTTP server latency could not be assessed from that metric.",
+   "m0-otel-20260909 is the only delivered target; the reported checkout error claim has no supplied source timing or provenance against which to align the window."
+  ],
+  "next_steps": [
+   "Re-run the same queries for an adjacent equal-length window to obtain a latency and error baseline for comparison.",
+   "Query checkout and dependency span-error counters directly (per span_name and status_code, including dependencies) in an unscoped or longer window to confirm whether any non-zero error counts exist outside the sampled view.",
+   "Verify the origin of the 'elevated checkout errors' report (source dashboard, alert or trace query and its time range) before attributing it to checkout server-side failures.",
+   "Inspect the omitted spans from the sampled checkout traces (for example by fetching the full traces for the cited trace ids) to confirm no failing child span was sampled out."
+  ]
+ },
+ "conclusion_other_fields": {
+  "rounds": 4,
+  "handoff": false,
+  "segment": "ctx0",
+  "execution": "completed",
+  "calibration": 1.179930795847751,
+  "compactions": 0,
+  "source_step_id": "e134a469-deda-496a-8d85-f59e8539c045",
+  "handoff_reasons": [],
+  "prompt_revision": "prompt-replay-candidate-cc542dd15dd8",
+  "question_sha256": "256391196210eba1f2d17721dc1039368645fa76793a60e97429c40099799e63",
+  "model_seconds_used": 43.78462600125931,
+  "prompt_face_sha256": "bb0e03a2b074dfe7803972e4264fb27f38d419656ecb7e820504393046f1341b",
+  "model_requests_used": 4,
+  "report_content_sha256": "3e6cf80079a01b7b6f377cbd6617a03cc81215b31c6f6418db8f099e3658a902",
+  "report_schema_version": "m0-report-v2"
+ }
+}

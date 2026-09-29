@@ -15,7 +15,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from opspilot.instructions.discipline import prompt_revision
 from opspilot.investigation.context import (
@@ -53,6 +53,7 @@ from opspilot.investigation.messages import (
 from opspilot.investigation.reports import (
     FINAL_REPORT_INSTRUCTION,
     REPORT_CONTRACT,
+    REPORT_RETRY_TEMPLATE,
     RUN_COVERAGE_TEMPLATE,
     DeliveredView,
     ReportV2,
@@ -61,6 +62,7 @@ from opspilot.investigation.reports import (
     delivered_from_context,
     evidence_context_projection,
     parse_report,
+    report_retry_feedback,
     run_coverage_message,
     unsupported_citations,
 )
@@ -112,18 +114,25 @@ def prompt_revision_versions(
             variant_id,
             report_contract=report_contract,
             run_coverage_template=RUN_COVERAGE_TEMPLATE,
+            report_retry_template=REPORT_RETRY_TEMPLATE,
         )
     }
 
 
 def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
-    """The final round's trailing user messages: the report instruction, then
-    the run coverage summary over the views this Run delivered so far (round
-    2 rule C). ``_check_snapshot_hash`` re-adds the same pair on rebuild."""
-    return (
+    """The final round's trailing user messages: the report instruction,
+    then (B3) the previous failure's retry feedback when this final round was
+    forced by one, then the run coverage summary over the views this Run
+    delivered so far (round 2 rule C). Rebuild re-derives the same
+    ``state.retry_feedback`` from the same committed row, so a resumed
+    attempt sends the same messages."""
+    messages: list[dict[str, Any]] = [
         {"role": "user", "content": FINAL_REPORT_INSTRUCTION},
-        {"role": "user", "content": run_coverage_message(state.delivered)},
-    )
+    ]
+    if state.retry_feedback:
+        messages.append({"role": "user", "content": state.retry_feedback})
+    messages.append({"role": "user", "content": run_coverage_message(state.delivered)})
+    return tuple(messages)
 
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
@@ -302,6 +311,30 @@ class _State:
     # minus it is the tool time this attempt has added.
     tool_seconds_at_open: float = 0.0
     last_step_id: UUID | None = None
+    # L1a (docs/tasks/2026-09-28-m1-01-loop-limits.md): a non-final round
+    # whose reply proposed no tool calls and failed report validation must be
+    # followed by exactly one forced final-report request, never another
+    # tool-bearing round -- regardless of how many physical requests remain.
+    # ``_drive`` ORs this into its own ``final`` computation; ``_round`` sets
+    # it when it hits that case, and ``resume`` re-derives it from the last
+    # committed row so a restart mid-attempt forces the same next round.
+    force_final: bool = False
+    # B3 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the diagnostic
+    # message the forced final round above carries, set alongside
+    # ``force_final`` by whichever failure triggered it (live or resumed) and
+    # read by ``_final_messages``. "" when the current forced-final round was
+    # not preceded by a validation failure (unreachable today -- L1a's only
+    # trigger is a validation failure -- but kept falsy-by-default rather
+    # than required, so a future second ``force_final`` trigger fails closed
+    # to "no diagnostic" instead of crashing).
+    retry_feedback: str = ""
+    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md; upstream
+    # holmes/core/safeguards.py): fingerprint (tool, target, parsed params) ->
+    # evidence_id of the first identical call dispatched this *attempt*.
+    # Scoped to the live in-process attempt only, not reconstructed across a
+    # resume/compaction (a documented, bounded limitation -- see the task
+    # record -- not a correctness claim about cross-restart dedup).
+    seen_tool_calls: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -457,7 +490,7 @@ class InvestigationLoop:
             # final request); a restart between that row and the conclusion
             # row reaches the same verdict through the same rule as the live
             # round, without spending a request.
-            verdict = self._round_verdict(
+            verdict, retry_feedback = self._round_verdict(
                 state,
                 tool_round=last.tool_round,
                 content=last.content,
@@ -473,6 +506,20 @@ class InvestigationLoop:
                     report=verdict[2],
                     content=verdict[3],
                 )
+            if not last.tool_round and not last.final:
+                # L1a: ``verdict`` is ``None`` here for exactly one reason --
+                # the committed round was non-final, proposed no tool calls
+                # and failed report validation (a tool round or an already-
+                # final row always returns a definite verdict above). The
+                # live round would have forced ``state.force_final`` at this
+                # point (see ``_round``'s ``not calls`` branch); a restart
+                # must force the same next round, not another tool-bearing one.
+                # B3: the same failure's retry feedback is re-derived here too
+                # (``_round_verdict`` recomputed it from the same committed
+                # content), so a resumed attempt's forced-final round sends
+                # the same diagnostic message the live one would have.
+                state.retry_feedback = retry_feedback
+                state.force_final = True
         return self._drive(state)
 
     def _round_verdict(
@@ -484,15 +531,18 @@ class InvestigationLoop:
         finish_reason: str | None,
         final: bool,
         rejection: str | None,
-    ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
-        """What one committed round settles for the attempt, or ``None`` when
-        the loop goes on. The single rule for the live round and for a resume
-        over that round's row."""
+    ) -> tuple[
+        tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None, str
+    ]:
+        """What one committed round settles for the attempt (``None`` when the
+        loop goes on), paired with the B3 retry feedback for that round's
+        failure ("" when the round did not fail validation). The single rule
+        for the live round and for a resume over that round's row."""
         if rejection is not None:
-            return "failed", (rejection,), None, None
+            return ("failed", (rejection,), None, None), ""
         if tool_round:
-            return None
-        report, reason = self._validated_report(
+            return None, ""
+        report, reason, retry_feedback = self._validated_report(
             state, content or "", finish_reason=finish_reason
         )
         if report is not None:
@@ -501,20 +551,28 @@ class InvestigationLoop:
                 if report.assessment_status == "incomplete"
                 else ()
             )
-            return "completed", reasons, report, content or ""
+            return ("completed", reasons, report, content or ""), ""
         if final:
-            return "failed", (reason,), None, content
-        return None
+            return ("failed", (reason,), None, content), ""
+        return None, retry_feedback
 
     def _validated_report(
         self, state: _State, content: str, *, finish_reason: str | None
-    ) -> tuple[ReportV2 | None, str]:
-        """``parse_report`` plus the citation check, as the live round applies them."""
+    ) -> tuple[ReportV2 | None, str, str]:
+        """``parse_report`` plus the citation check, as the live round applies
+        them. Returns ``(report, reason, retry_feedback)``: ``retry_feedback``
+        is B3's fixed-template diagnostic message for this exact failure
+        ("" on success), computed here (not by the caller) so it always
+        reflects the parsed report the citation check actually saw."""
         report, reason = parse_report(
             content, finish_reason=finish_reason if finish_reason else "unknown"
         )
         if report is None:
-            return None, reason
+            return (
+                None,
+                reason,
+                report_retry_feedback(reason, report=None, views=state.delivered),
+            )
         request = state.request
         if unsupported_citations(
             report,
@@ -525,8 +583,14 @@ class InvestigationLoop:
                 request.evidence_context, authorized_targets=request.scope.target_ids
             ),
         ):
-            return None, "REPORT_INVALID"
-        return report, ""
+            return (
+                None,
+                "REPORT_INVALID",
+                report_retry_feedback(
+                    "REPORT_INVALID", report=report, views=state.delivered
+                ),
+            )
+        return report, "", ""
 
     def _drive(self, state: _State) -> LoopOutcome:
         request = state.request
@@ -535,7 +599,7 @@ class InvestigationLoop:
                 remaining = request.model_requests - state.used
                 if remaining <= 0:
                     raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
-                outcome = self._round(state, final=remaining <= 1)
+                outcome = self._round(state, final=remaining <= 1 or state.force_final)
                 if outcome is not None:
                     return self._finish(
                         state,
@@ -671,7 +735,7 @@ class InvestigationLoop:
         )
         state.folded_since.append(step_id)
         state.next_round += 1
-        verdict = self._round_verdict(
+        verdict, retry_feedback = self._round_verdict(
             state,
             tool_round=bool(calls),
             content=reply.content,
@@ -682,8 +746,16 @@ class InvestigationLoop:
         if verdict is not None:
             return verdict
         if not calls:
-            # Candidate text failed validation; keep the reserved last request.
+            # L1a: a non-final round always reaches here with an invalid,
+            # non-tool-call reply (a valid one already returned above via
+            # ``verdict``, and a final round's invalid reply already returned
+            # a "failed" verdict above too) -- upstream ends on any no-tool
+            # reply; this project gives it one forced final-report retry
+            # instead of another tool-bearing round. B3: the retry carries a
+            # diagnostic message naming this failure (``_final_messages``).
             state.messages.append(assistant)
+            state.retry_feedback = retry_feedback
+            state.force_final = True
             return None
         results = self._run_tools(state, step_id, calls)
         try:
@@ -704,21 +776,51 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
-            # A model request may have used most of the lease renewed before
-            # it; renew again under the same fence before each dispatch, as
-            # the pending-tool recovery path does, so a round within its
-            # limits is not fenced off mid-way (bot review finding, PR #29).
-            try:
-                self.store.renew()
-                self.store.assert_current()
-            except StepStoreError as exc:
-                raise _halt_from_store(exc) from exc
-            outcome = self.executor.execute(
-                tool_request_for(
-                    step_id, index, call, target_ref=target_id, window=window
-                )
+            function = call.get("function") if isinstance(call, Mapping) else None
+            fingerprint = _call_fingerprint(
+                function.get("name") if isinstance(function, Mapping) else None,
+                function.get("arguments") if isinstance(function, Mapping) else None,
+                target_id,
             )
-            view = dict(outcome.model_view)
+            duplicate_of = state.seen_tool_calls.get(fingerprint)
+            if duplicate_of is not None:
+                # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md;
+                # upstream holmes/core/safeguards.py's
+                # ``prevent_overly_repeated_tool_call``, whose generic
+                # refusal text this project's version replaces with a
+                # citable pointer -- see the task record for the recorded
+                # difference): an exact repeat of an already-dispatched call
+                # this Run is not re-executed at all -- the gateway, the
+                # ledger and the source are never touched a second time.
+                view = _duplicate_call_view(
+                    f"{step_id}-t{index}", evidence_id=duplicate_of
+                )
+            else:
+                # A model request may have used most of the lease renewed
+                # before it; renew again under the same fence before each
+                # dispatch, as the pending-tool recovery path does, so a
+                # round within its limits is not fenced off mid-way (bot
+                # review finding, PR #29).
+                try:
+                    self.store.renew()
+                    self.store.assert_current()
+                except StepStoreError as exc:
+                    raise _halt_from_store(exc) from exc
+                outcome = self.executor.execute(
+                    tool_request_for(
+                        step_id, index, call, target_ref=target_id, window=window
+                    )
+                )
+                view = dict(outcome.model_view)
+                evidence_id = view.get("evidence_id")
+                if isinstance(evidence_id, str) and evidence_id:
+                    # Only a dispatched call that actually produced evidence
+                    # is remembered: a pure gateway refusal (no evidence_id,
+                    # e.g. WINDOW_TOO_LARGE) has nothing to point a repeat at,
+                    # so the repeat is left to run again rather than dedup
+                    # against nothing -- refusals are deterministic and cheap,
+                    # unlike a real source read.
+                    state.seen_tool_calls[fingerprint] = evidence_id
             try:
                 self.store.commit_tool(step_id, index, view)
             except StepStoreError as exc:
@@ -1227,3 +1329,51 @@ def _parse_arguments(raw: str) -> object:
     except (ValueError, RecursionError):
         return None
     return parsed
+
+
+def _call_fingerprint(name: object, arguments: object, target_ref: str | None) -> str:
+    """B5's duplicate-call identity: same tool, same target, same parsed
+    arguments -- computed the same way ``tool_request_for`` turns a call's
+    raw JSON into ``ToolRequest.params``, so two calls fingerprint alike
+    exactly when the executor would see the same params (value equality
+    after parsing, not raw-string equality: ``{"a":1,"b":2}`` and
+    ``{"b":2,"a":1}`` fingerprint the same, via ``canonical``'s sorted keys).
+    """
+    parsed = _parse_arguments(arguments) if isinstance(arguments, str) else None
+    try:
+        return canonical({"tool": name, "target_ref": target_ref, "params": parsed})
+    except (ValueError, OverflowError):
+        # Unencodable model input (e.g. a huge integer past Python's str
+        # conversion digit limit): never treat as a duplicate of anything
+        # and never crash this step; the executor's own defensive
+        # ``canonical()`` call refuses it properly a moment later as an
+        # ordinary INVALID_PARAMS.
+        return f"__unfingerprintable__:{uuid4()}"
+
+
+def _duplicate_call_view(operation_id: str, *, evidence_id: str) -> dict[str, Any]:
+    """B5's model-visible result for a call that was not re-executed.
+
+    Never touches the gateway, the ledger or the source. Carries the
+    original call's own ``evidence_id`` verbatim (not a fresh one) so a
+    report may still cite it from this tool message; ``adopted`` is
+    deliberately omitted (not ``True``) so ``delivered_view`` grants no
+    *second* citation entry for the same evidence -- the one delivered_view
+    already recorded from the first, real call stands.
+    """
+    return {
+        "operation_id": operation_id,
+        "evidence_id": evidence_id,
+        "trust": "gateway",
+        "status": "denied",
+        "citable_as_fact": False,
+        "reason": "DUPLICATE_TOOL_CALL",
+        "duplicate_of_evidence_id": evidence_id,
+        "content": None,
+        "message": (
+            "Refusing to run this tool call again: it exactly matches a "
+            f"call already made this Run. See evidence_id {evidence_id} "
+            "for that result. Move on to a different tool or different "
+            "parameter values."
+        ),
+    }

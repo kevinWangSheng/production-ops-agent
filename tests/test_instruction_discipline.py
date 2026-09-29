@@ -150,11 +150,12 @@ def budget_for(variant_id: str, requested: int) -> int:
 # --- 硬约束：冻结的 prompt_sha256 -------------------------------------------
 
 
-def test_replay_candidate_reproduces_the_frozen_m0_prompt_hash() -> None:
-    """收敛后渲染出的字节必须与 M0 证据里记录的 ``prompt_sha256`` 一致。
-
-    ``m004-normal-candidate-retry2`` 与 ``m004-fault-candidate`` 两个 Run 都以
-    ``max_http=2`` 记录了这个哈希。文本改一个字节，这里立刻转红。
+def test_replay_candidate_no_longer_reproduces_the_frozen_m0_prompt_hash() -> None:
+    """M1-01（2026-09-28 用户决定）起，``replay-candidate`` 的开场换成
+    :data:`opspilot.instructions.discipline.REPLAY_OPENING`（无预算句），不再是
+    ``candidate_runner.py`` 的 ``DISCIPLINE`` 字面量；byte-for-byte 复刻 M0 冻结
+    ``prompt_sha256`` 的保证在这条合同变化下被有意打破，此测试钉住这一点而不是
+    继续断言相等（旧断言见任务记录 docs/tasks/2026-09-28-m1-01-loop-limits.md）。
     """
     recorded = json.loads(CANDIDATE_EVIDENCE.read_text())
     rendered = d.render(
@@ -162,15 +163,24 @@ def test_replay_candidate_reproduces_the_frozen_m0_prompt_hash() -> None:
         model_requests=recorded["max_http"],
         report_contract=LEGACY_REPORT_CONTRACT,
     )
-    assert hashlib.sha256(rendered.encode()).hexdigest() == recorded["prompt_sha256"]
+    assert hashlib.sha256(rendered.encode()).hexdigest() != recorded["prompt_sha256"]
+    assert DISCIPLINE.format(steps=recorded["max_http"]) not in rendered
+    assert (
+        "Use the tools as needed until the evidence is sufficient, "
+        "then return the report."
+    ) in rendered
 
 
-def test_replay_candidate_matches_the_historical_assembly_byte_for_byte() -> None:
-    """模块渲染结果与 ``candidate_runner.py`` 现存的拼装逐字节相同。"""
+def test_replay_candidate_no_longer_matches_the_historical_assembly() -> None:
+    """同上一条：模块渲染结果与 ``candidate_runner.py`` 现存的拼装不再逐字节相同。
+
+    ``DISCIPLINE`` 脚本常量本身保持不动（历史记录，见模块 docstring 第 3 点）；
+    只是 live 的 ``replay-candidate`` 变体不再是它的收敛版本。
+    """
     rendered = d.render(
         "replay-candidate", model_requests=2, report_contract=LEGACY_REPORT_CONTRACT
     )
-    assert rendered == DISCIPLINE.format(steps=2) + LEGACY_REPORT_CONTRACT
+    assert rendered != DISCIPLINE.format(steps=2) + LEGACY_REPORT_CONTRACT
 
 
 @pytest.mark.parametrize("report_version", [LEGACY_REPORT_VERSION, REPORT_VERSION])
@@ -239,10 +249,15 @@ def test_module_constants_still_match_the_historical_script_literals() -> None:
 
 
 def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
-    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 15 句。
+    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 14 句。
 
     这些数字是分层分析的结论（任务记录 F1/P2-2/P2-4）。收敛只准搬运不准增删，
     所以普查在这里固定下来；有人顺手补一句纪律，这条会先转红。
+
+    候选臂从 15 句变成 14 句是 M1-01（2026-09-28 用户决定）的有意变化：开场从
+    共享的 :data:`d.READ_ONLY_OPENING`（6 句，含两句预算句）换成候选臂专用的
+    :data:`d.REPLAY_OPENING`（5 句，无预算句，多一句停止规则），净减一句；两个
+    baseline 变体仍用 ``READ_ONLY_OPENING``，不受影响。
     """
 
     def sentences(text: str) -> int:
@@ -257,7 +272,8 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 15
+    assert variant_sentences("replay-candidate") == 14
+    assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)
     assert shared == 18
     assert sentences(d.PROJECTION_DISCIPLINE) == 8
@@ -307,17 +323,41 @@ def test_projection_carries_template_bytes_not_filled_values() -> None:
     （例如给它设个默认值再存进常量）会让两个仅预算轮次不同的 Run 得到不同的
     ``prompt_revision``，进而仅因预算不同就被判 ``INCOMPATIBLE_STATE``。
     :func:`prompt_revision` 的签名不收实例值，挡住的是一类写法；这条挡的是另一类。
+
+    M1-01（2026-09-28 用户决定）起 ``replay-candidate`` 不再带 ``{steps}`` 槽位
+    （见 :data:`d.REPLAY_OPENING`），这条占位符断言改落在仍带该槽位的
+    ``baseline-multi-step`` 上；候选臂改断言它的新开场原样进了投影，且渲染结果
+    与 ``model_requests`` 的取值无关（没有数字回填的位置）。
     """
     projected = {
         entry["key"]: entry["text"]
-        for entry in d.template_projection("replay-candidate")
+        for entry in d.template_projection("baseline-multi-step")
     }
     assert projected["read_only_opening"] == d.READ_ONLY_OPENING
     assert "{steps}" in projected["read_only_opening"]
     filled = d.render(
-        "replay-candidate", model_requests=7, report_contract=LEGACY_REPORT_CONTRACT
+        "baseline-multi-step",
+        model_requests=7,
+        report_contract=LEGACY_REPORT_CONTRACT,
+        authorized_services=SERVICES,
     )
     assert "{steps}" not in filled and " 7 model requests" in filled
+
+    replay_projected = {
+        entry["key"]: entry["text"]
+        for entry in d.template_projection("replay-candidate")
+    }
+    assert replay_projected["replay_opening"] == d.REPLAY_OPENING
+    assert "{steps}" not in d.REPLAY_OPENING
+    replay_filled_small = d.render(
+        "replay-candidate", model_requests=2, report_contract=LEGACY_REPORT_CONTRACT
+    )
+    replay_filled_large = d.render(
+        "replay-candidate", model_requests=99, report_contract=LEGACY_REPORT_CONTRACT
+    )
+    assert replay_filled_small == replay_filled_large, (
+        "候选臂没有预算槽位，渲染结果不应随 model_requests 变化"
+    )
 
 
 def test_report_contract_version_moves_the_prompt_revision() -> None:
@@ -347,7 +387,7 @@ def test_template_byte_change_bumps_the_revision(
     before = d.discipline_revision("replay-candidate")
     mutated = tuple(
         s._replace(text=s.text.replace("read-only", "read only"))
-        if s.key == "read_only_opening"
+        if s.key == "replay_opening"
         else s
         for s in d.VARIANTS["replay-candidate"]
     )
@@ -538,12 +578,17 @@ def test_budget_slot_must_follow_its_placeholder(
 
     ``render`` 是把数字回填进**前一段**。槽位一旦挪位，原实现会对报告契约那段
     调用 ``.format``，字节错了却不报错。今天三个变体都把开场排在第一位，
-    所以这是给下一个加变体的人留的护栏——M1-01 的调查 loop 就要加。
+    所以这是给下一个加变体的人留的护栏。
+
+    这条改用 ``baseline-multi-step``：M1-01（2026-09-28 用户决定）起
+    ``replay-candidate`` 不再带预算槽位（见 :data:`d.REPLAY_OPENING`），不能再
+    用它构造带槽位的畸形序列；``baseline-multi-step`` 仍是 ``{steps}`` + 槽位的
+    机制，护栏的意图不变。
     """
     broken = (
-        d.VARIANTS["replay-candidate"][0],
-        d.VARIANTS["replay-candidate"][2],  # 证据纪律段，不含 {steps}
-        d.VARIANTS["replay-candidate"][1],  # 预算槽位被排到它后面
+        d.VARIANTS["baseline-multi-step"][0],
+        d.VARIANTS["baseline-multi-step"][2],  # 证据纪律段，不含 {steps}
+        d.VARIANTS["baseline-multi-step"][1],  # 预算槽位被排到它后面
     )
     monkeypatch.setattr(d, "VARIANTS", {**d.VARIANTS, "broken": broken})
     with pytest.raises(ValueError, match="budget slot must follow"):

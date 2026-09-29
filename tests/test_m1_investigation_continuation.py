@@ -33,8 +33,20 @@ from tests.m1_tool_support import WINDOW_START, body, build
 
 
 def _rounds(count):
+    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): distinct
+    # arguments per round, not just a distinct call_id -- an exact repeat
+    # (same tool, same params) is no longer re-dispatched, and this helper's
+    # callers all want ``count`` genuinely separate observations.
     return [
-        reply(tool_calls=[tool_call(call_id=f"call-{i + 1}")], finish="tool_calls")
+        reply(
+            tool_calls=[
+                tool_call(
+                    call_id=f"call-{i + 1}",
+                    arguments=f'{{"expr":"rate(http_errors[{i + 1}m])"}}',
+                )
+            ],
+            finish="tool_calls",
+        )
         for i in range(count)
     ]
 

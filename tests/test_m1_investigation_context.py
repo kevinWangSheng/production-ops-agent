@@ -31,7 +31,9 @@ from tests.m1_investigation_support import (
     tool_call,
 )
 
-WIDE = RunLimits(model_requests=12)
+# M1-01 (2026-09-28 user decision): the frozen model-request ceiling moved
+# 4 -> 100, so "wider than frozen" now needs a value past 100, not past 4.
+WIDE = RunLimits(model_requests=120)
 
 
 class Crash(RuntimeError):
@@ -49,9 +51,20 @@ def _wide(*, replies, model_requests=8, budget_limit=12):
 
 
 def _tool_rounds(count, *, start=1):
+    # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): distinct
+    # arguments per round, not just a distinct call_id -- an exact repeat
+    # (same tool, same params) is no longer re-dispatched within one attempt,
+    # and every caller of this helper wants ``count`` genuinely separate
+    # dispatches.
     return [
         reply(
-            tool_calls=[tool_call(call_id=f"call-{start + index}")], finish="tool_calls"
+            tool_calls=[
+                tool_call(
+                    call_id=f"call-{start + index}",
+                    arguments=f'{{"expr":"rate(http_errors[{start + index}m])"}}',
+                )
+            ],
+            finish="tool_calls",
         )
         for index in range(count)
     ]
@@ -100,7 +113,9 @@ def test_input_snapshot_round_trips_and_rejects_a_tampered_tool_face():
     with pytest.raises(ContextError, match="INPUT_INVALID"):
         InvestigationInput.from_json(tampered)
     with pytest.raises(ContextError, match="INPUT_INVALID"):
-        InvestigationInput.from_json({**snapshot, "model_requests": 99})
+        # Past WIDE.model_requests (120, M1-01 2026-09-28), not just past the
+        # old 4-request freeze.
+        InvestigationInput.from_json({**snapshot, "model_requests": 999})
 
 
 def test_frozen_limits_are_the_default_and_a_wider_instance_is_not_within_them():

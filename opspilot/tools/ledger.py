@@ -1,11 +1,15 @@
 """Durable tool budget ledger backed by the product DurableStore.
 
-The executor's per-Run tool ceilings (20 operations / 240 s, frozen for
-M1-01) must survive a worker restart (technical plan section 13). This
-adapter binds one claimed lease to :class:`~opspilot.persistence.DurableStore`:
-``usage()`` reads what every earlier attempt of the Run already spent from
-the committed run row, and ``charge`` records each dispatched operation
-through the lease-fenced ``charge_tool`` write path.
+This adapter binds one claimed lease to
+:class:`~opspilot.persistence.DurableStore`: ``usage()`` reads what every
+earlier attempt of the Run already spent from the committed run row, and
+``charge`` records each dispatched operation through the lease-fenced
+``charge_tool`` write path.
+
+M1-01 (2026-09-28 user decision, docs/tasks/2026-09-28-m1-01-loop-limits.md,
+L2): ``opspilot_runs.tool_operations_used``/``tool_seconds_used`` keep
+accumulating without limit -- accounting and audit, not a per-Run ceiling.
+The loop's single anti-loop ceiling is the model-request count (L1).
 """
 
 from __future__ import annotations
@@ -14,12 +18,7 @@ from uuid import UUID
 
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 
-from .executor import (
-    ToolBudgetExhausted,
-    ToolControlDenied,
-    ToolTimeBudgetExhausted,
-    ToolUsage,
-)
+from .executor import ToolControlDenied, ToolUsage
 
 __all__ = ["DurableToolLedger"]
 
@@ -39,13 +38,12 @@ class DurableToolLedger:
     per-target generations plus resolved target identities -- which is the
     Controller's work, not this adapter's.
 
-    ``max_operations`` is required, not defaulted to the frozen global
-    ceiling: a caller wiring this ledger to a specific Run must pass that
-    Run's own ``QueryScope.max_operations``, which may be narrower than the
-    global cap. A silent default here would let the durable charge path
-    enforce the wrong (wider) ceiling for a Run authorized under a tighter
-    one -- the same shape of gap ``charge_tool``'s own ``max_operations``
-    kwarg was made required to close (bot review finding).
+    ``max_operations``/``max_tool_seconds`` stay required constructor
+    parameters purely to keep ``charge_tool``'s input-validation shape
+    unchanged for every existing caller (M1-01, 2026-09-28 user decision,
+    L2): the durable write path no longer refuses a charge on either value,
+    so any positive number works and neither is enforced as a ceiling any
+    more.
     """
 
     def __init__(
@@ -81,25 +79,17 @@ class DurableToolLedger:
                 dispatch_id=dispatch_id,
             )
         except PersistenceError as exc:
-            # OPERATION_BUDGET_EXHAUSTED is charge_tool's own fixed code
-            # (never vendor/storage text), so it is safe to translate into
-            # the abstract ToolUsageLedger contract's dedicated exception
-            # rather than the generic opaque failure every other
-            # PersistenceError collapses to (bot review finding).
-            if str(exc) == "OPERATION_BUDGET_EXHAUSTED":
-                raise ToolBudgetExhausted(str(exc)) from exc
-            if str(exc) == "TIME_BUDGET_EXHAUSTED":
-                # The cumulative time ceiling is enforced in the same atomic
-                # UPDATE as the operation ceiling, so it needs the same typed
-                # signal -- reporting it as a generic ledger outage would let a
-                # caller retry a Run whose durable time budget is spent.
-                raise ToolTimeBudgetExhausted(str(exc)) from exc
+            # M1-01 (2026-09-28 user decision, L2): ``charge_tool`` no longer
+            # raises OPERATION_BUDGET_EXHAUSTED/TIME_BUDGET_EXHAUSTED (the
+            # ceiling checks are gone), so there is nothing left to translate
+            # for those two codes -- only CONTROL_DENIED remains a fixed code
+            # worth its own typed signal here.
             if str(exc) == "CONTROL_DENIED":
-                # Also a fixed code from charge_tool, and also authoritative:
-                # the Run was revoked by a human decision, a newer control
-                # generation or an expired lease. Reported as its own typed
-                # signal so the executor keeps the observation as history and
-                # names the real reason instead of a generic ledger outage
-                # (bot review finding).
+                # A fixed code from charge_tool, and authoritative: the Run
+                # was revoked by a human decision, a newer control generation
+                # or an expired lease. Reported as its own typed signal so the
+                # executor keeps the observation as history and names the
+                # real reason instead of a generic ledger outage (bot review
+                # finding).
                 raise ToolControlDenied(str(exc)) from exc
             raise

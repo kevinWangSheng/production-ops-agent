@@ -23,7 +23,7 @@ import pytest
 
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore, PersistenceError
-from opspilot.tools import ReadOnlyToolExecutor, ToolRequest
+from opspilot.tools import ReadOnlyToolExecutor, ToolRequest, Window
 from opspilot.tools.otel_demo import (
     METRICS_TOOL,
     TARGET_ID,
@@ -451,8 +451,15 @@ def test_a_workbench_run_under_the_otel_profile_records_real_shaped_evidence(
     )
     recorded = store.rebuild(subject)["run"]["input"]
     assert recorded is not None
+    # B2 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the runner's
+    # authorization frame moved from the v4 packet's fixed 300 s window
+    # (``WINDOW``) to 24 h ending at the face's clock; the model picks its
+    # own narrower query window inside it per call (exercised below via the
+    # omitted start/end default, not asserted on directly here).
+    expected_frame = Window(WINDOW_END - timedelta(hours=24), WINDOW_END)
     assert (
-        recorded["evidence_context"]["time_policies"][0]["window"] == WINDOW.as_json()
+        recorded["evidence_context"]["time_policies"][0]["window"]
+        == expected_frame.as_json()
     )
     assert [s["function"]["name"] for s in recorded["tool_schemas"]] == [
         METRICS_TOOL,

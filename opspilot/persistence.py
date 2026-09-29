@@ -1010,15 +1010,11 @@ class DurableStore:
 
         The first charge for a ``dispatch_id`` is a **reservation**: its
         ``seconds`` is the longest this dispatch is authorized to take, and the
-        whole of it is held against the Run's time ceiling until the dispatch
-        settles (C3 section 13: 预算在 PostgreSQL 原子预留和结算，未知费用保持
-        占用). Both ceilings gate that one atomic UPDATE -- a new dispatch is
-        refused unless the Run still has an operation left *and* room for the
-        full reservation. Settling is never refused: it releases the
-        reservation and records what the read actually cost, which may be less
-        than reserved and, for a transport that overran its bound, more. The
-        ceiling governs what may be started; the record tells the truth about
-        what was spent.
+        whole of it is added to the Run's cumulative tool time before the
+        dispatch settles (C3 section 13: 预算在 PostgreSQL 原子预留和结算，未知
+        费用保持占用). Settling releases the reservation and records what the
+        read actually cost, which may be less than reserved and, for a
+        transport that overran its bound, more.
 
         ``dispatch_id`` is the key, not ``operation_id``, and it is required
         rather than derived here: ``operation_id`` is stable by construction
@@ -1026,28 +1022,27 @@ class DurableStore:
         it silently collapsed *two real reads* of the same tool call into one
         charge whenever a duplicate delivery or a same-epoch retry occurred --
         the Run was charged one operation and ``max(seconds)`` instead of the
-        sum, and could exceed both frozen ceilings with real queries (bot
-        review finding). Section 13 settles the semantics -- "重试计入次数和
-        费用" -- and section 4 explicitly declines to promise exactly-once
-        external queries, so the second dispatch is charged, not refused. A
-        new attempt that re-dispatches an uncommitted operation likewise
-        issues a real second query and is charged again; the per-Run total
-        only ever grows. Fenced by the lease like every other write path.
+        sum (bot review finding). Section 13 settles the semantics -- "重试
+        计入次数和费用" -- and section 4 explicitly declines to promise
+        exactly-once external queries, so the second dispatch is charged, not
+        refused. A new attempt that re-dispatches an uncommitted operation
+        likewise issues a real second query and is charged again; the per-Run
+        total only ever grows. Fenced by the lease like every other write path.
 
-        ``max_operations`` is required, not defaulted: this module does not
-        import the frozen ceiling from ``opspilot.tools.executor`` (that
-        would invert the existing one-way dependency, ``opspilot.tools``
-        already imports from here), so every caller must supply the same
-        value the executor is enforcing. Counting a *new* operation is
-        refused, atomically under the same row lock as everything else in
-        this transaction, once the Run is already at the cap -- two
-        executors racing from the same stale ``operations_used`` snapshot
-        serialize on this lock, and only the one that arrives first may
-        still increment (bot review finding: the increment used to be
-        unconditional once past application-level checks, so both could
-        succeed and the durable count could exceed the frozen cap).
-        Settling an *already-counted* dispatch's seconds is never subject
-        to this check -- it does not add a new operation.
+        M1-01 (2026-09-28 user decision,
+        docs/tasks/2026-09-28-m1-01-loop-limits.md, L2): counting a *new*
+        operation is never refused on ``max_operations``/``max_tool_seconds``
+        any more -- the loop's single anti-loop ceiling is the model-request
+        count (L1), not a separate per-Run tool-call-count or cumulative
+        tool-time ceiling. ``max_operations``/``max_tool_seconds`` stay
+        **required** parameters (this module still does not import from
+        ``opspilot.tools.executor``, so every caller supplies its own values)
+        purely so the input-validation shape below is unchanged for existing
+        callers; they no longer gate the UPDATE below and a caller may pass
+        any positive value. ``tool_operations_used``/``tool_seconds_used``
+        keep accumulating without limit -- accounting and audit, not a cap.
+        The row lock (``FOR UPDATE`` above) still serializes concurrent
+        charges against the same Run, so the accounting itself stays race-free.
         """
         if not isinstance(operation_id, str) or not operation_id:
             raise PersistenceError("INVALID_INPUT")
@@ -1092,10 +1087,12 @@ class DurableStore:
             # 与其余写路径共用 `_lease_revoked`：租约栅栏在本文件只有一份实现。
             # 唯一的例外是**结算一个本租约已经预留过的派发**：栅栏若连它也拒，
             # 预留的整段超时就永远占着 tool_seconds_used，恢复后的尝试继承这个
-            # 虚高总量，可能因为根本没花掉的秒数而 TIME_BUDGET_EXHAUSTED
-            # （bot review 发现）。结算只是把已知的实际耗时写回本租约自己建立的
-            # 那一行：它不新建预留、不采纳任何结果，人工决定仍由执行器取回后的
-            # control 复读上报并按 history-only 登记。
+            # 虚高总量——记账仍然保留（M1-01，2026-09-28 用户决定，L2 之后不再
+            # 是上限判定的输入，但仍是审计事实），一笔从未真正花掉的耗时永远赖在
+            # 账上依旧是账目错误（bot review 发现，过时表述已按 L2 更新）。结算
+            # 只是把已知的实际耗时写回本租约自己建立的那一行：它不新建预留、不
+            # 采纳任何结果，人工决定仍由执行器取回后的 control 复读上报并按
+            # history-only 登记。
             if existing is None and self._lease_revoked(row, lease, self._db_now(conn)):
                 raise PersistenceError("CONTROL_DENIED")
             if existing is None:
@@ -1114,33 +1111,15 @@ class DurableStore:
                         float(seconds),
                     ),
                 )
-                cursor = conn.execute(
-                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s AND tool_operations_used<%s AND tool_seconds_used+%s<=%s",
-                    (
-                        float(seconds),
-                        lease.run_id,
-                        max_operations,
-                        float(seconds),
-                        float(max_tool_seconds),
-                    ),
+                # M1-01 (2026-09-28 user decision, L2): no ``max_operations``/
+                # ``max_tool_seconds`` condition in the WHERE clause any more --
+                # the row is already locked (``FOR UPDATE`` above) and confirmed
+                # to exist, so this UPDATE always matches it; it only counts and
+                # accumulates, never refuses.
+                conn.execute(
+                    "UPDATE opspilot_runs SET tool_operations_used=tool_operations_used+1,tool_seconds_used=tool_seconds_used+%s WHERE run_id=%s",
+                    (float(seconds), lease.run_id),
                 )
-                if cursor.rowcount == 0:
-                    # The row is already locked (``FOR UPDATE`` above), so this
-                    # is not a lost-update race with another writer -- a cap
-                    # was already reached when we got here. Raising rolls back
-                    # the INSERT above too, so no orphaned charge row survives
-                    # for an operation that was never actually counted.
-                    #
-                    # 两个上限都在这一条 UPDATE 里判定。秒数此前只在进程内把关：
-                    # 两个执行器各自读到 239 秒，就会各自按「还剩 1 秒」派发并成功结算，
-                    # 把 Run 留在 241 秒，而两次观察都被采纳（bot review 发现）。
-                    # 行锁下读到的计数用来区分是哪一个上限触发，报告与进程内同一个
-                    # 原因码。
-                    raise PersistenceError(
-                        "OPERATION_BUDGET_EXHAUSTED"
-                        if int(row["tool_operations_used"]) >= max_operations
-                        else "TIME_BUDGET_EXHAUSTED"
-                    )
                 return
             if existing["seconds"] is None:
                 # 第一次结算：释放预留，按实际耗时记账。差值可以为负——预留本就是

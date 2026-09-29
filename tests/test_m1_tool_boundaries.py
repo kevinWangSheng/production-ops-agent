@@ -286,7 +286,13 @@ def test_the_effective_timeout_is_the_smallest_of_the_three_bounds():
     assert transport.requests[0].timeout_seconds == 4.0
 
 
-def test_the_remaining_tool_time_budget_also_caps_the_next_request():
+def test_cumulative_tool_time_no_longer_caps_the_next_requests_timeout():
+    """M1-01 (2026-09-28 user decision, L2): the per-Run cumulative tool-time
+    ceiling is gone, so a later call's timeout is bound only by the
+    registration's own ``request_timeout_seconds`` and the authorization
+    deadline -- never by how much tool time earlier calls already used.
+    ``tool_seconds_used`` still accumulates correctly (accounting, not a
+    ceiling)."""
     executor, transport, _, clock = build()
     transport.clock, transport.duration = clock, 238.0
     transport.response = TransportResponse(body=body([]))
@@ -295,7 +301,7 @@ def test_the_remaining_tool_time_budget_also_caps_the_next_request():
     transport.duration = 0.0
     executor.execute(request(tool_index=1))
 
-    assert transport.requests[1].timeout_seconds == 2.0
+    assert transport.requests[1].timeout_seconds == 10.0  # the registration's own bound
     assert executor.tool_seconds_used == 238.0
 
 
@@ -668,7 +674,10 @@ def test_the_byte_ceiling_is_handed_to_the_transport_as_well():
     assert transport.requests[0].max_result_bytes == 1024
 
 
-def test_the_operation_budget_stops_further_queries():
+def test_the_operation_count_no_longer_stops_further_queries():
+    """M1-01 (2026-09-28 user decision, L2) cancels the per-Run operation-count
+    ceiling; ``scope.max_operations`` still bounds what a ``QueryScope`` may
+    declare, but the executor no longer refuses a dispatch on it."""
     executor, transport, _, _ = build(scope_overrides={"max_operations": 1})
     transport.response = TransportResponse(body=body([]))
 
@@ -676,20 +685,28 @@ def test_the_operation_budget_stops_further_queries():
     second = executor.execute(request(tool_index=1))
 
     assert first.status == "no_data"
-    assert (second.status, second.reason) == ("denied", "OPERATION_BUDGET_EXHAUSTED")
-    assert len(transport.requests) == 1
+    assert second.status == "no_data"
+    assert executor.operations_used == 2
+    assert len(transport.requests) == 2
 
 
-def test_the_time_budget_stops_further_queries():
-    executor, transport, _, clock = build()
-    transport.clock, transport.duration = clock, 240.0
+def test_the_cumulative_tool_time_no_longer_stops_further_queries():
+    """M1-01 (2026-09-28 user decision, L2) cancels the per-Run cumulative
+    tool-time ceiling. Each call takes exactly its own 30 s per-call timeout
+    (still enforced, unaffected by L2 -- ``registry.MAX_REQUEST_TIMEOUT_SECONDS``
+    caps a single registration at 30 s), but nine of them cross the old 240 s
+    cumulative ceiling."""
+    executor, transport, _, clock = build(
+        registrations=[registration(request_timeout_seconds=30.0)]
+    )
+    transport.clock, transport.duration = clock, 30.0
     transport.response = TransportResponse(body=body([]))
 
-    executor.execute(request(tool_index=0))
-    second = executor.execute(request(tool_index=1))
+    outcomes = [executor.execute(request(tool_index=index)) for index in range(9)]
 
-    assert (second.status, second.reason) == ("denied", "TIME_BUDGET_EXHAUSTED")
-    assert len(transport.requests) == 1
+    assert all(outcome.status == "no_data" for outcome in outcomes)
+    assert executor.tool_seconds_used == 270.0
+    assert len(transport.requests) == 9
 
 
 # --- hard boundary 1: only registered targets decide what is queried --------
@@ -936,7 +953,12 @@ def test_the_executor_is_never_handed_credential_material_to_begin_with():
 
 
 def test_the_executor_resumes_counting_from_the_ledger_not_from_zero():
-    """A restarted worker's executor inherits what the Run already spent."""
+    """A restarted worker's executor inherits what the Run already spent.
+
+    The accounting invariant survives M1-01 (2026-09-28 user decision, L2)
+    even though there is no ceiling left to refuse on: ``operations_used``
+    still starts from the ledger's reading, not zero, and keeps growing.
+    """
     ledger = RecordingLedger(usage=ToolUsage(operations_used=19))
     executor, transport, _, _ = build(ledger=ledger)
     transport.response = TransportResponse(body=body([]))
@@ -946,11 +968,14 @@ def test_the_executor_resumes_counting_from_the_ledger_not_from_zero():
     second = executor.execute(request(tool_index=1))
 
     assert first.status == "no_data"
-    assert (second.status, second.reason) == ("denied", "OPERATION_BUDGET_EXHAUSTED")
-    assert len(transport.requests) == 1
+    assert second.status == "no_data"
+    assert executor.operations_used == 21
+    assert len(transport.requests) == 2
 
 
 def test_the_time_budget_also_resumes_from_the_ledger():
+    """Same accounting invariant for cumulative tool seconds; no ceiling left
+    to bind the timeout to (M1-01, 2026-09-28 user decision, L2)."""
     ledger = RecordingLedger(usage=ToolUsage(tool_seconds_used=239.0))
     executor, transport, _, clock = build(ledger=ledger)
     transport.clock, transport.duration = clock, 1.0
@@ -959,11 +984,10 @@ def test_the_time_budget_also_resumes_from_the_ledger():
     first = executor.execute(request(tool_index=0))
     second = executor.execute(request(tool_index=1))
 
-    # Only one second of the frozen 240 s was left, so the timeout is bound to it.
-    assert first.operation.timeout_seconds == 1.0
+    assert first.operation.timeout_seconds == 10.0  # the registration's own bound
     assert first.status == "no_data"
-    assert executor.tool_seconds_used == 240.0
-    assert (second.status, second.reason) == ("denied", "TIME_BUDGET_EXHAUSTED")
+    assert executor.tool_seconds_used == 241.0
+    assert second.status == "no_data"
 
 
 def test_each_dispatched_operation_is_charged_before_and_after_the_read():

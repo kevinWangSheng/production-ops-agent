@@ -1,0 +1,215 @@
+# M1-01 对齐上游（第二批）：工具体量、时间窗、校验重试、防循环
+
+## 目标与来源
+
+限制类规则独立审计（Opus，2026-09-28；Codex 因容量三次失败未产出）发现：除已处理的循环预算外，工具层上限、固定 300 秒观测窗、校验失败即整份交接、缺少重复调用检测都偏离上游且无记录理由。用户 2026-09-28 决定：trace/视图上限对齐上游；时间窗对齐上游由模型自选；校验失败把错误反馈给模型重试。lead 按"对齐上游"原则直接纳入：压缩阈值 0.95、重复调用检测。
+
+依赖：先完成 `2026-09-28-m1-01-loop-limits.md`（含 L1a、L3a）并完成其真实效果测量，再实施本批，以便分别度量。
+
+## 行为合同
+
+B1. **trace 与视图体量对齐上游**：trace 搜索不再设条数上限（`limit` 参数可选，默认值与上游一致，查不到则取 20 并记录理由），不再按 20 行裁剪展示 span；视图字节上限放宽到上游单条工具结果量级（约 25k tokens / 约 100 KB，以上游 `holmes/common/env_vars.py:137,142` 为准并记录换算）。超出时仍截断，但视图必须显式给出省略的行数与字节数（沿用现有 omitted/truncated 字段与第二轮单位化计数）。metrics 视图同理放宽。
+B2. **时间窗由模型在授权外框内自选（对齐上游）**：工具新增可选时间参数（与上游 `holmes/plugins/toolsets/utils.py:111-113` 同语义：start/end 可省略，默认回看 1 小时至提交时刻）。runner 仍决定一个授权外框（默认提交时刻前 24 小时至提交时刻），模型参数超出外框即拒绝并说明外框——满足 PRODUCT-CONSTRAINTS「Query scope … constrained」，不改该文件。视图记录实际查询窗；lookback 语义按窗内规则（第一批 window-points）继续适用。报告中的时间范围引用按实际视图窗口。
+B3. **报告校验失败反馈重试**：报告未通过解析或引用校验时，把规范化的失败原因（哪条 claim、哪个 evidence_id、何种错误，不含原始视图内容）作为一条固定模板 user 消息回给模型，允许重写 1 次（占用请求额度）；仍失败再按现有路径交接。与 loop-limits L1a 的"格式修复一次"合并为同一机制，总计最多 1 次修复重试。
+B4. **压缩阈值对齐上游**：0.8 → 0.95（上游 `holmes/core/llm.py:159`）；单条工具结果占上下文比例上限按上游设置核对并记录。
+B5. **重复调用检测（对齐上游 `holmes/core/safeguards.py`）**：同一 Run 内完全相同的工具调用（同工具、同参数）再次出现时不重复执行，返回一条说明"与第 N 次调用相同，结果见 evidence_id X"的工具结果；行为与上游默认一致并记录差异。
+
+B6. **上下文取保守值**（lead 2026-09-28 补充）：`MAX_CONTEXT_TOKENS` 由 1_048_576 改为 1_000_000。DeepSeek 官方页面只写 "1M"，按二进制换算的 1_048_576 在接近满窗口时可能被供应商拒绝；输出 65536 不变，请求字节上限相应核对。
+
+实现决定（lead 2026-09-28）：B2 的模型自选时间窗采用"工具参数"方式——start/end 作为可选参数进入 `request.params`，由 `_metrics`/`_traces` 在 runner 授权外框内校验与使用（与上游工具参数语义一致）；otel_demo 各注册的 `max_window_seconds` 相应提高以容纳 24 小时外框。
+
+### 审查后处置（lead 2026-09-28）
+
+- P1（视图记录外框而非实际查询窗）：修复。transport 把实际查询窗回传执行器，视图 `window` 与 `lookback_start_at` 按实际查询窗记录；补执行器层合同测试（不传 start/end、传子窗两种）。
+- P2（工具描述仍称 `[300s]` 为整窗聚合）：修复。描述改为"整窗聚合的范围选择器等于所选查询窗长度"，并给出以查询窗秒数为参数的通用写法，不写死 300。
+- P2（trace limit 过大时整条失败）：对齐上游——上游在结果过大时返回可操作的提示让模型缩小查询（Prometheus 工具返回摘要而非数据）。本项目在 `RESULT_TOO_LARGE`/读取超限时返回可操作的拒绝说明：写明上限字节与建议的更小 limit 或更窄窗口，模型可据此重查。后端代价仍由 4MiB 读取上限与单次 30 秒超时约束（满足 PRODUCT-CONSTRAINTS「cost … constrained」），不另设条数上限。
+- P2（效果测量口径）：第二批测量的问题文本把 "for the authorized 300-second window" 改为 "for the last 5 minutes"（真实用户描述时间的方式，时间窗交给模型选择），其余不变；独立观察仍按最近 5 分钟采集。Run 顺序：两个 normal 先跑，其后 fault、留出；与 6f/第一批的问题文本差异在 run.md 中写明。
+
+## 验收
+
+- 全新上下文测试作者先写 `tests/test_m1_upstream_alignment_b_contract.py` 并确认红；实现者转绿不改断言；既有测试因合同变化的修改逐条记录。
+- 独立审查。
+- 真实效果测量：同 loop-limits 的 6 个 Run 口径（2 正常 + 2 故障 + 2 留出），与第一批结果并列对比。
+
+## 状态
+
+- 2026-09-28：合同写定；待第一批完成后实施。
+- 2026-09-28：实现完成（分支 `feature/m1-01-window-points`，worktree
+  `production-ops-agent-window-points`）。B1-B6 逐条落地于
+  `opspilot/tools/otel_demo.py`（B1 trace/view 体量、B2 时间窗）、
+  `opspilot/investigation/loop.py`（B3 重试反馈、B5 去重）、
+  `opspilot/investigation/reports.py`（B3 模板）、
+  `opspilot/investigation/context.py`（B4 压缩阈值）、
+  `opspilot/investigation/limits.py`（B6）、`opspilot/instructions/discipline.py`
+  （B3 反馈模板并入 `prompt_revision` 哈希）。本地已提交，未 push。
+
+  **合同测试结果**（`tests/test_m1_upstream_alignment_b_contract.py`，3d2d74c，
+  未改断言）：14 项中 11 项转绿。3 项仍红，判定为测试文件自身的既有缺陷，
+  与本批实现无关（已用独立脚本核对 `outcome.model_view` 真实结构，附证据）：
+  - `test_b1_traces_view_no_longer_caps_sampled_spans_at_20`：测试自身的
+    "test invariant: stays small" 前置断言用 60 个 `_small_span` 算出
+    22201 字节，超过它自己断言的 16 KiB 门槛（与本批改动无关，是该测试
+    夹具早于任何实现就已算错的常量）。
+  - `test_b1_traces_view_byte_cap_matches_the_upstream_tool_result_scale`、
+    `test_b1_metrics_view_byte_cap_also_widened`：都断言
+    `outcome.model_view["data"][...]`，但 `ReadOnlyToolExecutor._record()`
+    从未把行内容放在 `view["data"]` 下——一直是 `view["content"]`（同一测试
+    文件既有的 `test_m1_otel_demo_contract.py:1203/1228/1239/1286` 等多处直接
+    断言 `view["content"]`，且用真实 executor 跑一次可复现）。`view["data"]`
+    这个键从不存在，与截断/行数上限无关。
+  这 3 处按规则"不得改其断言"未动；已用真实 executor 验证本批实现在
+  `view["content"]`/`omitted_rows`/`truncated` 等真实字段上行为正确（见下）。
+
+  **既有测试冲突**（合同直接后果，逐条更新，未削弱其余断言）：
+  - `tests/test_m1_otel_demo_contract.py`：`test_profile_constants_match_the_contract`
+    （`OBSERVATION_SECONDS` 300→86400）、
+    `test_tool_schemas_are_two_function_schemas_named_as_registered`
+    （schema 新增 start/end）、
+    `test_face_evidence_context_is_the_300s_window_ending_at_the_clock`
+    → 改名 `..._24h_frame_ending_at_the_clock`（B2 授权外框变化）、
+    `test_scope_window_is_the_policy_window_of_the_input` 及
+    `test_factory_scope_is_issued_from_the_lease_the_run_row_and_the_input`
+    （共享 `_input()` 改为绕过 `otel_demo_face` 直接构造 `window=WINDOW` 的
+    evidence_context，理由同批次 B 合同测试自己的 `_otel_executor` 注释：
+    `otel_demo_face` 默认窗口不再是 300s，直接依赖它会偷偷绑定明天的 24h
+    帧而非本文件真实录制的夹具窗口）、
+    `test_project_traces_records_the_recorded_checkout_search`、
+    `test_project_traces_payment_search_puts_payment_spans_first`、
+    `test_traces_call_through_the_executor_returns_sampled_spans`
+    （B1 撤销 20 span 采样上限，真实计数从 20 改为夹具真实值 90/98）、
+    `test_transport_traces_limit_defaults_to_ten` → 改名
+    `..._to_twenty`（B1 默认值 10→20，理由：上游 Grafana Tempo trace 搜索
+    `params.get("limit") or 20`，无独立上游 Jaeger 值可对齐）、
+    `test_transport_traces_refuses_a_bad_limit_without_sending`（parametrize
+    去掉 21，改用仍非法的值组合）、
+    `test_traces_bad_limit_is_an_error_before_any_request`
+    （limit 从 21 改为 -1，21 不再非法）。
+  - `tests/test_m1_view_explicit_contract.py`：
+    `test_b_complete_search_reports_backend_and_shown_counts`（B1 行数
+    20→90，omitted 70→0，与实际字节数一致）、
+    `test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent`
+    （lead 已预告：16 KiB→100 KiB 后原 20 条重 span 不再触发截断，改用
+    40 条并用真实 executor 跑一次量出 `shown=29 omitted=11`，保留"仍触发
+    截断"的测试意图）、`test_c_two_incomplete_views_are_listed_in_delivery_order`
+    （B5 去重：两个默认参数相同的 tool_call 现在会被判定为重复调用，改用
+    不同 `arguments` 恢复"两条独立证据"的原意图）。
+  - `tests/test_m1_investigation_context.py`、
+    `tests/test_m1_investigation_compaction.py`、
+    `tests/test_m1_investigation_continuation.py`、
+    `tests/test_m1_investigation_loop.py`
+    （`test_the_lease_is_renewed_before_every_live_tool_dispatch`）、
+    `tests/integration/test_m1_loop_resume_postgres.py`
+    （`test_kill_after_the_tool_result_commits_before_the_next_call_then_resume`）：
+    各自的本地 `_rounds`/`_tool_rounds` 夹具用默认 `tool_call()` 复用同一组
+    参数模拟"新一轮"，B5 去重后这些轮次被正确判定为重复调用而不再真实派发，
+    改为每轮传不同 `arguments`，恢复"每轮都是独立派发"的原意图。
+  - `tests/integration/test_m1_otel_demo_contract_postgres.py`：
+    `test_a_workbench_run_under_the_otel_profile_records_real_shaped_evidence`
+    （B2：真实 workbench 记录的授权窗口从 `WINDOW` 改为
+    `Window(WINDOW_END-24h, WINDOW_END)`）。
+
+  **实现判断点**（可逆技术细节，独立决定，一行理由）：
+  - B1 视图字节上限统一取 `100 * 1024`（100 KiB，非合同文本给出的十进制
+    100_000）：贴合本仓库既有 KiB 幂次常量惯例（24*1024/16*1024/1024*1024），
+    换算回约 25,600 tokens，仍与上游 25,000-token 量级同一数量级。
+  - trace 注册的 `max_result_bytes` 从 256 KiB 提到 1 MiB（与 metrics 一致）：
+    B1 撤销行数上限后，未截断投影记录的原始字节可能超过旧上限；未截断，仅
+    放宽，保守选择。
+  - B2 省略 start/end 时默认窗口做了"钳制"：`max(frame.start, frame.end-1h)`
+    而非直接拒绝更窄的授权外框——保证已有 300s 夹具测试在不传参数时行为
+    不变，也符合"不足 1 小时的外框不该无理由拒绝"的直觉；未在合同文本中
+    显式要求，记录为实现细节。
+  - B2 用 `_query_window()` 在 `_metrics`/`_traces` 内部完成校验/裁剪，未改
+    `ReadOnlyToolExecutor._authorize()` 或 `loop.py` 的顶层窗口语义——按 lead
+    指示的落点，且合同测试自己的注释里明确排除了在 loop 收窄
+    `ToolRequest.window` 这条路径。
+  - B3 的模板反馈文本（`REPORT_RETRY_TEMPLATE`）并入了 `prompt_revision` 哈希
+    （新增 `report_retry_template` 参数，默认空串不影响未传参调用方）：这是
+    新增的模型可见文本，按本仓库既有惯例（`report_contract`/
+    `run_coverage_template` 同样参与）理应参与版本哈希，避免一次跨部署的
+    resume 在未变版本号的情况下悄悄改变模型看到的文字。核对过仓库内三处
+    硬编码 `prompt_revision`/`context_policy_revision` 字符串均为
+    `!=`（变更检测）用法，不受影响。
+  - B3 诊断详情只对"引用了未交付的 evidence_id"这一种失败原因给出具体值
+    （`unsupported_evidence_ids`），其余引用失败原因（target_ref 不在授权
+    范围、time_scope_ref 不匹配、非 fact 视图被当作 fact 引用）只给固定原因
+    码不给细节：这些情况没有"可以安全复述、不含原始视图内容"的具体值可给。
+  - B5 的去重范围仅限当前 attempt 的内存态（`_State.seen_tool_calls`），不在
+    `resume()`/压缩折叠后重建：跨 attempt/跨压缩重建需要从已提交行反推原始
+    调用参数，folded 摘要（`fold_digest`）只保留参数的 SHA-256 而非原始值，
+    重建会既复杂又可能出错；本批 6 个合同测试均不覆盖跨 resume 的去重，界定
+    为已知限制而非实现缺口，记录于此以便后续任务评估是否需要补上。
+  - B5 的去重结果视图携带原调用的 `evidence_id`（而非只给
+    `duplicate_of_evidence_id`）：多处既有共享测试夹具（如
+    `report_from_transcript`）假定"每条 tool 消息都有 evidence_id"，携带
+    原值既修复了这一假设，也让模型能在报告里直接引用它——真实证据仍只在
+    `state.delivered` 里记一次（`adopted` 故意不设 `True`），不会产生重复
+    引用。
+  - B4：只改了 `compaction_pct`（0.8→0.95），未动 `single_tool_pct`（0.25）
+    ——B1 的视图字节上限（≈25k tokens）已经先于这个机制生效，同一份视图永远
+    到不了 25% 这个更松的旧上限，核对结果记在
+    `opspilot/investigation/context.py` 的 `ContextPolicy` 注释里，不在本文件
+    重复。
+
+  **验证**：
+  - `.venv/bin/python -m pytest tests/ --ignore=tests/integration -q`：2273
+    passed, 3 known test-bugs (above), 2 xfailed（架构欠债标记，与本批无关）。
+  - `.venv/bin/ruff check .`/`ruff format --check .`/`.venv/bin/mypy`：本批
+    改动的 14 个文件全部通过；`make check` 整体失败仅因
+    `docs/evidence/m1-01-replay-ablation/scripts/{heldout_fault,replay}.py`
+    两处与本批无关的既有 lint 债务（用 `git stash` 核对：改动前后表现一致）。
+  - `M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`
+    （本 worktree 55431 PG lab，用完已 `postgres_lab stop`）：204 passed，54
+    skipped（未 opt-in 的 M0 测试）。
+  - 未执行：6-Run 真实效果测量（本文件"验收"第 3 项）与独立审查——按 lead
+    交给我的范围（实现 + `make check`/PG）未覆盖，留给下一个判断点。
+
+- 2026-09-28：审查后处置（P1/P2）落地，commit `b17c65f`（未 push）。
+  - P1：`TransportResponse` 新增 `query_window`（otel_demo 的 `_metrics`/
+    `_traces` 回填实际查询窗）；执行器 `_inspect()` 校验其落在 `plan.window`
+    内（否则 MALFORMED_RESULT，与 lookback 越界同一 fail-closed 处理）；
+    `_record()` 的 `view["window"]`/`lookback_start_at` 改用该值，未给出时
+    回退 `plan.window`（兼容未接入此字段的其他 profile，如 fixture.py）。
+  - 检查了 `plan.window` 在 executor.py 的其余用处：`_inspect()` 的
+    `source_start_at`/`source_end_at` 窗内校验（WINDOW_OUT_OF_SCOPE）**未改**
+    ——该处本就绑定 `self._scope.window`（授权外框），不是 `plan.window`，
+    现有注释已明确"the bound is the *scope* window, not the narrower
+    requested one"；改成实际查询窗会让来源数据的合法桶对齐偏差被误判为越权，
+    维持原判。`reports.eligible_time_policies()` 的 `window` 参数**未改**——
+    其文档已把该参数称作"query window"并要求落在 policy 自己声明的窗口内
+    （`policy_start <= view_start <= view_end <= policy_end`），policy 的窗口
+    在 evidence_context 里仍是完整外框；`view["window"]` 收窄为实际查询窗后，
+    这条包含关系依然成立（子集仍在外框内），该函数不用动，反而让引用资格判定
+    更贴合实际查询范围（此前用外框会把资格判定放宽到比实际证据覆盖更大的
+    区间）。
+  - P2（trace 描述整窗聚合）：改为"range selector equal to the query
+    window's length in seconds"通用写法（`increase(x[Ws])` 等），不再写死
+    300s。
+  - P2（trace 过大可操作拒绝）：executor 新增 `_refuse(..., detail=...)` 与
+    `_refusal_detail()`，仅对 `RESULT_TOO_LARGE` 附加 `max_result_bytes` 与
+    建议缩小 `limit`/收窄窗口的 `message`；放在 executor.py（跨 profile 通用），
+    不是 otel_demo 专属。
+  - 验证：`tests/test_m1_upstream_alignment_b_contract.py` 22 项全绿（原
+    18 项 + 本轮新增 4 项 P1×2/P2×2）；`pytest tests/ --ignore=tests/integration
+    -q` 2280 passed 2 xfailed 零失败；`ruff check/format`、`mypy` 改动的 2 个
+    文件干净；`M1_DURABLE_POSTGRES=1 pytest tests/integration -q` 204
+    passed 54 skipped（本 worktree 55431 lab，遇到一次后台任务通知丢失导致的
+    残留状态误报 2 个失败，`postgres_lab restart` 后前台重跑清零，非代码
+    回归）；`make check` 整体绿（此前的既有 lint 债务已被另一提交
+    `27476a1` 修复，与本任务无关）；PG lab 已 `stop`。
+- 2026-09-28：**效果测量已执行**（候选冻结 `e22e6c4`，`opspilot/` 全程零改动，
+  6 个真实 Run：2 正常 + 2 paymentFailure + 2 留出 productCatalogFailure/
+  cartFailure；问题文本改"for the last 5 minutes"，时间窗模型自选），每 Run
+  全新上下文独立审查（Opus）+ v4 判据 + a/b/c/d/e 分类 + 上游口径 + 新增窗口
+  污染核查，[证据](../evidence/m1-01-alignment-b-effect/run.md)。结果：6/6
+  发布，5/6 自行结束（fault-2 触发 B3/L1a 合并重试，round8 引用无效被拒→
+  round9 修复发布，审查确认修对了触发拒绝的问题但引入 2 个新 P2）；
+  `RESULT_TOO_LARGE`/B5 去重 0 次触发；6/6 上游口径正确；6/6 未发现窗口污染
+  （跨故障误用证据）。核心 4 场景 P2 合计三包连续下降 14（6f）→10（第一批）
+  →8（本批），六 Run 全量 21（第一批）→13（本批，-38%）。资源体量：prompt
+  token 较第一批增约 5.8×（3,499,044 vs 605,530），费用增约 2.6×（1.46 vs
+  0.56 CNY），主因 B1 视图体量放宽叠加 B4 压缩阈值 0.95 共同推迟压缩，未触发
+  任何一次 `RESULT_TOO_LARGE` 或上下文耗尽。产品侧发现：`replay-candidate`
+  提示词变体仍含 `FIXED_WINDOW` 段落（discipline.py:82,127,172），文字上与
+  B2 工具 schema 矛盾（"do not supply start/end"），但实测 6/6 Run 模型均
+  无视该句正常传参，未造成可观察后果，留给 lead 决定是否需要同步修订。

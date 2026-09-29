@@ -26,7 +26,7 @@ import pytest
 
 from opspilot.investigation.context import ContextError
 from opspilot.investigation.inputs import ToolFace
-from opspilot.investigation.loop import investigation_versions
+from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools import (
     ERROR_REASONS,
@@ -250,9 +250,42 @@ def _lease() -> Lease:
     )
 
 
-def _input(run_id: str, *, face_clock=None):
+def _fixed_window_evidence_context(run_id: str) -> dict:
+    """Same shape as ``otel_demo_face``'s own evidence context, but with an
+    explicit, fixed ``window`` instead of one computed from the clock.
+
+    B2 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) moved the
+    runner's default authorization frame from 300 s to 24 h
+    (``OBSERVATION_SECONDS``), so ``otel_demo_face``'s own default no longer
+    matches this file's recorded fixture responses, which were captured for
+    exactly ``WINDOW``. Built directly rather than through ``otel_demo_face``
+    so every fixture-replay test below stays pinned to ``WINDOW`` regardless
+    of that frame default -- the same reason
+    ``tests/test_m1_upstream_alignment_b_contract.py`` declares its own
+    ``_evidence_context`` helper instead of using ``otel_demo_face``.
+    """
+    return {
+        "type": "opspilot-evidence-context-v4",
+        "run_id": run_id,
+        "time_policies": [
+            {
+                "id": "policy-window-1",
+                "mode": "historical_window",
+                "all_authorized_targets": True,
+                "window": WINDOW.as_json(),
+                "reference_rule": "response_received_at",
+            }
+        ],
+    }
+
+
+def _input(run_id: str):
     """A Run input whose ``policy-window-1`` is exactly the recorded window."""
-    face = otel_demo_face(face_clock or FakeClock(start=WINDOW_END))
+    face = ToolFace(
+        tool_schemas=TOOL_SCHEMAS,
+        variant_id=DISCIPLINE_VARIANT,
+        evidence_context=_fixed_window_evidence_context,
+    )
     return face.input_for(
         run_id=run_id,
         question="Why is checkout erroring?",
@@ -354,7 +387,10 @@ def test_profile_constants_match_the_contract():
     assert METRICS_TOOL == "metrics_range_query"
     assert TRACES_TOOL == "traces_search"
     assert CREDENTIAL_REF == "otel-demo-ro"
-    assert OBSERVATION_SECONDS == 300
+    # B2 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the runner's
+    # default authorization frame, 300 s -> 24 h; the model now picks its own
+    # narrower query window inside it (start/end tool parameters).
+    assert OBSERVATION_SECONDS == 24 * 3600
     assert TRACE_PROJECTION == "otel-demo-traces-v1"
     assert isinstance(SERVICES, tuple) and len(SERVICES) == 17
     assert set(SERVICES) == {
@@ -392,10 +428,11 @@ def test_tool_schemas_are_two_function_schemas_named_as_registered():
         assert set(parameters["required"]) <= set(parameters["properties"])
     metrics = by_name[METRICS_TOOL]["function"]["parameters"]
     assert "expr" in metrics["required"]
-    assert set(metrics["properties"]) == {"expr", "step_seconds"}
+    # B2: start/end (optional) added to both tools' schemas.
+    assert set(metrics["properties"]) == {"expr", "step_seconds", "start", "end"}
     traces = by_name[TRACES_TOOL]["function"]["parameters"]
     assert "service" in traces["required"]
-    assert set(traces["properties"]) == {"service", "limit"}
+    assert set(traces["properties"]) == {"service", "limit", "start", "end"}
 
 
 def _model_visible_texts():
@@ -452,7 +489,11 @@ def test_model_visible_face_states_limits_and_what_it_cannot_prove():
 # -- face, versions, scope window ---------------------------------------------
 
 
-def test_face_evidence_context_is_the_300s_window_ending_at_the_clock():
+def test_face_evidence_context_is_the_24h_frame_ending_at_the_clock():
+    """B2 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the runner's
+    default authorization frame moved from the v4 acceptance packet's fixed
+    300 s window to 24 h ending at submission (``OBSERVATION_SECONDS``); the
+    model now picks its own narrower query window inside it per call."""
     now = datetime(2026, 9, 26, 14, 3, 10, tzinfo=timezone.utc)
     face = otel_demo_face(FakeClock(start=now))
     assert isinstance(face, ToolFace)
@@ -470,7 +511,7 @@ def test_face_evidence_context_is_the_300s_window_ending_at_the_clock():
                 "mode": "historical_window",
                 "all_authorized_targets": True,
                 "window": {
-                    "start": (now - timedelta(seconds=300)).isoformat(),
+                    "start": (now - timedelta(seconds=OBSERVATION_SECONDS)).isoformat(),
                     "end": now.isoformat(),
                 },
                 "reference_rule": "response_received_at",
@@ -672,12 +713,25 @@ def test_project_traces_records_the_recorded_checkout_search():
             and entry["error_spans_by_listed_status_tags"] >= 0
         )
     assert record["spans_outside_window"] == 0
-    assert record["sampled_span_count"] == 20 == len(record["data"]["sampled_spans"])
-    assert record["omitted_span_count"] == total_spans - 20
+    # B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) removed the
+    # old 20-span sampling cap: every backend span is now sampled here (the
+    # view's own byte cap, not this projection, is what may later truncate
+    # what the model is shown).
+    assert (
+        record["sampled_span_count"]
+        == total_spans
+        == len(record["data"]["sampled_spans"])
+    )
+    assert record["omitted_span_count"] == 0
     assert record["incomplete"] is True  # 2 traces returned for limit 2
-    # The requested service's spans come first; there are more than 20 of them.
+    # The requested service's spans come first, then the rest, sorted by
+    # error status then duration; there are more than 20 checkout spans.
     assert expected["checkout"] > 20
-    assert all(s["service"] == "checkout" for s in record["data"]["sampled_spans"])
+    sampled_spans = record["data"]["sampled_spans"]
+    leading = [s["service"] for s in sampled_spans[: expected["checkout"]]]
+    assert leading == ["checkout"] * expected["checkout"]
+    rest = sampled_spans[expected["checkout"] :]
+    assert all(s["service"] != "checkout" for s in rest)
     for span in record["data"]["sampled_spans"]:
         assert set(span) >= {
             "trace_id",
@@ -715,7 +769,8 @@ def test_project_traces_payment_search_puts_payment_spans_first():
     record, _, _ = _projected(PAYMENT_TRACES, service="payment", limit=2)
     counts = _spans_by_service(PAYMENT_TRACES)
     sampled = record["data"]["sampled_spans"]
-    assert len(sampled) == 20
+    # B1: no more 20-span sampling cap -- every backend span is sampled.
+    assert len(sampled) == sum(counts.values())
     leading = [s["service"] for s in sampled[: counts["payment"]]]
     assert leading == ["payment"] * counts["payment"]
     rest = sampled[counts["payment"] :]
@@ -1007,17 +1062,21 @@ def test_transport_traces_request_and_projected_body():
     assert response.data_as_of == end
 
 
-def test_transport_traces_limit_defaults_to_ten():
+def test_transport_traces_limit_defaults_to_twenty():
+    """B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the default
+    trace-search limit moved 10 -> 20, matching the closest upstream analog
+    (Grafana Tempo's own ``params.get("limit") or 20``); no upstream
+    Jaeger-specific value exists to match instead."""
     opener = FakeOpener(routes={"/api/traces": CHECKOUT_TRACES})
     response = _transport(opener).fetch(
         _transport_request(TRACES_TOOL, {"service": "checkout"})
     )
-    assert parse_qs(urlsplit(opener.urls()[0]).query)["limit"] == ["10"]
-    assert json.loads(response.body)["query"]["limit"] == 10
+    assert parse_qs(urlsplit(opener.urls()[0]).query)["limit"] == ["20"]
+    assert json.loads(response.body)["query"]["limit"] == 20
     assert json.loads(response.body)["incomplete"] is False
 
 
-@pytest.mark.parametrize("limit", [0, 21, -1, "2", 2.0, True])
+@pytest.mark.parametrize("limit", [0, -1, "2", 2.0, True])
 def test_transport_traces_refuses_a_bad_limit_without_sending(limit):
     opener = FakeOpener(routes={"/api/traces": CHECKOUT_TRACES})
     response = _transport(opener).fetch(
@@ -1284,10 +1343,17 @@ def test_traces_call_through_the_executor_returns_sampled_spans(monkeypatch):
     view = outcome.model_view
     assert view["tool"] == TRACES_TOOL and view["source"] == SOURCE
     rows = view["content"]
-    assert 0 < len(rows) <= 20
+    # B1: no more 20-row sampling cap -- all of CHECKOUT_TRACES' spans fit
+    # under the widened view byte cap (MAX_VIEW_BYTES) unsampled.
+    assert 0 < len(rows) == record["sampled_span_count"]
     assert rows == expected["data"]["sampled_spans"][: len(rows)]
-    assert all(row["service"] == "checkout" for row in rows)
-    assert view["result_count"] == 20
+    # The requested service's spans lead; other services follow (B1 removed
+    # the old cap that happened to keep every sampled row "checkout").
+    checkout_count = sum(1 for row in rows if row["service"] == "checkout")
+    assert checkout_count > 0
+    assert all(row["service"] == "checkout" for row in rows[:checkout_count])
+    assert all(row["service"] != "checkout" for row in rows[checkout_count:])
+    assert view["result_count"] == record["backend_returned_span_count"]
     assert view["incomplete"] is True  # limit 2, 2 traces returned
     assert view["query"] == {"service": "checkout", "limit": 2}
     assert [r.evidence_id for r in sink.records] == [evidence.evidence_id]
@@ -1311,7 +1377,10 @@ def test_traces_unknown_service_is_an_error_before_any_request(monkeypatch):
 def test_traces_bad_limit_is_an_error_before_any_request(monkeypatch):
     opener = FakeOpener(routes={"/api/traces": CHECKOUT_TRACES})
     executor, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": 21}))
+    # B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the old
+    # upper bound of 20 is gone (21 is now a perfectly valid limit), so a
+    # still-invalid value proves the same INVALID_LIMIT/INVALID_PARAMS path.
+    outcome = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": -1}))
     assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
     assert not opener.called
 

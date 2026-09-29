@@ -230,6 +230,64 @@ def run_coverage_message(views: Sequence[DeliveredView]) -> str:
     )
 
 
+# B3 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): the fixed
+# template of the user message the forced final round (loop-limits L1a)
+# carries when it follows a report-validation failure, so the model sees why
+# the previous reply was not accepted instead of only the unconditional
+# ``FINAL_REPORT_INSTRUCTION``. Merged with L1a into one mechanism: this is
+# the *only* retry a Run ever gets (loop.py's ``force_final`` already caps it
+# at one). Never includes a view's own content -- only the failure's fixed
+# reason code and, when it can be named safely, the unsupported evidence_id
+# value(s) a claim cited. Part of ``prompt_revision`` (via
+# ``report_retry_template``) like every other model-visible template here.
+REPORT_RETRY_TEMPLATE = (
+    "The previous reply was not accepted as the final report ({reason})."
+    "{detail} This is the forced final retry: return exactly one corrected "
+    "json object in the report format already given, citing only "
+    "evidence_id values already delivered in this transcript."
+)
+
+
+def unsupported_evidence_ids(
+    report: ReportV2, *, views: Sequence[DeliveredView]
+) -> tuple[str, ...]:
+    """Evidence_id values a claim cited that no delivered view carries.
+
+    A narrower, content-free companion to ``unsupported_citations``: it names
+    only the one failure mode (an unknown id) that is safe to repeat back to
+    the model, never a view's own content. A citation failure for another
+    reason (an unauthorized target_ref, a wrong time_scope_ref, a non-fact
+    view cited as a fact) is not named here even though
+    ``unsupported_citations`` is still true for it -- there is nothing
+    view-shaped to safely repeat back for those.
+    """
+    known = {view.evidence_id for view in views}
+    return tuple(
+        dict.fromkeys(
+            eid
+            for claim in report.claims
+            for eid in claim.evidence_ids
+            if eid not in known
+        )
+    )
+
+
+def report_retry_feedback(
+    reason: str, *, report: ReportV2 | None, views: Sequence[DeliveredView]
+) -> str:
+    """B3's one-shot retry feedback for a failed report (loop.py's L1a path).
+
+    ``reason`` is ``parse_report``'s or the citation check's fixed code.
+    ``report`` is the parsed report when parsing succeeded (a citation
+    failure) or ``None`` (a parse failure never became claims to inspect).
+    """
+    ids = unsupported_evidence_ids(report, views=views) if report is not None else ()
+    detail = (
+        f" Unsupported evidence_id value(s) cited: {', '.join(ids)}." if ids else ""
+    )
+    return REPORT_RETRY_TEMPLATE.format(reason=reason, detail=detail)
+
+
 # Field allowlists for ``evidence_context_projection`` (redline P3-4). Each
 # map is exactly the keys the frozen v4 contract
 # (``docs/evidence/m0-real-investigation/IncidentScenario.v4.schema.json``,
