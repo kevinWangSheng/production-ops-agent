@@ -1,6 +1,6 @@
 # M1-01 后续项 3：发布后事故状态显示 `queued`
 
-- 状态：进行中（第一阶段：定性与合同，停在用户门）
+- 状态：进行中（用户 2026-09-29 选定 A；合同已写，实现待第二阶段后半）
 - 更新日期：2026-09-29
 - 依据：[收口记录](2026-09-28-m1-01-closure.md) 后续项 3；C3 §4；[ADR-0005](../adr/0005-handoff-and-deadline-terminal.md)
 - 工作区：分支 `feature/m1-01-incident-state`，worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-incident-state`
@@ -38,14 +38,45 @@
 
 上游对照（引自 ADR-0005 对 HolmesGPT `5e983c17` 的引用，本机未找到上游源码，**未复核**）：会话只有一个状态字段 `ConversationStatus`（`COMPLETED/FAILED/TIMEOUT` 等），无「会话状态 + 执行状态」两层。
 
-## 需要用户决定：事故 `state` 的语义（状态语义属用户门）
+## 用户决定（2026-09-29）：选 A
 
-- **A. 承认为「人工控制镜像」，页面不再当状态展示（推荐）。** 合同写一句：事故级只有 lifecycle；`state` 仅是人工控制在事故行上的副本，取值语义为 active（初值，含 `queued`/`running`）/`paused`/`cancelled`，不表达执行进度；页面以 Run 状态 + lifecycle 为准，把该列显示为「control: paused/cancelled」，`active` 时不显示。不迁移数据，现有测试仍成立；顺带可删除 `completed` 死分支（可选）。代价：列名仍叫 state，靠合同文字约束。
-- **B. 让它成为真正的派生状态**：定义为 = 当前 Run 执行状态（paused/cancelled 来自人工控制），在 claim/publish/hand_off/block/清扫/租约过期/各控制路径同事务写。代价：约 10 条写路径与并发语义（人工控制优先、代际栅栏）要逐条改，重复保存 Run 状态，与 C3「执行状态与结果分开」及上游单字段做法相比多一层冗余；收益：列自身正确。
-- **C. 删列**：控制判定改为 join 当前 Run + 代际，页面只显示 Run 与 lifecycle。最干净，但要迁移与改所有读者/测试，超出 M1-01 收口体量。
+事故级 `state` 只是人工控制的镜像；不迁移数据、不改写库里的值、不改现有测试；只规定页面投影。B（派生状态）与 C（删列）不做，改变条件：要对外 API/通知暴露「事故当前状态」时重开 B。
 
-推荐 A：B、C 的收益只是列名好看，代价触及并发与恢复关键路径；A 只改合同文字与展示。改变推荐的条件：若后续要对外 API/通知暴露「事故当前状态」，则选 B。
+## 合同
 
-## 若选 B 的合同要点（供合同测试作者，先选后写）
+**原文位置：** C3 §4 在 `事故生命周期：…` 一行（technical-proposal-2026-09-07.md:84）之后新增一段（:86），只补定义，不改既有语义；该段已写入本分支。
 
-验收口径 `IncidentScenario -> IncidentOutcome`，PG 上断言最终可观察的（事故 state，Run state，代际）：accept→(queued,queued)；claim→(running,running)；publish→(completed，conclusion 写入，事故仍开放)；hand_off/清扫→waiting_human；cancel→cancelled 且 lifecycle 仍 open；resume/follow_up/correct→(queued，未领取时不得显示 running)；挂起→paused，解除挂起不自动恢复；人工控制优先：晚到的 publish/claim/清扫不得覆盖 paused/cancelled（租约、代际栅栏不变）。选 A 则合同测试只需断言页面不再把 `queued/running` 作为状态展示、control 镜像取值与 Run 状态各自符合上表。
+**定义。** 事故行 `state` 的语义是「人工控制标记」：`paused`（人工暂停，或全局/目标挂起）、`cancelled`（当前 Run 被取消）、其余一律视为「进行中」。库里的值 `queued`、`running`（含 resume/follow_up/correct 写入的 `running`）与任何其他值都属「进行中」，界面不解释、不显示。它不表达执行进度；执行进度只看当前 Run 的状态，结论只看是否已发布，生命周期只看 lifecycle。`cancelled` 不等于事故关闭，lifecycle 仍为 `open`。
+
+**公开接口。** 只有 HTML：`GET /` 与 `GET /incidents/{id}`（`opspilot/web/app.py:260,266`），没有 GET 的 JSON 投影（`POST .../control` 的 JSON 不含 state，不变）。断言用 HTTP 页面文本，`Accept: text/html`。
+
+**详情页投影**（`templates/incident.html`）：
+- 始终显示：`id="run-state"`（Run 行状态，原样）、lifecycle 徽标、`id="concluded"`、`id="control-generation"`。
+- 新元素 `id="incident-control"`：仅当标记为 `paused` 或 `cancelled` 时出现，文本恰为 `paused` 或 `cancelled`（前缀 `control`）。进行中时**整个元素不出现**。
+- `id="incident-state"` 元素及其「State」标签不再出现；`queued`/`running` 不得作为事故级徽标出现（Run 徽标 `run-state` 可为 `queued`/`running`）。
+
+**列表页**（`templates/index.html`）：「State」列改名「Control」，单元格为 `paused`/`cancelled`，进行中为空（不写 `queued`/`running`）；Lifecycle、Generation、Concluded 列不变。列表不显示 Run 状态（本次不扩）。
+
+**逐场景（事故标记 / Run 行 / 详情页应见与不应见）：**
+| 场景 | 库中 `state` / Run | 应见 | 不应见 |
+|---|---|---|---|
+| 发布后 | queued 或 running / completed，有 conclusion | `run-state`=completed，`concluded`=concluded，lifecycle open | `incident-control`、`incident-state`、事故级 `queued` |
+| 交接或超时清扫后 | queued 或 running / waiting_human | `run-state`=waiting_human，`concluded`=no conclusion，lifecycle open，`handoff-report` 或 `report-missing` 沿用 | `incident-control` |
+| cancel 后 | cancelled / cancelled | `incident-control`=cancelled，`run-state`=cancelled，lifecycle **open** | `incident-state`；lifecycle 不得为 closed |
+| 人工 pause 后 | paused / paused | `incident-control`=paused，`run-state`=paused | 事故级 `queued`/`running` |
+| 全局或目标挂起后（结论未发布） | paused / paused | 同 pause（页面不区分来源） | 同上 |
+| 挂起时已发布的事故 | 不被挂起写入（挂起只改无结论事故）/ completed | 同「发布后」 | `incident-control` |
+| 解除挂起后 | 仍 paused / 仍 paused | `incident-control`=paused（要人工 resume） | 自动变回进行中 |
+| resume / follow_up / correct 后 | running / queued | `run-state`=queued，无 `incident-control` | 事故级 `running`（Run 尚未被领取） |
+| claim 后 | queued / running | `run-state`=running，无 `incident-control` | 事故级 `queued` |
+
+**并发与恢复不变：** 本次不改任何写路径、租约、代际、清扫或人工控制优先；投影是读时纯函数，值取自同一次 `find_incident`/`rebuild` 快照，不得为它新增写入或 join。刷新页面不改变库行（`snapshot` 已有的 reconcile 清扫行为不变）。
+
+**验收口径（IncidentScenario -> IncidentOutcome）：** 测试在 PG 上按上表制造各场景（accept、claim、publish、hand_off/过期清扫、control 各动作、全局/目标挂起与解除），只用公开入口（HTTP 页面 + `POST /incidents/{id}/control`）读最终页面，断言上表的应见/不应见及库行不因页面渲染而变化；库中值由既有 store 合同测试守护，不在本合同内重复。
+
+## 不做
+
+- 不迁移数据、不改 `opspilot_incidents.state` 的任何写路径，不消除 `resume/follow_up` 写 `running` 这一副作用。
+- 不删 `'completed'` 死分支（:482,769,1162,1538,1801）：删除不是 A 所必需，仅在此记录。
+- 不新增 JSON 投影、不区分暂停来源、不显示挂起横幅、不给列表页加 Run 状态、不改 lifecycle 语义（观察属 M2）。
+- 不改现有测试断言；`test_m1_web_workbench.py` 若断言了 `State` 标签或事故级徽标，按合同变更处理并报告（当前仅见 `run-state`、`conclusion` 断言，未见事故级断言，未运行）。
