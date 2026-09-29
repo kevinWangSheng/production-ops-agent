@@ -35,6 +35,16 @@ class IncidentSummary:
     concluded: bool
     created_at: datetime | None
 
+    @property
+    def control(self) -> str | None:
+        """Human-control marker (C3 section 4): only ``paused``/``cancelled``.
+
+        ``state`` is a mirror of human control, not execution progress; every
+        other stored value (``queued``, ``running``, ...) is "in progress" and
+        is not shown. The Run badge carries progress.
+        """
+        return self.state if self.state in ("paused", "cancelled") else None
+
 
 @dataclass(frozen=True)
 class ControlAudit:
