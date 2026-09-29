@@ -261,8 +261,9 @@ def description(**overrides):
             "{values}; any other label value is refused."
         ),
         "limits": (
-            "Truncated at the registered max_view_bytes; excess points are "
-            "dropped, not summarized or averaged."
+            "A result whose whole view exceeds the registered max_view_tokens "
+            "is refused as too large; points are never dropped, summarized "
+            "or averaged."
         ),
         "cannot_prove": (
             "A non-zero rate over this window does not by itself prove a "
@@ -296,7 +297,7 @@ def registration(**overrides):
         "result_path": ("data", "result"),
         "request_timeout_seconds": 10.0,
         "max_result_bytes": 4096,
-        "max_view_bytes": 512,
+        "max_view_tokens": 8192,
         "max_window_seconds": 3600,
         "error_classes": {"503": "SOURCE_UNAVAILABLE", "400": "INVALID_PARAMS"},
         "incomplete_marker": "partial",
@@ -375,6 +376,7 @@ def build(
     clock=None,
     scope_overrides=None,
     ledger=None,
+    token_counter=None,
 ):
     """Assemble an executor plus the doubles the test will assert on."""
 
@@ -396,5 +398,6 @@ def build(
         control=control,
         clock=clock,
         ledger=ledger,
+        token_counter=token_counter,
     )
     return executor, transport, sink, clock
