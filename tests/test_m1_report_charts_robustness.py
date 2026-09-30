@@ -92,3 +92,13 @@ def test_out_of_range_timestamp_is_unrecognized_shape(ts):
     root = parse(render_evidence_chart(ev, ["facts"]))
     (node,) = root.find_all("p", cls="chart-unavailable")
     assert node.attrs["data-reason"] == "unrecognized_shape"
+
+
+@pytest.mark.parametrize("step", [10**400, -(10**400), float("nan")])
+def test_unrepresentable_step_means_no_break_judgement(step):
+    ev = evidence(
+        rows=[row({"job": "a"}, [(0, 1.0), (60, 2.0), (1500, 3.0)])],
+        step=step,
+    )
+    root = parse(render_evidence_chart(ev, ["facts"]))
+    assert len(root.find_all("polyline")) == 1

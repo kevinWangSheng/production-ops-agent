@@ -149,7 +149,11 @@ def _step(view: Mapping[str, Any]) -> float | None:
     step = query.get("step_seconds") if isinstance(query, Mapping) else None
     if isinstance(step, bool) or not isinstance(step, (int, float)):
         return None
-    return float(step) if isfinite(step) and step > 0 else None
+    try:
+        seconds = float(step)
+    except OverflowError:
+        return None
+    return seconds if isfinite(seconds) and seconds > 0 else None
 
 
 def _series(
