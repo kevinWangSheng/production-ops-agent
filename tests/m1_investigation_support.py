@@ -31,7 +31,7 @@ TOOL_SCHEMAS = (
                 "missing series is unknown, not zero. Listing a series does "
                 "not prove health. Available expressions: "
                 '["rate(http_errors[5m])"]; any other value returns an error. '
-                "At most 512 view bytes; truncated views set truncated true."
+                "A view above the token limit is refused as too large."
             ),
             "parameters": {
                 "type": "object",

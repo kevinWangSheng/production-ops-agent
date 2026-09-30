@@ -34,19 +34,11 @@ change):
   which does not touch the feedback's content and so is insensitive to C2.
 * C3: "span_groups 计入视图哈希" is tested directly (the emitted
   ``view_sha256`` must equal ``canonical_hash`` of the view that already
-  carries ``span_groups``). "计入字节上限" is tested two ways: a
-  byte-boundary fixture (below, added per 2026-09-28 review follow-up) with
-  260 distinct-operation spans, empirically measured (not guessed) so the
-  row array alone canonicalizes to 96201 bytes -- under ``MAX_VIEW_BYTES``
-  (102400) on its own -- while adding the resulting 260-group ``span_groups``
-  pushes the naive combined total to 133122, forcing a conforming view to
-  drop more rows than row-only fitting would; and the sharper, unambiguous
-  half of the same sentence already covered without needing that
-  measurement: when the row-fit truncation already drops rows for an
-  unrelated reason (oversized detail fields), ``span_groups`` must reflect
-  only what is actually shown, never the dropped rows (a fixture where the
-  omitted rows carry an outlier ``duration_us`` that must not leak into
-  ``duration_us_min``).
+  carries ``span_groups``). "计入上限" is tested with a fixture of 180
+  distinct-operation spans (see the M1-01 A note below): the row array alone
+  fits ``MAX_VIEW_TOKENS`` while the whole view, with its 180-entry
+  ``span_groups``, does not, so the view must be refused whole; and
+  ``span_groups`` must summarize exactly the rows in the delivered view.
 * C3's status/error/duration fields are asserted with only numeric-valued
   status tags (``rpc.grpc.status_code``, ``http.status_code``), matching the
   contract's own literal example (``"rpc.grpc.status_code=0": 13``) and
@@ -55,12 +47,20 @@ change):
   implementation detail of that script, not contract text.
 
 2026-09-28 independent-review follow-up (2 required + 1 optional, requested
-by the team lead after the first review pass): the byte-cap fixture above
+by the team lead after the first review pass): the view-cap fixture above
 (C3), a schema-failure analogue of the C2 cap-at-50 test (120 claims with an
 empty ``text`` field -- a pydantic ``ValidationError`` with one ``loc`` entry
 per claim, not a citation failure), and a light guard that ``span_groups``
 is additive and does not disturb the generic (non-trace-specific) view
 fields ``_record()`` already builds for every tool.
+
+M1-01 A (v3) update (docs/tasks/2026-09-29-m1-01-view-bytes-timeout.md): the
+byte-truncation half of the C3 tests below no longer exists. An over-limit
+view is refused whole (``RESULT_TOO_LARGE``) instead of losing tail rows, and
+``span_groups`` is computed over every row of the delivered view. The two
+tests that pinned truncation were rewritten to the surviving intent: span_groups
+summarizes exactly the rows in the view, and it counts toward the cap (now
+``MAX_VIEW_TOKENS``, measured in real DeepSeek tokens).
 
 Conflicting existing tests (not modified here; the implementer's call how to
 resolve, per the task's own "既有测试因合同变化的修改逐条记录"):
@@ -95,15 +95,17 @@ from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.persistence import Lease
 from opspilot.tools import ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.otel_demo import (
-    MAX_VIEW_BYTES,
+    MAX_VIEW_TOKENS,
     TARGET_ID,
     TOOL_SCHEMAS,
     TRACES_TOOL,
     OtelDemoConfig,
     otel_demo_executor_factory,
     otel_demo_face,
+    project_traces,
 )
 from opspilot.tools.registry import canonical, canonical_hash
+from opspilot.tools.tokens import count_tokens
 from tests.m1_investigation_support import assemble, reply, tool_call
 from tests.m1_tool_support import FakeClock, RecordingSink, body
 from tests.test_m1_otel_demo_contract import (
@@ -708,25 +710,16 @@ def test_c3_span_groups_are_grouped_by_service_operation_and_sorted_ascending(
     assert payment_group["status"] == {"http.status_code=503": 1}
 
 
-def test_c3_span_groups_only_summarize_shown_rows_when_truncated(monkeypatch):
-    """Same byte-truncation fixture as
-    ``test_m1_view_explicit_contract.py::test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent``
-    (measured against the current ``MAX_VIEW_BYTES``, not guessed: 40 heavy
-    spans project to ~139 KB), with one change: duration increases with
-    ``i`` (1000+i), so the omitted rows are exactly the *smallest*-duration
-    ones (the sort's tie-break drops the lowest-duration tail first among
-    equally-erroring spans). If ``span_groups`` were computed over all 40
-    raw spans instead of the rows actually shown, ``duration_us_min`` would
-    read 1000, not its real value below.
-
-    28, not 29, fit: re-measured (2026-09-28 independent-review follow-up,
-    C3 P2-1 -- ``span_groups`` and the view's other fields now count toward
-    ``MAX_VIEW_BYTES`` too, not just the row array
-    ``opspilot.tools.executor._fit_rows`` alone bounded before). The 29th
-    row's own bytes alone still fit the old row-only accounting (measured at
-    102139 B, under the 102400 B cap), but adding this fixture's one
-    ``span_groups`` entry (308 B) and the view's other fields push the total
-    over by a slim margin, so one further row is dropped."""
+def test_c3_span_groups_summarize_exactly_the_rows_in_the_delivered_view(
+    monkeypatch,
+):
+    """Was ``..._only_summarize_shown_rows_when_truncated`` (40 heavy spans cut
+    to 28, the omitted lowest-duration rows must not leak into
+    ``duration_us_min``). M1-01 A (v3) no longer drops rows for size, so the
+    surviving intent is: ``span_groups`` summarizes exactly the rows in the
+    view. 20 heavy spans (~19.9k real tokens, under the cap) with duration
+    ``1000 + i`` are all delivered; the single group covers all 20 and its
+    duration range is the full range."""
     start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
 
     def make_span(i: int) -> dict:
@@ -755,7 +748,7 @@ def test_c3_span_groups_only_summarize_shown_rows_when_truncated(monkeypatch):
             "references": [],
         }
 
-    SPAN_COUNT = 40
+    SPAN_COUNT = 20
     traces = [
         {
             "traceID": f"trace{i:04x}",
@@ -771,21 +764,16 @@ def test_c3_span_groups_only_summarize_shown_rows_when_truncated(monkeypatch):
         _trace_call({"service": "checkout", "limit": SPAN_COUNT})
     )
     view = outcome.model_view
-    # 11 -> 12, 29 -> 28: re-measured under P2-1's whole-view byte
-    # accounting (see the docstring above); still a "sanity, unchanged
-    # mechanism" check, just a different fit point.
-    assert view["truncated"] is True and view["omitted_rows"] == 12
-    assert view["spans_shown"] == len(view["content"]) == 28
+    assert outcome.status == "ok", view
+    assert view["truncated"] is False and view["omitted_rows"] == 0
+    assert view["spans_shown"] == len(view["content"]) == SPAN_COUNT
 
     groups = view["span_groups"]
     assert len(groups) == 1, "every synthetic span shares one (service, operation)"
     (group,) = groups
-    assert group["rows"] == 28, "only the shown rows are summarized, not all 40"
-    assert group["duration_us_min"] == 1012, (
-        "the omitted (lowest-duration) rows must not leak into duration_us_min: "
-        f"{group!r}"
-    )
-    assert group["duration_us_max"] == 1039
+    assert group["rows"] == SPAN_COUNT
+    assert group["duration_us_min"] == 1000
+    assert group["duration_us_max"] == 1000 + SPAN_COUNT - 1
 
 
 def _all_strings(value: object):
@@ -850,26 +838,10 @@ def test_c3_span_groups_present_and_internally_consistent_on_the_real_checkout_f
         assert g["duration_us_min"] <= g["duration_us_max"]
 
 
-def test_c3_span_groups_counts_toward_the_view_byte_cap(monkeypatch):
-    """Review follow-up (2026-09-28 independent review, P2): span_groups
-    must itself count against ``MAX_VIEW_BYTES``, not just the row array
-    ``_fit_rows`` already bounds today.
-
-    260 minimal spans, each its own operation (empirically measured, not
-    guessed -- see the module docstring): the row array alone canonicalizes
-    to 96201 bytes, ~6 KiB under ``MAX_VIEW_BYTES`` (102400) -- content alone
-    would not need to truncate under today's rows-only accounting. Because
-    every span has a distinct operation, span_groups has 260 entries and
-    canonicalizes to another ~36 KiB on top, for an unaccounted combined
-    total of 133122 bytes -- well over the cap. A conforming view must drop
-    more rows than row-only fitting would, to leave room for span_groups,
-    and the final serialized view (rows and span_groups together) must
-    still fit under the cap."""
+def _distinct_operation_spans(count: int) -> list[dict]:
     start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
-    ROW_COUNT = 260
-
-    def make_span(i: int) -> dict:
-        return {
+    return [
+        {
             "traceID": "t-cardinality",
             "spanID": f"span{i:05d}",
             "operationName": f"op-{i:05d}",
@@ -880,32 +852,51 @@ def test_c3_span_groups_counts_toward_the_view_byte_cap(monkeypatch):
             "logs": [],
             "references": [],
         }
+        for i in range(count)
+    ]
 
+
+def test_c3_span_groups_counts_toward_the_view_token_cap(monkeypatch):
+    """Was ``..._counts_toward_the_view_byte_cap`` (260 spans, span_groups
+    must fit the byte cap by dropping more rows). Surviving intent under
+    M1-01 A (v3): span_groups counts toward ``MAX_VIEW_TOKENS`` too, not just
+    the rows. 180 spans, each its own operation: the row array alone is under
+    the cap (asserted below with the real counter, not assumed), but with its
+    180 span_groups entries the whole view is over it, so the view is refused
+    whole, reporting the count of the complete view."""
+    ROW_COUNT = 180
     trace = {
         "traceID": "t-cardinality",
-        "spans": [make_span(i) for i in range(ROW_COUNT)],
+        "spans": _distinct_operation_spans(ROW_COUNT),
         "processes": {"p1": {"serviceName": "checkout", "tags": []}},
     }
-    synthetic_body = json.dumps({"data": [trace]}).encode()
-    opener = FakeOpener(routes={"/api/traces": synthetic_body})
+    payload = {"data": [trace]}
+    record, _start, _end = project_traces(
+        payload,
+        service="checkout",
+        limit=ROW_COUNT,
+        window=WINDOW,
+        source_sha256="0" * 64,
+        source_bytes=100,
+    )
+    rows = record["data"]["sampled_spans"]
+    assert len(rows) == ROW_COUNT
+    assert count_tokens(canonical(rows)) <= MAX_VIEW_TOKENS, (
+        "test invariant: the rows alone fit the cap"
+    )
+
+    opener = FakeOpener(routes={"/api/traces": json.dumps(payload).encode()})
     executor = _trace_executor(monkeypatch, opener)
     outcome = executor.execute(_trace_call({"service": "checkout", "limit": ROW_COUNT}))
     view = outcome.model_view
 
-    total_bytes = len(canonical(view).encode("utf-8"))
-    assert total_bytes <= MAX_VIEW_BYTES, (
-        "span_groups must count toward the view byte cap: "
-        f"{total_bytes} bytes (cap {MAX_VIEW_BYTES})"
+    assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE"), (
+        "span_groups must count toward the cap: rows alone fit, the whole "
+        f"view does not: {view!r}"
     )
-    assert view["truncated"] is True and view["omitted_rows"] > 0, (
-        "260 rows fit alone (96201 B < cap) under row-only accounting; a "
-        f"conforming view must drop more once span_groups is counted: {view!r}"
-    )
-    groups = view["span_groups"]
-    assert sum(g["rows"] for g in groups) == len(view["content"]), (
-        "span_groups must summarize exactly the rows finally shown, after "
-        "accounting for its own bytes -- not the pre-trim row set"
-    )
+    assert view["max_view_tokens"] == MAX_VIEW_TOKENS
+    assert view["view_tokens"] > MAX_VIEW_TOKENS
+    assert view["content"] is None and "span_groups" not in view
 
 
 def test_c3_span_groups_does_not_disturb_the_generic_view_fields(monkeypatch):

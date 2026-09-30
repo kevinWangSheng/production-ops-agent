@@ -366,11 +366,11 @@ def test_an_oversized_tool_view_reaches_the_model_as_a_provenance_stub():
     loop, request, model, _, store, _ = assemble(
         replies=[], budget_limit=8, model_requests=4
     )
-    # The default registration caps views at 512 bytes; this one lets a large
+    # The default registration caps views at 8192 tokens; this one lets a large
     # result through so the loop's own single-view cap is what bites.
     executor, transport, _sink, _clock = build(
         registrations=[
-            registration(max_result_bytes=2_000_000, max_view_bytes=400_000)
+            registration(max_result_bytes=2_000_000, max_view_tokens=400_000)
         ],
         clock=loop.clock,
     )

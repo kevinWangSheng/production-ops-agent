@@ -170,15 +170,16 @@ def test_citable_as_fact_is_a_bool_equal_to_ok_and_adopted(rows, expected):
     assert view["citable_as_fact"] is expected
 
 
-def test_projection_revision_is_v5():
-    """The view gained a field, so the projection revision must move from
-    the packet's recorded ``m1-01-tool-view-v4``."""
+def test_projection_revision_is_v6():
+    """The view semantics changed twice: v5 added a field over the packet's
+    recorded ``m1-01-tool-view-v4``; v6 (M1-01 view metering) stopped
+    truncating rows and refuses an over-limit view instead."""
     assert PROJECTION_REVISION != PRE_FIX_PROJECTION_REVISION
-    assert PROJECTION_REVISION == "m1-01-tool-view-v5"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v6"
     executor, transport, _, _ = build()
     transport.response = TransportResponse(body=body([]))
     view = executor.execute(request()).model_view
-    assert view["projection_revision"] == "m1-01-tool-view-v5"
+    assert view["projection_revision"] == "m1-01-tool-view-v6"
 
 
 def test_view_stub_keeps_citable_as_fact():

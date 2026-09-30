@@ -32,7 +32,6 @@ from typing import Literal, TypeVar
 from urllib.parse import urlsplit
 
 __all__ = [
-    "EMPTY_VIEW_BYTES",
     "FORBIDDEN_VERBS",
     "MAX_REQUEST_TIMEOUT_SECONDS",
     "MAX_RESULT_BYTES",
@@ -64,12 +63,6 @@ class ToolContractError(Exception):
 # acceptance packet, not a code change alone.
 MAX_REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RESULT_BYTES = 2 * 1024 * 1024
-
-# The smallest canonical view an executor can ever emit is the empty array
-# `[]` (zero kept rows): `_fit_rows()` always counts these two enclosing
-# bytes. A `max_view_bytes` below this is a ceiling no result, not even an
-# empty one, could ever satisfy (bot review finding).
-EMPTY_VIEW_BYTES = 2
 
 # Technical plan section 8: Kubernetes exposes only get/list/watch/logs, and no
 # arbitrary shell, SQL or code execution is offered at all.
@@ -566,7 +559,7 @@ class ToolRegistration:
     result_path: tuple[str, ...]
     request_timeout_seconds: float
     max_result_bytes: int
-    max_view_bytes: int
+    max_view_tokens: int
     max_window_seconds: int
     description: ToolDescription
     may_contain_secrets: bool
@@ -634,10 +627,7 @@ class ToolRegistration:
             or not 0 < self.max_result_bytes <= MAX_RESULT_BYTES
         ):
             raise ToolContractError("RESULT_LIMIT_OUT_OF_RANGE")
-        if (
-            type(self.max_view_bytes) is not int
-            or not EMPTY_VIEW_BYTES <= self.max_view_bytes <= self.max_result_bytes
-        ):
+        if type(self.max_view_tokens) is not int or self.max_view_tokens < 1:
             raise ToolContractError("VIEW_LIMIT_OUT_OF_RANGE")
         if type(self.max_window_seconds) is not int or self.max_window_seconds <= 0:
             raise ToolContractError("WINDOW_LIMIT_OUT_OF_RANGE")
@@ -803,7 +793,7 @@ class ToolRegistry(_FrozenIndex):
                     "result_path": entries[name].result_path,
                     "request_timeout_seconds": entries[name].request_timeout_seconds,
                     "max_result_bytes": entries[name].max_result_bytes,
-                    "max_view_bytes": entries[name].max_view_bytes,
+                    "max_view_tokens": entries[name].max_view_tokens,
                     "max_window_seconds": entries[name].max_window_seconds,
                     "error_classes": dict(entries[name].error_classes),
                     "incomplete_marker": entries[name].incomplete_marker,

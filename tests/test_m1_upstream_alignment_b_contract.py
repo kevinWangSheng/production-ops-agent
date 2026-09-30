@@ -377,9 +377,9 @@ def test_b1_traces_view_no_longer_caps_sampled_spans_at_20():
     """Row-cap-free assertion: 40 *small* spans (~370 bytes each projected --
     corrected count: the original 60 was sized against a stale ~123
     bytes/row estimate that had actually only measured the *old* code's
-    20-row-capped output) stay comfortably under today's 16 KiB
-    ``max_view_bytes``, so a returned-row count above 20 proves the row cap
-    (not the byte cap) moved."""
+    20-row-capped output) stay comfortably under 16 KiB, far below the
+    25,000-token view cap (``max_view_tokens``), so a returned-row count above
+    20 proves the row cap moved."""
     start_us = int(_FRAME_1H.start.timestamp() * 1_000_000) + 1_000_000
     from opspilot.tools.otel_demo import project_traces
     from opspilot.tools.registry import canonical
@@ -409,14 +409,14 @@ def test_b1_traces_view_no_longer_caps_sampled_spans_at_20():
 def test_b1_traces_view_byte_cap_matches_the_upstream_tool_result_scale(
     monkeypatch,
 ):
-    """25 000 tokens at this repo's own 4-bytes/token estimator convention
-    (``opspilot.investigation.context._TOKENS_PER_BYTE``) is ~100 000 bytes
-    (upstream ``holmes/common/env_vars.py:142``,
-    ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS=25000``). 20 spans padded with
-    the standard detail fields project to ~68.8 KB -- over the *old* 16 KiB
-    ``max_view_bytes`` (must truncate today) and comfortably under a 90 KB
-    floor (must not truncate once B1 lands). Exactly 20 spans so this is
-    independent of the separate row-cap-removal contract clause above."""
+    """Upstream's tool-result scale is 25 000 tokens
+    (``holmes/common/env_vars.py:142``,
+    ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS=25000``), which M1-01 A (v3)
+    measures in real DeepSeek tokens (``max_view_tokens``). 20 spans padded
+    with the standard detail fields project to ~68.8 KB (~19.9k tokens) --
+    over the *old* 16 KiB byte cap and under 25,000 tokens (must not be
+    refused). Exactly 20 spans so this is independent of the separate
+    row-cap-removal contract clause above."""
     start_us = int(_FRAME_1H.start.timestamp() * 1_000_000) + 1_000_000
     spans = [_heavy_span(i, start_us=start_us) for i in range(20)]
     opener = FakeOpener(routes={"/api/traces": _trace_body(spans)})
@@ -431,11 +431,13 @@ def test_b1_traces_view_byte_cap_matches_the_upstream_tool_result_scale(
     assert len(view["content"]) == 20
 
 
-def test_b1_metrics_view_byte_cap_also_widened(monkeypatch):
-    """1200 minimal Prometheus series rows canonicalize to ~86.4 KB -- above
-    the old 24 KiB metrics ``max_view_bytes`` (must truncate today) and under
-    a 90 KB floor (must not truncate once B1 lands)."""
-    rows = _prom_rows(1200, ts=int(_FRAME_1H.start.timestamp()) + 60)
+def test_b1_metrics_view_under_the_token_cap_is_delivered_whole(monkeypatch):
+    """B1 widened the metrics view cap from 24 KiB to the upstream tool-result
+    scale; M1-01 A (v3) states it in tokens (``MAX_VIEW_TOKENS``, 25,000) and
+    refuses instead of truncating. 900 minimal Prometheus series rows (~65 KB,
+    ~21.9k real DeepSeek tokens) are far above the old 24 KiB and under the
+    token cap, so they must come back whole."""
+    rows = _prom_rows(900, ts=int(_FRAME_1H.start.timestamp()) + 60)
     opener = FakeOpener(routes={"/api/v1/query_range": _prom_body(rows)})
     executor = _otel_executor(monkeypatch, opener, window=_FRAME_1H)
     outcome = executor.execute(_call(METRICS_TOOL, {"expr": "up"}, window=_FRAME_1H))
@@ -443,7 +445,22 @@ def test_b1_metrics_view_byte_cap_also_widened(monkeypatch):
     view = outcome.model_view
     assert view["truncated"] is False, view.get("omitted_bytes")
     assert view["omitted_rows"] == 0
-    assert len(view["content"]) == 1200
+    assert len(view["content"]) == 900
+
+
+def test_b1_metrics_view_over_the_token_cap_is_refused_not_truncated(monkeypatch):
+    """The 1200-row case B1 asserted as "not truncated" (~87 KB, ~29.2k real
+    tokens) is over the 25,000-token cap once the cap is measured in tokens,
+    so under M1-01 A (v3) it is refused whole with the true count rather than
+    delivered partially."""
+    rows = _prom_rows(1200, ts=int(_FRAME_1H.start.timestamp()) + 60)
+    opener = FakeOpener(routes={"/api/v1/query_range": _prom_body(rows)})
+    executor = _otel_executor(monkeypatch, opener, window=_FRAME_1H)
+    outcome = executor.execute(_call(METRICS_TOOL, {"expr": "up"}, window=_FRAME_1H))
+    view = outcome.model_view
+    assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
+    assert view["content"] is None and outcome.evidence is None
+    assert view["max_view_tokens"] == 25_000 and view["view_tokens"] > 25_000
 
 
 def test_sanity_traces_search_within_the_old_cap_still_works(monkeypatch):

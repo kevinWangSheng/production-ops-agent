@@ -1,0 +1,6 @@
+expr chars: 1992
+A small view (baseline overhead): status=ok content_bytes=139 whole_view_bytes=1242 cap=102400 over_cap=-101158 non_content_bytes=1103 returned=1 omitted_rows=0 stubbed=False largest_non_content=[('query', 79), ('window', 71), ('registry_revision', 66), ('tool_registry_revision', 66)]
+B rows fill the cap, short expr: status=ok content_bytes=100119 whole_view_bytes=101228 cap=102400 over_cap=-1172 non_content_bytes=1109 returned=32 omitted_rows=28 stubbed=False largest_non_content=[('query', 79), ('window', 71), ('registry_revision', 66), ('tool_registry_revision', 66)]
+C rows fill the cap, 1990-char expr: status=ok content_bytes=100119 whole_view_bytes=103152 cap=102400 over_cap=752 non_content_bytes=3033 returned=32 omitted_rows=28 stubbed=False largest_non_content=[('query', 2003), ('window', 71), ('registry_revision', 66), ('tool_registry_revision', 66)]
+.
+1 passed in 0.29s

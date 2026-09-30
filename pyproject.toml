@@ -2,7 +2,7 @@
 name = "opspilot"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["tokenizers==0.23.2"]
 
 [dependency-groups]
 dev = ["pytest", "ruff", "mypy"]

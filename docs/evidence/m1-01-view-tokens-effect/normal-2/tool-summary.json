@@ -1,0 +1,101 @@
+{
+ "tool_results": 15,
+ "by_status": {
+  "error/RESULT_TOO_LARGE": 1,
+  "ok/None": 13,
+  "no_data/None": 1
+ },
+ "refused_view_tokens": [
+  {
+   "step": 0,
+   "idx": 0,
+   "tool": "traces_search",
+   "args": "{\"service\": \"checkout\", \"start\": \"2026-09-29T11:36:22+00:00\", \"end\": \"2026-09-29T11:41:22+00:00\", \"limit\": 20}",
+   "view_tokens": 57502,
+   "max_view_tokens": 25000,
+   "max_result_bytes": null
+  }
+ ],
+ "refused_bytes": [],
+ "views": [
+  {
+   "step": 0,
+   "tool": "metrics_range_query",
+   "tokens": 831,
+   "rows": 9
+  },
+  {
+   "step": 0,
+   "tool": "metrics_range_query",
+   "tokens": 603,
+   "rows": 1
+  },
+  {
+   "step": 1,
+   "tool": "traces_search",
+   "tokens": 21159,
+   "rows": 98
+  },
+  {
+   "step": 1,
+   "tool": "metrics_range_query",
+   "tokens": 1096,
+   "rows": 13
+  },
+  {
+   "step": 1,
+   "tool": "metrics_range_query",
+   "tokens": 878,
+   "rows": 8
+  },
+  {
+   "step": 2,
+   "tool": "metrics_range_query",
+   "tokens": 796,
+   "rows": 7
+  },
+  {
+   "step": 2,
+   "tool": "metrics_range_query",
+   "tokens": 647,
+   "rows": 1
+  },
+  {
+   "step": 2,
+   "tool": "metrics_range_query",
+   "tokens": 588,
+   "rows": 1
+  },
+  {
+   "step": 3,
+   "tool": "metrics_range_query",
+   "tokens": 886,
+   "rows": 6
+  },
+  {
+   "step": 3,
+   "tool": "metrics_range_query",
+   "tokens": 624,
+   "rows": 1
+  },
+  {
+   "step": 4,
+   "tool": "traces_search",
+   "tokens": 19304,
+   "rows": 92
+  },
+  {
+   "step": 5,
+   "tool": "traces_search",
+   "tokens": 19299,
+   "rows": 92
+  },
+  {
+   "step": 5,
+   "tool": "traces_search",
+   "tokens": 10739,
+   "rows": 46
+  }
+ ],
+ "max_ok_view_tokens": 21159
+}

@@ -1,0 +1,226 @@
+{
+ "run_id": "cf6496e3-d545-5389-b71a-25585685ecb0",
+ "step_id": "fdbd2c80-2876-4c91-9b6c-40ac854dbdd6",
+ "logical_key": "conclusion:g0:ctx0:round-8",
+ "observed_at": "2026-09-29T04:43:10.599575-07:00",
+ "execution": "completed",
+ "handoff": false,
+ "handoff_reasons": [],
+ "rounds": 8,
+ "model_requests_used": 8,
+ "model_seconds_used": 105.71138870576397,
+ "evidence_ids": [
+  "55695580-0855-4aa3-9e18-03999ea952a6-t1:373d5fa9-a38e-4942-a403-fa004729d644",
+  "55695580-0855-4aa3-9e18-03999ea952a6-t2:297ad970-a3c3-41e2-913b-10e5bd47e3fb",
+  "4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5",
+  "4ec485f2-993b-4038-aeb8-b9d60307eb54-t1:318caa77-82a6-4138-8353-3491703af45f",
+  "4ec485f2-993b-4038-aeb8-b9d60307eb54-t2:32506804-f067-4b85-b4d8-348a85bf2a4d",
+  "9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e",
+  "9286ca84-7880-4496-9978-a9cbc43b037d-t1:b00adb1b-5fa1-4b91-acc9-bf2851a7b4d6",
+  "9286ca84-7880-4496-9978-a9cbc43b037d-t2:15260477-7919-47d4-b636-da8fcd037b85",
+  "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8",
+  "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t1:14a2adf7-8494-429e-9a2a-f71a594ace5e",
+  "5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f",
+  "5a3ab20b-352a-4951-bc26-18affae1e1f7-t1:5602cc77-3e9d-44cf-b6d7-83f82a95e732",
+  "3fad8a7f-4dc1-4815-8527-a78af266f9ef-t0:c088c599-a4d9-4b0e-9546-a09a0df0606e",
+  "3fad8a7f-4dc1-4815-8527-a78af266f9ef-t1:cd2a298e-ecc7-4595-bb90-093409245680"
+ ],
+ "report_sha256": "039aa26f70bf193b5d1ffb6eeaf8f1649109faa9383da86d96d4aecea5fa6db1",
+ "report_bytes": 13666,
+ "report_text": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Last-5-minute window (2026-09-29T11:36:22Z–11:41:22Z, target m0-otel-20260909): no checkout or payment error spans are visible, and no elevated latency is demonstrated against the three preceding 5-minute windows. Checkout's ERROR-status span increase is 0 and payment's is 0; checkout's client Charge calls with rpc_grpc_status_code='2' are 0; the sampled checkout traces (trace ids 0b714209a683dd3a8d5f92e6d5656b94 and c08f8ccd082fbe9f8d9549148e84a6f1) carry only rpc.grpc.status_code=0 or http.status_code=200. Checkout's rpc client p95 is 21.14 ms versus 19.84/9.64/16.06 ms for the three preceding windows — fluctuation, not a demonstrated elevation. Error spans do exist in the hour (checkout 11.86, payment 5.93, frontend 17.79, frontend-proxy 14.49, load-generator 6.99, recommendation 1.14, ad 0), and the only nonzero 5-minute ERROR bucket for checkout/payment is the one ending 11:36:22 (checkout PlaceOrder, checkout client PaymentService/Charge and payment server Charge each ~8.33), which is 0 in the 11:41:22 bucket. So the reported burst appears to sit just before the analysis window, not inside it; the checkout→payment attribution rests on equal counter values and was never confirmed by a captured error trace, and cart, currency, shipping, email and product-catalog error status is unknown because no ERROR series was returned for them.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"Over the last 5 minutes (2026-09-29T11:36:22Z–11:41:22Z) the traces_span_metrics_calls_total increase was 0 for checkout with status_code=STATUS_CODE_ERROR and 0 for payment with STATUS_CODE_ERROR, while checkout shows 65 STATUS_CODE_UNSET spans and payment 10 STATUS_CODE_UNSET spans in the same view; within checkout, oteldemo.CheckoutService/PlaceOrder and the client span oteldemo.PaymentService/Charge each show 0 ERROR against 5 UNSET.\",\"evidence_ids\":[\"55695580-0855-4aa3-9e18-03999ea952a6-t1:373d5fa9-a38e-4942-a403-fa004729d644\",\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t1:318caa77-82a6-4138-8353-3491703af45f\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"In the same last-5-minute view, checkout's client-side rpc_client_duration_milliseconds_count shows rpc_grpc_status_code='0' series for Charge, Convert, EmptyCart, GetCart, GetProduct, GetQuote and ShipOrder, and the only non-zero-status series, Charge with rpc_grpc_status_code='2', has value 0, so no failed checkout client dependency calls were recorded in this window.\",\"evidence_ids\":[\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t2:32506804-f067-4b85-b4d8-348a85bf2a4d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The trace sample for checkout inside the last 5 minutes returned 2 traces (trace ids 0b714209a683dd3a8d5f92e6d5656b94 and c08f8ccd082fbe9f8d9549148e84a6f1) with 98 spans shown and error_rows 0 in every span group; the checkout dependency calls visible in them are oteldemo.CartService/GetCart, oteldemo.CartService/EmptyCart, oteldemo.CurrencyService/Convert, oteldemo.PaymentService/Charge, oteldemo.ProductCatalogService/GetProduct, oteldemo.ShippingService/GetQuote, oteldemo.ShippingService/ShipOrder and an HTTP POST to email, all with rpc.grpc.status_code=0 or http.status_code=200.\",\"evidence_ids\":[\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Checkout's rpc client p95 latency (histogram_quantile over rpc_client_duration_milliseconds_bucket) is 21.142857 ms for the window ending 11:41:22, versus 19.837242 ms, 9.642857 ms and 16.060787 ms for the windows ending 11:26:22, 11:31:22 and 11:36:22; only these four comparable points were returned, and the last-5-minute value is the highest of them but just ~1.3 ms above the point 15 minutes earlier.\",\"evidence_ids\":[\"55695580-0855-4aa3-9e18-03999ea952a6-t2:297ad970-a3c3-41e2-913b-10e5bd47e3fb\",\"9286ca84-7880-4496-9978-a9cbc43b037d-t1:b00adb1b-5fa1-4b91-acc9-bf2851a7b4d6\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Across the hour ending 11:41:22, ERROR-status span increases exist for checkout (11.862229), payment (5.931115), frontend (17.793344), frontend-proxy (14.489784), load-generator (6.993189), recommendation (1.135435) and ad (0), so error spans were present within the hour even though the last 5 minutes show 0 for checkout and payment; the query returned only these seven services.\",\"evidence_ids\":[\"9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"At 5-minute resolution the only nonzero ERROR bucket returned is timestamped 11:36:22 (covering 11:31:22–11:36:22), where checkout oteldemo.CheckoutService/PlaceOrder, checkout's client span oteldemo.PaymentService/Charge and payment's grpc.oteldemo.PaymentService/Charge span each show 8.333333, while those same series show 0 at 11:41:22; payment's GET, dns.lookup and tcp.connect spans are 0 at 11:21:22, 11:26:22, 11:31:22, 11:36:22 and 11:41:22.\",\"evidence_ids\":[\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Over the hour ending 11:41:22, checkout recorded 6.988716 client RPC calls with rpc_method='Charge' and rpc_grpc_status_code='2' (rpc_client_duration_milliseconds_count increase), confirming failed checkout→payment Charge calls existed within the hour; this hour-long series was returned only as one aggregated point.\",\"evidence_ids\":[\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t1:14a2adf7-8494-429e-9a2a-f71a594ace5e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The two traces sampled around the burst boundary (11:31:22–11:36:22; trace ids 565cbad1735d7808c6ad5075c14a3c4b and d447ccfecea4590586ff27e15133f362, source spans from 11:36:03–11:36:07, 92 spans shown, error_rows 0, view marked incomplete because the backend returned as many traces as requested) contain only successful checkout PlaceOrder, payment Charge, cart, currency, shipping, product-catalog, email and frontend spans; no error-tagged span was captured.\",\"evidence_ids\":[\"5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f\",\"3fad8a7f-4dc1-4815-8527-a78af266f9ef-t0:c088c599-a4d9-4b0e-9546-a09a0df0606e\",\"3fad8a7f-4dc1-4815-8527-a78af266f9ef-t1:cd2a298e-ecc7-4595-bb90-093409245680\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"A claim that checkout shows elevated errors in the last 5 minutes is not supported by the last-5-minute evidence: checkout and payment ERROR-status increases are 0, checkout's client Charge calls with GPRC status 2 are 0, and the sampled traces carry only grpc status 0 or http 200. The nonzero error count belongs to the preceding 5-minute bucket ending 11:36:22, not to the last 5 minutes.\",\"evidence_ids\":[\"55695580-0855-4aa3-9e18-03999ea952a6-t1:373d5fa9-a38e-4942-a403-fa004729d644\",\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t2:32506804-f067-4b85-b4d8-348a85bf2a4d\",\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The last-5-minute trace view is thin rather than exhaustive: the returned successful checkout traces span only 11:40:39–11:40:59 (2 traces, 98 spans) inside the 11:36:22–11:41:22 window, and the view itself reports backend_traces_returned=2 for a 5-trace request, so it cannot by itself establish that no failing request occurred elsewhere in that window.\",\"evidence_ids\":[\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The reported checkout error elevation corresponds to a short burst inside the 5-minute bucket ending 11:36:22 (between 11:31:22 and 11:36:22) that had cleared by 11:36:22–11:41:22, where checkout PlaceOrder, checkout client PaymentService/Charge and payment server Charge all drop from ~8.33 errors to 0; the exact burst start and end are not observable because the finer-resolution error query returned no data.\",\"evidence_ids\":[\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8\",\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t1:14a2adf7-8494-429e-9a2a-f71a594ace5e\",\"9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The failing dependency edge during the burst was checkout→payment: in the bucket ending 11:36:22 the checkout PlaceOrder error count, the checkout client PaymentService/Charge error count and the payment server Charge error count are all ~8.33, while checkout's client calls to cart, currency, shipping and product-catalog show grpc status 0 and its HTTP POST to email shows 200 in the sampled traces. This is counter coincidence, not a demonstrated causal chain: no error span with a parent reference was captured, and no ERROR series was returned for the other candidate dependencies.\",\"evidence_ids\":[\"32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8\",\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5\",\"9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected as unsupported: that the errors originated in checkout's cart, currency, shipping, product-catalog or email dependencies. No error-tagged span on those services was captured in either sampled window (their shown spans carry rpc.grpc.status_code=0 or http status 200), and no ERROR series was returned for them. Because the trace view is a biased, incomplete sample and a missing series is unknown rather than zero, this rejection records absent supporting evidence and is not a clean bill of health for those dependencies.\",\"evidence_ids\":[\"4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5\",\"5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f\",\"9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"No trace containing an error span was ever returned in this Run: the last-5-minute sample and the traces sampled at 11:36:03–11:36:07 show only successful spans, so the failing spans behind the ~8.33 ERROR counts have no trace-level evidence and no failed trace id can be cited.\",\"The 60-second-resolution ERROR query (view 5a3ab20b-352a-4951-bc26-18affae1e1f7-t1:5602cc77-3e9d-44cf-b6d7-83f82a95e732) returned status no_data with an empty content array, so it failed to show sub-5-minute error timing and cannot support any fact; whether the burst ran up to the 11:36:22 boundary and how long it lasted remain unknown.\",\"The first last-5-minute trace request (view 55695580-0855-4aa3-9e18-03999ea952a6-t0, limit 20) ended in status error with reason RESULT_TOO_LARGE and returned no spans, so the last-5-minute trace picture rests on a 2-trace, ~20-second sample and is not a complete trace graph or failure rate.\",\"No ERROR series was returned for cart, currency, shipping, email or product-catalog in the last-5-minute query or in the hour-long ERROR query, so their error status is unknown rather than zero and their absence from the error set cannot be asserted.\",\"Three trace views are marked incomplete (5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f, 3fad8a7f-4dc1-4815-8527-a78af266f9ef-t0:c088c599-a4d9-4b0e-9546-a09a0df0606e, 3fad8a7f-4dc1-4815-8527-a78af266f9ef-t1:cd2a298e-ecc7-4595-bb90-093409245680) because the backend returned as many traces as requested, so more traces may exist than were shown; no view was truncated.\",\"Only four comparable 5-minute p95 latency points (11:26:22–11:41:22) were returned for checkout, and no longer or historical latency baseline was retrieved, so 'elevated latency' can only be assessed against those four points and no trend is established.\",\"Counter values are fractional (e.g. 8.333333, 11.862229, 5.931115) because increase() extrapolates from sparse samples, and trace span counts are not unique request counts, so error magnitudes and call rates are estimates rather than exact request counts.\"],\"next_steps\":[\"For a human reviewer: retrieve the raw failing checkout PlaceOrder and payment Charge spans for 11:31:22–11:36:22 to obtain the trace ids and parent references of the actual failures and confirm which dependency edge the error propagates across.\",\"For a human reviewer: check payment service health and its downstream dependencies plus platform events around 11:31–11:36 to determine whether the burst was an injected demo fault or a genuine dependency failure.\",\"For a human reviewer: verify the error status of cart, currency, shipping, email and product-catalog over the burst window with a query that returns their ERROR series explicitly, since those series were not returned here.\",\"For a human reviewer: establish a longer latency baseline for checkout and its dependency calls so a future latency comparison is not limited to four sparse 5-minute p95 points.\"]}",
+ "report_parsed": {
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Last-5-minute window (2026-09-29T11:36:22Z–11:41:22Z, target m0-otel-20260909): no checkout or payment error spans are visible, and no elevated latency is demonstrated against the three preceding 5-minute windows. Checkout's ERROR-status span increase is 0 and payment's is 0; checkout's client Charge calls with rpc_grpc_status_code='2' are 0; the sampled checkout traces (trace ids 0b714209a683dd3a8d5f92e6d5656b94 and c08f8ccd082fbe9f8d9549148e84a6f1) carry only rpc.grpc.status_code=0 or http.status_code=200. Checkout's rpc client p95 is 21.14 ms versus 19.84/9.64/16.06 ms for the three preceding windows — fluctuation, not a demonstrated elevation. Error spans do exist in the hour (checkout 11.86, payment 5.93, frontend 17.79, frontend-proxy 14.49, load-generator 6.99, recommendation 1.14, ad 0), and the only nonzero 5-minute ERROR bucket for checkout/payment is the one ending 11:36:22 (checkout PlaceOrder, checkout client PaymentService/Charge and payment server Charge each ~8.33), which is 0 in the 11:41:22 bucket. So the reported burst appears to sit just before the analysis window, not inside it; the checkout→payment attribution rests on equal counter values and was never confirmed by a captured error trace, and cart, currency, shipping, email and product-catalog error status is unknown because no ERROR series was returned for them.",
+  "claims": [
+   {
+    "kind": "fact",
+    "text": "Over the last 5 minutes (2026-09-29T11:36:22Z–11:41:22Z) the traces_span_metrics_calls_total increase was 0 for checkout with status_code=STATUS_CODE_ERROR and 0 for payment with STATUS_CODE_ERROR, while checkout shows 65 STATUS_CODE_UNSET spans and payment 10 STATUS_CODE_UNSET spans in the same view; within checkout, oteldemo.CheckoutService/PlaceOrder and the client span oteldemo.PaymentService/Charge each show 0 ERROR against 5 UNSET.",
+    "evidence_ids": [
+     "55695580-0855-4aa3-9e18-03999ea952a6-t1:373d5fa9-a38e-4942-a403-fa004729d644",
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t1:318caa77-82a6-4138-8353-3491703af45f"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "In the same last-5-minute view, checkout's client-side rpc_client_duration_milliseconds_count shows rpc_grpc_status_code='0' series for Charge, Convert, EmptyCart, GetCart, GetProduct, GetQuote and ShipOrder, and the only non-zero-status series, Charge with rpc_grpc_status_code='2', has value 0, so no failed checkout client dependency calls were recorded in this window.",
+    "evidence_ids": [
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t2:32506804-f067-4b85-b4d8-348a85bf2a4d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The trace sample for checkout inside the last 5 minutes returned 2 traces (trace ids 0b714209a683dd3a8d5f92e6d5656b94 and c08f8ccd082fbe9f8d9549148e84a6f1) with 98 spans shown and error_rows 0 in every span group; the checkout dependency calls visible in them are oteldemo.CartService/GetCart, oteldemo.CartService/EmptyCart, oteldemo.CurrencyService/Convert, oteldemo.PaymentService/Charge, oteldemo.ProductCatalogService/GetProduct, oteldemo.ShippingService/GetQuote, oteldemo.ShippingService/ShipOrder and an HTTP POST to email, all with rpc.grpc.status_code=0 or http.status_code=200.",
+    "evidence_ids": [
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Checkout's rpc client p95 latency (histogram_quantile over rpc_client_duration_milliseconds_bucket) is 21.142857 ms for the window ending 11:41:22, versus 19.837242 ms, 9.642857 ms and 16.060787 ms for the windows ending 11:26:22, 11:31:22 and 11:36:22; only these four comparable points were returned, and the last-5-minute value is the highest of them but just ~1.3 ms above the point 15 minutes earlier.",
+    "evidence_ids": [
+     "55695580-0855-4aa3-9e18-03999ea952a6-t2:297ad970-a3c3-41e2-913b-10e5bd47e3fb",
+     "9286ca84-7880-4496-9978-a9cbc43b037d-t1:b00adb1b-5fa1-4b91-acc9-bf2851a7b4d6"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Across the hour ending 11:41:22, ERROR-status span increases exist for checkout (11.862229), payment (5.931115), frontend (17.793344), frontend-proxy (14.489784), load-generator (6.993189), recommendation (1.135435) and ad (0), so error spans were present within the hour even though the last 5 minutes show 0 for checkout and payment; the query returned only these seven services.",
+    "evidence_ids": [
+     "9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "At 5-minute resolution the only nonzero ERROR bucket returned is timestamped 11:36:22 (covering 11:31:22–11:36:22), where checkout oteldemo.CheckoutService/PlaceOrder, checkout's client span oteldemo.PaymentService/Charge and payment's grpc.oteldemo.PaymentService/Charge span each show 8.333333, while those same series show 0 at 11:41:22; payment's GET, dns.lookup and tcp.connect spans are 0 at 11:21:22, 11:26:22, 11:31:22, 11:36:22 and 11:41:22.",
+    "evidence_ids": [
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Over the hour ending 11:41:22, checkout recorded 6.988716 client RPC calls with rpc_method='Charge' and rpc_grpc_status_code='2' (rpc_client_duration_milliseconds_count increase), confirming failed checkout→payment Charge calls existed within the hour; this hour-long series was returned only as one aggregated point.",
+    "evidence_ids": [
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t1:14a2adf7-8494-429e-9a2a-f71a594ace5e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The two traces sampled around the burst boundary (11:31:22–11:36:22; trace ids 565cbad1735d7808c6ad5075c14a3c4b and d447ccfecea4590586ff27e15133f362, source spans from 11:36:03–11:36:07, 92 spans shown, error_rows 0, view marked incomplete because the backend returned as many traces as requested) contain only successful checkout PlaceOrder, payment Charge, cart, currency, shipping, product-catalog, email and frontend spans; no error-tagged span was captured.",
+    "evidence_ids": [
+     "5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f",
+     "3fad8a7f-4dc1-4815-8527-a78af266f9ef-t0:c088c599-a4d9-4b0e-9546-a09a0df0606e",
+     "3fad8a7f-4dc1-4815-8527-a78af266f9ef-t1:cd2a298e-ecc7-4595-bb90-093409245680"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "A claim that checkout shows elevated errors in the last 5 minutes is not supported by the last-5-minute evidence: checkout and payment ERROR-status increases are 0, checkout's client Charge calls with GPRC status 2 are 0, and the sampled traces carry only grpc status 0 or http 200. The nonzero error count belongs to the preceding 5-minute bucket ending 11:36:22, not to the last 5 minutes.",
+    "evidence_ids": [
+     "55695580-0855-4aa3-9e18-03999ea952a6-t1:373d5fa9-a38e-4942-a403-fa004729d644",
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t2:32506804-f067-4b85-b4d8-348a85bf2a4d",
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "The last-5-minute trace view is thin rather than exhaustive: the returned successful checkout traces span only 11:40:39–11:40:59 (2 traces, 98 spans) inside the 11:36:22–11:41:22 window, and the view itself reports backend_traces_returned=2 for a 5-trace request, so it cannot by itself establish that no failing request occurred elsewhere in that window.",
+    "evidence_ids": [
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The reported checkout error elevation corresponds to a short burst inside the 5-minute bucket ending 11:36:22 (between 11:31:22 and 11:36:22) that had cleared by 11:36:22–11:41:22, where checkout PlaceOrder, checkout client PaymentService/Charge and payment server Charge all drop from ~8.33 errors to 0; the exact burst start and end are not observable because the finer-resolution error query returned no data.",
+    "evidence_ids": [
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8",
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t1:14a2adf7-8494-429e-9a2a-f71a594ace5e",
+     "9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The failing dependency edge during the burst was checkout→payment: in the bucket ending 11:36:22 the checkout PlaceOrder error count, the checkout client PaymentService/Charge error count and the payment server Charge error count are all ~8.33, while checkout's client calls to cart, currency, shipping and product-catalog show grpc status 0 and its HTTP POST to email shows 200 in the sampled traces. This is counter coincidence, not a demonstrated causal chain: no error span with a parent reference was captured, and no ERROR series was returned for the other candidate dependencies.",
+    "evidence_ids": [
+     "32cdbcdd-d54a-4897-9ac1-46b6e4ca533c-t0:02a29270-3057-4835-b7af-ae1bd4cbffa8",
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5",
+     "9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Rejected as unsupported: that the errors originated in checkout's cart, currency, shipping, product-catalog or email dependencies. No error-tagged span on those services was captured in either sampled window (their shown spans carry rpc.grpc.status_code=0 or http status 200), and no ERROR series was returned for them. Because the trace view is a biased, incomplete sample and a missing series is unknown rather than zero, this rejection records absent supporting evidence and is not a clean bill of health for those dependencies.",
+    "evidence_ids": [
+     "4ec485f2-993b-4038-aeb8-b9d60307eb54-t0:8157e886-9326-494b-8477-f82007749fe5",
+     "5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f",
+     "9286ca84-7880-4496-9978-a9cbc43b037d-t0:5a846cb8-402c-4a56-a5e8-2e9a0f32825e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   }
+  ],
+  "gaps": [
+   "No trace containing an error span was ever returned in this Run: the last-5-minute sample and the traces sampled at 11:36:03–11:36:07 show only successful spans, so the failing spans behind the ~8.33 ERROR counts have no trace-level evidence and no failed trace id can be cited.",
+   "The 60-second-resolution ERROR query (view 5a3ab20b-352a-4951-bc26-18affae1e1f7-t1:5602cc77-3e9d-44cf-b6d7-83f82a95e732) returned status no_data with an empty content array, so it failed to show sub-5-minute error timing and cannot support any fact; whether the burst ran up to the 11:36:22 boundary and how long it lasted remain unknown.",
+   "The first last-5-minute trace request (view 55695580-0855-4aa3-9e18-03999ea952a6-t0, limit 20) ended in status error with reason RESULT_TOO_LARGE and returned no spans, so the last-5-minute trace picture rests on a 2-trace, ~20-second sample and is not a complete trace graph or failure rate.",
+   "No ERROR series was returned for cart, currency, shipping, email or product-catalog in the last-5-minute query or in the hour-long ERROR query, so their error status is unknown rather than zero and their absence from the error set cannot be asserted.",
+   "Three trace views are marked incomplete (5a3ab20b-352a-4951-bc26-18affae1e1f7-t0:5e26f701-6a1f-4066-bdd4-5cd1f22d3d0f, 3fad8a7f-4dc1-4815-8527-a78af266f9ef-t0:c088c599-a4d9-4b0e-9546-a09a0df0606e, 3fad8a7f-4dc1-4815-8527-a78af266f9ef-t1:cd2a298e-ecc7-4595-bb90-093409245680) because the backend returned as many traces as requested, so more traces may exist than were shown; no view was truncated.",
+   "Only four comparable 5-minute p95 latency points (11:26:22–11:41:22) were returned for checkout, and no longer or historical latency baseline was retrieved, so 'elevated latency' can only be assessed against those four points and no trend is established.",
+   "Counter values are fractional (e.g. 8.333333, 11.862229, 5.931115) because increase() extrapolates from sparse samples, and trace span counts are not unique request counts, so error magnitudes and call rates are estimates rather than exact request counts."
+  ],
+  "next_steps": [
+   "For a human reviewer: retrieve the raw failing checkout PlaceOrder and payment Charge spans for 11:31:22–11:36:22 to obtain the trace ids and parent references of the actual failures and confirm which dependency edge the error propagates across.",
+   "For a human reviewer: check payment service health and its downstream dependencies plus platform events around 11:31–11:36 to determine whether the burst was an injected demo fault or a genuine dependency failure.",
+   "For a human reviewer: verify the error status of cart, currency, shipping, email and product-catalog over the burst window with a query that returns their ERROR series explicitly, since those series were not returned here.",
+   "For a human reviewer: establish a longer latency baseline for checkout and its dependency calls so a future latency comparison is not limited to four sparse 5-minute p95 points."
+  ]
+ },
+ "conclusion_other_fields": {
+  "rounds": 8,
+  "handoff": false,
+  "segment": "ctx0",
+  "execution": "completed",
+  "calibration": 1.2056576708810087,
+  "compactions": 0,
+  "source_step_id": "49943ef9-07af-49c3-ae92-34a90b15411b",
+  "handoff_reasons": [],
+  "prompt_revision": "prompt-replay-candidate-bd28790117a0",
+  "question_sha256": "47342efda13607abe0301e1f97412d718ac1dbd7e1e38b668fd2c391e558b088",
+  "model_seconds_used": 105.71138870576397,
+  "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+  "model_requests_used": 8,
+  "report_content_sha256": "039aa26f70bf193b5d1ffb6eeaf8f1649109faa9383da86d96d4aecea5fa6db1",
+  "report_schema_version": "m0-report-v2"
+ }
+}

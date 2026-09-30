@@ -1,0 +1,30 @@
+{
+ "runs": [
+  [
+   "360fb924-d04a-5424-8b9a-f1a5681d0aa8",
+   "completed",
+   1,
+   12
+  ]
+ ],
+ "steps": 7,
+ "events": 21,
+ "evidence": 10,
+ "charges": 12,
+ "usage_totals": {
+  "model_requests_with_usage": 6,
+  "prompt_tokens": 104375,
+  "completion_tokens": 16045,
+  "prompt_cache_hit_tokens": 78592,
+  "reasoning_tokens": 8966
+ },
+ "report": {
+  "execution": "completed",
+  "handoff": false,
+  "handoff_reasons": [],
+  "rounds": 6,
+  "model_requests_used": 6,
+  "report_sha256": "2e1a4e553d351c99f4cf7e226631eaabddcc7bfbb40a63209a44c1ddf6c7d956"
+ },
+ "evidence_raw_hash_mismatch": []
+}

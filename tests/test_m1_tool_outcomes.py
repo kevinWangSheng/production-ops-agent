@@ -432,38 +432,80 @@ def test_naive_freshness_from_an_adapter_is_refused():
     assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
 
 
-def test_view_truncation_is_marked_while_raw_evidence_stays_complete():
+def _tokens(view):
+    return len(canonical(view).encode())
+
+
+def _executor_with_byte_counter(cap):
+    """One token per byte, so a test can place a view on either side of the
+    cap by counting bytes (M1-01 A: the cap is a whole-view token limit)."""
+
+    return build(
+        registrations=[registration(max_view_tokens=cap)],
+        token_counter=lambda text: len(text.encode()),
+    )
+
+
+def test_a_view_over_the_token_cap_is_refused_and_no_raw_bytes_are_kept():
+    """M1-01 A (v3): an over-limit view is refused whole, never truncated.
+    Replaces the earlier truncation contract (0 < returned_count < 40, marked
+    truncated, ``omitted_bytes`` > 0, raw evidence complete): no rows are
+    returned, no evidence is registered and the refusal reports the count."""
+
     rows = [{"series": index, "value": index * 2} for index in range(40)]
     payload = body(rows)
-    executor, transport, _, _ = build(registrations=[registration(max_view_bytes=128)])
+    probe, transport, _, _ = _executor_with_byte_counter(1_000_000)
+    transport.response = TransportResponse(body=payload)
+    full = _tokens(probe.execute(request()).model_view)
+
+    executor, transport, sink, _ = _executor_with_byte_counter(full - 1)
+    transport.response = TransportResponse(body=payload)
+
+    outcome = executor.execute(request())
+
+    view = outcome.model_view
+    assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
+    assert outcome.source_contact == "confirmed"
+    assert view["content"] is None
+    assert view["view_tokens"] == full and view["max_view_tokens"] == full - 1
+    assert outcome.evidence is None and sink.records == []
+
+
+def test_a_view_at_the_token_cap_keeps_the_raw_evidence_byte_identical():
+    """The half of the old truncation test that survives: what is delivered
+    keeps the source bytes and their hash."""
+
+    rows = [{"series": index, "value": index * 2} for index in range(40)]
+    payload = body(rows)
+    executor, transport, _, _ = _executor_with_byte_counter(1_000_000)
     transport.response = TransportResponse(body=payload)
 
     outcome = executor.execute(request())
 
     view = outcome.model_view
     assert outcome.status == "ok"
-    assert view["result_count"] == 40
-    assert 0 < view["returned_count"] < 40
-    assert view["truncated"] is True
-    assert view["omitted_rows"] == 40 - view["returned_count"]
-    assert view["omitted_bytes"] > 0
-    assert len(canonical(view["content"]).encode()) <= 128
-    # The full capture stays available behind the evidence reference.
+    assert view["result_count"] == view["returned_count"] == 40
+    assert view["truncated"] is False and view["omitted_rows"] == 0
     assert outcome.evidence.raw == payload
     assert outcome.evidence.raw_sha256 == hashlib.sha256(payload).hexdigest()
 
 
-def test_a_view_truncated_to_nothing_is_not_reported_as_no_data():
+def test_a_view_too_large_for_the_cap_is_not_reported_as_no_data_or_empty():
+    """M1-01 A (v3): the old "truncated to nothing" view (``ok`` with
+    ``content == []``) no longer exists. The intent it protected -- an
+    oversized result must not look like an empty one -- now reads: the outcome
+    is a ``RESULT_TOO_LARGE`` error, not ``no_data`` and not an ``ok`` view."""
+
     rows = [{"series": "x" * 300}]
-    executor, transport, _, _ = build(registrations=[registration(max_view_bytes=64)])
+    executor, transport, _, _ = _executor_with_byte_counter(64)
     transport.response = TransportResponse(body=body(rows))
 
     outcome = executor.execute(request())
 
-    assert outcome.status == "ok"
-    assert outcome.model_view["content"] == []
-    assert outcome.model_view["result_count"] == 1
-    assert outcome.model_view["truncated"] is True
+    assert outcome.status == "error"
+    assert outcome.reason == "RESULT_TOO_LARGE"
+    assert outcome.model_view["content"] is None
+    assert outcome.model_view["view_tokens"] > 64
 
 
 @pytest.mark.parametrize(("rows", "status"), [([], "no_data"), ([{"value": 1}], "ok")])

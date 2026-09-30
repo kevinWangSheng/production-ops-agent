@@ -311,7 +311,7 @@ def test_l2_single_tool_call_timeout_ceiling_is_still_enforced():
 
 def test_l2_result_byte_ceiling_is_still_enforced():
     executor, transport, sink, clock = build(
-        registrations=[registration(max_result_bytes=64, max_view_bytes=64)]
+        registrations=[registration(max_result_bytes=64, max_view_tokens=64)]
     )
     transport.response = TransportResponse(
         body=body([{"metric": "checkout", "value": "x" * 200}]),
