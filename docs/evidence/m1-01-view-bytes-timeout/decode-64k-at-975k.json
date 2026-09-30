@@ -1,0 +1,85 @@
+{
+  "experiment": "m1-01-view-bytes-timeout-latency",
+  "frozen_model_request_timeout_seconds": 360.0,
+  "started": "2026-09-29T10:18:23.433774+00:00",
+  "balance_before": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "18.52",
+        "granted_balance": "0.00",
+        "topped_up_balance": "18.52"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "label": "calibration",
+      "views": 3,
+      "request_bytes": 263945,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 120.0,
+      "started": "2026-09-29T10:18:23.671040+00:00",
+      "seconds": 1.18,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 104771,
+        "completion_tokens": 36,
+        "total_tokens": 104807,
+        "prompt_tokens_details": {
+          "cached_tokens": 104576
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 34
+        },
+        "prompt_cache_hit_tokens": 104576,
+        "prompt_cache_miss_tokens": 195
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 147,
+      "content_chars": 2
+    },
+    {
+      "label": "decode",
+      "views": 28,
+      "request_bytes": 2457471,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:18:24.928144+00:00",
+      "seconds": 155.49,
+      "http": "200",
+      "finish_reason": "length",
+      "usage": {
+        "prompt_tokens": 975182,
+        "completion_tokens": 65536,
+        "total_tokens": 1040718,
+        "prompt_tokens_details": {
+          "cached_tokens": 974976
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 218
+        },
+        "prompt_cache_hit_tokens": 974976,
+        "prompt_cache_miss_tokens": 206
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 907,
+      "content_chars": 121527
+    }
+  ],
+  "bytes_per_token": 2.519,
+  "ended": "2026-09-29T10:21:00.412222+00:00",
+  "balance_after": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "18.09",
+        "granted_balance": "0.00",
+        "topped_up_balance": "18.09"
+      }
+    ]
+  }
+}

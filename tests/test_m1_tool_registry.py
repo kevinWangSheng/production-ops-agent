@@ -73,17 +73,20 @@ def test_gateway_owned_parameters_cannot_be_declared(name):
         ({"request_timeout_seconds": 0}, "REQUEST_TIM"),
         ({"max_result_bytes": MAX_RESULT_BYTES + 1}, "RESULT_LIMIT_OUT_OF_RANGE"),
         ({"max_result_bytes": 0}, "RESULT_LIMIT_OUT_OF_RANGE"),
-        ({"max_view_bytes": 8192}, "VIEW_LIMIT_OUT_OF_RANGE"),
-        ({"max_view_bytes": 0}, "VIEW_LIMIT_OUT_OF_RANGE"),
-        ({"max_view_bytes": 1}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_tokens": 0}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_tokens": -1}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_tokens": True}, "VIEW_LIMIT_OUT_OF_RANGE"),
+        ({"max_view_tokens": 1.5}, "VIEW_LIMIT_OUT_OF_RANGE"),
         ({"max_window_seconds": 0}, "WINDOW_LIMIT_OUT_OF_RANGE"),
     ],
 )
 def test_frozen_m1_01_ceilings_are_enforced_by_construction(overrides, code):
-    """``max_view_bytes`` in (0, 1) is a bot review finding: ``_fit_rows()``
-    always counts the two enclosing bytes of an empty JSON array `[]`, so a
-    budget below that floor is a ceiling no result -- not even an empty one
-    -- could ever satisfy.
+    """M1-01 A (v3) replaced the byte ceiling with ``max_view_tokens``: an
+    ``int`` of at least 1 (``bool`` excluded), no longer bounded by
+    ``max_result_bytes`` (different unit). The old ``8192`` and ``1`` cases
+    (over ``max_result_bytes`` / under the empty-array floor) are valid token
+    limits now; ``tests/test_m1_whole_view_tokens_contract.py`` pins the
+    accepted side.
     """
 
     with pytest.raises(ToolContractError, match=code):

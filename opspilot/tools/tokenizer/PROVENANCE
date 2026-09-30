@@ -1,0 +1,14 @@
+Vendored DeepSeek V4.1 Flash tokenizer (M1-01, docs/tasks/2026-09-29-m1-01-view-bytes-timeout.md).
+
+Source:   https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash (MIT, see LICENSE)
+Commit:   dba1be0a40aa45a94ad051997016db3960a90277 (2026-09-10)
+Fetched:  2026-09-29, files/resolve/main/tokenizer.json and LICENSE
+Model:    the "deepseek-flash" API model is DeepSeek-V4.1-Flash
+          (https://api-docs.deepseek.com/quick_start/pricing/, 2026-09-29)
+
+tokenizer.json  6367257 bytes  sha256 c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b
+LICENSE         1084 bytes     sha256 f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040
+
+opspilot/tools/tokens.py refuses to load a tokenizer.json whose sha256 differs
+from the value above. Validation against real API usage:
+docs/evidence/m1-01-view-bytes-timeout/tokenizer-validation.json.

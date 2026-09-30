@@ -1,0 +1,24 @@
+{
+  "date": "2026-09-29",
+  "tokenizer": {
+    "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash (MIT)",
+    "repo_commit": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "vocab_file_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+    "vocab_file_bytes": 6367257,
+    "license_sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+    "package": "tokenizers==0.23.2 (add_special_tokens=False)",
+    "v4_flash_vocab_file_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf"
+  },
+  "local_vs_provider": {
+    "metrics_fixture_view": {"bytes": 1409, "local_tokens": 570, "provider_marginal_tokens_per_assistant_tool_pair": 605, "overhead": 35},
+    "traces_fixture_view": {"bytes": 58357, "local_tokens": 19060, "provider_marginal_tokens_per_assistant_tool_pair": 19097, "overhead": 37},
+    "synthetic_metric_view": {"bytes": 81321, "local_tokens": 34761, "note": "28 such views + system/user gave 975123 provider prompt tokens (34822 per view incl. pair overhead)"},
+    "v4_flash_tokenizer_gives_identical_counts_on_all_three": true
+  },
+  "cost_of_counting": {"load_seconds": 0.11, "encode_1MiB_seconds": 0.6, "peak_rss_mb_after_1MiB_encode": 369},
+  "existing_test_fixtures_under_25000_token_cap": {
+    "b1_traces_20_heavy_spans": {"bytes": 72065, "tokens": 19895, "truncated": false},
+    "b1_metrics_1200_rows": {"bytes": 87443, "tokens": 29232, "truncated": true},
+    "c3_heavy_40_spans_current_28_row_view": {"bytes": 100240, "tokens": 27630, "truncated": true}
+  }
+}

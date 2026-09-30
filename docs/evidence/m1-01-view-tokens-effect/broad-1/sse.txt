@@ -1,0 +1,190 @@
+retry: 2000
+
+id: 1
+event: intake_accepted
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "channel": "ui_basic", "actor_id": "demo", "question": "Do a complete survey of every authorized service in the OTel Demo over the whole authorized 24-hour frame, not just checkout. For each authorized service, use the authorized metrics range query at the finest resolution the tool allows (15 second step) for error counts and latency, and run the authorized trace search for that service with a high limit (at least 50 traces) so no trace is missed. Compare every service across the whole frame, cite trace ids, and return a json investigation report with per-service findings.", "target_id": "m0-otel-20260909", "request_id": "3c7e22d7-12fe-4428-a71e-27322424c69c", "received_at": "2026-09-29T04:25:29.199559-07:00"}
+
+id: 2
+event: run_claimed
+data: {"epoch": 1, "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "control_generation": 0}
+
+id: 3
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085", "logical_key": "ctx0:round-1", "finish_reason": "tool_calls", "planned_tools": 4}
+
+id: 4
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085", "target_id": "m0-otel-20260909", "evidence_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a"}
+
+id: 5
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085", "target_id": "m0-otel-20260909", "evidence_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t1:6959a496-e88e-4d85-8287-bd10f7bfb5a0"}
+
+id: 6
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085", "target_id": "m0-otel-20260909", "evidence_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t2:cbdfd240-617b-410c-87bd-59283a9dcc43"}
+
+id: 7
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "error", "adopted": null, "ordinal": 3, "step_id": "3ab75b5d-1b8f-45ed-992a-7394eed6c085", "target_id": "m0-otel-20260909", "evidence_id": null}
+
+id: 8
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "logical_key": "ctx0:round-2", "finish_reason": "tool_calls", "planned_tools": 7}
+
+id: 9
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655"}
+
+id: 10
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t1:f94681c4-b684-4c08-b368-9b9285a41b21"}
+
+id: 11
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t2:4a26ad77-4d8d-4d5e-ab6c-e5b6e0b2f50e"}
+
+id: 12
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t3:829cebca-2a32-4ea4-a047-be2a58d46f5f"}
+
+id: 13
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 4, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t4:00c9b3f9-4506-4963-9ed6-28b62270c31e"}
+
+id: 14
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 5, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2"}
+
+id: 15
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 6, "step_id": "e3b68def-7743-46e6-9f30-49761c3b93e7", "target_id": "m0-otel-20260909", "evidence_id": "e3b68def-7743-46e6-9f30-49761c3b93e7-t6:93fb718a-e026-4d47-b445-790205cd630c"}
+
+id: 16
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "logical_key": "ctx0:round-3", "finish_reason": "tool_calls", "planned_tools": 6}
+
+id: 17
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a"}
+
+id: 18
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890"}
+
+id: 19
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b"}
+
+id: 20
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "error", "adopted": null, "ordinal": 3, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": null}
+
+id: 21
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "error", "adopted": null, "ordinal": 4, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": null}
+
+id: 22
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "error", "adopted": null, "ordinal": 5, "step_id": "130c7c89-d5c7-4d67-81df-51be8629776a", "target_id": "m0-otel-20260909", "evidence_id": null}
+
+id: 23
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799", "logical_key": "ctx0:round-4", "finish_reason": "tool_calls", "planned_tools": 4}
+
+id: 24
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799", "target_id": "m0-otel-20260909", "evidence_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23"}
+
+id: 25
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799", "target_id": "m0-otel-20260909", "evidence_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b"}
+
+id: 26
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799", "target_id": "m0-otel-20260909", "evidence_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715"}
+
+id: 27
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799", "target_id": "m0-otel-20260909", "evidence_id": "c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73"}
+
+id: 28
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "logical_key": "ctx0:round-5", "finish_reason": "tool_calls", "planned_tools": 7}
+
+id: 29
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf"}
+
+id: 30
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7"}
+
+id: 31
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t2:878c32a1-c3fa-4339-b880-b06865d31c9f"}
+
+id: 32
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828"}
+
+id: 33
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "no_data", "adopted": true, "ordinal": 4, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t4:b32c8647-bad0-4c59-8a0e-f9ab192e61b8"}
+
+id: 34
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "no_data", "adopted": true, "ordinal": 5, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t5:45b87b64-b8e8-4236-8245-ebb8ec72f95f"}
+
+id: 35
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 6, "step_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44", "target_id": "m0-otel-20260909", "evidence_id": "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29"}
+
+id: 36
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "ce52dc40-45be-4c00-b984-f9b837eb911e", "logical_key": "ctx0:round-6", "finish_reason": "tool_calls", "planned_tools": 4}
+
+id: 37
+event: tool_committed
+data: {"tool": "metrics_range_query", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "ce52dc40-45be-4c00-b984-f9b837eb911e", "target_id": "m0-otel-20260909", "evidence_id": "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22"}
+
+id: 38
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "ce52dc40-45be-4c00-b984-f9b837eb911e", "target_id": "m0-otel-20260909", "evidence_id": "ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac"}
+
+id: 39
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "ce52dc40-45be-4c00-b984-f9b837eb911e", "target_id": "m0-otel-20260909", "evidence_id": "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a"}
+
+id: 40
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 3, "step_id": "ce52dc40-45be-4c00-b984-f9b837eb911e", "target_id": "m0-otel-20260909", "evidence_id": "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf"}
+
+id: 41
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe", "logical_key": "ctx0:round-7", "finish_reason": "tool_calls", "planned_tools": 3}
+
+id: 42
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 0, "step_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe", "target_id": "m0-otel-20260909", "evidence_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1"}
+
+id: 43
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 1, "step_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe", "target_id": "m0-otel-20260909", "evidence_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a"}
+
+id: 44
+event: tool_committed
+data: {"tool": "traces_search", "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "status": "ok", "adopted": true, "ordinal": 2, "step_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe", "target_id": "m0-otel-20260909", "evidence_id": "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d"}
+
+id: 45
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "9b583af3-02d0-49c1-9362-64c7f9bf09ca", "logical_key": "ctx0:round-8", "finish_reason": "stop", "planned_tools": 0}
+
+id: 46
+event: step_committed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "step_id": "34afc26f-f80b-4e68-b5c8-70bbf49dfd96", "logical_key": "ctx0:round-9", "finish_reason": "stop", "planned_tools": 0}
+
+id: 47
+event: run_completed
+data: {"run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d", "handoff": false, "execution": "completed", "published": true, "evidence_ids": ["3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a", "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t1:6959a496-e88e-4d85-8287-bd10f7bfb5a0", "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t2:cbdfd240-617b-410c-87bd-59283a9dcc43", "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655", "e3b68def-7743-46e6-9f30-49761c3b93e7-t1:f94681c4-b684-4c08-b368-9b9285a41b21", "e3b68def-7743-46e6-9f30-49761c3b93e7-t2:4a26ad77-4d8d-4d5e-ab6c-e5b6e0b2f50e", "e3b68def-7743-46e6-9f30-49761c3b93e7-t3:829cebca-2a32-4ea4-a047-be2a58d46f5f", "e3b68def-7743-46e6-9f30-49761c3b93e7-t4:00c9b3f9-4506-4963-9ed6-28b62270c31e", "e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2", "e3b68def-7743-46e6-9f30-49761c3b93e7-t6:93fb718a-e026-4d47-b445-790205cd630c", "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a", "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890", "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b", "c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23", "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b", "c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715", "c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t2:878c32a1-c3fa-4339-b880-b06865d31c9f", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t4:b32c8647-bad0-4c59-8a0e-f9ab192e61b8", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t5:45b87b64-b8e8-4236-8245-ebb8ec72f95f", "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29", "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22", "ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac", "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a", "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf", "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1", "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a", "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d"], "report_sha256": "c7003117571704bb6644fb60400799dfe4009a860839d71f7093c8667cb5c777", "handoff_reasons": [], "prompt_revision": "prompt-replay-candidate-bd28790117a0", "model_requests_used": 9}
+

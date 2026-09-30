@@ -19,7 +19,7 @@ from dataclasses import replace
 from datetime import timedelta
 from uuid import uuid4
 
-from opspilot.investigation.context import rebuild_transcript
+from opspilot.investigation.context import delivered_view, rebuild_transcript
 from opspilot.investigation.loop import prompt_revision_versions
 from opspilot.investigation.reports import FINAL_REPORT_INSTRUCTION
 from opspilot.persistence import Lease
@@ -239,7 +239,7 @@ def test_b_complete_search_reports_backend_and_shown_counts(monkeypatch):
     view = outcome.model_view
     # B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md) removed the
     # old 20-span sampling cap; CHECKOUT_TRACES' 90 spans stay well under the
-    # widened view byte cap (MAX_VIEW_BYTES), so none are truncated either.
+    # view token cap (MAX_VIEW_TOKENS, 19k of 25k tokens), so none are dropped either.
     assert view["result_count"] == 90 and view["returned_count"] == 90
     assert (
         view["incomplete"] is False and view["query"]["limit"] == 10
@@ -268,16 +268,10 @@ def test_b_a_full_limit_search_reports_a_nonnull_incomplete_reason(monkeypatch):
     assert view["traces_requested"] == 2
 
 
-def test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent(monkeypatch):
-    """A synthetic backend response whose 20 sampled spans do not all fit the
-    100 KiB view budget (widened by B1,
-    docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md, from the original
-    16 KiB this test was written against -- 40 heavy spans instead of 20 so
-    the byte cap is still exceeded): the view still truncates (rule
-    unchanged), and the new fields must account for the whole gap between
-    what the backend returned and what the view actually shows, not just
-    the sampling cap (B1 also removed that separate 20-span cap, so the gap
-    here is entirely the byte truncation)."""
+def _heavy_traces_body(span_count: int) -> bytes:
+    """``span_count`` ~3.48 KB error spans, one per trace, all of the requested
+    service (measured: 20 of them ~19.9k real DeepSeek tokens, 40 of them
+    ~27.6k)."""
     start_us = int(WINDOW.start.timestamp() * 1_000_000) + 1_000_000
 
     def make_span(i: int) -> dict:
@@ -306,37 +300,57 @@ def test_b_byte_truncation_leaves_spans_omitted_positive_and_consistent(monkeypa
             "references": [],
         }
 
-    SPAN_COUNT = 40
     traces = [
         {
             "traceID": f"trace{i:04x}",
             "spans": [make_span(i)],
             "processes": {"p1": {"serviceName": "checkout", "tags": []}},
         }
-        for i in range(SPAN_COUNT)
+        for i in range(span_count)
     ]
-    synthetic_body = json.dumps({"data": traces}).encode()
-    opener = FakeOpener(routes={"/api/traces": synthetic_body})
+    return json.dumps({"data": traces}).encode()
+
+
+def test_b_a_view_over_the_token_cap_is_refused_whole_not_counted_as_omitted(
+    monkeypatch,
+):
+    """M1-01 A (v3) replaced the byte truncation this test pinned (40 heavy
+    spans, 28 shown, ``omitted_rows == 12``, ``spans_omitted == 12``): rows are
+    no longer dropped for size. The same 40 spans (~27.6k real tokens, over the
+    25,000-token cap) are now refused as a whole with the true count, and no
+    span is described as shown or omitted."""
+    SPAN_COUNT = 40
+    opener = FakeOpener(routes={"/api/traces": _heavy_traces_body(SPAN_COUNT)})
     executor = _trace_executor(monkeypatch, opener)
     outcome = executor.execute(
         _trace_call({"service": "checkout", "limit": SPAN_COUNT})
     )
     view = outcome.model_view
-    # Measured (not guessed) against the current MAX_VIEW_BYTES: each of
-    # these ~3.48 KB heavy spans, 40 of them project to ~139 KB, of which 28
-    # fit the 100 KiB view cap. 29 (not 28) fit under the row array's own
-    # bytes alone, but C3's span_groups (2026-09-28 independent-review
-    # follow-up, P2-1: opspilot.tools.executor._row_dependent_fields) now
-    # counts toward the same cap, so one further row is dropped to make room
-    # for it.
-    assert view["truncated"] is True and view["omitted_rows"] == 12
+    assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
+    assert view["content"] is None and outcome.evidence is None
+    assert view["max_view_tokens"] == 25_000 and view["view_tokens"] > 25_000
+    for field in ("truncated", "omitted_rows", "spans_shown", "spans_omitted"):
+        assert field not in view, field
+
+
+def test_b_a_view_under_the_token_cap_accounts_for_every_backend_span(monkeypatch):
+    """The counts contract that survives: 20 heavy spans (~19.9k tokens, under
+    the cap) are all shown, and ``spans_omitted`` -- now only the adapter's own
+    sampling gap -- is 0 and consistent with the backend count."""
+    SPAN_COUNT = 20
+    opener = FakeOpener(routes={"/api/traces": _heavy_traces_body(SPAN_COUNT)})
+    executor = _trace_executor(monkeypatch, opener)
+    outcome = executor.execute(
+        _trace_call({"service": "checkout", "limit": SPAN_COUNT})
+    )
+    view = outcome.model_view
+    assert outcome.status == "ok", view
+    assert view["truncated"] is False and view["omitted_rows"] == 0
     record = json.loads(outcome.evidence.raw)
-    # B1: no row cap at the projection layer any more -- every backend span
-    # is always sampled here regardless of count.
     assert record["omitted_span_count"] == 0
     assert view["backend_spans_returned"] == SPAN_COUNT
-    assert view["spans_shown"] == len(view["content"]) == 28
-    assert view["spans_omitted"] == 12
+    assert view["spans_shown"] == len(view["content"]) == SPAN_COUNT
+    assert view["spans_omitted"] == 0
     assert view["incomplete_reason"] is not None  # SPAN_COUNT traces >= limit
 
 
@@ -435,7 +449,22 @@ def test_c_an_incomplete_view_is_listed_and_the_other_categories_are_none():
     assert _mentions_total(content, 1)
 
 
-def test_c_a_truncated_view_is_listed_and_the_other_categories_are_none():
+def test_c_a_historical_v5_truncated_view_is_listed_and_the_other_categories_are_none():
+    """M1-01 A (v3) contract change: the executor no longer truncates rows, so
+    a Run can no longer *produce* a view with ``truncated: true`` (this test
+    used to make one with 30 rows under the old default cap). What this test
+    pins is only the classification logic: ``delivered_view`` plus
+    ``run_coverage_message`` list a stored view that carries ``truncated:
+    true`` under "truncated" and leave the other categories at none. It is not
+    a reachable resume path: a projection-v5 Run is blocked by the
+    ``tool_schema_revision`` version gate on otel-demo, and the fixture
+    profile was moved to ``fixture-2``, which blocks it there too. The view is
+    made historical by hand: run once, take the stored result, mark it as v5
+    wrote a truncated one, derive the ``DeliveredView`` the way the rebuild
+    path does (``delivered_view``) and feed it through the single-source
+    ``run_coverage_message``."""
+    from opspilot.investigation.reports import run_coverage_message
+
     loop, request, model, transport, store, _ = assemble(
         replies=[
             reply(tool_calls=[tool_call()], finish="tool_calls"),
@@ -443,13 +472,24 @@ def test_c_a_truncated_view_is_listed_and_the_other_categories_are_none():
         ],
         model_requests=2,
     )
-    rows = [{"metric": f"m{i}", "value": i} for i in range(30)]
-    transport.response = TransportResponse(body=body(rows))
+    transport.response = TransportResponse(
+        body=body([{"metric": f"m{i}", "value": i} for i in range(30)])
+    )
     outcome = loop.run(request)
     assert outcome.execution == "completed"  # sanity
     (evidence_id,) = _own_evidence_ids(model.calls[1].messages)
-    _, coverage_msg = _final_pair(model.calls[1].messages)
-    content = coverage_msg["content"]
+    _, live_coverage = _final_pair(model.calls[1].messages)
+    assert _count_none(live_coverage["content"]) == 3  # a clean view today
+
+    (stored,) = [r["result"] for rows in store.tool_results.values() for r in rows]
+    historical = {**stored, "truncated": True, "omitted_rows": 12}
+    view = delivered_view(
+        historical,
+        evidence_context=request.evidence_context,
+        authorized_targets=request.scope.target_ids,
+    )
+    assert view is not None and view.evidence_id == evidence_id
+    content = run_coverage_message([view])
     assert evidence_id in content
     assert _count_none(content) == 2  # incomplete: none, non-ok status: none
     assert _mentions_total(content, 1)

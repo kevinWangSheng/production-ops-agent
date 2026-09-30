@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -48,7 +48,6 @@ from .outcomes import (
     Window,
 )
 from .registry import (
-    EMPTY_VIEW_BYTES,
     READ_ONLY_VERBS,
     RegisteredTarget,
     TargetRegistry,
@@ -58,6 +57,7 @@ from .registry import (
     canonical,
     canonical_hash,
 )
+from .tokens import TokenCounter, default_counter
 
 __all__ = [
     "MAX_OPERATIONS_PER_RUN",
@@ -381,25 +381,12 @@ class TransportResponse:
 
     ``row_unit`` names what one result row is (``"spans"``) and
     ``backend_rows_returned`` how many such rows the source returned before
-    the adapter sampled and the executor truncated; the view then carries
+    the adapter sampled; the view then carries
     ``backend_<unit>_returned``, ``<unit>_shown`` (rows in the view) and
     ``<unit>_omitted`` (the difference), so a count always states its unit
     (round 2 rule B). ``view_fields`` are further adapter-verified,
     tool-specific view fields copied onto the view verbatim; a key that
     collides with a generic view field is MALFORMED_RESULT.
-
-    ``view_augment``, when given, is called once with the view's own
-    ``content`` -- the rows actually kept after byte-cap truncation, not
-    ``rows`` (every extracted row before it) -- and its return value is
-    merged onto the view the same way ``view_fields`` is (batch C, C3:
-    ``opspilot.tools.otel_demo``'s ``span_groups``, a per-(service,
-    operation) summary that must reflect only what the model is shown, never
-    a row the byte cap dropped). Unlike ``view_fields`` it cannot be computed
-    before dispatch -- truncation happens inside the executor, after the
-    adapter has already returned -- so it is a callback, not a value; the
-    executor calls it while building the view (before ``view_sha256`` is
-    computed), so its output counts toward the committed evidence's hash
-    like every other view field.
     """
 
     body: bytes
@@ -413,7 +400,6 @@ class TransportResponse:
     backend_rows_returned: int | None = None
     view_fields: Mapping[str, object] | None = None
     query_window: Window | None = None
-    view_augment: Callable[[Sequence[object]], Mapping[str, object]] | None = None
 
 
 @runtime_checkable
@@ -517,6 +503,23 @@ class _Plan:
     params: Mapping[str, object]
 
 
+class _ViewTooLarge(Exception):
+    """An adopted view counted over its registration's ``max_view_tokens``."""
+
+    def __init__(
+        self,
+        tokens: int,
+        limit: int,
+        query: Mapping[str, object],
+        window: Mapping[str, object],
+    ) -> None:
+        super().__init__("RESULT_TOO_LARGE")
+        self.tokens = tokens
+        self.limit = limit
+        self.query = query
+        self.window = window
+
+
 class ReadOnlyToolExecutor:
     """Executes authorized read-only tool operations for exactly one scope."""
 
@@ -531,6 +534,7 @@ class ReadOnlyToolExecutor:
         control: ControlAuthority,
         clock: Clock,
         ledger: ToolUsageLedger,
+        token_counter: TokenCounter | None = None,
     ) -> None:
         if not isinstance(scope, QueryScope):
             raise ToolContractError("INVALID_SCOPE")
@@ -562,6 +566,14 @@ class ReadOnlyToolExecutor:
         # Earlier attempts of this Run already spent part of the budget; the
         # ceilings in ``scope`` are per Run, so counting resumes from here.
         self._operations_used = usage.operations_used
+        # The model-view limit is metered in real DeepSeek tokens (M1-01, A).
+        # ``None`` loads the vendored tokenizer now and fails closed
+        # (``TOKENIZER_UNAVAILABLE``): a worker must not start and then find
+        # out mid-Run, or quietly fall back to a byte estimate. A given
+        # counter (a deterministic test double) touches no tokenizer file.
+        self._count_tokens: TokenCounter = (
+            default_counter() if token_counter is None else token_counter
+        )
         self._tool_seconds_used = float(usage.tool_seconds_used)
 
     @property
@@ -940,7 +952,11 @@ class ReadOnlyToolExecutor:
         )
         settlement_denied = False
 
-        def refuse_after_fetch(status: ToolStatus, reason: str) -> ToolOutcome:
+        def refuse_after_fetch(
+            status: ToolStatus,
+            reason: str,
+            detail: Mapping[str, object] | None = None,
+        ) -> ToolOutcome:
             """Refuse a dispatched read, human decisions first.
 
             Every refusal below this point is about a read that already went
@@ -976,7 +992,11 @@ class ReadOnlyToolExecutor:
             if settlement_denied:
                 return self._refuse(operation, "denied", "CONTROL_UNAVAILABLE", contact)
             return self._refuse(
-                operation, status, reason, contact, detail=_refusal_detail(reason, plan)
+                operation,
+                status,
+                reason,
+                contact,
+                detail=detail if detail is not None else _refusal_detail(reason, plan),
             )
 
         try:
@@ -1052,16 +1072,33 @@ class ReadOnlyToolExecutor:
             invalid = "CONTROL_UNAVAILABLE"
         else:
             invalid = ""
-        record = self._record(
-            dispatch_id,
-            operation,
-            plan,
-            response,
-            payload,
-            rows,
-            status if not invalid else "denied",
-            adopted=not invalid,
-        )
+        try:
+            record = self._record(
+                dispatch_id,
+                operation,
+                plan,
+                response,
+                payload,
+                rows,
+                status if not invalid else "denied",
+                adopted=not invalid,
+            )
+        except _ViewTooLarge as too_large:
+            # A read that completed and would have been adopted, but whose
+            # whole view does not fit: refused like every other post-fetch
+            # refusal (a human decision landed meanwhile still outranks it).
+            # Nothing is registered -- like the byte-limit refusal, the raw
+            # body is not kept as evidence -- and the read stays charged.
+            return refuse_after_fetch(
+                "error",
+                "RESULT_TOO_LARGE",
+                detail=_view_refusal_detail(
+                    too_large.tokens,
+                    too_large.limit,
+                    too_large.query,
+                    too_large.window,
+                ),
+            )
         if invalid:
             try:
                 registered = self._register(
@@ -1346,6 +1383,14 @@ class ReadOnlyToolExecutor:
 
     # -- evidence ------------------------------------------------------
 
+    def _view_tokens(self, view: Mapping[str, object]) -> int:
+        """Tokens of the exact string a view becomes as model message content."""
+
+        count = self._count_tokens(canonical(view))
+        if type(count) is not int or count < 0:
+            raise ToolContractError("INVALID_TOKEN_COUNTER")
+        return count
+
     def _record(
         self,
         dispatch_id: UUID,
@@ -1362,14 +1407,11 @@ class ReadOnlyToolExecutor:
         observed_at = operation.finished_at or operation.started_at
         assert observed_at is not None
         incomplete = _incomplete(registration, payload)
-        if adopted:
-            kept, omitted_rows, omitted_bytes = _fit_rows(
-                rows, registration.max_view_bytes
-            )
-        else:
-            # An invalidated observation survives as history; none of its rows
-            # are handed to the model, and the view says so.
-            kept, omitted_rows, omitted_bytes = _fit_rows(rows, 0)
+        # Every row of an adopted observation goes to the model, or the whole
+        # view is refused below (``_ViewTooLarge``): a view is never partly
+        # delivered. An invalidated observation survives as history; none of
+        # its rows are handed to the model, and the view says so.
+        kept: Sequence[object] = rows if adopted else ()
         data_as_of = response.data_as_of
         source_start_at = response.source_start_at
         source_end_at = response.source_end_at
@@ -1435,7 +1477,11 @@ class ReadOnlyToolExecutor:
             "result_count": len(rows),
             "incomplete": incomplete,
         }
-        if response.view_fields:
+        if response.view_fields and adopted:
+            # An invalidated observation's view keeps none of the adapter's
+            # fields: some summarise the rows (``traces_search``'s
+            # ``span_groups``), and this view withholds every row, so such a
+            # field would describe rows the model is not shown.
             view.update(response.view_fields)
         view.update(
             _row_dependent_fields(
@@ -1444,51 +1490,25 @@ class ReadOnlyToolExecutor:
                 adopted=adopted,
                 row_unit=response.row_unit,
                 backend_rows_returned=response.backend_rows_returned,
-                view_augment=response.view_augment,
             )
         )
-        # 2026-09-28 independent-review follow-up (C3 P2-1): ``_fit_rows``
-        # above only bounds ``canonical(kept)`` -- the row array alone -- but
-        # ``view_augment``'s own output (otel_demo's ``span_groups``) adds
-        # real bytes on top, so a view could still exceed ``max_view_bytes``
-        # once assembled. Shrink further here, recomputing every
-        # row-dependent field (including view_augment, so it always reflects
-        # exactly the rows still kept) each time, until "content +
-        # span_groups + everything else" fits under the cap or nothing is
-        # left to drop.
-        #
-        # Gated on ``view_augment is not None``: without one, ``_fit_rows``'s
-        # row-only bound is exactly what every profile and test fixture in
-        # this codebase has always assumed ``max_view_bytes`` means (some
-        # deliberately tiny, to exercise the row-cap mechanism in isolation
-        # -- ``tests/m1_tool_support.py``'s own 512-byte registration, for
-        # one, is far smaller than a real view's fixed fields alone, e.g.
-        # ``evidence_id``/``window``/timestamps). Checking the whole
-        # assembled view unconditionally would silently truncate every row
-        # of those views to nothing, not just the ones a wider budget was
-        # never sized against (bot review finding from this very
-        # follow-up's own first pass -- caught by the generic, non-trace
-        # suite, not the otel_demo-specific tests this batch was written
-        # against).
-        if adopted and response.view_augment is not None:
-            while (
-                kept
-                and len(canonical(view).encode("utf-8")) > registration.max_view_bytes
-            ):
-                kept = kept[:-1]
-                view.update(
-                    _row_dependent_fields(
-                        kept,
-                        rows=rows,
-                        adopted=adopted,
-                        row_unit=response.row_unit,
-                        backend_rows_returned=response.backend_rows_returned,
-                        view_augment=response.view_augment,
-                    )
+        if adopted:
+            # The one size check (M1-01, A): the whole view, all fixed fields
+            # and every row, in the counter's tokens -- what would reach the
+            # model as this tool message's content. Over the registered limit
+            # it is refused whole, never truncated into a partial view (the
+            # partial views of one trace batch were the source of the
+            # overlapping-evidence errors in the third-batch review; see
+            # docs/tasks/2026-09-29-m1-01-view-bytes-timeout.md).
+            tokens = self._view_tokens(view)
+            if tokens > registration.max_view_tokens:
+                raise _ViewTooLarge(
+                    tokens,
+                    registration.max_view_tokens,
+                    cast(Mapping[str, object], view["query"]),
+                    cast(Mapping[str, object], view["window"]),
                 )
-        # Read back from ``view`` rather than the pre-shrink-loop locals:
-        # the loop above may have dropped further rows since the initial
-        # ``_fit_rows`` call, and the record's own audit fields must match
+        # Read back from ``view`` so the record's own audit fields match
         # exactly what the committed view says.
         omitted_rows = cast(int, view["omitted_rows"])
         omitted_bytes = cast(int, view["omitted_bytes"])
@@ -1588,6 +1608,37 @@ def _refusal_detail(reason: str, plan: _Plan) -> Mapping[str, object] | None:
     }
 
 
+def _view_refusal_detail(
+    tokens: int,
+    limit: int,
+    query: Mapping[str, object],
+    window: Mapping[str, object],
+) -> Mapping[str, object]:
+    """The over-limit-view sibling of ``_refusal_detail``: same reason, same
+    ``message`` field, but the view's own limit and measured size. Worded like
+    upstream's oversized-result error (``tool_context_window_limiter.py:69,
+    131-139``): fixed text, never source content.
+
+    ``window`` and ``query`` are what an ok view would have carried: the
+    window actually queried (which overrides the authorized frame the generic
+    refusal view shows) and the accepted parameters. Without them the model
+    could not tell which of its own calls was refused and read the frame as
+    the window it had asked for (real-Run reviews, view-tokens-effect)."""
+    return {
+        "window": window,
+        "query": dict(query),
+        "max_view_tokens": limit,
+        "view_tokens": tokens,
+        "message": (
+            f"The tool call result is too large to return: {tokens}/{limit} "
+            "tokens.\n"
+            "Try to repeat the query but proactively narrow down the result "
+            "(a narrower time window, a filter, or a smaller limit) so that "
+            "the tool answer fits within the allowed number of tokens."
+        ),
+    }
+
+
 def _accept_params(
     registration: ToolRegistration, params: object
 ) -> tuple[Mapping[str, object] | None, str]:
@@ -1680,7 +1731,7 @@ def _result_rows(
         # A `\uD800`-style escape decodes into a Python str holding a lone
         # surrogate codepoint -- json.loads accepts it without error -- but
         # re-encoding it to UTF-8 for canonicalization (here, and later in
-        # _fit_rows()) raises UnicodeEncodeError, a ValueError subclass. This
+        # _record()) raises UnicodeEncodeError, a ValueError subclass. This
         # is a fresh failure mode past decoding succeeding, not a duplicate
         # of the decoder-limit check above (bot review finding).
         #
@@ -1777,25 +1828,6 @@ def _incomplete(registration: ToolRegistration, payload: object) -> bool:
     return bool(payload.get(marker))
 
 
-def _fit_rows(rows: Sequence[object], budget: int) -> tuple[list[object], int, int]:
-    """Keep the leading rows that fit the view budget; report what was cut.
-
-    The budget bounds ``canonical(kept)`` exactly, so ``max_view_bytes`` is a
-    real ceiling on what one observation can add to model context.
-    """
-
-    kept: list[object] = []
-    used = EMPTY_VIEW_BYTES  # the enclosing brackets of the JSON array
-    for index, row in enumerate(rows):
-        size = len(canonical(row).encode("utf-8")) + (1 if kept else 0)
-        if used + size > budget:
-            omitted = sum(len(canonical(rest).encode("utf-8")) for rest in rows[index:])
-            return kept, len(rows) - index, omitted
-        kept.append(row)
-        used += size
-    return kept, 0, 0
-
-
 def _row_dependent_fields(
     kept: Sequence[object],
     *,
@@ -1803,17 +1835,12 @@ def _row_dependent_fields(
     adopted: bool,
     row_unit: str | None,
     backend_rows_returned: int | None,
-    view_augment: Callable[[Sequence[object]], Mapping[str, object]] | None,
 ) -> dict[str, object]:
-    """The view fields that depend on exactly which rows are kept.
+    """The view fields that depend on which rows are shown.
 
-    Recomputed from scratch for any candidate ``kept`` (a leading slice of
-    ``rows``) so ``_record()``'s truncation-shrink loop (2026-09-28
-    independent-review follow-up, C3 P2-1) can call this repeatedly and
-    always get a self-consistent set: ``omitted_rows``/``omitted_bytes``
-    against the *current* ``kept``, the round 2 rule B unit counts against
-    its length, and -- the reason this exists -- ``view_augment`` computed
-    from exactly these rows, never a stale larger set.
+    ``kept`` is every row of an adopted observation and none of an
+    invalidated one (history), so ``omitted_rows``/``omitted_bytes`` are zero
+    on a view the model receives and describe the withheld rows otherwise.
     """
     omitted_rows = len(rows) - len(kept)
     omitted_bytes = sum(
@@ -1828,29 +1855,10 @@ def _row_dependent_fields(
     }
     if row_unit is not None and backend_rows_returned is not None:
         # Counts with their unit (round 2 rule B): what the source returned,
-        # what this view shows, and the gap between them -- whether the
-        # adapter sampled rows out or the byte cap dropped them, both are
-        # rows the model does not see.
+        # what this view shows, and the gap between them -- rows the adapter
+        # sampled out, which the model does not see (the view limit never
+        # drops rows: an over-limit view is refused whole).
         fields[f"backend_{row_unit}_returned"] = backend_rows_returned
         fields[f"{row_unit}_shown"] = len(kept)
         fields[f"{row_unit}_omitted"] = backend_rows_returned - len(kept)
-    if view_augment is not None:
-        extra = view_augment(kept)
-        if extra:
-            # Same rule as ``view_fields``' own collision guard
-            # (``_unit_fields_problem``, ``_GENERIC_VIEW_KEYS``): a
-            # tool-specific augment must never shadow a generic view field
-            # or one of these row-unit fields. ``view_fields`` collides are
-            # model-adjacent (the adapter response drives them) and become
-            # a graceful ``MALFORMED_RESULT`` ``ToolOutcome`` via
-            # ``_inspect()``; ``view_augment`` is entirely
-            # adapter/operator-authored code -- no live response or model
-            # input can trigger this -- so a collision here is a
-            # programming bug in that code, caught the fail-loud way this
-            # module's own vocabulary uses for operator contract violations
-            # (``ToolContractError``), not silently folded into the view.
-            collision = (_GENERIC_VIEW_KEYS | fields.keys()) & extra.keys()
-            if collision:
-                raise ToolContractError("MALFORMED_VIEW_AUGMENT")
-            fields.update(extra)
     return fields

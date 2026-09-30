@@ -1,0 +1,499 @@
+{
+ "run_id": "3af1ace2-bb99-58ec-9f04-9bdcfcbd3f8d",
+ "step_id": "b7c3577e-4ba6-4424-a249-555d94fe6141",
+ "logical_key": "conclusion:g0:ctx0:round-9",
+ "observed_at": "2026-09-29T04:28:56.182602-07:00",
+ "execution": "completed",
+ "handoff": false,
+ "handoff_reasons": [],
+ "rounds": 9,
+ "model_requests_used": 9,
+ "model_seconds_used": 203.5667067905888,
+ "evidence_ids": [
+  "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+  "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t1:6959a496-e88e-4d85-8287-bd10f7bfb5a0",
+  "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t2:cbdfd240-617b-410c-87bd-59283a9dcc43",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t1:f94681c4-b684-4c08-b368-9b9285a41b21",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t2:4a26ad77-4d8d-4d5e-ab6c-e5b6e0b2f50e",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t3:829cebca-2a32-4ea4-a047-be2a58d46f5f",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t4:00c9b3f9-4506-4963-9ed6-28b62270c31e",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2",
+  "e3b68def-7743-46e6-9f30-49761c3b93e7-t6:93fb718a-e026-4d47-b445-790205cd630c",
+  "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+  "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890",
+  "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b",
+  "c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23",
+  "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b",
+  "c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715",
+  "c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t2:878c32a1-c3fa-4339-b880-b06865d31c9f",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t4:b32c8647-bad0-4c59-8a0e-f9ab192e61b8",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t5:45b87b64-b8e8-4236-8245-ebb8ec72f95f",
+  "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29",
+  "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22",
+  "ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac",
+  "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a",
+  "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf",
+  "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1",
+  "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a",
+  "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d"
+ ],
+ "report_sha256": "c7003117571704bb6644fb60400799dfe4009a860839d71f7093c8667cb5c777",
+ "report_bytes": 31567,
+ "report_text": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"Surveyed all 17 authorized services of the OTel Demo across the authorized 24 h frame (2026-09-28T11:25:29Z to 2026-09-29T11:25:29Z) using whole-frame metric evaluations and per-service trace searches. Whole-frame span-call increases cover 16 service_name values (no series for image-provider or kafka), and whole-frame STATUS_CODE_ERROR series exist only for cart, checkout, frontend, frontend-proxy, load-generator, payment (value 0), product-catalog and recommendation, with totals frontend 52.39, frontend-proxy 35.06, load-generator 19.40, product-catalog 15.71, checkout 7.52, cart 3.33, recommendation 2.10, payment 0. Operation-level breakdown ties most of those errors to a small set of hops (product-catalog GetProduct, checkout PlaceOrder, cart EmptyCart, frontend/proxy HTTP routes), and checkout is the only service with non-zero client gRPC error status codes (13 = 2.10, 9 = 3.30). Latency is derivable only for four services from registered rpc histograms (server: ad 20.94 ms mean / 53.20 ms p95, checkout 672.62 / 5243.06 ms, product-catalog 0.55 / 4.79 ms, otelcol-contrib 1.07 / 4.94 ms; client: ad and fraud-detection means near 600 s with p95 10000 ms over only 2.095 calls each, checkout 46.11 / 36.63 ms). Trace searches returned only the newest sampled traces of each service (roughly one to five minutes at the frame end) even though the query window was the full 24 h; all returned spans were non-error (no error_rows, tags only rpc.grpc.status_code=0, http 200/308, otel.status_code=OK or absent). The requested 15 s step over the whole frame was not delivered: that query covered only 2026-09-28T18:01:29Z to 18:35:14Z, in which checkout PlaceOrder server errors and checkout to product-catalog client errors were non-zero from 18:04:29Z to 18:18:14Z and checkout to cart EmptyCart client errors from 18:13:29Z to 18:29:14Z. No baseline period exists inside the authorized frame, so no latency or error trend is asserted. Findings are useful but partial: frame-wide error timing, latency for 13 services, and runtime evidence for image-provider and kafka remain unknown.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"Whole-frame increase of traces_span_metrics_calls_total grouped by service_name and status_code returned 24 series covering 16 service_name values (accounting, ad, cart, checkout, currency, email, flagd, fraud-detection, frontend, frontend-proxy, load-generator, payment, product-catalog, quote, recommendation, shipping), each with one evaluation at 2026-09-29T11:25:29Z; no series was returned for image-provider or kafka.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame STATUS_CODE_ERROR series exist only for cart, checkout, frontend, frontend-proxy, load-generator, payment, product-catalog and recommendation; accounting, ad, email, flagd, fraud-detection, quote and shipping returned only STATUS_CODE_UNSET, and currency returned only STATUS_CODE_OK.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame error totals observed at 2026-09-29T11:25:29Z: frontend 52.39, frontend-proxy 35.06, load-generator 19.40, product-catalog 15.71, checkout 7.52, cart 3.33, recommendation 2.10 and payment 0; the same view gives whole-frame non-error spans of frontend 3376.72, frontend-proxy 1541.19, cart 1069.97, load-generator 783.83, product-catalog 752.27, checkout 487.24, flagd 258.83, recommendation 195.45, email 146.78, ad 134.53, quote 110.09, shipping 110.09, currency 96.84, payment 76.45, fraud-detection 74.79 and accounting 36.70.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame error totals by operation include product-catalog oteldemo.ProductCatalogService/GetProduct 15.71, frontend GET 14.67, frontend grpc.oteldemo.ProductCatalogService/GetProduct 14.67, frontend executing api route (pages) /api/products/[productId] 11.52, frontend-proxy ingress 19.34, frontend-proxy router frontend egress 15.71, load-generator GET 17.31, load-generator POST 2.10, cart POST /oteldemo.CartService/EmptyCart 3.33, checkout oteldemo.CartService/EmptyCart 3.33, checkout oteldemo.CheckoutService/PlaceOrder 2.10, checkout oteldemo.ProductCatalogService/GetProduct 2.10, checkout oteldemo.PaymentService/Charge 0, frontend POST 3.14, frontend /api/checkout 3.14, frontend grpc.oteldemo.CheckoutService/PlaceOrder 3.14, frontend /api/recommendations 2.105, recommendation /flagd.evaluation.v1.Service/EventStream 2.10, and payment GET, dns.lookup, tcp.connect and grpc.oteldemo.PaymentService/Charge all 0.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"checkout is the only service with non-zero client gRPC error status codes over the frame: status 13 = 2.10, status 9 = 3.30, status 2 = 0 and status 0 = 338.42, while the only other client series were ad status 0 = 2.10, fraud-detection status 0 = 2.10 and otelcol-contrib status 0 = 1701.30.\",\"evidence_ids\":[\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Server-side gRPC status series over the frame: product-catalog status 0 = 759.41 and status 13 = 15.71, checkout status 0 = 36.70 and status 13 = 2.10, ad status 0 = 59.16, otelcol-contrib status 0 = 4022.81.\",\"evidence_ids\":[\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame mean server latency from rpc_server_duration_milliseconds is ad 20.94 ms, checkout 672.62 ms, product-catalog 0.55 ms and otelcol-contrib 1.07 ms, with whole-frame p95 of ad 53.20 ms, checkout 5243.06 ms, product-catalog 4.79 ms and otelcol-contrib 4.94 ms.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame mean client latency from rpc_client_duration_milliseconds is ad 600015.80 ms and fraud-detection 600027.74 ms (each over only 2.095 calls), checkout 46.11 ms and otelcol-contrib 5.45 ms, with whole-frame p95 of ad 10000 ms, fraud-detection 10000 ms, checkout 36.63 ms and otelcol-contrib 20.36 ms.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Latency-metric coverage is narrow: rpc_server_duration series exist only for ad, checkout, product-catalog and otelcol-contrib, rpc_client_duration series only for ad, checkout, fraud-detection and otelcol-contrib, and http_server_request_duration_seconds_count was returned only for cart with a whole-frame increase of 361.41.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t1:6959a496-e88e-4d85-8287-bd10f7bfb5a0\",\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t2:cbdfd240-617b-410c-87bd-59283a9dcc43\",\"e3b68def-7743-46e6-9f30-49761c3b93e7-t4:00c9b3f9-4506-4963-9ed6-28b62270c31e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The requested 15 s step over the whole frame was not delivered: rate(traces_span_metrics_calls_total{service_name=checkout,status_code=STATUS_CODE_ERROR}[900s]) evaluated with step 15 returned four checkout series whose evaluations covered only 2026-09-28T18:01:29Z to 18:35:14Z, within which the oteldemo.CheckoutService/PlaceOrder server series and the checkout client oteldemo.ProductCatalogService/GetProduct series were non-zero from 18:04:29Z to 18:18:14Z, the checkout oteldemo.CartService/EmptyCart client series was non-zero from 18:13:29Z to 18:29:14Z, and the checkout oteldemo.PaymentService/Charge client series was 0 throughout.\",\"evidence_ids\":[\"ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"ERROR increases evaluated with a 3600 s selector produced two evaluation instants only (2026-09-28T18:25:29Z and 2026-09-29T11:25:29Z): frontend, frontend-proxy, load-generator and payment were non-zero at 18:25:29Z and 0 at 11:25:29Z, while cart 3.333, checkout 7.524, product-catalog 15.714 and recommendation 2.095 match their whole-frame totals and appear only at 18:25:29Z.\",\"evidence_ids\":[\"e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"accounting has 36.70 whole-frame spans, only STATUS_CODE_UNSET and no error series; its 9 returned sample traces contain only the operation orders receive with no status tag and durations 6624 to 96947 microseconds, whose parent references are FOLLOWS_FROM with parent_is_visible false, and the trace ids include ba2a8362a16e4c9cc16d62060bb6b148, 5b9b4b35f35f20cd07c55a02157d3fce, 0aab80afaf94c780594c66d57f5ab06c, ab467e8f492fe5de3e67c9091e678c6b, 3a2392fa008b529f0def04316ea79785, d96d6317afaa71ddaced1ad4c0cd738b, 0315bb189343f146839c2b1ffb7498f7, d74f31a93985a1f81f256e10e52ec60d and dc5bf45b013bce6d09892e9c6f730fa0.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"e3b68def-7743-46e6-9f30-49761c3b93e7-t6:93fb718a-e026-4d47-b445-790205cd630c\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"ad has 134.53 whole-frame spans with only STATUS_CODE_UNSET and no error series, and whole-frame server latency of 20.94 ms mean and 53.20 ms p95; its 10 returned sample traces show oteldemo.AdService/GetAds with rpc.grpc.status_code=0 at 3715 to 18554 microseconds plus getAdsByCategory and getRandomAds without status tags at 116 to 732 microseconds, with trace ids ca4da7820bc56b3db39b6f47a98696e9, 5caac98f9c3b009b096ddcd3e6410af4, 752fb7aa1d03f672fba3f25f6fe5889f, fe3747b3cbb67ff9cbe2ae9871ab37da, f0648e291eec10715ead1484c28bb8df, 4748b759c83b642d0bcb3b1606df45c1, 8b38f48bd272c49bdbf19dc6051a33af, c84c411286f8b60ef367a1157b791e7d, 57d6baf3cb7a1b7ac126928db23a1fd8 and 682e97c1d45dfca5d3e21f86bba1b0dd.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"cart has 1069.97 whole-frame spans of STATUS_CODE_UNSET plus 3.33 STATUS_CODE_ERROR concentrated on the span POST /oteldemo.CartService/EmptyCart, and its returned sample traces (limit 2, 55 spans, trace ids d82cd96ba9afc3eff227be6023749d3a and 80b1e30e4ed014b8bb0fc7d823fbdd5c) show EmptyCart at 6713 microseconds, GetCart at 5487 and 681 microseconds, Redis operations HGET/HMSET/EXPIRE at 120 to 1535 microseconds and flagd.evaluation.v1.Service/ResolveBoolean with rpc.grpc.status_code=0.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"checkout has 487.24 whole-frame spans of STATUS_CODE_UNSET plus 7.52 STATUS_CODE_ERROR, split as oteldemo.CheckoutService/PlaceOrder 2.10, oteldemo.ProductCatalogService/GetProduct 2.10, oteldemo.CartService/EmptyCart 3.33 and oteldemo.PaymentService/Charge 0, with whole-frame server latency 672.62 ms mean and 5243.06 ms p95 and client latency 46.11 ms mean and 36.63 ms p95; in the returned successful trace d82cd96ba9afc3eff227be6023749d3a the PlaceOrder server span is 52031 microseconds and its child calls (CartService GetCart and EmptyCart, CurrencyService Convert, PaymentService Charge, ShippingService GetQuote and ShipOrder, ProductCatalogService GetProduct) all carry rpc.grpc.status_code=0.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"currency has 96.84 whole-frame spans and is the only service whose status_code series is STATUS_CODE_OK, with no error series; its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are Currency/Convert with otel.status_code=OK and rpc.grpc.status_code=0 at 409 to 2157 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"email has 146.78 whole-frame spans with only STATUS_CODE_UNSET and no error series; its returned sample (limit 2, 92 spans, trace ids c5a6d7d3938be36b6a2b56890e9a6c55 and d82cd96ba9afc3eff227be6023749d3a) contains POST /send_order_confirmation with http.status_code=200 at 3426 and 14362 microseconds, send_email without status tag at 2182 and 12672 microseconds, and sinatra.render_template without status tag at 120 to 466 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"fraud-detection has 74.79 whole-frame spans with only STATUS_CODE_UNSET and no error series, with client latency of 600027.74 ms mean and 10000 ms p95 over only 2.095 calls; its 2 returned traces (5c693e56295df09b70e17f0136f3ac04 and 43b52b0d3cf88611e2017411a1bbebb7) contain orders receive at 43268 and 18995 microseconds and orders process at 2954 and 9366 microseconds, all without status tags.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"frontend has the largest whole-frame error count (52.39) against 3376.72 non-error spans, broken down into GET 14.67, grpc.oteldemo.ProductCatalogService/GetProduct 14.67, executing api route (pages) /api/products/[productId] 11.52, POST 3.14, executing api route (pages) /api/checkout 3.14, grpc.oteldemo.CheckoutService/PlaceOrder 3.14 and /api/recommendations 2.105, while its returned sample trace 43fff5aee9ba104b1cb9ce09cac42613 has 8 spans all with http.status_code=200 or rpc.grpc.status_code=0 (GET /api/products/{productId} at 2460 microseconds).\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"frontend-proxy has 1541.19 whole-frame spans of STATUS_CODE_UNSET plus 35.06 STATUS_CODE_ERROR split as ingress 19.34 and router frontend egress 15.71; its returned spans carry http.status_code 200 or 308 at 2413 to 72607 microseconds in trace ids d82cd96ba9afc3eff227be6023749d3a, 752fb7aa1d03f672fba3f25f6fe5889f and 43fff5aee9ba104b1cb9ce09cac42613.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"load-generator has 783.83 whole-frame spans of STATUS_CODE_UNSET plus 19.40 STATUS_CODE_ERROR split as GET 17.31 and POST 2.10, while its returned spans are GET or POST with http.status_code=200 at 5178 to 73947 microseconds in trace ids d82cd96ba9afc3eff227be6023749d3a, c5a6d7d3938be36b6a2b56890e9a6c55, 43fff5aee9ba104b1cb9ce09cac42613 and 6157aca03597c49e1416c478c0644365.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"payment has 76.45 whole-frame spans of STATUS_CODE_UNSET and a STATUS_CODE_ERROR series whose whole-frame increase is exactly 0, with per-operation error values of 0 for GET, dns.lookup, tcp.connect and grpc.oteldemo.PaymentService/Charge; app_payment_transactions_total whole-frame increase is 36.84 for service_name payment, the only series returned with no status label, and its returned spans are grpc.oteldemo.PaymentService/Charge with rpc.grpc.status_code=0 at 2481 to 2910 microseconds and charge without status tag at 1230 to 1583 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t2:878c32a1-c3fa-4339-b880-b06865d31c9f\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"product-catalog has 752.27 whole-frame spans of STATUS_CODE_UNSET plus 15.71 STATUS_CODE_ERROR all on oteldemo.ProductCatalogService/GetProduct, its server-side gRPC status 13 increase is also 15.71 (status 0 = 759.41), whole-frame server latency is 0.55 ms mean and 4.79 ms p95, and its returned spans carry rpc.grpc.status_code=0 at 26 to 1156 microseconds in trace ids 6157aca03597c49e1416c478c0644365, 43fff5aee9ba104b1cb9ce09cac42613 and d82cd96ba9afc3eff227be6023749d3a.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"quote has 110.09 whole-frame spans with only STATUS_CODE_UNSET and no error series, and its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are POST /getquote, {closure} and calculate-quote, all without status tags, at 79 to 4384 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"recommendation has 195.45 whole-frame spans of STATUS_CODE_UNSET plus 2.10 STATUS_CODE_ERROR whose erroring span is the client operation /flagd.evaluation.v1.Service/EventStream; its returned trace 6157aca03597c49e1416c478c0644365 (19 spans) contains /oteldemo.RecommendationService/ListRecommendations with rpc.grpc.status_code=0 at 936 microseconds, get_product_list at 730 microseconds and /oteldemo.ProductCatalogService/ListProducts with rpc.grpc.status_code=0 at 597 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"shipping has 110.09 whole-frame spans with only STATUS_CODE_UNSET and no error series (the same whole-frame value as quote), and its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are oteldemo.ShippingService/GetQuote with rpc.grpc.status_code=0 at 6424 to 7299 microseconds, POST with http.status_code=200 at 5902 to 7047 microseconds and oteldemo.ShippingService/ShipOrder with rpc.grpc.status_code=0 at 26 to 27 microseconds.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"flagd emits spans (service_name flagd, 258.83 whole-frame spans, STATUS_CODE_UNSET only) and appears as a span service in returned traces with flagd.evaluation.v1.Service/ResolveBoolean carrying rpc.grpc.status_code=0 at 74 to 9836 microseconds plus resolveBoolean without status tag, while flagd is not one of the service identities accepted by the trace search.\",\"evidence_ids\":[\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The checkout to cart EmptyCart hop is plausibly the failing edge behind both the cart error span and checkout client gRPC errors, because cart whole-frame error span POST /oteldemo.CartService/EmptyCart is 3.33 and checkout client status 9 (FAILED_PRECONDITION) increase is 3.30 on the same operation, but counts alone do not establish causal direction or identify the individual failing requests.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"product-catalog INTERNAL (gRPC 13) responses plausibly propagate into frontend and checkout error counts, because product-catalog server status 13 = 15.71 equals its whole-frame GetProduct error span count, frontend client grpc.oteldemo.ProductCatalogService/GetProduct error count is 14.67 and checkout client error count on the same operation is 2.10, and in the 2026-09-28 18:04-18:18Z slice checkout client GetProduct error rate and its PlaceOrder server error rate were non-zero over the same intervals.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The roughly 600 s whole-frame mean client latency reported for ad and fraud-detection is plausibly dominated by a very small number of maximum-length client spans rather than a fleet-wide slowdown, because each mean rests on only 2.095 client calls in the frame while the corresponding p95 is 10000 ms, and no baseline or per-call distribution is available to confirm it.\",\"evidence_ids\":[\"130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b\",\"c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b\",\"993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"Errors were not ongoing at the end of the frame in the metrics: the 3600 s ERROR increase evaluated at 2026-09-29T11:25:29Z is 0 for frontend, frontend-proxy, load-generator and payment, and the whole-frame 24 h STATUS_CODE_ERROR increase at the window-end evaluation is 0 for payment.\",\"evidence_ids\":[\"e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655\",\"3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The trace samples retrieved at the end of the frame contain no error spans and no error status tags for any service, since all observed tags were rpc.grpc.status_code=0, http.status_code 200 or 308, otel.status_code=OK, or absent, so these samples do not corroborate the whole-frame metric error counts and cannot be used as a failure rate.\",\"evidence_ids\":[\"ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a\",\"ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf\",\"e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected: that a 15-second-resolution metric survey across the whole 24 h authorized frame is obtainable, because the 15 s-step query returned evaluations covering only 2026-09-28T18:01:29Z to 18:35:14Z (data_as_of 2026-09-28T18:35:14Z) rather than the full frame and the 3600 s-step query returned only two evaluation instants across 24 h.\",\"evidence_ids\":[\"ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22\",\"e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"The requested 15 s step across the whole 24 h frame was not delivered: the 15 s-step query returned evaluations only for 2026-09-28T18:01:29Z to 18:35:14Z, so error and latency behaviour between 2026-09-28T11:25:29Z and 18:01:29Z and between 18:35:14Z and 2026-09-29T11:25:29Z is unresolved at fine resolution.\",\"High-limit trace searches were refused as too large and returned no spans, so the request for at least 50 traces per service could not be satisfied; the largest delivered sample was 10 traces (ad, 121 spans) and most services yielded only 1 or 2 traces.\",\"Every per-service trace search that delivered spans is flagged incomplete (backend returned as many traces as requested, more may exist): ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac, ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a, ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf, c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715, c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73, e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2, 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828, 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29, e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1, e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a and e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d; those trace samples are limit-saturated views of the newest traces and are not a census of the frame.\",\"The trace searches also returned only the newest sampled traces of each service even though the query window was the full 24 h; for example the ad search covered source times 2026-09-29T11:21:12Z to 11:25:04Z, the accounting search 11:20:37Z to 11:24:54Z and the checkout search a single moment at 11:24:54Z, so per-service trace samples cannot represent the frame.\",\"Trace searches for the service identities image-provider (view 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t4:b32c8647-bad0-4c59-8a0e-f9ab192e61b8) and kafka (view 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t5:45b87b64-b8e8-4236-8245-ebb8ec72f95f) both returned status no_data with zero traces and zero spans; these views show nothing, so runtime behaviour, span status and operation identity for image-provider and kafka are unknown rather than zero.\",\"No image-provider or kafka series appeared in the span-call metric or the rpc duration metrics, and otelcol-contrib appears only in the rpc duration metrics; per-service call, error and latency figures for image-provider and kafka are therefore unknown, not zero.\",\"Per-service latency is derivable only for a minority of services: rpc_server duration series exist only for ad, checkout, product-catalog and otelcol-contrib, rpc_client duration series only for ad, checkout, fraud-detection and otelcol-contrib, and http_server_request_duration_seconds_count only for cart; latency for accounting, currency, email, frontend, frontend-proxy, image-provider, kafka, load-generator, payment, quote, recommendation and shipping is unknown from the delivered metrics.\",\"No baseline period inside the authorized frame was available for comparison, so no latency or error trend over time can be asserted for any service.\",\"The whole-frame STATUS_CODE_ERROR increase resolved to essentially one evaluation instant (plus a second instant for some services), so the time distribution of the observed errors within the frame is only partially resolved; the 2026-09-28T18:04-18:29Z slice is the only fine-grained error timing observed.\",\"Trace parent references with parent_is_visible false (FOLLOWS_FROM in accounting and fraud-detection) and services without a dedicated trace search leave the call chains incomplete; no complete end-to-end trace graph exists for this frame.\"],\"next_steps\":[\"As a human follow-up, pull a time-resolved error and latency timeline at 1 to 5 minute steps for the interval around 2026-09-28T18:00-18:40Z for checkout, cart, product-catalog and frontend to bound the observed error episode.\",\"Have a human review checkout to cart EmptyCart FAILED_PRECONDITION (gRPC 9) and product-catalog GetProduct INTERNAL (gRPC 13) behaviour against application logs and configuration for the incident interval, since counts alone do not identify the failing component.\",\"Obtain per-service latency series or span duration histograms for the 13 services that returned none so latency can be compared across the whole fleet.\",\"Re-sample traces per service with narrower time windows, and with a sampling configuration that does not bias toward the newest traces, to obtain frame-representative error traces and more complete parent-child edges.\",\"Confirm whether image-provider and kafka emit telemetry to this backend at all and under which service names, since no traces or span metrics were returned for them.\"]}",
+ "report_parsed": {
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "Surveyed all 17 authorized services of the OTel Demo across the authorized 24 h frame (2026-09-28T11:25:29Z to 2026-09-29T11:25:29Z) using whole-frame metric evaluations and per-service trace searches. Whole-frame span-call increases cover 16 service_name values (no series for image-provider or kafka), and whole-frame STATUS_CODE_ERROR series exist only for cart, checkout, frontend, frontend-proxy, load-generator, payment (value 0), product-catalog and recommendation, with totals frontend 52.39, frontend-proxy 35.06, load-generator 19.40, product-catalog 15.71, checkout 7.52, cart 3.33, recommendation 2.10, payment 0. Operation-level breakdown ties most of those errors to a small set of hops (product-catalog GetProduct, checkout PlaceOrder, cart EmptyCart, frontend/proxy HTTP routes), and checkout is the only service with non-zero client gRPC error status codes (13 = 2.10, 9 = 3.30). Latency is derivable only for four services from registered rpc histograms (server: ad 20.94 ms mean / 53.20 ms p95, checkout 672.62 / 5243.06 ms, product-catalog 0.55 / 4.79 ms, otelcol-contrib 1.07 / 4.94 ms; client: ad and fraud-detection means near 600 s with p95 10000 ms over only 2.095 calls each, checkout 46.11 / 36.63 ms). Trace searches returned only the newest sampled traces of each service (roughly one to five minutes at the frame end) even though the query window was the full 24 h; all returned spans were non-error (no error_rows, tags only rpc.grpc.status_code=0, http 200/308, otel.status_code=OK or absent). The requested 15 s step over the whole frame was not delivered: that query covered only 2026-09-28T18:01:29Z to 18:35:14Z, in which checkout PlaceOrder server errors and checkout to product-catalog client errors were non-zero from 18:04:29Z to 18:18:14Z and checkout to cart EmptyCart client errors from 18:13:29Z to 18:29:14Z. No baseline period exists inside the authorized frame, so no latency or error trend is asserted. Findings are useful but partial: frame-wide error timing, latency for 13 services, and runtime evidence for image-provider and kafka remain unknown.",
+  "claims": [
+   {
+    "kind": "fact",
+    "text": "Whole-frame increase of traces_span_metrics_calls_total grouped by service_name and status_code returned 24 series covering 16 service_name values (accounting, ad, cart, checkout, currency, email, flagd, fraud-detection, frontend, frontend-proxy, load-generator, payment, product-catalog, quote, recommendation, shipping), each with one evaluation at 2026-09-29T11:25:29Z; no series was returned for image-provider or kafka.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame STATUS_CODE_ERROR series exist only for cart, checkout, frontend, frontend-proxy, load-generator, payment, product-catalog and recommendation; accounting, ad, email, flagd, fraud-detection, quote and shipping returned only STATUS_CODE_UNSET, and currency returned only STATUS_CODE_OK.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame error totals observed at 2026-09-29T11:25:29Z: frontend 52.39, frontend-proxy 35.06, load-generator 19.40, product-catalog 15.71, checkout 7.52, cart 3.33, recommendation 2.10 and payment 0; the same view gives whole-frame non-error spans of frontend 3376.72, frontend-proxy 1541.19, cart 1069.97, load-generator 783.83, product-catalog 752.27, checkout 487.24, flagd 258.83, recommendation 195.45, email 146.78, ad 134.53, quote 110.09, shipping 110.09, currency 96.84, payment 76.45, fraud-detection 74.79 and accounting 36.70.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame error totals by operation include product-catalog oteldemo.ProductCatalogService/GetProduct 15.71, frontend GET 14.67, frontend grpc.oteldemo.ProductCatalogService/GetProduct 14.67, frontend executing api route (pages) /api/products/[productId] 11.52, frontend-proxy ingress 19.34, frontend-proxy router frontend egress 15.71, load-generator GET 17.31, load-generator POST 2.10, cart POST /oteldemo.CartService/EmptyCart 3.33, checkout oteldemo.CartService/EmptyCart 3.33, checkout oteldemo.CheckoutService/PlaceOrder 2.10, checkout oteldemo.ProductCatalogService/GetProduct 2.10, checkout oteldemo.PaymentService/Charge 0, frontend POST 3.14, frontend /api/checkout 3.14, frontend grpc.oteldemo.CheckoutService/PlaceOrder 3.14, frontend /api/recommendations 2.105, recommendation /flagd.evaluation.v1.Service/EventStream 2.10, and payment GET, dns.lookup, tcp.connect and grpc.oteldemo.PaymentService/Charge all 0.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "checkout is the only service with non-zero client gRPC error status codes over the frame: status 13 = 2.10, status 9 = 3.30, status 2 = 0 and status 0 = 338.42, while the only other client series were ad status 0 = 2.10, fraud-detection status 0 = 2.10 and otelcol-contrib status 0 = 1701.30.",
+    "evidence_ids": [
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Server-side gRPC status series over the frame: product-catalog status 0 = 759.41 and status 13 = 15.71, checkout status 0 = 36.70 and status 13 = 2.10, ad status 0 = 59.16, otelcol-contrib status 0 = 4022.81.",
+    "evidence_ids": [
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame mean server latency from rpc_server_duration_milliseconds is ad 20.94 ms, checkout 672.62 ms, product-catalog 0.55 ms and otelcol-contrib 1.07 ms, with whole-frame p95 of ad 53.20 ms, checkout 5243.06 ms, product-catalog 4.79 ms and otelcol-contrib 4.94 ms.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame mean client latency from rpc_client_duration_milliseconds is ad 600015.80 ms and fraud-detection 600027.74 ms (each over only 2.095 calls), checkout 46.11 ms and otelcol-contrib 5.45 ms, with whole-frame p95 of ad 10000 ms, fraud-detection 10000 ms, checkout 36.63 ms and otelcol-contrib 20.36 ms.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Latency-metric coverage is narrow: rpc_server_duration series exist only for ad, checkout, product-catalog and otelcol-contrib, rpc_client_duration series only for ad, checkout, fraud-detection and otelcol-contrib, and http_server_request_duration_seconds_count was returned only for cart with a whole-frame increase of 361.41.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t1:6959a496-e88e-4d85-8287-bd10f7bfb5a0",
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t2:cbdfd240-617b-410c-87bd-59283a9dcc43",
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t4:00c9b3f9-4506-4963-9ed6-28b62270c31e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The requested 15 s step over the whole frame was not delivered: rate(traces_span_metrics_calls_total{service_name=checkout,status_code=STATUS_CODE_ERROR}[900s]) evaluated with step 15 returned four checkout series whose evaluations covered only 2026-09-28T18:01:29Z to 18:35:14Z, within which the oteldemo.CheckoutService/PlaceOrder server series and the checkout client oteldemo.ProductCatalogService/GetProduct series were non-zero from 18:04:29Z to 18:18:14Z, the checkout oteldemo.CartService/EmptyCart client series was non-zero from 18:13:29Z to 18:29:14Z, and the checkout oteldemo.PaymentService/Charge client series was 0 throughout.",
+    "evidence_ids": [
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "ERROR increases evaluated with a 3600 s selector produced two evaluation instants only (2026-09-28T18:25:29Z and 2026-09-29T11:25:29Z): frontend, frontend-proxy, load-generator and payment were non-zero at 18:25:29Z and 0 at 11:25:29Z, while cart 3.333, checkout 7.524, product-catalog 15.714 and recommendation 2.095 match their whole-frame totals and appear only at 18:25:29Z.",
+    "evidence_ids": [
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "accounting has 36.70 whole-frame spans, only STATUS_CODE_UNSET and no error series; its 9 returned sample traces contain only the operation orders receive with no status tag and durations 6624 to 96947 microseconds, whose parent references are FOLLOWS_FROM with parent_is_visible false, and the trace ids include ba2a8362a16e4c9cc16d62060bb6b148, 5b9b4b35f35f20cd07c55a02157d3fce, 0aab80afaf94c780594c66d57f5ab06c, ab467e8f492fe5de3e67c9091e678c6b, 3a2392fa008b529f0def04316ea79785, d96d6317afaa71ddaced1ad4c0cd738b, 0315bb189343f146839c2b1ffb7498f7, d74f31a93985a1f81f256e10e52ec60d and dc5bf45b013bce6d09892e9c6f730fa0.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t6:93fb718a-e026-4d47-b445-790205cd630c"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "ad has 134.53 whole-frame spans with only STATUS_CODE_UNSET and no error series, and whole-frame server latency of 20.94 ms mean and 53.20 ms p95; its 10 returned sample traces show oteldemo.AdService/GetAds with rpc.grpc.status_code=0 at 3715 to 18554 microseconds plus getAdsByCategory and getRandomAds without status tags at 116 to 732 microseconds, with trace ids ca4da7820bc56b3db39b6f47a98696e9, 5caac98f9c3b009b096ddcd3e6410af4, 752fb7aa1d03f672fba3f25f6fe5889f, fe3747b3cbb67ff9cbe2ae9871ab37da, f0648e291eec10715ead1484c28bb8df, 4748b759c83b642d0bcb3b1606df45c1, 8b38f48bd272c49bdbf19dc6051a33af, c84c411286f8b60ef367a1157b791e7d, 57d6baf3cb7a1b7ac126928db23a1fd8 and 682e97c1d45dfca5d3e21f86bba1b0dd.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t0:59df018f-3431-4096-bd23-b67f6eab2a23"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "cart has 1069.97 whole-frame spans of STATUS_CODE_UNSET plus 3.33 STATUS_CODE_ERROR concentrated on the span POST /oteldemo.CartService/EmptyCart, and its returned sample traces (limit 2, 55 spans, trace ids d82cd96ba9afc3eff227be6023749d3a and 80b1e30e4ed014b8bb0fc7d823fbdd5c) show EmptyCart at 6713 microseconds, GetCart at 5487 and 681 microseconds, Redis operations HGET/HMSET/EXPIRE at 120 to 1535 microseconds and flagd.evaluation.v1.Service/ResolveBoolean with rpc.grpc.status_code=0.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "checkout has 487.24 whole-frame spans of STATUS_CODE_UNSET plus 7.52 STATUS_CODE_ERROR, split as oteldemo.CheckoutService/PlaceOrder 2.10, oteldemo.ProductCatalogService/GetProduct 2.10, oteldemo.CartService/EmptyCart 3.33 and oteldemo.PaymentService/Charge 0, with whole-frame server latency 672.62 ms mean and 5243.06 ms p95 and client latency 46.11 ms mean and 36.63 ms p95; in the returned successful trace d82cd96ba9afc3eff227be6023749d3a the PlaceOrder server span is 52031 microseconds and its child calls (CartService GetCart and EmptyCart, CurrencyService Convert, PaymentService Charge, ShippingService GetQuote and ShipOrder, ProductCatalogService GetProduct) all carry rpc.grpc.status_code=0.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t1:fb6caf13-0dbc-4c5e-a511-0bc4119bd890",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "currency has 96.84 whole-frame spans and is the only service whose status_code series is STATUS_CODE_OK, with no error series; its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are Currency/Convert with otel.status_code=OK and rpc.grpc.status_code=0 at 409 to 2157 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "email has 146.78 whole-frame spans with only STATUS_CODE_UNSET and no error series; its returned sample (limit 2, 92 spans, trace ids c5a6d7d3938be36b6a2b56890e9a6c55 and d82cd96ba9afc3eff227be6023749d3a) contains POST /send_order_confirmation with http.status_code=200 at 3426 and 14362 microseconds, send_email without status tag at 2182 and 12672 microseconds, and sinatra.render_template without status tag at 120 to 466 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "fraud-detection has 74.79 whole-frame spans with only STATUS_CODE_UNSET and no error series, with client latency of 600027.74 ms mean and 10000 ms p95 over only 2.095 calls; its 2 returned traces (5c693e56295df09b70e17f0136f3ac04 and 43b52b0d3cf88611e2017411a1bbebb7) contain orders receive at 43268 and 18995 microseconds and orders process at 2954 and 9366 microseconds, all without status tags.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "frontend has the largest whole-frame error count (52.39) against 3376.72 non-error spans, broken down into GET 14.67, grpc.oteldemo.ProductCatalogService/GetProduct 14.67, executing api route (pages) /api/products/[productId] 11.52, POST 3.14, executing api route (pages) /api/checkout 3.14, grpc.oteldemo.CheckoutService/PlaceOrder 3.14 and /api/recommendations 2.105, while its returned sample trace 43fff5aee9ba104b1cb9ce09cac42613 has 8 spans all with http.status_code=200 or rpc.grpc.status_code=0 (GET /api/products/{productId} at 2460 microseconds).",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "frontend-proxy has 1541.19 whole-frame spans of STATUS_CODE_UNSET plus 35.06 STATUS_CODE_ERROR split as ingress 19.34 and router frontend egress 15.71; its returned spans carry http.status_code 200 or 308 at 2413 to 72607 microseconds in trace ids d82cd96ba9afc3eff227be6023749d3a, 752fb7aa1d03f672fba3f25f6fe5889f and 43fff5aee9ba104b1cb9ce09cac42613.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "load-generator has 783.83 whole-frame spans of STATUS_CODE_UNSET plus 19.40 STATUS_CODE_ERROR split as GET 17.31 and POST 2.10, while its returned spans are GET or POST with http.status_code=200 at 5178 to 73947 microseconds in trace ids d82cd96ba9afc3eff227be6023749d3a, c5a6d7d3938be36b6a2b56890e9a6c55, 43fff5aee9ba104b1cb9ce09cac42613 and 6157aca03597c49e1416c478c0644365.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "payment has 76.45 whole-frame spans of STATUS_CODE_UNSET and a STATUS_CODE_ERROR series whose whole-frame increase is exactly 0, with per-operation error values of 0 for GET, dns.lookup, tcp.connect and grpc.oteldemo.PaymentService/Charge; app_payment_transactions_total whole-frame increase is 36.84 for service_name payment, the only series returned with no status label, and its returned spans are grpc.oteldemo.PaymentService/Charge with rpc.grpc.status_code=0 at 2481 to 2910 microseconds and charge without status tag at 1230 to 1583 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t2:878c32a1-c3fa-4339-b880-b06865d31c9f",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "product-catalog has 752.27 whole-frame spans of STATUS_CODE_UNSET plus 15.71 STATUS_CODE_ERROR all on oteldemo.ProductCatalogService/GetProduct, its server-side gRPC status 13 increase is also 15.71 (status 0 = 759.41), whole-frame server latency is 0.55 ms mean and 4.79 ms p95, and its returned spans carry rpc.grpc.status_code=0 at 26 to 1156 microseconds in trace ids 6157aca03597c49e1416c478c0644365, 43fff5aee9ba104b1cb9ce09cac42613 and d82cd96ba9afc3eff227be6023749d3a.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "quote has 110.09 whole-frame spans with only STATUS_CODE_UNSET and no error series, and its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are POST /getquote, {closure} and calculate-quote, all without status tags, at 79 to 4384 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "recommendation has 195.45 whole-frame spans of STATUS_CODE_UNSET plus 2.10 STATUS_CODE_ERROR whose erroring span is the client operation /flagd.evaluation.v1.Service/EventStream; its returned trace 6157aca03597c49e1416c478c0644365 (19 spans) contains /oteldemo.RecommendationService/ListRecommendations with rpc.grpc.status_code=0 at 936 microseconds, get_product_list at 730 microseconds and /oteldemo.ProductCatalogService/ListProducts with rpc.grpc.status_code=0 at 597 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "shipping has 110.09 whole-frame spans with only STATUS_CODE_UNSET and no error series (the same whole-frame value as quote), and its returned spans (trace ids d82cd96ba9afc3eff227be6023749d3a and c5a6d7d3938be36b6a2b56890e9a6c55) are oteldemo.ShippingService/GetQuote with rpc.grpc.status_code=0 at 6424 to 7299 microseconds, POST with http.status_code=200 at 5902 to 7047 microseconds and oteldemo.ShippingService/ShipOrder with rpc.grpc.status_code=0 at 26 to 27 microseconds.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "flagd emits spans (service_name flagd, 258.83 whole-frame spans, STATUS_CODE_UNSET only) and appears as a span service in returned traces with flagd.evaluation.v1.Service/ResolveBoolean carrying rpc.grpc.status_code=0 at 74 to 9836 microseconds plus resolveBoolean without status tag, while flagd is not one of the service identities accepted by the trace search.",
+    "evidence_ids": [
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The checkout to cart EmptyCart hop is plausibly the failing edge behind both the cart error span and checkout client gRPC errors, because cart whole-frame error span POST /oteldemo.CartService/EmptyCart is 3.33 and checkout client status 9 (FAILED_PRECONDITION) increase is 3.30 on the same operation, but counts alone do not establish causal direction or identify the individual failing requests.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "product-catalog INTERNAL (gRPC 13) responses plausibly propagate into frontend and checkout error counts, because product-catalog server status 13 = 15.71 equals its whole-frame GetProduct error span count, frontend client grpc.oteldemo.ProductCatalogService/GetProduct error count is 14.67 and checkout client error count on the same operation is 2.10, and in the 2026-09-28 18:04-18:18Z slice checkout client GetProduct error rate and its PlaceOrder server error rate were non-zero over the same intervals.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t0:c16c117c-1a1a-4e65-a671-bd3f3eac0e3a",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t1:47030022-71e1-4fd7-b202-9f9723a08ad7",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The roughly 600 s whole-frame mean client latency reported for ad and fraud-detection is plausibly dominated by a very small number of maximum-length client spans rather than a fleet-wide slowdown, because each mean rests on only 2.095 client calls in the frame while the corresponding p95 is 10000 ms, and no baseline or per-call distribution is available to confirm it.",
+    "evidence_ids": [
+     "130c7c89-d5c7-4d67-81df-51be8629776a-t2:4ca9ac7d-f4e5-4704-950a-bcd55f495c0b",
+     "c078e184-792f-4d99-ac8f-3dcc21e5a799-t1:53465d4f-3e95-44b7-8a54-183fab48e05b",
+     "993fdf4c-caa1-4aad-abc0-ce13a9446a44-t0:2313c831-2466-478b-af14-69497baef3bf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "Errors were not ongoing at the end of the frame in the metrics: the 3600 s ERROR increase evaluated at 2026-09-29T11:25:29Z is 0 for frontend, frontend-proxy, load-generator and payment, and the whole-frame 24 h STATUS_CODE_ERROR increase at the window-end evaluation is 0 for payment.",
+    "evidence_ids": [
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655",
+     "3ab75b5d-1b8f-45ed-992a-7394eed6c085-t0:db09d9d7-5ded-418d-a335-968010d6875a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "The trace samples retrieved at the end of the frame contain no error spans and no error status tags for any service, since all observed tags were rpc.grpc.status_code=0, http.status_code 200 or 308, otel.status_code=OK, or absent, so these samples do not corroborate the whole-frame metric error counts and cannot be used as a failure rate.",
+    "evidence_ids": [
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a",
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf",
+     "e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Rejected: that a 15-second-resolution metric survey across the whole 24 h authorized frame is obtainable, because the 15 s-step query returned evaluations covering only 2026-09-28T18:01:29Z to 18:35:14Z (data_as_of 2026-09-28T18:35:14Z) rather than the full frame and the 3600 s-step query returned only two evaluation instants across 24 h.",
+    "evidence_ids": [
+     "ce52dc40-45be-4c00-b984-f9b837eb911e-t0:aa9e9f82-2ac2-4f8e-b413-75c6b8e29d22",
+     "e3b68def-7743-46e6-9f30-49761c3b93e7-t0:08e421ef-4ca4-4549-9be1-8800fdb95655"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   }
+  ],
+  "gaps": [
+   "The requested 15 s step across the whole 24 h frame was not delivered: the 15 s-step query returned evaluations only for 2026-09-28T18:01:29Z to 18:35:14Z, so error and latency behaviour between 2026-09-28T11:25:29Z and 18:01:29Z and between 18:35:14Z and 2026-09-29T11:25:29Z is unresolved at fine resolution.",
+   "High-limit trace searches were refused as too large and returned no spans, so the request for at least 50 traces per service could not be satisfied; the largest delivered sample was 10 traces (ad, 121 spans) and most services yielded only 1 or 2 traces.",
+   "Every per-service trace search that delivered spans is flagged incomplete (backend returned as many traces as requested, more may exist): ce52dc40-45be-4c00-b984-f9b837eb911e-t1:32582d81-b6c0-4113-9dce-e65ddfd970ac, ce52dc40-45be-4c00-b984-f9b837eb911e-t2:53b8c8f3-549f-4863-aa28-5a63c8401c1a, ce52dc40-45be-4c00-b984-f9b837eb911e-t3:64353b89-d8aa-41e7-84da-774d2e4f5cbf, c078e184-792f-4d99-ac8f-3dcc21e5a799-t2:8c3e3bdb-9a70-432c-b7fc-32248a2fb715, c078e184-792f-4d99-ac8f-3dcc21e5a799-t3:33f2d601-db64-4da3-ab78-f0587d33be73, e3b68def-7743-46e6-9f30-49761c3b93e7-t5:922725ae-0bca-44cf-bd1e-fca57a2a90a2, 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t3:1d88e966-f0a1-495b-9b47-f5f69c872828, 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t6:ae03aa1f-b918-4194-9c94-02935df7bc29, e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t0:9c8ea2eb-1286-4290-92df-dbb433f347f1, e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t1:5e064f80-fe71-4cc1-9244-227f94ad324a and e3ea9c79-505f-48a7-9b3f-72b74cd0cdbe-t2:c54aef5a-fcb1-4d98-8edf-575f214a332d; those trace samples are limit-saturated views of the newest traces and are not a census of the frame.",
+   "The trace searches also returned only the newest sampled traces of each service even though the query window was the full 24 h; for example the ad search covered source times 2026-09-29T11:21:12Z to 11:25:04Z, the accounting search 11:20:37Z to 11:24:54Z and the checkout search a single moment at 11:24:54Z, so per-service trace samples cannot represent the frame.",
+   "Trace searches for the service identities image-provider (view 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t4:b32c8647-bad0-4c59-8a0e-f9ab192e61b8) and kafka (view 993fdf4c-caa1-4aad-abc0-ce13a9446a44-t5:45b87b64-b8e8-4236-8245-ebb8ec72f95f) both returned status no_data with zero traces and zero spans; these views show nothing, so runtime behaviour, span status and operation identity for image-provider and kafka are unknown rather than zero.",
+   "No image-provider or kafka series appeared in the span-call metric or the rpc duration metrics, and otelcol-contrib appears only in the rpc duration metrics; per-service call, error and latency figures for image-provider and kafka are therefore unknown, not zero.",
+   "Per-service latency is derivable only for a minority of services: rpc_server duration series exist only for ad, checkout, product-catalog and otelcol-contrib, rpc_client duration series only for ad, checkout, fraud-detection and otelcol-contrib, and http_server_request_duration_seconds_count only for cart; latency for accounting, currency, email, frontend, frontend-proxy, image-provider, kafka, load-generator, payment, quote, recommendation and shipping is unknown from the delivered metrics.",
+   "No baseline period inside the authorized frame was available for comparison, so no latency or error trend over time can be asserted for any service.",
+   "The whole-frame STATUS_CODE_ERROR increase resolved to essentially one evaluation instant (plus a second instant for some services), so the time distribution of the observed errors within the frame is only partially resolved; the 2026-09-28T18:04-18:29Z slice is the only fine-grained error timing observed.",
+   "Trace parent references with parent_is_visible false (FOLLOWS_FROM in accounting and fraud-detection) and services without a dedicated trace search leave the call chains incomplete; no complete end-to-end trace graph exists for this frame."
+  ],
+  "next_steps": [
+   "As a human follow-up, pull a time-resolved error and latency timeline at 1 to 5 minute steps for the interval around 2026-09-28T18:00-18:40Z for checkout, cart, product-catalog and frontend to bound the observed error episode.",
+   "Have a human review checkout to cart EmptyCart FAILED_PRECONDITION (gRPC 9) and product-catalog GetProduct INTERNAL (gRPC 13) behaviour against application logs and configuration for the incident interval, since counts alone do not identify the failing component.",
+   "Obtain per-service latency series or span duration histograms for the 13 services that returned none so latency can be compared across the whole fleet.",
+   "Re-sample traces per service with narrower time windows, and with a sampling configuration that does not bias toward the newest traces, to obtain frame-representative error traces and more complete parent-child edges.",
+   "Confirm whether image-provider and kafka emit telemetry to this backend at all and under which service names, since no traces or span metrics were returned for them."
+  ]
+ },
+ "conclusion_other_fields": {
+  "rounds": 9,
+  "handoff": false,
+  "segment": "ctx0",
+  "execution": "completed",
+  "calibration": 1.2184402351870522,
+  "compactions": 0,
+  "source_step_id": "34afc26f-f80b-4e68-b5c8-70bbf49dfd96",
+  "handoff_reasons": [],
+  "prompt_revision": "prompt-replay-candidate-bd28790117a0",
+  "question_sha256": "f61e66c3a33b4e6ccd308abc2c9eb7e859c287372069ed1ebedd6a7dca756be5",
+  "model_seconds_used": 203.5667067905888,
+  "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+  "model_requests_used": 9,
+  "report_content_sha256": "c7003117571704bb6644fb60400799dfe4009a860839d71f7093c8667cb5c777",
+  "report_schema_version": "m0-report-v2"
+ }
+}

@@ -649,7 +649,7 @@ def test_a_read_completed_inside_the_window_survives_a_late_control_re_read():
 
 def test_an_oversized_result_is_refused_and_never_registered():
     executor, transport, sink, _ = build(
-        registrations=[registration(max_result_bytes=64, max_view_bytes=32)]
+        registrations=[registration(max_result_bytes=64, max_view_tokens=32)]
     )
     transport.response = TransportResponse(
         body=body([{"series": "x" * 200, "value": 1}])
@@ -665,7 +665,7 @@ def test_an_oversized_result_is_refused_and_never_registered():
 
 def test_the_byte_ceiling_is_handed_to_the_transport_as_well():
     executor, transport, _, _ = build(
-        registrations=[registration(max_result_bytes=1024, max_view_bytes=256)]
+        registrations=[registration(max_result_bytes=1024, max_view_tokens=256)]
     )
     transport.response = TransportResponse(body=body([]))
 

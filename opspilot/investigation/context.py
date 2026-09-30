@@ -120,10 +120,10 @@ class ContextPolicy:
     # 15% figure (150_000 tokens) -- so upstream's real per-tool ceiling here
     # is ~2.7% of the usable budget, well under this policy's 25%. This
     # mechanism (``visible_view``'s stub fallback) is intentionally left
-    # wider: B1 already caps a single otel_demo view at the registration
-    # level (``max_view_bytes``, ~100 KiB ≈ 25_000 tokens at this
-    # module's own 4-bytes/token estimator -- the same upstream figure, by
-    # construction), so a view from this project's own tool profile never
+    # wider: the tool gateway already refuses any single view over the
+    # registration's ``max_view_tokens`` (25_000 real DeepSeek tokens, the
+    # upstream figure, metered with the vendored tokenizer), so a view from
+    # this project's own tool profile never
     # approaches even the *old* 25% figure in practice and this mechanism
     # only ever fires as an extra backstop for a hypothetically larger future
     # tool profile, not a live constraint today. Tightening it to upstream's

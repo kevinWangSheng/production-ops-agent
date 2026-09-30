@@ -51,7 +51,7 @@ CONTRACT_CHANGES = [
     {"result_path": ("other", "result")},
     {"request_timeout_seconds": 20.0},
     {"max_result_bytes": 8192},
-    {"max_view_bytes": 1024},
+    {"max_view_tokens": 1024},
     {"max_window_seconds": 7200},
     {"error_classes": {"503": "SOURCE_ERROR", "400": "INVALID_PARAMS"}},
     {"incomplete_marker": "incomplete"},

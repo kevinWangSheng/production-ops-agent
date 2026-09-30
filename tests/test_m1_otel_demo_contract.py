@@ -472,13 +472,13 @@ def test_model_visible_face_inlines_the_service_enumeration():
 def test_model_visible_face_states_limits_and_what_it_cannot_prove():
     """The five C3 §8 facets are registered as a ``ToolDescription`` (the
     registry raises otherwise; see the factory test) and the text the model
-    receives states the cap/truncation semantics and the misreading to
+    receives states the cap/refusal semantics and the misreading to
     refuse for both tools."""
     for name, text in (
         (s["function"]["name"], s["function"]["description"]) for s in TOOL_SCHEMAS
     ):
         lowered = text.lower()
-        assert "truncated" in lowered, name
+        assert "refused" in lowered and "result_too_large" in lowered, name
         assert "not" in lowered, name  # a cannot_prove clause
     metrics = dict(_model_visible_texts())[METRICS_TOOL].lower()
     assert "unknown" in metrics and "zero" in metrics
@@ -1344,7 +1344,8 @@ def test_traces_call_through_the_executor_returns_sampled_spans(monkeypatch):
     assert view["tool"] == TRACES_TOOL and view["source"] == SOURCE
     rows = view["content"]
     # B1: no more 20-row sampling cap -- all of CHECKOUT_TRACES' spans fit
-    # under the widened view byte cap (MAX_VIEW_BYTES) unsampled.
+    # under the view token cap (MAX_VIEW_TOKENS; 90 spans measure 19,067 real
+    # DeepSeek tokens) unsampled.
     assert 0 < len(rows) == record["sampled_span_count"]
     assert rows == expected["data"]["sampled_spans"][: len(rows)]
     # The requested service's spans lead; other services follow (B1 removed

@@ -1,0 +1,11 @@
+{
+ "run_id": "360fb924-d04a-5424-8b9a-f1a5681d0aa8",
+ "state": "completed",
+ "deadline": "2026-09-29T06:44:42.623247-07:00",
+ "windows_in_input": {
+  "/evidence_context/time_policies[0]/window": {
+   "end": "2026-09-29T11:44:42+00:00",
+   "start": "2026-09-28T11:44:42+00:00"
+  }
+ }
+}

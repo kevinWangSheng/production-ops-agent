@@ -109,6 +109,7 @@ from opspilot.tools.registry import (
     canonical,
     canonical_hash,
 )
+from opspilot.tools.tokens import TokenCounter, default_counter
 
 __all__ = [
     "CREDENTIAL_REF",
@@ -194,21 +195,17 @@ TRACES_INCOMPLETE_REASON = (
 #: ``RESULT_TOO_LARGE`` rather than projecting a partial body. Unaffected by
 #: B1 (a raw-response-size guard, not the view row/byte cap).
 TRACE_SOURCE_READ_BYTES = 4 * 1024 * 1024
-# B1: the model view's byte cap for both tools, replacing the old 16 KiB
-# (traces) / 24 KiB (metrics) figures -- widened to upstream's per-tool
-# single-result scale: ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS = 25000``
-# (``holmes/common/env_vars.py:142``), converted at this module's own
-# estimator convention (``_TOKENS_PER_BYTE = 0.25`` in
-# ``opspilot/investigation/context.py``, i.e. 4 bytes/token) to
-# 25000 * 4 == 100_000 bytes. Rounded to this codebase's existing KiB-based
-# convention for these constants (24 * 1024, 16 * 1024, 1024 * 1024) rather
-# than the exact decimal figure: 100 KiB == 102_400 bytes == ~25_600 tokens
-# at the same estimator, the same order of scale as upstream's 25_000-token
-# figure and still comfortably under upstream's other bound (15% of a
-# 1_000_000-token context, i.e. 150_000 tokens -- B6 -- so the absolute
-# 25_000-token figure is what actually binds upstream here too, see
-# ``opspilot.investigation.context.ContextPolicy.single_tool_pct``).
-MAX_VIEW_BYTES = 100 * 1024
+# The model view's limit for both tools, in real DeepSeek tokens: upstream's
+# per-tool single-result cap ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS = 25000``
+# (``holmes/common/env_vars.py:142``); upstream's other bound, 15% of the
+# window (``:137``), is 150_000 tokens at this project's 1_000_000-token
+# context, so 25_000 is the one that binds. Metered on the whole view with the
+# vendored DeepSeek tokenizer (``opspilot.tools.tokens``); an over-limit view
+# is refused, never truncated (docs/tasks/2026-09-29-m1-01-view-bytes-timeout.md).
+# This replaces B1's 100 KiB byte cap, which was "about 25k tokens" only at
+# the estimator's 4 bytes/token; measured on DeepSeek the same views run
+# 2.3-3.1 bytes/token, i.e. 33k-44k tokens.
+MAX_VIEW_TOKENS = 25_000
 MAX_DETAIL_FIELDS_PER_SPAN = 4
 MAX_DETAIL_BYTES_PER_FIELD = 600
 MAX_OPERATION_CHARS = 150
@@ -269,9 +266,9 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "A range selector longer than the query window is refused. "
                 "offset is refused. "
                 "@ is refused. "
-                "At most 100 KiB of series are shown. "
-                "When the series are truncated the view sets truncated true "
-                "and reports omitted_rows. "
+                "A result whose whole view exceeds 25,000 tokens is refused "
+                "with RESULT_TOO_LARGE and no series are returned; narrow "
+                "the query window, add label filters or aggregate. "
                 "A series that is not returned is unknown, not zero. "
                 "A returned series does not by itself prove the service is "
                 "healthy or unhealthy. "
@@ -338,9 +335,9 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "with an error status tag, then the longest, each with "
                 "trace_id, span_id, service, operation, start_us, "
                 "duration_us, status tags, parent references and up to 4 "
-                "clipped error detail fields. At most 100 KiB of sampled "
-                "spans are shown; when truncated the view sets truncated "
-                "true and reports omitted_rows. "
+                "clipped error detail fields. A result whose whole view exceeds "
+                "25,000 tokens is refused with RESULT_TOO_LARGE and no spans "
+                "are returned; narrow the time window or lower limit. "
                 "traces_requested is the number of traces asked of the "
                 "backend. "
                 "backend_traces_returned is the number of traces the backend "
@@ -348,11 +345,11 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "backend_spans_returned is the number of spans in those "
                 "traces. "
                 "spans_shown is the number of span rows in this view. "
-                "spans_omitted is the number of backend spans not shown, "
-                "whether sampled out or truncated. "
+                "spans_omitted is the number of backend spans not shown "
+                "because the adapter sampled them out. "
                 "span_groups summarizes the shown spans by (service, "
                 "operation): rows, status counts, error_rows and "
-                "duration_us_min/max, computed only from spans_shown. "
+                "duration_us_min/max, computed from every span in spans_shown. "
                 "incomplete_reason states why incomplete is true, or is null. "
                 "status_state is recorded when the row has at least one "
                 "status tag and not_recorded when it has none. "
@@ -443,9 +440,10 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "point reads samples inside the query window only."
             ),
             limits=(
-                "Truncated at the registered max_view_bytes: whole leading "
-                "series are kept, later series are dropped and counted in "
-                "omitted_rows, never summarized."
+                "The whole view is limited to the registered max_view_tokens "
+                "(25,000 DeepSeek tokens): a larger result is refused with "
+                "RESULT_TOO_LARGE and no series, never truncated or "
+                "summarized."
             ),
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
@@ -489,7 +487,7 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         result_path=("data", "result"),
         request_timeout_seconds=30.0,
         max_result_bytes=1024 * 1024,
-        max_view_bytes=MAX_VIEW_BYTES,
+        max_view_tokens=MAX_VIEW_TOKENS,
         # B2: raised from 3600 to accommodate ``OBSERVATION_SECONDS``'s new
         # 24 h authorization frame, which the loop always carries as the
         # top-level ``ToolRequest.window`` (``_run_tools`` ->
@@ -539,8 +537,10 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
             ),
             limits=(
                 "No cap on traces requested or spans sampled (requested "
-                "service first, error status first, longest first); truncated "
-                "at the registered max_view_bytes by dropping trailing spans."
+                "service first, error status first, longest first); the "
+                "whole view is limited to the registered max_view_tokens "
+                "(25,000 DeepSeek tokens): a larger result is refused with "
+                "RESULT_TOO_LARGE and no spans, never truncated."
             ),
             cannot_prove=(
                 "A biased sample, not the complete trace graph or a failure "
@@ -581,10 +581,10 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         # part of the contract's numbers): the projected record's raw JSON
         # -- unlike the view -- is not row-capped, so a large ``limit`` on a
         # busy trace search can now project past the old ceiling before the
-        # view's own MAX_VIEW_BYTES truncation ever applies. Matched to the
+        # view's own token limit ever applies. Matched to the
         # metrics tool's own raw-body ceiling rather than left tight.
         max_result_bytes=1024 * 1024,
-        max_view_bytes=MAX_VIEW_BYTES,
+        max_view_tokens=MAX_VIEW_TOKENS,
         # B2: see the metrics registration's comment; raised for the same
         # reason (accommodates ``OBSERVATION_SECONDS``'s new 24 h frame).
         max_window_seconds=OBSERVATION_SECONDS,
@@ -998,8 +998,9 @@ class OtelDemoTransport:
         service = request.params.get("service")
         if not isinstance(service, str) or service not in SERVICES:
             return _refused("SERVICE_NOT_AVAILABLE")
-        # B1: no more upper bound (was ``MAX_TRACE_LIMIT = 20``); the byte
-        # cap (``MAX_VIEW_BYTES``) is what now bounds a large request's view.
+        # B1: no more upper bound (was ``MAX_TRACE_LIMIT = 20``); the view's
+        # token limit (``MAX_VIEW_TOKENS``) is what now bounds a large
+        # request's view, by refusing it.
         limit = request.params.get("limit", DEFAULT_TRACE_LIMIT)
         if type(limit) is not int or limit < 1:
             return _refused("INVALID_LIMIT")
@@ -1048,8 +1049,7 @@ class OtelDemoTransport:
             # actually searched, not the wider authorized frame.
             query_window=window,
             # Round 2 rule B: counts with their unit, from the record's own
-            # fields; the executor adds spans_shown / spans_omitted once it
-            # knows how many sampled spans fit the view.
+            # fields; the executor adds spans_shown / spans_omitted.
             row_unit="spans",
             backend_rows_returned=record["backend_returned_span_count"],
             view_fields={
@@ -1058,18 +1058,15 @@ class OtelDemoTransport:
                 "incomplete_reason": TRACES_INCOMPLETE_REASON
                 if record["incomplete"]
                 else None,
-                # C3: span_groups summarizes only the spans shown in
-                # content; a span sampled out or dropped by the byte cap is
-                # not counted in any group.
+                # C3: span_groups summarizes the spans shown in content --
+                # all of ``sampled_spans``, since a view is whole or refused.
+                "span_groups": _span_groups(record["data"]["sampled_spans"]),
                 "span_groups_note": (
-                    "span_groups summarizes only the spans shown in "
-                    "content; spans omitted or truncated are not counted "
-                    "in any group."
+                    "span_groups summarizes the spans shown in content; "
+                    "spans the adapter sampled out are not counted in any "
+                    "group."
                 ),
             },
-            # C3: computed by the executor from the rows actually shown
-            # (post byte-cap truncation), not the full backend/sampled set.
-            view_augment=_span_groups_view,
         )
 
 
@@ -1320,13 +1317,11 @@ def project_traces(
         )
     )
     # B1: no more row cap here (was ``spans[:MAX_SAMPLED_SPANS]``, 20) --
-    # every span from the returned traces is sampled and sorted; the
-    # executor's own byte cap (``max_view_bytes``) is the only remaining
-    # truncation, applied downstream in ``_fit_rows``.
+    # every span from the returned traces is sampled and sorted; the view's
+    # token limit refuses an over-large result whole rather than dropping
+    # rows.
     sampled = spans
-    # Judged over the sampled set: the executor's byte cap may still drop
-    # trailing sampled spans, so a "visible" parent is one that was sampled,
-    # not necessarily one the model was shown.
+    # Judged over the sampled set, which is exactly what the view shows.
     visible_keys = {(s["trace_id"], s["span_id"]) for s in sampled}
     for span in sampled:
         for ref in span["parent_references"]:
@@ -1426,10 +1421,10 @@ def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
     what C3 asks for (and, for a query whose requested service is not first
     alphabetically, gives a different group order than this function).
 
-    Takes ``rows`` -- the view's own ``content`` after byte-cap truncation,
-    supplied by the executor's ``view_augment`` callback, never the full
-    backend row set -- so an omitted/sampled-out row is never counted here
-    either, matching the contract's "只汇总已展示行".
+    Takes ``rows`` -- the view's own ``content``, every sampled span (a view
+    is whole or refused, so nothing shown is ever a subset) -- so a row the
+    adapter sampled out is never counted here either, matching the
+    contract's "只汇总已展示行".
     """
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
@@ -1460,11 +1455,6 @@ def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
     return [groups[key] for key in sorted(groups)]
 
 
-def _span_groups_view(rows: Sequence[object]) -> dict[str, Any]:
-    """``TransportResponse.view_augment`` for ``traces_search``."""
-    return {"span_groups": _span_groups(rows)}
-
-
 # -- composition -------------------------------------------------------------
 
 
@@ -1474,6 +1464,7 @@ def otel_demo_executor_factory(
     evidence: EvidenceSink,
     clock: Clock,
     config: OtelDemoConfig | None = None,
+    token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
     """An ``ExecutorFactory`` for ``InvestigationRunner`` over this profile.
 
@@ -1482,6 +1473,9 @@ def otel_demo_executor_factory(
     evidence sink and the control source are the durable ones.
     """
     config = config or OtelDemoConfig()
+    # Resolved when the factory is built, not per Run: a worker with no usable
+    # tokenizer fails at startup (``TOKENIZER_UNAVAILABLE``), not mid-Run.
+    counter = token_counter if token_counter is not None else default_counter()
     tools = ToolRegistry(_registrations())
     targets = TargetRegistry([_target(config)])
     transport = OtelDemoTransport(credentials={CREDENTIAL_REF: config.token})
@@ -1518,6 +1512,7 @@ def otel_demo_executor_factory(
                 max_operations=MAX_OPERATIONS_PER_RUN,
                 max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
             ),
+            token_counter=counter,
         )
 
     return factory

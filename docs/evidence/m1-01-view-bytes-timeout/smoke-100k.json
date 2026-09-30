@@ -1,0 +1,87 @@
+{
+  "experiment": "m1-01-view-bytes-timeout-latency",
+  "frozen_model_request_timeout_seconds": 360.0,
+  "started": "2026-09-29T10:08:35.886567+00:00",
+  "balance_before": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "23.94",
+        "granted_balance": "0.00",
+        "topped_up_balance": "23.94"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "label": "calibration",
+      "views": 8,
+      "request_bytes": 702236,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 120.0,
+      "started": "2026-09-29T10:08:36.133833+00:00",
+      "seconds": 5.56,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 278841,
+        "completion_tokens": 70,
+        "total_tokens": 278911,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 68
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 278841
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 313,
+      "content_chars": 2
+    },
+    {
+      "label": "target-100000",
+      "views": 3,
+      "request_bytes": 263900,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:08:41.732305+00:00",
+      "seconds": 2.42,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 104774,
+        "completion_tokens": 2,
+        "total_tokens": 104776,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 104774
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 0,
+      "content_chars": 2,
+      "target_prompt_tokens": 100000,
+      "repeat": 1
+    }
+  ],
+  "bytes_per_token": 2.518,
+  "ended": "2026-09-29T10:08:44.149341+00:00",
+  "balance_after": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "23.94",
+        "granted_balance": "0.00",
+        "topped_up_balance": "23.94"
+      }
+    ]
+  }
+}

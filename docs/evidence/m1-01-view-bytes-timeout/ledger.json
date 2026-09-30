@@ -1,0 +1,290 @@
+{
+  "experiment": "m1-01-view-bytes-timeout-latency",
+  "frozen_model_request_timeout_seconds": 360.0,
+  "started": "2026-09-29T10:09:07.905132+00:00",
+  "balance_before": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "23.94",
+        "granted_balance": "0.00",
+        "topped_up_balance": "23.94"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "label": "calibration",
+      "views": 3,
+      "request_bytes": 263945,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 120.0,
+      "started": "2026-09-29T10:09:08.092726+00:00",
+      "seconds": 1.12,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 104771,
+        "completion_tokens": 80,
+        "total_tokens": 104851,
+        "prompt_tokens_details": {
+          "cached_tokens": 104576
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 78
+        },
+        "prompt_cache_hit_tokens": 104576,
+        "prompt_cache_miss_tokens": 195
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 362,
+      "content_chars": 2
+    },
+    {
+      "label": "target-100000",
+      "views": 3,
+      "request_bytes": 263900,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:09.232344+00:00",
+      "seconds": 1.8,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 104774,
+        "completion_tokens": 44,
+        "total_tokens": 104818,
+        "prompt_tokens_details": {
+          "cached_tokens": 104576
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 42
+        },
+        "prompt_cache_hit_tokens": 104576,
+        "prompt_cache_miss_tokens": 198
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 198,
+      "content_chars": 2,
+      "target_prompt_tokens": 100000,
+      "repeat": 1
+    },
+    {
+      "label": "target-100000",
+      "views": 3,
+      "request_bytes": 263451,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:11.058417+00:00",
+      "seconds": 2.26,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 104773,
+        "completion_tokens": 35,
+        "total_tokens": 104808,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 33
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 104773
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 152,
+      "content_chars": 2,
+      "target_prompt_tokens": 100000,
+      "repeat": 2
+    },
+    {
+      "label": "target-300000",
+      "views": 9,
+      "request_bytes": 790256,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:13.348288+00:00",
+      "seconds": 6.27,
+      "http": "200",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 313657,
+        "completion_tokens": 41,
+        "total_tokens": 313698,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 313657
+      },
+      "tool_call_count": 1,
+      "reasoning_chars": 8,
+      "content_chars": 0,
+      "target_prompt_tokens": 300000,
+      "repeat": 1
+    },
+    {
+      "label": "target-300000",
+      "views": 9,
+      "request_bytes": 790363,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:19.666194+00:00",
+      "seconds": 6.49,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 313655,
+        "completion_tokens": 57,
+        "total_tokens": 313712,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 55
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 313655
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 255,
+      "content_chars": 2,
+      "target_prompt_tokens": 300000,
+      "repeat": 2
+    },
+    {
+      "label": "target-600000",
+      "views": 19,
+      "request_bytes": 1667666,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:26.227927+00:00",
+      "seconds": 12.59,
+      "http": "200",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 661798,
+        "completion_tokens": 41,
+        "total_tokens": 661839,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 661798
+      },
+      "tool_call_count": 1,
+      "reasoning_chars": 8,
+      "content_chars": 0,
+      "target_prompt_tokens": 600000,
+      "repeat": 1
+    },
+    {
+      "label": "target-600000",
+      "views": 19,
+      "request_bytes": 1667402,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:38.867139+00:00",
+      "seconds": 12.92,
+      "http": "200",
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 661798,
+        "completion_tokens": 187,
+        "total_tokens": 661985,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 185
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 661798
+      },
+      "tool_call_count": 0,
+      "reasoning_chars": 836,
+      "content_chars": 2,
+      "target_prompt_tokens": 600000,
+      "repeat": 2
+    },
+    {
+      "label": "target-900000",
+      "views": 28,
+      "request_bytes": 2457181,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:09:51.907136+00:00",
+      "seconds": 21.25,
+      "http": "200",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 975123,
+        "completion_tokens": 41,
+        "total_tokens": 975164,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 975123
+      },
+      "tool_call_count": 1,
+      "reasoning_chars": 8,
+      "content_chars": 0,
+      "target_prompt_tokens": 900000,
+      "repeat": 1
+    },
+    {
+      "label": "target-900000",
+      "views": 28,
+      "request_bytes": 2457292,
+      "within_request_bytes_ceiling": true,
+      "client_timeout_seconds": 700.0,
+      "started": "2026-09-29T10:10:13.261421+00:00",
+      "seconds": 20.8,
+      "http": "200",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 975123,
+        "completion_tokens": 41,
+        "total_tokens": 975164,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 975123
+      },
+      "tool_call_count": 1,
+      "reasoning_chars": 8,
+      "content_chars": 0,
+      "target_prompt_tokens": 900000,
+      "repeat": 2
+    }
+  ],
+  "bytes_per_token": 2.519,
+  "ended": "2026-09-29T10:10:34.068793+00:00",
+  "balance_after": {
+    "is_available": true,
+    "balance_infos": [
+      {
+        "currency": "CNY",
+        "total_balance": "23.94",
+        "granted_balance": "0.00",
+        "topped_up_balance": "23.94"
+      }
+    ]
+  }
+}

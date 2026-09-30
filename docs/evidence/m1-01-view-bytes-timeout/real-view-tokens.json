@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "view_bytes": 1409,
+    "estimator_tokens": 396,
+    "real_tokens_per_view": 605.0,
+    "bytes_per_real_token": 2.33,
+    "prompt_tokens_k2_k22": {
+      "2": 1520,
+      "22": 13620
+    }
+  },
+  "traces": {
+    "view_bytes": 58357,
+    "estimator_tokens": 16129,
+    "real_tokens_per_view": 19097.0,
+    "bytes_per_real_token": 3.06,
+    "prompt_tokens_k2_k22": {
+      "2": 38504,
+      "22": 420444
+    }
+  }
+}
