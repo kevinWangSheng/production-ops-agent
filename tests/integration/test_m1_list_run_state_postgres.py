@@ -272,3 +272,20 @@ def test_list_control_column_keeps_paused_cancelled_semantics():
     html = _index(app)
     assert list_row(html, paused)["Control"] == "paused"
     assert list_row(html, cancelled)["Control"] == "cancelled"
+
+
+def test_list_run_column_fails_closed_for_a_run_from_another_incident():
+    """A mismatched current_run_id must not leak another incident's state."""
+    app, workbench, store = _build()
+    first = UUID(_submit(app, f"m1-list-mismatched-run-first-{uuid4()}"))
+    second = UUID(_submit(app, f"m1-list-mismatched-run-second-{uuid4()}"))
+    second_summary = workbench.incidents.find_incident(second)
+    assert second_summary is not None and second_summary.current_run_id is not None
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (second_summary.current_run_id, first),
+        )
+
+    assert list_row(_index(app), str(first))["Run"] == ""

@@ -459,7 +459,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
