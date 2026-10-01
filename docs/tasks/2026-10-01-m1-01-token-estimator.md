@@ -42,8 +42,8 @@
 - B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
 - 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
 - 结果：A 的 tokenizer/prompt 偏差约 +1.8%–+6.8%；B 为 +4.3%–+26.1%，超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
-- ~~待决并停下~~（lead 复算更正）：A 的 tokenizer/prompt 实为 1.12–1.16（执行者初稿误写 +1.8%–+6.8%），旧估算/prompt 为 0.81–0.86。
+- ~~待决并停下~~（lead 复算更正）：A 的 tokenizer/prompt 实为 1.12–1.16（执行者初稿误写 +1.8%–+6.8%），旧估算/prompt 为 0.81–0.86；6 条请求哈希均不匹配（推理占位符），初稿称 2 条精确匹配有误。
 
 ## 结论与用户决定（2026-10-01）
 
-旧估算少算约 14–20%（不是 1.6 倍），首个响应后的校准即补齐；改用 tokenizer 需先对齐供应商消息序列化，否则多算 12–26%。用户选择不改代码、记录收尾；合同第二步取消，不写合同测试。详见[证据 README](../evidence/m1-01-token-estimator/README.md)「结论」。
+旧估算少算约 11–20%（不是 1.6 倍；A 为带推理占位符的重建，请求哈希均不匹配，影响 ≤0.03），首个响应后的校准即补齐；改用 tokenizer 需先对齐供应商消息序列化，否则多算 12–26%。用户选择不改代码、记录收尾；合同第二步取消，不写合同测试。详见[证据 README](../evidence/m1-01-token-estimator/README.md)「结论」。
