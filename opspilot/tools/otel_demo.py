@@ -142,11 +142,9 @@ CREDENTIAL_REF = "otel-demo-ro"
 TRACE_PROJECTION = "otel-demo-traces-v1"
 _TIME_POLICY = "policy-window-1"
 
-# This is a view annotation, rather than model-facing tool guidance.  It is
-# attached only to successful calls whose PromQL contains the span-metrics
-# counter, where the counter's unit and UNSET status semantics matter.
 SERIES_NOTE = (
-    "counts spans of every operation of the service (internal, client and "
+    "traces_span_metrics_calls_total counts spans of every operation of the "
+    "service (internal, client and "
     "server spans alike), summed over the labels kept in this query; it is "
     "not a count of requests. status_code STATUS_CODE_UNSET means the span "
     "carried no status; it does not mean the call succeeded."
