@@ -19,6 +19,16 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 5. 行不因 reconcile 改变：补写只追加事件（及必要的 ledger 标记），不改 Run/事故行。
 6. 写失败不让页面加载失败（同既有 sweep 的处理）。
 
+## 合同修订 r2（2026-10-01，lead 依独立审查 P1/P2 决定；可逆实现细节，不需用户门）
+
+审查发现：补写先于原 announcer 落地时出现两条 `parked:true`（runner 的 `announce_handoff` 用非幂等 `append`；清扫 key 含 `reasons`，与补写的空列表不互相包含）；按结论步骤推断原因会把超时停放标成 loop 交接；同一 `run_id` 可被重新排队后再次停放，按 `run_id` 去重会吞掉第二次停放。据此替换合同 1、2：
+
+1'. 补写**不推断**：`execution` 恒为 `"unknown"`、`reasons` 恒为空列表、`report_sha256` 为 `null`、`evidence_ids` 为空列表，另带 `reconciled: true`。交接报告等内容仍由页面从权威行读取。
+2'. 去重单位是「一次停放」= (`run_id`, 停放时的代际)。代际取停放发生时可确定、且 reconcile 事后也能从行读出的值（例如 Run/事故的 `control_generation`；实现者选定并写一行理由）。runner 停放、清扫停放、补写三方对同一次停放**共用同一个去重键**（`append_once` 的 key 只含 `run_id`、`parked: true` 与代际，不含 `reasons`），无论谁先到，同一次停放最多一条 `parked: true` 的 `run_handoff`；同一 `run_id` 在新代际再次停放时，可以（且缺失时应被补写）出现新的一条。
+   - runner 的 `parked: false` 事件（被拒/崩溃尝试的历史）不受此键约束，行为不变。
+
+需补的验收情形：补写先到、原 announcer（runner 与清扫各一）后到 → 仍只有一条；同一 Run 重新排队并在新代际再次停放且事件丢失 → 补写出第二条；存在当前代际的结论步骤（`handoff:false` 或 `true`）时补写仍为 `unknown`/空。
+
 ## 验收口径
 
 在真实 PG（`M1_DURABLE_POSTGRES=1`，lab 端口 55431）上按公开入口制造：runner 交接后事件追加失败、清扫停放后事件追加失败、两种情况各自 reconcile 一次与两次、原 announcer 已写过后再 reconcile、非 waiting_human 的各状态。断言事件日志与页面可见结果，不断言内部调用顺序。
