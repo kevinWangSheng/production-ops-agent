@@ -1478,6 +1478,10 @@ class ReadOnlyToolExecutor:
             "incomplete": incomplete,
         }
         if response.view_fields and adopted:
+            # An invalidated observation's view keeps none of the adapter's
+            # fields: some summarise the rows (``traces_search``'s
+            # ``span_groups``), and this view withholds every row, so such a
+            # field would describe rows the model is not shown.
             view.update(response.view_fields)
         view.update(
             _row_dependent_fields(
