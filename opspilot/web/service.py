@@ -1202,7 +1202,11 @@ def _select_snapshot_outcome(
         originals = [event for event in handoffs if _is_original_handoff(event.payload)]
         return (originals or handoffs)[-1]
     return next(
-        (event for event in reversed(candidates) if event.kind in {"run_completed", "run_handoff"}),
+        (
+            event
+            for event in reversed(candidates)
+            if event.kind in {"run_completed", "run_handoff"}
+        ),
         None,
     )
 

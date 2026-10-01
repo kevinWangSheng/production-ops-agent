@@ -210,10 +210,7 @@ def _event_reasons(
         if (
             str(event.get("run_id")) == run_id
             and bool(event.get("parked", False)) is parked
-            and (
-                generation is None
-                or event.get("control_generation", 0) == generation
-            )
+            and (generation is None or event.get("control_generation", 0) == generation)
         ):
             matching.append(event)
     originals = [event for event in matching if event.get("reconciled") is not True]

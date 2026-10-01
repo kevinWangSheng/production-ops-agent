@@ -399,6 +399,11 @@ def test_sweeper_generation_is_shared_by_reconcile_backfill_and_late_announcer()
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert page.status == 200
     announce_deadline_exceeded(workbench.events, incident, run, parked[0][2])
+    announce_deadline_exceeded(workbench.events, incident, run, parked[0][2])
     handoffs = _events(workbench.events, incident, run)
-    assert len(handoffs) == 1
-    assert handoffs[0]["parked"] is True
+    # r3-A: the backfill keyed by the sweeper's generation does not block the
+    # late sweeper, and the sweeper's own write is still deduplicated.
+    assert len(handoffs) == 2
+    assert [h.get("reconciled") for h in handoffs] == [True, False]
+    assert handoffs[-1]["reasons"] == ["DEADLINE_EXCEEDED"]
+    assert all(h["parked"] is True for h in handoffs)
