@@ -1,6 +1,6 @@
 # M1-01 后续项：交接停放后缺失 `run_handoff` 事件的补写
 
-- 状态：进行中（独立合同测试已提交；PG lab 新测试一次运行 2 红、6 绿；红项为 runner 与清扫路径的缺失 `run_handoff` 补写，其余测试通过；测试文件与提交号见下方追加记录）
+- 状态：进行中（r3 实现完成，五轮独立审查处置完毕，待 PR 与用户合并）；原状态行：进行中（独立合同测试已提交；PG lab 新测试一次运行 2 红、6 绿；红项为 runner 与清扫路径的缺失 `run_handoff` 补写，其余测试通过；测试文件与提交号见下方追加记录）
 - 2026-10-01：按 r2 补入代际推进后 deadline 清扫页面顺序、清扫停放后补写与后到 announcer 共键两条独立 PG 测试；PG lab 指定文件一次运行 2 failed、12 passed（两条新增均按预期暴露实现缺陷），ruff check 与 format --check 通过。
 - 状态追加（2026-10-01）：独立测试已补代际 1 经 resume 再次停放的连续三次页面加载及补写先到、runner announcer 后到；PG lab 指定文件一次运行 2 failed、10 passed（前者总计 4 条而期望 2 条，后者总计 3 条而期望 2 条，均违反 r2 同次停放最多一条）；r2 未规定事件代际字段名，内容断言只约束合同字段、允许附加代际字段。原始日志：`<SCRATCH>/handoff-generation-pytest.log`；lab 已停止并释放锁，ruff check / format --check 通过；按通用约束执行一次 `make check`：2501 passed、281 skipped、2 xfailed（PG 未 opt-in，不能替代上述红证明），日志 ` <SCRATCH>/handoff-generation-make-check.log`；实现修复待执行。
 - 2026-10-01：`tests/integration/test_m1_handoff_backfill_postgres.py`；测试提交号 `472d370`；PG 一次运行 2 failed、6 passed（失败为 runner/清扫缺失 `run_handoff` 补写，绿项覆盖幂等、已有 announcer、非 waiting 状态、页面可见性、行不变与写失败保护）。
@@ -73,3 +73,8 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 状态追加（2026-10-01）：按 r3 实现原 announcer `reconciled:false` 与补写 `reconciled:true` 的分层去重，并让 snapshot/acceptance 优先原 announcer；指定 PG 集合一次运行 74 passed、3 skipped、1 failed。失败为既有 `test_sweeper_generation_is_shared_by_reconcile_backfill_and_late_announcer` 仍断言补写后晚到清扫 announcer 只有 1 条，与 r3-A 明确要求同次停放可保留 1 条补写 + 1 条原 announcer（共 2 条）冲突；未改测试断言，make check/gitleaks/commit 按约束暂停，待决为更新该既有断言或确认保留旧合同。
 - 2026-10-01（lead）：`test_sweeper_generation_is_shared_by_reconcile_backfill_and_late_announcer` 按 r3-A 改为 2 条（补写 + 晚到清扫各一，清扫重复写仍去重），并断言最新为 `DEADLINE_EXCEEDED`；测试作者漏改的 r2 断言，属合同变更。
 - 2026-10-01（lead）：修 r3 实现两处——页面结果选择丢了「run_completed 优先」导致已发布 Run 显示为交接（既有 `test_a_completion_confirmed_after_a_lost_marker_announces_one_run_completed` 失败），且按 Run 行代际副本判定同一停放（应为事故代际，见第 3 轮审查）；另修 2 处 mypy。`make check` 2501 passed；PG 全量 integration 229 passed、54 skipped。
+- 2026-10-01（lead）：第 5 轮独立审查（Opus）确认 r3 主体无 P1；两处 P2 回归已修——acceptance 读取 blocked 原因不再按代际过滤（`parked:false` 事件不带代际），reconcile 的 `rebuild` 失败时与 main 一样直接返回。页面「Last attempt」每次停放只显示一次；Live progress 是原始事件流，补写与原 announcer 两条都会列出（r3-A 允许两条的必然结果）。可选项未做：blocked + 代际≥1 的 acceptance 用例、代际 1 只有补写时的页面断言、snapshot 双 rebuild 合并。`make check` 2501 passed；PG integration 229 passed、54 skipped。
+
+## 审查轮次小结
+
+五轮 Opus 独立审查依次发现：补写与 announcer 竞争重复（r1）→ 补写事件缺代际（r2 后）→ 代际来源分叉（run 副本 vs 事故）→ 补写抢先吞掉真实原因（用户定 r3「真实事件优先」）→ r3 读取侧两处小回归。执行者（Codex Sol）多轮交付存在未跑通检查、漏改冲突断言、读取侧回归，均由 lead 复验后修正。

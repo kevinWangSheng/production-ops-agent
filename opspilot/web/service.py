@@ -660,7 +660,12 @@ class Workbench:
         run_id = summary.current_run_id
         if run_id is None:
             return
-        rebuilt = self.incidents.rebuild(incident_id)
+        try:
+            rebuilt = self.incidents.rebuild(incident_id)
+        except PersistenceError:
+            # As on main: an unreadable row is the claim path's to report
+            # (INCONSISTENT_STATE handoff), not a reason for reconcile to fail.
+            return
         run = rebuilt["run"]
         if run["state"] == "waiting_human":
             try:

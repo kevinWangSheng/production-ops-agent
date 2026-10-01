@@ -296,7 +296,6 @@ def outcome_from_durable(
                 handoff_events,
                 run_id,
                 parked=False,
-                generation=generation if isinstance(generation, int) else None,
             )
             or ("INCOMPATIBLE_STATE",)
         )
