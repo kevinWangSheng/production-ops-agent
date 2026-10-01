@@ -1,6 +1,7 @@
 # M1-01 后续项：交接停放后缺失 `run_handoff` 事件的补写
 
 - 状态：进行中（独立合同测试已提交；PG lab 新测试一次运行 2 红、6 绿；红项为 runner 与清扫路径的缺失 `run_handoff` 补写，其余测试通过；测试文件与提交号见下方追加记录）
+- 2026-10-01：按 r2 补入代际推进后 deadline 清扫页面顺序、清扫停放后补写与后到 announcer 共键两条独立 PG 测试；PG lab 指定文件一次运行 2 failed、12 passed（两条新增均按预期暴露实现缺陷），ruff check 与 format --check 通过。
 - 状态追加（2026-10-01）：独立测试已补代际 1 经 resume 再次停放的连续三次页面加载及补写先到、runner announcer 后到；PG lab 指定文件一次运行 2 failed、10 passed（前者总计 4 条而期望 2 条，后者总计 3 条而期望 2 条，均违反 r2 同次停放最多一条）；r2 未规定事件代际字段名，内容断言只约束合同字段、允许附加代际字段。原始日志：`<SCRATCH>/handoff-generation-pytest.log`；lab 已停止并释放锁，ruff check / format --check 通过；按通用约束执行一次 `make check`：2501 passed、281 skipped、2 xfailed（PG 未 opt-in，不能替代上述红证明），日志 ` <SCRATCH>/handoff-generation-make-check.log`；实现修复待执行。
 - 2026-10-01：`tests/integration/test_m1_handoff_backfill_postgres.py`；测试提交号 `472d370`；PG 一次运行 2 failed、6 passed（失败为 runner/清扫缺失 `run_handoff` 补写，绿项覆盖幂等、已有 announcer、非 waiting 状态、页面可见性、行不变与写失败保护）。
 - 更新日期：2026-10-01

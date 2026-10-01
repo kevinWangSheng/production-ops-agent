@@ -292,3 +292,50 @@ def test_reconcile_failure_does_not_make_the_incident_page_fail(monkeypatch):
     assert response.status == 200
     assert "waiting_human" in response.text
     monkeypatch.setattr(workbench.events, "append_once", real_append)
+
+
+def test_page_reconcile_preserves_deadline_reason_after_parked_run_generation_advances():
+    app, workbench, store = _build()
+    stack = type("Stack", (), {"store": store, "events": workbench.events})
+    incident, run = _missing_handoff(stack, tag="generation-deadline")
+
+    assert store.control(incident, 0, "resume", "operator") == 1
+    assert store.rebuild(incident)["run"]["state"] == "queued"
+    assert store.control(incident, 1, "pause", "operator") == 2
+    assert store.rebuild(incident)["run"]["state"] == "queued"
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200
+    handoffs = _events(workbench.events, incident, run)
+    assert len(handoffs) == 2
+    assert handoffs[-1]["reasons"] == ["DEADLINE_EXCEEDED"]
+    assert handoffs[-1]["parked"] is True
+
+
+def test_sweeper_generation_is_shared_by_reconcile_backfill_and_late_announcer():
+    app, workbench, store = _build()
+    incident, run = _accepted(store, "generation-sweeper")
+    assert store.control(incident, 0, "pause", "operator") == 1
+    assert store.rebuild(incident)["run"]["state"] == "queued"
+
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
+            (run,),
+        )
+    parked = store.sweep_expired_runs_with_generations(incident_id=incident)
+    assert parked == ((incident, run, 1),)
+    assert _events(workbench.events, incident, run) == []
+
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200
+    announce_deadline_exceeded(workbench.events, incident, run, parked[0][2])
+    handoffs = _events(workbench.events, incident, run)
+    assert len(handoffs) == 1
+    assert handoffs[0]["parked"] is True
