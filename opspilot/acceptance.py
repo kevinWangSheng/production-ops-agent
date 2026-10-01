@@ -213,9 +213,9 @@ def _event_reasons(
             and (generation is None or event.get("control_generation", 0) == generation)
         ):
             matching.append(event)
-    originals = [event for event in matching if event.get("reconciled") is not True]
-    event = (originals or matching)[-1] if (originals or matching) else None
-    return () if event is None else _string_list(event.get("reasons", ()))
+    originals = [item for item in matching if item.get("reconciled") is not True]
+    candidates = originals or matching
+    return _string_list(candidates[-1].get("reasons", ())) if candidates else ()
 
 
 def outcome_from_durable(

@@ -774,7 +774,9 @@ class Workbench:
         # next attempt owns the state and the page must not show the Run as
         # handed off (bot review, PR #44). The event stays in the list.
         runnable = run["state"] in {"queued", "running"}
-        outcome = _select_snapshot_outcome(events, str(run["run_id"]), run, runnable)
+        outcome = _select_snapshot_outcome(
+            events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
+        )
         report = _report_view(rebuilt.get("conclusion"))
         handoff_report = None
         if report is None and outcome is not None and outcome.kind == "run_handoff":
@@ -1165,11 +1167,6 @@ def _event_view(event: SubjectEvent) -> dict[str, Any]:
     }
 
 
-def _same_park_generation(payload: Mapping[str, Any], generation: int) -> bool:
-    event_generation = payload.get("control_generation", 0)
-    return event_generation == generation
-
-
 def _is_original_handoff(payload: Mapping[str, Any]) -> bool:
     # Events written before r3 have no marker and are original announcers.
     return payload.get("reconciled") is not True
@@ -1178,36 +1175,36 @@ def _is_original_handoff(payload: Mapping[str, Any]) -> bool:
 def _select_snapshot_outcome(
     events: tuple[SubjectEvent, ...],
     run_id: str,
-    run: Mapping[str, Any],
+    generation: int,
     runnable: bool,
 ) -> SubjectEvent | None:
-    candidates = [
-        event
-        for event in events
-        if event.payload.get("run_id") == run_id
-        and not (
-            event.kind == "run_handoff"
-            and runnable
-            and event.payload.get("parked") is False
-        )
-    ]
+    """The newest ``run_completed``, else the newest eligible ``run_handoff``.
+
+    Among handoffs of the current park (the incident's generation, r3-B) an
+    original announcer's event wins over a reconcile backfill, so a backfill
+    that raced ahead never hides the real reason.
+    """
+    mine = [e for e in reversed(events) if e.payload.get("run_id") == run_id]
+    completed = next((e for e in mine if e.kind == "run_completed"), None)
+    if completed is not None:
+        return completed
     handoffs = [
-        event
-        for event in candidates
-        if event.kind == "run_handoff"
-        and event.payload.get("parked") is True
-        and _same_park_generation(event.payload, int(run["control_generation"]))
+        e
+        for e in mine
+        if e.kind == "run_handoff"
+        and not (runnable and e.payload.get("parked") is False)
     ]
-    if handoffs:
-        originals = [event for event in handoffs if _is_original_handoff(event.payload)]
-        return (originals or handoffs)[-1]
-    return next(
-        (
-            event
-            for event in reversed(candidates)
-            if event.kind in {"run_completed", "run_handoff"}
-        ),
-        None,
+    current = [
+        e
+        for e in handoffs
+        if e.payload.get("parked") is True
+        and e.payload.get("control_generation", 0) == generation
+    ]
+    original = next((e for e in current if _is_original_handoff(e.payload)), None)
+    return (
+        original
+        or (current[0] if current else None)
+        or (handoffs[0] if handoffs else None)
     )
 
 
