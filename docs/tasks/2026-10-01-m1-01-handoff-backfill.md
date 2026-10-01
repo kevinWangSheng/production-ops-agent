@@ -67,3 +67,6 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 状态追加（2026-10-01）：第三轮修复已实现；PG 指定集合一次运行 55 passed、1 failed，失败为既有“先无事件停放、再 resume/pause、再超时清扫”场景断言两条事件，当前按同一事故代际去重为一条；`make check` 一次运行在格式检查处失败（随后已格式化），gitleaks 11 commits 未发现泄漏。待独立审查确认该验收断言与 r2 去重合同的取舍。
 - 2026-10-01：PG 指定集合 58 passed、1 skipped；`make check` 2501 passed、281 skipped、2 xfailed；gitleaks 扫描 9 commits、未发现泄漏。实现与验证完成。
 - 2026-10-01（lead）：`test_page_reconcile_preserves_deadline_reason_after_parked_run_generation_advances` 的计数 2 → 1。原期望来自 lead 给测试作者的任务书笔误：gen0 停放的事件丢失后 Run 已被 resume 离开 `waiting_human`，按合同 1 不再补写，只剩超时停放一条；核心断言（最新事件为 `DEADLINE_EXCEEDED`）不变。
+- 2026-10-01：按合同修订 r3-A/B，更新 runner 与清扫“补写先到、announcer 后到”为恰好两条 `parked:true` 事件，并断言页面只显示一次交接且页面/`opspilot.acceptance` 读取原 announcer 的真实原因。
+- 2026-10-01：按合同修订 r3-A，补充 announcer 先到时 reconcile 不补写、重复 reconcile 不增加，以及同一停放原 announcer 重复写仍保持一条原 announcer 事件的验收断言。
+- 状态追加（2026-10-01）：r3 独立测试已更新；PG lab 指定文件一次运行 11 passed、3 failed（失败为当前实现尚未满足 r3 的 runner/清扫原 announcer 优先与两条事件断言）；lab 已停止并释放锁；ruff 与 `make check` 通过（2501 passed、283 skipped、2 xfailed）。

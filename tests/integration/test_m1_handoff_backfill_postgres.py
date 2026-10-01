@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from opspilot.acceptance import IncidentScenario, outcome_from_durable
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
 from opspilot.investigation.progress import announce_deadline_exceeded, announce_handoff
 from opspilot.persistence import DurableStore, PersistenceError
@@ -46,6 +47,25 @@ def _events(log: DurableEventLog, incident: UUID, run: UUID):
         for event in log.read_after(incident, 0, limit=1000)
         if event.kind == "run_handoff" and event.payload.get("run_id") == str(run)
     ]
+
+
+def _acceptance_reasons(store: DurableStore, log: DurableEventLog, incident: UUID):
+    outcome = outcome_from_durable(
+        IncidentScenario(
+            scenario_id=f"m1-01-handoff-backfill-{incident}",
+            feature_id="M1-01",
+            acceptance_step="external IncidentScenario -> IncidentOutcome",
+            kind="handoff-backfill",
+            subject_id=str(incident),
+        ),
+        store.rebuild(incident),
+        handoff_events=tuple(
+            dict(event.payload)
+            for event in log.read_after(incident, 0, limit=1000)
+            if event.kind == "run_handoff"
+        ),
+    )
+    return outcome.handoff_reasons
 
 
 def _missing_handoff(stack, *, tag: str, sweep: bool = False):
@@ -121,7 +141,8 @@ def test_runner_announcer_after_reconcile_shares_one_new_generation_key():
     generation = store.rebuild(incident)["run"]["control_generation"]
     assert generation >= 1
 
-    workbench.snapshot(incident)
+    first_page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert first_page.status == 200
     announce_handoff(
         workbench.events,
         incident,
@@ -132,8 +153,22 @@ def test_runner_announcer_after_reconcile_shares_one_new_generation_key():
     )
 
     repaired = _events(workbench.events, incident, run)
-    assert len(repaired) == 2
-    assert all(event["parked"] is True for event in repaired)
+    current = [
+        event for event in repaired if event.get("control_generation") == generation
+    ]
+    assert len(current) == 2
+    assert all(event["parked"] is True for event in current)
+    announcer = next(event for event in current if event["reasons"])
+    assert announcer.get("reconciled", False) is False
+    assert announcer["reasons"] == ["MODEL_UNAVAILABLE"]
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200
+    assert page.text.count("Last attempt:") == 1
+    assert "MODEL_UNAVAILABLE" in page.text
+    assert workbench.snapshot(incident)["outcome"]["reasons"] == ["MODEL_UNAVAILABLE"]
+    assert _acceptance_reasons(store, workbench.events, incident) == (
+        "MODEL_UNAVAILABLE",
+    )
 
 
 def test_reconcile_backfills_a_swept_run_and_is_idempotent():
@@ -165,12 +200,25 @@ def test_sweeper_announcer_after_reconcile_shares_one_generation_key():
     incident, run = _missing_handoff(stack, tag="sweep-announcer-race", sweep=True)
     generation = store.rebuild(incident)["run"]["control_generation"]
 
-    workbench.snapshot(incident)
+    first_page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert first_page.status == 200
     announce_deadline_exceeded(workbench.events, incident, run, generation)
 
     repaired = _events(workbench.events, incident, run)
-    assert len(repaired) == 1
-    assert repaired[0]["parked"] is True
+    assert len(repaired) == 2
+    announcer = next(event for event in repaired if event["reasons"])
+    backfill = next(event for event in repaired if not event["reasons"])
+    assert backfill["reconciled"] is True
+    assert announcer.get("reconciled", False) is False
+    assert announcer["reasons"] == ["DEADLINE_EXCEEDED"]
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200
+    assert page.text.count("Last attempt:") == 1
+    assert "DEADLINE_EXCEEDED" in page.text
+    assert workbench.snapshot(incident)["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
+    assert _acceptance_reasons(store, workbench.events, incident) == (
+        "DEADLINE_EXCEEDED",
+    )
 
 
 def test_reconcile_backfills_second_park_for_new_generation_only_once():
@@ -243,7 +291,19 @@ def test_reconcile_does_not_duplicate_an_already_announced_park():
     )
 
     workbench.snapshot(incident)
-    assert len(_events(workbench.events, incident, run)) == 1
+    announce_handoff(
+        workbench.events,
+        incident,
+        run,
+        "failed",
+        ("MODEL_UNAVAILABLE",),
+        control_generation=generation,
+    )
+    workbench.snapshot(incident)
+    repaired = _events(workbench.events, incident, run)
+    assert len(repaired) == 1
+    assert repaired[0].get("reconciled", False) is False
+    assert repaired[0]["reasons"] == ["MODEL_UNAVAILABLE"]
 
 
 @pytest.mark.parametrize("state", ["queued", "running", "cancelled", "completed"])
