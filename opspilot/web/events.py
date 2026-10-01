@@ -118,9 +118,13 @@ class MemoryEventLog:
                 event.payload.get(k) == v for k, v in wanted.items()
             )
             # Events written before generation-keyed parked handoffs are
-            # retained as the same fact for compatibility; a new-generation
-            # event always carries the field and therefore cannot match it.
-            if not matches and "control_generation" in wanted:
+            # retained as the generation-zero fact for compatibility. They
+            # must not suppress a later park after the incident advances.
+            if (
+                not matches
+                and "control_generation" in wanted
+                and wanted["control_generation"] == 0
+            ):
                 legacy = {k: v for k, v in wanted.items() if k != "control_generation"}
                 matches = (
                     event.kind == kind
@@ -218,7 +222,7 @@ class DurableEventLog:
                     subject_id,
                     kind,
                     Jsonb({} if key is None else dict(key)),
-                    bool(key is not None and "control_generation" in key),
+                    bool(key is not None and dict(key).get("control_generation") == 0),
                     Jsonb(
                         {}
                         if key is None
