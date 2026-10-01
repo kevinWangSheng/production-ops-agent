@@ -31,6 +31,16 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 
 需补的验收情形：补写先到、原 announcer（runner 与清扫各一）后到 → 仍只有一条；同一 Run 重新排队并在新代际再次停放且事件丢失 → 补写出第二条；存在当前代际的结论步骤（`handoff:false` 或 `true`）时补写仍为 `unknown`/空。
 
+## 合同修订 r3（2026-10-01，用户决定「真实事件优先」）
+
+第 4 轮独立审查：清扫先整批停放再逐个追加事件、runner 先 hand_off 再追加，这段窗口里任何页面加载都会先补写 `unknown`，原 announcer 随后被同一去重键挡掉，真实原因（如 `DEADLINE_EXCEEDED`）永久丢失；不需要崩溃。替换 r2 的 2'：
+
+- r3-A：同一次停放（`run_id`，事故 `control_generation`）——原 announcer（runner 停放、清扫停放）写的事件标 `reconciled: false`，announcer 之间按该停放去重、最多一条；**补写不挡原 announcer**：补写已存在时原 announcer 仍追加自己的一条。补写（`reconciled: true`）在该停放已有任一 `parked: true` 事件时不写，最多一条。一次停放最多两条 `parked: true`（至多 1 条原 announcer + 至多 1 条补写，补写只可能早于原 announcer）。
+- r3-B：读取方（事故页 `snapshot` 的结果/交接报告、SSE 重载、`opspilot/acceptance.py` 的原因读取）对同一停放**优先取原 announcer 的事件**，仅当没有原 announcer 事件时才用补写事件。页面每次停放只显示一次交接。
+- r3-C：旧格式事件（无 `reconciled`/代际字段）按原 announcer 事件对待，既有 gen0 兼容不变。
+
+需补的验收情形：补写先到、清扫事件后到 → 页面与 acceptance 读到 `DEADLINE_EXCEEDED`，事件恰好 2 条，页面只显示一次交接；runner 路径同理；announcer 先到 → 补写不写（1 条）；重复 reconcile 不增加；同一停放的原 announcer 重复写 → 仍 1 条原 announcer 事件。
+
 ## 验收口径
 
 在真实 PG（`M1_DURABLE_POSTGRES=1`，lab 端口 55431）上按公开入口制造：runner 交接后事件追加失败、清扫停放后事件追加失败、两种情况各自 reconcile 一次与两次、原 announcer 已写过后再 reconcile、非 waiting_human 的各状态。断言事件日志与页面可见结果，不断言内部调用顺序。
