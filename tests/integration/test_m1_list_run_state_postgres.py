@@ -46,6 +46,65 @@ def _index(app) -> str:
     return response.text
 
 
+def test_list_run_column_uses_current_run_when_an_incident_has_multiple_runs():
+    """Contract 1: the badge follows current_run_id across Run history.
+
+    The public control flow can create a second Run only after cancelling the
+    first, and that successor becomes current.  It therefore cannot produce
+    a non-latest current Run; the two persisted Run states still differ, which
+    exercises the same authoritative-pointer choice permitted by the task.
+    """
+    app, workbench, store = _build()
+    incident = UUID(_submit(app, f"m1-list-multiple-runs-{uuid4()}"))
+    first = workbench.incidents.find_incident(incident)
+    assert first is not None and first.current_run_id is not None
+    first_run = first.current_run_id
+
+    cancel = post_form(
+        app,
+        f"/incidents/{incident}/control",
+        {
+            "action": "cancel",
+            "expected_generation": "0",
+            "idempotency_key": f"cancel-{uuid4()}",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert cancel.status == 200, cancel.text
+    successor = post_form(
+        app,
+        f"/incidents/{incident}/control",
+        {
+            "action": "new_run",
+            "expected_generation": "1",
+            "idempotency_key": f"new-run-{uuid4()}",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert successor.status == 200, successor.text
+    current = workbench.incidents.find_incident(incident)
+    assert current is not None and current.current_run_id is not None
+    assert current.current_run_id != first_run
+    workbench.incidents.claim(
+        incident,
+        current.current_run_id,
+        uuid4(),
+        {"state": "v1"},
+        600,
+    )
+
+    with store.transaction(snapshot=True) as conn:
+        states = conn.execute(
+            "SELECT run_id,state FROM opspilot_runs WHERE incident_id=%s",
+            (incident,),
+        ).fetchall()
+    assert {row["run_id"]: row["state"] for row in states} == {
+        first_run: "cancelled",
+        current.current_run_id: "running",
+    }
+    assert list_row(_index(app), str(incident))["Run"] == "running"
+
+
 def test_list_run_column_projects_each_current_run_state_and_empty_current_run():
     """Contract 1: GET / shows the current Run state, including no Run."""
     app, workbench, store = _build()
@@ -156,41 +215,40 @@ def test_list_get_reads_authoritative_run_and_does_not_mutate_rows():
 
 
 def test_list_query_count_does_not_grow_with_incident_count():
-    """Contract 3: the list obtains Run state without per-incident queries."""
+    """Contract 3: one GET's total query count is independent of row count."""
     app, workbench, store = _build()
     original = store.transaction
-    counts: list[int] = []
+    total_queries = 0
 
     def traced(*, snapshot=False):
-        count = 0
-
         @contextlib.contextmanager
         def run():
-            nonlocal count
+            nonlocal total_queries
             with original(snapshot=snapshot) as conn:
 
                 class ConnectionProxy:
                     def execute(self, *args, **kwargs):
-                        nonlocal count
-                        count += 1
+                        nonlocal total_queries
+                        total_queries += 1
                         return conn.execute(*args, **kwargs)
 
                     def __getattr__(self, name):
                         return getattr(conn, name)
 
                 yield ConnectionProxy()
-            counts.append(count)
 
         return run()
 
     store.transaction = traced
     _submit(app, f"m1-list-count-a-{uuid4()}")
+    before = total_queries
     _index(app)
-    first = counts[-1]
+    first = total_queries - before
     for _ in range(5):
         _submit(app, f"m1-list-count-{uuid4()}")
+    before = total_queries
     _index(app)
-    second = counts[-1]
+    second = total_queries - before
     assert second == first
 
 
