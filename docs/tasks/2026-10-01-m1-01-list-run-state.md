@@ -5,6 +5,10 @@
 - 依据：[#61 任务记录](2026-09-29-m1-01-incident-state.md) 第 91 行待决（用户 2026-10-01 决定做）；C3 §4
 - 工作区：`feature/m1-01-list-run-state`，`../production-ops-agent-list-run-state`
 
+## 状态
+
+- 2026-10-01：新增 `tests/integration/test_m1_list_run_state_postgres.py`，提交 `75a4f35`；真实 PG 结果 1 红（合同 1 的 `Run` 列尚未实现）、3 绿（合同 2 只读、合同 3 查询次数、合同 4 Control 语义）；ruff check/format check 通过。无 Run 场景由 SQL 将 `current_run_id` 置空，因为现有公开受理入口始终创建首个 Run。
+
 ## 问题
 
 #61 之后列表页只在 paused/cancelled 时显示 Control，分不出「交接等待人工」和「进行中」。事故页已有 `run-state`，列表页没有。
