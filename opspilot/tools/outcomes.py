@@ -56,7 +56,9 @@ __all__ = [
 # v6: a view is whole or refused -- rows are no longer dropped to fit a size
 # limit (docs/tasks/2026-09-29-m1-01-view-bytes-timeout.md), so
 # ``truncated``/``omitted_*`` are always False/0 on a view the model receives.
-PROJECTION_REVISION = "m1-01-tool-view-v6"
+# v7: successful OTel Demo calls over ``traces_span_metrics_calls_total``
+# carry the ``series_note`` semantic annotation in the hashed view.
+PROJECTION_REVISION = "m1-01-tool-view-v7"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

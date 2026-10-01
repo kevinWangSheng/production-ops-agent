@@ -1477,7 +1477,7 @@ class ReadOnlyToolExecutor:
             "result_count": len(rows),
             "incomplete": incomplete,
         }
-        if response.view_fields and adopted:
+        if response.view_fields and adopted and status == "ok":
             # An invalidated observation's view keeps none of the adapter's
             # fields: some summarise the rows (``traces_search``'s
             # ``span_groups``), and this view withholds every row, so such a
