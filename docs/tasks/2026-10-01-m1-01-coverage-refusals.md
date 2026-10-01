@@ -1,19 +1,9 @@
 # M1-01 后续项：被拒工具调用列入 Run 覆盖摘要
 
-- 状态：已完成，提交 `0f84c4a`
-- 独立测试：`tests/test_m1_coverage_refusals_contract.py`；提交号 `0d6648b`；红 3（新摘要拒绝类、无拒绝 `none` 类、恢复摘要哈希路径），绿 0。
+- 状态：已取消（用户 2026-10-01 决定放弃，记录发现；实现 `adf29fd` 与独立测试 `0d6648b` 留在未推送分支 `feature/m1-01-coverage-refusals`，不合入）
 - 更新日期：2026-10-01
-- 依据：[整视图计量记录](2026-09-29-m1-01-view-bytes-timeout.md)「决策点（留给用户）」；用户 2026-10-01 决定做
-- 工作区：`feature/m1-01-coverage-refusals`，`../production-ops-agent-coverage-refusals`
-
-## 状态
-
-- 已实现：覆盖摘要按调用顺序加入无交付视图的网关拒绝/错误 `<tool> (<reason>)`，空类为 `none`；拒绝记录只取结构化字段，live/rebuild 共用筛选并纳入最终输入哈希重建。
-- 验证：`.venv/bin/python -m pytest tests/test_m1_coverage_refusals_contract.py -q` → 3 passed；`.venv/bin/python -m pytest tests/test_m1_investigation_loop.py -q` → 82 passed。
-- 真实 Run：OTel Demo `otel-demo` 宽查询一次，Run `7cb82d94-d7af-5bab-8959-4925d6068f04`，8 次模型请求、19 次工具调用、3 次 `traces_search (RESULT_TOO_LARGE)`；完成报告为 `completed/partial`，gaps 点名三次拒绝。证据：[run](../evidence/m1-01-coverage-refusals/run.md)、[ledger](../evidence/m1-01-coverage-refusals/ledger.json)。
-- gitleaks：本地未安装 `tmp/gitleaks/gitleaks`，未扫描；证据记录已注明。
-- 既有测试后果：`tests/test_m1_view_explicit_contract.py` 的 5 个 `none` 计数各增加一类；这是合同新增拒绝类的直接文字后果，不削弱原有 incomplete/truncated/non-ok 断言。
-- 最终检查：`make check` → 2504 passed, 269 skipped, 2 xfailed；ruff、format、mypy 均通过。
+- 依据：[整视图计量记录](2026-09-29-m1-01-view-bytes-timeout.md)「决策点（留给用户）」
+- 证据：本项实现分支上的一次真实 Run，[run.md](../evidence/m1-01-coverage-refusals/run.md)、[ledger.json](../evidence/m1-01-coverage-refusals/ledger.json)、[report.json](../evidence/m1-01-coverage-refusals/report.json)
 
 ## 问题
 
