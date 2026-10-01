@@ -13,12 +13,12 @@
 
 用仓库内已有真实 Run 的 ledger（`docs/evidence/` 下含 request 与 `usage.prompt_tokens` 的记录，至少 10 个请求，覆盖小/中/大上下文）离线计算：旧估算、vendored tokenizer 计数（`opspilot/tools/tokens.py`）、供应商 `prompt_tokens`。给出比值表。若 tokenizer 计数与 `prompt_tokens` 偏差超过 ±10%，停下写入待决，不进入第二步。
 
-### 2026-10-01 执行结果
+### 2026-10-01 首轮：只扫描仓库证据（已被下文「续做」取代，仅保留为过程记录）
 
 - 对账脚本与结果：[reconcile.py](../evidence/m1-01-token-estimator/reconcile.py)、[README.md](../evidence/m1-01-token-estimator/README.md)、[reconcile.json](../evidence/m1-01-token-estimator/reconcile.json)。
 - 扫描 `docs/evidence/` 的 JSON/JSONL：`0` 条同时保存完整 `messages`、完整 `tools` 与 `usage.prompt_tokens`；`1,211` 条只有 usage、request hash/bytes 或摘要（2026-10-01 按 Codex 审查在提交本目录证据后重新生成清单：1,244 条，>500k 9 条；增量来自本目录 live 结果，仍无完整请求体）。`m1-01-view-bytes-timeout` 有 `661,798`、`975,182` prompt-token 的大上下文 usage，但没有请求体；`m1-01-loop-long-horizon/compaction-smoke.json` 只有角色名摘要并注明正文未保留。
-- 因此旧估算、vendored tokenizer 计数、两个比值和每消息开销均不可计算；没有伪造值，也没有真实模型/网络调用。
-- **待决：**补存至少 10 个真实请求的完整 `messages` 与 `tools`（覆盖小/中/大，最好含 >500k），并与同一请求的 `usage.prompt_tokens` 绑定；补齐前停在第一步，不进入第二步。当前无法给出偏差范围或 ±10% 判断。
+- 首轮仅凭仓库证据无法计算比值，因此当时未调用真实模型；续做改用离线重建与 9 次真实调用完成对账，见下文。
+- （首轮待决，已由续做解决）补存至少 10 个真实请求的完整 `messages` 与 `tools`（覆盖小/中/大，最好含 >500k），并与同一请求的 `usage.prompt_tokens` 绑定；补齐前停在第一步，不进入第二步。当前无法给出偏差范围或 ±10% 判断。
 
 ## 合同（第二步）
 
