@@ -47,3 +47,4 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 来源选择：`execution`、`reasons`、`report_sha256`、`evidence_ids` 优先读取当前 Run 已提交结论步骤的持久化字段；清扫路径或字段不可确定时按合同写 `unknown`、空列表和空值，不猜交接原因。
 - 状态：已完成。
 - 验证：`M1_DURABLE_POSTGRES=1 ... pytest`（相关 5 个 integration 文件）41 passed；`make check` 2501 passed、277 skipped、2 xfailed。
+- 2026-10-01：按合同修订 r2 修复三方 parked 事件共用含 `control_generation` 的 `append_once` 键；reconcile 固定写 unknown/空值并移除全量日志预检与结论推断；兼容无代际字段的历史 parked 事件。PG 指定集成 41 passed；`make check` 2501 passed、277 skipped、2 xfailed；提交 `fix: one run_handoff per park across announcers and reconcile [M1-01]`。

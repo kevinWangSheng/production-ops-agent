@@ -664,61 +664,27 @@ class Workbench:
         run = rebuilt["run"]
         if run["state"] == "waiting_human":
             try:
-                floor = self.events.floor(incident_id)
-                events = self.events.read_after(
-                    incident_id, max(floor - 1, 0), limit=100000
+                generation = int(run["control_generation"])
+                self.events.append_once(
+                    incident_id,
+                    "run_handoff",
+                    {
+                        "run_id": str(run_id),
+                        "published": False,
+                        "execution": "unknown",
+                        "handoff": True,
+                        "parked": True,
+                        "reasons": [],
+                        "report_sha256": None,
+                        "evidence_ids": [],
+                        "reconciled": True,
+                    },
+                    key={
+                        "run_id": str(run_id),
+                        "parked": True,
+                        "control_generation": generation,
+                    },
                 )
-                parked = any(
-                    event.kind == "run_handoff"
-                    and event.payload.get("run_id") == str(run_id)
-                    and event.payload.get("parked") is True
-                    for event in events
-                )
-                if not parked:
-                    execution = "unknown"
-                    reasons: list[str] = []
-                    report_sha256 = None
-                    evidence_ids: list[str] = []
-                    for step in reversed(rebuilt["steps"]):
-                        payload = step.get("response")
-                        if not isinstance(payload, Mapping):
-                            continue
-                        inner = payload.get("conclusion")
-                        if not isinstance(inner, Mapping):
-                            continue
-                        candidate_execution = inner.get("execution")
-                        candidate_reasons = inner.get("handoff_reasons")
-                        candidate_sha = inner.get("report_content_sha256")
-                        candidate_evidence = inner.get("evidence_ids")
-                        if isinstance(candidate_execution, str) and candidate_execution:
-                            execution = candidate_execution
-                        if isinstance(candidate_reasons, list) and all(
-                            isinstance(item, str) for item in candidate_reasons
-                        ):
-                            reasons = list(candidate_reasons)
-                        if isinstance(candidate_sha, str) and candidate_sha:
-                            report_sha256 = candidate_sha
-                        if isinstance(candidate_evidence, list) and all(
-                            isinstance(item, str) for item in candidate_evidence
-                        ):
-                            evidence_ids = list(candidate_evidence)
-                        break
-                    self.events.append_once(
-                        incident_id,
-                        "run_handoff",
-                        {
-                            "run_id": str(run_id),
-                            "published": False,
-                            "execution": execution,
-                            "handoff": True,
-                            "parked": True,
-                            "reasons": reasons,
-                            "report_sha256": report_sha256,
-                            "evidence_ids": evidence_ids,
-                            "reconciled": True,
-                        },
-                        key={"run_id": str(run_id), "parked": True},
-                    )
             except PersistenceError:
                 pass
         if not summary.concluded:
@@ -1110,6 +1076,7 @@ class Workbench:
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
                 parked=parked,
+                control_generation=lease.control_generation,
             )
 
 

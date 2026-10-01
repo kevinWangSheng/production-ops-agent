@@ -114,9 +114,20 @@ class MemoryEventLog:
         _check(kind, payload)
         wanted = {} if key is None else dict(key)
         for event in self._events.get(subject_id, ()):
-            if event.kind == kind and all(
+            matches = event.kind == kind and all(
                 event.payload.get(k) == v for k, v in wanted.items()
-            ):
+            )
+            # Events written before generation-keyed parked handoffs are
+            # retained as the same fact for compatibility; a new-generation
+            # event always carries the field and therefore cannot match it.
+            if not matches and "control_generation" in wanted:
+                legacy = {k: v for k, v in wanted.items() if k != "control_generation"}
+                matches = (
+                    event.kind == kind
+                    and "control_generation" not in event.payload
+                    and all(event.payload.get(k) == v for k, v in legacy.items())
+                )
+            if matches:
                 return event.sequence
         return self.append(subject_id, kind, payload)
 
@@ -202,8 +213,22 @@ class DurableEventLog:
                 (str(subject_id),),
             )
             retained = conn.execute(
-                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
-                (subject_id, kind, Jsonb({} if key is None else dict(key))),
+                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND (payload @> %s OR (%s AND NOT (payload ? 'control_generation') AND payload @> %s))",
+                (
+                    subject_id,
+                    kind,
+                    Jsonb({} if key is None else dict(key)),
+                    bool(key is not None and "control_generation" in key),
+                    Jsonb(
+                        {}
+                        if key is None
+                        else {
+                            k: v
+                            for k, v in dict(key).items()
+                            if k != "control_generation"
+                        }
+                    ),
+                ),
             ).fetchone()
             if retained is not None and retained["sequence"] is not None:
                 return int(retained["sequence"])

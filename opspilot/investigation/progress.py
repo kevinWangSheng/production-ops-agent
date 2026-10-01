@@ -105,24 +105,37 @@ def announce_handoff(
     report_sha256: str | None = None,
     evidence_ids: tuple[str, ...] = (),
     parked: bool = True,
+    control_generation: int | None = None,
 ) -> int:
     """``parked`` says whether the Run really landed in ``waiting_human``.
 
     False records what a fenced or crashed attempt saw without claiming a
     durable park: the Run row is the authority for where it is now.
     """
-    return log.append(
+    payload = {
+        "run_id": str(run_id),
+        "published": False,
+        "execution": execution,
+        "handoff": True,
+        "parked": parked,
+        "reasons": list(reasons),
+        "report_sha256": report_sha256,
+        "evidence_ids": list(evidence_ids),
+    }
+    if parked and control_generation is not None:
+        payload["control_generation"] = control_generation
+    if not parked:
+        return log.append(subject_id, "run_handoff", payload)
+    if control_generation is None:
+        raise PersistenceError("HANDOFF_GENERATION_UNAVAILABLE")
+    return log.append_once(
         subject_id,
         "run_handoff",
-        {
+        payload,
+        key={
             "run_id": str(run_id),
-            "published": False,
-            "execution": execution,
-            "handoff": True,
-            "parked": parked,
-            "reasons": list(reasons),
-            "report_sha256": report_sha256,
-            "evidence_ids": list(evidence_ids),
+            "parked": True,
+            "control_generation": control_generation,
         },
     )
 
@@ -137,7 +150,9 @@ class ExpirySweeper(Protocol):
     ) -> tuple[tuple[UUID, UUID], ...]: ...
 
 
-def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID) -> int:
+def announce_deadline_exceeded(
+    log: ProgressLog, subject_id: UUID, run_id: UUID, control_generation: int = 0
+) -> int:
     """The ``run_handoff`` a timeout park shows on the page, keyed by run.
 
     A sweep parks a Run at most once, and the key makes a second announcer
@@ -160,8 +175,13 @@ def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID)
             "reasons": [DEADLINE_EXCEEDED],
             "report_sha256": None,
             "evidence_ids": [],
+            "control_generation": control_generation,
         },
-        key={"run_id": str(run_id), "parked": True, "reasons": [DEADLINE_EXCEEDED]},
+        key={
+            "run_id": str(run_id),
+            "parked": True,
+            "control_generation": control_generation,
+        },
     )
 
 
@@ -177,7 +197,17 @@ def sweep_expired(
     parked = store.sweep_expired_runs(incident_id=incident_id)
     if log is not None:
         for subject_id, run_id in parked:
-            announce_deadline_exceeded(log, subject_id, run_id)
+            try:
+                rebuild = getattr(store, "rebuild", None)
+                if not callable(rebuild):
+                    generation = 0
+                else:
+                    generation = int(rebuild(subject_id)["run"]["control_generation"])
+            except AttributeError:
+                generation = 0
+            except (PersistenceError, KeyError, TypeError, ValueError):
+                continue
+            announce_deadline_exceeded(log, subject_id, run_id, generation)
     return parked
 
 
