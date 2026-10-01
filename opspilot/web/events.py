@@ -117,20 +117,6 @@ class MemoryEventLog:
             matches = event.kind == kind and all(
                 event.payload.get(k) == v for k, v in wanted.items()
             )
-            # Events written before generation-keyed parked handoffs are
-            # retained as the generation-zero fact for compatibility. They
-            # must not suppress a later park after the incident advances.
-            if (
-                not matches
-                and "control_generation" in wanted
-                and wanted["control_generation"] == 0
-            ):
-                legacy = {k: v for k, v in wanted.items() if k != "control_generation"}
-                matches = (
-                    event.kind == kind
-                    and "control_generation" not in event.payload
-                    and all(event.payload.get(k) == v for k, v in legacy.items())
-                )
             if matches:
                 return event.sequence
         return self.append(subject_id, kind, payload)
@@ -217,22 +203,8 @@ class DurableEventLog:
                 (str(subject_id),),
             )
             retained = conn.execute(
-                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND (payload @> %s OR (%s AND NOT (payload ? 'control_generation') AND payload @> %s))",
-                (
-                    subject_id,
-                    kind,
-                    Jsonb({} if key is None else dict(key)),
-                    bool(key is not None and dict(key).get("control_generation") == 0),
-                    Jsonb(
-                        {}
-                        if key is None
-                        else {
-                            k: v
-                            for k, v in dict(key).items()
-                            if k != "control_generation"
-                        }
-                    ),
-                ),
+                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
+                (subject_id, kind, Jsonb({} if key is None else dict(key))),
             ).fetchone()
             if retained is not None and retained["sequence"] is not None:
                 return int(retained["sequence"])

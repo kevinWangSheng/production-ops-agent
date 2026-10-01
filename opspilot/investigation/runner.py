@@ -510,6 +510,5 @@ class InvestigationRunner:
                 "blocked",
                 (reason,),
                 parked=False,
-                control_generation=lease.control_generation,
             )
         return RunnerOutcome("blocked", reason=reason, epoch=lease.epoch)

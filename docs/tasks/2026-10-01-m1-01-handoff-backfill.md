@@ -51,3 +51,5 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 2026-10-01：按合同修订 r2 修复三方 parked 事件共用含 `control_generation` 的 `append_once` 键；reconcile 固定写 unknown/空值并移除全量日志预检与结论推断；兼容无代际字段的历史 parked 事件。PG 指定集成 41 passed；`make check` 2501 passed、277 skipped、2 xfailed；提交 `fix: one run_handoff per park across announcers and reconcile [M1-01]`。
 - 2026-10-01：按合同修订 r2 更新独立测试：原 announcer 改用公开 `announce_handoff` / `announce_deadline_exceeded` 并传入公开签名要求的代际；新增补写先到后 announcer、同一 Run 新代际再次停放、当前代际结论步骤仍写 `unknown`/空的验收情形。该行说明原合同 1、2 已被 r2 替换。PG lab 一次运行 12 项：9 passed、3 failed；失败为两条先补写后 announcer 场景及新代际第二条补写，均为实现缺陷，未迁就测试。ruff check 与 format --check 通过。
 - 2026-10-01：修复旧格式 parked 事件的代际兼容匹配仅限代际 0，避免新代际补写被首代事件吞掉；PG 指定集成集合 45 passed；`make check` 2501 passed、281 skipped、2 xfailed。
+- 2026-10-01：按第二轮审查补写事件携带 `control_generation`，通用 `append_once` 恢复严格包含匹配；真实 DurableStore 清扫在停放事务内直接返回代际，旧测试适配器仍仅有二元清扫接口故保留 0 代际兼容退回；既有独立测试仍无参调用 `announce_deadline_exceeded`，故保留默认 0。待重新执行指定验证。
+- 2026-10-01：PG 指定集合 58 passed、1 skipped；`make check` 2501 passed、281 skipped、2 xfailed；gitleaks 扫描 9 commits、未发现泄漏。实现与验证完成。

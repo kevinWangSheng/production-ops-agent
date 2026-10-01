@@ -1261,9 +1261,9 @@ class DurableStore:
         ).fetchone()
         return parked is not None
 
-    def sweep_expired_runs(
+    def sweep_expired_runs_with_generations(
         self, *, incident_id: UUID | None = None, limit: int = 100
-    ) -> tuple[tuple[UUID, UUID], ...]:
+    ) -> tuple[tuple[UUID, UUID, int], ...]:
         """Park every ``running`` or ``queued`` Run whose ``deadline`` has passed
         (ADR-0005 §2).
 
@@ -1294,7 +1294,7 @@ class DurableStore:
                 "SELECT incident_id,run_id FROM opspilot_runs WHERE state IN ('queued','running') AND deadline<=clock_timestamp() AND (%s::uuid IS NULL OR incident_id=%s) ORDER BY deadline LIMIT %s",
                 (incident_id, incident_id, limit),
             ).fetchall()
-        parked: list[tuple[UUID, UUID]] = []
+        parked: list[tuple[UUID, UUID, int]] = []
         for candidate in candidates:
             with self.transaction() as conn:
                 conn.execute(
@@ -1302,8 +1302,8 @@ class DurableStore:
                     (candidate["incident_id"],),
                 )
                 row = conn.execute(
-                    "SELECT state,deadline FROM opspilot_runs WHERE run_id=%s FOR UPDATE",
-                    (candidate["run_id"],),
+                    "SELECT state,deadline,(SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s) AS control_generation FROM opspilot_runs WHERE run_id=%s FOR UPDATE",
+                    (candidate["incident_id"], candidate["run_id"]),
                 ).fetchone()
                 if (
                     row is None
@@ -1314,8 +1314,24 @@ class DurableStore:
                 if self._park(
                     conn, candidate["run_id"], from_states=("queued", "running")
                 ):
-                    parked.append((candidate["incident_id"], candidate["run_id"]))
+                    parked.append(
+                        (
+                            candidate["incident_id"],
+                            candidate["run_id"],
+                            int(row["control_generation"]),
+                        )
+                    )
         return tuple(parked)
+
+    def sweep_expired_runs(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID], ...]:
+        return tuple(
+            (subject_id, run_id)
+            for subject_id, run_id, _ in self.sweep_expired_runs_with_generations(
+                incident_id=incident_id, limit=limit
+            )
+        )
 
     def lease_current(self, lease: Lease) -> bool:
         """Read the authoritative owner/epoch/generation/expiry fence."""

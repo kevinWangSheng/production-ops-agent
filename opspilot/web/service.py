@@ -678,12 +678,17 @@ class Workbench:
                         "report_sha256": None,
                         "evidence_ids": [],
                         "reconciled": True,
-                    },
-                    key={
-                        "run_id": str(run_id),
-                        "parked": True,
                         "control_generation": generation,
                     },
+                    key=(
+                        {"run_id": str(run_id), "parked": True}
+                        if generation == 0
+                        else {
+                            "run_id": str(run_id),
+                            "parked": True,
+                            "control_generation": generation,
+                        }
+                    ),
                 )
             except PersistenceError:
                 pass
@@ -1076,7 +1081,7 @@ class Workbench:
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
                 parked=parked,
-                control_generation=lease.control_generation,
+                **({"control_generation": lease.control_generation} if parked else {}),
             )
 
 

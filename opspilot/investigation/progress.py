@@ -122,21 +122,19 @@ def announce_handoff(
         "report_sha256": report_sha256,
         "evidence_ids": list(evidence_ids),
     }
-    if parked and control_generation is not None:
-        payload["control_generation"] = control_generation
     if not parked:
         return log.append(subject_id, "run_handoff", payload)
     if control_generation is None:
-        raise PersistenceError("HANDOFF_GENERATION_UNAVAILABLE")
+        raise TypeError("control_generation is required for a parked handoff")
+    payload["control_generation"] = control_generation
+    key = {"run_id": str(run_id), "parked": True}
+    if control_generation != 0:
+        key["control_generation"] = control_generation
     return log.append_once(
         subject_id,
         "run_handoff",
         payload,
-        key={
-            "run_id": str(run_id),
-            "parked": True,
-            "control_generation": control_generation,
-        },
+        key=key,
     )
 
 
@@ -148,6 +146,10 @@ class ExpirySweeper(Protocol):
     def sweep_expired_runs(
         self, *, incident_id: UUID | None = None, limit: int = 100
     ) -> tuple[tuple[UUID, UUID], ...]: ...
+
+    def sweep_expired_runs_with_generations(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID, int], ...]: ...
 
 
 def announce_deadline_exceeded(
@@ -163,6 +165,9 @@ def announce_deadline_exceeded(
     the row authoritative; absent provenance becomes unknown execution and
     empty reasons.
     """
+    key = {"run_id": str(run_id), "parked": True}
+    if control_generation != 0:
+        key["control_generation"] = control_generation
     return log.append_once(
         subject_id,
         "run_handoff",
@@ -177,11 +182,7 @@ def announce_deadline_exceeded(
             "evidence_ids": [],
             "control_generation": control_generation,
         },
-        key={
-            "run_id": str(run_id),
-            "parked": True,
-            "control_generation": control_generation,
-        },
+        key=key,
     )
 
 
@@ -194,21 +195,20 @@ def sweep_expired(
     locks); the event is a projection appended after the row committed, like
     every other announcement here. Returns what this call parked.
     """
-    parked = store.sweep_expired_runs(incident_id=incident_id)
+    sweep_with_generations = getattr(store, "sweep_expired_runs_with_generations", None)
+    if sweep_with_generations is None:
+        parked_with_generations = tuple(
+            (subject_id, run_id, 0)
+            for subject_id, run_id in store.sweep_expired_runs(incident_id=incident_id)
+        )
+    else:
+        parked_with_generations = sweep_with_generations(incident_id=incident_id)
     if log is not None:
-        for subject_id, run_id in parked:
-            try:
-                rebuild = getattr(store, "rebuild", None)
-                if not callable(rebuild):
-                    generation = 0
-                else:
-                    generation = int(rebuild(subject_id)["run"]["control_generation"])
-            except AttributeError:
-                generation = 0
-            except (PersistenceError, KeyError, TypeError, ValueError):
-                continue
+        for subject_id, run_id, generation in parked_with_generations:
             announce_deadline_exceeded(log, subject_id, run_id, generation)
-    return parked
+    return tuple(
+        (subject_id, run_id) for subject_id, run_id, _ in parked_with_generations
+    )
 
 
 def _tool_committed_payload(
