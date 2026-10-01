@@ -30,3 +30,10 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 ## 待决
 
 无合同层取舍需要用户决定。功能 PR 涉及状态恢复，按 AGENTS.md 属用户门。
+
+## 追加记录（2026-10-01）
+
+- 改动行为：`reconcile()` 在当前 Run 为 `waiting_human` 且缺少 `parked:true` 事件时补写可见的 `run_handoff`，不修改 Run 行；去重使用事件日志 `append_once` 的 `run_id` + `parked:true` 键，以覆盖原 announcer 竞争。
+- 来源选择：`execution`、`reasons`、`report_sha256`、`evidence_ids` 优先读取当前 Run 已提交结论步骤的持久化字段；清扫路径或字段不可确定时按合同写 `unknown`、空列表和空值，不猜交接原因。
+- 状态：已完成。
+- 验证：`M1_DURABLE_POSTGRES=1 ... pytest`（相关 5 个 integration 文件）41 passed；`make check` 2501 passed、277 skipped、2 xfailed。

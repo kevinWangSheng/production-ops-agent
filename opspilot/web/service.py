@@ -630,6 +630,9 @@ class Workbench:
         Sweeps the incident's Run if it is ``running`` past its deadline
         (ADR-0005 decision 2: nothing else can settle it, so a page load
         parks it as a ``DEADLINE_EXCEEDED`` handoff, announced once by run).
+        Repairs a missing parked ``run_handoff`` projection after a Run row
+        landed in ``waiting_human``; unavailable provenance is recorded as
+        unknown.
         Confirms notes the store already applied and emits a missing
         ``run_completed`` for a Run that published its conclusion but whose
         worker died before appending the event; the ledger remembers which
@@ -655,12 +658,74 @@ class Workbench:
             )
         self._reconcile_pending_notes(incident_id)
         run_id = summary.current_run_id
-        if not summary.concluded or run_id is None:
+        if run_id is None:
+            return
+        rebuilt = self.incidents.rebuild(incident_id)
+        run = rebuilt["run"]
+        if run["state"] == "waiting_human":
+            try:
+                floor = self.events.floor(incident_id)
+                events = self.events.read_after(
+                    incident_id, max(floor - 1, 0), limit=100000
+                )
+                parked = any(
+                    event.kind == "run_handoff"
+                    and event.payload.get("run_id") == str(run_id)
+                    and event.payload.get("parked") is True
+                    for event in events
+                )
+                if not parked:
+                    execution = "unknown"
+                    reasons: list[str] = []
+                    report_sha256 = None
+                    evidence_ids: list[str] = []
+                    for step in reversed(rebuilt["steps"]):
+                        payload = step.get("response")
+                        if not isinstance(payload, Mapping):
+                            continue
+                        inner = payload.get("conclusion")
+                        if not isinstance(inner, Mapping):
+                            continue
+                        candidate_execution = inner.get("execution")
+                        candidate_reasons = inner.get("handoff_reasons")
+                        candidate_sha = inner.get("report_content_sha256")
+                        candidate_evidence = inner.get("evidence_ids")
+                        if isinstance(candidate_execution, str) and candidate_execution:
+                            execution = candidate_execution
+                        if isinstance(candidate_reasons, list) and all(
+                            isinstance(item, str) for item in candidate_reasons
+                        ):
+                            reasons = list(candidate_reasons)
+                        if isinstance(candidate_sha, str) and candidate_sha:
+                            report_sha256 = candidate_sha
+                        if isinstance(candidate_evidence, list) and all(
+                            isinstance(item, str) for item in candidate_evidence
+                        ):
+                            evidence_ids = list(candidate_evidence)
+                        break
+                    self.events.append_once(
+                        incident_id,
+                        "run_handoff",
+                        {
+                            "run_id": str(run_id),
+                            "published": False,
+                            "execution": execution,
+                            "handoff": True,
+                            "parked": True,
+                            "reasons": reasons,
+                            "report_sha256": report_sha256,
+                            "evidence_ids": evidence_ids,
+                            "reconciled": True,
+                        },
+                        key={"run_id": str(run_id), "parked": True},
+                    )
+            except PersistenceError:
+                pass
+        if not summary.concluded:
             return
         if self.ledger.get("completion", str(run_id)) is not None:
             return
-        rebuilt = self.incidents.rebuild(incident_id)
-        if rebuilt["run"]["state"] != "completed":
+        if run["state"] != "completed":
             return
         # This stub can be the retained record: a page load that races the
         # worker between its publish and its append wins the run_id key, so

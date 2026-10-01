@@ -144,10 +144,9 @@ def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID)
     of the same park (a racing sweep, a retry) a no-op instead of a
     duplicate. It is at-most-once, not exactly-once: a sweeper that dies
     between the park and this append leaves the row ``waiting_human`` with
-    no event, and nothing here repairs that -- the row cannot say *why* it
-    was parked, so a repair would have to guess between a loop handoff and
-    a timeout. The rows stay the authority (ADR-0003); the projection
-    repair is the follow-up recorded in ROADMAP.
+    no event. ``Workbench.reconcile`` repairs that projection while keeping
+    the row authoritative; absent provenance becomes unknown execution and
+    empty reasons.
     """
     return log.append_once(
         subject_id,
