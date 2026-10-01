@@ -35,3 +35,11 @@
 ## 不做
 
 不改 25k 单工具上限、不改压缩算法、不改 1M 窗口与 0.95 阈值。
+
+### 2026-10-01 第一步对账续做
+
+- A：用 `m1-01-e-class-attribution/scripts/rebuild_offline.py` 重建 6 条请求并与同一 ledger 的 `usage.prompt_tokens` 配对；`normal-2`、`fault-2` 的 `request_sha256` 精确匹配，另 4 条因导出时历史 reasoning 占位符而 hash 不匹配，均在证据表标注。
+- B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
+- 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
+- 结果：A 的 tokenizer/prompt 偏差约 +1.8%–+6.8%；B 为 +4.3%–+26.1%，超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
+- **待决并停下：** 先确定 DeepSeek 消息序列化/特殊 token 对齐方案，再重新对账；未改产品代码、未写合同测试。

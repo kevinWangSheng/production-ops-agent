@@ -1,40 +1,30 @@
 # M1-01 第一步：真实 Run 对账
 
-运行命令：
+本次完成两种请求体来源：
 
-```text
-python3 docs/evidence/m1-01-token-estimator/reconcile.py
-```
+- **A 离线重建**：按 `docs/evidence/m1-01-e-class-attribution/scripts/rebuild_offline.py` README 的用法，从 `m1-01-alignment-c-effect` 的五个 ledger 形态重建 6 条请求。`normal-2`、`fault-2` 的重建 SHA-256 与 ledger 记录一致；另外 4 条因导出 ledger 将历史 `reasoning_content` 替换为占位符而不一致，仍与对应 `usage.prompt_tokens` 配对，均已标注 `hash_match=false`。原始结果见 [`offline-results.json`](offline-results.json)。
+- **B 真实 DeepSeek**：使用项目既有 `M0_ENV_FILE` 读取方式和 `deepseek-flash`，`max_tokens=1`，共 9 次（其中 3 次来自本轮中断前已完成的结果，未重复调用；新增 6 次）。请求材料来自 A 的重建消息，带 tools 3 次、不带 tools 6 次，覆盖约 1k、10k、100k、300k、600k、900k token。原始请求哈希、usage、计数见 [`live-results.json`](live-results.json)；汇总见 [`reconciliation.json`](reconciliation.json)。
 
-脚本只接受同一证据对象同时包含完整 `messages`（每项至少有 `role`、`content`）、完整 `tools` 数组和整数 `usage.prompt_tokens` 的记录。对合格记录会计算：
+旧估算为 `estimate_tokens`（规范 JSON 字节 × 0.25，每消息加 4；tools 数组按字节 × 0.25）。tokenizer 计数按 `opspilot/tools/tokens.py` 的 vendored tokenizer，对每条消息逐条计数，另计规范化 tools 数组；`delta_pct=(tokenizer_content-prompt_tokens)/prompt_tokens`。
 
-* 旧值：`opspilot.investigation.context.estimate_tokens(messages, tools)`，即规范 JSON 字节 × 0.25，加每消息 4 token；
-* vendored tokenizer：对每条消息的规范 JSON 和规范化 tools 数组分别调用 `opspilot/tools/tokens.py`；
-* 两个比值：旧值 / 供应商值、tokenizer 内容值 / 供应商值；
-* 固定每消息开销拟合：`median((prompt_tokens - tokenizer_content_tokens) / message_count)`。
+| 来源 | 条数 | prompt_tokens 范围 | tokenizer/prompt 偏差范围 | 说明 |
+|---|---:|---:|---:|---|
+| A 离线重建 | 6 | 74,703–251,805 | +1.8%–+6.8% | 2 条 hash exact；4 条占位符重建 |
+| B 真实调用 | 9 | 2,328–902,379 | +4.3%–+26.1% | 其中 3 条中断前结果约 366k，未重复 |
 
-脚本不联网、不调用模型；原始扫描结果在 [`reconcile.json`](reconcile.json)。本次运行结果为 **0 条合格记录、1,211 条只有 usage/哈希/字节数或摘要的记录**。因此没有可诚实计算的三列数值、比值或每消息开销；README 不把请求字节数当作请求体，也不从哈希重建消息。
+新增长度梯度（B）明细：
 
-## 可用性抽样
-
-下表是扫描到的真实供应商 usage 记录，展示小、中、大上下文覆盖；三列对账值和两个比值均为 `N/A`，因为完整请求体未保存。
-
-| 来源（对象路径） | 供应商 `prompt_tokens` | 请求字节 | 旧估算 | tokenizer 计数 | 旧/供应商 | tokenizer/供应商 |
+| case | tools | old estimate | tokenizer content | prompt_tokens | tokenizer/prompt | fitted message overhead |
 |---|---:|---:|---:|---:|---:|---:|
-| `m0-06-b6-ledger.json $.attempts[0]` | 331 | 537 | N/A | N/A | N/A | N/A |
-| `m0-06-b6-ledger.json $.attempts[1]` | 272 | 1,210 | N/A | N/A | N/A | N/A |
-| `m004-fault-candidate/result-business.json $.attempts[0]` | 1,416 | 5,655 | N/A | N/A | N/A | N/A |
-| `m004-fault-candidate/result-business.json $.attempts[1]` | 8,395 | 25,540 | N/A | N/A | N/A | N/A |
-| `m004-fault-upstream/attempts.json $[1]` | 10,372 | 33,407 | N/A | N/A | N/A | N/A |
-| `m004-normal-upstream/attempts.json $[1]` | 10,074 | 32,432 | N/A | N/A | N/A | N/A |
-| `m1-01-e-class-attribution/ledger.jsonl`（样本） | 72,584 | 252,143 | N/A | N/A | N/A | N/A |
-| `m1-01-e-class-attribution/ledger.jsonl`（样本） | 163,022 | 524,869 | N/A | N/A | N/A | N/A |
-| `m1-01-e-class-attribution/ledger.jsonl`（样本） | 251,805 | 839,273 | N/A | N/A | N/A | N/A |
-| `m1-01-view-bytes-timeout/ledger.json $.requests[5]` | 661,798 | 1,667,666 | N/A | N/A | N/A | N/A |
-| `m1-01-view-bytes-timeout/decode-64k-at-975k.json $.requests[1]` | 975,182 | 2,457,471 | N/A | N/A | N/A | N/A |
+| live-01 | 否 | 2,863 | 2,463 | 2,328 | 1.058 | -45.0 |
+| live-02 | 是 | 14,803 | 12,934 | 12,399 | 1.043 | -178.3 |
+| live-03 | 否 | 124,465 | 108,889 | 101,388 | 1.074 | -2,500.3 |
+| live-04 | 是 | 370,993 | 324,670 | 302,559 | 1.073 | -7,370.3 |
+| live-05 | 否 | 738,223 | 646,047 | 601,368 | 1.074 | -14,893.0 |
+| live-06 | 是 | 1,107,311 | 969,092 | 902,379 | 1.074 | -22,237.7 |
 
-大上下文记录确实存在（`661,798` 和 `975,182` prompt tokens），但这些对象只有 usage/request_bytes；`m1-01-e-class-attribution` 另有 `request_sha256`、`message_count` 和 placeholder reasoning 说明，仍没有 messages/tools 正文。唯一带 `messages` 字段的 `m1-01-loop-long-horizon/compaction-smoke.json` 只保存角色名数组，并明确写明 prompt/response 文本未保留，不能作为完整请求。
+拟合采用 `prompt_tokens = tokenizer_content + α × message_count`，并将 tools 数组 tokenizer 值计入 `tokenizer_content`。全体 15 条的中位 α 为 **-1,913.8 token/消息**；负值表明当前“规范 JSON tokenizer 计数”系统性高于供应商计数，不能把它解释成正的协议开销。B 的原始 tokenizer 偏差为 **+4.3% 至 +26.1%**，超过 ±10%；A 的占位符重建结果不能消除该结论。
 
-## 结论与待决
+**结论：待决。** tokenizer 计数与供应商 `prompt_tokens` 未在 ±10% 内（B 的大请求约 +7.4%，但中断前 3 条约 +26% 且整体范围越界），按合同停在第一步，不进入产品代码或合同测试。需要先决定供应商计数与 vendored tokenizer 的消息序列化/特殊 token 对齐方式，再重新拟合每消息开销及 tools 固定开销。
 
-本步骤无法从仓库现有证据估计 tokenizer 与供应商 `prompt_tokens` 的偏差范围，也无法判断是否在 ±10% 内；每消息开销没有可拟合值。按合同要求在此停下，不能进入第二步。待决是补存至少 10 个真实请求的完整 `messages` 与 `tools`（连同同一请求的 `usage.prompt_tokens`），覆盖小/中/大上下文后再运行脚本；在此之前不应改 `estimate_tokens`。
+费用/调用：本轮共 9 次真实模型调用，prompt 合计 **3,023,328**，completion 合计 **9**；未做余额前后快照，未写凭据。
