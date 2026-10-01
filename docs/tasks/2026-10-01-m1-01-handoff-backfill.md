@@ -1,6 +1,6 @@
 # M1-01 后续项：交接停放后缺失 `run_handoff` 事件的补写
 
-- 状态：进行中（独立合同测试已提交；PG lab：合同 1 红、合同 2 缺失事件补写红，合同 2 幂等/已有事件绿，合同 3/4/5/6 相关绿；测试文件与提交号见下方追加记录）
+- 状态：进行中（独立合同测试已提交；PG lab 新测试一次运行 2 红、6 绿；红项为 runner 与清扫路径的缺失 `run_handoff` 补写，其余测试通过；测试文件与提交号见下方追加记录）
 - 2026-10-01：`tests/integration/test_m1_handoff_backfill_postgres.py`；测试提交号 `472d370`；PG 一次运行 2 failed、6 passed（失败为 runner/清扫缺失 `run_handoff` 补写，绿项覆盖幂等、已有 announcer、非 waiting 状态、页面可见性、行不变与写失败保护）。
 - 更新日期：2026-10-01
 - 依据：[#44 任务记录](2026-09-24-m1-01-handoff-runner.md) 第 51 行（机器人审查 PR #44 P2，lead 裁定单列）；`opspilot/investigation/progress.py` `announce_deadline_exceeded` 文档串；ADR-0003（行是权威、事件是投影）；[ADR-0005](../adr/0005-handoff-and-deadline-terminal.md)
