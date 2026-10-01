@@ -341,6 +341,12 @@ class _Sweeper:
         assert incident_id is None
         return self.parked
 
+    def sweep_expired_runs_with_generations(self, *, incident_id=None, limit=100):
+        return tuple(
+            (*item, 0)
+            for item in self.sweep_expired_runs(incident_id=incident_id, limit=limit)
+        )
+
 
 class _Runner:
     def __init__(self, outcomes=None, stop=None, stop_after=None):
@@ -399,6 +405,9 @@ def test_a_failing_attempt_does_not_stop_the_loop():
 def test_a_sweep_or_listing_failure_is_survived():
     class Broken:
         def sweep_expired_runs(self, *, incident_id=None, limit=100):
+            raise PersistenceError("LOCK_TIMEOUT")
+
+        def sweep_expired_runs_with_generations(self, *, incident_id=None, limit=100):
             raise PersistenceError("LOCK_TIMEOUT")
 
     class BrokenQueue:

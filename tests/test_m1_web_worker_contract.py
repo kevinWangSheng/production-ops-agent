@@ -376,6 +376,12 @@ class FakeSweeper:
         parked, self.parked = self.parked, ()
         return parked
 
+    def sweep_expired_runs_with_generations(self, *, incident_id=None, limit=100):
+        return tuple(
+            (*item, 0)
+            for item in self.sweep_expired_runs(incident_id=incident_id, limit=limit)
+        )
+
 
 class FakeRunner:
     def __init__(self, journal, *, fail=None, on_resume=None):

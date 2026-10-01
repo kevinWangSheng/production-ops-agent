@@ -153,7 +153,7 @@ class ExpirySweeper(Protocol):
 
 
 def announce_deadline_exceeded(
-    log: ProgressLog, subject_id: UUID, run_id: UUID, control_generation: int = 0
+    log: ProgressLog, subject_id: UUID, run_id: UUID, control_generation: int
 ) -> int:
     """The ``run_handoff`` a timeout park shows on the page, keyed by run.
 
@@ -195,14 +195,9 @@ def sweep_expired(
     locks); the event is a projection appended after the row committed, like
     every other announcement here. Returns what this call parked.
     """
-    sweep_with_generations = getattr(store, "sweep_expired_runs_with_generations", None)
-    if sweep_with_generations is None:
-        parked_with_generations = tuple(
-            (subject_id, run_id, 0)
-            for subject_id, run_id in store.sweep_expired_runs(incident_id=incident_id)
-        )
-    else:
-        parked_with_generations = sweep_with_generations(incident_id=incident_id)
+    parked_with_generations = store.sweep_expired_runs_with_generations(
+        incident_id=incident_id
+    )
     if log is not None:
         for subject_id, run_id, generation in parked_with_generations:
             announce_deadline_exceeded(log, subject_id, run_id, generation)

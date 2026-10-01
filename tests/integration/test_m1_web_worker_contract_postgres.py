@@ -196,6 +196,19 @@ class _Scoped:
                 )
         return tuple(parked)
 
+    def sweep_expired_runs_with_generations(
+        self, *, incident_id=None, limit: int = 100
+    ):
+        parked = []
+        for subject in self._ids:
+            if incident_id is None or incident_id == subject:
+                parked.extend(
+                    self._store.sweep_expired_runs_with_generations(
+                        incident_id=subject, limit=limit
+                    )
+                )
+        return tuple(parked)
+
 
 def _tool_round():
     return reply(

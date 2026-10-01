@@ -114,10 +114,9 @@ class MemoryEventLog:
         _check(kind, payload)
         wanted = {} if key is None else dict(key)
         for event in self._events.get(subject_id, ()):
-            matches = event.kind == kind and all(
+            if event.kind == kind and all(
                 event.payload.get(k) == v for k, v in wanted.items()
-            )
-            if matches:
+            ):
                 return event.sequence
         return self.append(subject_id, kind, payload)
 

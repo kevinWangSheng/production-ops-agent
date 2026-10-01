@@ -664,7 +664,7 @@ class Workbench:
         run = rebuilt["run"]
         if run["state"] == "waiting_human":
             try:
-                generation = int(run["control_generation"])
+                generation = int(rebuilt["control_generation"])
                 self.events.append_once(
                     incident_id,
                     "run_handoff",
@@ -1081,7 +1081,7 @@ class Workbench:
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
                 parked=parked,
-                **({"control_generation": lease.control_generation} if parked else {}),
+                control_generation=lease.control_generation,
             )
 
 
