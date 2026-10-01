@@ -150,6 +150,18 @@ SERIES_NOTE = (
     "carried no status; it does not mean the call succeeded."
 )
 
+_CALLS_TOTAL_SELECTOR = re.compile(
+    r"(?<![A-Za-z0-9_:])traces_span_metrics_calls_total(?![A-Za-z0-9_:])"
+)
+_PROMQL_QUOTED_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
+
+
+def _has_calls_total_selector(expr: str) -> bool:
+    """Match the calls-total metric outside PromQL quoted strings."""
+    without_strings = _PROMQL_QUOTED_STRING.sub('""', expr)
+    return _CALLS_TOTAL_SELECTOR.search(without_strings) is not None
+
+
 #: The services the pinned demo emits telemetry for (M0 ``read_proxy.py``).
 SERVICES: tuple[str, ...] = (
     "accounting",
@@ -1000,7 +1012,7 @@ class OtelDemoTransport:
             query_window=window,
             view_fields=(
                 {"series_note": SERIES_NOTE}
-                if "traces_span_metrics_calls_total" in expr
+                if _has_calls_total_selector(expr)
                 else None
             ),
         )
