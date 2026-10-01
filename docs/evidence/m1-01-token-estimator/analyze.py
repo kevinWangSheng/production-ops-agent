@@ -1,10 +1,13 @@
 import json
 import statistics
+import sys
 from pathlib import Path
 
-from opspilot.investigation.context import estimate_tokens
-from opspilot.tools.registry import canonical
-from opspilot.tools.tokens import count_tokens
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from opspilot.investigation.context import estimate_tokens  # noqa: E402
+from opspilot.tools.registry import canonical  # noqa: E402
+from opspilot.tools.tokens import count_tokens  # noqa: E402
 
 root = Path(__file__).parent
 # live-results.json already carries the prior-live-* rows from

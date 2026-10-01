@@ -5,13 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
-from opspilot.investigation.context import estimate_tokens
-from opspilot.tools.registry import canonical
-from opspilot.tools.tokens import count_tokens
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from opspilot.investigation.context import estimate_tokens  # noqa: E402
+from opspilot.tools.registry import canonical  # noqa: E402
+from opspilot.tools.tokens import count_tokens  # noqa: E402
 
 ENDPOINT = "https://api.deepseek.com/chat/completions"
 MODEL = "deepseek-flash"
