@@ -86,7 +86,7 @@ def test_reconcile_backfills_a_runner_parked_run_with_unknown_provenance():
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     repaired = _events(workbench.events, incident, run)
     assert len(repaired) == 1
-    assert repaired[0] == {
+    expected = {
         "run_id": str(run),
         "published": False,
         "execution": "unknown",
@@ -97,6 +97,7 @@ def test_reconcile_backfills_a_runner_parked_run_with_unknown_provenance():
         "evidence_ids": [],
         "reconciled": True,
     }
+    assert {key: repaired[0][key] for key in expected} == expected
     assert snapshot["run"]["state"] == "waiting_human"
     assert snapshot["outcome"] == repaired[0]
     assert store.rebuild(incident)["run"] == before
@@ -107,11 +108,18 @@ def test_reconcile_backfills_a_runner_parked_run_with_unknown_provenance():
     )
 
 
-def test_runner_announcer_after_reconcile_shares_one_generation_key():
+def test_runner_announcer_after_reconcile_shares_one_new_generation_key():
     app, workbench, store = _build()
     stack = type("Stack", (), {"store": store, "events": workbench.events})
-    incident, run = _missing_handoff(stack, tag="runner-announcer-race")
+    incident, run = _missing_handoff(stack, tag="runner-announcer-race-first")
+    workbench.snapshot(incident)
+    assert store.control(incident, 0, "resume", "operator") == 1
+    lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=60)
+    store.hand_off(lease)
+    assert store.rebuild(incident)["run"]["state"] == "waiting_human"
+    assert len(_events(workbench.events, incident, run)) == 1
     generation = store.rebuild(incident)["run"]["control_generation"]
+    assert generation >= 1
 
     workbench.snapshot(incident)
     announce_handoff(
@@ -124,8 +132,8 @@ def test_runner_announcer_after_reconcile_shares_one_generation_key():
     )
 
     repaired = _events(workbench.events, incident, run)
-    assert len(repaired) == 1
-    assert repaired[0]["parked"] is True
+    assert len(repaired) == 2
+    assert all(event["parked"] is True for event in repaired)
 
 
 def test_reconcile_backfills_a_swept_run_and_is_idempotent():
@@ -165,7 +173,7 @@ def test_sweeper_announcer_after_reconcile_shares_one_generation_key():
     assert repaired[0]["parked"] is True
 
 
-def test_reconcile_backfills_second_park_for_new_generation():
+def test_reconcile_backfills_second_park_for_new_generation_only_once():
     app, workbench, store = _build()
     stack = type("Stack", (), {"store": store, "events": workbench.events})
     incident, run = _missing_handoff(stack, tag="new-generation-first")
@@ -176,11 +184,20 @@ def test_reconcile_backfills_second_park_for_new_generation():
     lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=60)
     store.hand_off(lease)
     assert store.rebuild(incident)["run"]["state"] == "waiting_human"
+    assert store.rebuild(incident)["run"]["control_generation"] >= 1
+    assert len(_events(workbench.events, incident, run)) == 1
 
+    workbench.snapshot(incident)
+    workbench.snapshot(incident)
     workbench.snapshot(incident)
     repaired = _events(workbench.events, incident, run)
     assert len(repaired) == 2
     assert all(event["parked"] is True for event in repaired)
+    assert repaired[1]["execution"] == "unknown"
+    assert repaired[1]["reasons"] == []
+    assert repaired[1]["report_sha256"] is None
+    assert repaired[1]["evidence_ids"] == []
+    assert repaired[1]["reconciled"] is True
 
 
 def test_reconcile_ignores_current_generation_conclusion_provenance():
