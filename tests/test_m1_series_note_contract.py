@@ -13,11 +13,17 @@ import json
 import pytest
 
 from opspilot.tools import PROJECTION_REVISION
-from opspilot.tools.otel_demo import METRICS_TOOL, TOOL_SCHEMA_REVISION, TOOL_SCHEMAS
+from opspilot.tools.otel_demo import (
+    METRICS_TOOL,
+    TOOL_SCHEMA_REVISION,
+    TOOL_SCHEMAS,
+    TRACES_TOOL,
+)
 from opspilot.tools.registry import canonical_hash
 from tests.test_m1_otel_demo_contract import (
     BAD_EXPR,
     CHECKOUT_BODY,
+    EMPTY_BODY,
     GOOD_EXPR,
     FakeOpener,
     _call,
@@ -25,10 +31,11 @@ from tests.test_m1_otel_demo_contract import (
 )
 
 SERIES_NOTE = (
-    "counts spans of every operation of the service (internal, client and "
-    "server spans alike), summed over the labels kept in this query; it is "
-    "not a count of requests. status_code STATUS_CODE_UNSET means the span "
-    "carried no status; it does not mean the call succeeded."
+    "traces_span_metrics_calls_total counts spans of every operation of the "
+    "service (internal, client and server spans alike), summed over the labels "
+    "kept in this query; it is not a count of requests. status_code "
+    "STATUS_CODE_UNSET means the span carried no status; it does not mean the "
+    "call succeeded."
 )
 
 
@@ -100,3 +107,19 @@ def test_contract_5_series_note_is_not_added_to_the_tool_prompt():
     schema_text = json.dumps(TOOL_SCHEMAS, ensure_ascii=False)
     assert "series_note" not in schema_text
     assert SERIES_NOTE not in schema_text
+
+
+def test_contract_r2_traces_no_data_keeps_adapter_view_fields(monkeypatch):
+    opener = FakeOpener(routes={"/api/traces": EMPTY_BODY})
+    executor, _, _, _ = _executor(monkeypatch, opener)
+
+    outcome = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": 2}))
+
+    assert (outcome.status, outcome.reason) == ("no_data", "NO_DATA")
+    assert outcome.adopted is True
+    view = outcome.model_view
+    assert view["traces_requested"] == 2
+    assert view["backend_traces_returned"] == 0
+    assert view["incomplete_reason"] is None
+    assert view["span_groups"] == []
+    assert isinstance(view["span_groups_note"], str)
