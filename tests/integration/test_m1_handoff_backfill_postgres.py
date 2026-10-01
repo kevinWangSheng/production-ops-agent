@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
+from opspilot.investigation.progress import announce_deadline_exceeded, announce_handoff
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.web import DurableEventLog
 from tests.integration.test_m1_loop_resume_postgres import _input
@@ -106,6 +107,27 @@ def test_reconcile_backfills_a_runner_parked_run_with_unknown_provenance():
     )
 
 
+def test_runner_announcer_after_reconcile_shares_one_generation_key():
+    app, workbench, store = _build()
+    stack = type("Stack", (), {"store": store, "events": workbench.events})
+    incident, run = _missing_handoff(stack, tag="runner-announcer-race")
+    generation = store.rebuild(incident)["run"]["control_generation"]
+
+    workbench.snapshot(incident)
+    announce_handoff(
+        workbench.events,
+        incident,
+        run,
+        "failed",
+        ("MODEL_UNAVAILABLE",),
+        control_generation=generation,
+    )
+
+    repaired = _events(workbench.events, incident, run)
+    assert len(repaired) == 1
+    assert repaired[0]["parked"] is True
+
+
 def test_reconcile_backfills_a_swept_run_and_is_idempotent():
     app, workbench, store = _build()
     stack = type(
@@ -129,6 +151,57 @@ def test_reconcile_backfills_a_swept_run_and_is_idempotent():
     assert repaired[0]["execution"] == "unknown"
 
 
+def test_sweeper_announcer_after_reconcile_shares_one_generation_key():
+    app, workbench, store = _build()
+    stack = type("Stack", (), {"store": store, "events": workbench.events})
+    incident, run = _missing_handoff(stack, tag="sweep-announcer-race", sweep=True)
+    generation = store.rebuild(incident)["run"]["control_generation"]
+
+    workbench.snapshot(incident)
+    announce_deadline_exceeded(workbench.events, incident, run, generation)
+
+    repaired = _events(workbench.events, incident, run)
+    assert len(repaired) == 1
+    assert repaired[0]["parked"] is True
+
+
+def test_reconcile_backfills_second_park_for_new_generation():
+    app, workbench, store = _build()
+    stack = type("Stack", (), {"store": store, "events": workbench.events})
+    incident, run = _missing_handoff(stack, tag="new-generation-first")
+    workbench.snapshot(incident)
+    assert len(_events(workbench.events, incident, run)) == 1
+
+    assert store.control(incident, 0, "resume", "operator") == 1
+    lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=60)
+    store.hand_off(lease)
+    assert store.rebuild(incident)["run"]["state"] == "waiting_human"
+
+    workbench.snapshot(incident)
+    repaired = _events(workbench.events, incident, run)
+    assert len(repaired) == 2
+    assert all(event["parked"] is True for event in repaired)
+
+
+def test_reconcile_ignores_current_generation_conclusion_provenance():
+    app, workbench, store = _build()
+    incident, run = _accepted(store, "current-generation-conclusion")
+    lease = store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=60)
+    store.commit_step(
+        lease, "final", {"kind": "conclusion", "content": "handoff context"}
+    )
+    store.hand_off(lease)
+    assert store.rebuild(incident)["run"]["state"] == "waiting_human"
+
+    workbench.snapshot(incident)
+    repaired = _events(workbench.events, incident, run)
+    assert len(repaired) == 1
+    assert repaired[0]["execution"] == "unknown"
+    assert repaired[0]["reasons"] == []
+    assert repaired[0]["report_sha256"] is None
+    assert repaired[0]["evidence_ids"] == []
+
+
 def test_reconcile_does_not_duplicate_an_already_announced_park():
     app, workbench, store = _build()
     stack = type(
@@ -142,19 +215,14 @@ def test_reconcile_does_not_duplicate_an_already_announced_park():
         },
     )
     incident, run = _missing_handoff(stack, tag="already-announced")
-    workbench.events.append(
+    generation = store.rebuild(incident)["run"]["control_generation"]
+    announce_handoff(
+        workbench.events,
         incident,
-        "run_handoff",
-        {
-            "run_id": str(run),
-            "published": False,
-            "execution": "failed",
-            "handoff": True,
-            "parked": True,
-            "reasons": ["MODEL_UNAVAILABLE"],
-            "report_sha256": None,
-            "evidence_ids": [],
-        },
+        run,
+        "failed",
+        ("MODEL_UNAVAILABLE",),
+        control_generation=generation,
     )
 
     workbench.snapshot(incident)
