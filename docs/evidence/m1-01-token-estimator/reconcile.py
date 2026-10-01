@@ -26,7 +26,9 @@ OUT = Path(__file__).resolve().parent / "reconcile.json"
 sys.path.insert(0, str(ROOT))
 
 
-def walk(value: Any, source: Path, path: str = "$") -> Iterator[tuple[dict[str, Any], Path, str]]:
+def walk(
+    value: Any, source: Path, path: str = "$"
+) -> Iterator[tuple[dict[str, Any], Path, str]]:
     if isinstance(value, dict):
         yield value, source, path
         for key, child in value.items():
@@ -37,9 +39,15 @@ def walk(value: Any, source: Path, path: str = "$") -> Iterator[tuple[dict[str, 
 
 
 def complete_messages(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and all(
-        isinstance(item, dict) and isinstance(item.get("role"), str) and "content" in item
-        for item in value
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("role"), str)
+            and "content" in item
+            for item in value
+        )
     )
 
 
@@ -55,7 +63,11 @@ def find_records() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             continue
         try:
             if source.suffix == ".jsonl":
-                values = [json.loads(line) for line in source.read_text().splitlines() if line.strip()]
+                values = [
+                    json.loads(line)
+                    for line in source.read_text().splitlines()
+                    if line.strip()
+                ]
             else:
                 values = [json.loads(source.read_text())]
         except (OSError, json.JSONDecodeError):
@@ -69,23 +81,30 @@ def find_records() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 messages = obj.get("messages")
                 tools = obj.get("tools")
                 if complete_messages(messages) and complete_tools(tools):
-                    eligible.append({
-                        "source": str(path.relative_to(ROOT)),
-                        "object_path": object_path,
-                        "prompt_tokens": prompt,
-                        "messages": messages,
-                        "tools": tools,
-                    })
-                elif any(k in obj for k in ("request_sha256", "request_bytes", "messages", "tools")):
-                    usage_only.append({
-                        "source": str(path.relative_to(ROOT)),
-                        "object_path": object_path,
-                        "prompt_tokens": prompt,
-                        "request_sha256": obj.get("request_sha256"),
-                        "request_bytes": obj.get("request_bytes"),
-                        "messages_summary": obj.get("messages"),
-                        "tools_attached": obj.get("tools_attached"),
-                    })
+                    eligible.append(
+                        {
+                            "source": str(path.relative_to(ROOT)),
+                            "object_path": object_path,
+                            "prompt_tokens": prompt,
+                            "messages": messages,
+                            "tools": tools,
+                        }
+                    )
+                elif any(
+                    k in obj
+                    for k in ("request_sha256", "request_bytes", "messages", "tools")
+                ):
+                    usage_only.append(
+                        {
+                            "source": str(path.relative_to(ROOT)),
+                            "object_path": object_path,
+                            "prompt_tokens": prompt,
+                            "request_sha256": obj.get("request_sha256"),
+                            "request_bytes": obj.get("request_bytes"),
+                            "messages_summary": obj.get("messages"),
+                            "tools_attached": obj.get("tools_attached"),
+                        }
+                    )
     return eligible, usage_only
 
 
@@ -122,11 +141,15 @@ def main() -> None:
         # Provider minus tokenizer content, divided by number of messages;
         # report median as the robust fixed per-message fit.
         overheads = [
-            (row["prompt_tokens"] - row["tokenizer_content_tokens"]) / row["message_count"]
+            (row["prompt_tokens"] - row["tokenizer_content_tokens"])
+            / row["message_count"]
             for row in rows
             if row["message_count"]
         ]
-        overhead = {"method": "median(provider - content) / message_count", "value": statistics.median(overheads)}
+        overhead = {
+            "method": "median(provider - content) / message_count",
+            "value": statistics.median(overheads),
+        }
     result = {
         "eligible_count": len(rows),
         "hash_or_summary_only_count": len(usage_only),
@@ -141,7 +164,19 @@ def main() -> None:
         "network_calls": 0,
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps({k: result[k] for k in ("eligible_count", "hash_or_summary_only_count", "network_calls")}, indent=2))
+    print(
+        json.dumps(
+            {
+                k: result[k]
+                for k in (
+                    "eligible_count",
+                    "hash_or_summary_only_count",
+                    "network_calls",
+                )
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
