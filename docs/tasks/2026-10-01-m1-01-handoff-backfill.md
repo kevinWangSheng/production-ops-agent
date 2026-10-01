@@ -70,3 +70,4 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 2026-10-01：按合同修订 r3-A/B，更新 runner 与清扫“补写先到、announcer 后到”为恰好两条 `parked:true` 事件，并断言页面只显示一次交接且页面/`opspilot.acceptance` 读取原 announcer 的真实原因。
 - 2026-10-01：按合同修订 r3-A，补充 announcer 先到时 reconcile 不补写、重复 reconcile 不增加，以及同一停放原 announcer 重复写仍保持一条原 announcer 事件的验收断言。
 - 状态追加（2026-10-01）：r3 独立测试已更新；PG lab 指定文件一次运行 11 passed、3 failed（失败为当前实现尚未满足 r3 的 runner/清扫原 announcer 优先与两条事件断言）；lab 已停止并释放锁；ruff 与 `make check` 通过（2501 passed、283 skipped、2 xfailed）。
+- 状态追加（2026-10-01）：按 r3 实现原 announcer `reconciled:false` 与补写 `reconciled:true` 的分层去重，并让 snapshot/acceptance 优先原 announcer；指定 PG 集合一次运行 74 passed、3 skipped、1 failed。失败为既有 `test_sweeper_generation_is_shared_by_reconcile_backfill_and_late_announcer` 仍断言补写后晚到清扫 announcer 只有 1 条，与 r3-A 明确要求同次停放可保留 1 条补写 + 1 条原 announcer（共 2 条）冲突；未改测试断言，make check/gitleaks/commit 按约束暂停，待决为更新该既有断言或确认保留旧合同。

@@ -774,21 +774,7 @@ class Workbench:
         # next attempt owns the state and the page must not show the Run as
         # handed off (bot review, PR #44). The event stays in the list.
         runnable = run["state"] in {"queued", "running"}
-        outcome = next(
-            (
-                e
-                for kind in ("run_completed", "run_handoff")
-                for e in reversed(events)
-                if e.kind == kind
-                and e.payload.get("run_id") == str(run["run_id"])
-                and not (
-                    kind == "run_handoff"
-                    and runnable
-                    and e.payload.get("parked") is False
-                )
-            ),
-            None,
-        )
+        outcome = _select_snapshot_outcome(events, str(run["run_id"]), run, runnable)
         report = _report_view(rebuilt.get("conclusion"))
         handoff_report = None
         if report is None and outcome is not None and outcome.kind == "run_handoff":
@@ -1177,6 +1163,48 @@ def _event_view(event: SubjectEvent) -> dict[str, Any]:
             None if event.recorded_at is None else event.recorded_at.isoformat()
         ),
     }
+
+
+def _same_park_generation(payload: Mapping[str, Any], generation: int) -> bool:
+    event_generation = payload.get("control_generation", 0)
+    return event_generation == generation
+
+
+def _is_original_handoff(payload: Mapping[str, Any]) -> bool:
+    # Events written before r3 have no marker and are original announcers.
+    return payload.get("reconciled") is not True
+
+
+def _select_snapshot_outcome(
+    events: tuple[SubjectEvent, ...],
+    run_id: str,
+    run: Mapping[str, Any],
+    runnable: bool,
+) -> SubjectEvent | None:
+    candidates = [
+        event
+        for event in events
+        if event.payload.get("run_id") == run_id
+        and not (
+            event.kind == "run_handoff"
+            and runnable
+            and event.payload.get("parked") is False
+        )
+    ]
+    handoffs = [
+        event
+        for event in candidates
+        if event.kind == "run_handoff"
+        and event.payload.get("parked") is True
+        and _same_park_generation(event.payload, int(run["control_generation"]))
+    ]
+    if handoffs:
+        originals = [event for event in handoffs if _is_original_handoff(event.payload)]
+        return (originals or handoffs)[-1]
+    return next(
+        (event for event in reversed(candidates) if event.kind in {"run_completed", "run_handoff"}),
+        None,
+    )
 
 
 def _committed_report(payload: Mapping[str, Any]) -> tuple[str | None, str | None]:

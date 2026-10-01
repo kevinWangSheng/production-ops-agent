@@ -130,6 +130,8 @@ def announce_handoff(
     key = {"run_id": str(run_id), "parked": True}
     if control_generation != 0:
         key["control_generation"] = control_generation
+    payload["reconciled"] = False
+    key["reconciled"] = False
     return log.append_once(
         subject_id,
         "run_handoff",
@@ -180,9 +182,10 @@ def announce_deadline_exceeded(
             "reasons": [DEADLINE_EXCEEDED],
             "report_sha256": None,
             "evidence_ids": [],
+            "reconciled": False,
             "control_generation": control_generation,
         },
-        key=key,
+        key={**key, "reconciled": False},
     )
 
 
