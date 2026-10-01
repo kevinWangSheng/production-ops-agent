@@ -2,6 +2,7 @@
 
 本次完成两种请求体来源：
 
+- **请求体清单（`reconcile.json`）**：只用来说明 `docs/evidence/` 中**没有**同时保存完整 `messages`、`tools` 与 `usage.prompt_tokens` 的记录（`eligible_count` 为 0）。其他计数逐个 JSON 对象累加，未去重，会包含本目录的派生结果，只作描述，不作证据总数。
 - **A 离线重建**：按 `docs/evidence/m1-01-e-class-attribution/scripts/rebuild_offline.py` README 的用法，从 `m1-01-alignment-c-effect` 的五个 ledger 形态重建 6 条请求。6 条的第 1 轮输入快照哈希均校验通过，但**整条请求哈希全部不匹配**（`hash_match=false`）：导出 ledger 把历史 `reasoning_content` 替换为占位符，被替换的早期推理共 1,799–5,704 tokens，占对应 `prompt_tokens` 的 0.8%–2.9%。因此 A 是带占位符的重建，不是供应商请求的逐字节复现；对比值的影响见下文「结论」。（lead 更正：执行者初稿称 normal-2、fault-2 精确匹配，与 `offline-results.json` 不符。）原始结果见 [`offline-results.json`](offline-results.json)。
 - **B 真实 DeepSeek**：使用项目既有 `M0_ENV_FILE` 读取方式和 `deepseek-flash`，`max_tokens=1`，共 9 次（其中 3 次来自本轮中断前已完成的结果，未重复调用；新增 6 次）。请求材料来自 A 的重建消息，带 tools 3 次、不带 tools 6 次，覆盖约 1k、10k、100k、300k、600k、900k token。原始请求哈希、usage、计数见 [`live-results.json`](live-results.json)；汇总见 [`reconciliation.json`](reconciliation.json)。
 
