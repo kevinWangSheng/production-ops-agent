@@ -38,11 +38,11 @@
 
 ### 2026-10-01 第一步对账续做
 
-- A：用 `m1-01-e-class-attribution/scripts/rebuild_offline.py` 重建 6 条请求并与同一 ledger 的 `usage.prompt_tokens` 配对；`normal-2`、`fault-2` 的 `request_sha256` 精确匹配，另 4 条因导出时历史 reasoning 占位符而 hash 不匹配，均在证据表标注。
+- A：用 `m1-01-e-class-attribution/scripts/rebuild_offline.py` 重建 6 条请求并与同一 ledger 的 `usage.prompt_tokens` 配对；6 条第 1 轮输入快照哈希校验通过；整条请求哈希因导出时历史 reasoning 被替换为占位符而全部不匹配（占 prompt 0.8%–2.9%），均在证据表标注。
 - B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
 - 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
-- 结果：A 的 tokenizer/prompt 偏差约 +1.8%–+6.8%；B 为 +4.3%–+26.1%，超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
-- ~~待决并停下~~（lead 复算更正）：A 的 tokenizer/prompt 实为 1.12–1.16（执行者初稿误写 +1.8%–+6.8%），旧估算/prompt 为 0.81–0.86；6 条请求哈希均不匹配（推理占位符），初稿称 2 条精确匹配有误。
+- 结果（lead 按原始 JSON 复算）：A 的 tokenizer/prompt 为 1.12–1.16（+12%–+16%），旧估算/prompt 为 0.81–0.86；B 的 tokenizer/prompt 为 1.04–1.26，均超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
+- 执行者初稿的 A 偏差数字与「2 条请求哈希精确匹配」均有误，已按原始 JSON 更正为上两行。
 
 ## 结论与用户决定（2026-10-01）
 
