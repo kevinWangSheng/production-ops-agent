@@ -7,10 +7,12 @@
 
 旧估算为 `estimate_tokens`（规范 JSON 字节 × 0.25，每消息加 4；tools 数组按字节 × 0.25）。tokenizer 计数按 `opspilot/tools/tokens.py` 的 vendored tokenizer，对每条消息逐条计数，另计规范化 tools 数组；`delta_pct=(tokenizer_content-prompt_tokens)/prompt_tokens`。
 
-| 来源 | 条数 | prompt_tokens 范围 | tokenizer/prompt 偏差范围 | 说明 |
-|---|---:|---:|---:|---|
-| A 离线重建 | 6 | 74,703–251,805 | +1.8%–+6.8% | 2 条 hash exact；4 条占位符重建 |
-| B 真实调用 | 9 | 2,328–902,379 | +4.3%–+26.1% | 其中 3 条中断前结果约 366k，未重复 |
+| 来源 | 条数 | prompt_tokens 范围 | 旧估算/prompt | tokenizer/prompt | 说明 |
+|---|---:|---:|---:|---:|---|
+| A 离线重建（真实 Run 请求） | 6 | 74,703–251,805 | 0.805–0.859 | 1.122–1.164 | 2 条 hash exact（0.805/1.132、0.843/1.122）；4 条占位符重建 |
+| B 真实调用（合成填充） | 9 | 2,328–902,379 | 0.838–1.230 | 1.043–1.261 | 填充为重复的规范 JSON，形态不代表真实 Run |
+
+（lead 2026-10-01 按 `offline-results.json`、`live-results.json` 原始字段复算并更正此表；执行者初稿把 A 的 tokenizer 偏差误写为 +1.8%–+6.8%。）
 
 新增长度梯度（B）明细：
 
@@ -25,6 +27,11 @@
 
 拟合采用 `prompt_tokens = tokenizer_content + α × message_count`，并将 tools 数组 tokenizer 值计入 `tokenizer_content`。全体 15 条的中位 α 为 **-1,913.8 token/消息**；负值表明当前“规范 JSON tokenizer 计数”系统性高于供应商计数，不能把它解释成正的协议开销。B 的原始 tokenizer 偏差为 **+4.3% 至 +26.1%**，超过 ±10%；A 的占位符重建结果不能消除该结论。
 
-**结论：待决。** tokenizer 计数与供应商 `prompt_tokens` 未在 ±10% 内（B 的大请求约 +7.4%，但中断前 3 条约 +26% 且整体范围越界），按合同停在第一步，不进入产品代码或合同测试。需要先决定供应商计数与 vendored tokenizer 的消息序列化/特殊 token 对齐方式，再重新拟合每消息开销及 tools 固定开销。
+**结论（2026-10-01，用户决定不改代码）：**
+
+- 「估算约少算 1.6 倍」不成立。真实 Run 请求（A）上旧估算是供应商计数的 0.81–0.86，即少算约 14–20%；该值来自 2026-09-29 的推断（用 2.46 MB 对 975k tokens 的请求字节比反推），未直接测。
+- 旧估算的少算由 `Calibration` 在每次响应后按 `usage.prompt_tokens` 上调（只升不降），首个响应后即补齐；风险只在一个 Run 的第一轮内，且第一轮上下文小。
+- 直接用 vendored tokenizer 数规范 JSON 会多算 12–26%（含 JSON 键与转义），拟合出的每消息开销为负，说明要对齐供应商的消息序列化才能用；收益小于改动成本（每轮约 1 秒计数、`context_policy_revision` 变化挡旧 Run）。
+- 处置：不改 `estimate_tokens`；本目录作为对账证据保留。会改变结论的证据：真实 Run 出现提供方拒绝超长请求，或首轮估算与 `prompt_tokens` 比值低于 0.75。
 
 费用/调用：本轮共 9 次真实模型调用，prompt 合计 **3,023,328**，completion 合计 **9**；未做余额前后快照，未写凭据。

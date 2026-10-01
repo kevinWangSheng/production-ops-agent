@@ -1,6 +1,6 @@
 # M1-01 后续项：上下文估算改用真实 tokenizer
 
-- 状态：进行中（合同写定，待独立测试作者）
+- 状态：已完成（对账推翻「少算 1.6 倍」前提；用户 2026-10-01 决定不改代码，合同第二步取消）
 - 更新日期：2026-10-01
 - 依据：[整视图计量记录](2026-09-29-m1-01-view-bytes-timeout.md)「另开一项」（估算约少 1.6 倍）；用户 2026-09-29 决定另开查证、2026-10-01 决定按上游改用真实计数；上游 `holmes/core/llm.py` 用 `litellm.token_counter` 逐条计数并按消息缓存
 - 工作区：`feature/m1-01-token-estimator`，`../production-ops-agent-token-estimator`
@@ -42,4 +42,8 @@
 - B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
 - 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
 - 结果：A 的 tokenizer/prompt 偏差约 +1.8%–+6.8%；B 为 +4.3%–+26.1%，超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
-- **待决并停下：** 先确定 DeepSeek 消息序列化/特殊 token 对齐方案，再重新对账；未改产品代码、未写合同测试。
+- ~~待决并停下~~（lead 复算更正）：A 的 tokenizer/prompt 实为 1.12–1.16（执行者初稿误写 +1.8%–+6.8%），旧估算/prompt 为 0.81–0.86。
+
+## 结论与用户决定（2026-10-01）
+
+旧估算少算约 14–20%（不是 1.6 倍），首个响应后的校准即补齐；改用 tokenizer 需先对齐供应商消息序列化，否则多算 12–26%。用户选择不改代码、记录收尾；合同第二步取消，不写合同测试。详见[证据 README](../evidence/m1-01-token-estimator/README.md)「结论」。
