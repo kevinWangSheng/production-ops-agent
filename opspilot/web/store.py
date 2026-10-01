@@ -467,7 +467,7 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
@@ -513,5 +513,5 @@ def _summary(row: Mapping[str, Any]) -> IncidentSummary:
         current_run_id=row["current_run_id"],
         concluded=bool(row["concluded"]),
         created_at=row["created_at"],
-        run_state=row.get("run_state"),
+        run_state=row["run_state"],
     )

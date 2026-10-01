@@ -7,6 +7,7 @@
 
 ## 状态
 
+- 2026-10-01：按审查建议仅列表查询保留 Run 联表；`find_incident` 投影 `NULL::text AS run_state`，让 `_summary` 严格读取该列且无需联表；未改测试断言。持锁 PG 定向测试累计 54 项通过（列表文件全部 5 项与 web/incident 文件均覆盖），lab 已停止并释放锁；`make check` 一次通过（2501 passed、274 skipped、2 xfailed）；提交后执行指定 gitleaks 扫描。
 - 2026-10-01：新增 `tests/integration/test_m1_list_run_state_postgres.py`，提交 `75a4f35`；真实 PG 结果 1 红（合同 1 的 `Run` 列尚未实现）、3 绿（合同 2 只读、合同 3 查询次数、合同 4 Control 语义）；ruff check/format check 通过。无 Run 场景由 SQL 将 `current_run_id` 置空，因为现有公开受理入口始终创建首个 Run。
 - 2026-10-01：列表查询以一次 `LEFT JOIN opspilot_runs` 投影当前 Run 的 `state`，模板新增第二列 `Run`，无当前 Run 显示为空；既有列表断言同步加入该合同列（直接合同后果：Run 状态现在合法出现在行值中，不能再把 `queued/running` 作为整行禁词）。定向既有测试通过；PG 独立/指定 integration 矩阵已重跑并完成 lab 停止释放。
 - 2026-10-01：独立测试补充多 Run 场景（公开 `cancel` + `new_run` 只能让 current 成为最新，故按约改验 current 与旧 Run 状态不同）及整个 GET 期间累计查询次数不随事故数增长；PG lab 上该文件 5 项全绿，lab 已停止并释放锁；ruff check/format check 通过。
