@@ -7,9 +7,13 @@ from opspilot.tools.registry import canonical
 from opspilot.tools.tokens import count_tokens
 
 root = Path(__file__).parent
-live = json.loads((root / "live-results-initial.json").read_text()) + json.loads(
-    (root / "live-results.json").read_text()
-)
+# live-results.json already carries the prior-live-* rows from
+# live-results-initial.json; key by case so a rerun never duplicates them.
+_rows = {}
+for name in ("live-results-initial.json", "live-results.json"):
+    for row in json.loads((root / name).read_text()):
+        _rows[row["case"]] = row
+live = list(_rows.values())
 for r in live:
     r["old_over_prompt"] = r["old_estimate_tokens"] / r["prompt_tokens"]
     r["tokenizer_over_prompt"] = r["tokenizer_content_tokens"] / r["prompt_tokens"]
