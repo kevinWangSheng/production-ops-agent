@@ -56,3 +56,4 @@ Run 被停放到 `waiting_human` 的两条路径——runner 交接（`service.p
 - 2026-10-01：按第三轮审查，补写改用 rebuilt 顶层事故 `control_generation`，与 runner/清扫共用同一停放代际；移除清扫旧适配器回退和超时 announcer 默认代际，测试替身改用三元清扫接口；旧事件无代际字段且属于 gen≥1 停放时，升级后首次 reconcile 会补一条（当前无生产数据，可接受）。
 - 状态追加（2026-10-01）：第三轮修复已实现；PG 指定集合一次运行 55 passed、1 failed，失败为既有“先无事件停放、再 resume/pause、再超时清扫”场景断言两条事件，当前按同一事故代际去重为一条；`make check` 一次运行在格式检查处失败（随后已格式化），gitleaks 11 commits 未发现泄漏。待独立审查确认该验收断言与 r2 去重合同的取舍。
 - 2026-10-01：PG 指定集合 58 passed、1 skipped；`make check` 2501 passed、281 skipped、2 xfailed；gitleaks 扫描 9 commits、未发现泄漏。实现与验证完成。
+- 2026-10-01（lead）：`test_page_reconcile_preserves_deadline_reason_after_parked_run_generation_advances` 的计数 2 → 1。原期望来自 lead 给测试作者的任务书笔误：gen0 停放的事件丢失后 Run 已被 resume 离开 `waiting_human`，按合同 1 不再补写，只剩超时停放一条；核心断言（最新事件为 `DEADLINE_EXCEEDED`）不变。

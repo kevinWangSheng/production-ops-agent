@@ -313,7 +313,10 @@ def test_page_reconcile_preserves_deadline_reason_after_parked_run_generation_ad
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert page.status == 200
     handoffs = _events(workbench.events, incident, run)
-    assert len(handoffs) == 2
+    # The gen0 park's event was lost and the Run left waiting_human (resume)
+    # before any reconcile, so contract 1 never backfills it: only the
+    # deadline park remains, and the page reads its real reason.
+    assert len(handoffs) == 1
     assert handoffs[-1]["reasons"] == ["DEADLINE_EXCEEDED"]
     assert handoffs[-1]["parked"] is True
 
