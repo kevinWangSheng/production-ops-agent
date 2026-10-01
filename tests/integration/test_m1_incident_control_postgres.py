@@ -128,7 +128,6 @@ def _assert_list_control(html, incident, expected):
     assert "Control" in headers and "State" not in headers
     row = list_row(html, incident)
     assert row["Control"] == expected
-    assert not IN_PROGRESS_WORDS & {c.lower() for c in row.values()}
 
 
 class _Suspension:

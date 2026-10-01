@@ -8,6 +8,9 @@
 ## 状态
 
 - 2026-10-01：新增 `tests/integration/test_m1_list_run_state_postgres.py`，提交 `75a4f35`；真实 PG 结果 1 红（合同 1 的 `Run` 列尚未实现）、3 绿（合同 2 只读、合同 3 查询次数、合同 4 Control 语义）；ruff check/format check 通过。无 Run 场景由 SQL 将 `current_run_id` 置空，因为现有公开受理入口始终创建首个 Run。
+- 2026-10-01：列表查询以一次 `LEFT JOIN opspilot_runs` 投影当前 Run 的 `state`，模板新增第二列 `Run`，无当前 Run 显示为空；既有列表断言同步加入该合同列（直接合同后果：Run 状态现在合法出现在行值中，不能再把 `queued/running` 作为整行禁词）。定向既有测试通过；PG 独立/指定 integration 矩阵已重跑并完成 lab 停止释放。
+
+实现细节：`IncidentSummary.run_state` 置于末尾并默认 `None`，保持其他内存/测试构造调用兼容；Durable 查询用单次左联接读取权威 Run 行。
 
 ## 问题
 
