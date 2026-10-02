@@ -1,13 +1,13 @@
 {
   "summary": {
-    "live_count": 9,
+    "live_count": 8,
     "offline_count": 6,
-    "live_prompt_total": 3023328,
-    "live_completion_total": 9,
-    "fitted_message_overhead_median": -1913.8333333333333,
-    "fitted_residual_pct_min": -240.8290378006873,
-    "fitted_residual_pct_max": 24.561358030081426,
-    "fitted_abs_max_pct": 240.8290378006873,
+    "live_prompt_total": 2656856,
+    "live_completion_total": 8,
+    "fitted_message_overhead_median": -1794.7348484848485,
+    "fitted_residual_pct_min": -225.4812949078413,
+    "fitted_residual_pct_max": 24.65885400645765,
+    "fitted_abs_max_pct": 225.4812949078413,
     "raw_tokenizer_delta_pct_min": 4.314864101943705,
     "raw_tokenizer_delta_pct_max": 26.128053439280492
   },
@@ -29,8 +29,8 @@
       "tokenizer_over_prompt": 1.2612805343928049,
       "delta_pct": 26.128053439280492,
       "overhead_per_message": -31917.333333333332,
-      "fitted_prompt_tokens": 456482,
-      "fitted_delta_pct": 24.561358030081426
+      "fitted_prompt_tokens": 456840,
+      "fitted_delta_pct": 24.65885400645765
     },
     {
       "case": "prior-live-02",
@@ -49,28 +49,8 @@
       "tokenizer_over_prompt": 1.259575011618016,
       "delta_pct": 25.957501161801595,
       "overhead_per_message": -31838.0,
-      "fitted_prompt_tokens": 457736,
-      "fitted_delta_pct": 24.39715406168555
-    },
-    {
-      "case": "prior-live-03",
-      "target_tokens": 100000,
-      "with_tools": false,
-      "message_count": 3,
-      "request_bytes": 1228931,
-      "request_sha256": "ec0be10cad4fea25857374aa950f818d0d3e17488f07fc505f15932bb5fc4b58",
-      "old_estimate_tokens": 307225,
-      "tokenizer_message_tokens": 462224,
-      "tokenizer_tools_tokens": 0,
-      "tokenizer_content_tokens": 462224,
-      "prompt_tokens": 366472,
-      "completion_tokens": 1,
-      "old_over_prompt": 0.8383314414198083,
-      "tokenizer_over_prompt": 1.2612805343928049,
-      "delta_pct": 26.128053439280492,
-      "overhead_per_message": -31917.333333333332,
-      "fitted_prompt_tokens": 456482,
-      "fitted_delta_pct": 24.561358030081426
+      "fitted_prompt_tokens": 458093,
+      "fitted_delta_pct": 24.494254980676175
     },
     {
       "case": "live-01",
@@ -90,8 +70,8 @@
       "tokenizer_over_prompt": 1.0579896907216495,
       "delta_pct": 5.798969072164948,
       "overhead_per_message": -45.0,
-      "fitted_prompt_tokens": -3278,
-      "fitted_delta_pct": -240.8290378006873
+      "fitted_prompt_tokens": -2921,
+      "fitted_delta_pct": -225.4812949078413
     },
     {
       "case": "live-02",
@@ -111,8 +91,8 @@
       "tokenizer_over_prompt": 1.043148641019437,
       "delta_pct": 4.314864101943705,
       "overhead_per_message": -178.33333333333334,
-      "fitted_prompt_tokens": 7192,
-      "fitted_delta_pct": -41.99128962013066
+      "fitted_prompt_tokens": 7550,
+      "fitted_delta_pct": -39.10964227320385
     },
     {
       "case": "live-03",
@@ -132,8 +112,8 @@
       "tokenizer_over_prompt": 1.0739831143725096,
       "delta_pct": 7.398311437250957,
       "overhead_per_message": -2500.3333333333335,
-      "fitted_prompt_tokens": 103148,
-      "fitted_delta_pct": 1.7354124748490944
+      "fitted_prompt_tokens": 103505,
+      "fitted_delta_pct": 2.0878165606831733
     },
     {
       "case": "live-04",
@@ -153,8 +133,8 @@
       "tokenizer_over_prompt": 1.0730799612637536,
       "delta_pct": 7.307996126375352,
       "overhead_per_message": -7370.333333333333,
-      "fitted_prompt_tokens": 318928,
-      "fitted_delta_pct": 5.410349716914718
+      "fitted_prompt_tokens": 319286,
+      "fitted_delta_pct": 5.528440884107057
     },
     {
       "case": "live-05",
@@ -174,8 +154,8 @@
       "tokenizer_over_prompt": 1.0742956060182782,
       "delta_pct": 7.429560601827832,
       "overhead_per_message": -14893.0,
-      "fitted_prompt_tokens": 640306,
-      "fitted_delta_pct": 6.474820742041479
+      "fitted_prompt_tokens": 640663,
+      "fitted_delta_pct": 6.534234521049576
     },
     {
       "case": "live-06",
@@ -195,8 +175,8 @@
       "tokenizer_over_prompt": 1.0739301335691545,
       "delta_pct": 7.393013356915443,
       "overhead_per_message": -22237.666666666668,
-      "fitted_prompt_tokens": 963350,
-      "fitted_delta_pct": 6.756750766584772
+      "fitted_prompt_tokens": 963708,
+      "fitted_delta_pct": 6.7963455991934
     }
   ],
   "offline": [
@@ -225,8 +205,8 @@
       "tokenizer_over_prompt": 1.1636822144119459,
       "delta_pct": 16.368221441194574,
       "overhead_per_message": -1472.0,
-      "fitted_prompt_tokens": 239434,
-      "fitted_delta_pct": -4.913061032677395
+      "fitted_prompt_tokens": 242768,
+      "fitted_delta_pct": -3.5887197464608507
     },
     {
       "case": "normal-1@4",
@@ -253,8 +233,8 @@
       "tokenizer_over_prompt": 1.1530286204532607,
       "delta_pct": 15.302862045326075,
       "overhead_per_message": -1590.4583333333333,
-      "fitted_prompt_tokens": 241676,
-      "fitted_delta_pct": -3.1114068883124797
+      "fitted_prompt_tokens": 244534,
+      "fitted_delta_pct": -1.9654808082346857
     },
     {
       "case": "normal-2",
@@ -281,8 +261,8 @@
       "tokenizer_over_prompt": 1.131736820797193,
       "delta_pct": 13.1736820797193,
       "overhead_per_message": -692.7741935483871,
-      "fitted_prompt_tokens": 125169,
-      "fitted_delta_pct": -23.219463221732852
+      "fitted_prompt_tokens": 128861,
+      "fitted_delta_pct": -20.954705685754256
     },
     {
       "case": "fault-1",
@@ -309,8 +289,8 @@
       "tokenizer_over_prompt": 1.1638290780614626,
       "delta_pct": 16.382907806146257,
       "overhead_per_message": -1675.6363636363637,
-      "fitted_prompt_tokens": 219775,
-      "fitted_delta_pct": -2.3288817782518114
+      "fitted_prompt_tokens": 222395,
+      "fitted_delta_pct": -1.1644408891259057
     },
     {
       "case": "fault-1@3",
@@ -337,8 +317,8 @@
       "tokenizer_over_prompt": 1.154571315756412,
       "delta_pct": 15.457131575641187,
       "overhead_per_message": -1913.8333333333333,
-      "fitted_prompt_tokens": 222868,
-      "fitted_delta_pct": 0.0
+      "fitted_prompt_tokens": 225012,
+      "fitted_delta_pct": 0.9619024387856199
     },
     {
       "case": "fault-2",
@@ -365,8 +345,8 @@
       "tokenizer_over_prompt": 1.122217313896363,
       "delta_pct": 12.221731389636293,
       "overhead_per_message": -608.6666666666666,
-      "fitted_prompt_tokens": 55126,
-      "fitted_delta_pct": -26.20711350280444
+      "fitted_prompt_tokens": 56912,
+      "fitted_delta_pct": -23.8156737042324
     }
   ]
 }

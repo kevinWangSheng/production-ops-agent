@@ -16,7 +16,14 @@ _rows = {}
 for name in ("live-results-initial.json", "live-results.json"):
     for row in json.loads((root / name).read_text()):
         _rows[row["case"]] = row
-live = list(_rows.values())
+# prior-live-03 re-sent the exact prior-live-01 request (same request_sha256);
+# count each distinct request once. The prior-live-* target_tokens labels are
+# not the sizes actually sent (the first script's filler ignored the target;
+# every prior request was ~366k tokens), so only measured fields are used.
+_unique = {}
+for row in _rows.values():
+    _unique.setdefault(row["request_sha256"], row)
+live = list(_unique.values())
 for r in live:
     r["old_over_prompt"] = r["old_estimate_tokens"] / r["prompt_tokens"]
     r["tokenizer_over_prompt"] = r["tokenizer_content_tokens"] / r["prompt_tokens"]

@@ -36,24 +36,6 @@
     "overhead_per_message": -31838.0
   },
   {
-    "case": "prior-live-03",
-    "target_tokens": 100000,
-    "with_tools": false,
-    "message_count": 3,
-    "request_bytes": 1228931,
-    "request_sha256": "ec0be10cad4fea25857374aa950f818d0d3e17488f07fc505f15932bb5fc4b58",
-    "old_estimate_tokens": 307225,
-    "tokenizer_message_tokens": 462224,
-    "tokenizer_tools_tokens": 0,
-    "tokenizer_content_tokens": 462224,
-    "prompt_tokens": 366472,
-    "completion_tokens": 1,
-    "old_over_prompt": 0.8383314414198083,
-    "tokenizer_over_prompt": 1.2612805343928049,
-    "delta_pct": 26.128053439280492,
-    "overhead_per_message": -31917.333333333332
-  },
-  {
     "case": "live-01",
     "target_tokens": 1000,
     "with_tools": false,

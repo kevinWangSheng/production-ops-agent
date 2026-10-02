@@ -7,7 +7,7 @@
 
 ## 问题
 
-`estimate_tokens`（`opspilot/investigation/context.py`）按规范 JSON 字节 × 0.25 估算，真实约 2.5 字节/token，低估约 1.6 倍（推断，未直接测）。校准因子只在响应后上调，压缩阈值 0.95×1M 在一轮内滞后，并行工具结果可能在校准前越过上下文上限。
+`estimate_tokens`（`opspilot/investigation/context.py`）按规范 JSON 字节 × 0.25 估算，真实约 2.5 字节/token，低估约 1.6 倍（立项时的推断，未直接测；**已被本任务对账推翻**，实测少算约 11–20%，见「结论与用户决定」）。校准因子只在响应后上调，压缩阈值 0.95×1M 在一轮内滞后，并行工具结果可能在校准前越过上下文上限。
 
 ## 第一步：对账（先做，结果写进任务记录）
 
@@ -39,7 +39,7 @@
 ### 2026-10-01 第一步对账续做
 
 - A：用 `m1-01-e-class-attribution/scripts/rebuild_offline.py` 重建 6 条请求并与同一 ledger 的 `usage.prompt_tokens` 配对；6 条第 1 轮输入快照哈希校验通过；整条请求哈希因导出时历史 reasoning 被替换为占位符而全部不匹配（占 prompt 0.8%–2.9%），均在证据表标注。
-- B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
+- B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次；其中 `prior-live-03` 重复了 `prior-live-01` 的请求，分析去重为 8 条），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
 - 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
 - 结果（lead 按原始 JSON 复算）：A 的 tokenizer/prompt 为 1.12–1.16（+12%–+16%），旧估算/prompt 为 0.81–0.86；B 的 tokenizer/prompt 为 1.04–1.26，均超出 ±10%。全体中位拟合每消息开销为 -1,913.8 token，说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
 - 执行者初稿的 A 偏差数字与「2 条请求哈希精确匹配」均有误，已按原始 JSON 更正为上两行。
