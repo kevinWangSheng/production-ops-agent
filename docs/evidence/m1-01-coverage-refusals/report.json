@@ -1,0 +1,342 @@
+{
+ "run_id": "7cb82d94-d7af-5bab-8959-4925d6068f04",
+ "step_id": "339ab658-3c34-4b6f-ad71-07fb194a877f",
+ "logical_key": "conclusion:g0:ctx0:round-8",
+ "observed_at": "2026-10-01T03:26:00.074283-07:00",
+ "execution": "completed",
+ "handoff": false,
+ "handoff_reasons": [],
+ "rounds": 8,
+ "model_requests_used": 8,
+ "model_seconds_used": 109.80290745799994,
+ "evidence_ids": [
+  "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef",
+  "ec1dcb19-73c0-45be-876d-81e37713f0cf-t1:94bbc250-ca85-4f01-a184-222ea7edc79b",
+  "8072fcc8-5691-4705-a2b1-3041c6d49f98-t0:85f60314-10ba-45da-84b8-8ac10cce5fb9",
+  "8072fcc8-5691-4705-a2b1-3041c6d49f98-t1:1a624456-9b29-4442-860b-3032acbb1b54",
+  "21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a",
+  "21045912-0ca1-41b6-8953-e492043ea3af-t2:0a4a5d4d-a83c-4526-b3ec-c32f6922388e",
+  "f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3",
+  "f7066412-9bc8-4f1c-a998-bd4049d9c220-t1:00b3c71c-360f-46a3-8d51-a8be98dbdccf",
+  "f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de",
+  "70baf497-d083-4136-8e1b-4fe0f17d728f-t0:6dc002cd-ff44-413c-8d7f-12fac13636fa",
+  "70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab",
+  "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb",
+  "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t1:2d6b2ff1-91ac-4f5d-9efc-4649261a8282",
+  "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t2:17cf4bbd-96f3-442a-a56c-5a4d071e2524",
+  "2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t0:38c23e8c-20c1-4388-9da0-c62417ff080e",
+  "2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t1:96cb71bb-e3bf-450c-ae0f-a7b2e00277a3"
+ ],
+ "report_sha256": "c1eda0f25f87d0b89aac6a7afeb0be1dd9c39a59d8a09cf65a1cf54c331b19ce",
+ "report_bytes": 20754,
+ "report_text": "{\"schema_version\":\"m0-report-v2\",\"assessment_status\":\"completed\",\"conclusion\":\"partial\",\"summary\":\"The requested survey could not be executed as specified. Two hard tool limits were established empirically. (1) Metric resolution: every metrics query returned exactly one value per series at the end of its query window regardless of step (15 s, 300 s and 86400 s steps all produced a single point per series), and for the same series the value returned for a 900 s range selector over a 15-minute window was identical to full precision to the value returned for a 86400 s selector over the whole frame (119.9627705230877 in f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3 vs ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef). No 15-second-resolution error or latency series is therefore obtainable, and no latency/error trend can be computed or compared. (2) Trace volume: limit-50 searches over the 24 h frame were refused as RESULT_TOO_LARGE for frontend (116114 tokens) and currency (62119 tokens), and even a limit-50 30-minute frontend search was refused (116113 tokens); trace evidence is consequently a small, explicitly incomplete sample (limit 2-5 over 10-30 minute slices), not a complete per-service trace census. Within those limits I obtained: whole-frame per-service span-count increases for 15 of the 17 authorized services (none returned for kafka or image-provider); whole-frame REST/gRPC counters; whole-frame p95 latency for four services; and 18 sampled traces across 6 services covering 15 service identities. No error-tagged span appeared in any sampled trace, and the only ERROR-tagged metric series (frontend, frontend-proxy, load-generator, payment) each returned 0 over the frame; error status for the other services is unknown, not zero. Several distinct services returned bit-identical whole-frame values, which weakens per-service comparison of those counts. Conclusion is partial: useful per-service observations exist, but the complete 24 h x 15 s x 50-trace survey requested is not achievable with these tools, and no defect could be demonstrated or excluded.\",\"claims\":[{\"kind\":\"fact\",\"text\":\"Whole-frame (2026-09-30T10:24:08Z to 2026-10-01T10:24:08Z) increase of traces_span_metrics_calls_total returned per service/status: accounting 3.427507729231077, ad 6.855015458462154, cart 119.9627705230877, checkout 47.98510820923508, currency 10.282523187693231 (status STATUS_CODE_OK), email 13.710030916924309, flagd 26.670061833848617, fraud-detection 6.855015458462154, frontend 441.5760125293999 (STATUS_CODE_UNSET) and 0 (STATUS_CODE_ERROR), frontend-proxy 191.94043283694032 and 0, load-generator 97.6839702830857 and 0, payment 6.855015458462154 and 0, product-catalog 132.422801440012, quote 10.282523187693231, recommendation 38.130092750772924, shipping 10.282523187693231. No series was returned for image-provider or kafka (unknown, not zero).\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Only four services returned a STATUS_CODE_ERROR-tagged span series (frontend, frontend-proxy, load-generator, payment), and each returned the single value 0 in the whole-frame evaluation; the same four series returned 0 in the separate whole-frame 300-second-step evaluation. No other authorized service returned an ERROR-tagged series, so their error counts are unknown rather than zero.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\",\"21045912-0ca1-41b6-8953-e492043ea3af-t2:0a4a5d4d-a83c-4526-b3ec-c32f6922388e\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame increase of rpc_server_duration_milliseconds_count by rpc_grpc_status_code returned only the code \\\"0\\\" series: ad 3.385878078858781, checkout 3.4233859206107127, otelcol-contrib 546.2718598272767, product-catalog 132.82606920230674. No non-zero gRPC status code series was returned by this view for any service.\",\"evidence_ids\":[\"8072fcc8-5691-4705-a2b1-3041c6d49f98-t0:85f60314-10ba-45da-84b8-8ac10cce5fb9\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame increase of http_server_request_duration_seconds_count by service and http_response_status_code returned a single series: cart, http_response_status_code 200, value 40.945694569456954. No other service or response-code series was returned by that view.\",\"evidence_ids\":[\"8072fcc8-5691-4705-a2b1-3041c6d49f98-t1:1a624456-9b29-4442-860b-3032acbb1b54\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame increase of rpc_client_duration_milliseconds_count returned only four service names: ad 0, checkout 34.23378225215014, fraud-detection 0, otelcol-contrib 220.17741276986817. Client-side RPC instrumentation is thus absent for the other authorized services in this view (unknown, not zero).\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t1:94bbc250-ca85-4f01-a184-222ea7edc79b\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"The metrics view returned exactly one value per series at the query-window end for every step tried (15 s, 300 s, 86400 s), and for the cart span series the value returned for a 900 s range selector over the 15-minute window 10:09:08Z-10:24:08Z was 119.9627705230877 - identical to the 86400 s whole-frame value for the same series. The returned single value therefore cannot be attributed to the requested 900 s (or 15 s) interval, and no multi-point time series is available.\",\"evidence_ids\":[\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3\",\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Frontend trace sample (window 2026-10-01T09:54:08Z-10:24:08Z, limit 5, 85 spans shown, 0 error rows across 14 visible service identities: cart, checkout, currency, email, flagd, frontend, frontend-proxy, load-generator, payment, product-catalog, quote, shipping) comprised traces c69e64a971b23967adc7803c90f637ed, 78798c8e7dfe8deb3ecb778f7994cc0d, 73426d8b757d29f372958e58baf553fc, a0df60ab28f54fbb9d0a9cd7654eac8c and 8f5c6b835c0efbad1e4acd1019a45fee. The view is explicitly incomplete (backend returned as many traces as requested; more may exist).\",\"evidence_ids\":[\"21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"ad trace sample (window 2026-10-01T09:54:08Z-10:24:08Z, limit 5, 62 spans, 0 error rows): traces 3a7482a2273f88feaa6d7bb1dad9dbac, 57d234da2bdb35d94d00102d372afda2, 21a4a2660305da2fae1afe96a670d52e, 96872fbcccf5541df6623f5b830de870, 839a8990d1f6cb8f2fe247870b27ee38. Visible ad server spans oteldemo.AdService/GetAds 2608-22600 us (all rpc.grpc.status_code 0) and ad child spans getAdsByCategory/getRandomAds 63-11993 us (not_recorded); the matching frontend client spans grpc.oteldemo.AdService/GetAds measured 5660-34489 us. View is explicitly incomplete.\",\"evidence_ids\":[\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"recommendation trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 3, 57 spans, 0 error rows): traces 588ca80ac89f15f5a2697defe11cf7af, 0b723a0e1906c1cc2ea6e396e7a7174f, d987b7055094efe4002bf336047203f2. Visible recommendation spans /oteldemo.RecommendationService/ListRecommendations 1204-3867 us and /oteldemo.ProductCatalogService/ListProducts 735-1887 us (rpc.grpc.status_code 0); corresponding product-catalog server spans measured 11-247 us. View is explicitly incomplete.\",\"evidence_ids\":[\"70baf497-d083-4136-8e1b-4fe0f17d728f-t0:6dc002cd-ff44-413c-8d7f-12fac13636fa\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"fraud-detection trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 3, 6 spans, 0 error rows): traces a8ec6678db4623bbf3d80dd4dc37ec5f, 6710011bb49b1a1a1b82e5a2ca7936b0, dc5097f6646759078c8c94ec5dd2c242. Visible spans: \\\"orders receive\\\" 4710, 62333 and 73974 us; \\\"orders process\\\" 2541, 3472 and 4448 us; all status not_recorded. The \\\"orders process\\\" spans carry FOLLOWS_FROM references to spans in other trace ids (for example c69e64a971b23967adc7803c90f637ed), so their upstream chain is not visible in this sample.\",\"evidence_ids\":[\"70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"accounting trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 2, 2 spans, 0 error rows): traces f5273aad3136f3912693a68816828e29 and ccd1bcfce0136e2ac7293dbbf27c6082, each a single \\\"orders receive\\\" span of 74488 us and 11084 us respectively, status not_recorded, with FOLLOWS_FROM parents in other trace ids.\",\"evidence_ids\":[\"b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame p95 latency derived from one evaluation of increase(rpc_server_duration_milliseconds_bucket[86400s]) over the whole authorized window: ad 23.693006570144437 ms, checkout 48.74999999999999 ms, otelcol-contrib 4.758711250937293 ms, product-catalog 4.812276459568965 ms. Only these four services returned a server-side quantile.\",\"evidence_ids\":[\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t1:00b3c71c-360f-46a3-8d51-a8be98dbdccf\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Whole-frame p95 latency derived from one evaluation of increase(rpc_client_duration_milliseconds_bucket[86400s]): checkout 9 ms, otelcol-contrib 4.938118811881187 ms, while ad and fraud-detection both returned NaN (quantile not computable from the returned buckets).\",\"evidence_ids\":[\"b5a05ba3-063d-440f-a7a2-a50fa01dc301-t2:17cf4bbd-96f3-442a-a56c-5a4d071e2524\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"fact\",\"text\":\"Distinct services returned bit-identical whole-frame values for the same metric: ad, fraud-detection and payment all returned 6.855015458462154, and currency, quote and shipping all returned 10.282523187693231 (accounting returned 3.427507729231077, exactly half of the first group's value). This is an observation about the returned data, not about real traffic volume.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"The spread in fraud-detection's sampled spans (\\\"orders receive\\\" 4710/62333/73974 us versus \\\"orders process\\\" 2541/3472/4448 us) is more consistent with waiting on an upstream/queue delivery than with costly in-process work; the sample is 3 spans in a 10-minute slice and cannot establish a sustained condition.\",\"evidence_ids\":[\"70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"accounting's two sampled \\\"orders receive\\\" spans (11084 us and 74488 us) show a similarly wide spread to fraud-detection's receive spans, which could indicate the same shared upstream path; two spans cannot support a rate, distribution or trend claim.\",\"evidence_ids\":[\"b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb\",\"70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"hypothesis\",\"text\":\"Because several distinct services returned identical whole-frame values for the same metric, per-service comparisons of those counts in this environment may reflect duplicated or synthetic series rather than independent per-service activity; this weakens any ranking of services by error or call volume from these figures.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The claim that the returned per-interval values reflect the requested interval is contradicted by the identical cart values for a 900 s selector over 15 minutes and a 86400 s selector over 24 hours; consequently no error-count-per-interval or latency-per-interval series can be derived, and any trend statement would be unsupported.\",\"evidence_ids\":[\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3\",\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"counter_evidence\",\"text\":\"The four ERROR-tagged series that exist (frontend, frontend-proxy, load-generator, payment) each returned 0 over the frame, and no sampled span in any of the 18 sampled traces carried an error status, which runs counter to a fleet-wide elevated error condition during the frame - while not excluding brief or unscraped error bursts.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\",\"21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a\",\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de\",\"70baf497-d083-4136-8e1b-4fe0f17d728f-t0:6dc002cd-ff44-413c-8d7f-12fac13636fa\",\"70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab\",\"b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected as unsupported: that any authorized service shows degraded latency during the frame. No baseline window outside the authorized frame was queried, no multi-point latency series exists in the returned views, and the only latency figures are single whole-frame quantile estimates (ad 23.69 ms, checkout 48.75 ms, otelcol-contrib 4.76 ms, product-catalog 4.81 ms server-side; checkout 9 ms, otelcol-contrib 4.94 ms client-side, with ad and fraud-detection NaN); none of these can establish a change over time.\",\"evidence_ids\":[\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t1:00b3c71c-360f-46a3-8d51-a8be98dbdccf\",\"b5a05ba3-063d-440f-a7a2-a50fa01dc301-t2:17cf4bbd-96f3-442a-a56c-5a4d071e2524\",\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"rejected_hypothesis\",\"text\":\"Rejected as unsupported: that frontend, frontend-proxy, load-generator or payment were in an elevated error state during the frame. Their ERROR-tagged series returned 0 in both the whole-frame and the 300-second-step views, and none of the 18 sampled traces contained an error-tagged span.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\",\"21045912-0ca1-41b6-8953-e492043ea3af-t2:0a4a5d4d-a83c-4526-b3ec-c32f6922388e\",\"21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"recommendation\",\"text\":\"Treat the per-service whole-frame counts in this run as coarse, unverifiable per-service totals: because several services returned identical values and the view collapses to one value per series, any service ranking or per-interval error/latency analysis needs a metrics source that returns genuine multi-point series before conclusions are drawn.\",\"evidence_ids\":[\"ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef\",\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"},{\"kind\":\"recommendation\",\"text\":\"If per-service trace coverage is required, reproduce it as many small searches (limit 2-5 per 10-30 minute slice, as in the successful calls here) rather than limit-50 whole-frame searches, which were refused; kafka and image-provider additionally returned no traces and would need a wider window to distinguish 'no calls' from 'no instrumentation'.\",\"evidence_ids\":[\"21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a\",\"f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de\"],\"target_refs\":[\"m0-otel-20260909\"],\"time_scope_ref\":\"policy-window-1\"}],\"gaps\":[\"A whole-frame 15-second-step query for the span counter (increase[15s], step 15 over 2026-09-30T10:24:08Z-2026-10-01T10:24:08Z) returned status no_data with zero series (evidence 2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t1:96cb71bb-e3bf-450c-ae0f-a7b2e00277a3, which is not citable as a fact); no 15-second-resolution error or latency series was obtainable anywhere in the run, so the finest requested resolution could not be surveyed.\",\"No error-rate series exists for 13 of the 17 authorized services: only frontend, frontend-proxy, load-generator and payment returned an ERROR-tagged series, so error status for accounting, ad, cart, checkout, currency, email, fraud-detection, image-provider, kafka, product-catalog, quote, recommendation and shipping is unknown, not zero.\",\"The requested limit-50 per-service trace search was refused as RESULT_TOO_LARGE for frontend over the 24 h frame (view ec1dcb19-73c0-45be-876d-81e37713f0cf-t2, error status), for frontend over 30 minutes (view 8072fcc8-5691-4705-a2b1-3041c6d49f98-t2, error status) and for currency over the 24 h frame (view 21045912-0ca1-41b6-8953-e492043ea3af-t1, error status); these views are not citable and no complete trace census exists, so 'no trace is missed' cannot be asserted for any service.\",\"Trace coverage is a biased sample: 5 traces for frontend and ad, 3 for recommendation and fraud-detection, 2 for accounting, all in 10-30 minute slices at the end of the frame; the other ~23 hours of the frame have no trace evidence, and no dedicated per-service trace search was run for cart, checkout, currency, email, flagd, frontend-proxy, load-generator, payment, product-catalog, quote or shipping (they appear only as spans inside other services' traces).\",\"kafka and image-provider returned no traces for 2026-10-01T10:14:08Z-10:24:08Z (views b5a05ba3-063d-440f-a7a2-a50fa01dc301-t1 and 2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t0, both status no_data, not citable as facts), and neither returned a series in the whole-frame span-count view; whether they emit telemetry or made no calls is unknown.\",\"No baseline period outside the authorized 24-hour window was queried and none is permitted by the delivered time policy, so no latency or error trend, regression or recovery can be assessed; all latency figures in this report are single whole-frame or single-sample measurements.\",\"Latency label coverage is partial: server-side quantiles were returned for only ad, checkout, otelcol-contrib and product-catalog, and client-side only for ad, checkout, fraud-detection and otelcol-contrib (ad and fraud-detection NaN), so most authorized services have no metric-derived latency figure at all.\"],\"next_steps\":[\"Human follow-up: confirm with the observability owner whether a backend capable of returning multi-point range series is available, since the current metrics view collapses to one value per series and cannot yield interval error counts or latency trends.\",\"Human follow-up: if interval-level analysis is genuinely required, re-run the survey with per-service trace searches sized to fit the token budget (small limits over many short slices) and record per-search coverage, rather than a single limit-50 whole-frame search.\",\"Human follow-up: verify the apparent duplication of whole-frame values across distinct services (ad/fraud-detection/payment identical; currency/quote/shipping identical) with the telemetry pipeline owner before using these counts for any service comparison or alerting.\",\"Human follow-up: determine whether kafka and image-provider are expected to emit spans at all; their absence of data cannot be read as absence of activity.\",\"Human follow-up: if an error or latency condition is suspected for any service, obtain a comparable baseline window and a data source with true sub-window resolution before drawing conclusions; no change, remediation or recovery certification is authorized by this investigation.\"]}",
+ "report_parsed": {
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "partial",
+  "summary": "The requested survey could not be executed as specified. Two hard tool limits were established empirically. (1) Metric resolution: every metrics query returned exactly one value per series at the end of its query window regardless of step (15 s, 300 s and 86400 s steps all produced a single point per series), and for the same series the value returned for a 900 s range selector over a 15-minute window was identical to full precision to the value returned for a 86400 s selector over the whole frame (119.9627705230877 in f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3 vs ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef). No 15-second-resolution error or latency series is therefore obtainable, and no latency/error trend can be computed or compared. (2) Trace volume: limit-50 searches over the 24 h frame were refused as RESULT_TOO_LARGE for frontend (116114 tokens) and currency (62119 tokens), and even a limit-50 30-minute frontend search was refused (116113 tokens); trace evidence is consequently a small, explicitly incomplete sample (limit 2-5 over 10-30 minute slices), not a complete per-service trace census. Within those limits I obtained: whole-frame per-service span-count increases for 15 of the 17 authorized services (none returned for kafka or image-provider); whole-frame REST/gRPC counters; whole-frame p95 latency for four services; and 18 sampled traces across 6 services covering 15 service identities. No error-tagged span appeared in any sampled trace, and the only ERROR-tagged metric series (frontend, frontend-proxy, load-generator, payment) each returned 0 over the frame; error status for the other services is unknown, not zero. Several distinct services returned bit-identical whole-frame values, which weakens per-service comparison of those counts. Conclusion is partial: useful per-service observations exist, but the complete 24 h x 15 s x 50-trace survey requested is not achievable with these tools, and no defect could be demonstrated or excluded.",
+  "claims": [
+   {
+    "kind": "fact",
+    "text": "Whole-frame (2026-09-30T10:24:08Z to 2026-10-01T10:24:08Z) increase of traces_span_metrics_calls_total returned per service/status: accounting 3.427507729231077, ad 6.855015458462154, cart 119.9627705230877, checkout 47.98510820923508, currency 10.282523187693231 (status STATUS_CODE_OK), email 13.710030916924309, flagd 26.670061833848617, fraud-detection 6.855015458462154, frontend 441.5760125293999 (STATUS_CODE_UNSET) and 0 (STATUS_CODE_ERROR), frontend-proxy 191.94043283694032 and 0, load-generator 97.6839702830857 and 0, payment 6.855015458462154 and 0, product-catalog 132.422801440012, quote 10.282523187693231, recommendation 38.130092750772924, shipping 10.282523187693231. No series was returned for image-provider or kafka (unknown, not zero).",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Only four services returned a STATUS_CODE_ERROR-tagged span series (frontend, frontend-proxy, load-generator, payment), and each returned the single value 0 in the whole-frame evaluation; the same four series returned 0 in the separate whole-frame 300-second-step evaluation. No other authorized service returned an ERROR-tagged series, so their error counts are unknown rather than zero.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef",
+     "21045912-0ca1-41b6-8953-e492043ea3af-t2:0a4a5d4d-a83c-4526-b3ec-c32f6922388e"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame increase of rpc_server_duration_milliseconds_count by rpc_grpc_status_code returned only the code \"0\" series: ad 3.385878078858781, checkout 3.4233859206107127, otelcol-contrib 546.2718598272767, product-catalog 132.82606920230674. No non-zero gRPC status code series was returned by this view for any service.",
+    "evidence_ids": [
+     "8072fcc8-5691-4705-a2b1-3041c6d49f98-t0:85f60314-10ba-45da-84b8-8ac10cce5fb9"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame increase of http_server_request_duration_seconds_count by service and http_response_status_code returned a single series: cart, http_response_status_code 200, value 40.945694569456954. No other service or response-code series was returned by that view.",
+    "evidence_ids": [
+     "8072fcc8-5691-4705-a2b1-3041c6d49f98-t1:1a624456-9b29-4442-860b-3032acbb1b54"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame increase of rpc_client_duration_milliseconds_count returned only four service names: ad 0, checkout 34.23378225215014, fraud-detection 0, otelcol-contrib 220.17741276986817. Client-side RPC instrumentation is thus absent for the other authorized services in this view (unknown, not zero).",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t1:94bbc250-ca85-4f01-a184-222ea7edc79b"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "The metrics view returned exactly one value per series at the query-window end for every step tried (15 s, 300 s, 86400 s), and for the cart span series the value returned for a 900 s range selector over the 15-minute window 10:09:08Z-10:24:08Z was 119.9627705230877 - identical to the 86400 s whole-frame value for the same series. The returned single value therefore cannot be attributed to the requested 900 s (or 15 s) interval, and no multi-point time series is available.",
+    "evidence_ids": [
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3",
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Frontend trace sample (window 2026-10-01T09:54:08Z-10:24:08Z, limit 5, 85 spans shown, 0 error rows across 14 visible service identities: cart, checkout, currency, email, flagd, frontend, frontend-proxy, load-generator, payment, product-catalog, quote, shipping) comprised traces c69e64a971b23967adc7803c90f637ed, 78798c8e7dfe8deb3ecb778f7994cc0d, 73426d8b757d29f372958e58baf553fc, a0df60ab28f54fbb9d0a9cd7654eac8c and 8f5c6b835c0efbad1e4acd1019a45fee. The view is explicitly incomplete (backend returned as many traces as requested; more may exist).",
+    "evidence_ids": [
+     "21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "ad trace sample (window 2026-10-01T09:54:08Z-10:24:08Z, limit 5, 62 spans, 0 error rows): traces 3a7482a2273f88feaa6d7bb1dad9dbac, 57d234da2bdb35d94d00102d372afda2, 21a4a2660305da2fae1afe96a670d52e, 96872fbcccf5541df6623f5b830de870, 839a8990d1f6cb8f2fe247870b27ee38. Visible ad server spans oteldemo.AdService/GetAds 2608-22600 us (all rpc.grpc.status_code 0) and ad child spans getAdsByCategory/getRandomAds 63-11993 us (not_recorded); the matching frontend client spans grpc.oteldemo.AdService/GetAds measured 5660-34489 us. View is explicitly incomplete.",
+    "evidence_ids": [
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "recommendation trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 3, 57 spans, 0 error rows): traces 588ca80ac89f15f5a2697defe11cf7af, 0b723a0e1906c1cc2ea6e396e7a7174f, d987b7055094efe4002bf336047203f2. Visible recommendation spans /oteldemo.RecommendationService/ListRecommendations 1204-3867 us and /oteldemo.ProductCatalogService/ListProducts 735-1887 us (rpc.grpc.status_code 0); corresponding product-catalog server spans measured 11-247 us. View is explicitly incomplete.",
+    "evidence_ids": [
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t0:6dc002cd-ff44-413c-8d7f-12fac13636fa"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "fraud-detection trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 3, 6 spans, 0 error rows): traces a8ec6678db4623bbf3d80dd4dc37ec5f, 6710011bb49b1a1a1b82e5a2ca7936b0, dc5097f6646759078c8c94ec5dd2c242. Visible spans: \"orders receive\" 4710, 62333 and 73974 us; \"orders process\" 2541, 3472 and 4448 us; all status not_recorded. The \"orders process\" spans carry FOLLOWS_FROM references to spans in other trace ids (for example c69e64a971b23967adc7803c90f637ed), so their upstream chain is not visible in this sample.",
+    "evidence_ids": [
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "accounting trace sample (window 2026-10-01T10:14:08Z-10:24:08Z, limit 2, 2 spans, 0 error rows): traces f5273aad3136f3912693a68816828e29 and ccd1bcfce0136e2ac7293dbbf27c6082, each a single \"orders receive\" span of 74488 us and 11084 us respectively, status not_recorded, with FOLLOWS_FROM parents in other trace ids.",
+    "evidence_ids": [
+     "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame p95 latency derived from one evaluation of increase(rpc_server_duration_milliseconds_bucket[86400s]) over the whole authorized window: ad 23.693006570144437 ms, checkout 48.74999999999999 ms, otelcol-contrib 4.758711250937293 ms, product-catalog 4.812276459568965 ms. Only these four services returned a server-side quantile.",
+    "evidence_ids": [
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t1:00b3c71c-360f-46a3-8d51-a8be98dbdccf"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Whole-frame p95 latency derived from one evaluation of increase(rpc_client_duration_milliseconds_bucket[86400s]): checkout 9 ms, otelcol-contrib 4.938118811881187 ms, while ad and fraud-detection both returned NaN (quantile not computable from the returned buckets).",
+    "evidence_ids": [
+     "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t2:17cf4bbd-96f3-442a-a56c-5a4d071e2524"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "fact",
+    "text": "Distinct services returned bit-identical whole-frame values for the same metric: ad, fraud-detection and payment all returned 6.855015458462154, and currency, quote and shipping all returned 10.282523187693231 (accounting returned 3.427507729231077, exactly half of the first group's value). This is an observation about the returned data, not about real traffic volume.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "The spread in fraud-detection's sampled spans (\"orders receive\" 4710/62333/73974 us versus \"orders process\" 2541/3472/4448 us) is more consistent with waiting on an upstream/queue delivery than with costly in-process work; the sample is 3 spans in a 10-minute slice and cannot establish a sustained condition.",
+    "evidence_ids": [
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "accounting's two sampled \"orders receive\" spans (11084 us and 74488 us) show a similarly wide spread to fraud-detection's receive spans, which could indicate the same shared upstream path; two spans cannot support a rate, distribution or trend claim.",
+    "evidence_ids": [
+     "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb",
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "hypothesis",
+    "text": "Because several distinct services returned identical whole-frame values for the same metric, per-service comparisons of those counts in this environment may reflect duplicated or synthetic series rather than independent per-service activity; this weakens any ranking of services by error or call volume from these figures.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "The claim that the returned per-interval values reflect the requested interval is contradicted by the identical cart values for a 900 s selector over 15 minutes and a 86400 s selector over 24 hours; consequently no error-count-per-interval or latency-per-interval series can be derived, and any trend statement would be unsupported.",
+    "evidence_ids": [
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3",
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "counter_evidence",
+    "text": "The four ERROR-tagged series that exist (frontend, frontend-proxy, load-generator, payment) each returned 0 over the frame, and no sampled span in any of the 18 sampled traces carried an error status, which runs counter to a fleet-wide elevated error condition during the frame - while not excluding brief or unscraped error bursts.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef",
+     "21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a",
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de",
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t0:6dc002cd-ff44-413c-8d7f-12fac13636fa",
+     "70baf497-d083-4136-8e1b-4fe0f17d728f-t1:17576883-0f1d-4f29-b2c1-3a334303c7ab",
+     "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t0:be330276-e818-46fb-9c3b-7b2db24ac0eb"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Rejected as unsupported: that any authorized service shows degraded latency during the frame. No baseline window outside the authorized frame was queried, no multi-point latency series exists in the returned views, and the only latency figures are single whole-frame quantile estimates (ad 23.69 ms, checkout 48.75 ms, otelcol-contrib 4.76 ms, product-catalog 4.81 ms server-side; checkout 9 ms, otelcol-contrib 4.94 ms client-side, with ad and fraud-detection NaN); none of these can establish a change over time.",
+    "evidence_ids": [
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t1:00b3c71c-360f-46a3-8d51-a8be98dbdccf",
+     "b5a05ba3-063d-440f-a7a2-a50fa01dc301-t2:17cf4bbd-96f3-442a-a56c-5a4d071e2524",
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "rejected_hypothesis",
+    "text": "Rejected as unsupported: that frontend, frontend-proxy, load-generator or payment were in an elevated error state during the frame. Their ERROR-tagged series returned 0 in both the whole-frame and the 300-second-step views, and none of the 18 sampled traces contained an error-tagged span.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef",
+     "21045912-0ca1-41b6-8953-e492043ea3af-t2:0a4a5d4d-a83c-4526-b3ec-c32f6922388e",
+     "21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "recommendation",
+    "text": "Treat the per-service whole-frame counts in this run as coarse, unverifiable per-service totals: because several services returned identical values and the view collapses to one value per series, any service ranking or per-interval error/latency analysis needs a metrics source that returns genuine multi-point series before conclusions are drawn.",
+    "evidence_ids": [
+     "ec1dcb19-73c0-45be-876d-81e37713f0cf-t0:55a3b0f1-6cec-472d-acb1-1cd1a91b85ef",
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t0:0062f7f9-72ab-4ff3-9de2-c99946e7f5f3"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   },
+   {
+    "kind": "recommendation",
+    "text": "If per-service trace coverage is required, reproduce it as many small searches (limit 2-5 per 10-30 minute slice, as in the successful calls here) rather than limit-50 whole-frame searches, which were refused; kafka and image-provider additionally returned no traces and would need a wider window to distinguish 'no calls' from 'no instrumentation'.",
+    "evidence_ids": [
+     "21045912-0ca1-41b6-8953-e492043ea3af-t0:a62c3d5c-1519-4e2d-abdd-33de8909216a",
+     "f7066412-9bc8-4f1c-a998-bd4049d9c220-t2:925cfdc1-d6f5-49e8-9d4b-cedc27c158de"
+    ],
+    "target_refs": [
+     "m0-otel-20260909"
+    ],
+    "time_scope_ref": "policy-window-1"
+   }
+  ],
+  "gaps": [
+   "A whole-frame 15-second-step query for the span counter (increase[15s], step 15 over 2026-09-30T10:24:08Z-2026-10-01T10:24:08Z) returned status no_data with zero series (evidence 2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t1:96cb71bb-e3bf-450c-ae0f-a7b2e00277a3, which is not citable as a fact); no 15-second-resolution error or latency series was obtainable anywhere in the run, so the finest requested resolution could not be surveyed.",
+   "No error-rate series exists for 13 of the 17 authorized services: only frontend, frontend-proxy, load-generator and payment returned an ERROR-tagged series, so error status for accounting, ad, cart, checkout, currency, email, fraud-detection, image-provider, kafka, product-catalog, quote, recommendation and shipping is unknown, not zero.",
+   "The requested limit-50 per-service trace search was refused as RESULT_TOO_LARGE for frontend over the 24 h frame (view ec1dcb19-73c0-45be-876d-81e37713f0cf-t2, error status), for frontend over 30 minutes (view 8072fcc8-5691-4705-a2b1-3041c6d49f98-t2, error status) and for currency over the 24 h frame (view 21045912-0ca1-41b6-8953-e492043ea3af-t1, error status); these views are not citable and no complete trace census exists, so 'no trace is missed' cannot be asserted for any service.",
+   "Trace coverage is a biased sample: 5 traces for frontend and ad, 3 for recommendation and fraud-detection, 2 for accounting, all in 10-30 minute slices at the end of the frame; the other ~23 hours of the frame have no trace evidence, and no dedicated per-service trace search was run for cart, checkout, currency, email, flagd, frontend-proxy, load-generator, payment, product-catalog, quote or shipping (they appear only as spans inside other services' traces).",
+   "kafka and image-provider returned no traces for 2026-10-01T10:14:08Z-10:24:08Z (views b5a05ba3-063d-440f-a7a2-a50fa01dc301-t1 and 2825a17b-ddf0-4f48-adcb-a7e8dab96e57-t0, both status no_data, not citable as facts), and neither returned a series in the whole-frame span-count view; whether they emit telemetry or made no calls is unknown.",
+   "No baseline period outside the authorized 24-hour window was queried and none is permitted by the delivered time policy, so no latency or error trend, regression or recovery can be assessed; all latency figures in this report are single whole-frame or single-sample measurements.",
+   "Latency label coverage is partial: server-side quantiles were returned for only ad, checkout, otelcol-contrib and product-catalog, and client-side only for ad, checkout, fraud-detection and otelcol-contrib (ad and fraud-detection NaN), so most authorized services have no metric-derived latency figure at all."
+  ],
+  "next_steps": [
+   "Human follow-up: confirm with the observability owner whether a backend capable of returning multi-point range series is available, since the current metrics view collapses to one value per series and cannot yield interval error counts or latency trends.",
+   "Human follow-up: if interval-level analysis is genuinely required, re-run the survey with per-service trace searches sized to fit the token budget (small limits over many short slices) and record per-search coverage, rather than a single limit-50 whole-frame search.",
+   "Human follow-up: verify the apparent duplication of whole-frame values across distinct services (ad/fraud-detection/payment identical; currency/quote/shipping identical) with the telemetry pipeline owner before using these counts for any service comparison or alerting.",
+   "Human follow-up: determine whether kafka and image-provider are expected to emit spans at all; their absence of data cannot be read as absence of activity.",
+   "Human follow-up: if an error or latency condition is suspected for any service, obtain a comparable baseline window and a data source with true sub-window resolution before drawing conclusions; no change, remediation or recovery certification is authorized by this investigation."
+  ]
+ },
+ "conclusion_other_fields": {
+  "rounds": 8,
+  "handoff": false,
+  "segment": "ctx0",
+  "execution": "completed",
+  "calibration": 1.1719309328279637,
+  "compactions": 0,
+  "source_step_id": "86ada4e9-67f3-42ae-9a72-805d65f2779d",
+  "handoff_reasons": [],
+  "prompt_revision": "prompt-replay-candidate-1d773ffe7bc2",
+  "question_sha256": "f61e66c3a33b4e6ccd308abc2c9eb7e859c287372069ed1ebedd6a7dca756be5",
+  "model_seconds_used": 109.80290745799994,
+  "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+  "model_requests_used": 8,
+  "report_content_sha256": "c1eda0f25f87d0b89aac6a7afeb0be1dd9c39a59d8a09cf65a1cf54c331b19ce",
+  "report_schema_version": "m0-report-v2"
+ }
+}
