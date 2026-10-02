@@ -105,6 +105,7 @@ def _assert_list_control(html, incident, expected):
     assert "Control" in headers and "State" not in headers
     assert [h for h in headers if h != "Control"] == [
         "Incident",
+        "Run",
         "Lifecycle",
         "Generation",
         "Concluded",
@@ -376,10 +377,7 @@ def test_list_control_column_is_per_incident():
     assert list_row(html, ids["done"])["Control"] == ""
     headers = list_headers(html)
     assert "Control" in headers and "State" not in headers
-    # Only the column heading remains; the list shows no Run status column.
-    assert not IN_PROGRESS_WORDS & {
-        v.lower() for i in ids.values() for v in list_row(html, i).values()
-    }
+    # Run status is now a separate projection; Control remains independent.
 
 
 # -- read-only projection ------------------------------------------------------

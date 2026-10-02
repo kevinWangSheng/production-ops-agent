@@ -1,0 +1,194 @@
+{
+  "eligible_count": 0,
+  "hash_or_summary_only_count": 1242,
+  "rows": [],
+  "hash_or_summary_only_sample": [
+    {
+      "source": "docs/evidence/m0-real-investigation/m0-06-b6-ledger.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 331,
+      "request_sha256": null,
+      "request_bytes": 537,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/m0-06-b6-ledger.json",
+      "object_path": "$.attempts[1]",
+      "prompt_tokens": 272,
+      "request_sha256": null,
+      "request_bytes": 1210,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-candidate/result-business.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 1416,
+      "request_sha256": null,
+      "request_bytes": 5655,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-candidate/result-business.json",
+      "object_path": "$.attempts[1]",
+      "prompt_tokens": 8395,
+      "request_sha256": null,
+      "request_bytes": 25540,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-upstream/attempts.json",
+      "object_path": "$[0]",
+      "prompt_tokens": 2916,
+      "request_sha256": null,
+      "request_bytes": 12158,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-upstream/attempts.json",
+      "object_path": "$[1]",
+      "prompt_tokens": 10372,
+      "request_sha256": null,
+      "request_bytes": 33407,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-upstream/result-business.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 2916,
+      "request_sha256": null,
+      "request_bytes": 12158,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-fault-upstream/result-business.json",
+      "object_path": "$.attempts[1]",
+      "prompt_tokens": 10372,
+      "request_sha256": null,
+      "request_bytes": 33407,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-candidate-retry2/result-business.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 1416,
+      "request_sha256": null,
+      "request_bytes": 5655,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-candidate-retry2/result-business.json",
+      "object_path": "$.attempts[1]",
+      "prompt_tokens": 8273,
+      "request_sha256": null,
+      "request_bytes": 25303,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-upstream/attempts.json",
+      "object_path": "$[0]",
+      "prompt_tokens": 2916,
+      "request_sha256": null,
+      "request_bytes": 12158,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-upstream/attempts.json",
+      "object_path": "$[1]",
+      "prompt_tokens": 10074,
+      "request_sha256": null,
+      "request_bytes": 32432,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-upstream/result-business.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 2916,
+      "request_sha256": null,
+      "request_bytes": 12158,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-upstream-runs/m004-normal-upstream/result-business.json",
+      "object_path": "$.attempts[1]",
+      "prompt_tokens": 10074,
+      "request_sha256": null,
+      "request_bytes": 32432,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m0-real-investigation/round-07-wp23-real-ledger.json",
+      "object_path": "$.attempts[0]",
+      "prompt_tokens": 331,
+      "request_sha256": null,
+      "request_bytes": 537,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m1-01-alignment-b-effect/cart-fault/ledger.json",
+      "object_path": "$.steps[0].response",
+      "prompt_tokens": 2362,
+      "request_sha256": "252af259c83288f682ceee991756506a3c006a38f5ea98af9896bf9e52923181",
+      "request_bytes": null,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m1-01-alignment-b-effect/cart-fault/ledger.json",
+      "object_path": "$.steps[1].response",
+      "prompt_tokens": 39213,
+      "request_sha256": "e0c2ba7e94648e754dae84316a633384ba5e96fc7657494dbbf674262170987d",
+      "request_bytes": null,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m1-01-alignment-b-effect/cart-fault/ledger.json",
+      "object_path": "$.steps[2].response",
+      "prompt_tokens": 79686,
+      "request_sha256": "e8229b9fd6cf736b27b5eceaf1dedc271fc801e969e64ba21d2f187f4e6cea7d",
+      "request_bytes": null,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m1-01-alignment-b-effect/cart-fault/ledger.json",
+      "object_path": "$.steps[3].response",
+      "prompt_tokens": 82537,
+      "request_sha256": "27667e9abb7b567770b89688d73e2629d6540ed0e61f42d9f6e99bc2c31de6f7",
+      "request_bytes": null,
+      "messages_summary": null,
+      "tools_attached": null
+    },
+    {
+      "source": "docs/evidence/m1-01-alignment-b-effect/fault-1/ledger.json",
+      "object_path": "$.steps[0].response",
+      "prompt_tokens": 2363,
+      "request_sha256": "3b0dbe794bd20faf7274d203f2675be45a44583538c7247b207e06088b524c74",
+      "request_bytes": null,
+      "messages_summary": null,
+      "tools_attached": null
+    }
+  ],
+  "hash_or_summary_only_prompt_tokens": {
+    "min": 272,
+    "max": 975182,
+    "over_500k_count": 9
+  },
+  "fixed_message_overhead_fit": null,
+  "network_calls": 0
+}

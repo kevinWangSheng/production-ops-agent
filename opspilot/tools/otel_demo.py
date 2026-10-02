@@ -142,6 +142,32 @@ CREDENTIAL_REF = "otel-demo-ro"
 TRACE_PROJECTION = "otel-demo-traces-v1"
 _TIME_POLICY = "policy-window-1"
 
+SERIES_NOTE = (
+    "traces_span_metrics_calls_total counts spans of every operation of the "
+    "service (internal, client and "
+    "server spans alike), summed over the labels kept in this query; it is "
+    "not a count of requests. status_code STATUS_CODE_UNSET means the span "
+    "carried no status; it does not mean the call succeeded."
+)
+
+_CALLS_TOTAL_SELECTOR = re.compile(
+    r"(?<![A-Za-z0-9_:])traces_span_metrics_calls_total(?![A-Za-z0-9_:])"
+)
+# PromQL string literals: double- or single-quoted with escapes, or raw
+# backtick strings without escapes.
+_PROMQL_QUOTED_STRING = re.compile(
+    r'"(?:\\.|[^"\\])*"' r"|'(?:\\.|[^'\\])*'" r"|`[^`]*`"
+)
+
+
+def _has_calls_total_selector(expr: str) -> bool:
+    """Match the calls-total metric outside PromQL quoted strings."""
+    without_strings = _PROMQL_QUOTED_STRING.sub('""', expr)
+    # A ``#`` outside a string starts a comment that runs to end of line.
+    without_comments = re.sub(r"#[^\n]*", "", without_strings)
+    return _CALLS_TOTAL_SELECTOR.search(without_comments) is not None
+
+
 #: The services the pinned demo emits telemetry for (M0 ``read_proxy.py``).
 SERVICES: tuple[str, ...] = (
     "accounting",
@@ -990,6 +1016,11 @@ class OtelDemoTransport:
             # B2 review disposition P1: the view must record the window
             # actually queried, not the wider authorized frame.
             query_window=window,
+            view_fields=(
+                {"series_note": SERIES_NOTE}
+                if _has_calls_total_selector(expr)
+                else None
+            ),
         )
 
     # -- traces -------------------------------------------------------------

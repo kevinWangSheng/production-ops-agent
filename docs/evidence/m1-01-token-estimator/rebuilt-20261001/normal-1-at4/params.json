@@ -1,0 +1,7 @@
+{
+ "model": "deepseek-flash",
+ "json_mode": false,
+ "max_tokens": 65536,
+ "timeout_seconds": 360.0,
+ "mode": "self_terminated"
+}
