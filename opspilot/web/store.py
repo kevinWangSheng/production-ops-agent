@@ -34,6 +34,7 @@ class IncidentSummary:
     current_run_id: UUID | None
     concluded: bool
     created_at: datetime | None
+    run_state: str | None = None
 
     @property
     def control(self) -> str | None:
@@ -458,7 +459,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT incident_id,intake_key,state,lifecycle,control_generation,current_run_id,conclusion IS NOT NULL AS concluded,created_at FROM opspilot_incidents ORDER BY created_at DESC, incident_id LIMIT %s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
@@ -466,7 +467,7 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT incident_id,intake_key,state,lifecycle,control_generation,current_run_id,conclusion IS NOT NULL AS concluded,created_at FROM opspilot_incidents WHERE incident_id=%s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
@@ -512,4 +513,5 @@ def _summary(row: Mapping[str, Any]) -> IncidentSummary:
         current_run_id=row["current_run_id"],
         concluded=bool(row["concluded"]),
         created_at=row["created_at"],
+        run_state=row["run_state"],
     )
