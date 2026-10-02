@@ -41,9 +41,9 @@
 - A：用 `m1-01-e-class-attribution/scripts/rebuild_offline.py` 重建 6 条请求并与同一 ledger 的 `usage.prompt_tokens` 配对；6 条第 1 轮输入快照哈希校验通过；整条请求哈希因导出时历史 reasoning 被替换为占位符而全部不匹配（占 prompt 0.8%–2.9%），均在证据表标注。
 - B：使用项目既有 `M0_ENV_FILE` 读取和 `deepseek-flash`，`max_tokens=1`，共 9 次（新增 6 次，未重复中断前 3 次；其中 `prior-live-03` 重复了 `prior-live-01` 的请求，分析去重为 8 条），覆盖约 1k/10k/100k/300k/600k/900k，带 tools 与不带各有样本。
 - 证据：[README](../evidence/m1-01-token-estimator/README.md)、[`reconciliation.json`](../evidence/m1-01-token-estimator/reconciliation.json)。prompt 合计 3,023,328，completion 合计 9。
-- 结果（lead 按原始 JSON 复算）：A 的 tokenizer/prompt 为 1.12–1.16（+12%–+16%），旧估算/prompt 为 0.81–0.86；B 的 tokenizer/prompt 为 1.04–1.26，均超出 ±10%。全体中位拟合每消息开销为 -1,794.7 token（去重后 14 条），说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
+- 结果（lead 按原始 JSON 复算）：A 的 tokenizer/prompt 为 1.12–1.16（+12%–+16%），旧估算/prompt 为 0.81–0.86；B 的 tokenizer/prompt 为 1.04–1.26（6 次新调用 1.04–1.07 在 ±10% 内，2 条早期请求约 1.26 超出）。全体中位拟合每消息开销为 -1,794.7 token（去重后 14 条），说明当前规范 JSON 计数与供应商序列化未对齐，不能把该值作为产品开销。
 - 执行者初稿的 A 偏差数字与「2 条请求哈希精确匹配」均有误，已按原始 JSON 更正为上两行。
 
 ## 结论与用户决定（2026-10-01）
 
-旧估算少算约 11–20%（不是 1.6 倍；A 为带推理占位符的重建，请求哈希均不匹配，影响 ≤0.03），首个响应后的校准大部分补齐（不同请求形态间仍可能残余约 6%，见证据 README）；改用 tokenizer 需先对齐供应商消息序列化，否则多算 12–26%。用户选择不改代码、记录收尾；合同第二步取消，不写合同测试。局限：第一步要求的「至少 10 个真实 Run 请求」未达到（可重建的真实 Run 请求只有 6 条，另以 9 次直连 DeepSeek 的合成请求补充）；该门槛原用于决定是否进入第二步，第二步取消后不影响结论，如需改代码须先补足。详见[证据 README](../evidence/m1-01-token-estimator/README.md)「结论」。
+旧估算少算约 11–20%（不是 1.6 倍；A 为带推理占位符的重建，请求哈希均不匹配，影响 ≤0.03），首个响应后的校准大部分补齐（不同请求形态间仍可能残余约 6%，见证据 README）；改用 tokenizer 需先对齐供应商消息序列化，否则多算（真实 Run 重建 12–16%，合成请求 4–26%）。用户选择不改代码、记录收尾；合同第二步取消，不写合同测试。局限：第一步要求的「至少 10 个真实 Run 请求」未达到（可重建的真实 Run 请求只有 6 条，另以 9 次直连 DeepSeek 的合成请求补充）；该门槛原用于决定是否进入第二步，第二步取消后不影响结论，如需改代码须先补足。详见[证据 README](../evidence/m1-01-token-estimator/README.md)「结论」。
