@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident fc977581-84fc-50c8-bc46-6bc4a6ba4b93</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>fc977581-84fc-50c8-bc46-6bc4a6ba4b93</code></h1>
+<p>
+  lifecycle <span class="badge">open</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">0</strong>
+  · run <code>8d4f0927-892d-537b-af91-9c6dfaca8a07</code> <span class="badge" id="run-state">running</span>
+  · epoch 1
+  · budget 5 spent / 1 reserved / 0 unknown of 100
+  · deadline 2026-10-01 05:43:41.259032-07:00
+</p>
+
+<p>Target request: <code>m0-otel-20260909</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the authorized window, determine whether checkout and payment show failures or elevated latency, cite trace ids, and return a json investigation report.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 0. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="cancel-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="correct-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="follow_up-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="new_run-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="pause-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="resume-0-69bee42eef6f4e1fb987d303807f4cff">
+  
+  <button type="submit">resume</button>
+</form>
+
+
+<h2>Report</h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  </p>
+  
+
+
+
+
+
+
+<h2>Steps</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>0</td>
+    <td><code>ctx0:round-1</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/24406f33-6d67-4c3e-a8ee-a4bd1089380d-t0:ab98a50d-4ba6-4b0c-9358-c5a213b4cd60"><code>24406f33-6d67-4c3e-a8ee-a4bd1089380d-t0:ab98a50d-4ba6-4b0c-9358-c5a213b4cd60</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/24406f33-6d67-4c3e-a8ee-a4bd1089380d-t1:1a87faf1-f697-4e4c-9863-79ca0302d69f"><code>24406f33-6d67-4c3e-a8ee-a4bd1089380d-t1:1a87faf1-f697-4e4c-9863-79ca0302d69f</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/24406f33-6d67-4c3e-a8ee-a4bd1089380d-t2:b2fd950c-ecad-400a-90a4-559ec474556c"><code>24406f33-6d67-4c3e-a8ee-a4bd1089380d-t2:b2fd950c-ecad-400a-90a4-559ec474556c</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">error</span>
+        
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>1</td>
+    <td><code>ctx0:round-2</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/8fed88aa-4e45-4281-be1f-ee0488ff5a55-t0:d81ef273-08da-4d3b-a193-0732365ad01a"><code>8fed88aa-4e45-4281-be1f-ee0488ff5a55-t0:d81ef273-08da-4d3b-a193-0732365ad01a</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">no_data</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/8fed88aa-4e45-4281-be1f-ee0488ff5a55-t1:d8f661ad-223f-4783-b261-dd840f2d0616"><code>8fed88aa-4e45-4281-be1f-ee0488ff5a55-t1:d8f661ad-223f-4783-b261-dd840f2d0616</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/8fed88aa-4e45-4281-be1f-ee0488ff5a55-t2:1a60cb33-170d-4d7a-b179-a25ee232ae69"><code>8fed88aa-4e45-4281-be1f-ee0488ff5a55-t2:1a60cb33-170d-4d7a-b179-a25ee232ae69</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">error</span>
+        
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2</td>
+    <td><code>ctx0:round-3</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/62341b89-a8af-4a7d-be65-12270b36793c-t0:9318991f-677a-40ad-a953-96bae2a6bdd2"><code>62341b89-a8af-4a7d-be65-12270b36793c-t0:9318991f-677a-40ad-a953-96bae2a6bdd2</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/62341b89-a8af-4a7d-be65-12270b36793c-t1:db176b36-3da1-438e-a494-adc9d25e410f"><code>62341b89-a8af-4a7d-be65-12270b36793c-t1:db176b36-3da1-438e-a494-adc9d25e410f</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/62341b89-a8af-4a7d-be65-12270b36793c-t2:251bdd1d-9a18-48e8-9f43-07f13cb36be6"><code>62341b89-a8af-4a7d-be65-12270b36793c-t2:251bdd1d-9a18-48e8-9f43-07f13cb36be6</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/62341b89-a8af-4a7d-be65-12270b36793c-t3:ccf5c490-b500-4fed-adeb-c85d89786b15"><code>62341b89-a8af-4a7d-be65-12270b36793c-t3:ccf5c490-b500-4fed-adeb-c85d89786b15</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>3</td>
+    <td><code>ctx0:round-4</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      4 / 4
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/181f09ef-39c6-4139-976d-7ba75766acc7-t0:0712c951-b6a0-4ae3-8d0e-699d98ed70e2"><code>181f09ef-39c6-4139-976d-7ba75766acc7-t0:0712c951-b6a0-4ae3-8d0e-699d98ed70e2</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/181f09ef-39c6-4139-976d-7ba75766acc7-t1:72a5e196-d19c-4123-a558-7393a0331d74"><code>181f09ef-39c6-4139-976d-7ba75766acc7-t1:72a5e196-d19c-4123-a558-7393a0331d74</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/181f09ef-39c6-4139-976d-7ba75766acc7-t2:a17922af-2f5b-4629-b780-1a3123bece1f"><code>181f09ef-39c6-4139-976d-7ba75766acc7-t2:a17922af-2f5b-4629-b780-1a3123bece1f</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">no_data</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/181f09ef-39c6-4139-976d-7ba75766acc7-t3:72bbccdf-ff46-4838-85df-ffb431fc4b40"><code>181f09ef-39c6-4139-976d-7ba75766acc7-t3:72bbccdf-ff46-4838-85df-ffb431fc4b40</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>4</td>
+    <td><code>ctx0:round-5</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      1 / 1
+      
+        <br><code>traces_search</code> → <span class="badge">no_data</span>
+        <a href="/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/evidence/a6249032-5748-40fc-8ae6-7e39bbe283ee-t0:540d68c9-f296-4017-9537-58d704448406"><code>a6249032-5748-40fc-8ae6-7e39bbe283ee-t0:540d68c9-f296-4017-9537-58d704448406</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+
+<h2>Human decisions</h2>
+<p class="muted">None recorded.</p>
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 24)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the authorized window, determine whether checkout and payment show failures or elevated latency, cite trace ids, and return a json investigation report.", "received_at": "2026-10-01T03:43:41.253747-07:00", "request_id": "3a91c009-201a-47ab-8ab6-c135f64a257a", "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "target_id": "m0-otel-20260909"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>run_claimed</strong> <span class="muted">{"control_generation": 0, "epoch": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07"}</span></li>
+  
+  <li data-sequence="3"><code>3</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-1", "planned_tools": 4, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "step_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d"}</span></li>
+  
+  <li data-sequence="4"><code>4</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d-t0:ab98a50d-4ba6-4b0c-9358-c5a213b4cd60", "ordinal": 0, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="5"><code>5</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d-t1:1a87faf1-f697-4e4c-9863-79ca0302d69f", "ordinal": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="6"><code>6</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d-t2:b2fd950c-ecad-400a-90a4-559ec474556c", "ordinal": 2, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="7"><code>7</code> <strong>tool_committed</strong> <span class="muted">{"adopted": null, "evidence_id": null, "ordinal": 3, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "error", "step_id": "24406f33-6d67-4c3e-a8ee-a4bd1089380d", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="8"><code>8</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-2", "planned_tools": 4, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "step_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55"}</span></li>
+  
+  <li data-sequence="9"><code>9</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55-t0:d81ef273-08da-4d3b-a193-0732365ad01a", "ordinal": 0, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="10"><code>10</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55-t1:d8f661ad-223f-4783-b261-dd840f2d0616", "ordinal": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "no_data", "step_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="11"><code>11</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55-t2:1a60cb33-170d-4d7a-b179-a25ee232ae69", "ordinal": 2, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="12"><code>12</code> <strong>tool_committed</strong> <span class="muted">{"adopted": null, "evidence_id": null, "ordinal": 3, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "error", "step_id": "8fed88aa-4e45-4281-be1f-ee0488ff5a55", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="13"><code>13</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-3", "planned_tools": 4, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "step_id": "62341b89-a8af-4a7d-be65-12270b36793c"}</span></li>
+  
+  <li data-sequence="14"><code>14</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "62341b89-a8af-4a7d-be65-12270b36793c-t0:9318991f-677a-40ad-a953-96bae2a6bdd2", "ordinal": 0, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "62341b89-a8af-4a7d-be65-12270b36793c", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="15"><code>15</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "62341b89-a8af-4a7d-be65-12270b36793c-t1:db176b36-3da1-438e-a494-adc9d25e410f", "ordinal": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "62341b89-a8af-4a7d-be65-12270b36793c", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="16"><code>16</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "62341b89-a8af-4a7d-be65-12270b36793c-t2:251bdd1d-9a18-48e8-9f43-07f13cb36be6", "ordinal": 2, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "62341b89-a8af-4a7d-be65-12270b36793c", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="17"><code>17</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "62341b89-a8af-4a7d-be65-12270b36793c-t3:ccf5c490-b500-4fed-adeb-c85d89786b15", "ordinal": 3, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "62341b89-a8af-4a7d-be65-12270b36793c", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="18"><code>18</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-4", "planned_tools": 4, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "step_id": "181f09ef-39c6-4139-976d-7ba75766acc7"}</span></li>
+  
+  <li data-sequence="19"><code>19</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "181f09ef-39c6-4139-976d-7ba75766acc7-t0:0712c951-b6a0-4ae3-8d0e-699d98ed70e2", "ordinal": 0, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "181f09ef-39c6-4139-976d-7ba75766acc7", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="20"><code>20</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "181f09ef-39c6-4139-976d-7ba75766acc7-t1:72a5e196-d19c-4123-a558-7393a0331d74", "ordinal": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "181f09ef-39c6-4139-976d-7ba75766acc7", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="21"><code>21</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "181f09ef-39c6-4139-976d-7ba75766acc7-t2:a17922af-2f5b-4629-b780-1a3123bece1f", "ordinal": 2, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "ok", "step_id": "181f09ef-39c6-4139-976d-7ba75766acc7", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="22"><code>22</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "181f09ef-39c6-4139-976d-7ba75766acc7-t3:72bbccdf-ff46-4838-85df-ffb431fc4b40", "ordinal": 3, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "no_data", "step_id": "181f09ef-39c6-4139-976d-7ba75766acc7", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="23"><code>23</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-5", "planned_tools": 1, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "step_id": "a6249032-5748-40fc-8ae6-7e39bbe283ee"}</span></li>
+  
+  <li data-sequence="24"><code>24</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "a6249032-5748-40fc-8ae6-7e39bbe283ee-t0:540d68c9-f296-4017-9537-58d704448406", "ordinal": 0, "run_id": "8d4f0927-892d-537b-af91-9c6dfaca8a07", "status": "no_data", "step_id": "a6249032-5748-40fc-8ae6-7e39bbe283ee", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 24;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/fc977581-84fc-50c8-bc46-6bc4a6ba4b93/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

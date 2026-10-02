@@ -175,11 +175,11 @@ def test_projection_revision_is_v6():
     recorded ``m1-01-tool-view-v4``; v6 (M1-01 view metering) stopped
     truncating rows and refuses an over-limit view instead."""
     assert PROJECTION_REVISION != PRE_FIX_PROJECTION_REVISION
-    assert PROJECTION_REVISION == "m1-01-tool-view-v6"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v7"
     executor, transport, _, _ = build()
     transport.response = TransportResponse(body=body([]))
     view = executor.execute(request()).model_view
-    assert view["projection_revision"] == "m1-01-tool-view-v6"
+    assert view["projection_revision"] == "m1-01-tool-view-v7"
 
 
 def test_view_stub_keeps_citable_as_fact():
