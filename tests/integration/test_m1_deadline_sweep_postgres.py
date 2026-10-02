@@ -273,7 +273,9 @@ def test_the_runner_sweeps_before_it_claims_and_announces_the_timeout_once():
     # A further sweep parks nothing and announces nothing; the announcement
     # is keyed by run so an announcer racing this one cannot duplicate it.
     assert sweep_expired(store, log, incident_id=incident) == ()
-    assert announce_deadline_exceeded(log, incident, run) == handoffs_seq(log, incident)
+    assert announce_deadline_exceeded(log, incident, run, 0) == handoffs_seq(
+        log, incident
+    )
     assert len(_handoffs(log, incident)) == 1
 
 

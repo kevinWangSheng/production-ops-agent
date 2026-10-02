@@ -489,6 +489,12 @@ class MemoryIncidentStore:
                 break
         return tuple(parked)
 
+    def sweep_expired_runs_with_generations(self, *, incident_id=None, limit=100):
+        return tuple(
+            (*item, int(self.incidents[item[0]]["control_generation"]))
+            for item in self.sweep_expired_runs(incident_id=incident_id, limit=limit)
+        )
+
     def abandon(self, lease):
         run = self.runs[lease.run_id]
         if (

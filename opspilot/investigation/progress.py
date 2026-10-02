@@ -105,25 +105,38 @@ def announce_handoff(
     report_sha256: str | None = None,
     evidence_ids: tuple[str, ...] = (),
     parked: bool = True,
+    control_generation: int | None = None,
 ) -> int:
     """``parked`` says whether the Run really landed in ``waiting_human``.
 
     False records what a fenced or crashed attempt saw without claiming a
     durable park: the Run row is the authority for where it is now.
     """
-    return log.append(
+    payload = {
+        "run_id": str(run_id),
+        "published": False,
+        "execution": execution,
+        "handoff": True,
+        "parked": parked,
+        "reasons": list(reasons),
+        "report_sha256": report_sha256,
+        "evidence_ids": list(evidence_ids),
+    }
+    if not parked:
+        return log.append(subject_id, "run_handoff", payload)
+    if control_generation is None:
+        raise TypeError("control_generation is required for a parked handoff")
+    payload["control_generation"] = control_generation
+    key = {"run_id": str(run_id), "parked": True}
+    if control_generation != 0:
+        key["control_generation"] = control_generation
+    payload["reconciled"] = False
+    key["reconciled"] = False
+    return log.append_once(
         subject_id,
         "run_handoff",
-        {
-            "run_id": str(run_id),
-            "published": False,
-            "execution": execution,
-            "handoff": True,
-            "parked": parked,
-            "reasons": list(reasons),
-            "report_sha256": report_sha256,
-            "evidence_ids": list(evidence_ids),
-        },
+        payload,
+        key=key,
     )
 
 
@@ -136,19 +149,27 @@ class ExpirySweeper(Protocol):
         self, *, incident_id: UUID | None = None, limit: int = 100
     ) -> tuple[tuple[UUID, UUID], ...]: ...
 
+    def sweep_expired_runs_with_generations(
+        self, *, incident_id: UUID | None = None, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID, int], ...]: ...
 
-def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID) -> int:
+
+def announce_deadline_exceeded(
+    log: ProgressLog, subject_id: UUID, run_id: UUID, control_generation: int
+) -> int:
     """The ``run_handoff`` a timeout park shows on the page, keyed by run.
 
     A sweep parks a Run at most once, and the key makes a second announcer
     of the same park (a racing sweep, a retry) a no-op instead of a
     duplicate. It is at-most-once, not exactly-once: a sweeper that dies
     between the park and this append leaves the row ``waiting_human`` with
-    no event, and nothing here repairs that -- the row cannot say *why* it
-    was parked, so a repair would have to guess between a loop handoff and
-    a timeout. The rows stay the authority (ADR-0003); the projection
-    repair is the follow-up recorded in ROADMAP.
+    no event. ``Workbench.reconcile`` repairs that projection while keeping
+    the row authoritative; absent provenance becomes unknown execution and
+    empty reasons.
     """
+    key = {"run_id": str(run_id), "parked": True}
+    if control_generation != 0:
+        key["control_generation"] = control_generation
     return log.append_once(
         subject_id,
         "run_handoff",
@@ -161,8 +182,10 @@ def announce_deadline_exceeded(log: ProgressLog, subject_id: UUID, run_id: UUID)
             "reasons": [DEADLINE_EXCEEDED],
             "report_sha256": None,
             "evidence_ids": [],
+            "reconciled": False,
+            "control_generation": control_generation,
         },
-        key={"run_id": str(run_id), "parked": True, "reasons": [DEADLINE_EXCEEDED]},
+        key={**key, "reconciled": False},
     )
 
 
@@ -175,11 +198,15 @@ def sweep_expired(
     locks); the event is a projection appended after the row committed, like
     every other announcement here. Returns what this call parked.
     """
-    parked = store.sweep_expired_runs(incident_id=incident_id)
+    parked_with_generations = store.sweep_expired_runs_with_generations(
+        incident_id=incident_id
+    )
     if log is not None:
-        for subject_id, run_id in parked:
-            announce_deadline_exceeded(log, subject_id, run_id)
-    return parked
+        for subject_id, run_id, generation in parked_with_generations:
+            announce_deadline_exceeded(log, subject_id, run_id, generation)
+    return tuple(
+        (subject_id, run_id) for subject_id, run_id, _ in parked_with_generations
+    )
 
 
 def _tool_committed_payload(

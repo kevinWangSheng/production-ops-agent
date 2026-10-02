@@ -454,6 +454,7 @@ class InvestigationRunner:
                 reasons,
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
+                control_generation=lease.control_generation,
             )
         return RunnerOutcome(
             "handed_off",

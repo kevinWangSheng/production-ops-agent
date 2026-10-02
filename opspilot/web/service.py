@@ -630,6 +630,9 @@ class Workbench:
         Sweeps the incident's Run if it is ``running`` past its deadline
         (ADR-0005 decision 2: nothing else can settle it, so a page load
         parks it as a ``DEADLINE_EXCEEDED`` handoff, announced once by run).
+        Repairs a missing parked ``run_handoff`` projection after a Run row
+        landed in ``waiting_human``; unavailable provenance is recorded as
+        unknown.
         Confirms notes the store already applied and emits a missing
         ``run_completed`` for a Run that published its conclusion but whose
         worker died before appending the event; the ledger remembers which
@@ -655,12 +658,50 @@ class Workbench:
             )
         self._reconcile_pending_notes(incident_id)
         run_id = summary.current_run_id
-        if not summary.concluded or run_id is None:
+        if run_id is None:
+            return
+        try:
+            rebuilt = self.incidents.rebuild(incident_id)
+        except PersistenceError:
+            # As on main: an unreadable row is the claim path's to report
+            # (INCONSISTENT_STATE handoff), not a reason for reconcile to fail.
+            return
+        run = rebuilt["run"]
+        if run["state"] == "waiting_human":
+            try:
+                generation = int(rebuilt["control_generation"])
+                self.events.append_once(
+                    incident_id,
+                    "run_handoff",
+                    {
+                        "run_id": str(run_id),
+                        "published": False,
+                        "execution": "unknown",
+                        "handoff": True,
+                        "parked": True,
+                        "reasons": [],
+                        "report_sha256": None,
+                        "evidence_ids": [],
+                        "reconciled": True,
+                        "control_generation": generation,
+                    },
+                    key=(
+                        {"run_id": str(run_id), "parked": True}
+                        if generation == 0
+                        else {
+                            "run_id": str(run_id),
+                            "parked": True,
+                            "control_generation": generation,
+                        }
+                    ),
+                )
+            except PersistenceError:
+                pass
+        if not summary.concluded:
             return
         if self.ledger.get("completion", str(run_id)) is not None:
             return
-        rebuilt = self.incidents.rebuild(incident_id)
-        if rebuilt["run"]["state"] != "completed":
+        if run["state"] != "completed":
             return
         # This stub can be the retained record: a page load that races the
         # worker between its publish and its append wins the run_id key, so
@@ -738,20 +779,8 @@ class Workbench:
         # next attempt owns the state and the page must not show the Run as
         # handed off (bot review, PR #44). The event stays in the list.
         runnable = run["state"] in {"queued", "running"}
-        outcome = next(
-            (
-                e
-                for kind in ("run_completed", "run_handoff")
-                for e in reversed(events)
-                if e.kind == kind
-                and e.payload.get("run_id") == str(run["run_id"])
-                and not (
-                    kind == "run_handoff"
-                    and runnable
-                    and e.payload.get("parked") is False
-                )
-            ),
-            None,
+        outcome = _select_snapshot_outcome(
+            events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
         handoff_report = None
@@ -1045,6 +1074,7 @@ class Workbench:
                 report_sha256=report_sha256,
                 evidence_ids=evidence_ids,
                 parked=parked,
+                control_generation=lease.control_generation,
             )
 
 
@@ -1140,6 +1170,47 @@ def _event_view(event: SubjectEvent) -> dict[str, Any]:
             None if event.recorded_at is None else event.recorded_at.isoformat()
         ),
     }
+
+
+def _is_original_handoff(payload: Mapping[str, Any]) -> bool:
+    # Events written before r3 have no marker and are original announcers.
+    return payload.get("reconciled") is not True
+
+
+def _select_snapshot_outcome(
+    events: tuple[SubjectEvent, ...],
+    run_id: str,
+    generation: int,
+    runnable: bool,
+) -> SubjectEvent | None:
+    """The newest ``run_completed``, else the newest eligible ``run_handoff``.
+
+    Among handoffs of the current park (the incident's generation, r3-B) an
+    original announcer's event wins over a reconcile backfill, so a backfill
+    that raced ahead never hides the real reason.
+    """
+    mine = [e for e in reversed(events) if e.payload.get("run_id") == run_id]
+    completed = next((e for e in mine if e.kind == "run_completed"), None)
+    if completed is not None:
+        return completed
+    handoffs = [
+        e
+        for e in mine
+        if e.kind == "run_handoff"
+        and not (runnable and e.payload.get("parked") is False)
+    ]
+    current = [
+        e
+        for e in handoffs
+        if e.payload.get("parked") is True
+        and e.payload.get("control_generation", 0) == generation
+    ]
+    original = next((e for e in current if _is_original_handoff(e.payload)), None)
+    return (
+        original
+        or (current[0] if current else None)
+        or (handoffs[0] if handoffs else None)
+    )
 
 
 def _committed_report(payload: Mapping[str, Any]) -> tuple[str | None, str | None]:

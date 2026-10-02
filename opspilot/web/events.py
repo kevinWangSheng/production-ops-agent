@@ -114,9 +114,20 @@ class MemoryEventLog:
         _check(kind, payload)
         wanted = {} if key is None else dict(key)
         for event in self._events.get(subject_id, ()):
-            if event.kind == kind and all(
+            matches = event.kind == kind and all(
                 event.payload.get(k) == v for k, v in wanted.items()
+            )
+            if (
+                not matches
+                and wanted.get("reconciled") is False
+                and "reconciled" not in event.payload
             ):
+                matches = event.kind == kind and all(
+                    event.payload.get(k) == v
+                    for k, v in wanted.items()
+                    if k != "reconciled"
+                )
+            if matches:
                 return event.sequence
         return self.append(subject_id, kind, payload)
 
@@ -201,10 +212,22 @@ class DurableEventLog:
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
                 (str(subject_id),),
             )
-            retained = conn.execute(
-                "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
-                (subject_id, kind, Jsonb({} if key is None else dict(key))),
-            ).fetchone()
+            wanted = {} if key is None else dict(key)
+            if wanted.get("reconciled") is False:
+                legacy = dict(wanted)
+                legacy.pop("reconciled")
+                retained = conn.execute(
+                    """SELECT MIN(sequence) AS sequence
+                       FROM opspilot_subject_events
+                       WHERE subject_id=%s AND kind=%s
+                         AND (payload @> %s OR (payload @> %s AND NOT (payload ? 'reconciled')))""",
+                    (subject_id, kind, Jsonb(wanted), Jsonb(legacy)),
+                ).fetchone()
+            else:
+                retained = conn.execute(
+                    "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
+                    (subject_id, kind, Jsonb(wanted)),
+                ).fetchone()
             if retained is not None and retained["sequence"] is not None:
                 return int(retained["sequence"])
             row = conn.execute(

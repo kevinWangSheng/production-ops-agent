@@ -186,7 +186,11 @@ def _current_human_action(
 
 
 def _event_reasons(
-    handoff_events: Sequence[Mapping[str, object]], run_id: str, *, parked: bool
+    handoff_events: Sequence[Mapping[str, object]],
+    run_id: str,
+    *,
+    parked: bool,
+    generation: int | None = None,
 ) -> tuple[str, ...]:
     """Reasons the product announced for this Run's park or block.
 
@@ -201,14 +205,17 @@ def _event_reasons(
     The newest matching one describes the park the rows show now; an older
     one is a superseded reason (bot review, PR #53).
     """
-    latest: tuple[str, ...] = ()
+    matching: list[Mapping[str, object]] = []
     for event in handoff_events:
         if (
             str(event.get("run_id")) == run_id
             and bool(event.get("parked", False)) is parked
+            and (generation is None or event.get("control_generation", 0) == generation)
         ):
-            latest = _string_list(event.get("reasons", ()))
-    return latest
+            matching.append(event)
+    originals = [item for item in matching if item.get("reconciled") is not True]
+    candidates = originals or matching
+    return _string_list(candidates[-1].get("reasons", ())) if candidates else ()
 
 
 def outcome_from_durable(
@@ -285,11 +292,22 @@ def outcome_from_durable(
 
     if state == "blocked":
         reasons.extend(
-            _event_reasons(handoff_events, run_id, parked=False)
+            _event_reasons(
+                handoff_events,
+                run_id,
+                parked=False,
+            )
             or ("INCOMPATIBLE_STATE",)
         )
     elif row_state == "waiting_human" and conclusion is None:
-        reasons.extend(_event_reasons(handoff_events, run_id, parked=True))
+        reasons.extend(
+            _event_reasons(
+                handoff_events,
+                run_id,
+                parked=True,
+                generation=generation if isinstance(generation, int) else None,
+            )
+        )
 
     late = [step for step in steps if step.get("status") == "late_result"]
     if any(step.get("control_generation") != generation for step in late):
