@@ -153,7 +153,11 @@ SERIES_NOTE = (
 _CALLS_TOTAL_SELECTOR = re.compile(
     r"(?<![A-Za-z0-9_:])traces_span_metrics_calls_total(?![A-Za-z0-9_:])"
 )
-_PROMQL_QUOTED_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
+# PromQL string literals: double- or single-quoted with escapes, or raw
+# backtick strings without escapes.
+_PROMQL_QUOTED_STRING = re.compile(
+    r'"(?:\\.|[^"\\])*"' r"|'(?:\\.|[^'\\])*'" r"|`[^`]*`"
+)
 
 
 def _has_calls_total_selector(expr: str) -> bool:

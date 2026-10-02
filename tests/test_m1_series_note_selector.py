@@ -19,6 +19,8 @@ from tests.test_m1_otel_demo_contract import (
         'rate(foo{source="traces_span_metrics_calls_total"}[5m])',
         'rate(foo{source=~"traces_span_metrics_calls_total|other"}[5m])',
         "rate(traces_span_metrics_calls_total_extra[5m])",
+        "rate(foo{source='traces_span_metrics_calls_total'}[5m])",
+        "rate(foo{source=`traces_span_metrics_calls_total`}[5m])",
     ],
 )
 def test_series_note_ignores_quoted_values_and_longer_metric_names(monkeypatch, expr):
