@@ -163,7 +163,9 @@ _PROMQL_QUOTED_STRING = re.compile(
 def _has_calls_total_selector(expr: str) -> bool:
     """Match the calls-total metric outside PromQL quoted strings."""
     without_strings = _PROMQL_QUOTED_STRING.sub('""', expr)
-    return _CALLS_TOTAL_SELECTOR.search(without_strings) is not None
+    # A ``#`` outside a string starts a comment that runs to end of line.
+    without_comments = re.sub(r"#[^\n]*", "", without_strings)
+    return _CALLS_TOTAL_SELECTOR.search(without_comments) is not None
 
 
 #: The services the pinned demo emits telemetry for (M0 ``read_proxy.py``).
