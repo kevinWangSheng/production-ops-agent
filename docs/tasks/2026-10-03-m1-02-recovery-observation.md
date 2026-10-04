@@ -10,7 +10,7 @@
 人工在系统外处置事故后，在工作台登记处置，事故进入 `observing_recovery`。随后由确定性 Observer（不调用模型）按版本化 HealthProfile 采样，最终给出三种结果之一：
 
 - 恢复：`resolved`
-- 仍异常：事故保持 `open`
+- 仍异常：保持 `observing_recovery` 有界继续采样，到期交接后回到 `open`
 - 无法确认：交接给人
 
 每个结果都能从已存的采样重建判定依据。
@@ -38,7 +38,7 @@
 
 | 层 | 现状 | 证据 |
 |---|---|---|
-| 领域合同 | 已有纯函数层：`ObservationSession`、`HealthSample`、采纳判定 `evaluate_sample`（控制版本、generation、规则版本、水位、暂停、期限）、`confirms_health`（无 profile 或缺必要信号不算健康）；事故状态机 `open → observing_recovery → resolved/open`。M0 期间写成，未接入运行时 | `opspilot/domain/observation.py`、`opspilot/domain/subjects.py:24-40` |
+| 领域合同 | 已有纯函数层：`ObservationSession`、`HealthSample`、采纳判定 `evaluate_sample`（控制版本、generation、规则版本、水位、暂停、期限）、`confirms_health`（无 profile 或缺必要信号不算健康）；事故状态机 `open → observing_recovery → resolved/open`。M1-01 期间作为 F2 领域类型写成（`6efe24d`），未接入运行时 | `opspilot/domain/observation.py`、`opspilot/domain/subjects.py:24-40` |
 | 持久化 | `opspilot_incidents.lifecycle` 列存在，但只写 `'open'`。没有观察会话表和采样表，也没有 HealthProfile 存储 | `opspilot/persistence.py:217,373,696,1626` |
 | 采样数据源 | 产品只读 Prometheus/Jaeger profile（#54）。工程侧独立观察脚本（`scripts/otel_demo_observe.py`）只判调查验收前提，不是产品 Observer | `opspilot/tools/otel_demo.py` |
 | 环境 | OTel Demo 2.0.2 跑在 colima + Docker Compose 上，**没有 Kubernetes**，没有 deployment 状态和 pod 健康信号 | `scripts/otel_demo_lab.py:1-20`；本机无 kind/k3d/kubectl |
@@ -66,7 +66,9 @@
    - 常驻 worker 的确定性任务，经现有只读工具网关查 Prometheus，不调用模型。
    - 健康窗口满足 → `resolved`。
    - 缺测、陈旧、低流量 → unknown，按原期限有界继续，到期交接，事故回到 `open`。
-   - 持续异常 → 事故保持 `open`。
+   - 持续异常 → 保持 `observing_recovery` 有界继续，到期交接，事故回到 `open`（C3 §10）。
+   - 每个会话最多一个活动采样任务，租约重试保持原逻辑序号；全局/目标暂停同样挡住 Observer 采样（C3 §4）。
+   - 已知偏离：Observer 与调查共用 worker 进程和网关，不做 C3 §3 的独立角色隔离，沿用 M1-01 现状。
 5. **工作台展示与重放**
    - 事故页把调查结论和恢复判定分开展示，恢复判定附采样依据。
    - 离线重放脚本只用已存采样重算判定，结果须与已存结果一致（F6 第 5 步）。
