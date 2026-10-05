@@ -208,6 +208,46 @@ def test_semantic_difference_is_refused_even_with_the_flag(scratch_dsn: str) -> 
         DurableStore(scratch_dsn).install()
 
 
+def test_runtime_role_without_version_table_grant_gets_a_distinct_code(
+    scratch_dsn: str,
+) -> None:
+    """A non-owner role (M1-02 Observer) must be told to GRANT, not 'storage unavailable'."""
+    schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    role = f"opspilot_rt_{uuid4().hex[:12]}"
+    role_dsn = make_conninfo(scratch_dsn, user=role)
+    with psycopg.connect(scratch_dsn, autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE ROLE {} LOGIN").format(sql.Identifier(role)))
+    try:
+        with psycopg.connect(scratch_dsn) as conn:
+            conn.execute(
+                sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(
+                    sql.Identifier(role)
+                )
+            )
+            conn.execute(
+                sql.SQL("REVOKE SELECT ON alembic_version FROM {}").format(
+                    sql.Identifier(role)
+                )
+            )
+        with pytest.raises(
+            PersistenceError, match="^SCHEMA_VERSION_UNREADABLE$"
+        ) as denied:
+            DurableStore(role_dsn).install()
+        assert "GRANT SELECT ON alembic_version" in str(denied.value.__cause__)
+
+        with psycopg.connect(scratch_dsn) as conn:
+            conn.execute(
+                sql.SQL("GRANT SELECT ON alembic_version TO {}").format(
+                    sql.Identifier(role)
+                )
+            )
+        DurableStore(role_dsn).install()
+    finally:
+        with psycopg.connect(scratch_dsn, autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
+            conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
+
+
 def test_stale_version_is_refused_by_runtime(scratch_dsn: str) -> None:
     schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
     with psycopg.connect(scratch_dsn) as conn:

@@ -223,6 +223,10 @@ class DurableStore:
                 schema.verify_head(conn)
             except schema.SchemaNotMigrated as exc:
                 raise PersistenceError("SCHEMA_NOT_MIGRATED") from exc
+            except schema.SchemaVersionUnreadable as exc:
+                # Distinct from STORAGE_UNAVAILABLE: the fix is a GRANT on
+                # alembic_version for the runtime role (message in the cause).
+                raise PersistenceError("SCHEMA_VERSION_UNREADABLE") from exc
 
     def accept(
         self,

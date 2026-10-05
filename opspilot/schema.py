@@ -33,7 +33,7 @@ import psycopg
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from psycopg import sql
+from psycopg import errors, sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import tuple_row
 from sqlalchemy.engine import URL
@@ -64,6 +64,16 @@ class SchemaNotMigrated(RuntimeError):
         )
         super().__init__(
             f"schema {state}, head is {head}: run `make migrate` with an owner connection"
+        )
+
+
+class SchemaVersionUnreadable(RuntimeError):
+    """The runtime role may not read the version table; nothing else is known."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            f"permission denied reading {VERSION_TABLE}: the runtime role needs "
+            f"`GRANT SELECT ON {VERSION_TABLE} TO <runtime role>` after `make migrate`"
         )
 
 
@@ -131,7 +141,12 @@ def current_revision(conn: psycopg.Connection[object]) -> str | None:
         ).fetchone()
         if present is None or not present[0]:
             return None
-        row = cur.execute(f"SELECT version_num FROM {VERSION_TABLE}").fetchone()
+        try:
+            row = cur.execute(f"SELECT version_num FROM {VERSION_TABLE}").fetchone()
+        except errors.InsufficientPrivilege as exc:
+            # Only this statement, only this error: a non-owner runtime role
+            # that was granted the business tables but not the version table.
+            raise SchemaVersionUnreadable() from exc
     return None if row is None else str(row[0])
 
 
