@@ -23,6 +23,16 @@
 锁文件存在、锁与声明一致、虚拟环境已同步是不同结论。doctor 不证明完整依赖匹配锁文件；setup 成功负责该次同步，后续人工改变环境须重新同步。
 pytest 没有收集到测试返回 5，不算通过；make 可能将子命令错误映射为自己的非零退出码，原始错误仍在输出中。
 
+## 数据库迁移（Alembic）
+
+2026-10-05 起 schema 由 Alembic 版本化（[ADR-0007](adr/0007-data-access-raw-sql-with-standard-tools.md)，[任务记录](tasks/2026-10-05-m1-prep-schema-migrations.md)）。迁移文件在 `opspilot/migrations/versions/`，内容全部是 `op.execute` 的 SQL，不用 ORM。基线 `0001_baseline` 是 commit 3d6c94f 四个 `install()` DDL 的逐字搬入，没有 downgrade（没有更早的 schema 可回退，而删表会毁掉业务记录恢复权威）；**之后的每一条迁移都必须带能撤销 `upgrade()` 的 `downgrade()`**，`tests/test_schema_baseline.py` 会拒绝 `pass`/`raise` 的 downgrade。
+
+- `OPSPILOT_DSN=<owner 连接> make migrate`：在启动 web/worker **之前**，用拥有 DDL 权限的连接执行。空库直接升到 head；已有版本表的库增量升级；由旧版 `install()` 建成、没有版本表的库先接管：比对该库与同服务器上一个新建空库升到 head 后的 `pg_dump --schema-only`（只含 `opspilot_*` 对象，去掉注释与会话设置），逐字一致才 `alembic stamp`，否则退出 1 并打印 diff、不改任何东西。接管需要与服务端同大版本的 `pg_dump`（不在 PATH 时设 `OPSPILOT_PG_DUMP`）和该角色的 CREATEDB 权限。
+- `OPSPILOT_DSN=... .venv/bin/python -m opspilot.schema check`：只读校验当前版本是否为 head，退出 0/1。
+- 运行时 `DurableStore.install()` 及三个 web 模块的 `install()` 签名不变，但只做上面这项校验，不是 head 就抛 `PersistenceError("SCHEMA_NOT_MIGRATED")` 拒绝启动；因此 M1-02 的受限 Observer 角色不需要 DDL 权限。调用 `install()` 的脚本（`scripts/m1_live_runner.py` 等）同样要先 `make migrate`。
+- 新增迁移：`.venv/bin/alembic revision -m "<说明>"`（配置在 `pyproject.toml` 的 `[tool.alembic]`，DSN 来自 `OPSPILOT_DSN`），文件名改成 `000N_<slug>.py`、`revision` 同名，SQL 写进 `op.execute`，补 `downgrade()`。改表结构属用户门 PR。
+- 测试：`tests/integration/conftest.py` 在 `M1_DURABLE_POSTGRES=1`/`M0_B_POSTGRES=1` 下先对 lab 库跑一次 `migrate`（lab 用户是 owner），现有测试里的 `install()` 调用不动；lab 库是旧版建的时会走接管，所以本机也要有 PG 17 的 `pg_dump`（Homebrew：`/opt/homebrew/opt/postgresql@17/bin`）。两条 CI 路径（空库→head；旧 DDL 建库→接管→head，并比对两边 dump）在 `m0-postgres` 作业里。
+
 ## 失败与恢复
 
 先根据诊断定位缺少的解释器、工具或 daemon。离线锁检查因本地材料缺失失败时，记录环境前提缺失，不冒充代码失败或通过。
@@ -59,6 +69,7 @@ Codex 仅启用文档搜索/虚拟文档读取、API 搜索/符号读取四项�
 ```sh
 .venv/bin/python -m scripts.m0.postgres_lab start
 export OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+make migrate   # owner 连接把 schema 升到 head；web/worker 启动时只校验版本
 # 工作台登录：哈希从 stdin 读密码，只打印哈希
 .venv/bin/python -m opspilot.web hash-password
 OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.web serve
@@ -79,7 +90,7 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
 .venv/bin/python -m scripts.m0.postgres_lab stop
 ```
 
-worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时安装 schema，不是部署工件。
+worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时只校验 schema 版本（迁移见上文「数据库迁移」），不是部署工件。
 
 ## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
 
