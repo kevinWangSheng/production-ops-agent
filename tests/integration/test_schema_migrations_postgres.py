@@ -58,6 +58,27 @@ def _apply_legacy(dsn: str) -> None:
         conn.execute(LEGACY_DDL)
 
 
+# A database that grew through the historical ``ADD COLUMN IF NOT EXISTS``:
+# ``lifecycle`` and ``sequence`` were added after the tables existed, so they
+# sit last instead of where the current CREATE TABLE lists them. These are
+# the two real differences found on the 55431 lab (task record 2026-10-05).
+GROWN_DDL = LEGACY_DDL.replace(
+    "state text NOT NULL, lifecycle text NOT NULL DEFAULT 'open', control_generation",
+    "state text NOT NULL, control_generation",
+).replace(
+    "sequence integer NOT NULL DEFAULT 0, logical_key text NOT NULL,",
+    "logical_key text NOT NULL,",
+)
+assert GROWN_DDL != LEGACY_DDL
+# Grown further back: ``actor`` arrives through the ALTER, which carries
+# DEFAULT 'unknown' where the fresh table has no default. A real difference.
+GROWN_WITH_DEFAULT_DDL = GROWN_DDL.replace(
+    "suspended boolean NOT NULL, generation integer NOT NULL, actor text NOT NULL,",
+    "suspended boolean NOT NULL, generation integer NOT NULL,",
+)
+assert GROWN_WITH_DEFAULT_DDL != GROWN_DDL
+
+
 def _install_all(dsn: str) -> None:
     store = DurableStore(dsn)
     store.install()
@@ -138,6 +159,53 @@ def test_missing_pg_dump_names_the_override(scratch_dsn: str) -> None:
         schema.migrate(scratch_dsn, pg_dump="/nonexistent/pg_dump")
     with psycopg.connect(scratch_dsn) as conn:
         assert schema.current_revision(conn) is None
+
+
+def test_grown_database_needs_the_column_order_flag(scratch_dsn: str) -> None:
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(GROWN_DDL)
+    with psycopg.connect(scratch_dsn) as conn:
+        order = {
+            row[0]: row[1]
+            for row in conn.execute(
+                "SELECT attrelid::regclass::text, array_agg(attname ORDER BY attnum) "
+                "FROM pg_attribute WHERE attnum > 0 AND NOT attisdropped "
+                "AND attrelid IN ('opspilot_incidents'::regclass, 'opspilot_steps'::regclass) "
+                "GROUP BY attrelid"
+            )
+        }
+    assert order["opspilot_incidents"][-2:] == ["lifecycle", "target_id"]
+    assert order["opspilot_steps"][-1] == "sequence"
+
+    with pytest.raises(schema.TakeoverRefused) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    assert refused.value.column_order_only
+    assert "--accept-column-order" in str(refused.value)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) is None
+
+    result = schema.migrate(scratch_dsn, pg_dump=PG_DUMP, accept_column_order=True)
+
+    assert result.action == "stamped" and result.revision == "0001_baseline"
+    assert "+    lifecycle text DEFAULT 'open'::text NOT NULL" in result.accepted_diff
+    assert "+    sequence integer DEFAULT 0 NOT NULL" in result.accepted_diff
+    _install_all(scratch_dsn)
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP).action == "unchanged"
+
+
+def test_semantic_difference_is_refused_even_with_the_flag(scratch_dsn: str) -> None:
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(GROWN_WITH_DEFAULT_DDL)
+
+    with pytest.raises(schema.TakeoverRefused) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP, accept_column_order=True)
+
+    assert not refused.value.column_order_only
+    assert "+    actor text DEFAULT 'unknown'::text NOT NULL" in refused.value.diff
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) is None
+    with pytest.raises(PersistenceError, match="SCHEMA_NOT_MIGRATED"):
+        DurableStore(scratch_dsn).install()
 
 
 def test_stale_version_is_refused_by_runtime(scratch_dsn: str) -> None:

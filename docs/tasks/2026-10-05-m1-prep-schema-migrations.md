@@ -57,7 +57,8 @@
 - 真实旧库接管实验（2026-10-05，lab 数据目录 `tmp/m0-b/postgres` 整体复制到 scratchpad、在 55433 端口启动副本，源目录只读未动，实验后副本已删）：
   - 副本现状：`m0_budget` 只有 5 张 `opspilot_*` 表（incidents/runs/steps/controls/budget_reservations，共约 7 万行），缺 10 张表与后加的列——它停在 09-16 的版本，旧版 `install()` 之后再没对它跑过。直接 `migrate` → 拒绝，diff 144 行，全是 `-`（缺表缺列）。
   - 对副本执行旧版 DDL（`psql -f legacy_schema_2026-10-05.sql`，等价于旧版 web/worker 再启动一次）后再 `migrate` → 仍拒绝，diff 只剩两处**列顺序**：`opspilot_incidents.lifecycle`（历史 `ADD COLUMN` 追加在 `created_at` 后，新建表里在 `state` 后）、`opspilot_steps.sequence`（追加在 `control_generation` 后，新建表里在 `run_id` 后）；类型、默认值、NOT NULL 均相同。`opspilot_suspension_audit.actor DEFAULT 'unknown'` 的差异没有出现（该表在副本里本就不存在，被整表新建）。
-  - 结论：经历过历史 `ADD COLUMN` 的真实库，用当前逐字比对**不能**接管；比对语义与是否放宽列顺序属 lead/用户决定，本 PR 未改。操作者处置写在 `docs/development.md`「数据库迁移」。
+  - 结论：经历过历史 `ADD COLUMN` 的真实库，用逐字比对不能接管。**用户决定（2026-10-05，方案 C）**：默认比对保持逐字；`migrate --accept-column-order`（`make migrate MIGRATE_FLAGS=--accept-column-order`）只对每个 `CREATE TABLE` 块内的列行排序后比对，其余全部逐字；只有列顺序之差时 stamp，并打印与日志记录被接受的 diff；不带 flag 时列顺序之差仍拒绝并提示 flag；任何其他差异带不带 flag 都拒绝。`tests/test_sql_column_order_independence.py` 静态把守产品 SQL 不依赖列顺序（INSERT 必列列名、无按位置读行；8 处 `SELECT *` 全在 `persistence.py` 唯一的 `dict_row` 连接后按名读取，查询 SQL 未改）。
+  - 方案 C 复验（同样复制 lab 数据目录到 55433、源目录只读、实验后删副本）：旧版 DDL 补齐后，`migrate` 不带 flag → 拒绝并提示 `--accept-column-order`；带 flag → `schema stamped: 0001_baseline`，被接受的 diff 正是上述两处列顺序（`-/+ lifecycle text DEFAULT 'open'::text NOT NULL`、`-/+ sequence integer DEFAULT 0 NOT NULL`）；`check` → `schema at head`；`opspilot_incidents` 仍 10,609 行。PG 测试 `test_grown_database_needs_the_column_order_flag`、`test_semantic_difference_is_refused_even_with_the_flag` 复现这两例与 `actor DEFAULT 'unknown'` 的语义差异。
 - 已知边界（设计使然，留给 PR-c / F8）：`verify_head` 只看版本表；已 stamp 的库之后丢了索引或列，`install()` 仍放行，由迁移和 CHECK/F8 的版本化校验补。
 - 集成测试的 `OPSPILOT_LAB_DSN` 覆盖（`scripts/m0/postgres_lab.py` 读环境变量，跨进程测试的子进程同样生效）是为了在另一端口的临时实例上跑全套测试、不碰 55431 lab；库名仍须是 `m0_budget`。
 - 未执行：CI 两条路径只在 PR 上跑（ubuntu runner 需装 `postgresql-client-17`，步骤已写进 `ci.yml`）；真实生产库接管未做（没有生产库）。
@@ -73,7 +74,7 @@
 
 ## 下一步与交接
 
-- PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。待决：真实旧库（含 55431 lab）因列顺序被接管拒绝，怎么处理（见上节）。
+- PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。列顺序问题已按方案 C 落地（见上节）。
 - M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 报的是权限错误（`STORAGE_UNAVAILABLE`），不是 `SCHEMA_NOT_MIGRATED`。
-- 合并后本机 lab 库跑集成测试会走接管（需 PG 17 `pg_dump` 在 PATH 或 `OPSPILOT_PG_DUMP`），按上面实验它会被拒；在决定前用 `OPSPILOT_LAB_DSN` 指向临时实例。
+- 合并后本机 55431 lab 库的正式接管：先用旧版 DDL 补齐（`psql -f tests/integration/legacy_schema_2026-10-05.sql`），再 `make migrate MIGRATE_FLAGS=--accept-column-order`，把打印的 diff 记进本记录；集成测试的 conftest 不带 flag，所以接管前跑集成测试会被拒，期间用 `OPSPILOT_LAB_DSN` 指向临时实例。
 - 开工顺序：PR-b（#77）→ PR-c（#78）→ PR-d（#79）→ [trace 接入](2026-10-05-m1-prep-trace-langsmith.md) → M1-02 计划第 0 步。

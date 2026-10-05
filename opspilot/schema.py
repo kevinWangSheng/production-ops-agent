@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import logging
 import os
 import subprocess
 import sys
@@ -33,6 +34,8 @@ from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import tuple_row
 from sqlalchemy.engine import URL
+
+_log = logging.getLogger(__name__)
 
 VERSION_TABLE = "alembic_version"
 _MIGRATIONS = Path(__file__).resolve().parent / "migrations"
@@ -64,10 +67,18 @@ class SchemaNotMigrated(RuntimeError):
 class TakeoverRefused(RuntimeError):
     """An unversioned database differs from a fresh head; nothing was changed."""
 
-    def __init__(self, diff: str) -> None:
+    def __init__(self, diff: str, *, column_order_only: bool = False) -> None:
         self.diff = diff
+        self.column_order_only = column_order_only
+        hint = (
+            " (only the column order inside tables differs; rerun with"
+            " --accept-column-order to stamp and record this diff)"
+            if column_order_only
+            else ""
+        )
         super().__init__(
-            "existing schema differs from a fresh head; refusing to stamp:\n" + diff
+            f"existing schema differs from a fresh head; refusing to stamp{hint}:\n"
+            + diff
         )
 
 
@@ -75,6 +86,9 @@ class TakeoverRefused(RuntimeError):
 class MigrateResult:
     action: Literal["upgraded", "stamped", "unchanged"]
     revision: str
+    # Non-empty only when --accept-column-order was needed: the verbatim diff
+    # (column order inside tables) that the operator chose to accept.
+    accepted_diff: str = ""
 
 
 def sqlalchemy_url(dsn: str) -> URL:
@@ -201,12 +215,59 @@ def fresh_head_dump(dsn: str, *, pg_dump: str = "pg_dump") -> str:
             )
 
 
-def migrate(dsn: str, *, pg_dump: str = "pg_dump") -> MigrateResult:
+def sort_table_columns(dump: str) -> str:
+    """Same dump with column lines sorted inside each ``CREATE TABLE`` block.
+
+    Only the order of column definitions changes: each line keeps its type,
+    default and NOT NULL text, CONSTRAINT lines keep their place after the
+    columns, and everything outside the blocks (indexes, identity, sequences,
+    keys) is untouched. Historical ``ADD COLUMN`` appends a column at the
+    end, a fresh ``CREATE TABLE`` puts it where the DDL lists it.
+    """
+    out: list[str] = []
+    block: list[str] | None = None
+    for line in dump.splitlines():
+        if block is None:
+            if line.startswith("CREATE TABLE ") and line.endswith("("):
+                block = []
+            out.append(line)
+        elif line.startswith(")"):
+            columns = sorted(
+                c for c in block if not c.lstrip().startswith("CONSTRAINT")
+            )
+            constraints = [c for c in block if c.lstrip().startswith("CONSTRAINT")]
+            body = columns + constraints
+            out.extend(f"{entry}," for entry in body[:-1])
+            out.extend(body[-1:])
+            out.append(line)
+            block = None
+        else:
+            block.append(line.rstrip(","))
+    return "\n".join(out) + "\n"
+
+
+def _diff(expected: str, existing: str) -> str:
+    return "".join(
+        difflib.unified_diff(
+            expected.splitlines(keepends=True),
+            existing.splitlines(keepends=True),
+            fromfile="fresh head",
+            tofile="existing database",
+        )
+    )
+
+
+def migrate(
+    dsn: str, *, pg_dump: str = "pg_dump", accept_column_order: bool = False
+) -> MigrateResult:
     """Bring ``dsn`` to head: upgrade, or take over an unversioned database.
 
     * version table present -> ``alembic upgrade head`` (no-op when at head);
     * no ``opspilot_*`` tables -> ``alembic upgrade head`` from empty;
-    * tables but no version table -> compare dumps, stamp only if identical.
+    * tables but no version table -> compare dumps, stamp only if identical;
+      with ``accept_column_order`` a difference that is *only* the order of
+      columns inside tables is accepted, stamped and returned as
+      ``accepted_diff`` so the operator records it. Anything else refuses.
     """
     with psycopg.connect(dsn) as conn:
         current = current_revision(conn)
@@ -218,17 +279,14 @@ def migrate(dsn: str, *, pg_dump: str = "pg_dump") -> MigrateResult:
         return MigrateResult("upgraded", upgrade_head(dsn))
     existing = schema_dump(dsn, pg_dump=pg_dump)
     expected = fresh_head_dump(dsn, pg_dump=pg_dump)
-    if existing != expected:
-        diff = "".join(
-            difflib.unified_diff(
-                expected.splitlines(keepends=True),
-                existing.splitlines(keepends=True),
-                fromfile="fresh head",
-                tofile="existing database",
-            )
-        )
-        raise TakeoverRefused(diff)
-    return MigrateResult("stamped", stamp_head(dsn))
+    if existing == expected:
+        return MigrateResult("stamped", stamp_head(dsn))
+    diff = _diff(expected, existing)
+    column_order_only = sort_table_columns(existing) == sort_table_columns(expected)
+    if not (column_order_only and accept_column_order):
+        raise TakeoverRefused(diff, column_order_only=column_order_only)
+    _log.warning("takeover accepted a column-order-only difference:\n%s", diff)
+    return MigrateResult("stamped", stamp_head(dsn), accepted_diff=diff)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -241,6 +299,12 @@ def main(argv: list[str] | None = None) -> int:
         "--pg-dump",
         default=os.environ.get("OPSPILOT_PG_DUMP", "pg_dump"),
         help="pg_dump binary matching the server major version (default: $OPSPILOT_PG_DUMP or pg_dump)",
+    )
+    parser.add_argument(
+        "--accept-column-order",
+        action="store_true",
+        help="stamp an unversioned database whose only difference to a fresh head is the "
+        "order of columns inside tables; the accepted diff is printed for the record",
     )
     args = parser.parse_args(argv)
     dsn = os.environ.get("OPSPILOT_DSN")
@@ -257,10 +321,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"schema at head {head_revision()}")
         return 0
     try:
-        result = migrate(dsn, pg_dump=args.pg_dump)
+        result = migrate(
+            dsn, pg_dump=args.pg_dump, accept_column_order=args.accept_column_order
+        )
     except TakeoverRefused as exc:
         print(exc, file=sys.stderr)
         return 1
+    if result.accepted_diff:
+        print("accepted column-order difference (record this with the stamp):")
+        print(result.accepted_diff, end="")
     print(f"schema {result.action}: {result.revision}")
     return 0
 

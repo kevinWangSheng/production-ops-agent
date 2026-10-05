@@ -19,8 +19,10 @@ test: doctor
 
 # 迁移由拥有 DDL 权限的 owner 连接在启动前执行；运行时 install() 只校验版本。
 # 需要 OPSPILOT_DSN；旧库接管还需与服务端同大版本的 pg_dump（OPSPILOT_PG_DUMP）。
+# 旧库只差表内列顺序时：make migrate MIGRATE_FLAGS=--accept-column-order（接受的 diff 要记进任务记录）。
+MIGRATE_FLAGS ?=
 migrate:
-	.venv/bin/python -m opspilot.schema migrate
+	.venv/bin/python -m opspilot.schema migrate $(MIGRATE_FLAGS)
 
 acceptance:
 	.venv/bin/python scripts/m1_acceptance.py
