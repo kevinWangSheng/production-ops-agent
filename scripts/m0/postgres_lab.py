@@ -1,6 +1,7 @@
 """Explicit lifecycle for one synthetic, local-only PostgreSQL lab. Keeps data."""
 
 import argparse
+import os
 import shutil
 import socket
 import subprocess
@@ -11,7 +12,13 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "tmp/m0-b/postgres"
 SOCKET = ROOT / "tmp/m0-b/socket"
-DSN = "host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+# OPSPILOT_LAB_DSN points the test suite (and the child processes the
+# cross-process tests spawn) at a throwaway server on another port, leaving
+# the 55431 lab and its data alone. start/stop below still manage only 55431.
+DSN = (
+    os.environ.get("OPSPILOT_LAB_DSN")
+    or "host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+)
 MARKER = "opspilot-m0-b-synthetic-v1\n"
 
 

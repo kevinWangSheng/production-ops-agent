@@ -54,6 +54,12 @@
   - 旧库：`psql -f legacy_schema_2026-10-05.sql` 后 `migrate` → `schema stamped: 0001_baseline`；`schema_dump` 空库 head 与接管库比对 `identical, 209 lines`。
   - 漂移库（多一列 `stray`）：`migrate` 退出 1 并打印 diff（`+    stray text`），版本表未建，临时参考库已删。
   - `M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 pytest tests/integration`：首轮 254 passed、38 skipped、1 failed（即上面适配前的索引测试）；适配后清空 lab 库复跑（含 `M0_STEP_POSTGRES=1`）：283 passed、10 skipped（仅重启 lab 的用例）、0 failed。`M0_STEP_POSTGRES=1 test_m0_step_store_postgres.py` 28 passed。`make check`：2520 passed、293 skipped、2 xfailed。
+- 真实旧库接管实验（2026-10-05，lab 数据目录 `tmp/m0-b/postgres` 整体复制到 scratchpad、在 55433 端口启动副本，源目录只读未动，实验后副本已删）：
+  - 副本现状：`m0_budget` 只有 5 张 `opspilot_*` 表（incidents/runs/steps/controls/budget_reservations，共约 7 万行），缺 10 张表与后加的列——它停在 09-16 的版本，旧版 `install()` 之后再没对它跑过。直接 `migrate` → 拒绝，diff 144 行，全是 `-`（缺表缺列）。
+  - 对副本执行旧版 DDL（`psql -f legacy_schema_2026-10-05.sql`，等价于旧版 web/worker 再启动一次）后再 `migrate` → 仍拒绝，diff 只剩两处**列顺序**：`opspilot_incidents.lifecycle`（历史 `ADD COLUMN` 追加在 `created_at` 后，新建表里在 `state` 后）、`opspilot_steps.sequence`（追加在 `control_generation` 后，新建表里在 `run_id` 后）；类型、默认值、NOT NULL 均相同。`opspilot_suspension_audit.actor DEFAULT 'unknown'` 的差异没有出现（该表在副本里本就不存在，被整表新建）。
+  - 结论：经历过历史 `ADD COLUMN` 的真实库，用当前逐字比对**不能**接管；比对语义与是否放宽列顺序属 lead/用户决定，本 PR 未改。操作者处置写在 `docs/development.md`「数据库迁移」。
+- 已知边界（设计使然，留给 PR-c / F8）：`verify_head` 只看版本表；已 stamp 的库之后丢了索引或列，`install()` 仍放行，由迁移和 CHECK/F8 的版本化校验补。
+- 集成测试的 `OPSPILOT_LAB_DSN` 覆盖（`scripts/m0/postgres_lab.py` 读环境变量，跨进程测试的子进程同样生效）是为了在另一端口的临时实例上跑全套测试、不碰 55431 lab；库名仍须是 `m0_budget`。
 - 未执行：CI 两条路径只在 PR 上跑（ubuntu runner 需装 `postgresql-client-17`，步骤已写进 `ci.yml`）；真实生产库接管未做（没有生产库）。
 
 ## 前提与完成条件
@@ -67,5 +73,7 @@
 
 ## 下一步与交接
 
-- PR-a：独立审查 → `@codex review` 分诊 → 用户合并。合并后本机 lab 库首次跑集成测试会走接管（需 PG 17 `pg_dump` 在 PATH 或 `OPSPILOT_PG_DUMP`）。
+- PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。待决：真实旧库（含 55431 lab）因列顺序被接管拒绝，怎么处理（见上节）。
+- M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 报的是权限错误（`STORAGE_UNAVAILABLE`），不是 `SCHEMA_NOT_MIGRATED`。
+- 合并后本机 lab 库跑集成测试会走接管（需 PG 17 `pg_dump` 在 PATH 或 `OPSPILOT_PG_DUMP`），按上面实验它会被拒；在决定前用 `OPSPILOT_LAB_DSN` 指向临时实例。
 - 开工顺序：PR-b（#77）→ PR-c（#78）→ PR-d（#79）→ [trace 接入](2026-10-05-m1-prep-trace-langsmith.md) → M1-02 计划第 0 步。

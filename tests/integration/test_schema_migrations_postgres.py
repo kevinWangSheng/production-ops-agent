@@ -119,6 +119,27 @@ def test_drifted_database_is_refused_and_left_unversioned(scratch_dsn: str) -> N
         DurableStore(scratch_dsn).install()
 
 
+def test_legacy_database_missing_an_index_is_refused(scratch_dsn: str) -> None:
+    _apply_legacy(scratch_dsn)
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute("DROP INDEX opspilot_runs_incident_id_idx")
+
+    with pytest.raises(schema.TakeoverRefused) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+
+    assert "-CREATE INDEX opspilot_runs_incident_id_idx" in refused.value.diff
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) is None
+
+
+def test_missing_pg_dump_names_the_override(scratch_dsn: str) -> None:
+    _apply_legacy(scratch_dsn)
+    with pytest.raises(RuntimeError, match="OPSPILOT_PG_DUMP"):
+        schema.migrate(scratch_dsn, pg_dump="/nonexistent/pg_dump")
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) is None
+
+
 def test_stale_version_is_refused_by_runtime(scratch_dsn: str) -> None:
     schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
     with psycopg.connect(scratch_dsn) as conn:

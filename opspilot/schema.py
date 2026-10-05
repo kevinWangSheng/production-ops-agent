@@ -138,13 +138,19 @@ def stamp_head(dsn: str) -> str:
 
 def schema_dump(dsn: str, *, pg_dump: str = "pg_dump") -> str:
     """Normalized ``pg_dump --schema-only`` of the ``opspilot_*`` objects."""
-    completed = subprocess.run(
-        [pg_dump, *_PG_DUMP_FLAGS, f"--dbname={dsn}"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [pg_dump, *_PG_DUMP_FLAGS, f"--dbname={dsn}"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"{pg_dump!r} not found: taking over an existing database needs a pg_dump "
+            "of the server's major version; set OPSPILOT_PG_DUMP (or --pg-dump) to it"
+        ) from exc
     if completed.returncode != 0:
         raise RuntimeError(
             f"{pg_dump} failed ({completed.returncode}): {completed.stderr.strip()}"
