@@ -35,12 +35,12 @@
 
 ## 任务记录
 
-跨会话或需要交接的任务在 `docs/tasks/` 维护一份中文记录，模板见 [docs/tasks/README.md](docs/tasks/README.md)，正文控制在两页以内：目标、状态、证据链接、待决。简单修改不建档。ROADMAP 只保留状态表，更新时替换对应行，不追加段落。
+跨会话或需要交接的任务在 `docs/tasks/` 维护一份中文记录，模板见 [docs/tasks/README.md](docs/tasks/README.md)，正文控制在两页以内：目标、状态、证据链接、待决。简单修改不建档。ROADMAP 只保留状态表，更新时替换对应行，不追加段落。待排事项一项一个 GitHub issue（链接 C3 条款与任务记录），不散写在 ROADMAP 或任务记录的「后续」里；仓库公开，issue 不写凭据、非公开数据和实验答案（[ADR-0006](docs/adr/0006-trace-evidence-and-backlog.md)）。
 
 ## 验证与汇报
 
 - 验收入口是外部 `IncidentScenario -> IncidentOutcome`：检查可观察的证据、决定、动作、权限、人工交互和最终状态，不测试思维链或内部调用顺序。
-- 触碰调查 loop、报告校验或恢复路径的 PR，附至少一次有界真实 Run 的 ledger 与结果。
+- 触碰调查 loop、报告校验或恢复路径的 PR，附至少一次有界真实 Run 的 LangSmith trace 链接与仓库冻结摘要（ADR-0006；trace 接入合并前仍附 ledger 与结果）。
 - 区分静态检查、单元/合同测试、集成运行、故障注入、soak 和真实生产观察；本地演示不是生产证明。
 - 验收步骤只能收紧或按用户决定修改，不为迁就实现削弱或删除；失败场景照实写出。功能完成 = 全部验收步骤实际通过、有证据、`passes: true`。
 - 汇报只写已核查事实、失败、未执行项和下一个判断点；LLM judge 不替代确定性断言。

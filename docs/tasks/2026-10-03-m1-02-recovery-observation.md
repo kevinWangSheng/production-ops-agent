@@ -27,6 +27,7 @@
 
 - 前提：
   - SPEC 门槛 PR 合并（D1）。
+  - M1 基础设施准备先完成（2026-10-05 用户决定）：[schema 迁移](2026-10-05-m1-prep-schema-migrations.md)、[trace 接入](2026-10-05-m1-prep-trace-langsmith.md)。
   - 计划 0 的 kind 环境就绪。旧 Compose 环境目录（本仓库 `tmp/m0-environment` 和 sibling worktree）都已不存在，`scripts/otel_demo_lab.py up` 当前无法启动；colima `m0-otel` VM 还在（Stopped）。
 - 完成条件：
   - F6 五步在真实实验环境各至少执行一次，确定性断言通过，证据在 `docs/evidence/m1-02-*`。
@@ -57,7 +58,7 @@
 2. **PG 观察会话与原子采纳**
    - 建观察会话表和采样表。
    - 采纳、水位推进、生命周期转换、安排下一次采样在同一事务里完成，复用 `evaluate_sample`。
-   - 建 Observer 专用 PG 角色及最小授权（D3）。
+   - 观察表、采样表与 Observer 专用 PG 角色及最小授权（D3）都以 Alembic 增量迁移落地。
    - 每次采样保存查询、时间窗、来源、每个必要信号的实际返回值（原始结果经现有证据登记，带 hash）及判定，重放只读这些存储，不再查遥测（F6 第 5 步）。
 3. **人工登记处置 → 开始观察**
    - 工作台动作，带 `expected_version`、幂等键和操作者审计。
