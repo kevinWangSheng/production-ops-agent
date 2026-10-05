@@ -1,9 +1,9 @@
 # M1 准备：数据访问层标准化（Alembic、连接池、状态约束，保留参数化 SQL）
 
-- 状态：进行中（PR-a 待审查；PR-b/c/d 待开始，见 issue #77–#79）
+- 状态：进行中（PR-a 已合并 #104，本机 lab 库已接管；PR-b/c/d 待开始，见 issue #77、#78、#79）
 - 更新日期：2026-10-05
 - 依据：[ADR-0007](../adr/0007-data-access-raw-sql-with-standard-tools.md)；[DurableStore 加固记录](2026-09-15-durable-store-hardening.md) B2/C1/C2；C3 §7「故障恢复与提交一致性」；F8 第 3 步（版本化 state-schema 升级与回滚）；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；issue #76（PR-a）
-- 工作区：`chore/m1-prep-alembic`，worktree `../production-ops-agent-alembic`（PR-a）
+- 工作区：PR-a 的 `chore/m1-prep-alembic` worktree 已在合并后删除
 
 ## 目标与范围
 
@@ -76,5 +76,17 @@
 
 - PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。列顺序问题已按方案 C 落地（见上节）。
 - M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 报的是权限错误（`STORAGE_UNAVAILABLE`），不是 `SCHEMA_NOT_MIGRATED`。
-- 合并后本机 55431 lab 库的正式接管：先用旧版 DDL 补齐（`psql -f tests/integration/legacy_schema_2026-10-05.sql`），再 `make migrate MIGRATE_FLAGS=--accept-column-order`，把打印的 diff 记进本记录；集成测试的 conftest 不带 flag，所以接管前跑集成测试会被拒，期间用 `OPSPILOT_LAB_DSN` 指向临时实例。
+- 本机 55431 lab 库正式接管（2026-10-05，PR-a 合并后、main `4609171`，用户指示执行）：
+  - 接管前：5 张 `opspilot_*` 表，无版本表；行数 incidents 10609、runs 10611、steps 5218、controls 42226、budget_reservations 1349。全库备份 `tmp/m0-b/backup-m0_budget-pre-alembic-2026-10-05.dump`（`pg_dump -Fc`，3.0 MB，35 张表数据，sha256 前缀 `7926411abfb6c7a8`，git 忽略、本机保留）。
+  - `psql -f tests/integration/legacy_schema_2026-10-05.sql` 补到旧版头（15 张表）；`make migrate` 不带 flag → 拒绝，diff 只有 2 个 hunk，均为列顺序；带 `MIGRATE_FLAGS=--accept-column-order` → 接管并打印被接受的 diff：
+    ```
+    @@ -35,11 +35,11 @@  (opspilot_incidents)
+    -    lifecycle text DEFAULT 'open'::text NOT NULL,
+    +    lifecycle text DEFAULT 'open'::text NOT NULL,
+    @@ -87,12 +87,12 @@  (opspilot_steps)
+    -    sequence integer DEFAULT 0 NOT NULL,
+    +    sequence integer DEFAULT 0 NOT NULL,
+    ```
+  - 接管后：`python -m opspilot.schema check` → `schema at head 0001_baseline`；`alembic_version` = `0001_baseline`；五张表行数与接管前一致；无残留临时库；`DurableStore(...).install()` 通过。lab 实例接管前为停止状态，接管后已停止。
+  - 回滚途径：停 lab，`pg_restore` 上述备份到重建的 `m0_budget`（未执行）。
 - 开工顺序：PR-b（#77）→ PR-c（#78）→ PR-d（#79）→ [trace 接入](2026-10-05-m1-prep-trace-langsmith.md) → M1-02 计划第 0 步。
