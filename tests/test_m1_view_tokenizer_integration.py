@@ -20,6 +20,7 @@ import sys
 import textwrap
 import time
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -288,6 +289,12 @@ def test_metrics_view_over_25k_real_tokens_is_refused_with_the_true_count(
 def test_the_boundary_row_count_is_exact_with_the_real_tokenizer(monkeypatch):
     """Contract 1/2 on the real path: the largest row count whose whole view
     counts <= 25,000 is delivered whole; one more row is refused."""
+
+    # The view carries ``evidence_id`` = operation id + a fresh uuid4, and
+    # different uuids tokenize to a few tokens more or less. Near the boundary
+    # that jitter let one more row fit on a later call, so the search was
+    # flaky; a fixed dispatch id makes every view of the same rows identical.
+    monkeypatch.setattr("opspilot.tools.executor.uuid4", lambda: UUID(int=0x4D0F1A7E))
 
     def run(count):
         opener = FakeOpener(by_query={GOOD_EXPR: _matrix(_series(count, pad=60))})
