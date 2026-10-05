@@ -1,6 +1,7 @@
 """Explicit lifecycle for one synthetic, local-only PostgreSQL lab. Keeps data."""
 
 import argparse
+import os
 import shutil
 import socket
 import subprocess
@@ -11,7 +12,13 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "tmp/m0-b/postgres"
 SOCKET = ROOT / "tmp/m0-b/socket"
-DSN = "host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+# The 55431 lab: start/stop/verify_server and CREATE DATABASE always talk to
+# this server, whatever the environment says.
+LAB_DSN = "host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
+# What the tests import. OPSPILOT_LAB_DSN points the suite (and the child
+# processes the cross-process tests spawn) at a throwaway server on another
+# port, leaving the lab and its data alone; unset or empty means the lab.
+DSN = os.environ.get("OPSPILOT_LAB_DSN") or LAB_DSN
 MARKER = "opspilot-m0-b-synthetic-v1\n"
 
 
@@ -60,7 +67,7 @@ def verify_server():
     failed = False
     try:
         with psycopg.connect(
-            DSN.replace("dbname=m0_budget", "dbname=postgres"), connect_timeout=2
+            LAB_DSN.replace("dbname=m0_budget", "dbname=postgres"), connect_timeout=2
         ) as conn:
             actual = conn.execute("SHOW data_directory").fetchone()[0]
             if Path(actual).resolve() != DATA.resolve():
@@ -112,7 +119,7 @@ def start():
         run("pg_ctl", "-D", DATA, "-l", DATA.parent / "postgres.log", "-w", "start")
     verify_server()
     with psycopg.connect(
-        DSN.replace("dbname=m0_budget", "dbname=postgres"),
+        LAB_DSN.replace("dbname=m0_budget", "dbname=postgres"),
         autocommit=True,
         connect_timeout=2,
     ) as conn:

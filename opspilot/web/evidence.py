@@ -159,18 +159,8 @@ class DurableEvidenceStore:
         self._store = store
 
     def install(self) -> None:
-        with self._store.transaction() as conn:
-            conn.execute("""
-            CREATE TABLE IF NOT EXISTS opspilot_evidence (
-              evidence_id text PRIMARY KEY, run_id text NOT NULL, subject_id text NOT NULL,
-              status text NOT NULL, adopted boolean NOT NULL, raw bytea NOT NULL,
-              raw_sha256 text NOT NULL, view jsonb NOT NULL, view_sha256 text NOT NULL,
-              projection_revision text NOT NULL, observed_at timestamptz NOT NULL,
-              data_as_of timestamptz
-            );
-            CREATE INDEX IF NOT EXISTS opspilot_evidence_run_id_idx ON opspilot_evidence(run_id);
-            ALTER TABLE opspilot_evidence ADD COLUMN IF NOT EXISTS committed boolean NOT NULL DEFAULT false;
-            """)
+        # DDL is in opspilot/migrations; this only checks the version (ADR-0007).
+        self._store.install()
 
     def register(self, record: EvidenceRecord) -> str:
         stored = _stored(record)
