@@ -21,6 +21,9 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -150,16 +153,50 @@ def stamp_head(dsn: str) -> str:
     return head_revision()
 
 
+@contextmanager
+def _subprocess_credentials(dsn: str) -> Iterator[tuple[str, dict[str, str]]]:
+    """Split ``dsn`` into a password-free conninfo and a subprocess environment.
+
+    The owner DSN can carry a DDL-capable password; it must not appear in
+    ``ps``/``/proc`` for the lifetime of a dump. The command line gets only
+    the non-secret parameters; the password goes through a 0600 PGPASSFILE
+    in a private temp dir that exists just for the call. PGPASSWORD is never
+    used (it is readable from the environment of the process).
+    """
+    params = {key: str(value) for key, value in conninfo_to_dict(dsn).items()}
+    password = params.pop("password", None)
+    params.pop("sslpassword", None)
+    env = {key: value for key, value in os.environ.items() if key != "PGPASSWORD"}
+    public = make_conninfo(**params)
+    if password is None:
+        yield public, env
+        return
+    escaped = password.replace("\\", "\\\\").replace(":", "\\:")
+    folder = Path(tempfile.mkdtemp(prefix="opspilot-pgpass-"))
+    passfile = folder / "pgpass"
+    try:
+        passfile.touch(mode=0o600)
+        passfile.chmod(0o600)
+        passfile.write_text(f"*:*:*:*:{escaped}\n")
+        env["PGPASSFILE"] = str(passfile)
+        yield public, env
+    finally:
+        passfile.unlink(missing_ok=True)
+        folder.rmdir()
+
+
 def schema_dump(dsn: str, *, pg_dump: str = "pg_dump") -> str:
     """Normalized ``pg_dump --schema-only`` of the ``opspilot_*`` objects."""
     try:
-        completed = subprocess.run(
-            [pg_dump, *_PG_DUMP_FLAGS, f"--dbname={dsn}"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
+        with _subprocess_credentials(dsn) as (public_dsn, env):
+            completed = subprocess.run(
+                [pg_dump, *_PG_DUMP_FLAGS, f"--dbname={public_dsn}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=env,
+            )
     except FileNotFoundError as exc:
         raise RuntimeError(
             f"{pg_dump!r} not found: taking over an existing database needs a pg_dump "
