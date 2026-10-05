@@ -12,10 +12,13 @@
 ## 决定
 
 1. **埋点用 OTel，后端用 LangSmith。** 产品代码只依赖 OpenTelemetry SDK，默认空实现；LangSmith 经其 OTLP 端点接入（`https://api.smith.langchain.com/otel`，头 `x-api-key`、可选 `Langsmith-Project`，见[官方文档](https://docs.langchain.com/langsmith/trace-with-opentelemetry)）。属性按 LangSmith 识别的约定写：`langsmith.span.kind`（llm/tool/chain）、`gen_ai.request.model`、`gen_ai.usage.input_tokens`/`output_tokens`、`langsmith.metadata.*` 放 incident/run/step/版本 ID。换 Langfuse 等后端只改端点配置。
-2. **内容分级。** 模型输入输出与工具结果只在实验环境（合成流量）开关打开时导出；凭据在任何模式下都不进 span。真实业务数据的导出仍按 C3 §11 走白名单 outbox，outbox 建成前产品模式不开内容导出。本 ADR 不修改 C3。
+2. **只在实验环境导出。** 导出只在合成流量的实验环境开启：可附模型输入输出与工具结果。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」、C3 第 440–441 行）。产品模式在 C3 §11 的白名单 outbox 建成前完全不导出（包括 incident/run ID 等业务标识）。
 3. **开发实验证据上平台。** 接入后，每轮实验一个 LangSmith project，独立审查判定写成 feedback。仓库只留每次 Run 的冻结摘要（报告、判定、计数、费用、trace ID 与链接、ledger 哈希），原始 ledger 不再入库。已入库的历史证据不动，不改写 git 历史。
 4. **保留期约束。** LangSmith SaaS 基础保留 14 天，长保留自 2026-09-14 起最长 180 天（[官方文档](https://docs.langchain.com/langsmith/data-purging-compliance)）。因此平台上的原始 trace 只服务审查窗口和轮次对比；PR 与验收引用的长期依据是仓库里的冻结摘要。实验 project 设为最长保留。
-5. **backlog 进 GitHub Issues。** 待排事项一项一个 issue，链接 C3 条款与任务记录；ROADMAP 只留里程碑状态表并链接 issue。仓库公开，issue 不写凭据、非公开数据和实验答案。
+5. **对 C3 的有界偏离（用户 2026-10-05 决定，仅限实验环境）。**
+   - C3 §11「可观测性」要求 LangSmith 只经业务事务内的 outbox 接收白名单 DTO；实验环境改为 OTel 直连导出，允许有界丢弃，不经 outbox。产品模式仍按 C3。
+   - C3 §11「保留与删除」要求 eval 证据独立归档、归档实验依赖的资料固定保留；新实验的长期归档改为仓库冻结摘要（含原始 ledger 哈希），平台上的原始 trace 按平台保留期过期，不再长期留存原文。
+6. **backlog 进 GitHub Issues。** 待排事项一项一个 issue，链接 C3 条款与任务记录；ROADMAP 只留里程碑状态表并链接 issue。仓库公开，issue 不写凭据、非公开数据和实验答案。
 
 ## 后果
 
