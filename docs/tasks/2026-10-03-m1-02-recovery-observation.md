@@ -1,6 +1,6 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：待开始（D1、D2 已决；门槛 PR 待用户合并）
+- 状态：待开始（D1–D3 已决；门槛 PR 待用户合并）
 - 更新日期：2026-10-03
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
@@ -57,18 +57,20 @@
 2. **PG 观察会话与原子采纳**
    - 建观察会话表和采样表。
    - 采纳、水位推进、生命周期转换、安排下一次采样在同一事务里完成，复用 `evaluate_sample`。
+   - 建 Observer 专用 PG 角色及最小授权（D3）。
    - 每次采样保存查询、时间窗、来源、每个必要信号的实际返回值（原始结果经现有证据登记，带 hash）及判定，重放只读这些存储，不再查遥测（F6 第 5 步）。
 3. **人工登记处置 → 开始观察**
    - 工作台动作，带 `expected_version`、幂等键和操作者审计。
    - 递增 `control_generation`，授权新观察会话。
    - 暂停、接管、取消在同一事务里撤销观察授权（C3 §10）。
 4. **Observer 采样任务**
-   - 常驻 worker 的确定性任务，经现有只读工具网关查 Prometheus，不调用模型。
+   - 独立 Observer 进程里的确定性任务，直接以自己的只读凭据查 Prometheus，不调用模型，不经调查 worker 或其工具网关（D3）。
    - 健康窗口满足 → `resolved`。
    - 缺测、陈旧、低流量 → unknown，按原期限有界继续，到期交接，事故回到 `open`。
    - 持续异常 → 保持 `observing_recovery` 有界继续，到期交接，事故回到 `open`（C3 §10）。
    - 每个会话最多一个活动采样任务，租约重试保持原逻辑序号；全局/目标暂停同样挡住 Observer 采样（C3 §4）。
-   - 已知偏离：Observer 与调查共用 worker 进程和网关，不做 C3 §3 的独立角色隔离，沿用 M1-01 现状。
+   - 角色隔离（C3 §3，D3）：Observer 用独立 PG 角色，只授予观察会话/采样表读写和事故生命周期转换所需权限，不能写调查 Run、报告或证据结论；Prometheus 只读凭据与调查侧分开发放；网络上只配置 Prometheus 与 PG 端点。调查侧凭据与 DB 角色不能用于采纳采样，Observer 凭据不能调调查工具，两条各写负向测试。
+   - 调查侧（Controller/Worker/Gateway）的 C3 §3 隔离不在本切片，沿用 M1-01 现状。
 5. **工作台展示与重放**
    - 事故页把调查结论和恢复判定分开展示，恢复判定附采样依据。
    - 离线重放脚本只用已存采样重算判定，结果须与已存结果一致（F6 第 5 步）。
@@ -81,6 +83,7 @@
 
 - **D1 实施门槛**：SPEC 原先只为 M1-01 开放实施，M0 遗留项是「更大 M1 范围」的入口条件，和 ROADMAP 的下一步冲突。用户决定**有界开放 M1-02**：只开放本记录范围；observer 授权在本切片内交付；其余 M0 遗留项仍挡候选评测和更大范围。SPEC 已加一段，随门槛 PR 合入。
 - **D2 实验环境**：F6 第 1 步要求 deployment 状态和 pod 健康，Compose 给不出。用户决定**迁到 kind + OTel Demo Helm + kube-state-metrics**，产品仍只经只读 Prometheus 读取，不新增连接器。
+- **D3 Observer 角色隔离**（2026-10-05 用户，起因：#73 机器人 P1 引用 C3 §3「隔离必须落实到凭据、数据库权限和网络可达性」）：原计划让 Observer 与调查共用 worker 进程和网关，属未经批准的合同偏离。用户决定**只隔离 Observer**：独立进程、独立 PG 角色、独立 Prometheus 只读凭据，见计划第 2、4 项；调查侧隔离不在本切片。网络可达性在本地实验环境能做到哪一层，以第 4 项的实测证据为准，做不到的如实列为限制。
 
 ## 待决
 
