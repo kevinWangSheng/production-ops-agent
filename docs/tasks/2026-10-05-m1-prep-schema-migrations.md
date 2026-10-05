@@ -74,8 +74,8 @@
 
 ## 下一步与交接
 
-- PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。列顺序问题已按方案 C 落地（见上节）。
-- M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 报的是权限错误（`STORAGE_UNAVAILABLE`），不是 `SCHEMA_NOT_MIGRATED`。
+- PR-a 已合并（#104），本机 lab 库已接管（见下）。下一步：PR-b 连接池（#77），之后 PR-c（#78）、PR-d（#79）。
+- M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 抛 `SCHEMA_VERSION_UNREADABLE`（#104 最后一次修复后），不是 `SCHEMA_NOT_MIGRATED`。
 - 本机 55431 lab 库正式接管（2026-10-05，PR-a 合并后、main `4609171`，用户指示执行）：
   - 接管前：5 张 `opspilot_*` 表，无版本表；行数 incidents 10609、runs 10611、steps 5218、controls 42226、budget_reservations 1349。全库备份 `tmp/m0-b/backup-m0_budget-pre-alembic-2026-10-05.dump`（`pg_dump -Fc`，3.0 MB，35 张表数据，sha256 前缀 `7926411abfb6c7a8`，git 忽略、本机保留）。
   - `psql -f tests/integration/legacy_schema_2026-10-05.sql` 补到旧版头（15 张表）；`make migrate` 不带 flag → 拒绝，diff 只有 2 个 hunk，均为列顺序；带 `MIGRATE_FLAGS=--accept-column-order` → 接管并打印被接受的 diff：
