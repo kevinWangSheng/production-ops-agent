@@ -43,7 +43,7 @@
 | 持久化 | `opspilot_incidents.lifecycle` 列存在，但只写 `'open'`。没有观察会话表和采样表，也没有 HealthProfile 存储 | `opspilot/persistence.py:217,373,696,1626` |
 | 采样数据源 | 产品只读 Prometheus/Jaeger profile（#54）。工程侧独立观察脚本（`scripts/otel_demo_observe.py`）只判调查验收前提，不是产品 Observer | `opspilot/tools/otel_demo.py` |
 | 环境 | OTel Demo 2.0.2 跑在 colima + Docker Compose 上，**没有 Kubernetes**，没有 deployment 状态和 pod 健康信号 | `scripts/otel_demo_lab.py:1-20`；本机无 kind/k3d/kubectl |
-| 上游 | HolmesGPT 是否有恢复观察能力：未确认（预期没有，它只做调查），实施前核对 | — |
+| 上游 | HolmesGPT main `9e21560`（2026-10-04 核对）：只有 `holmes/checks/`，check 无状态、由 LLM 判 pass/fail/error、无观察窗口、`schedule` 字段注释为未来实现；没有「处置后观察」。可借鉴 pass/fail/error 三态输出；判定须按 C3 确定性实现，不照搬 LLM 判定 | `holmes/checks/models.py:11-45` |
 
 ## 计划（每项一个 PR，按序合并，不做 stacked PR）
 
@@ -93,5 +93,5 @@
 ## 下一步与交接
 
 - 门槛 PR（SPEC + ROADMAP + 本记录）提交后等用户合并。
-- 合并后：先核对 HolmesGPT 有没有可借鉴的恢复观察实现，再从计划 0（kind 环境）开工。
+- 上游核对已完成（见上表）；M1 基础设施准备完成后从计划 0（kind 环境）开工。
 - 当前没有运行中的服务或进程。
