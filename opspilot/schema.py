@@ -223,6 +223,11 @@ def sort_table_columns(dump: str) -> str:
     columns, and everything outside the blocks (indexes, identity, sequences,
     keys) is untouched. Historical ``ADD COLUMN`` appends a column at the
     end, a fresh ``CREATE TABLE`` puts it where the DDL lists it.
+
+    Assumes pg_dump's layout: one line per column or constraint entry inside
+    the block and the closing ``)`` at column 0 (``line.startswith(")")`` is
+    the terminator). pg_dump has emitted this layout for every supported
+    major; a multi-line entry would be sorted as separate lines.
     """
     out: list[str] = []
     block: list[str] | None = None
