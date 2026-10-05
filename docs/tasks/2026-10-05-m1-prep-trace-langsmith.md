@@ -25,7 +25,7 @@
 **PR 1：埋点与导出**
 1. 新增单一模块 `opspilot/tracing.py`：未配置端点时为空实现，零开销；依赖 `opentelemetry-sdk`、`opentelemetry-exporter-otlp-proto-http`（版本开工时核对锁定）。
 2. span：Run（`chain`）→ 模型调用（`llm`，模型名、token、耗时、结束原因）→ 工具调用（`tool`，工具名、目标、结果类别、字节数）。`langsmith.metadata.*` 带 incident_id、run_id、step 序号、prompt/tool schema/projection revision。
-3. 模式：`OPSPILOT_TRACE=off|lab`，默认 `off` 为空实现、什么都不导出；`lab` 只用于合成流量实验环境，附模型输入输出与工具结果。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」）：加测试，断言导出的 span 不含这些字段，并用 `scripts/check_secrets.py` 的规则扫描。这是 ADR-0006 第 5 条记录的对 C3 §11 的有界偏离，只限实验环境。
+3. 模式：`OPSPILOT_TRACE=off|lab`，默认 `off` 为空实现、什么都不导出；`lab` 只用于合成流量实验环境，附模型输入输出与工具结果。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」）：执行边界在写属性之前：span 属性只能经 `opspilot/tracing.py` 里的单一构造函数写入，它按显式白名单从已有的类型化对象（`ModelCall`/`ModelReply`、`ToolOutcome` 的模型可见投影）取字段，不接受原始 dict 或 provider 原始响应；白名单外的字段一律丢弃。测试断言白名单外字段（含 `reasoning_content`、Authorization 头、`.env` 中的密钥值）无法进入 span，`scripts/check_secrets.py` 扫描只作第二道检查。这是 ADR-0006 第 5 条记录的对 C3 §11 的有界偏离，只限实验环境。
 4. 导出失败不影响业务路径：批量导出、有界队列、丢弃计数入日志（C3 §11 允许 trace 有界丢弃）。
 5. 测试：内存 exporter 断言 span 树形与属性；空实现路径无网络调用。
 6. 合并类别：涉及数据出口，用户门。
