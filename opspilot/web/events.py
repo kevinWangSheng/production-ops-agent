@@ -162,14 +162,8 @@ class DurableEventLog:
         self._store = store
 
     def install(self) -> None:
-        with self._store.transaction() as conn:
-            conn.execute("""
-            CREATE TABLE IF NOT EXISTS opspilot_subject_events (
-              subject_id uuid NOT NULL, sequence bigint NOT NULL, kind text NOT NULL,
-              payload jsonb NOT NULL, recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-              PRIMARY KEY (subject_id, sequence)
-            );
-            """)
+        # DDL is in opspilot/migrations; this only checks the version (ADR-0007).
+        self._store.install()
 
     def append(self, subject_id: UUID, kind: str, payload: Mapping[str, Any]) -> int:
         _check(kind, payload)
