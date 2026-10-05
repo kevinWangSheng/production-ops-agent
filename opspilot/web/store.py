@@ -233,14 +233,8 @@ class DurableWebLedger:
         self._store = store
 
     def install(self) -> None:
-        with self._store.transaction() as conn:
-            conn.execute("""
-            CREATE TABLE IF NOT EXISTS opspilot_web_ledger (
-              namespace text NOT NULL, key text NOT NULL, value jsonb NOT NULL,
-              created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-              PRIMARY KEY (namespace, key)
-            );
-            """)
+        # DDL is in opspilot/migrations; this only checks the version (ADR-0007).
+        self._store.install()
 
     def put(
         self, namespace: str, key: str, value: Mapping[str, Any]

@@ -20,6 +20,7 @@ from opspilot.investigation.loop import prompt_revision_versions
 from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.investigation.store import StepStoreError
 from opspilot.persistence import DurableStore, Lease, PersistenceError
+from opspilot.schema import upgrade_head
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
 from scripts.m0_environment.report_contract import REPORT_VERSION, report_instruction
@@ -1291,10 +1292,11 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
     WHERE incident_id=%s` 因此走 Seq Scan，而三条写路径都排在它持有的
     incident 行锁之后，全表扫描的时间直接变成写路径的排队时间。
 
-    「补建」这一半在一次性 schema 里验证，不碰默认 schema 的产品索引：
-    `DROP INDEX` 取 ACCESS EXCLUSIVE 表锁，而本地 lab 由多个 worktree 共用，
-    删到一半失败会把 lab 留在「索引已删、未重建」状态并改变别人的查询计划。
-    默认 schema 这边只做只读断言。
+    2026-10-05 起 DDL 不再由 install() 执行，而由 Alembic 迁移通过 owner
+    连接落地（ADR-0007）；install() 只校验版本。「已有数据库也有索引」因此
+    变成：升级到 head 的数据库一定有这两个索引，而缺索引的旧库会被接管比对
+    拒绝（test_schema_migrations_postgres）。迁移这一半在一次性 schema 里
+    验证，不碰默认 schema 的产品索引；默认 schema 这边只做只读断言。
     """
     expected = {
         ("opspilot_runs", "opspilot_runs_incident_id_idx"),
@@ -1320,23 +1322,16 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
         f"默认 schema 缺少 incident_id 索引：{expected - set(live)}"
     )
 
-    # 一次性 schema：删掉索引后再 install()，断言的是「已有数据库上也会补建」，
-    # 而不是「建表时顺手建了」。
+    # 一次性 schema：由迁移（owner 路径）建到 head，再让运行时 install() 校验。
     schema = "m1_index_backfill_" + uuid4().hex
     with base.transaction() as conn:
         conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
     try:
-        scoped = DurableStore(f"{DSN} options=-csearch_path={schema}")
-        scoped.install()
-        with scoped.transaction() as conn:
-            for index in names:
-                conn.execute(
-                    sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index))
-                )
-        assert present(scoped, schema) == {}, (
-            "一次性 schema 的索引未被删掉，补建无从验证"
-        )
-
+        scoped_dsn = f"{DSN} options=-csearch_path={schema}"
+        scoped = DurableStore(scoped_dsn)
+        with pytest.raises(PersistenceError, match="SCHEMA_NOT_MIGRATED"):
+            scoped.install()
+        upgrade_head(scoped_dsn)
         scoped.install()
         backfilled = present(scoped, schema)
     finally:
@@ -1347,7 +1342,7 @@ def test_install_indexes_the_incident_foreign_keys_on_an_existing_database():
                 )
             )
     assert set(backfilled) == expected, (
-        f"install() 未在已有数据库上补建：{expected - set(backfilled)}"
+        f"升级到 head 的数据库缺少 incident_id 索引：{expected - set(backfilled)}"
     )
     for definition in backfilled.values():
         assert "(incident_id)" in definition, definition

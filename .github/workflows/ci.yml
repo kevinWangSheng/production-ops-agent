@@ -70,9 +70,44 @@ jobs:
           enable-cache: false
       - name: Install locked experiment dependencies
         run: make setup
+      - name: Install PostgreSQL 17 client (pg_dump must match the 17.9 service)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+      - name: Migration path 1, empty database to head
+        env:
+          OPSPILOT_DSN: host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab
+          OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: |
+          make migrate | tee /tmp/migrate-empty.log
+          grep -q "schema upgraded: 0001_baseline" /tmp/migrate-empty.log
+          .venv/bin/python -m opspilot.schema check
+      - name: Migration path 2, database built by the pre-Alembic DDL, takeover to head
+        env:
+          OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          $PSQL -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55431 -U m0_lab -d postgres -c "CREATE DATABASE legacy_takeover"
+          $PSQL -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55431 -U m0_lab -d legacy_takeover -f tests/integration/legacy_schema_2026-10-05.sql
+          export OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=legacy_takeover user=m0_lab"
+          make migrate | tee /tmp/migrate-legacy.log
+          grep -q "schema stamped: 0001_baseline" /tmp/migrate-legacy.log
+          .venv/bin/python -m opspilot.schema check
+          .venv/bin/python - <<'PY'
+          from opspilot import schema
+          lab = "host=127.0.0.1 port=55431 user=m0_lab"
+          fresh = schema.schema_dump(f"{lab} dbname=m0_budget", pg_dump="/usr/lib/postgresql/17/bin/pg_dump")
+          taken = schema.schema_dump(f"{lab} dbname=legacy_takeover", pg_dump="/usr/lib/postgresql/17/bin/pg_dump")
+          assert fresh == taken, "schema dump of fresh head and takeover differ"
+          print(f"fresh head and takeover dumps identical ({len(fresh.splitlines())} lines)")
+          PY
       - name: Verify ledger and adapter integration on synthetic PostgreSQL
         env:
           M0_B_POSTGRES: "1"
           M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
         # Native local cluster restart is independently tested on macOS, not this service.
         run: .venv/bin/python -m pytest tests/integration -q
