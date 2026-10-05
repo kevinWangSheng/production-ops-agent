@@ -13,7 +13,7 @@ SPEC 只为 M1-01、M1-02 和 2026-10-05 的基础设施准备开了门。M1-03 
 
 | 入口条件 | 现状（证据） | 提议 |
 |---|---|---|
-| 产品级 streaming/checkpoint 恢复、工具错误 PG 审计、压缩器配对 | 2026-10-05 核查（#91，见下节）：产品不做 streaming（`stream: False`），该子项不适用；工具错误 PG 审计已被 M1-01 覆盖（真实模型 Run 的 PG 行）；重启恢复只部分覆盖（真实 PG 加替身模型，缺真实模型 Run 中途 kill 后经产品路径恢复）；压缩配对只有确定性测试和一次非产品脚本的真实 provider 冒烟，产品 loop 在真实 Run 中从未触发压缩（46 份 `ledger.json`（另有 45 份 `report.json`）的 `compactions` 全为 0） | 关闭 streaming（改为豁免/不适用，需用户决定）；重启与工具错误两项仅补一份对照证据索引；压缩配对缺一次真实 Run 取证（见下节缺口） |
+| 产品级 streaming/checkpoint 恢复、工具错误 PG 审计、压缩器配对 | 2026-10-05 核查（#91，见下节）：产品不做 streaming（`stream: False`），该子项不适用；工具错误 PG 审计已被 M1-01 覆盖（真实模型 Run 的 PG 行）；重启恢复只部分覆盖（真实 PG 加替身模型，缺真实模型 Run 中途 kill 后经产品路径恢复）；压缩配对只有确定性测试和一次非产品脚本的真实 provider 冒烟，产品 loop 在真实 Run 中从未触发压缩（46 份 `ledger.json`（另有 45 份 `report.json`）的 `compactions` 全为 0） | 关闭 streaming（改为豁免/不适用，需用户决定）；工具错误一项仅补一份对照证据索引；重启恢复与压缩配对各缺真实取证：一次有界真实 DeepSeek Run 在模型响应提交前后各 kill 一次并经 `loop.resume` 恢复完成，另需真实触发一次压缩并做 PG 往返，两者可合并为同一组真实 Run（见下节缺口） |
 | pause/resume 与 observer 授权 | pause/resume 有 PG 合同和真实 Run（`round-07-wp23-results.md`）；observer 授权由 M1-02 交付（SPEC 2026-10-03 段） | M1-02 完成后补一份对照证据即可关闭 |
 | Kubernetes RBAC 与 Holmes 宿主 OS 隔离 | 无 K8s 环境，RBAC 缺测；容器隔离只有 UID 0 的路径不可见证据 | M1-02 第 0 步建 kind 环境后，RBAC 拒绝可直接在 kind 上取证；Holmes 宿主 OS 隔离只影响上游基线对比，提议随 F14 处理 |
 | 正式 judge 校准与未见保留集 | judge rubric 待人工校准（6 份独立审查样本）；保留变体盲测只有首次小规模 10/10 | 借鉴上游 `tests/llm/` 的做法（场景 fixture + pytest marker 分档 + `RUN_LIVE` 开关 + 历史结果归档），结合 ADR-0006 的 LangSmith dataset/experiment 建正式集；需要用户单人确认标注 |
