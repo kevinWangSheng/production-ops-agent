@@ -25,13 +25,13 @@
 **PR 1：埋点与导出**
 1. 新增单一模块 `opspilot/tracing.py`：未配置端点时为空实现，零开销；依赖 `opentelemetry-sdk`、`opentelemetry-exporter-otlp-proto-http`（版本开工时核对锁定）。
 2. span：Run（`chain`）→ 模型调用（`llm`，模型名、token、耗时、结束原因）→ 工具调用（`tool`，工具名、目标、结果类别、字节数）。`langsmith.metadata.*` 带 incident_id、run_id、step 序号、prompt/tool schema/projection revision。
-3. 模式：`OPSPILOT_TRACE=off|lab`，默认 `off` 为空实现、什么都不导出；`lab` 只用于合成流量实验环境，附模型输入输出与工具结果。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」）：执行边界在写属性之前：span 属性只能经 `opspilot/tracing.py` 里的单一构造函数写入，它按显式白名单从已有的类型化对象（`ModelCall`/`ModelReply`、`ToolOutcome` 的模型可见投影）取字段，不接受原始 dict 或 provider 原始响应；白名单外的字段一律丢弃。测试断言白名单外字段（含 `reasoning_content`、Authorization 头、`.env` 中的密钥值）无法进入 span，`scripts/check_secrets.py` 扫描只作第二道检查。这是 ADR-0006 第 5 条记录的对 C3 §11 的有界偏离，只限实验环境。
+3. 模式：`OPSPILOT_TRACE=off|lab`，默认 `off` 为空实现、什么都不导出；`lab` 只用于合成流量实验环境，附模型输入输出与工具结果，且**失败即关闭**：除环境变量外，还须在启动时和每个 Run 开始时独立核实运行目标属于实验环境（工具 profile 为 `fixture` 或 `otel-demo`，且 Prometheus/Jaeger 端点为回环地址或 kind 集群内地址，LangSmith project 名以 `opspilot-lab-` 开头）；任一项不满足就整个 Run 不导出并记日志，不降级为部分导出。加测试覆盖「只设环境变量、目标不在实验环境」时无导出。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」）：执行边界在写属性之前：span 属性只能经 `opspilot/tracing.py` 里的单一构造函数写入，它按显式白名单从已有的类型化对象（`ModelCall`/`ModelReply`、`ToolOutcome` 的模型可见投影）取字段，不接受原始 dict 或 provider 原始响应；白名单外的字段一律丢弃。测试断言白名单外字段（含 `reasoning_content`、Authorization 头、`.env` 中的密钥值）无法进入 span，`scripts/check_secrets.py` 扫描只作第二道检查。这是 ADR-0006 第 5 条记录的对 C3 §11 的有界偏离，只限实验环境。
 4. 导出失败不影响业务路径：批量导出、有界队列、丢弃计数入日志（C3 §11 允许 trace 有界丢弃）。
 5. 测试：内存 exporter 断言 span 树形与属性；空实现路径无网络调用。
 6. 合并类别：涉及数据出口，用户门。
 
 **PR 2：实验证据改造**
-1. 实验脚本每轮设一个 LangSmith project（命名 `opspilot-<轮次>`），project 设最长保留。
+1. 实验脚本每轮设一个 LangSmith project（命名 `opspilot-lab-<轮次>`），project 设最长保留。
 2. 仓库只写冻结摘要 `summary.json`：报告、判定、计数、费用、trace ID 与链接、原始 ledger 的 sha256；不再写 `ledger.json`。
 3. 独立审查判定用 `langsmith` SDK 写成 feedback（key 如 `review_p1`/`review_p2`、评语链接审查记录）。
 4. 改 AGENTS.md「验证与汇报」过渡句的生效状态（本 PR 合并后，PR 证据改附 trace 链接与冻结摘要）。

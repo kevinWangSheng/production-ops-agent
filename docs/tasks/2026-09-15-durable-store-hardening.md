@@ -1,6 +1,6 @@
 # DurableStore 技术栈与 SQL 加固
 
-- 状态：A 类实施完成，PR 待用户审核合并；B、C 类仍待用户决定
+- 状态：A 类已完成；B2、C1、C2 已决（用户 2026-10-05，见 [ADR-0007](../adr/0007-data-access-raw-sql-with-standard-tools.md)，实施见[数据访问层标准化](2026-10-05-m1-prep-schema-migrations.md)）；B1、C3 仍待决
 - 更新日期：2026-09-15
 - 依据：`docs/design/technical-proposal-2026-09-07.md` 第 4、5、7 节；`ADR-0003` 业务记录恢复权威；`SPEC.md` 第 63 行（依赖锁定清单尚未选定）；承接 [M1-01 持久化与恢复](2026-09-14-m1-01-durable-state.md) 的未完成项。
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-durable-hardening`，分支 `chore/durable-store-hardening`（起点 main `b483a12`）
