@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import threading
 import weakref
@@ -75,15 +76,53 @@ def _note_released(key: _PoolKey, shared: _SharedPool) -> None:
 
 
 def _drain_released_locked() -> list[ConnectionPool[Connection]]:
-    """持 `_POOLS_LOCK` 调用：结清已回收 store 的使用计数，返回该关的池。"""
+    """持 `_POOLS_LOCK` 调用：结清已回收 store 的使用计数，返回该关的池。
+
+    只结清本进程建的池。fork 继承来的池（键里的 pid 是父进程）留在表里、
+    永不关闭也永不丢引用：关闭或回收它的连接都会在与父进程共享的 socket 上
+    发 Terminate，杀掉父进程的会话。
+    """
+    pid = os.getpid()
     closing: list[ConnectionPool[Connection]] = []
     while _RELEASED:
         key, shared = _RELEASED.popleft()
+        if key[0] != pid:
+            continue
         shared.users -= 1
         if shared.users <= 0 and _POOLS.get(key) is shared:
             del _POOLS[key]
             closing.append(shared.pool)
     return closing
+
+
+def _settle_released() -> None:
+    """结清已回收 store 留下的释放登记，关掉没人用的池。
+
+    在每次构造 store、用池和 `close()` 时调用，所以一个用过即弃的 store
+    最晚在下一个 store 构造时释放连接，而不是等到 GC 之后某次恰好用池。
+    """
+    with _POOLS_LOCK:
+        closing = _drain_released_locked()
+    for pool in closing:
+        pool.close()
+
+
+def close_pools() -> None:
+    """关掉本进程建的全部连接池；进程退出时由 atexit 调用，也可显式调用。
+
+    之后任何 store 再开事务会重建池。继承自父进程的池不动（见
+    `_drain_released_locked`）。
+    """
+    pid = os.getpid()
+    with _POOLS_LOCK:
+        _RELEASED.clear()
+        mine = [key for key in _POOLS if key[0] == pid]
+        closing = [_POOLS.pop(key).pool for key in mine]
+    for pool in closing:
+        pool.close()
+
+
+atexit.register(close_pools)
 
 
 def _reset_session(conn: Connection) -> None:
@@ -217,6 +256,7 @@ class DurableStore:
         self.pool_config = PoolConfig.from_env() if pool is None else pool
         self._shared: _SharedPool | None = None
         self._finalizer: weakref.finalize[Any, Any] | None = None
+        _settle_released()
 
     def _connection_pool(self) -> ConnectionPool[Connection]:
         """本进程里同一 DSN + 配置的所有 store 共用一个池，首次事务时才建。
@@ -226,7 +266,7 @@ class DurableStore:
         `max_connections=12` 当场打满）。池记着用它的 store 数，最后一个 store
         被回收或 `close()` 时关池，所以指向临时库的 store 不会留下连接。
         键里带 pid：fork 出的子进程不能沿用父进程的 socket，自己另建；父进程
-        的池只是留在表里，不 close（close 会在共享的 socket 上发 Terminate）。
+        的池只留在表里，`close()`/`close_pools()` 都不碰它。
         """
         key = (os.getpid(), self.dsn, self.pool_config)
         with _POOLS_LOCK:
@@ -274,11 +314,8 @@ class DurableStore:
         """
         finalizer, self._finalizer, self._shared = self._finalizer, None, None
         if finalizer is not None:
-            finalizer()  # 登记释放
-        with _POOLS_LOCK:
-            closing = _drain_released_locked()
-        for pool in closing:
-            pool.close()
+            finalizer()  # 登记释放；继承自父进程的池在结清时被跳过
+        _settle_released()
 
     @staticmethod
     def _require_row(cursor: psycopg.Cursor[dict[str, Any]]) -> dict[str, Any]:

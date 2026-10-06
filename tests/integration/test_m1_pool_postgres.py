@@ -7,6 +7,7 @@
 
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -167,3 +168,73 @@ def test_stores_with_the_same_dsn_share_one_pool_until_the_last_one_goes() -> No
             "SELECT 1 FROM pg_stat_activity WHERE pid=%s", (pid,)
         ).fetchone()
     assert row is None  # 最后一个 store 回收后池关闭，连接断开
+
+
+def _sessions(application_name_prefix: str) -> int:
+    import psycopg
+
+    with psycopg.connect(DSN) as probe:
+        row = probe.execute(
+            "SELECT count(*) AS n FROM pg_stat_activity WHERE application_name LIKE %s",
+            (application_name_prefix + "%",),
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def test_dead_stores_with_distinct_dsns_do_not_keep_pools_alive() -> None:
+    """审查发现 1：store 用过即弃、之后再没有池操作，池不能永远留在表里。"""
+    import gc
+
+    from opspilot import persistence
+
+    tag = f"m1-pool-leak-{uuid4().hex[:8]}"
+    config = PoolConfig(min_size=1, max_size=1, timeout=0.5)
+    for i in range(6):
+        store = DurableStore(f"{DSN} application_name={tag}-{i}", pool=config)
+        _backend_pid(store)
+        del store
+        gc.collect()
+    # 之后只构造 store、不开事务：构造本身就得结清已回收的池。
+    DurableStore(DSN, pool=config)
+    assert _sessions(tag) == 0
+    # 进程退出路径：关掉本进程全部池，不留连接。
+    persistence.close_pools()
+    assert _sessions(tag) == 0
+    assert not [key for key in persistence._POOLS if key[0] == os.getpid()]
+
+
+def test_forked_child_close_does_not_kill_the_parents_connection(
+    store: DurableStore,
+) -> None:
+    """审查发现 2：子进程继承的池不属于它，close() 不得在共享 socket 上发 Terminate。"""
+    import psycopg
+
+    pid = _backend_pid(store)
+    # 连接是异步归还的；等它真的回到池里，子进程关池时才会碰到这条 socket。
+    pool = store._connection_pool()
+    deadline = time.monotonic() + 5
+    while pool.get_stats()["pool_available"] < 1:
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    child = os.fork()
+    if child == 0:  # pragma: no cover - runs in the forked child
+        code = 1
+        try:
+            store.close()
+            DurableStore(DSN, pool=store.pool_config).close()
+            # 子进程自己开事务要走自己的新池，和父进程的 backend 不同。
+            code = 0 if _backend_pid(store) != pid else 2
+        finally:
+            os._exit(code)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    # 父进程的池化连接还活着，而且就是原来那条 backend。
+    assert _backend_pid(store) == pid
+    with psycopg.connect(DSN) as probe:
+        assert (
+            probe.execute(
+                "SELECT 1 FROM pg_stat_activity WHERE pid=%s", (pid,)
+            ).fetchone()
+            is not None
+        )
