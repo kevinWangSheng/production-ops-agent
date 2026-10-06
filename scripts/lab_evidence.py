@@ -293,9 +293,46 @@ def freeze(
     return frozen, summary_path
 
 
-def langsmith_client() -> Any:
-    """A ``langsmith.Client`` from ``LANGSMITH_*``; imported here so the
-    experiment scripts need the SDK only in lab mode."""
+# The tracer's checks that concern the LangSmith target itself (endpoint and
+# key). The Run-only codes (tool profile, Prometheus/Jaeger, LANGSMITH_PROJECT)
+# are not part of this subset: a client is also needed where no Run opens.
+LANGSMITH_TARGET_CODES = frozenset(
+    {"LANGSMITH_ENDPOINT_NOT_ALLOWED", "LANGSMITH_KEY_MISSING"}
+)
+# Same canonical default as ``opspilot.tracing``; it is still validated by
+# ``check_lab_target`` before use, so the two cannot drift into an open hole.
+DEFAULT_LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
+
+
+def langsmith_target_failures(env: Mapping[str, str] | Any) -> tuple[str, ...]:
+    """Endpoint/key failures from ``opspilot.tracing.check_lab_target``."""
+    return tuple(
+        code
+        for code in check_lab_target({**env, TRACE_ENV: "lab"})
+        if code in LANGSMITH_TARGET_CODES
+    )
+
+
+def langsmith_client(env: Mapping[str, str] | Any | None = None) -> Any:
+    """A ``langsmith.Client`` bound explicitly to the validated endpoint and key.
+
+    Independent review (PR #110 round 2, #1): ``Client()`` with no arguments
+    resolves its endpoint and key from ambient SDK configuration too
+    (``LANGCHAIN_ENDPOINT``, ``LANGCHAIN_API_KEY``, ...), so with
+    ``LANGSMITH_ENDPOINT`` unset the API key went wherever that pointed. The
+    endpoint used here is ``LANGSMITH_ENDPOINT`` (or the canonical default),
+    accepted by the tracer's own check first, and the key is the named one;
+    any failure refuses before the client exists. Imported lazily so the
+    experiment scripts need the SDK only in lab mode.
+    """
+    env = os.environ if env is None else env
+    failures = langsmith_target_failures(env)
+    if failures:
+        raise SystemExit("langsmith target check failed: " + ",".join(failures))
     from langsmith import Client
 
-    return Client()
+    return Client(
+        api_url=env.get("LANGSMITH_ENDPOINT") or DEFAULT_LANGSMITH_ENDPOINT,
+        api_key=env["LANGSMITH_API_KEY"],
+        workspace_id=env.get("LANGSMITH_WORKSPACE_ID") or None,
+    )

@@ -521,3 +521,73 @@ def test_finding_b3_read_back_errors_are_recorded_not_raised():
         delay_seconds=0,
     )
     assert evidence["read_back"] == "error:TimeoutError"
+
+
+def test_finding_r2_1_client_endpoint_comes_only_from_validated_langsmith_endpoint(
+    monkeypatch,
+):
+    """Astra round 2 #1: ``langsmith.Client()`` also honours LANGCHAIN_ENDPOINT
+    and other ambient SDK config; the client must be built from the validated
+    ``LANGSMITH_ENDPOINT`` (or the canonical default) and the named key only."""
+    for name in ("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT", "LANGCHAIN_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LANGCHAIN_ENDPOINT", "https://attacker.example")
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    client = lab_evidence.langsmith_client()
+    assert client.api_url == "https://api.smith.langchain.com"
+    # An explicit but disallowed LANGSMITH_ENDPOINT refuses before construction.
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://attacker.example")
+    with pytest.raises(SystemExit) as raised:
+        lab_evidence.langsmith_client()
+    assert "LANGSMITH_ENDPOINT_NOT_ALLOWED" in str(raised.value)
+    # A missing key refuses as well; the SDK must not fall back to LANGCHAIN_API_KEY.
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://eu.api.smith.langchain.com")
+    monkeypatch.delenv("LANGSMITH_API_KEY")
+    monkeypatch.setenv("LANGCHAIN_API_KEY", "k" * 12)
+    with pytest.raises(SystemExit) as raised:
+        lab_evidence.langsmith_client()
+    assert "LANGSMITH_KEY_MISSING" in str(raised.value)
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    assert (
+        lab_evidence.langsmith_client().api_url == "https://eu.api.smith.langchain.com"
+    )
+
+
+def test_finding_r2_2_run_id_and_summary_must_agree_before_any_write(
+    tmp_path, monkeypatch
+):
+    """Astra round 2 #2: ``--run-id`` naming run B with ``--summary`` of run A
+    is refused (no write), so ``--record`` can never point A's summary at B."""
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    run_a = "00000000-0000-0000-d2aa-402ad330ab4a"
+    run_b = "00000000-0000-0000-0000-00000000000b"
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps({"trace": {"langsmith_run_id": run_a}}))
+    client = FakeClient()
+    _project_with_root(client, "opspilot-lab-r1", run_a)
+    _project_with_root(client, "opspilot-lab-r1", run_b)
+    args = [
+        "--summary",
+        str(summary_path),
+        "--run-id",
+        run_b,
+        "--key",
+        "review_p1",
+        "--verdict",
+        "pass",
+        "--review-url",
+        "u",
+        "--record",
+    ]
+    with pytest.raises(SystemExit) as raised:
+        lab_review_feedback.main(args, client_factory=lambda: client)
+    assert "RUN_ID_MISMATCH" in str(raised.value)
+    assert not any(c[0] == "create_feedback" for c in client.calls)
+    assert "review_feedback" not in json.loads(summary_path.read_text())
+    # Matching ids are accepted.
+    args[3] = run_a
+    assert lab_review_feedback.main(args, client_factory=lambda: client) == 0
+    assert (
+        json.loads(summary_path.read_text())["review_feedback"][0]["key"] == "review_p1"
+    )

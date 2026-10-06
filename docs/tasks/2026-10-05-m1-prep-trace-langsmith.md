@@ -120,3 +120,8 @@ Astra（全新上下文）2 项与 Codex 机器人 3 项全部采纳，每项先
 4. B2 根 run 改按 `metadata.OTEL_TRACE_ID`= tracer 记录的最终 trace id 查找（每个 attempt 各自成 root、续开 Run 换 run id，`run_id` 过滤可能取到任意 root）；对已有真实 Run 实时回读命中同一 root `…80f2-bbb9d78533c7`。
 5. B3 回读包在 try 内，异常记 `read_back: error:<类型>`，ledger 与 summary 照常冻结。
 `make check`：2616 passed、311 skipped、2 xfailed。摘要格式未变，未再跑真实 Run；A2/B2 以只读实时调用核验。
+
+第二轮两项（`test_finding_r2_*`）：
+1. `langsmith_client()` 显式 `Client(api_url=<经 check_lab_target 校验的 LANGSMITH_ENDPOINT 或规范默认>, api_key=LANGSMITH_API_KEY, workspace_id=…)`；校验失败先拒绝。原因：无参 `Client()` 还读 `LANGCHAIN_ENDPOINT`/`LANGCHAIN_API_KEY` 等 SDK 环境配置，红测试里 `LANGSMITH_ENDPOINT` 未设、`LANGCHAIN_ENDPOINT` 指向外部主机时 SDK 已带 key 请求了该主机的 `/info`。`opspilot/tracing.py` 的 OTLP 导出器只用校验过的 `LANGSMITH_ENDPOINT` 或默认值拼 URL（第 842 行），无需改。实时核验：设 `LANGCHAIN_ENDPOINT=https://attacker.example` 时 `client.api_url` 仍为 `https://api.smith.langchain.com`。
+2. feedback CLI 同时给 `--run-id` 与 `--summary` 时两者须一致，否则 `RUN_ID_MISMATCH` 拒绝、不写；`--record` 仍要求 `--summary`。
+`make check`：2618 passed、311 skipped、2 xfailed。
