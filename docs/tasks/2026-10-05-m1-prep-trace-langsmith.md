@@ -1,9 +1,9 @@
 # M1 准备：OTel 埋点接 LangSmith，实验证据上平台
 
-- 状态：PR 1 已实现并完成真实 Run 验证，待用户门合并（issue #80）；PR 2 待开始
-- 更新日期：2026-10-05
+- 状态：PR 1 已合并（#108，issue #80）；PR 2 已实现并完成真实 Run 验证，待用户门合并（issue #81）
+- 更新日期：2026-10-06
 - 依据：[ADR-0006](../adr/0006-trace-evidence-and-backlog.md)；C3 §2（第 31 行）、§11「可观测性」「保留与删除」、第 440–441 行（私有字段与凭据不出域）；F8 第 1 步
-- 工作区：`../production-ops-agent-trace`，分支 `chore/m1-prep-trace`
+- 工作区：PR 1 `../production-ops-agent-trace`（`chore/m1-prep-trace`，已合并）；PR 2 `../production-ops-agent-trace2`，分支 `chore/m1-prep-trace-evidence`
 
 ## 目标与范围
 
@@ -47,8 +47,9 @@
 
 ## 下一步与交接
 
-- 待核实三项已在「PR 1 执行」核实完毕。
-- PR 2 开工前提：PR 1 合并。
+- PR 2 待用户门合并；合并后触碰调查 loop 的 PR 按 AGENTS.md 新句附 trace 链接与 `summary.json`。
+- 未执行（两个 PR 共同）：独立审查（全新上下文）凭 API 读 trace 并用 `lab_review_feedback.py` 写判定；`otel-demo` profile 下的 lab Run。
+- 本记录的第一个真实 PR 2 Run 之后，PR 2 worktree 的临时 PostgreSQL（127.0.0.1:55471）已停止并删除，原始 ledger 只在该 worktree 的 `tmp/lab-ledgers/` 下，以 sha256 识别。
 
 ## PR 1 执行（2026-10-05）
 
@@ -90,3 +91,22 @@
 第三轮一项（`test_round3_*`）：所有字符串属性在唯一写入点 `_write()` 经 `_scrub()`：(a) 进程环境与 `configure()` 传入映射中名为 `LANGSMITH_API_KEY`/`DEEPSEEK_API_KEY` 或以 `_API_KEY/_TOKEN/_SECRET/_PASSWORD` 结尾、长度 ≥ 8 的值按原文精确替换为 `[REDACTED]`；(b) `(authorization|bearer|api[_-]?key|token|secret|password|passwd)\s*[:=]\s*\S+` 保留键、擦值，`bearer <token>`、`sk-…`/`lsv2_…` 形状整体擦除。`scripts/check_secrets.py` 没有可导入的 Python 模式表（它运行 gitleaks 的 Go 侧默认规则，仅内嵌一条自检 canary），因此文本模式写在 `tracing.py`，gitleaks 仍是仓库侧第二道检查。结构测试断言 `tracing.py` 中 `set_attribute` 只出现在 `_write` 内一次。
 
 三轮修复后在最终 HEAD（df60b31）复跑一次 lab 真实 Run：project `opspilot-lab-trace-pr1-final-2026-10-05`，run `d5cbb3ef…`，published，2 次模型调用；LangSmith 回读 4 个 run（chain 根 + 2 llm + `tool:metrics_range_query`，工具名来自注册表），每次 llm tokens（1201/86、1490/2441）与 ledger 逐项一致，根 run 聚合 2691/2527 等于 ledger 总计与 PG `run_usage`；回读内容不含 `reasoning_content`/`Authorization`/`x-api-key`/`Bearer`/密钥值；project 已设 `longlived`。费用上界 0.028 CNY（余额显示 6.69 → 6.69，低于显示精度）。链接与哈希见 `summary.json` 的 `final_lab_run_at_head_df60b31`。
+
+## PR 2 执行（2026-10-06）
+
+实现：新模块 `scripts/lab_evidence.py`（每轮 project、最长保留、冻结摘要、trace 回读）与 CLI `scripts/lab_review_feedback.py`（审查判定写 feedback 并回读）；`scripts/m1_live_runner.py` 与 `scripts/m1_live_flash_loop.py` 改为只写 `summary.json`（flash loop 同时补上 Run 根 span，lab 模式下与 runner 同样导出）。只触碰这两个真实 Run 脚本；`m1_compaction_smoke.py`/`m1_context_latency.py` 是无 Run 的基准脚本，不在本项范围。`opspilot/tracing.py` 与 `opspilot/persistence/` 未改。
+
+1. **每轮一个 project、最长保留**：`--lab-round <名>`（或 `OPSPILOT_LAB_ROUND`）→ `LANGSMITH_PROJECT=opspilot-lab-<名>`，lab 模式下必填；Run 前 `create_project(upsert)` + `PATCH /sessions/{id} {"trace_tier":"longlived"}` 并回读（保留期改动只对新 trace 生效，所以先设后跑）。
+2. **仓库只留冻结摘要**：`summary.json` 含报告（解析为 JSON）、判定（状态/原因/各 attempt/控制/事件种类或验收 outcome）、计数（HTTP、tokens、`run_usage`、证据 ID）、费用上界、trace（模式、OTel trace id、project 与 id、`trace_tier`、LangSmith run id、链接、回读状态）、原始 ledger 的 sha256/字节数/相对路径。原始 ledger 写到 `tmp/lab-ledgers/<experiment>/<run_id>/`（gitignore 的 `tmp/`，或 `OPSPILOT_LEDGER_DIR`）。证据目录里除 `summary.json` 不再写 `ledger.json`/`report.json`/`acceptance-outcome.json`；旧证据不动。
+3. **trace 回读**：LangSmith run id 不能从 OTel trace id 推出，脚本用 `list_runs(filter=metadata run_id)` 轮询根 run（最多 30×2s），找到则冻结 run id 与 UI 链接，找不到记 `read_back: root_run_not_found`，不编造。
+4. **审查判定写 feedback**：`lab_review_feedback.py --summary <summary.json> --key review_<项> --verdict pass|fail|insufficient --review-url <审查记录> [--comment] [--record]`；`create_feedback` 后 `read_feedback` 逐字段比对，`--record` 把 feedback id 追加进 `summary.json` 的 `review_feedback`。
+5. **AGENTS.md「验证与汇报」**：过渡句改为「附 trace 链接与仓库冻结摘要 `summary.json`（ADR-0006）；原始 ledger 不入库」。
+6. **测试**：`tests/test_lab_evidence.py` 11 项（用录制假 client，无网络）；`tests/acceptance/test_m1_live_flash_script_entry.py` 的断言从「`ledger.json` 在输出目录」改为「只有 `summary.json` 在证据目录、ledger 在 `OPSPILOT_LEDGER_DIR` 且哈希一致」。这是证据规则变更带来的验收断言改动，随本用户门 PR 一并决定。`make check`：2611 passed、301 skipped、2 xfailed；`check_secrets.py` 通过。
+
+真实验证（一次，fixture profile，真实 DeepSeek Flash，临时 PG 17 @127.0.0.1:55471）：
+
+- 冻结摘要：[`docs/evidence/m1-01-handoff-runner/live-runs/93372aa7-8fd5-4f8e-bb88-161b2cbc5d1f/summary.json`](../evidence/m1-01-handoff-runner/live-runs/93372aa7-8fd5-4f8e-bb88-161b2cbc5d1f/summary.json)；目录内仅此一文件；原始 ledger sha256 `fc578fbc…1b42`（5790 字节，不入库）。
+- Run `93372aa7…`：`published`，2 次模型调用，tokens 2698/3535，费用上界 0.036875 CNY；DeepSeek 余额 6.65 → 6.65（低于显示精度）。
+- LangSmith：project `opspilot-lab-trace-pr2-2026-10-06`（id `ea320431-…`），Run 前 PATCH 后回读 `trace_tier=longlived`；根 run `00000000-0000-0000-80f2-bbb9d78533c7`，[链接](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ea320431-68a8-4ce7-95a5-8a1795c09f99/r/00000000-0000-0000-80f2-bbb9d78533c7?poll=true)；回读 4 个 run（chain 根 + 2 llm 1201/81、1497/3454 + `tool:metrics_range_query`），根 run 聚合 2698/3535 等于摘要 `counts` 与 PG `run_usage`；回读内容不含 `reasoning_content`/`Authorization`/`x-api-key`/`Bearer`/环境密钥值。
+- feedback：`review_mechanism_check=pass`（实现者的机制核验，**不是独立审查**），feedback id `01a1109b-ec87-7c90-80ff-2b2bc15a9947`，`read_feedback` 逐字段一致，另以 `list_feedback(run_ids=…)` 独立列出确认；id 已记入上述 `summary.json`。
+- 可逆细节自决：round 名限 `[a-z0-9][a-z0-9.-]{0,62}`；`insufficient` 判定不打分只写 value；摘要里 ledger 路径写相对仓库路径（不含本机目录）。

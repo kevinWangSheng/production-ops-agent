@@ -1,13 +1,21 @@
 """Bounded live Flash investigation: product loop + fixture tools + usage ledger.
 
-Reads DEEPSEEK_API_KEY from a private env file, never prints it, and writes a
-business ledger under docs/evidence/m1-01-acceptance/live-runs/<run_id>/ (or
-M1_ACCEPTANCE_OUT). Each Run gets its own directory so earlier evidence is
-never overwritten. This is not product intake wiring.
+Reads DEEPSEEK_API_KEY from a private env file, never prints it. Evidence
+follows ADR-0006 decision 3: one frozen ``summary.json`` per Run under
+docs/evidence/m1-01-acceptance/live-runs/<run_id>/ (or M1_ACCEPTANCE_OUT),
+carrying the report, the acceptance verdict, counts, cost, trace link and the
+sha256 of the raw ledger, which goes to the ignored ``tmp/lab-ledgers/`` (or
+``OPSPILOT_LEDGER_DIR``). Each Run gets its own directory so earlier evidence
+is never overwritten. This is not product intake wiring.
+
+``OPSPILOT_TRACE=lab`` with ``--lab-round <name>`` (or ``OPSPILOT_LAB_ROUND``)
+exports the Run to the LangSmith project ``opspilot-lab-<name>`` (set to the
+longest retention first) under one root span, as the runner does.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import time
@@ -15,17 +23,29 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from opspilot import tracing
 from opspilot.acceptance import IncidentScenario, outcome_from_loop
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import (
+    DISCIPLINE_VARIANT,
     InvestigationLoop,
     InvestigationRequest,
     ModelCall,
     ModelError,
     ModelReply,
+    prompt_revision_versions,
 )
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
+from scripts.lab_evidence import (
+    LAB_ROUND_ENV,
+    configure_lab_round,
+    ensure_longlived_project,
+    freeze,
+    langsmith_client,
+    parse_report,
+    trace_evidence,
+)
 from tests.m1_tool_support import (
     WINDOW_START,
     body,
@@ -204,7 +224,56 @@ def build_run(model, *, clock, deadline, run_id, evidence_context=None):
     return loop, request
 
 
+LANGSMITH_KEYS = (
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGSMITH_ENDPOINT",
+    "LANGSMITH_WORKSPACE_ID",
+)
+
+
+def read_named(path: Path, name: str) -> str:
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith(f"{name}="):
+            value = line.split("=", 1)[1].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            return value
+    return ""
+
+
+def load_langsmith_env(path: Path) -> list[str]:
+    """Copy the ``LANGSMITH_*`` entries the shell left unset; return the names."""
+    loaded = []
+    for name in LANGSMITH_KEYS:
+        if os.environ.get(name):
+            continue
+        value = read_named(path, name)
+        if value:
+            os.environ[name] = value
+            loaded.append(name)
+    return loaded
+
+
+def prepare_lab_project(lab_round: str | None) -> dict | None:
+    """In lab mode: name this round's project and set its retention first.
+
+    Returns the project record for the summary, or None outside lab mode.
+    """
+    if os.environ.get(tracing.TRACE_ENV) != "lab":
+        return None
+    if not lab_round:
+        raise SystemExit("OPSPILOT_TRACE=lab requires --lab-round")
+    return ensure_longlived_project(
+        langsmith_client(), configure_lab_round(os.environ, lab_round)
+    )
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
+    args = parser.parse_args()
     env_file = resolve_env_file()
     key = read_key(env_file)
     if not key:
@@ -214,25 +283,44 @@ def main() -> int:
             )
         )
         return 2
+    load_langsmith_env(env_file)
+    project = prepare_lab_project(args.lab_round)
+    trace = tracing.configure(os.environ)
     clock = SystemClock()
     deadline = clock.now() + timedelta(minutes=12)
     run_id = str(uuid4())
     recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     del key
     loop, request = build_run(recorder, clock=clock, deadline=deadline, run_id=run_id)
-    started = clock.now()
-    outcome = loop.run(request)
-    acceptance_outcome = outcome_from_loop(
-        IncidentScenario(
-            scenario_id=f"m1-01-real-{run_id}",
-            feature_id="F3",
-            acceptance_step="external IncidentScenario -> IncidentOutcome",
-            kind="real-deepseek",
-            subject_id="incident-acceptance",
-        ),
-        outcome,
+    scenario = IncidentScenario(
+        scenario_id=f"m1-01-real-{run_id}",
+        feature_id="F3",
+        acceptance_step="external IncidentScenario -> IncidentOutcome",
+        kind="real-deepseek",
+        subject_id="incident-acceptance",
     )
+    started = clock.now()
+    # One root span for the Run, as ``InvestigationRunner.resume`` opens one
+    # per attempt; the loop's model and tool spans attach to it in lab mode.
+    with tracing.tracer().run(
+        incident_id=scenario.subject_id,
+        run_id=run_id,
+        versions=prompt_revision_versions(DISCIPLINE_VARIANT),
+    ) as span:
+        outcome = loop.run(request)
+        span.settle(
+            outcome.execution,
+            outcome.handoff_reasons[0] if outcome.handoff_reasons else None,
+        )
+    acceptance_outcome = outcome_from_loop(scenario, outcome)
     ended = clock.now()
+    tracing.shutdown()
+    trace_record = {
+        "mode": trace.mode,
+        "trace_id": trace.last_trace_id,
+        "project": os.environ.get("LANGSMITH_PROJECT") if trace.mode == "lab" else None,
+        "dropped_spans": getattr(trace, "dropped_spans", 0),
+    }
     usages = [
         item["usage"]
         for item in recorder.attempts
@@ -261,32 +349,55 @@ def main() -> int:
         "steps_committed": outcome.steps_committed,
         "prompt_revision": outcome.prompt_revision,
         "question_sha256": outcome.question_sha256,
+        "trace": trace_record,
     }
     OUT = resolve_out_dir(run_id)
-    OUT.mkdir(parents=True, exist_ok=False)
-    (OUT / "ledger.json").write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
-    if outcome.report_content is not None:
-        (OUT / "report.json").write_text(outcome.report_content)
-    if outcome.report is not None:
-        (OUT / "report-parsed.json").write_text(
-            outcome.report.model_dump_json(indent=2)
-        )
-    (OUT / "acceptance-outcome.json").write_text(
-        json.dumps(
-            {
-                "scenario_id": acceptance_outcome.scenario_id,
-                "final_state": acceptance_outcome.final_state,
-                "evidence_ids": list(acceptance_outcome.evidence_ids),
-                "decision": acceptance_outcome.decision,
-                "actions": list(acceptance_outcome.actions),
-                "permissions": list(acceptance_outcome.permissions),
-                "human_interaction": acceptance_outcome.human_interaction,
-                "handoff_reasons": list(acceptance_outcome.handoff_reasons),
-                "report_available": acceptance_outcome.report_available,
+    # Frozen summary (ADR-0006 decision 3); the raw ledger with every HTTP
+    # attempt stays out of the repository, identified by its sha256.
+    frozen, summary_path = freeze(
+        ledger,
+        experiment=ledger["experiment"],
+        run_id=run_id,
+        evidence_dir=OUT,
+        summary={
+            "model": ledger["model"],
+            "started": ledger["started"],
+            "ended": ledger["ended"],
+            "verdicts": {
+                "status": outcome.execution,
+                "handoff": outcome.handoff,
+                "handoff_reasons": list(outcome.handoff_reasons),
+                "acceptance_outcome": {
+                    "scenario_id": acceptance_outcome.scenario_id,
+                    "final_state": acceptance_outcome.final_state,
+                    "evidence_ids": list(acceptance_outcome.evidence_ids),
+                    "decision": acceptance_outcome.decision,
+                    "actions": list(acceptance_outcome.actions),
+                    "permissions": list(acceptance_outcome.permissions),
+                    "human_interaction": acceptance_outcome.human_interaction,
+                    "handoff_reasons": list(acceptance_outcome.handoff_reasons),
+                    "report_available": acceptance_outcome.report_available,
+                },
             },
-            indent=2,
-            ensure_ascii=False,
-        )
+            "counts": {
+                "http_count": ledger["http_count"],
+                "prompt_tokens": ledger["prompt_tokens"],
+                "completion_tokens": ledger["completion_tokens"],
+                "steps_committed": outcome.steps_committed,
+                "evidence_ids": list(outcome.evidence_ids),
+            },
+            "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
+            "report": parse_report(outcome.report_content),
+            "report_schema_version": ledger["report_schema_version"],
+            "report_content_sha256": outcome.report_content_sha256,
+            "prompt_revision": outcome.prompt_revision,
+            "trace": trace_evidence(
+                trace_record,
+                run_id=run_id,
+                project=project,
+                client_factory=langsmith_client,
+            ),
+        },
     )
     summary = {
         "status": outcome.execution,
@@ -295,9 +406,13 @@ def main() -> int:
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
         "report_schema_version": ledger["report_schema_version"],
         "handoff_reasons": ledger["handoff_reasons"],
-        "out_dir": str(OUT.relative_to(ROOT)) if OUT.is_relative_to(ROOT) else str(OUT),
+        "trace": frozen["trace"],
+        "ledger_sha256": frozen["raw_ledger"]["sha256"],
+        "summary": str(summary_path.relative_to(ROOT))
+        if summary_path.is_relative_to(ROOT)
+        else str(summary_path),
     }
-    print(json.dumps(summary))
+    print(json.dumps(summary, default=str))
     return 0 if outcome.execution == "completed" and outcome.report is not None else 1
 
 
