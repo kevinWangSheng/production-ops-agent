@@ -274,6 +274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         tracing.shutdown()
         return 1
+    store.close()
     tracing.shutdown()
     _log.info("worker stopped")
     return 0

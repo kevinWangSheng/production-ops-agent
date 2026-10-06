@@ -13,6 +13,7 @@ m0 = [
     "openai==3.10.0",
     "opentelemetry-exporter-otlp-proto-http==1.45.0",
     "opentelemetry-sdk==1.45.0",
+    "psycopg-pool==3.3.3",
     "psycopg[binary]==3.3.3",
     "pydantic==2.13.5",
     "sqlalchemy==2.1.3",

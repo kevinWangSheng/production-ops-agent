@@ -44,8 +44,12 @@ def test_rows_are_read_by_name_never_by_position() -> None:
         text = path.read_text()
         assert "tuple_row" not in text, path
         # The only product connection is dict_row, so SELECT * is read by name.
-        if "psycopg.connect(" in text:
-            assert "row_factory=dict_row" in text, path
+        # Direct connections set it as a keyword; the psycopg_pool pool passes
+        # it through ``kwargs`` (#77).
+        if "psycopg.connect(" in text or "ConnectionPool(" in text:
+            assert (
+                "row_factory=dict_row" in text or '"row_factory": dict_row' in text
+            ), path
 
 
 def test_select_star_only_behind_the_dict_row_connection() -> None:
