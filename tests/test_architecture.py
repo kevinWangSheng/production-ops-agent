@@ -17,12 +17,23 @@ from opspilot.domain import INCIDENT_LIFECYCLE, RUN_EXECUTION
 from opspilot.domain.control import _ACTIONS, ControlAction
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-PERSISTENCE = REPO_ROOT / "opspilot" / "persistence.py"
+# ADR-0007 PR-d split the single module into a package; the structural facts
+# below hold over the union of its modules.
+PERSISTENCE = REPO_ROOT / "opspilot" / "persistence"
 WORKER = REPO_ROOT / "opspilot" / "worker.py"
 
 
+def _parse_all(path: pathlib.Path) -> ast.Module:
+    """One tree over a module file or every ``*.py`` directly in a package."""
+    files = sorted(path.glob("*.py")) if path.is_dir() else [path]
+    tree = ast.Module(body=[], type_ignores=[])
+    for file in files:
+        tree.body.extend(ast.parse(file.read_text()).body)
+    return tree
+
+
 def _imported_modules(path: pathlib.Path) -> set[str]:
-    tree = ast.parse(path.read_text())
+    tree = _parse_all(path)
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -43,7 +54,7 @@ def test_persistence_builds_on_domain() -> None:
     """依赖方向：持久化层应建立在领域层之上，而不是与之平行另建一套。"""
     modules = _imported_modules(PERSISTENCE)
     assert any(name.startswith("opspilot.domain") for name in modules), (
-        f"opspilot/persistence.py 未依赖 opspilot.domain；实际 import：{sorted(modules)}"
+        f"opspilot/persistence 未依赖 opspilot.domain；实际 import：{sorted(modules)}"
     )
 
 
@@ -58,7 +69,7 @@ def test_persistence_has_no_bare_domain_state_literals() -> None:
     导致人工暂停可被绕过。
     """
     known_states = RUN_EXECUTION.states | INCIDENT_LIFECYCLE.states
-    tree = ast.parse(PERSISTENCE.read_text())
+    tree = _parse_all(PERSISTENCE)
     offenders = {
         node.value
         for node in ast.walk(tree)
@@ -166,7 +177,7 @@ def test_persistence_sql_never_selects_a_qualified_star() -> None:
     2026-09-15 复核才被发现——这是 SQL 字符串内部的事实，测试套件、mypy
     strict 与 ruff 都看不见它，只能在这里守。
     """
-    tree = ast.parse(PERSISTENCE.read_text())
+    tree = _parse_all(PERSISTENCE)
     offenders = sorted(
         {
             node.value.strip()
