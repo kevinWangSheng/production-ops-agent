@@ -30,6 +30,8 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_BATCH``         incidents per poll (default 20).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
   must match the workbench (``opspilot.tools.profiles``).
+* ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
+  export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
 
 Like ``python -m opspilot.web serve`` it installs schema on start and is a
 development entry point, not a deployment artifact. Under the default
@@ -50,6 +52,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
+from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.progress import ExpirySweeper, ProgressLog, sweep_expired
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
@@ -242,6 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     store = DurableStore(dsn)
     store.install()
     stop = threading.Event()
+    _configure_tracing()
     loop = build_loop(store, _credential(), stop=stop)
 
     def request_stop(signum: int, _frame: Any) -> None:
@@ -268,9 +272,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             grace,
             LEASE_SECONDS,
         )
+        tracing.shutdown()
         return 1
+    tracing.shutdown()
     _log.info("worker stopped")
     return 0
+
+
+def _configure_tracing() -> None:
+    """``OPSPILOT_TRACE`` (default off). The LangSmith key may come from the
+    same private env file as the model key; its value is never logged."""
+    if not os.environ.get("LANGSMITH_API_KEY"):
+        env_file = os.environ.get("OPSPILOT_ENV_FILE")
+        if env_file:
+            key = _read_env_file(Path(env_file).expanduser(), "LANGSMITH_API_KEY")
+            if key:
+                os.environ["LANGSMITH_API_KEY"] = key
+    tracing.configure(os.environ)
 
 
 if __name__ == "__main__":

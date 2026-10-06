@@ -38,6 +38,8 @@ from types import MappingProxyType
 from typing import Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
+from opspilot.tracing import tracer
+
 from .outcomes import (
     PROJECTION_REVISION,
     EvidenceRecord,
@@ -593,6 +595,14 @@ class ReadOnlyToolExecutor:
 
         if not isinstance(request, ToolRequest):
             raise ToolContractError("INVALID_REQUEST")
+        # The span sees the typed request and the outcome only; raw source
+        # bytes and the credential slot never reach it (``opspilot.tracing``).
+        with tracer().tool_call(request) as span:
+            outcome = self._execute(request)
+            span.outcome(outcome)
+            return outcome
+
+    def _execute(self, request: ToolRequest) -> ToolOutcome:
         operation = ToolOperation(
             operation_id=request.operation_id,
             scope_id=self._scope.scope_id,

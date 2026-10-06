@@ -74,6 +74,7 @@ from opspilot.investigation.store import (
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
 from opspilot.tools.registry import ToolContractError
+from opspilot.tracing import tracer
 from opspilot.worker import DEFAULT_LEASE_SECONDS, RecoverySession, Worker
 
 RunnerStatus = Literal[
@@ -181,6 +182,19 @@ class InvestigationRunner:
         lease = session.lease
         if self.events is not None:
             announce_claimed(self.events, lease)
+        # One root span per attempt (``opspilot.tracing``): a no-op unless the
+        # process is in ``lab`` mode and re-proves the lab target right now.
+        with tracer().run(
+            incident_id=incident_id, run_id=lease.run_id, versions=self.worker.versions
+        ) as span:
+            outcome = self._attempt(incident_id, session, snapshot)
+            span.settle(outcome.status, outcome.reason)
+            return outcome
+
+    def _attempt(
+        self, incident_id: UUID, session: RecoverySession, snapshot: Mapping[str, Any]
+    ) -> RunnerOutcome:
+        lease = session.lease
         try:
             return self._continue(incident_id, session, snapshot)
         except ContextError as exc:

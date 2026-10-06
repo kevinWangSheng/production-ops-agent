@@ -1,0 +1,49 @@
+{
+  "experiment": "m1-prep-trace-pr1",
+  "purpose": "PR 1 of docs/tasks/2026-10-05-m1-prep-trace-langsmith.md: one bounded real Run in OPSPILOT_TRACE=lab exported to LangSmith and read back; one real Run with OPSPILOT_TRACE unset exported nothing. Frozen summary only (ADR-0006 decision 3): raw ledgers stay out of the repository, identified by sha256.",
+  "date": "2026-10-05",
+  "driver": "scripts/m1_live_runner.py (InvestigationRunner over a throwaway PostgreSQL 17 on 127.0.0.1:55471, fixture tool profile, real DeepSeek Flash)",
+  "langsmith": {
+    "project": "opspilot-lab-trace-pr1-2026-10-05",
+    "project_id": "13363f36-b8f1-47a6-8578-9e335e715282",
+    "trace_tier_after": "longlived",
+    "root_run_url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/13363f36-b8f1-47a6-8578-9e335e715282/r/00000000-0000-0000-7617-6f75ab9c736b?poll=true",
+    "runs_in_project_after_both_runs": 4
+  },
+  "lab_run": {
+    "run_id": "03c17e41-41e1-4e51-a3c2-1b37a24eccba",
+    "incident_id": "627a707c-97f3-445c-a0ac-6c3d1d3db4d8",
+    "started": "2026-10-06T04:16:05.250531+00:00",
+    "ended": "2026-10-06T04:16:18.789114+00:00",
+    "status": "published",
+    "model_requests_used": 2,
+    "prompt_tokens": 2700,
+    "completion_tokens": 2845,
+    "known_cost_cny_upper": 0.030835,
+    "report_content_sha256": "cfeb1825bf5d607a589d5bcb0cfa7ba0501d651eba960f6e000a05a271131095",
+    "ledger_sha256": "a53131d388aa5b424164ebab5421d064afc56ba9c32c5ebcf76073f404fa010a",
+    "otel_trace_id": "b77ca6725313920360deebe63a813b1c",
+    "langsmith_trace_id": "00000000-0000-0000-7617-6f75ab9c736b",
+    "dropped_spans": 0,
+    "span_tree_read_back": [
+      {"name": "opspilot.run", "run_type": "chain", "parent": null, "prompt_tokens": 2700, "completion_tokens": 2845},
+      {"name": "deepseek.chat.completions", "run_type": "llm", "parent": "opspilot.run", "model_call_seq": 1, "prompt_tokens": 1201, "completion_tokens": 125, "latency_s": 0.78},
+      {"name": "tool:metrics_range_query", "run_type": "tool", "parent": "opspilot.run", "tool_call_seq": 1, "status": "ok"},
+      {"name": "deepseek.chat.completions", "run_type": "llm", "parent": "opspilot.run", "model_call_seq": 2, "prompt_tokens": 1499, "completion_tokens": 2720, "latency_s": 12.41}
+    ],
+    "tokens_match_ledger": true,
+    "trace_contains_private_fields": {"reasoning_content": false, "Authorization": false, "x-api-key": false}
+  },
+  "off_run": {
+    "run_id": "5a8ec65c-9d47-454d-a474-787238492fe2",
+    "incident_id": "eb03e372-3a28-4d0f-9206-955d85244100",
+    "model_requests_used": 1,
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "known_cost_cny_upper": 0.008692,
+    "ledger_sha256": "3e7abfbaa1f240de5142e383f3c6396c43212f1da4190d64cc48a61493b0fcca",
+    "trace": {"mode": "off", "trace_id": null, "dropped_spans": 0},
+    "runs_added_to_project": 0
+  },
+  "deepseek_balance_cny": {"before": "6.71", "after": "6.69", "difference": "0.02", "ledger_upper_bound_sum": 0.039527}
+}
