@@ -166,18 +166,32 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
         failures.append("PROJECT_NOT_LAB")
     if not env.get("LANGSMITH_API_KEY"):
         failures.append("LANGSMITH_KEY_MISSING")
-    endpoint = env.get("LANGSMITH_ENDPOINT") or _DEFAULT_LANGSMITH_ENDPOINT
-    try:
-        parts = urlsplit(endpoint)
-    except ValueError:
-        parts = None
-    if (
-        parts is None
-        or parts.scheme != "https"
-        or parts.hostname not in _LANGSMITH_HOSTS
+    if not _is_langsmith_endpoint(
+        env.get("LANGSMITH_ENDPOINT") or _DEFAULT_LANGSMITH_ENDPOINT
     ):
         failures.append("LANGSMITH_ENDPOINT_NOT_ALLOWED")
     return tuple(failures)
+
+
+def _is_langsmith_endpoint(url: str) -> bool:
+    """``https://<SaaS host>`` exactly: no userinfo, default port, no path,
+    query or fragment; host lower-cased with one trailing dot stripped
+    (independent review round 2, PR #108 #1)."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        return False
+    if parts.scheme != "https" or not host:
+        return False
+    if parts.username is not None or parts.password is not None:
+        return False
+    if port not in (None, 443) or parts.query or parts.fragment:
+        return False
+    if parts.path not in ("", "/"):
+        return False
+    return host.lower().rstrip(".") in _LANGSMITH_HOSTS
 
 
 # -- attribute constructors (the only writers) --------------------------------
@@ -198,6 +212,39 @@ def _json_text(value: object) -> str:
         )
     except (TypeError, ValueError, RecursionError):
         return "<unserializable>"
+
+
+def _redact(value: object) -> object:
+    """Recursively replace values under credential-looking keys."""
+    if isinstance(value, Mapping):
+        return {
+            key: "[REDACTED]"
+            if isinstance(key, str) and _CREDENTIAL_KEY.search(key)
+            else _redact(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
+
+
+def _redacted_arguments(arguments: object) -> object:
+    """Tool-call ``function.arguments`` with credential-looking keys redacted.
+
+    Lab mode exports model output on purpose (task record PR 1 item 3); this
+    is the second line behind that decision (independent review round 2,
+    PR #108 #3). The JSON text is parsed and redacted recursively; text that
+    is not JSON is exported as-is, bounded.
+    """
+    if not isinstance(arguments, str):
+        return arguments
+    try:
+        parsed = json.loads(arguments)
+    except (ValueError, RecursionError):
+        return _bounded(arguments)
+    if isinstance(parsed, (Mapping, list)):
+        return _redact(parsed)
+    return _bounded(arguments)
 
 
 def _message_view(message: Mapping[str, Any]) -> tuple[str, str]:
@@ -222,7 +269,7 @@ def _message_view(message: Mapping[str, Any]) -> tuple[str, str]:
                 {
                     "id": call.get("id"),
                     "name": function.get("name"),
-                    "arguments": function.get("arguments"),
+                    "arguments": _redacted_arguments(function.get("arguments")),
                 }
             )
         return role_text, _json_text({"content": content, "tool_calls": kept_calls})
@@ -303,7 +350,13 @@ def _model_reply_attributes(reply: ModelReply) -> dict[str, AttrValue]:
     return attributes
 
 
-def _tool_request_attributes(request: ToolRequest, *, seq: int) -> dict[str, AttrValue]:
+def _tool_request_attributes(
+    request: ToolRequest,
+    *,
+    seq: int,
+    tool_name: str | None,
+    target_id: str | None,
+) -> dict[str, AttrValue]:
     """Allowlist: tool name and target ref (strings only), the window's
     ``start``/``end`` strings, and the *names* of the proposed parameters
     (credential-looking names dropped). Parameter values are model-proposed
@@ -314,12 +367,15 @@ def _tool_request_attributes(request: ToolRequest, *, seq: int) -> dict[str, Att
 
     if not isinstance(request, ToolRequest):
         raise TypeError("span attributes are built from ToolRequest only")
-    name = request.tool_name if isinstance(request.tool_name, str) else None
+    # ``tool_name``/``target_id`` are what the executor's registries resolved
+    # the untrusted request to -- ``None`` when unregistered -- never the
+    # model-produced strings themselves (independent review round 2, #2).
+    name = tool_name
     prompt: dict[str, object] = {}
     if name is not None:
         prompt["tool"] = _bounded(name)
-    if isinstance(request.target_ref, str):
-        prompt["target"] = _bounded(request.target_ref)
+    if target_id is not None:
+        prompt["target"] = _bounded(target_id)
     if isinstance(request.window, Mapping):
         window = {
             key: request.window[key]
@@ -562,7 +618,13 @@ class NullTracer:
     def model_call(self, call: ModelCall) -> _NullSpan:
         return _NULL_SPAN
 
-    def tool_call(self, request: ToolRequest) -> _NullSpan:
+    def tool_call(
+        self,
+        request: ToolRequest,
+        *,
+        tool_name: str | None = None,
+        target_id: str | None = None,
+    ) -> _NullSpan:
         return _NULL_SPAN
 
     @property
@@ -642,15 +704,24 @@ class Tracer:
             _model_call_attributes(call, seq=parent.model_calls),
         )
 
-    def tool_call(self, request: ToolRequest) -> _LiveSpan | _NullSpan:
+    def tool_call(
+        self,
+        request: ToolRequest,
+        *,
+        tool_name: str | None = None,
+        target_id: str | None = None,
+    ) -> _LiveSpan | _NullSpan:
+        """``tool_name``/``target_id``: the registry-resolved identities, or
+        ``None``; the span never names an unregistered tool or target."""
         parent = getattr(self._current, "run", None)
         if parent is None:
             return _NULL_SPAN
         parent.tool_calls += 1
-        name = request.tool_name if isinstance(request.tool_name, str) else "tool"
         return self._child(
-            f"tool:{_bounded(name)[:80]}",
-            _tool_request_attributes(request, seq=parent.tool_calls),
+            f"tool:{'unknown' if tool_name is None else _bounded(tool_name)[:80]}",
+            _tool_request_attributes(
+                request, seq=parent.tool_calls, tool_name=tool_name, target_id=target_id
+            ),
         )
 
     def shutdown(self, timeout_seconds: float = _EXPORT_TIMEOUT_S) -> None:

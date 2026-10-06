@@ -81,3 +81,8 @@
 6. `Resource({"service.name": "opspilot"})` 直接构造，忽略 `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME`。
 7. 处理器与导出器全部参数显式（含 `max_export_batch_size`、`compression`），lab 组装包在 try 内，任何异常记 `TRACE_CONFIGURE_FAILED` + 异常类型并回退 `NullTracer`。
 `make check`：2584 passed、301 skipped、2 xfailed。
+
+第二轮三项（`test_round2_*`）：
+1. `LANGSMITH_ENDPOINT` 须为 `https://<SaaS 主机>` 精确形式：拒绝 userinfo、非 443 端口、路径/查询/片段，主机小写并去尾点后精确匹配。
+2. 工具 span 的名称、`gen_ai.tool.name`、`gen_ai.prompt.tool/target` 只用执行器注册表解析出的工具名与目标 ID（`ToolRegistry.lookup`/`TargetRegistry.resolve`，由 `execute()` 传入）；未注册时 span 名为 `tool:unknown`、字段省略，模型产出的原始字符串不出域。
+3. 模型输入/输出中 tool_calls 的 `function.arguments` 仍按计划导出（lab 模式有意导出模型输入输出），但作为第二道防线：能解析为 JSON 的，递归把凭据样键（auth/token/secret/password/api_key/cookie/credential/bearer）的值替换为 `[REDACTED]`；不能解析的按原文截断导出（已接受的取舍：lab 只跑合成流量）。

@@ -403,7 +403,8 @@ def test_a_denied_tool_call_still_gets_a_span():
         outcome = executor_with_rows().execute(request(tool_name="not.registered"))
     tracer.shutdown()
     assert outcome.status == "denied"
-    tool = by_name(exporter.get_finished_spans())["tool:not.registered"]
+    # Unregistered names never reach the span (review round 2, #2).
+    tool = by_name(exporter.get_finished_spans())["tool:unknown"]
     assert dict(tool.attributes)["opspilot.tool.reason"] == "TOOL_NOT_REGISTERED"
 
 
@@ -446,7 +447,9 @@ def test_attribute_constructors_refuse_raw_dicts():
     with pytest.raises(TypeError):
         tracing._model_reply_attributes({"content": "x", "reasoning_content": "y"})
     with pytest.raises(TypeError):
-        tracing._tool_request_attributes({"tool_name": "x"}, seq=1)
+        tracing._tool_request_attributes(
+            {"tool_name": "x"}, seq=1, tool_name=None, target_id=None
+        )
     with pytest.raises(TypeError):
         tracing._tool_outcome_attributes({"status": "ok"})
 
@@ -656,3 +659,136 @@ def test_finding_7_a_raising_setup_falls_back_to_null_tracer(caplog, monkeypatch
     assert isinstance(tracer, NullTracer)
     assert "TRACE_CONFIGURE_FAILED" in caplog.text
     assert "fake-secret-7777" not in caplog.text
+
+
+# -- independent review round 2 (2026-10-05) -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://user:secret@api.smith.langchain.com",
+        "https://user@api.smith.langchain.com",
+        "https://api.smith.langchain.com:8443",
+        "https://api.smith.langchain.com/evil",
+        "https://api.smith.langchain.com?x=1",
+        "https://api.smith.langchain.com.attacker.example",
+        "http://api.smith.langchain.com",
+    ],
+)
+def test_round2_1_endpoint_rejects_userinfo_port_path_and_lookalikes(endpoint):
+    assert "LANGSMITH_ENDPOINT_NOT_ALLOWED" in check_lab_target(
+        lab_env(LANGSMITH_ENDPOINT=endpoint)
+    )
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://api.smith.langchain.com",
+        "https://api.smith.langchain.com/",
+        "https://API.Smith.LangChain.com.",
+        "https://eu.api.smith.langchain.com:443",
+    ],
+)
+def test_round2_1_canonical_endpoints_are_accepted(endpoint):
+    assert check_lab_target(lab_env(LANGSMITH_ENDPOINT=endpoint)) == ()
+
+
+def test_round2_2_unregistered_tool_and_target_names_are_not_exported():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        outcome = executor_with_rows().execute(
+            request(
+                tool_name="Authorization=fake-tool-secret-8888",
+                target_ref="fake-target-secret-9999",
+            )
+        )
+    tracer.shutdown()
+    assert outcome.status == "denied"
+    spans = exporter.get_finished_spans()
+    text = all_attribute_text(spans)
+    assert "fake-tool-secret-8888" not in text
+    assert "fake-target-secret-9999" not in text
+    tool = by_name(spans)["tool:unknown"]
+    attrs = dict(tool.attributes)
+    assert "gen_ai.tool.name" not in attrs
+    prompt = json.loads(attrs["gen_ai.prompt"])
+    assert "tool" not in prompt and "target" not in prompt
+    assert attrs["opspilot.tool.reason"] == "TOOL_NOT_REGISTERED"
+
+
+def test_round2_2_registered_tool_with_unregistered_target_keeps_only_the_tool():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        executor_with_rows().execute(request(target_ref="not-a-registered-target"))
+    tracer.shutdown()
+    spans = exporter.get_finished_spans()
+    attrs = dict(by_name(spans)["tool:metrics.range_query"].attributes)
+    assert attrs["gen_ai.tool.name"] == "metrics.range_query"
+    assert "target" not in json.loads(attrs["gen_ai.prompt"])
+    assert "not-a-registered-target" not in all_attribute_text(spans)
+
+
+def test_round2_3_tool_call_arguments_redact_credential_like_keys():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    reply = json.loads(reply_payload())
+    reply["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = (
+        json.dumps(
+            {
+                "expr": "rate(http_errors[5m])",
+                "api_key": "fake-arg-secret-1010",
+                "nested": {
+                    "Authorization": "fake-arg-secret-2020",
+                    "keep": "visible-value",
+                },
+                "list": [{"password": "fake-arg-secret-5050"}],
+            }
+        )
+    )
+    prior = model_call()
+    messages = list(prior.messages)
+    messages[2] = {
+        **messages[2],
+        "tool_calls": [
+            {
+                "id": "call-0",
+                "type": "function",
+                "function": {
+                    "name": "metrics.range_query",
+                    "arguments": json.dumps(
+                        {"token": "fake-arg-secret-3030", "expr": "up"}
+                    ),
+                },
+            },
+            {
+                "id": "call-0b",
+                "type": "function",
+                "function": {
+                    "name": "metrics.range_query",
+                    "arguments": "not json fake-arg-plain-4040",
+                },
+            },
+        ],
+    }
+    call = model_call(messages=tuple(messages))
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        DeepSeekClient(
+            FAKE_DEEPSEEK_KEY, opener=_Opener(json.dumps(reply).encode())
+        ).complete(call)
+    tracer.shutdown()
+    text = all_attribute_text(exporter.get_finished_spans())
+    for leaked in (
+        "fake-arg-secret-1010",
+        "fake-arg-secret-2020",
+        "fake-arg-secret-3030",
+        "fake-arg-secret-5050",
+    ):
+        assert leaked not in text
+    assert "visible-value" in text and "rate(http_errors[5m])" in text
+    assert "[REDACTED]" in text
+    # Unparseable arguments are exported as-is (bounded): documented in the task record.
+    assert "fake-arg-plain-4040" in text

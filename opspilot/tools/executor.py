@@ -597,7 +597,16 @@ class ReadOnlyToolExecutor:
             raise ToolContractError("INVALID_REQUEST")
         # The span sees the typed request and the outcome only; raw source
         # bytes and the credential slot never reach it (``opspilot.tracing``).
-        with tracer().tool_call(request) as span:
+        # Tool and target identity for the span come from the registries,
+        # never from the model-produced strings (same resolution as
+        # ``_authorize``; an unregistered name is simply absent).
+        registration = self._tools.lookup(request.tool_name)
+        target = self._targets.resolve(request.target_ref)
+        with tracer().tool_call(
+            request,
+            tool_name=None if registration is None else registration.name,
+            target_id=None if target is None else target.target_id,
+        ) as span:
             outcome = self._execute(request)
             span.outcome(outcome)
             return outcome
