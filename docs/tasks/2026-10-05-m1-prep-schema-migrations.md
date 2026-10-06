@@ -1,9 +1,9 @@
 # M1 准备：数据访问层标准化（Alembic、连接池、状态约束，保留参数化 SQL）
 
-- 状态：进行中（PR-a 待审查；PR-b/c/d 待开始，见 issue #77–#79）
+- 状态：进行中（PR-a 已合并 #104，本机 lab 库已接管；PR-b/c/d 待开始，见 issue #77、#78、#79）
 - 更新日期：2026-10-05
 - 依据：[ADR-0007](../adr/0007-data-access-raw-sql-with-standard-tools.md)；[DurableStore 加固记录](2026-09-15-durable-store-hardening.md) B2/C1/C2；C3 §7「故障恢复与提交一致性」；F8 第 3 步（版本化 state-schema 升级与回滚）；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；issue #76（PR-a）
-- 工作区：`chore/m1-prep-alembic`，worktree `../production-ops-agent-alembic`（PR-a）
+- 工作区：PR-a 的 `chore/m1-prep-alembic` worktree 已在合并后删除
 
 ## 目标与范围
 
@@ -74,7 +74,7 @@
 
 ## 下一步与交接
 
-- PR-a：独立审查已过 → `@codex review` 分诊 → 用户合并。列顺序问题已按方案 C 落地（见上节）。
-- M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 报的是权限错误（`STORAGE_UNAVAILABLE`），不是 `SCHEMA_NOT_MIGRATED`。
-- 合并后本机 55431 lab 库的正式接管：先用旧版 DDL 补齐（`psql -f tests/integration/legacy_schema_2026-10-05.sql`），再 `make migrate MIGRATE_FLAGS=--accept-column-order`，把打印的 diff 记进本记录；集成测试的 conftest 不带 flag，所以接管前跑集成测试会被拒，期间用 `OPSPILOT_LAB_DSN` 指向临时实例。
+- PR-a 已合并（#104），本机 lab 库已接管（见下）。下一步：PR-b 连接池（#77），之后 PR-c（#78）、PR-d（#79）。
+- M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 抛 `SCHEMA_VERSION_UNREADABLE`（#104 最后一次修复后），不是 `SCHEMA_NOT_MIGRATED`。
+- 本机 55431 lab 库已接管（2026-10-05，用户指示）：不带 flag 被拒、只有两处列顺序差异；带 `--accept-column-order` 接管到 `0001_baseline`，行数不变，接管前全库备份已留存。命令、diff、备份位置与哈希见[接管证据](../evidence/m1-prep-alembic/lab-takeover-2026-10-05.md)。
 - 开工顺序：PR-b（#77）→ PR-c（#78）→ PR-d（#79）→ [trace 接入](2026-10-05-m1-prep-trace-langsmith.md) → M1-02 计划第 0 步。
