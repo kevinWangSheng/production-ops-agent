@@ -34,8 +34,10 @@ is logged (C3 §11 allows bounded loss of trace data).
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import re
 import threading
 from collections.abc import Mapping, Sequence
 from types import TracebackType
@@ -91,23 +93,55 @@ _SCHEDULE_MS = 2_000.0
 _EXPORT_TIMEOUT_S = 10.0
 # ``versions`` keys that may travel as ``langsmith.metadata.*``.
 _VERSION_KEYS = ("prompt_revision", "tool_schema_revision", "context_policy_revision")
+# Fixed-vocabulary codes only (``MODEL_UNAVAILABLE``, ``LEASE_ACTIVE``, ...):
+# anything else that reaches ``settle``/``error.type`` is free text from an
+# exception and is replaced, never copied (independent review, PR #108 #5).
+_CODE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+_UNCLASSIFIED = "UNCLASSIFIED"
+# Parameter names that look like credential slots are dropped even from the
+# name list (second line behind the allowlist; independent review #4).
+_CREDENTIAL_KEY = re.compile(
+    r"auth|token|secret|password|passwd|api[_-]?key|cookie|credential|bearer",
+    re.IGNORECASE,
+)
+_MAX_PARAM_NAMES = 32
+_EXPORT_BATCH = 512
+# kind in-cluster service suffixes, matched on a label boundary.
+_CLUSTER_SUFFIXES = (".svc", ".svc.cluster.local")
 
 
 # -- lab target verification -------------------------------------------------
 
 
 def _is_lab_host(url: str) -> bool:
-    """Loopback or a kind in-cluster service name; nothing else."""
+    """A real loopback address, exact ``localhost``, or a kind in-cluster
+    service name (``*.svc``, ``*.svc.cluster.local``); nothing else.
+
+    Independent review (PR #108 #1): a prefix test accepted
+    ``127.attacker.com`` and ignored userinfo (``user@127.0.0.1``). The
+    host is parsed, userinfo is refused, IP literals go through
+    ``ipaddress`` and names are compared on a label boundary after
+    lower-casing and stripping one trailing dot.
+    """
     try:
-        host = urlsplit(url).hostname
+        parts = urlsplit(url)
+        host = parts.hostname
     except ValueError:
         return False
-    if not host:
+    if not host or parts.username is not None or parts.password is not None:
         return False
-    host = host.lower()
-    if host in {"localhost", "::1"} or host.startswith("127."):
+    host = host.lower().rstrip(".")
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        pass
+    if host == "localhost":
         return True
-    return host.endswith(".svc") or host.endswith(".svc.cluster.local")
+    for suffix in _CLUSTER_SUFFIXES:
+        if host.endswith(suffix):
+            labels = host[: -len(suffix)].split(".")
+            return all(labels) and bool(labels[0])
+    return False
 
 
 def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
@@ -118,6 +152,8 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     verification, as the task record requires.
     """
     failures: list[str] = []
+    if (env.get(TRACE_ENV) or "off") != "lab":
+        failures.append("TRACE_MODE_NOT_LAB")
     profile = env.get("OPSPILOT_TOOL_PROFILE") or "fixture"
     if profile not in LAB_TOOL_PROFILES:
         failures.append("TOOL_PROFILE_NOT_LAB")
@@ -268,24 +304,42 @@ def _model_reply_attributes(reply: ModelReply) -> dict[str, AttrValue]:
 
 
 def _tool_request_attributes(request: ToolRequest, *, seq: int) -> dict[str, AttrValue]:
+    """Allowlist: tool name and target ref (strings only), the window's
+    ``start``/``end`` strings, and the *names* of the proposed parameters
+    (credential-looking names dropped). Parameter values are model-proposed
+    arbitrary content and are not copied here; the accepted query -- declared
+    parameters only, after ``_accept_params`` -- travels on the outcome as
+    ``opspilot.tool.query`` (independent review, PR #108 #4)."""
     from opspilot.tools.executor import ToolRequest
 
     if not isinstance(request, ToolRequest):
         raise TypeError("span attributes are built from ToolRequest only")
     name = request.tool_name if isinstance(request.tool_name, str) else None
+    prompt: dict[str, object] = {}
+    if name is not None:
+        prompt["tool"] = _bounded(name)
+    if isinstance(request.target_ref, str):
+        prompt["target"] = _bounded(request.target_ref)
+    if isinstance(request.window, Mapping):
+        window = {
+            key: request.window[key]
+            for key in ("start", "end")
+            if isinstance(request.window.get(key), str)
+        }
+        if window:
+            prompt["window"] = window
+    if isinstance(request.params, Mapping):
+        prompt["param_names"] = sorted(
+            _bounded(key)[:128]
+            for key in request.params
+            if isinstance(key, str) and not _CREDENTIAL_KEY.search(key)
+        )[:_MAX_PARAM_NAMES]
     attributes: dict[str, AttrValue] = {
         "langsmith.span.kind": "tool",
         "langsmith.metadata.tool_call_seq": seq,
         "langsmith.metadata.step_id": _bounded(request.step_id),
         "opspilot.tool.index": request.tool_index,
-        "gen_ai.prompt": _json_text(
-            {
-                "tool": request.tool_name,
-                "target": request.target_ref,
-                "params": request.params,
-                "window": request.window,
-            }
-        ),
+        "gen_ai.prompt": _json_text(prompt),
     }
     if name is not None:
         attributes["gen_ai.tool.name"] = _bounded(name)
@@ -334,6 +388,23 @@ def _tool_outcome_attributes(outcome: ToolOutcome) -> dict[str, AttrValue]:
 
 
 # -- spans ---------------------------------------------------------------------
+
+
+def _code_only(value: object, *, lower: bool = False) -> str:
+    """``value`` when it is a fixed-vocabulary code, else ``UNCLASSIFIED``.
+
+    ``RunnerOutcome.reason`` may carry ``str(exc)`` of a storage or transport
+    error; the span keeps the upper-case code vocabulary and never the
+    message. ``lower`` admits the ``RunnerStatus`` literals instead
+    (``handed_off``, ``control_denied``, ...).
+    """
+    if isinstance(value, str):
+        if lower:
+            if value.islower() and value.isidentifier() and len(value) <= 32:
+                return value
+        elif _CODE.match(value):
+            return value
+    return _UNCLASSIFIED
 
 
 class _NullSpan:
@@ -391,8 +462,11 @@ class _LiveSpan:
             # Never the message -- a transport message could quote a body.
             code = getattr(exc, "code", None)
             self._span.set_attribute(
-                "error.type", code if isinstance(code, str) else type(exc).__name__
+                "error.type",
+                _code_only(code) if code is not None else type(exc).__name__,
             )
+            # No description and no ``record_exception``: either would carry
+            # the exception text (independent review, PR #108 #5).
             self._span.set_status(Status(StatusCode.ERROR))
         self._span.end()
 
@@ -407,13 +481,42 @@ class _LiveSpan:
         self._set(_tool_outcome_attributes(outcome))
 
     def settle(self, status: str, reason: str | None) -> None:
-        self._span.set_attribute("opspilot.run.status", status)
+        self._span.set_attribute("opspilot.run.status", _code_only(status, lower=True))
         if reason is not None:
-            self._span.set_attribute("opspilot.run.reason", reason)
+            self._span.set_attribute("opspilot.run.reason", _code_only(reason))
 
     @property
     def trace_id(self) -> str | None:
         return format(self._span.get_span_context().trace_id, "032x")
+
+
+class _RefusedRunSpan(_NullSpan):
+    """A Run whose lab proof failed: while it is open, no child exports.
+
+    Returning the shared ``_NULL_SPAN`` left the enclosing Run's context in
+    place, so a refused inner Run's model/tool spans attached to the outer
+    exporting trace (independent review, PR #108 #3). This span clears the
+    active-Run slot on entry and restores the previous value on exit.
+    """
+
+    __slots__ = ("_owner", "_previous")
+
+    def __init__(self, owner: Tracer) -> None:
+        self._owner = owner
+        self._previous: _RunSpan | None = None
+
+    def __enter__(self) -> _RefusedRunSpan:
+        self._previous = getattr(self._owner._current, "run", None)
+        self._owner._current.run = None
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self._owner._current.run = self._previous
 
 
 class _RunSpan(_LiveSpan):
@@ -422,10 +525,12 @@ class _RunSpan(_LiveSpan):
     def __init__(self, span: Span, owner: Tracer) -> None:
         super().__init__(span)
         self._owner = owner
+        self._previous: _RunSpan | None = None
         self.model_calls = 0
         self.tool_calls = 0
 
     def __enter__(self) -> _RunSpan:
+        self._previous = getattr(self._owner._current, "run", None)
         self._owner._current.run = self
         return self
 
@@ -435,7 +540,7 @@ class _RunSpan(_LiveSpan):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        self._owner._current.run = None
+        self._owner._current.run = self._previous
         self._span.set_attribute("opspilot.run.model_calls", self.model_calls)
         self._span.set_attribute("opspilot.run.tool_calls", self.tool_calls)
         super().__exit__(exc_type, exc, tb)
@@ -451,7 +556,7 @@ class NullTracer:
 
     def run(
         self, *, incident_id: object, run_id: object, versions: Mapping[str, str]
-    ) -> _NullSpan:
+    ) -> _NullSpan | _RefusedRunSpan:
         return _NULL_SPAN
 
     def model_call(self, call: ModelCall) -> _NullSpan:
@@ -496,18 +601,19 @@ class Tracer:
 
     def run(
         self, *, incident_id: object, run_id: object, versions: Mapping[str, str]
-    ) -> _RunSpan | _NullSpan:
-        """The Run's root span, or a no-op when the lab proof fails now.
+    ) -> _RunSpan | _RefusedRunSpan:
+        """The Run's root span, or a refused span when the lab proof fails now.
 
-        Verified independently of ``configure()``: the environment is read
-        again here, and a failure means this Run exports nothing at all.
+        Verified independently of ``configure()``: the environment (mode
+        included) is read again here, and a failure means this Run -- and
+        every model/tool span opened inside it -- exports nothing at all.
         """
         failures = check_lab_target(self._env)
         if failures:
             _log.warning(
                 "trace export disabled for run=%s: %s", run_id, ",".join(failures)
             )
-            return _NULL_SPAN
+            return _RefusedRunSpan(self)
         span = self._otel.start_span("opspilot.run")
         for key, value in _run_attributes(
             incident_id=str(incident_id), run_id=str(run_id), versions=versions
@@ -604,6 +710,7 @@ def tracer() -> NullTracer | Tracer:
 
 
 def _langsmith_exporter(env: Mapping[str, str]) -> SpanExporter:
+    from opentelemetry.exporter.otlp.proto.http import Compression
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
     base = (env.get("LANGSMITH_ENDPOINT") or _DEFAULT_LANGSMITH_ENDPOINT).rstrip("/")
@@ -616,8 +723,13 @@ def _langsmith_exporter(env: Mapping[str, str]) -> SpanExporter:
         headers["x-tenant-id"] = workspace
     # The constructor endpoint is used verbatim (only the env-var form has
     # ``/v1/traces`` appended by the exporter), so spell the signal path out.
+    # Every tunable is explicit so ``OTEL_EXPORTER_OTLP_*`` in the ambient
+    # environment neither changes the destination nor breaks startup.
     return OTLPSpanExporter(
-        endpoint=f"{base}/otel/v1/traces", headers=headers, timeout=_EXPORT_TIMEOUT_S
+        endpoint=f"{base}/otel/v1/traces",
+        headers=headers,
+        timeout=_EXPORT_TIMEOUT_S,
+        compression=Compression.NoCompression,
     )
 
 
@@ -645,29 +757,44 @@ def configure(
             _log.error("trace export disabled at startup: %s", ",".join(failures))
             _tracer = NullTracer()
             return _tracer
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-        counting = _CountingExporter(
-            exporter if exporter is not None else _langsmith_exporter(env)
-        )
-        provider = TracerProvider(
-            resource=Resource.create({"service.name": "opspilot"})
-        )
-        provider.add_span_processor(
-            BatchSpanProcessor(
-                counting,  # type: ignore[arg-type]  # structural SpanExporter
-                max_queue_size=_MAX_QUEUE,
-                schedule_delay_millis=_SCHEDULE_MS,
-                export_timeout_millis=_EXPORT_TIMEOUT_S * 1000,
-            )
-        )
-        # ``env`` itself, not a copy: with ``os.environ`` the per-Run check
-        # in ``Tracer.run`` reads the live environment, not a startup snapshot.
-        _tracer = Tracer(provider, counting, env)
+        try:
+            _tracer = _lab_tracer(env, exporter)
+        except Exception as exc:  # noqa: BLE001 - fail closed, never break startup
+            # Type only: an SDK error message can quote environment values
+            # (independent review, PR #108 #7).
+            _log.error("TRACE_CONFIGURE_FAILED error=%s", type(exc).__name__)
+            _tracer = NullTracer()
+            return _tracer
         _log.info("trace export enabled mode=lab")
         return _tracer
+
+
+def _lab_tracer(env: Mapping[str, str], exporter: SpanExporter | None) -> Tracer:
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    counting = _CountingExporter(
+        exporter if exporter is not None else _langsmith_exporter(env)
+    )
+    # ``Resource(...)``, not ``Resource.create()``: the latter merges
+    # ``OTEL_RESOURCE_ATTRIBUTES``/``OTEL_SERVICE_NAME`` and SDK detectors,
+    # which are outside the allowlist (independent review, PR #108 #6).
+    provider = TracerProvider(resource=Resource({"service.name": "opspilot"}))
+    # Every bound explicit: the processor otherwise reads ``OTEL_BSP_*`` and
+    # raises on an invalid value at startup (independent review #7).
+    provider.add_span_processor(
+        BatchSpanProcessor(
+            counting,  # type: ignore[arg-type]  # structural SpanExporter
+            max_queue_size=_MAX_QUEUE,
+            schedule_delay_millis=_SCHEDULE_MS,
+            max_export_batch_size=_EXPORT_BATCH,
+            export_timeout_millis=_EXPORT_TIMEOUT_S * 1000,
+        )
+    )
+    # ``env`` itself, not a copy: with ``os.environ`` the per-Run check
+    # in ``Tracer.run`` reads the live environment, not a startup snapshot.
+    return Tracer(provider, counting, env)
 
 
 def shutdown(timeout_seconds: float = _EXPORT_TIMEOUT_S) -> None:

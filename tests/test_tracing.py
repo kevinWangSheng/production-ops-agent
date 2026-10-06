@@ -476,3 +476,183 @@ def test_unreachable_endpoint_does_not_affect_the_run(caplog):
     assert isinstance(tracer, Tracer)
     assert tracer.dropped_spans == 3
     assert "dropped spans" in caplog.text
+
+
+# -- independent review of PR #108 (2026-10-05): one regression per finding ----
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.attacker.com:9090",
+        "http://127.0.0.1.attacker.example:9090",
+        "http://user@127.0.0.1:9090",
+        "http://user:pw@localhost:9090",
+        "http://localhost.attacker.example:9090",
+        "http://evil.svc.attacker.example:9090",
+        "http://prometheus.monitoring.svc.cluster.local.attacker.example:9090",
+        "http://.svc:9090",
+        "http://10.0.0.5:9090",
+        "http://[::2]:9090",
+        "not a url",
+    ],
+)
+def test_finding_1_lab_host_rejects_lookalikes_and_userinfo(url):
+    assert tracing._is_lab_host("") is False
+    assert tracing._is_lab_host(url) is False
+    env = lab_env(OPSPILOT_OTEL_PROMETHEUS_URL=url)
+    assert "PROMETHEUS_NOT_LAB" in check_lab_target(env)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:19090",
+        "http://127.255.0.9:19090",
+        "http://[::1]:16686",
+        "http://LOCALHOST:16686",
+        "http://localhost.:16686",
+        "http://prometheus.monitoring.svc:9090",
+        "http://Jaeger-Query.Observability.svc.cluster.local.:16686",
+    ],
+)
+def test_finding_1_real_loopback_and_cluster_hosts_are_lab(url):
+    assert tracing._is_lab_host(url) is True
+
+
+def test_finding_2_per_run_check_reverifies_the_mode():
+    """configure in lab, env flips to off, a new Run must export nothing."""
+    env = lab_env()
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(env, exporter=exporter)
+    assert isinstance(tracer, Tracer)
+    env["OPSPILOT_TRACE"] = "off"
+    with tracer.run(incident_id="i", run_id="r", versions=VERSIONS) as span:
+        assert span.trace_id is None
+        DeepSeekClient(FAKE_DEEPSEEK_KEY, opener=_Opener(reply_payload())).complete(
+            model_call()
+        )
+    tracer.shutdown()
+    assert exporter.get_finished_spans() == ()
+    assert "TRACE_MODE_NOT_LAB" in check_lab_target(env)
+
+
+def test_finding_3_a_refused_nested_run_detaches_its_children():
+    """The inner Run's model/tool spans must not join the outer trace."""
+    env = lab_env()
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(env, exporter=exporter)
+    with tracer.run(incident_id="outer", run_id="outer", versions=VERSIONS):
+        env["LANGSMITH_PROJECT"] = "opspilot-m0"
+        with tracer.run(incident_id="inner", run_id="inner", versions=VERSIONS):
+            DeepSeekClient(FAKE_DEEPSEEK_KEY, opener=_Opener(reply_payload())).complete(
+                model_call()
+            )
+            executor_with_rows().execute(request())
+        env["LANGSMITH_PROJECT"] = "opspilot-lab-test"
+        # Back in the outer Run: its own children still export.
+        executor_with_rows().execute(request())
+    tracer.shutdown()
+    names = sorted(span.name for span in exporter.get_finished_spans())
+    assert names == ["opspilot.run", "tool:metrics.range_query"]
+    root = by_name(exporter.get_finished_spans())["opspilot.run"]
+    assert dict(root.attributes)["langsmith.metadata.run_id"] == "outer"
+    assert dict(root.attributes)["opspilot.run.tool_calls"] == 1
+    assert dict(root.attributes)["opspilot.run.model_calls"] == 0
+
+
+def test_finding_4_tool_request_params_are_not_copied_wholesale():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        executor_with_rows().execute(
+            request(
+                params={
+                    "expr": "rate(http_errors[5m])",
+                    "Authorization": "Bearer " + FAKE_DEEPSEEK_KEY,
+                    "api_token": "fake-token-value-2222",
+                    "nested": {"password": "fake-password-3333"},
+                },
+                target_ref="checkout-prod",
+            )
+        )
+    tracer.shutdown()
+    text = all_attribute_text(exporter.get_finished_spans())
+    for leaked in (FAKE_DEEPSEEK_KEY, "fake-token-value-2222", "fake-password-3333"):
+        assert leaked not in text
+    tool = dict(
+        by_name(exporter.get_finished_spans())["tool:metrics.range_query"].attributes
+    )
+    prompt = json.loads(tool["gen_ai.prompt"])
+    assert set(prompt) <= {"tool", "target", "window", "param_names"}
+    assert "Authorization" not in prompt.get("param_names", [])
+    assert "api_token" not in prompt.get("param_names", [])
+    assert "expr" in prompt["param_names"]
+    # The accepted query (declared parameters only) still travels on the outcome.
+    assert "opspilot.tool.query" not in tool  # PARAM_NOT_ALLOWED: never accepted
+    assert tool["opspilot.tool.reason"] == "PARAM_NOT_ALLOWED"
+
+
+def test_finding_5_run_reason_exports_codes_only():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    free_text = "connection refused: password=fake-pw-4444 host=db.internal"
+    with tracer.run(incident_id="i", run_id="r", versions={}) as span:
+        span.settle("control_denied", free_text)
+    with tracer.run(incident_id="i", run_id="r2", versions={}) as span:
+        span.settle("handed_off", "LEASE_ACTIVE")
+    with tracer.run(incident_id="i", run_id="r3", versions={}):
+        with pytest.raises(RuntimeError):
+            with tracer.model_call(model_call()):
+                raise RuntimeError("secret-ish message fake-pw-5555")
+    tracer.shutdown()
+    spans = exporter.get_finished_spans()
+    text = all_attribute_text(spans)
+    assert "fake-pw-4444" not in text and "db.internal" not in text
+    assert "fake-pw-5555" not in text
+    reasons = {
+        dict(s.attributes)["langsmith.metadata.run_id"]: dict(s.attributes).get(
+            "opspilot.run.reason"
+        )
+        for s in spans
+        if s.name == "opspilot.run"
+    }
+    assert reasons == {"r": "UNCLASSIFIED", "r2": "LEASE_ACTIVE", "r3": None}
+    llm = by_name(spans)["deepseek.chat.completions"]
+    assert dict(llm.attributes)["error.type"] == "RuntimeError"
+    assert llm.status.description in (None, "")
+    assert llm.events == ()
+
+
+def test_finding_6_resource_ignores_ambient_otel_env(monkeypatch):
+    monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.secret=fake-res-6666")
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "not-opspilot")
+    exporter = InMemorySpanExporter()
+    one_lab_run(exporter)
+    for span in exporter.get_finished_spans():
+        assert dict(span.resource.attributes) == {"service.name": "opspilot"}
+
+
+def test_finding_7_invalid_otel_env_does_not_break_startup(monkeypatch):
+    monkeypatch.setenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "4096")
+    monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "not-a-number")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_COMPRESSION", "bogus")
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    assert isinstance(tracer, Tracer)
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        pass
+    tracer.shutdown()
+    assert [s.name for s in exporter.get_finished_spans()] == ["opspilot.run"]
+
+
+def test_finding_7_a_raising_setup_falls_back_to_null_tracer(caplog, monkeypatch):
+    def boom(env):
+        raise ValueError("exporter construction failed with fake-secret-7777")
+
+    monkeypatch.setattr(tracing, "_langsmith_exporter", boom)
+    with caplog.at_level(logging.ERROR, logger="opspilot.tracing"):
+        tracer = tracing.configure(lab_env())
+    assert isinstance(tracer, NullTracer)
+    assert "TRACE_CONFIGURE_FAILED" in caplog.text
+    assert "fake-secret-7777" not in caplog.text

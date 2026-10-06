@@ -69,3 +69,15 @@
   3. 属性映射（以本次回读为准）：`langsmith.span.kind`→run_type；`langsmith.metadata.*`→`extra.metadata.*`；非 LangSmith 前缀的属性（`opspilot.*`）→`metadata["otel.span.<属性名>"]`；`gen_ai.prompt.{n}.role/content`→`inputs.messages[n]`；`gen_ai.completion.0.*`→`outputs.messages[0]`；`gen_ai.usage.*`→`usage_metadata` 与 `prompt_tokens/completion_tokens`，并向根 run 聚合；`gen_ai.request.model/max_tokens`→`invocation_params`；`gen_ai.system`→`metadata.ls_provider`；tool span 的 `gen_ai.prompt`/`gen_ai.completion` JSON 字符串被解析为 `inputs`/`outputs` 字典。LangSmith run id 取 OTel span id 低 64 位（`00000000-0000-0000-<span_id>`），OTel trace id 存于 `metadata.OTEL_TRACE_ID`；按 OTel trace id 过滤查不到 run，需用 LangSmith trace id。
 - 可逆细节自决：根 span 每次 attempt 一个（而非每个 Run 一个，重试 attempt 各自成 trace，由 `metadata.run_id` 关联）；模型/工具 span 的步序用 Run 内计数器 `model_call_seq`/`tool_call_seq` 加 `step_id`，不在 loop.py 内加埋点。
 - 未执行：独立审查（全新上下文）凭 API 读 trace；`otel-demo` profile 下的 lab Run。
+
+### 独立审查修复（2026-10-05，PR #108 第二轮）
+
+审查（全新上下文）七项发现全部采纳，每项先写红测试再修（`tests/test_tracing.py` 的 `test_finding_*`）：
+1. `_is_lab_host` 改为解析后用 `ipaddress` 判定回环、精确 `localhost`、`*.svc`/`*.svc.cluster.local` 按标签边界匹配，拒绝 userinfo，大小写与尾点归一（`127.attacker.com`、`user@127.0.0.1` 等 11 例拒绝）。
+2. `check_lab_target` 含 `TRACE_MODE_NOT_LAB`：每个 Run 开始同样重验 `OPSPILOT_TRACE=lab`。
+3. 被拒绝的 Run 返回 `_RefusedRunSpan`，进入时清空当前 Run 槽、退出时恢复；嵌套在导出中 Run 内的被拒 Run，其模型/工具 span 不再挂到外层 trace。
+4. 工具请求属性只取工具名、目标引用、窗口 start/end 字符串和参数**名**（凭据样名称剔除，最多 32 个）；参数值不再整体复制，已接受的查询仍经 outcome 的 `opspilot.tool.query` 导出。
+5. `settle()`/`error.type` 只写固定词汇码（`^[A-Z][A-Z0-9_]{1,63}$`，状态为小写标识符），其余替换为 `UNCLASSIFIED`；无 `record_exception`、无状态描述。
+6. `Resource({"service.name": "opspilot"})` 直接构造，忽略 `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME`。
+7. 处理器与导出器全部参数显式（含 `max_export_batch_size`、`compression`），lab 组装包在 try 内，任何异常记 `TRACE_CONFIGURE_FAILED` + 异常类型并回退 `NullTracer`。
+`make check`：2584 passed、301 skipped、2 xfailed。
