@@ -523,8 +523,10 @@ def cmd_fault(args: argparse.Namespace) -> int:
             raise SystemExit("Existing experiment history; refuse repeat injection.")
         variant = FAULT_VARIANT
         payload = mutate_flags(raw, variant, NORMAL_VARIANT)
-        original.write_bytes(raw)
-        changed.write_bytes(payload)
+        # The history files are written only after the patch is verified
+        # below, so a failed or unverified injection leaves no record that
+        # would make a retry refuse (Codex review P2 on PR #111); the
+        # fault-log.jsonl line still records the failed attempt.
     else:
         if not changed.exists():
             raise SystemExit(
@@ -553,15 +555,20 @@ def cmd_fault(args: argparse.Namespace) -> int:
         ),
         timeout=60,
     )
+    expected_sha = hashlib.sha256(payload).hexdigest()
     if proc.returncode != 0:
         print(proc.stderr, file=sys.stderr)
-        return proc.returncode
-    # A successful patch is not proof: re-read the ConfigMap and compare its
-    # SHA-256 with the bytes we meant to install (PR #111 review P1).
-    expected_sha = hashlib.sha256(payload).hexdigest()
-    live = read_live_flags()
-    live_sha = None if live is None else hashlib.sha256(live).hexdigest()
-    verified = live_sha == expected_sha
+        live_sha = None
+        verified = False
+    else:
+        # A successful patch is not proof: re-read the ConfigMap and compare
+        # its SHA-256 with the bytes we meant to install (PR #111 review P1).
+        live = read_live_flags()
+        live_sha = None if live is None else hashlib.sha256(live).hexdigest()
+        verified = live_sha == expected_sha
+    if verified and args.action == "inject":
+        original.write_bytes(raw)
+        changed.write_bytes(payload)
     with (history / "fault-log.jsonl").open("a") as log:
         log.write(
             json.dumps(

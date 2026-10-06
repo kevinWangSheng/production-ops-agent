@@ -100,9 +100,12 @@ def test_helm_and_kube_state_are_lab_local() -> None:
 # -- finding 3: a fault action is verified by re-reading the ConfigMap --------
 
 
-def _fake_kubectl(path: Path, state: Path, *, apply_patches: bool) -> Path:
+def _fake_kubectl(
+    path: Path, state: Path, *, apply_patches: bool, patch_exit: int = 0
+) -> Path:
     """A ``kubectl`` stand-in: ``get configmap`` prints ``state``; ``patch``
-    rewrites it (or silently does nothing when ``apply_patches`` is False)."""
+    rewrites it (or silently does nothing when ``apply_patches`` is False),
+    or fails outright with ``patch_exit`` when that is non-zero."""
     script = f"""#!/usr/bin/env python3
 import json, sys
 args = sys.argv[1:]
@@ -110,6 +113,9 @@ state = {str(state)!r}
 if "get" in args:
     print(json.dumps({{"data": {{"demo.flagd.json": open(state).read()}}}}))
 elif "patch" in args:
+    if {patch_exit!r}:
+        print("error: the server is unreachable", file=sys.stderr)
+        sys.exit({patch_exit!r})
     if {apply_patches!r}:
         payload = json.loads(args[args.index("-p") + 1])
         open(state, "w").write(payload["data"]["demo.flagd.json"])
@@ -163,6 +169,38 @@ def test_restore_fails_when_configmap_does_not_match(
     log = (tmp_path / "history/exp/fault-log.jsonl").read_text().splitlines()
     assert json.loads(log[-1])["action"] == "restore"
     assert json.loads(log[-1])["verified"] is False
+
+
+@pytest.mark.parametrize("failure", ["patch_fails", "verification_mismatch"])
+def test_failed_injection_leaves_no_history_so_retry_works(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    """Codex P2 on PR #111: history written before the patch wedged a retry."""
+    state = tmp_path / "live.json"
+    state.write_text(json.dumps(FLAGS, indent=2) + "\n")
+    if failure == "patch_fails":
+        broken = _fake_kubectl(
+            tmp_path / "kubectl-broken", state, apply_patches=False, patch_exit=1
+        )
+    else:
+        broken = _fake_kubectl(tmp_path / "kubectl-broken", state, apply_patches=False)
+    assert _fault(monkeypatch, tmp_path, broken, "inject", "exp") != 0
+    history = tmp_path / "history/exp"
+    assert not (history / "flags-original.json").exists()
+    assert not (history / "flags-injected.json").exists()
+    assert json.loads(state.read_text()) == FLAGS
+    # Nothing to restore either: the live flags were never changed.
+    with pytest.raises(SystemExit):
+        _fault(monkeypatch, tmp_path, broken, "restore", "exp")
+    honest = _fake_kubectl(tmp_path / "kubectl-ok", state, apply_patches=True)
+    assert _fault(monkeypatch, tmp_path, honest, "inject", "exp") == 0
+    assert json.loads(state.read_text())["flags"][FLAG]["defaultVariant"] == "100%"
+    assert _fault(monkeypatch, tmp_path, honest, "restore", "exp") == 0
+    log = [
+        json.loads(line)
+        for line in (history / "fault-log.jsonl").read_text().splitlines()
+    ]
+    assert [e["verified"] for e in log] == [False, True, True]
 
 
 def test_fake_kubectl_is_not_on_path() -> None:
