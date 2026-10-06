@@ -12,6 +12,13 @@ Reads DEEPSEEK_API_KEY from ``M0_ENV_FILE`` (never printed) and writes a
 business ledger under docs/evidence/m1-01-handoff-runner/live-runs/<run_id>/
 (or ``M1_ACCEPTANCE_OUT``). Fixture tool, no real OTel. Not product intake.
 
+``OPSPILOT_TRACE=lab`` exports the Run's spans to LangSmith through
+``opspilot.tracing`` (fail-closed: project must be ``opspilot-lab-*``). The
+``LANGSMITH_*`` entries of ``M0_ENV_FILE`` are loaded into the environment
+only where the shell did not already set them; values are never printed.
+``OPSPILOT_LAB_DSN`` points at a throwaway PostgreSQL instead of the 55431
+lab (``verify_server`` is then skipped: it checks the lab's own pid file).
+
     .venv/bin/python -m scripts.m0.postgres_lab start
     M0_ENV_FILE=/abs/.env .venv/bin/python scripts/m1_live_runner.py \\
         [--model-requests N] [--follow-up]
@@ -41,6 +48,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
@@ -74,6 +82,38 @@ VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
 }
+
+
+LANGSMITH_KEYS = (
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGSMITH_ENDPOINT",
+    "LANGSMITH_WORKSPACE_ID",
+)
+
+
+def load_langsmith_env(path: Path) -> list[str]:
+    """Copy the ``LANGSMITH_*`` entries the shell left unset; return the names."""
+    loaded = []
+    for name in LANGSMITH_KEYS:
+        if os.environ.get(name):
+            continue
+        value = read_named(path, name)
+        if value:
+            os.environ[name] = value
+            loaded.append(name)
+    return loaded
+
+
+def read_named(path: Path, name: str) -> str:
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith(f"{name}="):
+            value = line.split("=", 1)[1].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            return value
+    return ""
 
 
 class SystemClock:
@@ -219,7 +259,10 @@ def main() -> int:
     if not key:
         print(json.dumps({"status": "failed", "failure": "credential unavailable"}))
         return 2
-    verify_server()
+    if not os.environ.get("OPSPILOT_LAB_DSN"):
+        verify_server()
+    load_langsmith_env(env_file)
+    trace = tracing.configure(os.environ)
     store = DurableStore(DSN)
     store.install()
     log = DurableEventLog(store)
@@ -323,6 +366,13 @@ def main() -> int:
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
     ended = clock.now()
+    tracing.shutdown()
+    trace_record = {
+        "mode": trace.mode,
+        "trace_id": trace.last_trace_id,
+        "project": os.environ.get("LANGSMITH_PROJECT") if trace.mode == "lab" else None,
+        "dropped_spans": getattr(trace, "dropped_spans", 0),
+    }
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
     ledger = {
         "experiment": "m1-01-timeout-followup"
@@ -348,6 +398,7 @@ def main() -> int:
         "attempts": attempts,
         "control": control,
         "events": _events(log, incident),
+        "trace": trace_record,
     }
     out = resolve_out_dir(
         str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
@@ -370,6 +421,7 @@ def main() -> int:
         "last_event": ledger["events"][-1]["kind"] if ledger["events"] else None,
         "http_count": ledger["http_count"],
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
+        "trace": trace_record,
         "out_dir": str(out.relative_to(ROOT)) if out.is_relative_to(ROOT) else str(out),
     }
     print(json.dumps(summary))

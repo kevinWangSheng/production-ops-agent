@@ -1,9 +1,9 @@
 # M1 准备：OTel 埋点接 LangSmith，实验证据上平台
 
-- 状态：待开始（ADR-0006 已决；门槛见 SPEC 2026-10-05 段落）
+- 状态：PR 1 已实现并完成真实 Run 验证，待用户门合并（issue #80）；PR 2 待开始
 - 更新日期：2026-10-05
 - 依据：[ADR-0006](../adr/0006-trace-evidence-and-backlog.md)；C3 §2（第 31 行）、§11「可观测性」「保留与删除」、第 440–441 行（私有字段与凭据不出域）；F8 第 1 步
-- 工作区：开工时新建 `chore/m1-prep-trace` worktree
+- 工作区：`../production-ops-agent-trace`，分支 `chore/m1-prep-trace`
 
 ## 目标与范围
 
@@ -47,4 +47,46 @@
 
 ## 下一步与交接
 
-- 待核实（开工时）：LangSmith 当前套餐的 trace 配额与费用；project 级保留期的设置方式（UI/API）；`gen_ai.*` 属性在当前 LangSmith 版本中的实际映射（以一次真实上传回读为准）。
+- 待核实三项已在「PR 1 执行」核实完毕。
+- PR 2 开工前提：PR 1 合并。
+
+## PR 1 执行（2026-10-05）
+
+实现：`opspilot/tracing.py` 单模块；埋点在 `DeepSeekClient.complete()`、`ReadOnlyToolExecutor.execute()`、`InvestigationRunner.resume()`（每次 attempt 一个根 span）；`worker_main` 启动时 `configure(os.environ)`、退出时 `shutdown()`；`scripts/m1_live_runner.py` 同样接入并把 trace id 写入 ledger/summary。
+
+- 依赖：`opentelemetry-sdk==1.45.0`、`opentelemetry-exporter-otlp-proto-http==1.45.0`（PyPI 2026-09-25 发布的当前最新版，与 `requests` 复用已锁定版本；`uv lock` 只新增这两项及其传递依赖 8 项）。
+- 失败即关闭：`check_lab_target(env)` 在 `configure()`（启动）和 `Tracer.run()`（每个 Run 开始，读的是传入的 `os.environ` 实时映射而非启动快照）各跑一次；检查项：工具 profile ∈ {fixture, otel-demo}、Prometheus/Jaeger URL 主机为回环或 `*.svc`/`*.svc.cluster.local`、`LANGSMITH_PROJECT` 以 `opspilot-lab-` 开头、`LANGSMITH_API_KEY` 非空、`LANGSMITH_ENDPOINT` 为 LangSmith SaaS 四个区域主机之一且 https。任一失败：启动时装 `NullTracer`，Run 时该 Run 返回空 span；模型/工具 span 不在导出中的 Run span 之内一律空操作，因此不存在部分导出。
+- 白名单：属性只由 `_run_attributes`/`_model_call_attributes`/`_model_reply_attributes`/`_tool_request_attributes`/`_tool_outcome_attributes` 写入，入参必须是 `ModelCall`/`ModelReply`/`ToolRequest`/`ToolOutcome`（dict 抛 `TypeError`）。消息只保留 role/content/tool_calls(id,name,arguments)/tool_call_id；`reasoning_content`、`raw`、usage 中三项 token 以外的字段、`credential_ref`、原始源字节不复制。单属性上限 20000 字符截断。结构测试断言 `set_attribute` 只出现在 `tracing.py`。
+- 导出：`BatchSpanProcessor`（队列 2048、2s 批、单次导出 10s 超时）+ 计数包装器记录丢弃 span 数并写日志；端点不可达测试（127.0.0.1:9）Run 正常完成，3 个 span 计入丢弃。
+- 测试：`tests/test_tracing.py` 26 项（off 空实现、8 项失败即关闭参数化、Run→llm→tool 树形与属性、错误只记 code、截断、密钥/私有字段零泄漏、raw dict 拒绝、不可达端点）。`make check` 全绿：2559 passed、301 skipped（PG 可选）、2 xfailed。
+- 真实 Run（证据冻结摘要 [`docs/evidence/m1-prep-trace-pr1/summary.json`](../evidence/m1-prep-trace-pr1/summary.json)，原始 ledger 不入库、以 sha256 标识）：
+  - lab：project `opspilot-lab-trace-pr1-2026-10-05`，run `03c17e41…`，published，2 次模型调用；LangSmith 回读 4 个 run（chain 根 + 2 llm + 1 tool），每次 llm 的 prompt/completion tokens（1201/125、1499/2720）与 ledger 逐项一致，根 run 聚合 2700/2845 等于 ledger 总计与 PG `run_usage`；回读内容中不含 `reasoning_content`、`Authorization`、`x-api-key`。
+  - off：`OPSPILOT_TRACE` 未设，run `5a8ec65c…`（1 次模型调用，INCOMPLETE_INVESTIGATION 交接），project run 数仍为 4。
+  - 费用：DeepSeek 余额 6.71 → 6.69 CNY（两次 Run 合计；ledger 上界 0.0395）。
+- 待核实结论：
+  1. 套餐与配额：组织 `tier=free`（Developer）；定价页：每月含 5k base trace，超出按量（[来源](https://www.langchain.com/pricing-langsmith)）；本次一个 Run = 1 个 trace。
+  2. 保留期：UI 为 Projects → 项目 → Retention；API 为 `PATCH /sessions/{project_id}` body `{"trace_tier": "longlived"}`（本次对 PR1 project 已执行，回读 `trace_tier=longlived`，即 180 天；langsmith SDK 0.12.2 的 `update_project` 不暴露该字段）。extended 层按 trace 另计费。
+  3. 属性映射（以本次回读为准）：`langsmith.span.kind`→run_type；`langsmith.metadata.*`→`extra.metadata.*`；非 LangSmith 前缀的属性（`opspilot.*`）→`metadata["otel.span.<属性名>"]`；`gen_ai.prompt.{n}.role/content`→`inputs.messages[n]`；`gen_ai.completion.0.*`→`outputs.messages[0]`；`gen_ai.usage.*`→`usage_metadata` 与 `prompt_tokens/completion_tokens`，并向根 run 聚合；`gen_ai.request.model/max_tokens`→`invocation_params`；`gen_ai.system`→`metadata.ls_provider`；tool span 的 `gen_ai.prompt`/`gen_ai.completion` JSON 字符串被解析为 `inputs`/`outputs` 字典。LangSmith run id 取 OTel span id 低 64 位（`00000000-0000-0000-<span_id>`），OTel trace id 存于 `metadata.OTEL_TRACE_ID`；按 OTel trace id 过滤查不到 run，需用 LangSmith trace id。
+- 可逆细节自决：根 span 每次 attempt 一个（而非每个 Run 一个，重试 attempt 各自成 trace，由 `metadata.run_id` 关联）；模型/工具 span 的步序用 Run 内计数器 `model_call_seq`/`tool_call_seq` 加 `step_id`，不在 loop.py 内加埋点。
+- 未执行：独立审查（全新上下文）凭 API 读 trace；`otel-demo` profile 下的 lab Run。
+
+### 独立审查修复（2026-10-05，PR #108 第二轮）
+
+审查（全新上下文）七项发现全部采纳，每项先写红测试再修（`tests/test_tracing.py` 的 `test_finding_*`）：
+1. `_is_lab_host` 改为解析后用 `ipaddress` 判定回环、精确 `localhost`、`*.svc`/`*.svc.cluster.local` 按标签边界匹配，拒绝 userinfo，大小写与尾点归一（`127.attacker.com`、`user@127.0.0.1` 等 11 例拒绝）。
+2. `check_lab_target` 含 `TRACE_MODE_NOT_LAB`：每个 Run 开始同样重验 `OPSPILOT_TRACE=lab`。
+3. 被拒绝的 Run 返回 `_RefusedRunSpan`，进入时清空当前 Run 槽、退出时恢复；嵌套在导出中 Run 内的被拒 Run，其模型/工具 span 不再挂到外层 trace。
+4. 工具请求属性只取工具名、目标引用、窗口 start/end 字符串和参数**名**（凭据样名称剔除，最多 32 个）；参数值不再整体复制，已接受的查询仍经 outcome 的 `opspilot.tool.query` 导出。
+5. `settle()`/`error.type` 只写固定词汇码（`^[A-Z][A-Z0-9_]{1,63}$`，状态为小写标识符），其余替换为 `UNCLASSIFIED`；无 `record_exception`、无状态描述。
+6. `Resource({"service.name": "opspilot"})` 直接构造，忽略 `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME`。
+7. 处理器与导出器全部参数显式（含 `max_export_batch_size`、`compression`），lab 组装包在 try 内，任何异常记 `TRACE_CONFIGURE_FAILED` + 异常类型并回退 `NullTracer`。
+`make check`：2584 passed、301 skipped、2 xfailed。
+
+第二轮三项（`test_round2_*`）：
+1. `LANGSMITH_ENDPOINT` 须为 `https://<SaaS 主机>` 精确形式：拒绝 userinfo、非 443 端口、路径/查询/片段，主机小写并去尾点后精确匹配。
+2. 工具 span 的名称、`gen_ai.tool.name`、`gen_ai.prompt.tool/target` 只用执行器注册表解析出的工具名与目标 ID（`ToolRegistry.lookup`/`TargetRegistry.resolve`，由 `execute()` 传入）；未注册时 span 名为 `tool:unknown`、字段省略，模型产出的原始字符串不出域。
+3. 模型输入/输出中 tool_calls 的 `function.arguments` 仍按计划导出（lab 模式有意导出模型输入输出），但作为第二道防线：能解析为 JSON 的，递归把凭据样键（auth/token/secret/password/api_key/cookie/credential/bearer）的值替换为 `[REDACTED]`；不能解析的按原文截断导出，再过第三轮的通用擦除。
+
+第三轮一项（`test_round3_*`）：所有字符串属性在唯一写入点 `_write()` 经 `_scrub()`：(a) 进程环境与 `configure()` 传入映射中名为 `LANGSMITH_API_KEY`/`DEEPSEEK_API_KEY` 或以 `_API_KEY/_TOKEN/_SECRET/_PASSWORD` 结尾、长度 ≥ 8 的值按原文精确替换为 `[REDACTED]`；(b) `(authorization|bearer|api[_-]?key|token|secret|password|passwd)\s*[:=]\s*\S+` 保留键、擦值，`bearer <token>`、`sk-…`/`lsv2_…` 形状整体擦除。`scripts/check_secrets.py` 没有可导入的 Python 模式表（它运行 gitleaks 的 Go 侧默认规则，仅内嵌一条自检 canary），因此文本模式写在 `tracing.py`，gitleaks 仍是仓库侧第二道检查。结构测试断言 `tracing.py` 中 `set_attribute` 只出现在 `_write` 内一次。
+
+三轮修复后在最终 HEAD（df60b31）复跑一次 lab 真实 Run：project `opspilot-lab-trace-pr1-final-2026-10-05`，run `d5cbb3ef…`，published，2 次模型调用；LangSmith 回读 4 个 run（chain 根 + 2 llm + `tool:metrics_range_query`，工具名来自注册表），每次 llm tokens（1201/86、1490/2441）与 ledger 逐项一致，根 run 聚合 2691/2527 等于 ledger 总计与 PG `run_usage`；回读内容不含 `reasoning_content`/`Authorization`/`x-api-key`/`Bearer`/密钥值；project 已设 `longlived`。费用上界 0.028 CNY（余额显示 6.69 → 6.69，低于显示精度）。链接与哈希见 `summary.json` 的 `final_lab_run_at_head_df60b31`。

@@ -186,7 +186,7 @@ def test_dead_stores_with_distinct_dsns_do_not_keep_pools_alive() -> None:
     """审查发现 1：store 用过即弃、之后再没有池操作，池不能永远留在表里。"""
     import gc
 
-    from opspilot import persistence
+    from opspilot.persistence import base as persistence
 
     tag = f"m1-pool-leak-{uuid4().hex[:8]}"
     config = PoolConfig(min_size=1, max_size=1, timeout=0.5)
