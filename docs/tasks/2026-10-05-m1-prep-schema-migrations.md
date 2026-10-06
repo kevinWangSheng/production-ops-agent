@@ -1,6 +1,6 @@
 # M1 准备：数据访问层标准化（Alembic、连接池、状态约束，保留参数化 SQL）
 
-- 状态：进行中（PR-a 已合并 #104，本机 lab 库已接管；PR-b 连接池已提 PR 待用户门，见 issue #77；PR-c/d 见 #78、#79）
+- 状态：进行中（PR-a 已合并 #104、PR-c 已合并 #106，本机 lab 库已接管；PR-b 连接池已提 PR 待用户门，见 issue #77；PR-d 见 #79）
 - 更新日期：2026-10-05
 - 依据：[ADR-0007](../adr/0007-data-access-raw-sql-with-standard-tools.md)；[DurableStore 加固记录](2026-09-15-durable-store-hardening.md) B2/C1/C2；C3 §7「故障恢复与提交一致性」；F8 第 3 步（版本化 state-schema 升级与回滚）；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；issue #76（PR-a）
 - 工作区：PR-a 的 `chore/m1-prep-alembic` worktree 已在合并后删除
