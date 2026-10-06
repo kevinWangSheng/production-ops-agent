@@ -41,6 +41,9 @@ from sqlalchemy.engine import URL
 _log = logging.getLogger(__name__)
 
 VERSION_TABLE = "alembic_version"
+# The revision a database built by the pre-Alembic inline DDL is stamped at
+# before the later revisions run (ADR-0007, task record 2026-10-05).
+BASELINE_REVISION = "0001_baseline"
 _MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 _PG_DUMP_FLAGS = (
     "--schema-only",
@@ -95,8 +98,31 @@ class TakeoverRefused(RuntimeError):
         )
 
 
+class IllegalStateValues(RuntimeError):
+    """Rows hold values a new CHECK constraint would reject; nothing was changed.
+
+    Raised inside a migration (``0002_state_checks``) before any ``ALTER``;
+    ``transaction_per_migration`` rolls that revision back, so the database
+    stays at the previous revision and the data is untouched. The operator
+    fixes or removes the listed rows, then reruns ``make migrate``.
+    """
+
+    def __init__(self, rows: list[tuple[str, str, str, int]]) -> None:
+        self.rows = rows
+        report = "\n".join(
+            f"  {table}.{column} = {value!r}: {count} row(s)"
+            for table, column, value, count in rows
+        )
+        super().__init__(
+            "existing rows violate the state CHECK constraints; refusing to migrate, "
+            "nothing was changed:\n" + report
+        )
+
+
 @dataclass(frozen=True)
 class MigrateResult:
+    # ``stamped``: a legacy database was stamped at BASELINE_REVISION and then
+    # upgraded; ``revision`` is always where the database ended up (head).
     action: Literal["upgraded", "stamped", "unchanged"]
     revision: str
     # Non-empty only when --accept-column-order was needed: the verbatim diff
@@ -163,9 +189,12 @@ def upgrade_head(dsn: str) -> str:
     return head_revision()
 
 
-def stamp_head(dsn: str) -> str:
-    command.stamp(_config(dsn), "head")
-    return head_revision()
+def upgrade_to(dsn: str, revision: str) -> None:
+    command.upgrade(_config(dsn), revision)
+
+
+def stamp(dsn: str, revision: str) -> None:
+    command.stamp(_config(dsn), revision)
 
 
 @contextmanager
@@ -243,7 +272,12 @@ def _has_business_tables(conn: psycopg.Connection[object]) -> bool:
 
 
 def fresh_head_dump(dsn: str, *, pg_dump: str = "pg_dump") -> str:
-    """Dump of a throwaway database on the same server upgraded to head.
+    """Dump of a throwaway database on the same server upgraded to head."""
+    return fresh_dump(dsn, "head", pg_dump=pg_dump)
+
+
+def fresh_dump(dsn: str, revision: str, *, pg_dump: str = "pg_dump") -> str:
+    """Dump of a throwaway database on the same server upgraded to ``revision``.
 
     Same server, same ``template0``: the only difference to the database under
     takeover can then be the schema itself. Needs CREATEDB on the owner role.
@@ -257,7 +291,7 @@ def fresh_head_dump(dsn: str, *, pg_dump: str = "pg_dump") -> str:
             )
         )
         try:
-            upgrade_head(scratch_dsn)
+            upgrade_to(scratch_dsn, revision)
             return schema_dump(scratch_dsn, pg_dump=pg_dump)
         finally:
             conn.execute(
@@ -321,10 +355,14 @@ def migrate(
 
     * version table present -> ``alembic upgrade head`` (no-op when at head);
     * no ``opspilot_*`` tables -> ``alembic upgrade head`` from empty;
-    * tables but no version table -> compare dumps, stamp only if identical;
-      with ``accept_column_order`` a difference that is *only* the order of
+    * tables but no version table -> compare with a fresh database at
+      BASELINE_REVISION (the inline DDL the legacy database was built by),
+      stamp the baseline only if identical, then upgrade to head; with
+      ``accept_column_order`` a difference that is *only* the order of
       columns inside tables is accepted, stamped and returned as
       ``accepted_diff`` so the operator records it. Anything else refuses.
+      A later revision may still refuse (``IllegalStateValues``); the
+      database is then left stamped at the baseline, data untouched.
     """
     with psycopg.connect(dsn) as conn:
         current = current_revision(conn)
@@ -335,15 +373,16 @@ def migrate(
     if not legacy:
         return MigrateResult("upgraded", upgrade_head(dsn))
     existing = schema_dump(dsn, pg_dump=pg_dump)
-    expected = fresh_head_dump(dsn, pg_dump=pg_dump)
-    if existing == expected:
-        return MigrateResult("stamped", stamp_head(dsn))
-    diff = _diff(expected, existing)
-    column_order_only = sort_table_columns(existing) == sort_table_columns(expected)
-    if not (column_order_only and accept_column_order):
-        raise TakeoverRefused(diff, column_order_only=column_order_only)
-    _log.warning("takeover accepted a column-order-only difference:\n%s", diff)
-    return MigrateResult("stamped", stamp_head(dsn), accepted_diff=diff)
+    expected = fresh_dump(dsn, BASELINE_REVISION, pg_dump=pg_dump)
+    diff = ""
+    if existing != expected:
+        diff = _diff(expected, existing)
+        column_order_only = sort_table_columns(existing) == sort_table_columns(expected)
+        if not (column_order_only and accept_column_order):
+            raise TakeoverRefused(diff, column_order_only=column_order_only)
+        _log.warning("takeover accepted a column-order-only difference:\n%s", diff)
+    stamp(dsn, BASELINE_REVISION)
+    return MigrateResult("stamped", upgrade_head(dsn), accepted_diff=diff)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -381,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
         result = migrate(
             dsn, pg_dump=args.pg_dump, accept_column_order=args.accept_column_order
         )
-    except TakeoverRefused as exc:
+    except (TakeoverRefused, IllegalStateValues) as exc:
         print(exc, file=sys.stderr)
         return 1
     if result.accepted_diff:
