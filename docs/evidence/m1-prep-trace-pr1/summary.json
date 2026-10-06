@@ -1,6 +1,6 @@
 {
   "experiment": "m1-prep-trace-pr1",
-  "purpose": "PR 1 of docs/tasks/2026-10-05-m1-prep-trace-langsmith.md: one bounded real Run in OPSPILOT_TRACE=lab exported to LangSmith and read back; one real Run with OPSPILOT_TRACE unset exported nothing. Frozen summary only (ADR-0006 decision 3): raw ledgers stay out of the repository, identified by sha256.",
+  "purpose": "PR 1 of docs/tasks/2026-10-05-m1-prep-trace-langsmith.md: one bounded real Run in OPSPILOT_TRACE=lab exported to LangSmith and read back at the first commit (5cf1283), repeated at the final HEAD (df60b31) after three review rounds; one real Run with OPSPILOT_TRACE unset exported nothing. Frozen summary only (ADR-0006 decision 3): raw ledgers stay out of the repository, identified by sha256.",
   "date": "2026-10-05",
   "driver": "scripts/m1_live_runner.py (InvestigationRunner over a throwaway PostgreSQL 17 on 127.0.0.1:55471, fixture tool profile, real DeepSeek Flash)",
   "langsmith": {
@@ -26,13 +26,45 @@
     "langsmith_trace_id": "00000000-0000-0000-7617-6f75ab9c736b",
     "dropped_spans": 0,
     "span_tree_read_back": [
-      {"name": "opspilot.run", "run_type": "chain", "parent": null, "prompt_tokens": 2700, "completion_tokens": 2845},
-      {"name": "deepseek.chat.completions", "run_type": "llm", "parent": "opspilot.run", "model_call_seq": 1, "prompt_tokens": 1201, "completion_tokens": 125, "latency_s": 0.78},
-      {"name": "tool:metrics_range_query", "run_type": "tool", "parent": "opspilot.run", "tool_call_seq": 1, "status": "ok"},
-      {"name": "deepseek.chat.completions", "run_type": "llm", "parent": "opspilot.run", "model_call_seq": 2, "prompt_tokens": 1499, "completion_tokens": 2720, "latency_s": 12.41}
+      {
+        "name": "opspilot.run",
+        "run_type": "chain",
+        "parent": null,
+        "prompt_tokens": 2700,
+        "completion_tokens": 2845
+      },
+      {
+        "name": "deepseek.chat.completions",
+        "run_type": "llm",
+        "parent": "opspilot.run",
+        "model_call_seq": 1,
+        "prompt_tokens": 1201,
+        "completion_tokens": 125,
+        "latency_s": 0.78
+      },
+      {
+        "name": "tool:metrics_range_query",
+        "run_type": "tool",
+        "parent": "opspilot.run",
+        "tool_call_seq": 1,
+        "status": "ok"
+      },
+      {
+        "name": "deepseek.chat.completions",
+        "run_type": "llm",
+        "parent": "opspilot.run",
+        "model_call_seq": 2,
+        "prompt_tokens": 1499,
+        "completion_tokens": 2720,
+        "latency_s": 12.41
+      }
     ],
     "tokens_match_ledger": true,
-    "trace_contains_private_fields": {"reasoning_content": false, "Authorization": false, "x-api-key": false}
+    "trace_contains_private_fields": {
+      "reasoning_content": false,
+      "Authorization": false,
+      "x-api-key": false
+    }
   },
   "off_run": {
     "run_id": "5a8ec65c-9d47-454d-a474-787238492fe2",
@@ -42,8 +74,89 @@
     "reason": "INCOMPLETE_INVESTIGATION",
     "known_cost_cny_upper": 0.008692,
     "ledger_sha256": "3e7abfbaa1f240de5142e383f3c6396c43212f1da4190d64cc48a61493b0fcca",
-    "trace": {"mode": "off", "trace_id": null, "dropped_spans": 0},
+    "trace": {
+      "mode": "off",
+      "trace_id": null,
+      "dropped_spans": 0
+    },
     "runs_added_to_project": 0
   },
-  "deepseek_balance_cny": {"before": "6.71", "after": "6.69", "difference": "0.02", "ledger_upper_bound_sum": 0.039527}
+  "deepseek_balance_cny": {
+    "before": "6.71",
+    "after": "6.69",
+    "difference": "0.02",
+    "ledger_upper_bound_sum": 0.039527
+  },
+  "final_lab_run_at_head_df60b31": {
+    "langsmith": {
+      "project": "opspilot-lab-trace-pr1-final-2026-10-05",
+      "project_id": "7ba1bb89-ffbd-49d9-9f8e-abd5faaf1a8a",
+      "trace_tier_after": "longlived",
+      "root_run_url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7ba1bb89-ffbd-49d9-9f8e-abd5faaf1a8a/r/00000000-0000-0000-d2aa-402ad330ab4a?poll=true",
+      "runs_in_project": 4
+    },
+    "run_id": "d5cbb3ef-ee43-43f3-9b40-5e368a3d470c",
+    "incident_id": "eba4c83f-e549-42b8-b3d6-389f347085ac",
+    "started": "2026-10-06T05:06:48.461174+00:00",
+    "ended": "2026-10-06T05:07:00.811597+00:00",
+    "status": "published",
+    "model_requests_used": 2,
+    "prompt_tokens": 2691,
+    "completion_tokens": 2527,
+    "known_cost_cny_upper": 0.02803,
+    "report_content_sha256": "fc2805ebb35894b2632e5c0a83e36ae16ed9abb3bb76f020987802c9811336b5",
+    "ledger_sha256": "b694815e2c0abb543bf3bbbd10f39a9c8c079ab20e247da5dbf09306d7fa6932",
+    "otel_trace_id": "d7ef437c32b2c47601eddd20806f2e14",
+    "langsmith_trace_id": "00000000-0000-0000-d2aa-402ad330ab4a",
+    "dropped_spans": 0,
+    "span_tree_read_back": [
+      {
+        "name": "opspilot.run",
+        "run_type": "chain",
+        "parent": null,
+        "prompt_tokens": 2691,
+        "completion_tokens": 2527,
+        "latency_s": 12.33
+      },
+      {
+        "name": "deepseek.chat.completions",
+        "run_type": "llm",
+        "parent": "opspilot.run",
+        "model_call_seq": 1,
+        "prompt_tokens": 1201,
+        "completion_tokens": 86,
+        "latency_s": 1.01
+      },
+      {
+        "name": "tool:metrics_range_query",
+        "run_type": "tool",
+        "parent": "opspilot.run",
+        "tool_call_seq": 1,
+        "registered_tool_name": "metrics_range_query",
+        "latency_s": 0.01
+      },
+      {
+        "name": "deepseek.chat.completions",
+        "run_type": "llm",
+        "parent": "opspilot.run",
+        "model_call_seq": 2,
+        "prompt_tokens": 1490,
+        "completion_tokens": 2441,
+        "latency_s": 11.09
+      }
+    ],
+    "tokens_match_ledger_and_pg_run_usage": true,
+    "read_back_contains": {
+      "reasoning_content": false,
+      "Authorization": false,
+      "x-api-key": false,
+      "Bearer": false,
+      "env_secret_values": false
+    },
+    "deepseek_balance_cny": {
+      "before": "6.69",
+      "after": "6.69",
+      "note": "0.028 CNY upper bound is below the balance display precision (0.01)"
+    }
+  }
 }
