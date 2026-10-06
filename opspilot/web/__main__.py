@@ -101,7 +101,10 @@ def _serve() -> int:
     )
     app = create_app(workbench, Authenticator(config), clock)
     host, _, port = bind.rpartition(":")
-    uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
+    try:
+        uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
+    finally:
+        store.close()
     return 0
 
 

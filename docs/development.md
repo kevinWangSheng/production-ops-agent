@@ -93,7 +93,7 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
 .venv/bin/python -m scripts.m0.postgres_lab stop
 ```
 
-worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时只校验 schema 版本（迁移见上文「数据库迁移」），不是部署工件。
+worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。`DurableStore.transaction()` 的连接来自进程内的 `psycopg_pool` 池（ADR-0007，#77）：`OPSPILOT_POOL_MIN_SIZE`（默认 1，空闲时保留的连接数）、`OPSPILOT_POOL_MAX_SIZE`（默认 4，单进程并发事务上限，超出的请求排队）、`OPSPILOT_POOL_TIMEOUT_SECONDS`（默认 5，排队等待上限，超时按 `TIMEOUT` 报给调用方）、`OPSPILOT_POOL_MAX_IDLE_SECONDS`（默认 60，多余空闲连接的回收时间）；同一进程里相同 DSN 与配置的 `DurableStore` 共用一个池，池在第一个事务时才建、每个事务仍是独立的 commit/rollback 与 `SET LOCAL` 超时，数据库侧 `max_connections` 要容得下 web 与 worker 各自的 `MAX_SIZE` 加运维连接（lab 实例是 12）。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时只校验 schema 版本（迁移见上文「数据库迁移」），不是部署工件。
 
 ## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
 
