@@ -1,6 +1,6 @@
 # M1 准备：数据访问层标准化（Alembic、连接池、状态约束，保留参数化 SQL）
 
-- 状态：进行中（PR-a 已合并 #104，本机 lab 库已接管；PR-b/c/d 待开始，见 issue #77、#78、#79）
+- 状态：进行中（PR-a 已合并 #104，本机 lab 库已接管；PR-b 连接池已提 PR 待用户门，见 issue #77；PR-c/d 见 #78、#79）
 - 更新日期：2026-10-05
 - 依据：[ADR-0007](../adr/0007-data-access-raw-sql-with-standard-tools.md)；[DurableStore 加固记录](2026-09-15-durable-store-hardening.md) B2/C1/C2；C3 §7「故障恢复与提交一致性」；F8 第 3 步（版本化 state-schema 升级与回滚）；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；issue #76（PR-a）
 - 工作区：PR-a 的 `chore/m1-prep-alembic` worktree 已在合并后删除
@@ -63,6 +63,14 @@
 - 集成测试的 `OPSPILOT_LAB_DSN` 覆盖（`scripts/m0/postgres_lab.py` 读环境变量，跨进程测试的子进程同样生效）是为了在另一端口的临时实例上跑全套测试、不碰 55431 lab；库名仍须是 `m0_budget`。
 - 未执行：CI 两条路径只在 PR 上跑（ubuntu runner 需装 `postgresql-client-17`，步骤已写进 `ci.yml`）；真实生产库接管未做（没有生产库）。
 
+## PR-b 执行（2026-10-05）
+
+- 依赖：`psycopg-pool==3.3.3`（PyPI 2026-09-22，仅依赖 `typing-extensions>=4.6`，Python>=3.10；psycopg 3.3.3 自身的 `pool` extra 就是不限版本的 `psycopg-pool`，与 3.3.x 同系列发布；来源 pypi.org JSON 元数据），放 `m0` 组；`uv lock` 只新增 psycopg-pool 一包。
+- 设计：`DurableStore.transaction()` 从 `psycopg_pool.ConnectionPool.connection()` 取连接，`with` 退出沿用 commit/rollback 语义后连接回池；每事务两条 `SET LOCAL` 不变；`snapshot=True` 设的 `isolation_level`/`read_only` 由池的 `reset` 回调在回池时复位（否则一次快照会把连接永久变只读）；取出前 `check` ping 一次，数据库重启后的死连接直接换新。`PoolConfig`（构造参数或 `OPSPILOT_POOL_{MIN_SIZE,MAX_SIZE,TIMEOUT_SECONDS,MAX_IDLE_SECONDS}`，默认 1/4/5s/60s，见 development.md）；池满等待超时映射为 `TIMEOUT`。池在首个事务时懒建，同一进程里相同 DSN+配置的 store 共用一个池并计数，最后一个 store 被回收或 `close()` 时关池（回收只登记、不拿锁，结清在下一次用池/`close()` 时做：finalizer 在持锁分配触发的 GC 里拿同一把锁会死锁，实测出现过一次整套卡死）；键含 pid，fork 后子进程另建池、不 close 父进程的。worker/web 退出时 `store.close()`。`schema.py` 的迁移/接管连接与测试里的直连 `psycopg.connect` 不经 `transaction()`，未改；web 三个模块都经 `DurableStore.transaction()`，无需改。
+- 对照（同机、PG 17.9 临时实例、`rebuild()` x20 取 5 轮最好值，两次重复）：改前每次新建连接 43.4ms / 45.8ms（≈2.2ms/次）；池化后 6.7ms / 7.7ms（≈0.35ms/次），约 6 倍；09-15 记录 B2 为 58ms vs 复用连接 4ms（无取出前 ping）。
+- 测试：新增 `tests/integration/test_m1_pool_postgres.py`（复用、快照后不残留只读、`SET LOCAL` 每事务生效、出错回滚后连接干净、池满 TIMEOUT、`close()` 后重建、同 DSN 共池与最后一个释放、env 覆盖）。`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration`（55441 临时实例，`max_connections=12`）：296 passed、10 skipped（仅重启 lab 的用例）、0 failed；全程采样客户端连接峰值 8（默认 max_size=8 时峰值 12 曾打满、一池一 store 时当场 `too many clients`，故默认改 4 并共池）。`make check`：2531 passed、306 skipped、2 xfailed（`tests/test_sql_column_order_independence.py` 的静态守卫原只认 `psycopg.connect(` + `row_factory=dict_row`，扩成同时认 `ConnectionPool(` + `"row_factory": dict_row`，意图不变，需审查者确认）。
+- 未执行：fork 后子进程行为只有 pid 键的代码路径，没有真实 fork 测试（web/worker 都是单进程，macOS multiprocessing 为 spawn）；lab 55431 未动，PG 重启下池的换新只靠 `check` 回调，未跑 `M0_B_RESTART=1`。
+
 ## 前提与完成条件
 
 - 前提：SPEC 门槛段落合并；开工前先核实 Alembic 与 `psycopg_pool` 当前版本对 psycopg 3.3 的支持（官方文档），结论写进本记录（Alembic 已核，`psycopg_pool` 留给 PR-b）。新依赖放在 psycopg 所在的依赖组；产品与 M0 依赖分组（09-15 记录 B1）不在本任务。
@@ -74,7 +82,7 @@
 
 ## 下一步与交接
 
-- PR-a 已合并（#104），本机 lab 库已接管（见下）。下一步：PR-b 连接池（#77），之后 PR-c（#78）、PR-d（#79）。
+- PR-a 已合并（#104），本机 lab 库已接管（见下）。PR-b 连接池（#77）已提 PR，等用户门；之后 PR-c（#78）、PR-d（#79）。
 - M1-02 D3 的受限 Observer 角色除业务表权限外还需 `GRANT SELECT ON alembic_version`，否则 `install()` 抛 `SCHEMA_VERSION_UNREADABLE`（#104 最后一次修复后），不是 `SCHEMA_NOT_MIGRATED`。
 - 本机 55431 lab 库已接管（2026-10-05，用户指示）：不带 flag 被拒、只有两处列顺序差异；带 `--accept-column-order` 接管到 `0001_baseline`，行数不变，接管前全库备份已留存。命令、diff、备份位置与哈希见[接管证据](../evidence/m1-prep-alembic/lab-takeover-2026-10-05.md)。
 - 开工顺序：PR-b（#77）→ PR-c（#78）→ PR-d（#79）→ [trace 接入](2026-10-05-m1-prep-trace-langsmith.md) → M1-02 计划第 0 步。

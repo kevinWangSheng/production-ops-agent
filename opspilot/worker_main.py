@@ -269,6 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             LEASE_SECONDS,
         )
         return 1
+    store.close()
     _log.info("worker stopped")
     return 0
 
