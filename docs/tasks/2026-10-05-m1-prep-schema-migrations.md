@@ -74,6 +74,16 @@
 - **合并后用户待办**：本机 55431 lab 库现在停在 `0001_baseline`，`install()` 会以 `SCHEMA_NOT_MIGRATED` 拒绝；需 `OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump make migrate`。它先数非法值；10,609 行事故里若有历史非法状态会被拒并打印清单，不改数据。本 PR 没有跑它。
 - 未执行：真实 lab 库迁移（见上）；`opspilot_incidents.state` 等六列的约束；`tests/test_architecture.py` xfail 不动（ADR-0007 明示另决）。
 
+## PR-d 执行（2026-10-05）
+
+- 状态：PR 已开（issue #79，分支 `chore/m1-prep-split-persistence`，worktree `../production-ops-agent-split`），待独立审查与用户合并；#77 的连接池 PR 尚未合并，合并后在本分支 merge `origin/main` 并把 `transaction()` 的改动重放到 `base.py`。
+- 布局：`opspilot/persistence.py` → 包 `opspilot/persistence/`。`base.py`：`Connection`、`_ERROR_CODES`、`PersistenceError`、`Lease`、`_StoreBase`（`__init__`/`transaction`/`_error_code`/`install`/`_require_row`/`_db_now`/`_lease_revoked`/`_lock_scope`，连接与事务只在这一处）；`incidents.py`：`accept`/`register_target`/`claimable_incidents`/`rebuild`/`recovery_metadata`；`runs.py`：`new_run`/`claim`/`renew_lease`/`block`/`hand_off`/`_park`/`sweep_*`/`lease_current`/`abandon`；`controls.py`：`set_*_suspension`（含 `suspend_*` 别名）/`control_state`/`control`/`append_input`/`read_inputs`/`_CONTROL_OPEN_RUN_STATES`；`budgets.py`：`reserve_budget`/`settle_budget`/`charge_tool`/`run_usage`/`_SETTLEMENTS`；`steps.py`：`_LATE_RESULT_KEY_PREFIX`/`_tool_plan`/`_tool_calls`/`_completed_tool_ordinals`/`_late_result`/`commit_step`/`commit_tool`/`begin_round`/`publish`。各模块是继承 `_StoreBase` 的 mixin，`__init__.py` 组合成 `DurableStore` 并导出 `DurableStore`/`Lease`/`PersistenceError`/`Connection`/`_tool_plan`，`from opspilot.persistence import ...` 全部路径不变（`DurableStore.__module__` 仍为 `opspilot.persistence`）。
+- 搬移方式：脚本按 AST 行区间从 `origin/main:opspilot/persistence.py` 原样切出，只补 import 与 docstring；唯一文本改动是 `_db_now`、`_late_result` 内的 `DurableStore._require_row` 改为 `_StoreBase._require_row`（基类模块里没有 `DurableStore` 名字）。
+- 纯搬移证据（脚本 `prove_move.py`：对 `git show origin/main:opspilot/persistence.py` 与新包做 AST 比对，排除 docstring）：含 SELECT/INSERT/UPDATE/DELETE/SET LOCAL/WITH/LOCK 的字符串字面量 multiset 旧 127（去重 107）= 新 127（去重 107），`SQL multiset identical: True`；41 个函数/方法同名，仅上述两处 AST 不同，差异正是 `Name(id='DurableStore')`→`Name(id='_StoreBase')`。
+- 测试适配：`tests/test_architecture.py` 的 `PERSISTENCE` 改指包目录并合并全部模块的 AST（两个 strict xfail 仍因断言失败而非文件缺失）；`tests/test_sql_column_order_independence.py` 允许 `SELECT *` 的文件改为 `persistence/{controls,incidents,steps}.py`。其余 import 调用点与文档未改。
+- 验证（PostgreSQL 17 Homebrew 临时实例，端口 55461，`make migrate` 至 `0002_state_checks`，用后停止）：`make check` 2533 passed、301 skipped、2 xfailed（ruff/format/mypy 通过）；`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration` 291 passed、10 skipped、0 failed；另加 `M0_CONTROL_POSTGRES=1` 跑 control/pause 两文件 8 passed、1 skipped（重启 lab 的用例）。
+- 未执行：#77 合并后的重放与复跑；独立审查。
+
 ## 前提与完成条件
 
 - 前提：SPEC 门槛段落合并；开工前先核实 Alembic 与 `psycopg_pool` 当前版本对 psycopg 3.3 的支持（官方文档），结论写进本记录（Alembic 已核，`psycopg_pool` 留给 PR-b）。新依赖放在 psycopg 所在的依赖组；产品与 M0 依赖分组（09-15 记录 B1）不在本任务。

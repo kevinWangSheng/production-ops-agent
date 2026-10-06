@@ -50,6 +50,12 @@ def test_rows_are_read_by_name_never_by_position() -> None:
 
 def test_select_star_only_behind_the_dict_row_connection() -> None:
     files_with_star = {
-        path.name for path in SOURCES if SELECT_STAR.search(path.read_text())
+        path.relative_to(ROOT).as_posix()
+        for path in SOURCES
+        if SELECT_STAR.search(path.read_text())
     }
-    assert files_with_star <= {"persistence.py"}, files_with_star
+    assert files_with_star <= {
+        "persistence/controls.py",
+        "persistence/incidents.py",
+        "persistence/steps.py",
+    }, files_with_star
