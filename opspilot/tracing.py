@@ -37,6 +37,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import os
 import re
 import threading
 from collections.abc import Mapping, Sequence
@@ -108,6 +109,22 @@ _MAX_PARAM_NAMES = 32
 _EXPORT_BATCH = 512
 # kind in-cluster service suffixes, matched on a label boundary.
 _CLUSTER_SUFFIXES = (".svc", ".svc.cluster.local")
+# Generic scrub applied to every string attribute at the single write point
+# (independent review round 3, PR #108). (a) exact values of credential-like
+# environment variables; (b) ``key: value`` / ``key=value`` credential text,
+# bearer tokens and well-known key shapes. ``scripts/check_secrets.py`` has no
+# Python pattern list to share (it runs gitleaks' Go-side default rules), so
+# the text patterns live here.
+_SECRET_ENV_NAMES = frozenset({"LANGSMITH_API_KEY", "DEEPSEEK_API_KEY"})
+_SECRET_ENV_SUFFIX = re.compile(r"(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$")
+_MIN_SECRET_LEN = 8
+_REDACTED = "[REDACTED]"
+_CREDENTIAL_TEXT = re.compile(
+    r"(?i)\b(authorization|bearer|api[_-]?key|token|secret|password|passwd)"
+    r"(\s*[:=]\s*)(\S+)"
+)
+_BEARER_TEXT = re.compile(r"(?i)\b(bearer)(\s+)([A-Za-z0-9._~+/=-]{8,})")
+_KEY_SHAPES = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{16,}|lsv2_[A-Za-z0-9_]{16,})\b")
 
 
 # -- lab target verification -------------------------------------------------
@@ -197,6 +214,43 @@ def _is_langsmith_endpoint(url: str) -> bool:
 # -- attribute constructors (the only writers) --------------------------------
 
 AttrValue = str | bool | int | float | Sequence[str]
+# Environments whose credential-like values are scrubbed: the process
+# environment plus whatever mapping ``configure()`` was handed.
+_scrub_sources: list[Mapping[str, str]] = [os.environ]
+
+
+def _secret_values() -> list[str]:
+    values: set[str] = set()
+    for source in _scrub_sources:
+        for name, value in source.items():
+            if (name in _SECRET_ENV_NAMES or _SECRET_ENV_SUFFIX.search(name)) and len(
+                value
+            ) >= _MIN_SECRET_LEN:
+                values.add(value)
+    # Longest first so a value that contains another is replaced whole.
+    return sorted(values, key=len, reverse=True)
+
+
+def _scrub(text: str) -> str:
+    """The one redaction every exported string passes through."""
+    for value in _secret_values():
+        if value in text:
+            text = text.replace(value, _REDACTED)
+    text = _CREDENTIAL_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
+    text = _BEARER_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
+    return _KEY_SHAPES.sub(_REDACTED, text)
+
+
+def _write(span: Span, key: str, value: AttrValue) -> None:
+    """The single ``set_attribute`` call site: strings are scrubbed first."""
+    scrubbed: AttrValue
+    if isinstance(value, str):
+        scrubbed = _scrub(value)
+    elif isinstance(value, (bool, int, float)):
+        scrubbed = value
+    else:
+        scrubbed = [_scrub(item) for item in value]
+    span.set_attribute(key, scrubbed)
 
 
 def _bounded(text: str) -> str:
@@ -517,7 +571,8 @@ class _LiveSpan:
             # Fixed codes only: ``ModelError.code`` / the exception type.
             # Never the message -- a transport message could quote a body.
             code = getattr(exc, "code", None)
-            self._span.set_attribute(
+            _write(
+                self._span,
                 "error.type",
                 _code_only(code) if code is not None else type(exc).__name__,
             )
@@ -528,7 +583,7 @@ class _LiveSpan:
 
     def _set(self, attributes: Mapping[str, AttrValue]) -> None:
         for key, value in attributes.items():
-            self._span.set_attribute(key, value)
+            _write(self._span, key, value)
 
     def reply(self, reply: ModelReply) -> None:
         self._set(_model_reply_attributes(reply))
@@ -537,9 +592,9 @@ class _LiveSpan:
         self._set(_tool_outcome_attributes(outcome))
 
     def settle(self, status: str, reason: str | None) -> None:
-        self._span.set_attribute("opspilot.run.status", _code_only(status, lower=True))
+        _write(self._span, "opspilot.run.status", _code_only(status, lower=True))
         if reason is not None:
-            self._span.set_attribute("opspilot.run.reason", _code_only(reason))
+            _write(self._span, "opspilot.run.reason", _code_only(reason))
 
     @property
     def trace_id(self) -> str | None:
@@ -597,8 +652,8 @@ class _RunSpan(_LiveSpan):
         tb: TracebackType | None,
     ) -> None:
         self._owner._current.run = self._previous
-        self._span.set_attribute("opspilot.run.model_calls", self.model_calls)
-        self._span.set_attribute("opspilot.run.tool_calls", self.tool_calls)
+        _write(self._span, "opspilot.run.model_calls", self.model_calls)
+        _write(self._span, "opspilot.run.tool_calls", self.tool_calls)
         super().__exit__(exc_type, exc, tb)
 
 
@@ -680,7 +735,7 @@ class Tracer:
         for key, value in _run_attributes(
             incident_id=str(incident_id), run_id=str(run_id), versions=versions
         ).items():
-            span.set_attribute(key, value)
+            _write(span, key, value)
         wrapped = _RunSpan(span, self)
         self._last_trace_id = wrapped.trace_id
         return wrapped
@@ -691,7 +746,7 @@ class Tracer:
         parent: _RunSpan = self._current.run
         span = self._otel.start_span(name, context=set_span_in_context(parent._span))
         for key, value in attributes.items():
-            span.set_attribute(key, value)
+            _write(span, key, value)
         return _LiveSpan(span)
 
     def model_call(self, call: ModelCall) -> _LiveSpan | _NullSpan:
@@ -828,6 +883,8 @@ def configure(
             _log.error("trace export disabled at startup: %s", ",".join(failures))
             _tracer = NullTracer()
             return _tracer
+        if env is not os.environ and env not in _scrub_sources:
+            _scrub_sources.append(env)
         try:
             _tracer = _lab_tracer(env, exporter)
         except Exception as exc:  # noqa: BLE001 - fail closed, never break startup

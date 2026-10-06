@@ -85,4 +85,6 @@
 第二轮三项（`test_round2_*`）：
 1. `LANGSMITH_ENDPOINT` 须为 `https://<SaaS 主机>` 精确形式：拒绝 userinfo、非 443 端口、路径/查询/片段，主机小写并去尾点后精确匹配。
 2. 工具 span 的名称、`gen_ai.tool.name`、`gen_ai.prompt.tool/target` 只用执行器注册表解析出的工具名与目标 ID（`ToolRegistry.lookup`/`TargetRegistry.resolve`，由 `execute()` 传入）；未注册时 span 名为 `tool:unknown`、字段省略，模型产出的原始字符串不出域。
-3. 模型输入/输出中 tool_calls 的 `function.arguments` 仍按计划导出（lab 模式有意导出模型输入输出），但作为第二道防线：能解析为 JSON 的，递归把凭据样键（auth/token/secret/password/api_key/cookie/credential/bearer）的值替换为 `[REDACTED]`；不能解析的按原文截断导出（已接受的取舍：lab 只跑合成流量）。
+3. 模型输入/输出中 tool_calls 的 `function.arguments` 仍按计划导出（lab 模式有意导出模型输入输出），但作为第二道防线：能解析为 JSON 的，递归把凭据样键（auth/token/secret/password/api_key/cookie/credential/bearer）的值替换为 `[REDACTED]`；不能解析的按原文截断导出，再过第三轮的通用擦除。
+
+第三轮一项（`test_round3_*`）：所有字符串属性在唯一写入点 `_write()` 经 `_scrub()`：(a) 进程环境与 `configure()` 传入映射中名为 `LANGSMITH_API_KEY`/`DEEPSEEK_API_KEY` 或以 `_API_KEY/_TOKEN/_SECRET/_PASSWORD` 结尾、长度 ≥ 8 的值按原文精确替换为 `[REDACTED]`；(b) `(authorization|bearer|api[_-]?key|token|secret|password|passwd)\s*[:=]\s*\S+` 保留键、擦值，`bearer <token>`、`sk-…`/`lsv2_…` 形状整体擦除。`scripts/check_secrets.py` 没有可导入的 Python 模式表（它运行 gitleaks 的 Go 侧默认规则，仅内嵌一条自检 canary），因此文本模式写在 `tracing.py`，gitleaks 仍是仓库侧第二道检查。结构测试断言 `tracing.py` 中 `set_attribute` 只出现在 `_write` 内一次。

@@ -769,7 +769,7 @@ def test_round2_3_tool_call_arguments_redact_credential_like_keys():
                 "type": "function",
                 "function": {
                     "name": "metrics.range_query",
-                    "arguments": "not json fake-arg-plain-4040",
+                    "arguments": "Authorization=fake-arg-plain-4040 expr=up",
                 },
             },
         ],
@@ -790,5 +790,68 @@ def test_round2_3_tool_call_arguments_redact_credential_like_keys():
         assert leaked not in text
     assert "visible-value" in text and "rate(http_errors[5m])" in text
     assert "[REDACTED]" in text
-    # Unparseable arguments are exported as-is (bounded): documented in the task record.
-    assert "fake-arg-plain-4040" in text
+    # Unparseable arguments still pass the generic scrub (review round 3).
+    assert "fake-arg-plain-4040" not in text
+    assert "Authorization=[REDACTED]" in text and "expr=up" in text
+
+
+# -- independent review round 3 (2026-10-05): one generic scrub ---------------
+
+FAKE_ENV_SECRET = "fake-env-secret-value-6060"
+
+
+def test_round3_env_secret_values_and_credential_text_never_reach_spans(monkeypatch):
+    monkeypatch.setenv("FAKE_LAB_API_KEY", FAKE_ENV_SECRET)
+    monkeypatch.setenv("SHORT_TOKEN", "abc")  # too short to be a secret value
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    reply = json.loads(reply_payload())
+    message = reply["choices"][0]["message"]
+    message["content"] = (
+        f"leaked {FAKE_ENV_SECRET} and Authorization: fake-plain-7070 and "
+        "Bearer fake-bearer-token-8080 and api_key=fake-plain-9090 keep=visible"
+    )
+    message["tool_calls"][0]["function"]["arguments"] = f"raw {FAKE_ENV_SECRET} text"
+    call = model_call(
+        messages=(
+            {"role": "system", "content": f"system mentions {FAKE_ENV_SECRET}"},
+            {"role": "user", "content": "password: fake-plain-1111 abc"},
+        )
+    )
+    executor, transport, _sink, _clock = build()
+    transport.response = TransportResponse(
+        body=body([{"metric": FAKE_ENV_SECRET, "value": 1}]), data_as_of=WINDOW_START
+    )
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        DeepSeekClient(
+            FAKE_DEEPSEEK_KEY, opener=_Opener(json.dumps(reply).encode())
+        ).complete(call)
+        outcome = executor.execute(
+            request(params={"expr": f'up{{x="{FAKE_ENV_SECRET}"}}'})
+        )
+    tracer.shutdown()
+    assert outcome.status == "ok"
+    text = all_attribute_text(exporter.get_finished_spans())
+    for leaked in (
+        FAKE_ENV_SECRET,
+        "fake-plain-7070",
+        "fake-bearer-token-8080",
+        "fake-plain-9090",
+        "fake-plain-1111",
+    ):
+        assert leaked not in text, leaked
+    assert "keep=visible" in text
+    assert "abc" in text  # short env values are not treated as secrets
+    assert "Authorization: [REDACTED]" in text
+
+
+def test_round3_scrub_is_the_single_write_path():
+    """Every ``set_attribute`` in tracing.py goes through ``_write``."""
+    import pathlib as _pathlib
+
+    source = (_pathlib.Path(tracing.__file__)).read_text()
+    direct = [line for line in source.splitlines() if "set_attribute(" in line]
+    assert all(
+        "def _write" in line or "span.set_attribute(key, scrubbed)" in line
+        for line in direct
+    ), direct
