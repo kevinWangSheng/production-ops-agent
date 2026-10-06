@@ -34,6 +34,7 @@ from opspilot.investigation.loop import (
     ModelReply,
     serialized_request,
 )
+from opspilot.tracing import tracer
 
 _ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
 # The only 4xx DeepSeek documents as retryable (rate limit; reference table in
@@ -160,26 +161,32 @@ class DeepSeekClient:
 
     def complete(self, call: ModelCall) -> ModelReply:
         """One physical HTTPS request. Retries are the loop's budget decision."""
-        body = serialized_request(call)
-        raw, status = self._post(body, call.timeout_seconds)
-        if 400 <= status < 500 and status not in _TRANSIENT_CLIENT_STATUS:
-            raise ModelError("MODEL_REJECTED")
-        if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
-            raise ModelError("MODEL_UNAVAILABLE")
-        try:
-            payload = json.loads(raw)
-        except (ValueError, RecursionError) as exc:
-            # RecursionError covers a body nested deep enough to exceed the
-            # decoder's recursion limit (bot review finding, PR #29): it is
-            # not a ValueError subclass, so it escaped this call and then
-            # the loop's _call_model() (which only handles ModelError),
-            # crashing the run without a handoff even though the physical
-            # request had already completed and been counted. Same pattern
-            # already used for adversarial JSON elsewhere in this codebase
-            # (opspilot/tools/executor.py, opspilot/investigation/reports.py,
-            # opspilot/investigation/loop.py).
-            raise ModelError("MODEL_UNAVAILABLE") from exc
-        return _parse_reply(payload)
+        # The span sees ``call`` and the parsed ``ModelReply`` only -- never
+        # the request headers or the raw body (``opspilot.tracing``).
+        with tracer().model_call(call) as span:
+            body = serialized_request(call)
+            raw, status = self._post(body, call.timeout_seconds)
+            if 400 <= status < 500 and status not in _TRANSIENT_CLIENT_STATUS:
+                raise ModelError("MODEL_REJECTED")
+            if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
+                raise ModelError("MODEL_UNAVAILABLE")
+            try:
+                payload = json.loads(raw)
+            except (ValueError, RecursionError) as exc:
+                # RecursionError covers a body nested deep enough to exceed
+                # the decoder's recursion limit (bot review finding, PR #29):
+                # it is not a ValueError subclass, so it escaped this call
+                # and then the loop's _call_model() (which only handles
+                # ModelError), crashing the run without a handoff even though
+                # the physical request had already completed and been
+                # counted. Same pattern already used for adversarial JSON
+                # elsewhere in this codebase (opspilot/tools/executor.py,
+                # opspilot/investigation/reports.py,
+                # opspilot/investigation/loop.py).
+                raise ModelError("MODEL_UNAVAILABLE") from exc
+            reply = _parse_reply(payload)
+            span.reply(reply)
+            return reply
 
     def _post(self, body: bytes, timeout: float) -> tuple[bytes, int]:
         if timeout <= 0:
