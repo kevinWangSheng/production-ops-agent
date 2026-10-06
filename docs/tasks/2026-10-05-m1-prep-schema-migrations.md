@@ -70,6 +70,16 @@
 - 对照（同机、PG 17.9 临时实例、`rebuild()` x20 取 5 轮最好值，两次重复）：改前每次新建连接 43.4ms / 45.8ms（≈2.2ms/次）；池化后 6.7ms / 7.7ms（≈0.35ms/次），约 6 倍；09-15 记录 B2 为 58ms vs 复用连接 4ms（无取出前 ping）。
 - 测试：新增 `tests/integration/test_m1_pool_postgres.py`（复用、快照后不残留只读、`SET LOCAL` 每事务生效、出错回滚后连接干净、池满 TIMEOUT、`close()` 后重建、同 DSN 共池与最后一个释放、env 覆盖）。`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration`（55441 临时实例，`max_connections=12`）：296 passed、10 skipped（仅重启 lab 的用例）、0 failed；全程采样客户端连接峰值 8（默认 max_size=8 时峰值 12 曾打满、一池一 store 时当场 `too many clients`，故默认改 4 并共池）。`make check`：2531 passed、306 skipped、2 xfailed（`tests/test_sql_column_order_independence.py` 的静态守卫原只认 `psycopg.connect(` + `row_factory=dict_row`，扩成同时认 `ConnectionPool(` + `"row_factory": dict_row`，意图不变，需审查者确认）。
 - 未执行：fork 后子进程行为只有 pid 键的代码路径，没有真实 fork 测试（web/worker 都是单进程，macOS multiprocessing 为 spawn）；lab 55431 未动，PG 重启下池的换新只靠 `check` 回调，未跑 `M0_B_RESTART=1`。
+## PR-c 执行（2026-10-05）
+
+- 状态：PR 已开（issue #78，分支 `chore/m1-prep-state-checks`，worktree `../production-ops-agent-check`），待独立审查与用户合并。
+- 迁移 `0002_state_checks`（down_revision `0001_baseline`，downgrade 删约束）。列 → Literal：`opspilot_runs.state` → `RunExecution`（9 值；代码只写其中 7 个，`failed`/`budget_exhausted` 尚无写入路径，约束照 Literal 放行）；`opspilot_incidents.lifecycle` → `IncidentLifecycle`（4 值；代码只写 `open`）。`tests/test_schema_state_checks.py` 用 `typing.get_args` 比对迁移里的字面量与 Literal。
+- 未加约束的枚举型列（偏差照实列出，不替用户挑一边）：`opspilot_incidents.state`（领域 `Incident` 没有这个字段，写入值 queued/paused/running/cancelled 是 run 状态的镜像）；`opspilot_controls.action`（写 `new_run`、`cancel`，`ControlAction` 是 `cancel_run` 且无 `new_run`；Literal 的 takeover/close/reopen/authorize_observation/revoke_observation 无写入）；`opspilot_steps.status`（response_committed/tool_result_committed/late_result，领域无 Literal）；`opspilot_inputs.kind`（event/follow_up/correct，无 Literal）；`opspilot_budget_reservations.state`（reserved/spent/unknown，无 Literal）；`opspilot_evidence.status`（`ToolStatus` 在 `opspilot/tools/outcomes.py` 而非 domain，且 `pin` 路径从 view 字典取 status）；`opspilot_subject_events.kind` 是开放字符串。这些要么先对齐词汇（属 `tests/test_architecture.py` xfail 那项架构决定），要么另开 issue。
+- 升级前先按表/列数非法值，有则抛 `schema.IllegalStateValues`（表.列 = 值: 行数），`transaction_per_migration` 回滚、数据不动、库停在 0001；`make migrate` 退出 1。
+- 接管路径改为：旧库 dump 与新建库升到 **`0001_baseline`** 的 dump 比对 → stamp 0001 → `upgrade head`；`MigrateResult("stamped", <head>)`，CI 两条路径的 grep 改成 `0002_state_checks`；PR-a 的三条断言随 head 移动而改（`test_head_is_the_newest_revision`、stamped 后 dump 等于 fresh head、grown 库 stamp 结果），未削弱。
+- 验证（临时 PG 17.9，端口 55451，`OPSPILOT_LAB_DSN` 指向，不碰 55431）：`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration` → 291 passed, 10 skipped；`make check` 通过（2533 passed, 301 skipped, 2 xfailed）。新 PG 测试：`state='banana'` 抛 `CheckViolation`；带非法值的旧库接管后停在 0001、数据与 dump 不变、修数据后重跑升到 head；upgrade→downgrade→upgrade 的 dump 与 fresh head 一致。
+- **合并后用户待办**：本机 55431 lab 库现在停在 `0001_baseline`，`install()` 会以 `SCHEMA_NOT_MIGRATED` 拒绝；需 `OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump make migrate`。它先数非法值；10,609 行事故里若有历史非法状态会被拒并打印清单，不改数据。本 PR 没有跑它。
+- 未执行：真实 lab 库迁移（见上）；`opspilot_incidents.state` 等六列的约束；`tests/test_architecture.py` xfail 不动（ADR-0007 明示另决）。
 
 ## 前提与完成条件
 

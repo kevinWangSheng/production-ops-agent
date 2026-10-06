@@ -35,8 +35,9 @@ def _sql_lines(text: str) -> list[str]:
     return [line for line in lines if line and not line.startswith("--")]
 
 
-def test_head_is_the_baseline() -> None:
-    assert schema.head_revision() == "0001_baseline"
+def test_head_is_the_newest_revision() -> None:
+    assert schema.BASELINE_REVISION == "0001_baseline"
+    assert schema.head_revision() == "0002_state_checks"
 
 
 def test_baseline_sql_equals_frozen_legacy_ddl() -> None:
