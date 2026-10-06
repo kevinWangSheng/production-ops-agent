@@ -1,0 +1,64 @@
+{
+ "run_state": "completed",
+ "deadline": "2026-10-06T06:02:49.001821-07:00",
+ "tool_operations_used": 31,
+ "tool_seconds_used": 0.3718209598446265,
+ "tool_charges_rows": 31,
+ "steps": [
+  [
+   "ctx0:round-1",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-2",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-3",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-4",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-5",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-6",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-7",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-8",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-9",
+   "tool_result_committed",
+   null
+  ],
+  [
+   "ctx0:round-10",
+   "response_committed",
+   null
+  ],
+  [
+   "conclusion:g0:ctx0:round-10",
+   "response_committed",
+   "conclusion"
+  ]
+ ]
+}

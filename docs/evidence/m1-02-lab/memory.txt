@@ -1,0 +1,49 @@
+# measured 2026-10-06T10:30:16Z, ~2 min after all deployments Available
+## host (macOS)
+PhysMem: 15G used (4541M wired, 6435M compressor), 191M unused.
+## colima VM free -m
+               total        used        free      shared  buff/cache   available
+Mem:            7922        2034         105          35        6016        5888
+Swap:              0           0           0
+## kind node container (docker stats)
+opspilot-m1-control-plane mem=2.481GiB / 7.737GiB cpu=64.44%
+## per-container (crictl stats, bytes)
+   246.9 MiB  kube-apiserver-opspilot-m1-control-plane  (kube-apiserver)
+   193.0 MiB  ad-79c47f5b99-dmdsd  (ad)
+   145.8 MiB  prometheus-c7d89d9-25vtb  (prometheus-server)
+    96.5 MiB  frontend-676c976c9d-vtkjx  (frontend)
+    74.3 MiB  otel-collector-5698775c44-bjfdm  (opentelemetry-collector)
+    63.0 MiB  payment-7bd449ddbf-vzsx5  (payment)
+    56.1 MiB  load-generator-6c87b5c779-pf7l5  (load-generator)
+    52.8 MiB  kube-controller-manager-opspilot-m1-control-plane  (kube-controller-manager)
+    43.0 MiB  etcd-opspilot-m1-control-plane  (etcd)
+    39.6 MiB  recommendation-659fdf4cfc-b78t5  (recommendation)
+    37.2 MiB  cart-78976fc45f-2dvhv  (cart)
+    37.2 MiB  email-79d4644c6b-vlm7j  (email)
+    29.2 MiB  jaeger-58b867498d-vj7x6  (jaeger)
+    25.1 MiB  kube-scheduler-opspilot-m1-control-plane  (kube-scheduler)
+    20.8 MiB  flagd-55fd86dc59-k5p8c  (flagd)
+    15.9 MiB  coredns-559f6c778d-72cdm  (coredns)
+    15.8 MiB  coredns-559f6c778d-vrcgt  (coredns)
+    14.6 MiB  frontend-proxy-6db9bf78b5-xxg9h  (frontend-proxy)
+    14.5 MiB  kube-proxy-nk2fb  (kube-proxy)
+    14.2 MiB  kube-state-metrics-7cbf5b996-crwbv  (kube-state-metrics)
+    10.8 MiB  quote-55dfb5dc8b-c5n89  (quote)
+     9.7 MiB  kindnet-zw6dd  (kindnet-cni)
+     7.7 MiB  local-path-provisioner-75f7fc7dc5-8knrc  (local-path-provisioner)
+     7.7 MiB  product-catalog-7fd8bcc55f-72hzm  (product-catalog)
+     6.6 MiB  checkout-7c846c8d98-877t6  (checkout)
+     3.6 MiB  valkey-cart-bfbdf77d7-fpxg5  (valkey-cart)
+     3.5 MiB  image-provider-5b6545fdbf-vj5x9  (image-provider)
+     2.5 MiB  currency-754c4b748c-mhg98  (currency)
+     0.8 MiB  shipping-6958f55c49-vvkpp  (shipping)
+     0.0 MiB  cart-78976fc45f-2dvhv  (wait-for-valkey-cart)
+  1288.4 MiB  TOTAL working set of all containers
+
+# measured 2026-10-06T10:46:03Z, during the fault-case Run (load generator 2 users)
+PhysMem: 15G used (3458M wired, 5427M compressor), 107M unused.
+               total        used        free      shared  buff/cache   available
+Mem:            7922        2256         128          41        5777        5666
+opspilot-m1-control-plane mem=2.714GiB / 7.737GiB cpu=43.19%
+host RSS of colima/lima VM processes: 49 MiB
+host RSS of com.apple.Virtualization.VirtualMachine (the m1-kind VM) at 10:47Z: 1209 MiB (guest used 2256 MiB + 5777 MiB page cache; macOS keeps the rest compressed/unbacked)

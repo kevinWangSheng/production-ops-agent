@@ -1,0 +1,129 @@
+# Trimmed OTel Demo for the M1-02 kind lab (chart open-telemetry/
+# opentelemetry-demo 0.37.8, appVersion 2.0.2 -- the same demo version the M0
+# Compose lab pinned, so the product profile's service names and metrics are
+# unchanged). Decision D4 (docs/tasks/2026-10-03-m1-02-recovery-observation.md):
+# run only what the checkout fault path needs on an 8 GiB colima VM.
+#
+# Disabled: accounting, fraud-detection, kafka (the checkout -> kafka order
+# topic is not on the fault path; checkout skips its producer when KAFKA_ADDR
+# is empty), grafana, opensearch (logs), flagd-ui.
+# Kept: frontend-proxy, frontend, checkout, cart + valkey, payment,
+# product-catalog, currency, shipping, quote, email, ad, recommendation,
+# image-provider, flagd, load-generator, otel-collector, jaeger, prometheus.
+# ad and recommendation stay so the frontend does not emit unrelated errors
+# on every product page the load generator visits.
+
+default:
+  envOverrides:
+    # The chart's default value plus the lab integration id the Compose lab
+    # stamped on every resource (this chart version does not merge
+    # OTEL_RESOURCE_ATTRIBUTES_EXTRA, so the whole value is restated);
+    # Prometheus promotes it to the opspilot_integration_id label below.
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: 'service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909'
+
+components:
+  accounting:
+    enabled: false
+  fraud-detection:
+    enabled: false
+  kafka:
+    enabled: false
+
+  checkout:
+    envOverrides:
+      - name: KAFKA_ADDR
+        value: ""
+    # The default waits for kafka, which is disabled.
+    initContainers: []
+
+  frontend-proxy:
+    service:
+      type: NodePort
+      port: 8080
+      nodePort: 30080
+
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "2"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+    resources:
+      limits:
+        memory: 300Mi
+
+  flagd:
+    # Mount the flagd-config ConfigMap directly instead of the chart's
+    # copy-to-emptyDir + flagd-ui sidecar, so the engineer fault hook
+    # (scripts/kind_lab.py fault) is a ConfigMap patch the kubelet propagates
+    # and flagd reloads; nothing in the pod can edit flags otherwise.
+    mountedConfigMaps:
+      - name: config-ro
+        mountPath: /etc/flagd
+        existingConfigMap: flagd-config
+    mountedEmptyDirs: []
+    sidecarContainers: []
+    initContainers: []
+    additionalVolumes: []
+
+opentelemetry-collector:
+  resources:
+    limits:
+      memory: 300Mi
+  config:
+    # The chart's opensearch exporter stays defined (nulling it leaves an
+    # endpoint-less stub the collector refuses); no pipeline uses it, so
+    # logs are not shipped anywhere.
+    service:
+      pipelines:
+        logs:
+          exporters: [debug]
+
+jaeger:
+  allInOne:
+    resources:
+      limits:
+        memory: 400Mi
+
+prometheus:
+  server:
+    service:
+      type: NodePort
+      servicePort: 9090
+      nodePort: 30090
+    resources:
+      limits:
+        memory: 700Mi
+    otlp:
+      keep_identifying_resource_attributes: true
+      # The chart's list plus the lab integration id (lists replace, so the
+      # defaults are restated).
+      promote_resource_attributes:
+        - opspilot.integration.id
+        - service.instance.id
+        - service.name
+        - service.namespace
+        - service.version
+        - cloud.availability_zone
+        - cloud.region
+        - deployment.environment.name
+        - k8s.cluster.name
+        - k8s.container.name
+        - k8s.cronjob.name
+        - k8s.daemonset.name
+        - k8s.deployment.name
+        - k8s.job.name
+        - k8s.namespace.name
+        - k8s.node.name
+        - k8s.pod.name
+        - k8s.replicaset.name
+        - k8s.statefulset.name
+        - container.name
+        - host.name
+
+grafana:
+  enabled: false
+
+opensearch:
+  enabled: false
