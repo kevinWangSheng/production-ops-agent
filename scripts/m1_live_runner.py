@@ -69,11 +69,10 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts.lab_evidence import (
     LAB_ROUND_ENV,
-    configure_lab_round,
-    ensure_longlived_project,
     freeze,
     langsmith_client,
     parse_report,
+    prepare_lab_project,
     trace_evidence,
 )
 from scripts.m0.postgres_lab import DSN, verify_server
@@ -248,14 +247,11 @@ def main() -> int:
     if not os.environ.get("OPSPILOT_LAB_DSN"):
         verify_server()
     load_langsmith_env(env_file)
-    project = None
-    if os.environ.get(tracing.TRACE_ENV) == "lab":
-        if not args.lab_round:
-            raise SystemExit("OPSPILOT_TRACE=lab requires --lab-round")
-        # Retention applies to new traces only: create and set it first.
-        project = ensure_longlived_project(
-            langsmith_client(), configure_lab_round(os.environ, args.lab_round)
-        )
+    # Lab mode: prove the lab target first (zero LangSmith calls otherwise),
+    # then create the round's project and set retention before the Run.
+    project = prepare_lab_project(
+        os.environ, args.lab_round, client_factory=langsmith_client
+    )
     trace = tracing.configure(os.environ)
     store = DurableStore(DSN)
     store.install()
@@ -400,7 +396,10 @@ def main() -> int:
     out = resolve_out_dir(
         str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
     )
-    first = attempts[0]["outcome"]["loop"]
+    # The report is the last committed conclusion; its digest and evidence
+    # ids come from the attempt that produced it, not from the first attempt
+    # (Codex review, PR #110 B1).
+    first = final_loop(attempts)
     report = None if first is None else runner_report(store, incident)
     # Frozen summary (ADR-0006 decision 3): report, verdicts, counts, cost,
     # trace link; the raw ledger (HTTP attempts, row snapshots, event stream)
@@ -474,6 +473,15 @@ def main() -> int:
     }
     print(json.dumps(summary, default=str))
     return 0
+
+
+def final_loop(attempts) -> dict | None:
+    """The loop outcome of the last attempt that ran the loop, if any."""
+    for attempt in reversed(attempts):
+        loop = attempt["outcome"]["loop"]
+        if loop is not None:
+            return loop
+    return None
 
 
 def runner_report(store, incident) -> str | None:

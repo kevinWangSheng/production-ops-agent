@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from opspilot.tracing import LAB_PROJECT_PREFIX
+from opspilot.tracing import LAB_PROJECT_PREFIX, TRACE_ENV, check_lab_target
 
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER_DIR_ENV = "OPSPILOT_LEDGER_DIR"
@@ -69,6 +69,32 @@ def configure_lab_round(env: Mapping[str, str] | Any, round_name: str) -> str:
     return project
 
 
+def prepare_lab_project(
+    env: Mapping[str, str] | Any,
+    lab_round: str | None,
+    *,
+    client_factory: Any,
+) -> dict[str, Any] | None:
+    """In lab mode: name the round's project, prove the lab target, then set
+    retention. Outside lab mode returns None without touching LangSmith.
+
+    Independent review (PR #110, A1): the project setup used to run before
+    ``tracing.configure()``, so a disallowed ``LANGSMITH_ENDPOINT`` still
+    received requests carrying the API key. The same ``check_lab_target`` the
+    tracer applies runs here first; any failure exits with the codes and
+    makes zero LangSmith calls.
+    """
+    if env.get(TRACE_ENV) != "lab":
+        return None
+    if not lab_round:
+        raise SystemExit("OPSPILOT_TRACE=lab requires --lab-round")
+    project = configure_lab_round(env, lab_round)
+    failures = check_lab_target(env)
+    if failures:
+        raise SystemExit("lab target check failed: " + ",".join(failures))
+    return ensure_longlived_project(client_factory(), project)
+
+
 def ensure_longlived_project(client: Any, project_name: str) -> dict[str, Any]:
     """Create the project if needed and set the longest retention tier.
 
@@ -99,15 +125,19 @@ def find_root_run(
     client: Any,
     *,
     project_name: str,
-    run_id: str,
+    otel_trace_id: str,
     attempts: int = READ_BACK_ATTEMPTS,
     delay_seconds: float = READ_BACK_DELAY_S,
     sleep: Any = time.sleep,
 ) -> Any | None:
-    """The LangSmith root run whose ``metadata.run_id`` is this Run, or None.
+    """The LangSmith root run of this OTel trace, or None.
 
-    LangSmith assigns the OTel span's low 64 bits as the run id, so the Run's
-    own id (exported as ``langsmith.metadata.run_id``) is the stable handle.
+    LangSmith assigns the OTel span's low 64 bits as the run id and keeps the
+    OTel trace id in ``metadata.OTEL_TRACE_ID``. The trace id is the handle:
+    every attempt is its own root span with the same business ``run_id`` and a
+    renewed Run carries another one, so a ``run_id`` filter could return an
+    arbitrary root (Codex review, PR #110 B2). The tracer records the last
+    trace id it opened; that is the root the summary links.
     """
     for attempt in range(attempts):
         runs = list(
@@ -115,7 +145,8 @@ def find_root_run(
                 project_name=project_name,
                 is_root=True,
                 filter=(
-                    f'and(eq(metadata_key, "run_id"), eq(metadata_value, "{run_id}"))'
+                    'and(eq(metadata_key, "OTEL_TRACE_ID"), '
+                    f'eq(metadata_value, "{otel_trace_id}"))'
                 ),
                 limit=1,
             )
@@ -164,24 +195,34 @@ def trace_evidence(
         project_id=project.get("project_id"),
         trace_tier=project.get("trace_tier"),
     )
-    if not trace_record.get("trace_id"):
+    trace_id = trace_record.get("trace_id")
+    if not trace_id:
         evidence["read_back"] = "no_trace_id"
         return evidence
-    client = client_factory()
-    root = find_root_run(
-        client,
-        project_name=str(project["project"]),
-        run_id=run_id,
-        attempts=attempts,
-        delay_seconds=delay_seconds,
-    )
-    if root is None:
-        evidence["read_back"] = "root_run_not_found"
+    # Read-back is best effort: a transient LangSmith error must not lose the
+    # frozen ledger and summary that follow it (Codex review, PR #110 B3).
+    try:
+        client = client_factory()
+        root = find_root_run(
+            client,
+            project_name=str(project["project"]),
+            otel_trace_id=str(trace_id),
+            attempts=attempts,
+            delay_seconds=delay_seconds,
+        )
+        if root is None:
+            evidence["read_back"] = "root_run_not_found"
+            return evidence
+        url = run_url(
+            client,
+            project_id=str(project["project_id"]),
+            langsmith_run_id=str(root.id),
+        )
+    except Exception as exc:  # noqa: BLE001 - recorded, never raised past freeze
+        evidence["read_back"] = f"error:{type(exc).__name__}"
         return evidence
     evidence["langsmith_run_id"] = str(root.id)
-    evidence["url"] = run_url(
-        client, project_id=str(project["project_id"]), langsmith_run_id=str(root.id)
-    )
+    evidence["url"] = url
     evidence["read_back"] = "found"
     return evidence
 

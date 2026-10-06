@@ -39,11 +39,10 @@ from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
 from scripts.lab_evidence import (
     LAB_ROUND_ENV,
-    configure_lab_round,
-    ensure_longlived_project,
     freeze,
     langsmith_client,
     parse_report,
+    prepare_lab_project,
     trace_evidence,
 )
 from tests.m1_tool_support import (
@@ -256,20 +255,6 @@ def load_langsmith_env(path: Path) -> list[str]:
     return loaded
 
 
-def prepare_lab_project(lab_round: str | None) -> dict | None:
-    """In lab mode: name this round's project and set its retention first.
-
-    Returns the project record for the summary, or None outside lab mode.
-    """
-    if os.environ.get(tracing.TRACE_ENV) != "lab":
-        return None
-    if not lab_round:
-        raise SystemExit("OPSPILOT_TRACE=lab requires --lab-round")
-    return ensure_longlived_project(
-        langsmith_client(), configure_lab_round(os.environ, lab_round)
-    )
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
@@ -284,7 +269,11 @@ def main() -> int:
         )
         return 2
     load_langsmith_env(env_file)
-    project = prepare_lab_project(args.lab_round)
+    # Lab mode: prove the lab target first (zero LangSmith calls otherwise),
+    # then create the round's project and set retention before the Run.
+    project = prepare_lab_project(
+        os.environ, args.lab_round, client_factory=langsmith_client
+    )
     trace = tracing.configure(os.environ)
     clock = SystemClock()
     deadline = clock.now() + timedelta(minutes=12)

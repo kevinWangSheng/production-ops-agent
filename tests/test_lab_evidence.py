@@ -60,6 +60,20 @@ class FakeClient:
     def _get_optional_tenant_id(self):
         return self.tenant
 
+    def read_run(self, run_id):
+        self.calls.append(("read_run", run_id))
+        for run in self.runs:
+            if str(run.id) == str(run_id):
+                return run
+        raise LookupError(run_id)
+
+    def read_project(self, *, project_id=None, project_name=None):
+        self.calls.append(("read_project", project_id, project_name))
+        for project in self.projects.values():
+            if project["id"] == project_id or project["name"] == project_name:
+                return SimpleNamespace(id=project["id"], name=project["name"])
+        raise LookupError(project_id or project_name)
+
     def create_feedback(self, run_id, key, **kwargs):
         self.calls.append(("create_feedback", run_id, key, kwargs))
         item = SimpleNamespace(
@@ -113,14 +127,14 @@ def test_ensure_longlived_project_creates_then_patches_trace_tier_and_reads_back
 # -- trace read-back ----------------------------------------------------------
 
 
-def test_find_root_run_filters_by_run_id_metadata_and_polls_boundedly():
+def test_find_root_run_filters_by_otel_trace_id_and_polls_boundedly():
     client = FakeClient()
     sleeps: list[float] = []
     assert (
         lab_evidence.find_root_run(
             client,
             project_name="opspilot-lab-r1",
-            run_id="abc",
+            otel_trace_id="abc",
             attempts=3,
             delay_seconds=0.5,
             sleep=sleeps.append,
@@ -131,8 +145,8 @@ def test_find_root_run_filters_by_run_id_metadata_and_polls_boundedly():
     kwargs = client.calls[0][1]
     assert kwargs["is_root"] is True
     assert kwargs["project_name"] == "opspilot-lab-r1"
-    assert (
-        kwargs["filter"] == 'and(eq(metadata_key, "run_id"), eq(metadata_value, "abc"))'
+    assert kwargs["filter"] == (
+        'and(eq(metadata_key, "OTEL_TRACE_ID"), eq(metadata_value, "abc"))'
     )
 
 
@@ -230,11 +244,16 @@ def test_parse_report_keeps_json_or_text():
 # -- review feedback ----------------------------------------------------------
 
 
-def test_review_feedback_cli_writes_reads_back_and_records_in_summary(tmp_path, capsys):
+def test_review_feedback_cli_writes_reads_back_and_records_in_summary(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     run_id = "00000000-0000-0000-d2aa-402ad330ab4a"
     summary_path = tmp_path / "summary.json"
     summary_path.write_text(json.dumps({"trace": {"langsmith_run_id": run_id}}))
     client = FakeClient()
+    _project_with_root(client, "opspilot-lab-r1", run_id)
     code = lab_review_feedback.main(
         [
             "--summary",
@@ -311,3 +330,194 @@ def test_insufficient_verdict_has_no_score():
     assert view["score"] is None and view["value"] == "insufficient"
     assert view["comment"] == "review record: u"
     assert view["read_back_matches"] is True
+
+
+# -- review findings (PR #110) --------------------------------------------------
+
+LAB_ENV = {
+    "OPSPILOT_TRACE": "lab",
+    "LANGSMITH_API_KEY": "k" * 12,
+    "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+}
+
+
+def test_finding_a1_no_langsmith_call_before_the_lab_check_passes():
+    """Astra A1: a disallowed endpoint must stop the project setup before any
+    request carries the API key; the tracing check is reused, not copied."""
+    env = {**LAB_ENV, "LANGSMITH_ENDPOINT": "https://evil.example/otel"}
+    with pytest.raises(SystemExit) as raised:
+        lab_evidence.prepare_lab_project(
+            env,
+            "r1",
+            client_factory=lambda: pytest.fail("LangSmith reached before check"),
+        )
+    assert "LANGSMITH_ENDPOINT_NOT_ALLOWED" in str(raised.value)
+    # Off mode: nothing to do, no client.
+    assert (
+        lab_evidence.prepare_lab_project(
+            {"OPSPILOT_TRACE": "off"}, "r1", client_factory=lambda: pytest.fail("x")
+        )
+        is None
+    )
+    # Lab mode and a passing check: project named, created and set longlived.
+    client = FakeClient()
+    env = dict(LAB_ENV)
+    record = lab_evidence.prepare_lab_project(env, "r1", client_factory=lambda: client)
+    assert env["LANGSMITH_PROJECT"] == "opspilot-lab-r1"
+    assert record["trace_tier"] == "longlived"
+    with pytest.raises(SystemExit):
+        lab_evidence.prepare_lab_project(
+            dict(LAB_ENV), None, client_factory=lambda: client
+        )
+
+
+def _project_with_root(client, name, run_id, otel_trace_id="a" * 32):
+    project = client.create_project(name, upsert=True)
+    root = SimpleNamespace(
+        id=run_id,
+        name="opspilot.run",
+        session_id=project.id,
+        trace_id=run_id,
+        extra={"metadata": {"OTEL_TRACE_ID": otel_trace_id, "run_id": "biz-run"}},
+    )
+    client.runs.append(root)
+    return project
+
+
+def test_finding_a2_feedback_cli_refuses_non_lab_targets_without_writing(monkeypatch):
+    """Astra A2: endpoint/key are validated with the tracing check, the run is
+    read first and must belong to an ``opspilot-lab-*`` project."""
+    run_id = "00000000-0000-0000-d2aa-402ad330ab4a"
+    base = [
+        "--run-id",
+        run_id,
+        "--key",
+        "review_p1",
+        "--verdict",
+        "pass",
+        "--review-url",
+        "u",
+    ]
+    for name in (
+        "OPSPILOT_TRACE",
+        "LANGSMITH_API_KEY",
+        "LANGSMITH_ENDPOINT",
+        "LANGSMITH_PROJECT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://evil.example")
+    with pytest.raises(SystemExit) as raised:
+        lab_review_feedback.main(base, client_factory=lambda: pytest.fail("no client"))
+    assert "LANGSMITH_ENDPOINT_NOT_ALLOWED" in str(raised.value)
+
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    # Run in a non-lab project: read, refused, nothing written.
+    client = FakeClient()
+    _project_with_root(client, "production-traces", run_id)
+    with pytest.raises(SystemExit) as raised:
+        lab_review_feedback.main(base, client_factory=lambda: client)
+    assert "RUN_NOT_IN_LAB_PROJECT" in str(raised.value)
+    assert not any(c[0] == "create_feedback" for c in client.calls)
+    # Unknown run: refused before any write.
+    with pytest.raises(SystemExit) as raised:
+        lab_review_feedback.main(
+            [*base[:1], "00000000-0000-0000-0000-000000000001", *base[2:]],
+            client_factory=lambda: client,
+        )
+    assert "RUN_NOT_FOUND" in str(raised.value)
+    assert not any(c[0] == "create_feedback" for c in client.calls)
+    # Lab project: written and read back.
+    lab = FakeClient()
+    _project_with_root(lab, "opspilot-lab-r1", run_id)
+    assert lab_review_feedback.main(base, client_factory=lambda: lab) == 0
+    assert [
+        c[0]
+        for c in lab.calls
+        if c[0] in ("read_run", "read_project", "create_feedback")
+    ] == [
+        "read_run",
+        "read_project",
+        "create_feedback",
+    ]
+
+
+def test_finding_b1_report_digest_and_evidence_follow_the_final_conclusion():
+    """Codex B1: with a follow-up, the report is the final conclusion; its
+    sha256 and evidence ids must come from the same attempt, not the first."""
+    from scripts.m1_live_runner import final_loop
+
+    first = {
+        "label": "first",
+        "outcome": {"loop": {"report_content_sha256": "a", "evidence_ids": ["e1"]}},
+    }
+    renewed = {
+        "label": "after-follow-up",
+        "outcome": {"loop": {"report_content_sha256": "b", "evidence_ids": ["e2"]}},
+    }
+    sweep = {"label": "sweep", "outcome": {"loop": None}}
+    assert final_loop([first, renewed, sweep]) == renewed["outcome"]["loop"]
+    assert final_loop([first]) == first["outcome"]["loop"]
+    assert final_loop([sweep]) is None
+
+
+def test_finding_b2_root_run_is_selected_by_the_final_otel_trace_id():
+    """Codex B2: each attempt is its own root with the same business run id and
+    a renewed Run carries another; the recorded final trace id is unique."""
+    client = FakeClient()
+    other = SimpleNamespace(
+        id="00000000-0000-0000-0000-00000000000a", name="opspilot.run"
+    )
+    final = SimpleNamespace(
+        id="00000000-0000-0000-0000-00000000000b", name="opspilot.run"
+    )
+    client.runs = [final]
+    found = lab_evidence.find_root_run(
+        client,
+        project_name="opspilot-lab-r1",
+        otel_trace_id="f" * 32,
+        attempts=1,
+        delay_seconds=0,
+    )
+    assert found is final and found is not other
+    kwargs = client.calls[-1][1]
+    assert kwargs["filter"] == (
+        f'and(eq(metadata_key, "OTEL_TRACE_ID"), eq(metadata_value, "{"f" * 32}"))'
+    )
+    assert kwargs["is_root"] is True
+
+
+def test_finding_b3_read_back_errors_are_recorded_not_raised():
+    """Codex B3: a transient LangSmith failure must not lose the frozen
+    evidence; the trace block says so explicitly."""
+    project = {
+        "project": "opspilot-lab-r1",
+        "project_id": "p-1",
+        "trace_tier": "longlived",
+    }
+
+    def boom():
+        raise ConnectionError("transient")
+
+    evidence = lab_evidence.trace_evidence(
+        {"mode": "lab", "trace_id": "f" * 32, "dropped_spans": 0},
+        run_id="run-1",
+        project=project,
+        client_factory=boom,
+    )
+    assert evidence["read_back"] == "error:ConnectionError"
+    assert evidence["url"] is None and evidence["project"] == "opspilot-lab-r1"
+
+    class Flaky(FakeClient):
+        def list_runs(self, **kwargs):
+            raise TimeoutError("slow")
+
+    evidence = lab_evidence.trace_evidence(
+        {"mode": "lab", "trace_id": "f" * 32, "dropped_spans": 0},
+        run_id="run-1",
+        project=project,
+        client_factory=Flaky,
+        attempts=1,
+        delay_seconds=0,
+    )
+    assert evidence["read_back"] == "error:TimeoutError"

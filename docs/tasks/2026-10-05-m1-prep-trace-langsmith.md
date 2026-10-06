@@ -110,3 +110,13 @@
 - LangSmith：project `opspilot-lab-trace-pr2-2026-10-06`（id `ea320431-…`），Run 前 PATCH 后回读 `trace_tier=longlived`；根 run `00000000-0000-0000-80f2-bbb9d78533c7`，[链接](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ea320431-68a8-4ce7-95a5-8a1795c09f99/r/00000000-0000-0000-80f2-bbb9d78533c7?poll=true)；回读 4 个 run（chain 根 + 2 llm 1201/81、1497/3454 + `tool:metrics_range_query`），根 run 聚合 2698/3535 等于摘要 `counts` 与 PG `run_usage`；回读内容不含 `reasoning_content`/`Authorization`/`x-api-key`/`Bearer`/环境密钥值。
 - feedback：`review_mechanism_check=pass`（实现者的机制核验，**不是独立审查**），feedback id `01a1109b-ec87-7c90-80ff-2b2bc15a9947`，`read_feedback` 逐字段一致，另以 `list_feedback(run_ids=…)` 独立列出确认；id 已记入上述 `summary.json`。
 - 可逆细节自决：round 名限 `[a-z0-9][a-z0-9.-]{0,62}`；`insufficient` 判定不打分只写 value；摘要里 ledger 路径写相对仓库路径（不含本机目录）。
+
+### 独立审查修复（2026-10-06，PR #110）
+
+Astra（全新上下文）2 项与 Codex 机器人 3 项全部采纳，每项先写红测试再修（`tests/test_lab_evidence.py` 的 `test_finding_*`）：
+1. A1 `prepare_lab_project()` 移入 `lab_evidence.py`：先 `check_lab_target(env)`（复用 tracing 的检查），任一失败 `SystemExit` 且零 LangSmith 调用，再创建 project/设保留；两个脚本改用。
+2. A2 feedback CLI：写前用 `check_lab_target` 的 endpoint/key 两码校验目标；`read_run` 读到 run 后 `read_project` 核对项目名以 `opspilot-lab-` 开头，否则 `RUN_NOT_FOUND`/`RUN_NOT_IN_LAB_PROJECT` 拒绝、不写。
+3. B1 runner 的 `report_content_sha256`/`evidence_ids` 改取最后一个跑过 loop 的 attempt（`final_loop`），与 `runner_report` 的最终结论同源。
+4. B2 根 run 改按 `metadata.OTEL_TRACE_ID`= tracer 记录的最终 trace id 查找（每个 attempt 各自成 root、续开 Run 换 run id，`run_id` 过滤可能取到任意 root）；对已有真实 Run 实时回读命中同一 root `…80f2-bbb9d78533c7`。
+5. B3 回读包在 try 内，异常记 `read_back: error:<类型>`，ledger 与 summary 照常冻结。
+`make check`：2616 passed、311 skipped、2 xfailed。摘要格式未变，未再跑真实 Run；A2/B2 以只读实时调用核验。

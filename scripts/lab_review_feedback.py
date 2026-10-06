@@ -28,6 +28,11 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from opspilot.tracing import (  # noqa: E402
+    LAB_PROJECT_PREFIX,
+    TRACE_ENV,
+    check_lab_target,
+)
 from scripts.lab_evidence import langsmith_client  # noqa: E402
 from scripts.m1_live_flash_loop import load_langsmith_env  # noqa: E402
 
@@ -35,6 +40,41 @@ from scripts.m1_live_flash_loop import load_langsmith_env  # noqa: E402
 KEY = re.compile(r"^review_[a-z0-9_]{1,40}$")
 # pass -> 1, fail -> 0; ``insufficient`` has no score, only the value.
 VERDICT_SCORE: dict[str, int | None] = {"pass": 1, "fail": 0, "insufficient": None}
+
+
+# The tracer's checks that concern the LangSmith target itself. No Run opens
+# here, so the tool-profile, Prometheus/Jaeger and ``LANGSMITH_PROJECT`` codes
+# do not apply: the project is verified from the run being annotated.
+LANGSMITH_TARGET_CODES = frozenset(
+    {"LANGSMITH_ENDPOINT_NOT_ALLOWED", "LANGSMITH_KEY_MISSING"}
+)
+
+
+def langsmith_target_failures(env: Any) -> tuple[str, ...]:
+    """Endpoint/key failures from ``opspilot.tracing.check_lab_target``.
+
+    Independent review (PR #110, A2): the CLI used to write with whatever
+    ``LANGSMITH_ENDPOINT`` was set; the same fail-closed check the tracer
+    applies runs first, before any request carries the API key.
+    """
+    return tuple(
+        code
+        for code in check_lab_target({**env, TRACE_ENV: "lab"})
+        if code in LANGSMITH_TARGET_CODES
+    )
+
+
+def verify_lab_run(client: Any, run_id: str) -> dict[str, str]:
+    """Read the run first; it must exist and sit in an ``opspilot-lab-*``
+    project (the tracer's prefix), or nothing is written."""
+    try:
+        run = client.read_run(run_id)
+    except Exception as exc:  # noqa: BLE001 - refused with the type, no write
+        raise SystemExit(f"RUN_NOT_FOUND: {run_id} ({type(exc).__name__})") from exc
+    project = client.read_project(project_id=str(run.session_id))
+    if not str(project.name).startswith(LAB_PROJECT_PREFIX):
+        raise SystemExit(f"RUN_NOT_IN_LAB_PROJECT: {project.name}")
+    return {"project": str(project.name), "project_id": str(project.id)}
 
 
 def write_and_read_back(
@@ -123,8 +163,13 @@ def main(
         raise SystemExit("--record requires --summary")
     if args.env_file:
         load_langsmith_env(Path(args.env_file).expanduser())
+    failures = langsmith_target_failures(os.environ)
+    if failures:
+        raise SystemExit("langsmith target check failed: " + ",".join(failures))
+    client = client_factory()
+    verify_lab_run(client, run_id)
     view = write_and_read_back(
-        client_factory(),
+        client,
         run_id=run_id,
         key=args.key,
         verdict=args.verdict,
