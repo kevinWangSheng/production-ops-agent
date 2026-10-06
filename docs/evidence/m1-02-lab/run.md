@@ -58,6 +58,8 @@
 
 ## 启停
 
+PR #111 审查后（2026-10-06）：故障历史目录固定在 `tmp/m1-kind-lab/engineer-only/`（不可用环境变量改指）；kubectl/helm/kind 全部使用 `tmp/m1-kind-lab/kubeconfig`，Helm 仓库配置与缓存也在 `tmp/m1-kind-lab/helm/`（宿主 `~/.kube/config` 与全局 Helm 配置经 sha 比对未变）；`fault inject|restore` patch 后重读 ConfigMap 核对 SHA-256，`fault-log.jsonl` 多出 `live_sha256`/`verified`；`health` 的 `ok` 包含 frontend 与 Deployment 就绪，每个组件带自己的 `ok`。本节的 `lab-health.json` 仍是修改前的字段形状。
+
 ```sh
 .venv/bin/python scripts/kind_lab.py up       # 检查宿主可回收内存 ≥ 3 GiB → colima start m1-kind → kind create → helm upgrade --install ×2 → 等 Deployment 就绪
 .venv/bin/python scripts/kind_lab.py health

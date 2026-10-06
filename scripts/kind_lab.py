@@ -77,10 +77,44 @@ FLAG = "paymentFailure"
 FLAG_FILE = "demo.flagd.json"
 NORMAL_VARIANT = "off"
 FAULT_VARIANT = "100%"
-HISTORY_ROOT = Path(
-    os.environ.get("OPSPILOT_KIND_LAB_HISTORY")
-    or ROOT / "tmp/m1-kind-lab/engineer-only"
-)
+# Everything this script writes on the host lives under this git-ignored,
+# lab-owned directory: fault history, the lab kubeconfig and Helm's
+# repository config/cache/data. Not configurable (PR #111 review P1: an
+# environment override could point the history at another lab's data).
+LAB_DIR = ROOT / "tmp/m1-kind-lab"
+HISTORY_ROOT = LAB_DIR / "engineer-only"
+KUBECONFIG = LAB_DIR / "kubeconfig"
+KUBECTL = "kubectl"
+
+
+def lab_env() -> dict[str, str]:
+    """Environment for helm and kind: lab-local Helm homes and kubeconfig.
+
+    ``helm repo add/update`` would otherwise edit the user's global
+    ``repositories.yaml`` and chart cache, and ``kind create`` would write
+    into and switch the current context of ``~/.kube/config``.
+    """
+    return {
+        **os.environ,
+        "HELM_CONFIG_HOME": str(LAB_DIR / "helm/config"),
+        "HELM_CACHE_HOME": str(LAB_DIR / "helm/cache"),
+        "HELM_DATA_HOME": str(LAB_DIR / "helm/data"),
+        "KUBECONFIG": str(KUBECONFIG),
+    }
+
+
+def history_dir(experiment_id: str | None) -> Path:
+    """The history directory for one experiment, confined to ``HISTORY_ROOT``.
+
+    Refuses an id that escapes the root (``..``, absolute) and a directory
+    that resolves (through a symlink) outside the root.
+    """
+    target = HISTORY_ROOT / experiment_id if experiment_id else HISTORY_ROOT
+    root = HISTORY_ROOT.resolve()
+    resolved = target.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise SystemExit(f"fault history must stay under {HISTORY_ROOT}; refusing")
+    return target
 
 
 def run(
@@ -109,14 +143,47 @@ def docker_env() -> dict[str, str]:
     """
     env = {
         key: value
-        for key, value in os.environ.items()
+        for key, value in lab_env().items()
         if key.upper() not in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
     }
     return {**env, "DOCKER_CONTEXT": CONTEXT}
 
 
 def kubectl(*args: str) -> list[str]:
-    return ["kubectl", "--context", KUBE_CONTEXT, *args]
+    """Always the lab kubeconfig and context; never the user's current one."""
+    return [
+        KUBECTL,
+        "--kubeconfig",
+        str(KUBECONFIG),
+        "--context",
+        KUBE_CONTEXT,
+        *args,
+    ]
+
+
+def helm(*args: str) -> list[str]:
+    return [
+        "helm",
+        "--kubeconfig",
+        str(KUBECONFIG),
+        "--kube-context",
+        KUBE_CONTEXT,
+        *args,
+    ]
+
+
+def kind_create_cmd() -> list[str]:
+    return [
+        "kind",
+        "create",
+        "cluster",
+        "--config",
+        str(CONFIG / "kind-config.yaml"),
+        "--kubeconfig",
+        str(KUBECONFIG),
+        "--wait",
+        "120s",
+    ]
 
 
 def colima_status() -> str:
@@ -189,8 +256,23 @@ def deployments_not_ready() -> list[str] | None:
     return sorted(pending)
 
 
+def frontend_status() -> int:
+    try:
+        with OPENER.open(FRONTEND, timeout=10) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as error:
+        return int(error.code)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0
+
+
 def health(quiet: bool = False) -> dict[str, object]:
-    """What the product profile reads, plus the Kubernetes state signals."""
+    """What the product profile reads, plus the Kubernetes state signals.
+
+    Every component reported carries its own ``ok`` and the top-level ``ok``
+    is their conjunction (Codex review on PR #111: the frontend status used
+    to be reported but not counted).
+    """
     prom_status, span_series = prom_instant("count(traces_span_metrics_calls_total)")
     prom_ok = bool(span_series)
     _, ksm_series = prom_instant(
@@ -200,12 +282,10 @@ def health(quiet: bool = False) -> dict[str, object]:
     jaeger_status, jaeger = get_json(f"{JAEGER}/api/services")
     services = sorted(jaeger.get("data") or []) if isinstance(jaeger, dict) else []
     jaeger_ok = jaeger_status == 200 and "checkout" in services
-    try:
-        with OPENER.open(FRONTEND, timeout=10) as response:
-            frontend = response.status
-    except (urllib.error.URLError, TimeoutError, OSError):
-        frontend = 0
+    frontend = frontend_status()
+    frontend_ok = frontend == 200
     pending = deployments_not_ready()
+    deployments_ok = pending == []
     report = {
         "prometheus": {
             "url": PROMETHEUS,
@@ -220,9 +300,9 @@ def health(quiet: bool = False) -> dict[str, object]:
             "ok": jaeger_ok,
             "services": services,
         },
-        "frontend": {"url": FRONTEND, "status": frontend},
-        "deployments_not_ready": pending,
-        "ok": prom_ok and ksm_ok and jaeger_ok and pending == [],
+        "frontend": {"url": FRONTEND, "status": frontend, "ok": frontend_ok},
+        "deployments": {"not_ready": pending, "ok": deployments_ok},
+        "ok": prom_ok and ksm_ok and jaeger_ok and frontend_ok and deployments_ok,
     }
     if not quiet:
         print(json.dumps(report, indent=2))
@@ -269,18 +349,26 @@ def cmd_up(args: argparse.Namespace) -> int:
     if clusters.returncode != 0:
         print(clusters.stderr, file=sys.stderr)
         return clusters.returncode
+    LAB_DIR.mkdir(parents=True, exist_ok=True)
     if CLUSTER not in clusters.stdout.split():
+        proc = run(kind_create_cmd(), env=env)
+        if proc.returncode != 0:
+            return proc.returncode
+    else:
+        # Refresh the lab kubeconfig (the cluster may predate it, or the
+        # VM may have been restarted); never the user's ~/.kube/config.
         proc = run(
             [
                 "kind",
-                "create",
-                "cluster",
-                "--config",
-                str(CONFIG / "kind-config.yaml"),
-                "--wait",
-                "120s",
+                "export",
+                "kubeconfig",
+                "--name",
+                CLUSTER,
+                "--kubeconfig",
+                str(KUBECONFIG),
             ],
             env=env,
+            timeout=60,
         )
         if proc.returncode != 0:
             return proc.returncode
@@ -297,21 +385,23 @@ def cmd_up(args: argparse.Namespace) -> int:
         time.sleep(5)
     if proc.returncode != 0:
         return proc.returncode
+    # Helm repo config and chart cache stay under LAB_DIR (``lab_env``).
     for repo, url in (
         ("open-telemetry", DEMO_REPO),
         ("prometheus-community", KSM_REPO),
     ):
-        proc = run(["helm", "repo", "add", "--force-update", repo, url], timeout=120)
+        proc = run(
+            ["helm", "repo", "add", "--force-update", repo, url], timeout=120, env=env
+        )
         if proc.returncode != 0:
             return proc.returncode
-    proc = run(["helm", "repo", "update", "open-telemetry", "prometheus-community"])
+    proc = run(
+        ["helm", "repo", "update", "open-telemetry", "prometheus-community"], env=env
+    )
     if proc.returncode != 0:
         return proc.returncode
     proc = run(
-        [
-            "helm",
-            "--kube-context",
-            KUBE_CONTEXT,
+        helm(
             "upgrade",
             "--install",
             RELEASE,
@@ -325,15 +415,13 @@ def cmd_up(args: argparse.Namespace) -> int:
             str(CONFIG / "values.yaml"),
             "--timeout",
             "15m",
-        ]
+        ),
+        env=env,
     )
     if proc.returncode != 0:
         return proc.returncode
     proc = run(
-        [
-            "helm",
-            "--kube-context",
-            KUBE_CONTEXT,
+        helm(
             "upgrade",
             "--install",
             KSM_RELEASE,
@@ -346,7 +434,8 @@ def cmd_up(args: argparse.Namespace) -> int:
             str(CONFIG / "kube-state-metrics-values.yaml"),
             "--timeout",
             "5m",
-        ]
+        ),
+        env=env,
     )
     if proc.returncode != 0:
         return proc.returncode
@@ -407,22 +496,28 @@ def mutate_flags(raw: bytes, variant: str, expected: str) -> bytes:
     return (json.dumps(data, indent=2) + "\n").encode()
 
 
-def cmd_fault(args: argparse.Namespace) -> int:
-    if args.experiment_id is not None and (
-        not args.experiment_id or not args.experiment_id.replace("-", "").isalnum()
-    ):
-        raise SystemExit("invalid experiment identity")
-    history = HISTORY_ROOT / args.experiment_id if args.experiment_id else HISTORY_ROOT
-    history.mkdir(parents=True, exist_ok=True)
-    original = history / "flags-original.json"
-    changed = history / "flags-injected.json"
+def read_live_flags() -> bytes | None:
     proc = capture(
         kubectl("-n", NAMESPACE, "get", "configmap", "flagd-config", "-o", "json")
     )
     if proc.returncode != 0:
         print(proc.stderr, file=sys.stderr)
-        return proc.returncode
-    raw = json.loads(proc.stdout)["data"][FLAG_FILE].encode()
+        return None
+    return str(json.loads(proc.stdout)["data"][FLAG_FILE]).encode()
+
+
+def cmd_fault(args: argparse.Namespace) -> int:
+    if args.experiment_id is not None and (
+        not args.experiment_id or not args.experiment_id.replace("-", "").isalnum()
+    ):
+        raise SystemExit("invalid experiment identity")
+    history = history_dir(args.experiment_id)
+    history.mkdir(parents=True, exist_ok=True)
+    original = history / "flags-original.json"
+    changed = history / "flags-injected.json"
+    raw = read_live_flags()
+    if raw is None:
+        return 1
     if args.action == "inject":
         if original.exists() or changed.exists():
             raise SystemExit("Existing experiment history; refuse repeat injection.")
@@ -461,6 +556,12 @@ def cmd_fault(args: argparse.Namespace) -> int:
     if proc.returncode != 0:
         print(proc.stderr, file=sys.stderr)
         return proc.returncode
+    # A successful patch is not proof: re-read the ConfigMap and compare its
+    # SHA-256 with the bytes we meant to install (PR #111 review P1).
+    expected_sha = hashlib.sha256(payload).hexdigest()
+    live = read_live_flags()
+    live_sha = None if live is None else hashlib.sha256(live).hexdigest()
+    verified = live_sha == expected_sha
     with (history / "fault-log.jsonl").open("a") as log:
         log.write(
             json.dumps(
@@ -468,14 +569,24 @@ def cmd_fault(args: argparse.Namespace) -> int:
                     "at": datetime.datetime.now(datetime.UTC).isoformat(),
                     "action": args.action,
                     "before_sha256": hashlib.sha256(raw).hexdigest(),
-                    "after_sha256": hashlib.sha256(payload).hexdigest(),
+                    "after_sha256": expected_sha,
+                    "live_sha256": live_sha,
+                    "verified": verified,
                 }
             )
             + "\n"
         )
+    if not verified:
+        print(
+            f"{args.action} NOT verified: live flagd-config sha256 {live_sha} != "
+            f"expected {expected_sha}; the ConfigMap was not changed as intended",
+            file=sys.stderr,
+        )
+        return 2
     print(
-        f"{args.action} completed on the lab ConfigMap only; flagd reloads the "
-        "mounted file after the kubelet sync (about a minute)"
+        f"{args.action} completed and verified on the lab ConfigMap (sha256 "
+        f"{expected_sha[:12]}); flagd reloads the mounted file after the kubelet "
+        "sync (about a minute)"
     )
     return 0
 

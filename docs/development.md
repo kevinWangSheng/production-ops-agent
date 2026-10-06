@@ -123,6 +123,8 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 .venv/bin/python scripts/kind_lab.py fault restore --experiment-id <id>
 .venv/bin/python scripts/kind_lab.py stop      # 只 colima stop；集群与 release 保留，再 up 约 90 s
 ```
+
+脚本在宿主上只写 git 忽略的 `tmp/m1-kind-lab/`：故障历史（`engineer-only/<experiment-id>/`，越出该目录的 id 或符号链接被拒绝）、实验环境专用 kubeconfig（kubectl/helm/kind 都显式用它，不碰 `~/.kube/config` 的当前上下文）和 Helm 的仓库配置与 chart 缓存（`HELM_CONFIG_HOME`/`HELM_CACHE_HOME`/`HELM_DATA_HOME`）。`fault` 在 patch 后重新读取 ConfigMap 比对 SHA-256，不一致则非零退出。
 刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
 
 ## M0-01 离线协议入口
