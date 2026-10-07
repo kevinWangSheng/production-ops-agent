@@ -86,7 +86,7 @@ _SAMPLE_COLUMNS = (
     "health_profile_revision,disposition,reason,confirms_health,health_basis,"
     "subject_lifecycle,incident_control_generation,incident_observation_generation,"
     "scope_suspended,global_generation,target_generation,within_deadline,"
-    "lease_valid,lease_stamps_match,transition,submitted_at"
+    "lease_valid,lease_stamps_match,readings_consistent,transition,submitted_at"
 )
 _ENDING_COLUMNS = (
     "ending_id,session_id,incident_id,ended_reason,transition,sample_id,recorded_at"
@@ -226,10 +226,15 @@ class ReplayedSample:
 
     @property
     def matches(self) -> bool:
+        # A sample the store itself filed as readings_inconsistent carries
+        # its structural problem as the stored verdict; the list then
+        # explains it rather than contradicting it.
         return (
             self.stored == self.replayed
             and not self.raw_mismatches
-            and not self.signal_mismatches
+            and (
+                not self.signal_mismatches or self.stored[1] == "readings_inconsistent"
+            )
         )
 
 
@@ -247,18 +252,65 @@ class ReplayReport:
     # a human close or reopen must not make an old session look wrong.
     expected_lifecycle: str | None
     recorded_lifecycle: str | None
+    # how the session says it ended, and the last ending record
+    # (ended_reason, transition, sample_id); None when there is none
+    stored_ended_reason: str | None = None
+    recorded_ending: tuple[str, str | None, UUID | None] | None = None
+    # the sample whose replayed verdict ended the session, if any
+    ending_sample_id: UUID | None = None
+
+    @property
+    def ending_consistent(self) -> bool:
+        """The stored ending record agrees with the session's end.
+
+        A session still authorized has no ending record. An ended one has a
+        record whose reason is the session's, whose reason implies the stored
+        state, whose transition fits the reason (a confirmation carries
+        ``recovery_confirmed`` and points at the confirming sample; an
+        unconfirmed ending carries ``observation_ended_unconfirmed`` or
+        nothing; a revocation carries nothing), and -- when a replayed
+        verdict ended the session -- which points at exactly that sample.
+        """
+        if self.stored_session_state == "authorized":
+            return self.stored_ended_reason is None and self.recorded_ending is None
+        if self.recorded_ending is None or self.stored_ended_reason is None:
+            return False
+        reason, transition, sample_id = self.recorded_ending
+        if reason != self.stored_ended_reason:
+            return False
+        implied_state = {
+            "recovery_confirmed": "completed",
+            "deadline_expired": "expired",
+            "max_samples_exhausted": "expired",
+            "authority_revoked": "revoked",
+            "binding_stale": "revoked",
+            "scope_suspended": "revoked",
+        }.get(reason)
+        if implied_state != self.stored_session_state:
+            return False
+        if reason == "recovery_confirmed":
+            fits = transition == "recovery_confirmed" and sample_id is not None
+        elif reason in {"deadline_expired", "max_samples_exhausted"}:
+            fits = transition in {None, "observation_ended_unconfirmed"}
+        else:
+            fits = transition is None
+        if self.ending_sample_id is not None:
+            fits = fits and sample_id == self.ending_sample_id
+        return fits
 
     @property
     def session_consistent(self) -> bool:
+        """The fold ends where the session says it ended, or the session was
+        ended without a sample (sweep, revoke, scope change, stale binding)
+        and the ending record says so."""
+        if not self.ending_consistent:
+            return False
         if self.replayed_session_state == self.stored_session_state:
             return True
         return (
             self.replayed_session_state == "authorized"
-            and self.stored_session_state
-            in {
-                "expired",
-                "revoked",
-            }
+            and self.ending_sample_id is None
+            and self.stored_session_state in {"expired", "revoked"}
         )
 
     @property
@@ -325,6 +377,7 @@ def _judge(
     suspension_blocks: bool,
     lease_valid: bool,
     stamps_match: bool,
+    readings_consistent: bool,
     authorized_at: datetime,
     adopted_count: int,
     healthy_since: datetime | None,
@@ -355,6 +408,10 @@ def _judge(
     elif not stamps_match:
         decision = SampleAcceptance(
             accepted=False, disposition="history_only", reason="lease_stamp_mismatch"
+        )
+    elif not readings_consistent:
+        decision = SampleAcceptance(
+            accepted=False, disposition="history_only", reason="readings_inconsistent"
         )
     else:
         decision = evaluate_sample(
@@ -427,6 +484,44 @@ def _judge(
         adopted_count=adopted_count,
         healthy_since=healthy_since,
     )
+
+
+def _parse_required(
+    profile: dict[str, Any] | None,
+) -> tuple[tuple[str, ...] | None, bool]:
+    """``(required names, unreadable)`` for a stored profile row; ``(None,
+    False)`` when the session has no profile revision."""
+    if profile is None:
+        return None, False
+    try:
+        return required_signals(str(profile["content"])), False
+    except PersistenceError:
+        return None, True
+
+
+def _missing_required_signals(
+    required: tuple[str, ...] | None,
+    *,
+    unreadable: bool,
+    outcome: str,
+    required_signals_present: bool,
+    ok_signals: set[str],
+) -> tuple[str, ...]:
+    """What the reading rows fail to support: the required signals without an
+    ok reading when the sample claims health, ``required_signals_present``
+    when that flag contradicts the rows, ``health_profile_unreadable`` when
+    the profile yields no required-signal list (fail closed). Empty when the
+    rows support the sample, or when the session has no profile at all (such
+    a session never confirms health). Structural only: F6 step 5's threshold
+    replay is #87."""
+    if unreadable:
+        return ("health_profile_unreadable",)
+    if required is None:
+        return ()
+    missing = tuple(name for name in required if name not in ok_signals)
+    if (outcome == "healthy" and missing) or required_signals_present != (not missing):
+        return missing or ("required_signals_present",)
+    return ()
 
 
 def _scope_blocks(
@@ -909,6 +1004,16 @@ class ObservationStore(_StoreBase):
                 and sample.observation_generation == lease.observation_generation
                 and sample.health_profile_revision == lease.health_profile_revision
             )
+            required, unreadable = self._required_signals_of(
+                conn, row["health_profile_revision"]
+            )
+            readings_consistent = not _missing_required_signals(
+                required,
+                unreadable=unreadable,
+                outcome=sample.outcome,
+                required_signals_present=sample.required_signals_present,
+                ok_signals={item.signal_name for item in rows if item.status == "ok"},
+            )
             if sample.window.end > now + timedelta(seconds=WINDOW_FUTURE_SKEW_SECONDS):
                 # No telemetry covers a window that has not happened yet.
                 raise PersistenceError("INVALID_INPUT")
@@ -933,6 +1038,7 @@ class ObservationStore(_StoreBase):
                 suspension_blocks=suspended,
                 lease_valid=lease_valid,
                 stamps_match=stamps_match,
+                readings_consistent=readings_consistent,
                 authorized_at=row["authorized_at"],
                 adopted_count=int(row["adopted_count"]),
                 healthy_since=row["healthy_since"],
@@ -972,7 +1078,7 @@ class ObservationStore(_StoreBase):
                     (next_due, lease.session_id),
                 )
             conn.execute(
-                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     sample_id,
                     lease.session_id,
@@ -999,6 +1105,7 @@ class ObservationStore(_StoreBase):
                     within,
                     lease_valid,
                     stamps_match,
+                    readings_consistent,
                     verdict.transition,
                 ),
             )
@@ -1173,16 +1280,11 @@ class ObservationStore(_StoreBase):
         adopted_sequence, adopted_window_end = 0, None
         adopted_count, healthy_since = 0, None
         expected_lifecycle: str | None = None
+        ending_sample_id: UUID | None = None
         # No profile revision: nothing to check (such a session never confirms
         # health). A revision whose stored content cannot yield the required
         # signals fails every sample of the replay.
-        required: tuple[str, ...] | None = None
-        unreadable = False
-        if history["health_profile"] is not None:
-            try:
-                required = required_signals(str(history["health_profile"]["content"]))
-            except PersistenceError:
-                unreadable = True
+        required, unreadable = _parse_required(history["health_profile"])
         replayed: list[ReplayedSample] = []
         for stored in history["samples"]:
             session = _domain_session(
@@ -1207,6 +1309,20 @@ class ObservationStore(_StoreBase):
                 health_profile_revision=stored["health_profile_revision"],
                 required_signals_present=bool(stored["required_signals_present"]),
             )
+            ok_signals = {
+                str(reading["signal_name"])
+                for reading in stored["readings"]
+                if reading["status"] == "ok"
+            }
+            # Recomputed from the stored rows: a deleted reading changes the
+            # replayed decision (readings_inconsistent) as well as this list.
+            signal_mismatches = _missing_required_signals(
+                required,
+                unreadable=unreadable,
+                outcome=str(stored["outcome"]),
+                required_signals_present=bool(stored["required_signals_present"]),
+                ok_signals=ok_signals,
+            )
             verdict = _judge(
                 session,
                 sample,
@@ -1215,6 +1331,7 @@ class ObservationStore(_StoreBase):
                 suspension_blocks=bool(stored["scope_suspended"]),
                 lease_valid=bool(stored["lease_valid"]),
                 stamps_match=bool(stored["lease_stamps_match"]),
+                readings_consistent=not signal_mismatches,
                 authorized_at=row["authorized_at"],
                 adopted_count=adopted_count,
                 healthy_since=healthy_since,
@@ -1230,6 +1347,15 @@ class ObservationStore(_StoreBase):
                 expected_lifecycle = "resolved"
             elif verdict.transition == "observation_ended_unconfirmed":
                 expected_lifecycle = "open"
+            if (
+                verdict.ended_reason is not None
+                and verdict.decision.accepted
+                and ending_sample_id is None
+            ):
+                # The adopted sample whose verdict ended the session; a
+                # rejected sample ending it (deadline, stale binding, scope)
+                # leaves the record pointing at no sample.
+                ending_sample_id = cast(UUID, stored["sample_id"])
             raw_mismatches = tuple(
                 str(reading["signal_name"])
                 for reading in stored["readings"]
@@ -1237,23 +1363,6 @@ class ObservationStore(_StoreBase):
                 and hashlib.sha256(bytes(reading["raw"])).hexdigest()
                 != reading["raw_sha256"]
             )
-            ok_signals = {
-                str(reading["signal_name"])
-                for reading in stored["readings"]
-                if reading["status"] == "ok"
-            }
-            signal_mismatches: tuple[str, ...] = ()
-            if unreadable:
-                signal_mismatches = ("health_profile_unreadable",)
-            elif required is not None:
-                missing = tuple(name for name in required if name not in ok_signals)
-                # Structural check only (F6 step 5's threshold replay is #87):
-                # a healthy sample must have an ok reading for every required
-                # signal, and the stored flag must say what the rows say.
-                if (stored["outcome"] == "healthy" and missing) or bool(
-                    stored["required_signals_present"]
-                ) != (not missing):
-                    signal_mismatches = missing or ("required_signals_present",)
             replayed.append(
                 ReplayedSample(
                     sample_id=stored["sample_id"],
@@ -1291,6 +1400,15 @@ class ObservationStore(_StoreBase):
                 recorded_lifecycle = INCIDENT_LIFECYCLE.fire(
                     recorded_lifecycle, trigger
                 )
+        endings = history["endings"]
+        recorded_ending = None
+        if endings:
+            last_ending = endings[-1]
+            recorded_ending = (
+                str(last_ending["ended_reason"]),
+                last_ending["transition"],
+                last_ending["sample_id"],
+            )
         return ReplayReport(
             session_id=session_id,
             samples=tuple(replayed),
@@ -1298,6 +1416,9 @@ class ObservationStore(_StoreBase):
             stored_session_state=str(row["state"]),
             expected_lifecycle=expected_lifecycle,
             recorded_lifecycle=recorded_lifecycle,
+            stored_ended_reason=row["ended_reason"],
+            recorded_ending=recorded_ending,
+            ending_sample_id=ending_sample_id,
         )
 
     # --- helpers
@@ -1312,6 +1433,17 @@ class ObservationStore(_StoreBase):
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
         return row
+
+    def _required_signals_of(
+        self, conn: Connection, revision: str | None
+    ) -> tuple[tuple[str, ...] | None, bool]:
+        if revision is None:
+            return None, False
+        profile = conn.execute(
+            "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (revision,),
+        ).fetchone()
+        return _parse_required(profile)
 
     def _lock_session(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         if not isinstance(session_id, UUID):

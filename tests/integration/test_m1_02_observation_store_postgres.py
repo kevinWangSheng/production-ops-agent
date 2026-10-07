@@ -421,7 +421,7 @@ def test_observer_role_cannot_write_investigation_runs_reports_or_evidence(
         "UPDATE opspilot_observation_endings SET transition=NULL",
         # timestamps come from the database clock only
         "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,recorded_at) VALUES(gen_random_uuid(),%(s)s,%(i)s,'authority_revoked',clock_timestamp()-interval '1 day')",
-        "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,true,clock_timestamp())",
+        "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,true,true,clock_timestamp())",
         "DELETE FROM opspilot_observation_endings",
         "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES('x@000000000000','x',repeat('0',64),'{}')",
         "UPDATE opspilot_health_profiles SET content='{}'",
@@ -520,7 +520,7 @@ def test_sustained_healthy_window_confirms_recovery(
 
 @pytest.mark.parametrize(
     ("outcome", "required"),
-    [("no_data", True), ("stale", True), ("failed", True), ("healthy", False)],
+    [("no_data", True), ("stale", True), ("failed", True)],
 )
 def test_unknown_or_incomplete_samples_are_adopted_but_never_confirm(
     observer: ObservationStore,
@@ -558,15 +558,7 @@ def test_unknown_or_incomplete_samples_are_adopted_but_never_confirm(
     row = controller.session(session)
     assert row["adopted_count"] == 1 and row["healthy_since"] is None
     assert _lifecycle(owner, incident) == "observing_recovery"
-    report = controller.replay_session(session)
-    if outcome == "healthy":
-        # ``healthy`` with a required signal missing is a combination the
-        # HealthProfile evaluation never produces; the structural check
-        # flags it, the adoption decision itself still replays.
-        assert report.samples[0].stored == report.samples[0].replayed
-        assert report.samples[0].signal_mismatches == ("error_ratio",)
-    else:
-        assert report.consistent
+    _assert_replay_consistent(controller, session)
 
 
 def test_a_non_healthy_sample_resets_the_streak(
@@ -1643,9 +1635,10 @@ def test_replay_checks_the_required_signal_readings_of_a_healthy_sample(
         ),
         _readings_for(_sample(lease, _window(_t0() + timedelta(seconds=30), 30))),
     )
-    assert receipt.accepted and not receipt.confirms_health
+    assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
     report = controller.replay_session(session)
     assert report.samples[1].signal_mismatches == ("required_signals_present",)
+    assert report.samples[1].matches
 
 
 def test_claim_never_waits_for_a_locked_incident_when_ending_a_session(
@@ -1733,8 +1726,133 @@ def test_replay_fails_closed_when_the_profile_yields_no_required_signals(
     _backdate_authorization(owner, session)
     lease = _claim(observer, session)
     receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 30), "degraded"))
-    assert receipt.accepted
+    # Fail closed at submit too: nothing is adopted under such a profile.
+    assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
     report = controller.replay_session(session)
-    assert not report.consistent
+    assert report.consistent
     assert report.samples[0].signal_mismatches == ("health_profile_unreadable",)
     assert report.samples[0].stored == report.samples[0].replayed
+
+
+def test_a_healthy_claim_without_the_required_readings_is_history_only(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """An Observer that submits ``healthy`` with ``required_signals_present``
+    and no (or non-ok) reading rows for the profile's required signals is
+    filed as history at submit time, never adopted, never confirming: the
+    readings are the record the verdict must be reconstructed from."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=30)
+    lease = _claim(observer, session)
+    cases: list[tuple[list[SignalReading], HealthSample]] = [
+        ([], _sample(lease, _window(_t0(), 60))),
+        (
+            _readings_for(_sample(lease, _window(_t0(), 60), required=False)),
+            _sample(lease, _window(_t0(), 60)),
+        ),
+        ([], _sample(lease, _window(_t0(), 60), required=False)),
+        ([], _sample(lease, _window(_t0(), 60), "degraded")),
+    ]
+    for readings, sample in cases:
+        receipt = observer.submit_sample(lease, sample, readings)
+        assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
+        assert receipt.transition is None and not receipt.confirms_health
+        assert receipt.session_state == "authorized"
+        assert _lifecycle(owner, incident) == "observing_recovery"
+        _due_now(owner, session)
+        lease = _claim(observer, session)
+        assert lease.sequence == 1
+    history = controller.session_history(session)
+    assert [s["readings_consistent"] for s in history["samples"]] == [False] * 4
+    assert controller.session(session)["adopted_count"] == 0
+    # Consistent readings: adopted and, with a 60 s window, confirmed.
+    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 60)))
+    assert receipt.transition == "recovery_confirmed"
+    _assert_replay_consistent(controller, session)
+
+
+def test_replay_checks_the_ending_record_of_a_session_ended_without_a_sample(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    _submit(observer, lease, _sample(lease, _window(_t0(), 30), "degraded"))
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET deadline_at=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+            (session,),
+        )
+    assert observer.sweep_expired_sessions() == [session]
+    report = controller.replay_session(session)
+    assert report.consistent
+    assert report.recorded_ending == (
+        "deadline_expired",
+        "observation_ended_unconfirmed",
+        None,
+    )
+    # The record says something else than the session.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_endings SET ended_reason='authority_revoked' WHERE session_id=%s",
+            (session,),
+        )
+    report = controller.replay_session(session)
+    assert not report.ending_consistent and not report.consistent
+    # No record at all.
+    with owner.transaction() as conn:
+        conn.execute(
+            "DELETE FROM opspilot_observation_endings WHERE session_id=%s", (session,)
+        )
+    report = controller.replay_session(session)
+    assert report.recorded_ending is None
+    assert not report.session_consistent and not report.consistent
+    # A revoked session with its record is fine; the state alone is not.
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    assert controller.revoke_sessions(incident) == [session]
+    assert controller.replay_session(session).consistent
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET state='expired',ended_reason='deadline_expired' WHERE session_id=%s",
+            (session,),
+        )
+    assert not controller.replay_session(session).consistent
+
+
+def test_a_temporary_pg_roles_cannot_impersonate_a_superuser(
+    observer_dsn: str, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Both triggers pin ``search_path`` to ``pg_catalog`` and qualify every
+    catalog name, so a temp table named ``pg_roles`` that calls the Observer
+    a superuser changes nothing."""
+    incident, _, target = _incident(owner)
+    _authorize(controller, incident, target)
+    with psycopg.connect(observer_dsn) as conn:
+        conn.execute(
+            "CREATE TEMP TABLE pg_roles AS SELECT rolname, true AS rolsuper FROM pg_catalog.pg_roles"
+        )
+        conn.execute(
+            "CREATE TEMP TABLE pg_class AS SELECT oid, 0::oid AS relowner FROM pg_catalog.pg_class"
+        )
+        assert conn.execute(
+            "SELECT rolsuper FROM pg_roles WHERE rolname=current_user"
+        ).fetchone() == (True,)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege) as refused:
+            conn.execute(
+                "UPDATE opspilot_incidents SET lifecycle='closed' WHERE incident_id=%s",
+                (incident,),
+            )
+        assert "may not move lifecycle" in str(refused.value)
+    with psycopg.connect(observer_dsn) as conn:
+        conn.execute(
+            "CREATE TEMP TABLE pg_roles AS SELECT rolname, true AS rolsuper FROM pg_catalog.pg_roles"
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open' WHERE incident_id=%s",
+            (incident,),
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege) as at_commit:
+            conn.commit()
+        assert "without a recorded observation ending" in str(at_commit.value)
+    assert _lifecycle(owner, incident) == "observing_recovery"

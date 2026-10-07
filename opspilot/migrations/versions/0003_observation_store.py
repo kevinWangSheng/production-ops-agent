@@ -98,6 +98,7 @@ CHECKS: dict[tuple[str, str], tuple[str, ...]] = {
         "suspended",
         "lease_revoked",
         "lease_stamp_mismatch",
+        "readings_inconsistent",
     ),
     # opspilot.domain.subjects.IncidentLifecycle
     ("opspilot_observation_samples", "subject_lifecycle"): (
@@ -296,6 +297,9 @@ def upgrade() -> None:
           -- the sample's sequence/generations/profile revision equal the
           -- lease's (false: filed as lease_stamp_mismatch)
           lease_stamps_match boolean NOT NULL,
+          -- the reading rows support the sample's outcome/required flag (per
+          -- the stored profile's required signals; false: readings_inconsistent)
+          readings_consistent boolean NOT NULL,
           transition text,
           submitted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           CONSTRAINT {samples}_window_check CHECK (window_end > window_start),
@@ -366,7 +370,7 @@ def upgrade() -> None:
         GRANT SELECT ON {samples}, {endings} TO {OBSERVER_ROLE};
         -- the timestamps come from the database clock (DEFAULT), never from
         -- the Observer: the evidence trigger dates rows by them
-        GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,transition) ON {samples} TO {OBSERVER_ROLE};
+        GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent,transition) ON {samples} TO {OBSERVER_ROLE};
         GRANT INSERT (ending_id,session_id,incident_id,ended_reason,transition,sample_id) ON {endings} TO {OBSERVER_ROLE};
         """
     )
@@ -376,19 +380,22 @@ def upgrade() -> None:
     # any value; this trigger checks membership of the role, direct or
     # inherited (``pg_has_role``), excluding superusers and the table owner,
     # for whom pg_has_role is always true and who are not the Observer.
+    # Both trigger functions pin ``search_path`` to ``pg_catalog, pg_temp``
+    # and qualify every name: a role with TEMP could otherwise shadow
+    # ``pg_roles`` with a temporary table that calls it a superuser.
     op.execute(
         f"""
         CREATE FUNCTION opspilot_observer_lifecycle_guard() RETURNS trigger
-        LANGUAGE plpgsql AS $$
+        LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
         BEGIN
           IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle
-            AND pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
-            AND NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
-            AND current_user <> (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = TG_RELID)
+            AND pg_catalog.pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
+            AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
+            AND current_user <> (SELECT pg_catalog.pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c WHERE c.oid = TG_RELID)
           THEN
             IF NOT (OLD.lifecycle = 'observing_recovery' AND NEW.lifecycle IN ('resolved', 'open')) THEN
               RAISE insufficient_privilege USING MESSAGE =
-                format('{OBSERVER_ROLE} may not move lifecycle %s -> %s', OLD.lifecycle, NEW.lifecycle);
+                pg_catalog.format('{OBSERVER_ROLE} may not move lifecycle %s -> %s', OLD.lifecycle, NEW.lifecycle);
             END IF;
           END IF;
           RETURN NEW;
@@ -408,37 +415,37 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE FUNCTION opspilot_observer_lifecycle_evidence() RETURNS trigger
-        LANGUAGE plpgsql AS $$
+        LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
         DECLARE
           expected text;
         BEGIN
           IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle
-            AND pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
-            AND NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
-            AND current_user <> (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = TG_RELID)
+            AND pg_catalog.pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
+            AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
+            AND current_user <> (SELECT pg_catalog.pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c WHERE c.oid = TG_RELID)
           THEN
             expected := CASE NEW.lifecycle
               WHEN 'resolved' THEN 'recovery_confirmed'
               WHEN 'open' THEN 'observation_ended_unconfirmed'
             END;
             IF expected IS NULL OR NOT EXISTS (
-              SELECT 1 FROM {endings} e
-              JOIN {sessions} s ON s.session_id = e.session_id
+              SELECT 1 FROM public.{endings} e
+              JOIN public.{sessions} s ON s.session_id = e.session_id
               WHERE e.incident_id = NEW.incident_id
                 AND s.incident_id = NEW.incident_id
                 AND e.transition = expected
-                AND e.recorded_at >= transaction_timestamp()
+                AND e.recorded_at >= pg_catalog.transaction_timestamp()
                 AND (expected <> 'recovery_confirmed' OR EXISTS (
-                  SELECT 1 FROM {samples} m
+                  SELECT 1 FROM public.{samples} m
                   WHERE m.sample_id = e.sample_id
                     AND m.session_id = e.session_id
                     AND m.transition = 'recovery_confirmed'
                     AND m.disposition = 'adopted'
-                    AND m.submitted_at >= transaction_timestamp()
+                    AND m.submitted_at >= pg_catalog.transaction_timestamp()
                 ))
             ) THEN
               RAISE insufficient_privilege USING MESSAGE =
-                format('{OBSERVER_ROLE} changed lifecycle %s -> %s without a recorded observation ending', OLD.lifecycle, NEW.lifecycle);
+                pg_catalog.format('{OBSERVER_ROLE} changed lifecycle %s -> %s without a recorded observation ending', OLD.lifecycle, NEW.lifecycle);
             END IF;
           END IF;
           RETURN NULL;

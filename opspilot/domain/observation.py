@@ -114,6 +114,10 @@ SampleReason = Literal[
     # generations, profile revision) than the lease handed out: an invalid
     # identity, kept as history (C3 section 10), the job stays retryable.
     "lease_stamp_mismatch",
+    # The sample claims health or complete required signals that its own
+    # reading rows do not show (C3 section 10: data coverage is a necessary
+    # condition of healthy, and the readings are the record of it).
+    "readings_inconsistent",
 ]
 
 
