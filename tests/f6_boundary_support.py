@@ -1,8 +1,8 @@
 """Harness-owned I/O witnesses, never a recovery implementation.
 
-The future recovery_runtime fixture must install these as its ONLY telemetry
-and environment transports (no network fallback). Raw responses are configured
-by that adapter from the scenario stimuli, not from expected recovery verdicts.
+The future recovery_runtime fixture must install these as its ONLY telemetry,
+environment and model transports (no network fallback). Raw responses come
+from scenario stimuli, not from expected recovery verdicts.
 """
 
 from copy import deepcopy
@@ -13,6 +13,7 @@ class RecoveryBoundaries:
         self.telemetry_responses = {}
         self._environment_writes = []
         self.telemetry_calls_during_replay = 0
+        self.model_calls = 0
         self.replaying = False
 
     @property
@@ -22,6 +23,10 @@ class RecoveryBoundaries:
     def environment_write(self, method, endpoint, payload=None):
         self._environment_writes.append((method, endpoint, deepcopy(payload)))
         raise AssertionError("F6 harness rejected an environment write")
+
+    def model_request(self, *args, **kwargs):
+        self.model_calls += 1
+        raise AssertionError("F6 harness rejected a model call")
 
     def telemetry_query(self, query):
         if self.replaying:
@@ -44,6 +49,10 @@ class GuardedRecoveryDriver:
     @property
     def telemetry_calls_during_replay(self):
         return self.boundaries.telemetry_calls_during_replay
+
+    @property
+    def model_calls(self):
+        return self.boundaries.model_calls
 
     def run(self, scenario, **stimuli):
         outcome = self.runtime.run(scenario, **stimuli)

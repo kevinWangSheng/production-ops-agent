@@ -1,6 +1,6 @@
 # F6 独立验收与合同测试作者
 
-- 状态：已完成本轮审查修订（外部场景尚未接线，F6 未完成）
+- 状态：已完成第二轮审查修订（外部场景尚未接线，F6 未完成）
 - 更新日期：2026-10-07
 - 依据：[M1-02](2026-10-03-m1-02-recovery-observation.md)；[测试映射与接口提议](../testing/f6-acceptance-tests.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-f6-tests`；`feature/m1-02-f6-acceptance-tests`；基线 `0c97377`
@@ -31,6 +31,14 @@
 - O5：文档说明运行时 reopen/新阶段未覆盖，因为移出 M1-02；O6：skip 补 #86/#87 和持久采样 #84；O7：删除非生命周期取值/触发器的空转参数；O8 按用户要求不处理，最低样本由合同/profile 决定。
 - 全新上下文静态复验额外发现 H,H,D 可提前结束的缺口，已收紧，静态复验无未处置合同发现；不是产品运行验证。定向 pytest：47 passed（42 领域 + 5 夹具）、33 skipped、0 xfailed，0.30 秒；最终 `make check` 退出 0，锁/Ruff/mypy 通过；2647 passed、344 skipped、2 既有架构债 xfailed，44.59 秒。
 - 本次仅追加提交和普通 push；不再触发机器人、不回复/resolve thread、不合并，lead 接手审查处置。
+
+### 第二轮机器人 P2（943724a 之后）
+
+- 模型边界：测试-owned `model_request` 先计数再抛错；原始与重放均断言 driver.model_calls 为 0；补两例驱动吞掉拒绝仍可检出的夹具检查，产品自报审计保留但不再单独充当证明。
+- unknown 留底：合法 stale/coverage-gap 调用 assert_saved_basis，逐样本 adopted、原信号和来源保留，used_sample_count=3、恢复 unknown 且未确认、全 stale 健康时长为 0；处置前数据拆成独立场景，不冻结采纳方式。
+- 窗口重建：H,H,D,H,H 恰为 120 秒；新增原始期限 420 秒/次数 7 的冻结 profile，H,H,D,H,H 仍观察、H,H,D,H,H,H 达 180 秒并 resolved，不在观察途中延长预算。
+- 定向 pytest：49 passed（42 领域 + 7 夹具）、35 skipped、0 xfailed，0.34 秒；全新上下文静态复验指出 stale 健康窗仍可增长，已补等于 0 并复验，本轮无未处置合同发现；最终 `make check` 退出 0：锁/Ruff/mypy 通过，2649 passed、346 skipped、2 既有架构债 xfailed，45.83 秒。35 个外部实例未接线，不是 F6 验收通过。
+- 仅追加提交、普通 push；不触发 @codex review、不回复或 resolve thread、不合并，仍由 lead 接手审查。
 
 ## 下一步与交接
 
