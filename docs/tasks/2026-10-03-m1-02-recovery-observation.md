@@ -1,7 +1,7 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0 步 kind 环境已执行并开 PR，与 M1 基础设施准备并行——2026-10-05 用户决定只对第 0 步放开先后顺序；第 1 步起仍排在基础设施准备之后）
-- 更新日期：2026-10-06
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0 步 kind 环境已合并 #111；第 1 步 PR #113、第 2 步 PR #114 并行开发）
+- 更新日期：2026-10-07
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
 
@@ -100,6 +100,38 @@
 - 启停：`.venv/bin/python scripts/kind_lab.py up|health|stop|fault inject|restore --experiment-id <id>`；`up` 先查宿主可回收内存 ≥ 3 GiB；`stop` 只停 VM，集群与 release 保留，再 `up` 约 90 s 恢复且 Prometheus 历史保留。故障钩子 patch `flagd-config` ConfigMap，指标可见约 3 分钟（kubelet 同步），恢复同样。
 - 已修的两个坑：kind 把宿主 `HTTP_PROXY=127.0.0.1:1087` 写进节点导致所有镜像拉取失败（脚本对 kind 剥离代理变量）；chart 的 opensearch exporter 不能用 `null` 删除（保留定义、移出 logs pipeline）。
 - 自行决定并记录理由：Helm chart 版本取 appVersion 2.0.2 的最新 patch（0.37.8）以保持与 M1-01 的服务名/指标一致；kube-state-metrics 单独安装而非经 prometheus 子 chart，便于独立锁版本；Jaeger NodePort 用独立 Service 而非改产品默认地址。
+
+## 接口约定（第 1/2 步并行）
+
+第 1 步（HealthProfile，分支 feature/m1-02-health-profile）与第 2 步（观察会话/采样持久化，分支 feature/m1-02-observation-store）同时从 main 0c97377 开发，互不 import 对方新代码。第 4 步（Observer 进程）负责把两边接起来。双方只按本约定对齐。
+
+1. **profile 版本标识**：`health_profile_revision: str`，不透明字符串。第 1 步定义生成规则（建议 `<profile_id>@<规范化内容 sha256 前 12 位>`，内容变则 revision 变）。第 2 步只存储、只做相等比较，不解析。领域层已有字段：`opspilot/domain/observation.py` 的 `ObservationSession.health_profile_revision` / `HealthSample.health_profile_revision`。
+2. **信号名**：`signal_name: str`，集合由 profile 定义。第 2 步不硬编码任何信号名。
+3. **单信号读数**（一次采样包含多条）。字段名与类型双方一致：
+   - `signal_name: str`
+   - `status: "ok" | "no_data" | "stale" | "timeout" | "failed"`
+   - `value: float | None`（status 非 ok 时为 None）
+   - `sample_count: int | None`
+   - `query: str`（实际执行的 PromQL）
+   - `window_start` / `window_end`：带时区时间
+   - `source: str`（数据源标识，如 `prometheus`）
+   - `raw_sha256: str | None`（原始返回的 sha256）
+   第 1 步在自己的模块里定义这个 DTO；第 2 步在持久化层定义同名同型的输入类型与表列。
+4. **一次采样的判定**：第 1 步提供纯函数，输入 profile + 读数列表，输出 `outcome`（复用现有 `SampleOutcome`：healthy/degraded/no_data/stale/timeout/failed）、`required_signals_present: bool` 和逐信号判定理由。必要信号缺失或非 ok 时绝不能输出 healthy；流量低于有效流量门槛不能输出 healthy。第 2 步不做阈值判断，只接收现有 `HealthSample`（outcome、required_signals_present）加读数行。
+5. **会话参数在授权时固定**：观察绝对期限 `deadline_at`、最大采样次数 `max_samples`、采样间隔 `sample_interval_seconds`、持续健康窗口 `sustained_window_seconds` 由调用方在创建会话时传入并存在会话行上；第 2 步不读 profile 文件。第 1 步的 profile 要能给出这四个值。
+6. **持续健康窗口语义**（第 2 步在采纳事务内计算）：已采纳样本中，`confirms_health` 为真的连续样本，窗口首尾覆盖时长 ≥ `sustained_window_seconds` 才触发 `recovery_confirmed`（observing_recovery → resolved，会话 completed）。任何已采纳的非健康样本（含 no_data/stale/失败）重置连续计数。期限或次数耗尽且未确认 → `observation_ended_unconfirmed`（→ open，会话 expired），记交接原因。
+7. **迁移**：只有第 2 步新增 Alembic 迁移（0003）。第 1 步不改 schema。
+8. **范围边界**：人工「登记处置」动作（open → observing_recovery、递增 control_generation、撤销授权）属第 3 步；Observer 进程、调度、Prometheus 凭据属第 4 步。第 2 步可提供「创建已授权会话」的存储原语供测试与第 3 步复用，但不做人工动作语义。
+
+## 第 1 步执行（2026-10-07，#83，分支 `feature/m1-02-health-profile`，worktree `../production-ops-agent-health-profile`）
+
+- 目标：定义「怎样才算恢复」——版本化 HealthProfile 文件格式、加载/校验、checkout profile、一次采样的纯函数判定与单元测试。不改 schema，不写 Observer 进程。
+- 交付：`opspilot/observer/health_profile.py`（`HealthProfile`/`HealthSignal`/`SignalReading`/`evaluate_readings`/`profile_revision`/`load_health_profile`）、`opspilot/observer/profiles/otel-demo-checkout.json`（8 个必要信号：deployment 可用副本、PlaceOrder 请求率、错误率、p95 延迟、pod Running、窗内重启、依赖 Deployment 可用、依赖调用错误率；K8s 信号来自 kube-state-metrics）、`tests/test_m1_health_profile.py`。
+- 判定规则（按序，PR #113 独立审查后修订）：(a) 任一「已判定」的必要信号越界 → degraded——读数可用（ok、点数足、query/source 一致、新鲜）且（信号不依赖流量 `traffic_dependent=false`，或流量已确认过门槛）才算判定，所以 0 副本在无流量时仍是 degraded；(b) 否则有必要信号读数不可用 → unknown（failed > timeout > stale > no_data，`required_signals_present=false`）；(c) 否则流量低于门槛 → no_data（错误率为 0 也不行，F6 第 2 步；依赖流量的比率/分位信号在低流量或流量未知时标 `not_judged`）；(d) 否则 healthy。可选信号只记录不影响结果。新鲜度：`evaluate_readings` 多一个输入 `sample_time`（采样时刻，带时区）；读数 `window_end` 早于采样时刻超过 `freshness_seconds`、或窗口跨度与 `evaluation_window_seconds` 相差超过 5%（采样器按 Prometheus step 对齐窗口边界的容差）→ 该信号按 stale。**第 2 步需存采样时刻**（会话/采样行本来就有），重放用存下的 `sample_time`；读数字段不变，接口约定不改。 `sample_count` 语义（供第 4 步实现）：窗内原始样本数，Observer 对每个信号额外执行 profile 的 `coverage_query`（`count_over_time` 同选择器同范围）取整填入；读数只存 `query`，`coverage_query` 由 revision 对应的 profile 恢复。依赖可用性改用 `count(... >= 1)` 并要求等于 8（`min` 会忽略缺失序列，@codex review P1）；`format_version` 校验失败不再回显文件值（P2）。revision = `<profile_id>@<规范化 JSON sha256 前 12 位>`，内容变即变、格式与键序不变则不变。
+- 自行决定并记录理由：文件格式用 JSON（仓库无 YAML 依赖，不加第三方包）；模块放 `opspilot/observer/` 作为第 4 步 Observer 进程的归属包；unknown 优先于 degraded（流量无意义时不对任何比率下断言）；读数 `query`/`source` 必须与 profile 完全一致，否则按 failed 处理（保证第 5 步重放用的是存下来的查询）。
+- 数值校准：[docs/evidence/m1-02-health-profile/run.md](../evidence/m1-02-health-profile/run.md)。kind 启动中止（宿主 swap 2 分钟内 8.9 → 10.9 GB / 11.3 GB），未新采集；数值按第 0 步同一环境 2026-10-06 的四个独立观察窗校准（稳态 3.75 单 / 5 min → 流量门槛 0.008 /s；p95 37.5–182.5 ms → 上限 500 ms；错误率正常窗 0 / 故障窗 0.52 → 上限 0.01）。`minimum_samples` 全部 3：按 Prometheus 默认 1 m 抓取 / 60 s flush 估计 300 s 窗 5 个样本取一半，抓取间隔待实验环境实测确认（run.md）。当前 revision 见 PR #113 最新提交（`load_health_profile(...).revision`），候选评测前冻结。
+- 状态：代码与测试完成；PR 待独立审查。
+- 待决：无（数值属可逆技术细节）。限制：稳态流量薄（2 locust 用户），比率分辨力有限；要更稳定的 F6 验收可在实验环境加用户数（第 0 步 values，不在本步）。
 
 ## 待决
 
