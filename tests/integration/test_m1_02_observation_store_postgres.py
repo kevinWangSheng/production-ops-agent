@@ -10,6 +10,7 @@ own incident and target, except the global-suspension test which restores
 the gate before returning.
 """
 
+import hashlib
 import os
 import threading
 from collections.abc import Iterator
@@ -20,6 +21,7 @@ import psycopg
 import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
+from pydantic import ValidationError
 
 from opspilot import schema
 from opspilot.domain.evidence import QueryWindow
@@ -236,6 +238,15 @@ def _release_lease(owner: DurableStore, session: UUID) -> None:
     with owner.transaction() as conn:
         conn.execute(
             "UPDATE opspilot_observation_sessions SET active_sample_lease_until=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+            (session,),
+        )
+
+
+def _due_now(owner: DurableStore, session: UUID) -> None:
+    """Skip the sampling interval: make the active job due immediately."""
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET active_sample_due_at=clock_timestamp() WHERE session_id=%s",
             (session,),
         )
 
@@ -502,40 +513,82 @@ def test_without_a_profile_revision_recovery_is_never_confirmed(
 # --- rejected samples are history only and change nothing
 
 
-def test_stale_bindings_are_history_only(
+def test_a_recoverable_rejection_postpones_the_same_job(
     observer: ObservationStore, owner: DurableStore, controller: ObservationStore
 ) -> None:
+    """A profile-revision mismatch is the Observer's configuration, not a
+    stale session: the job is kept (same sequence) and retried one interval
+    later, not immediately and not forever."""
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target)
-    t0 = _now()
-    cases = [
-        ({"health_profile_revision": "other@000"}, "health_profile_revision_mismatch"),
-        ({"observation_generation": 7}, "observation_generation_stale"),
-    ]
-    for overrides, reason in cases:
-        lease = _claim(observer, session)
-        receipt = observer.submit_sample(
-            lease, _sample(lease, _window(t0, 30), **overrides), []
-        )
-        assert (receipt.accepted, receipt.reason) == (False, reason)
-        row = controller.session(session)
-        # Lease released, same job and sequence stay for the retry.
-        assert row["active_sample_job_id"] == lease.job_id
-        assert row["active_sample_sequence"] == lease.sequence == 1
-        assert row["active_sample_owner"] is None and row["adopted_count"] == 0
-    # A human decision moved the control generation on (step 3 revokes in
-    # the same transaction; here only the generation moves).
-    with owner.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_incidents SET control_generation=control_generation+1 WHERE incident_id=%s",
-            (incident,),
-        )
     lease = _claim(observer, session)
-    receipt = observer.submit_sample(lease, _sample(lease, _window(t0, 30)), [])
-    assert receipt.reason == "control_generation_stale"
+    receipt = observer.submit_sample(
+        lease,
+        _sample(lease, _window(_now(), 30), health_profile_revision="other@000"),
+        [],
+    )
+    assert (receipt.accepted, receipt.reason) == (
+        False,
+        "health_profile_revision_mismatch",
+    )
+    assert receipt.next_sample_due_at is not None
+    row = controller.session(session)
+    assert row["active_sample_job_id"] == lease.job_id
+    assert row["active_sample_sequence"] == 1 and row["active_sample_owner"] is None
+    assert row["active_sample_due_at"] == receipt.next_sample_due_at
+    assert row["active_sample_due_at"] > _now() + timedelta(seconds=10)
+    assert observer.claim_due_samples(uuid4()) == []
+    _due_now(owner, session)
+    retry = _claim(observer, session)
+    assert (retry.sequence, retry.epoch) == (1, 2)
+    assert controller.session(session)["adopted_count"] == 0
+    _assert_replay_consistent(controller, session)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "mutate", "reason"),
+    [
+        ({"observation_generation": 7}, None, "observation_generation_stale"),
+        (
+            {},
+            "UPDATE opspilot_incidents SET control_generation=control_generation+1 WHERE incident_id=%s",
+            "control_generation_stale",
+        ),
+    ],
+)
+def test_a_stale_binding_is_history_only_and_ends_the_session(
+    observer: ObservationStore,
+    owner: DurableStore,
+    controller: ObservationStore,
+    overrides: dict[str, object],
+    mutate: str | None,
+    reason: str,
+) -> None:
+    """A moved control/observation generation cannot be retried into
+    validity: the sample is history, the session ends as ``binding_stale``
+    (lifecycle untouched, step 3 decides it) and no job is claimable again."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    if mutate is not None:
+        with owner.transaction() as conn:
+            conn.execute(mutate, (incident,))
+
+    receipt = observer.submit_sample(
+        lease, _sample(lease, _window(_now(), 30), **overrides), []
+    )
+
+    assert (receipt.accepted, receipt.reason) == (False, reason)
+    assert receipt.session_state == "revoked" and receipt.transition is None
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "binding_stale")
+    assert row["active_sample_job_id"] is None and row["adopted_count"] == 0
     assert _lifecycle(owner, incident) == "observing_recovery"
-    history = controller.session_history(session)
-    assert [s["disposition"] for s in history["samples"]] == ["history_only"] * 3
+    assert observer.claim_due_samples(uuid4()) == []
+    assert observer.sweep_expired_sessions() == []
+    assert [
+        s["disposition"] for s in controller.session_history(session)["samples"]
+    ] == ["history_only"]
     _assert_replay_consistent(controller, session)
 
 
@@ -630,8 +683,10 @@ def test_target_suspension_blocks_claims_and_adoption(
         owner.set_target_suspension(
             target_id, False, expected_generation=generation, actor="tester"
         )
+    _due_now(owner, session)
     retry = _claim(observer, session)
     assert retry.sequence == 1 and retry.epoch == 2
+    assert retry.target_suspension_generation == lease.target_suspension_generation + 2
     assert observer.submit_sample(
         retry, _sample(retry, _window(_now(), 30)), []
     ).accepted
@@ -796,11 +851,318 @@ def test_replay_detects_a_tampered_decision(
     assert controller.replay_session(session).consistent
     with owner.transaction() as conn:
         conn.execute(
-            "UPDATE opspilot_observation_samples SET confirms_health=true WHERE sample_id=%s",
+            "UPDATE opspilot_observation_samples SET confirms_health=true,health_basis='confirmed' WHERE sample_id=%s",
             (receipt.sample_id,),
         )
     report = controller.replay_session(session)
     assert not report.consistent
+    assert report.samples[0].replayed[3] == "outcome_not_healthy"
     assert (
         report.samples[0].stored[2] is True and report.samples[0].replayed[2] is False
     )
+
+
+# --- independent review of PR #114: P1-1 / P1-2 / P2-1 / P2-2, raw payloads
+
+
+def test_a_lease_claimed_before_a_pause_is_history_after_the_resume(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Pause then resume between claim and submit: the in-flight result is
+    history (C3 section 4) even though nothing is suspended at submit time,
+    and the paused interval never enters the healthy window."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=60)
+    t0 = _now()
+    first = _claim(observer, session)
+    assert observer.submit_sample(
+        first, _sample(first, _window(t0, 30)), []
+    ).confirms_health
+    _due_now(owner, session)
+    second = _claim(observer, session)
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+
+    late = _window(t0 + timedelta(hours=5), 60)
+    receipt = observer.submit_sample(second, _sample(second, late), [])
+
+    assert (receipt.accepted, receipt.reason) == (False, "suspended")
+    assert (
+        receipt.transition is None
+        and _lifecycle(owner, incident) == "observing_recovery"
+    )
+    row = controller.session(session)
+    assert row["adopted_sequence"] == 1 and row["healthy_since"] == t0
+    _due_now(owner, session)
+    third = _claim(observer, session)
+    assert (third.sequence, third.epoch) == (2, 2)
+    _assert_replay_consistent(controller, session)
+
+
+def test_a_gap_between_adopted_windows_restarts_the_healthy_streak(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=60)
+    t0 = _now()
+    lease = _claim(observer, session)
+    assert observer.submit_sample(
+        lease, _sample(lease, _window(t0, 30)), []
+    ).confirms_health
+    _due_now(owner, session)
+    lease = _claim(observer, session)
+    # 30 s healthy, 5 hours unobserved, 30 s healthy: 60 s of healthy data
+    # do not make a 60 s sustained window.
+    gap = _window(t0 + timedelta(hours=5), 30)
+
+    receipt = observer.submit_sample(lease, _sample(lease, gap), [])
+
+    assert receipt.accepted and receipt.confirms_health and receipt.transition is None
+    assert controller.session(session)["healthy_since"] == gap[0]
+    assert _lifecycle(owner, incident) == "observing_recovery"
+    _due_now(owner, session)
+    lease = _claim(observer, session)
+    more = (gap[1], gap[1] + timedelta(seconds=30))
+    receipt = observer.submit_sample(lease, _sample(lease, more), [])
+    assert receipt.transition == "recovery_confirmed"
+    _assert_replay_consistent(controller, session)
+
+
+def test_a_suspension_during_the_streak_restarts_it(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Contiguous healthy windows, but the scope was suspended and released
+    between them: the streak starts again from the later sample."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=60)
+    t0 = _now()
+    lease = _claim(observer, session)
+    assert observer.submit_sample(
+        lease, _sample(lease, _window(t0, 30)), []
+    ).confirms_health
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+    _due_now(owner, session)
+    lease = _claim(observer, session)
+    window = (t0 + timedelta(seconds=30), t0 + timedelta(seconds=70))
+
+    receipt = observer.submit_sample(lease, _sample(lease, window), [])
+
+    assert receipt.accepted and receipt.confirms_health and receipt.transition is None
+    row = controller.session(session)
+    assert row["healthy_since"] == window[0]
+    assert row["healthy_since_target_generation"] == lease.target_suspension_generation
+    assert _lifecycle(owner, incident) == "observing_recovery"
+    _assert_replay_consistent(controller, session)
+
+
+def test_data_from_before_the_authorization_never_confirms_health(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Profile-shaped parameters (window 300 s, sustained 600 s, interval
+    60 s): the Observer samples every 60 s with a 300 s look-back. Windows
+    that start before the authorization are adopted but never healthy; the
+    streak starts with the first window inside the authorization and the
+    confirmation comes when 600 s after it are covered (the sample taken
+    600 s after authorization), never earlier."""
+    incident, _, target = _incident(owner)
+    session = controller.authorize_session(
+        incident,
+        target=target,
+        actor="tester",
+        deadline_at=_now() + timedelta(hours=1),
+        max_samples=20,
+        sample_interval_seconds=60,
+        sustained_window_seconds=600,
+        health_profile_revision=PROFILE,
+        first_sample_due_at=_now(),
+    )
+    authorized_at = controller.session(session)["authorized_at"]
+    outcomes = []
+    for k in range(1, 11):
+        _due_now(owner, session)
+        lease = _claim(observer, session)
+        taken = authorized_at + timedelta(seconds=60 * k)
+        window = (taken - timedelta(seconds=300), taken)
+        receipt = observer.submit_sample(
+            lease, _sample(lease, window), _readings(window)
+        )
+        outcomes.append(
+            (receipt.confirms_health, receipt.health_basis, receipt.transition)
+        )
+        assert receipt.accepted, k
+        if k < 10:
+            assert receipt.transition is None, k
+            assert _lifecycle(owner, incident) == "observing_recovery", k
+    assert outcomes[:4] == [(False, "window_before_authorization", None)] * 4
+    assert outcomes[4:9] == [(True, "confirmed", None)] * 5
+    assert outcomes[9] == (True, "confirmed", "recovery_confirmed")
+    row = controller.session(session)
+    assert row["healthy_since"] == authorized_at and row["adopted_count"] == 10
+    assert _lifecycle(owner, incident) == "resolved"
+    _assert_replay_consistent(controller, session)
+
+
+def test_a_single_pre_authorization_window_cannot_resolve(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The review's reproduction: sustained 60 s, first window [now-300, now]."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=60)
+    lease = _claim(observer, session)
+    now = _now()
+    receipt = observer.submit_sample(
+        lease, _sample(lease, (now - timedelta(seconds=300), now)), []
+    )
+    assert receipt.accepted and not receipt.confirms_health
+    assert receipt.health_basis == "window_before_authorization"
+    assert (
+        receipt.transition is None
+        and _lifecycle(owner, incident) == "observing_recovery"
+    )
+
+
+def test_observer_role_may_only_move_lifecycle_along_its_two_edges(
+    observer_dsn: str, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The column grant allows any value; the trigger allows only
+    observing_recovery -> resolved | open for members of the Observer role."""
+    observing, _, target = _incident(owner)
+    _authorize(controller, observing, target)
+    open_incident, _, _ = _incident(owner)
+    closed, _, _ = _incident(owner)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='closed' WHERE incident_id=%s",
+            (closed,),
+        )
+    denied = [
+        ("closed", observing),
+        ("open", open_incident),  # no-op values are fine; a change is not
+        ("resolved", open_incident),
+        ("open", closed),
+        ("observing_recovery", open_incident),
+    ]
+    for value, incident in denied:
+        if _lifecycle(owner, incident) == value:
+            continue
+        with psycopg.connect(observer_dsn) as conn:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege) as refused:
+                conn.execute(
+                    "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+                    (value, incident),
+                )
+            assert "opspilot_observer may not move lifecycle" in str(refused.value)
+    assert _lifecycle(owner, observing) == "observing_recovery"
+    assert _lifecycle(owner, open_incident) == "open"
+    assert _lifecycle(owner, closed) == "closed"
+    # The two legal edges work as raw SQL for the role, and the owner is
+    # not restricted.
+    with psycopg.connect(observer_dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open' WHERE incident_id=%s",
+            (observing,),
+        )
+    assert _lifecycle(owner, observing) == "open"
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='resolved' WHERE incident_id=%s",
+            (open_incident,),
+        )
+    assert _lifecycle(owner, open_incident) == "resolved"
+
+
+def test_raw_payloads_are_stored_with_their_hash_and_verified_on_replay(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=600)
+    lease = _claim(observer, session)
+    window = _window(_now(), 30)
+    raw = b'{"status":"success","data":{"resultType":"vector","result":[]}}'
+    reading = SignalReading(
+        signal_name="error_ratio",
+        status="ok",
+        value=0.0,
+        query="q",
+        window_start=window[0],
+        window_end=window[1],
+        source="prometheus",
+        raw=raw,
+    )
+    assert reading.raw_sha256 == hashlib.sha256(raw).hexdigest()
+    with pytest.raises(ValidationError):
+        SignalReading(**{**reading.model_dump(), "raw_sha256": "0" * 64})
+    with pytest.raises(ValidationError):
+        SignalReading(**{**reading.model_dump(), "raw": b"x" * (131072 + 1)})
+
+    receipt = observer.submit_sample(lease, _sample(lease, window), [reading])
+
+    stored = controller.session_history(session)["samples"][0]["readings"][0]
+    assert bytes(stored["raw"]) == raw and stored["raw_sha256"] == reading.raw_sha256
+    assert controller.replay_session(session).consistent
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_signal_readings SET raw=%s WHERE sample_id=%s",
+            (b"{}", receipt.sample_id),
+        )
+    report = controller.replay_session(session)
+    assert not report.consistent
+    assert report.samples[0].raw_mismatches == ("error_ratio",)
+
+
+def test_replay_compares_the_final_session_state_and_the_lifecycle(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    # Ended by the sweep (no sample carries the ending): still consistent.
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    observer.submit_sample(lease, _sample(lease, _window(_now(), 30), "degraded"), [])
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET deadline_at=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+            (session,),
+        )
+    assert observer.sweep_expired_sessions() == [session]
+    report = controller.replay_session(session)
+    assert report.consistent
+    assert (report.replayed_session_state, report.stored_session_state) == (
+        "authorized",
+        "expired",
+    )
+    assert (report.expected_lifecycle, report.incident_lifecycle) == ("open", "open")
+
+    # A resolved incident whose lifecycle was later changed by hand.
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=30)
+    lease = _claim(observer, session)
+    assert observer.submit_sample(
+        lease, _sample(lease, _window(_now(), 60)), []
+    ).transition
+    assert controller.replay_session(session).consistent
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='closed' WHERE incident_id=%s",
+            (incident,),
+        )
+    report = controller.replay_session(session)
+    assert not report.consistent and not report.lifecycle_consistent
+    assert (report.expected_lifecycle, report.incident_lifecycle) == (
+        "resolved",
+        "closed",
+    )
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET state='authorized',ended_reason=NULL WHERE session_id=%s",
+            (session,),
+        )
+    assert not controller.replay_session(session).session_consistent

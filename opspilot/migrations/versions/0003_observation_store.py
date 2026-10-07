@@ -106,10 +106,27 @@ ENDED_REASONS = (
     "deadline_expired",
     "max_samples_exhausted",
     "authority_revoked",
+    # a sample proved the session's bindings stale (control or observation
+    # generation moved on, subject no longer adoptable): nothing to retry
+    "binding_stale",
 )
 DISPOSITIONS = ("adopted", "history_only")
 TRANSITIONS = ("recovery_confirmed", "observation_ended_unconfirmed")
 READING_STATUSES = ("ok", "no_data", "stale", "timeout", "failed")
+# Why a sample did or did not confirm health (C3 section 10 "恢复观察使用
+# 整改后的新数据": a window that starts before the authorization is adopted
+# as an observation but never counts as healthy).
+HEALTH_BASES = (
+    "confirmed",
+    "not_adopted",
+    "no_health_profile",
+    "outcome_not_healthy",
+    "required_signals_missing",
+    "window_before_authorization",
+)
+# Raw reading payloads are stored for hash verification on replay; one
+# signal's Prometheus result is bounded like the M0 response limit (128 KiB).
+READING_RAW_LIMIT = 131072
 
 # Columns the Observer may change on a session: watermark, job slot, state.
 # Everything fixed at authorization (identity, generations, profile revision,
@@ -121,6 +138,8 @@ OBSERVER_SESSION_COLUMNS = (
     "adopted_window_end",
     "adopted_count",
     "healthy_since",
+    "healthy_since_global_generation",
+    "healthy_since_target_generation",
     "issued_sequence",
     "active_sample_job_id",
     "active_sample_sequence",
@@ -176,6 +195,7 @@ def upgrade() -> None:
           observation_generation integer NOT NULL,
           authorized boolean NOT NULL DEFAULT true,
           authorized_by text NOT NULL,
+          authorized_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           state text NOT NULL DEFAULT 'authorized',
           ended_reason text,
           health_profile_revision text,
@@ -189,6 +209,10 @@ def upgrade() -> None:
           adopted_window_end timestamptz,
           adopted_count integer NOT NULL DEFAULT 0,
           healthy_since timestamptz,
+          -- the control scope generations the healthy streak started under; a
+          -- suspension in between (generation moved) restarts the streak
+          healthy_since_global_generation integer,
+          healthy_since_target_generation integer,
           -- the single active sampling job; a lease retry keeps the sequence
           issued_sequence integer NOT NULL DEFAULT 0,
           active_sample_job_id uuid,
@@ -203,6 +227,10 @@ def upgrade() -> None:
           {_check(sessions, "state", CHECKS[(sessions, "state")])},
           {_check(sessions, "ended_reason", ENDED_REASONS, nullable=True)},
           CONSTRAINT {sessions}_ended_check CHECK ((state = 'authorized') = (ended_reason IS NULL)),
+          CONSTRAINT {sessions}_streak_check CHECK (
+            (healthy_since IS NULL) = (healthy_since_global_generation IS NULL)
+            AND (healthy_since IS NULL) = (healthy_since_target_generation IS NULL)
+          ),
           CONSTRAINT {sessions}_job_check CHECK (
             (active_sample_job_id IS NULL) = (active_sample_sequence IS NULL)
             AND (active_sample_job_id IS NULL) = (active_sample_due_at IS NULL)
@@ -232,10 +260,14 @@ def upgrade() -> None:
           disposition text NOT NULL,
           reason text NOT NULL,
           confirms_health boolean NOT NULL,
+          health_basis text NOT NULL,
           subject_lifecycle text NOT NULL,
           incident_control_generation integer NOT NULL,
           incident_observation_generation integer NOT NULL,
+          -- scope blocked: suspended, or the generations moved since the claim
           scope_suspended boolean NOT NULL,
+          global_generation integer NOT NULL,
+          target_generation integer NOT NULL,
           within_deadline boolean NOT NULL,
           lease_valid boolean NOT NULL,
           transition text,
@@ -245,6 +277,8 @@ def upgrade() -> None:
           {_check(samples, "reason", CHECKS[(samples, "reason")])},
           {_check(samples, "subject_lifecycle", CHECKS[(samples, "subject_lifecycle")])},
           {_check(samples, "disposition", DISPOSITIONS)},
+          {_check(samples, "health_basis", HEALTH_BASES)},
+          CONSTRAINT {samples}_health_basis_check2 CHECK (confirms_health = (health_basis = 'confirmed')),
           {_check(samples, "transition", TRANSITIONS, nullable=True)},
           CONSTRAINT {samples}_adopted_check CHECK ((disposition = 'adopted') = (reason = 'adopted'))
         );
@@ -262,7 +296,9 @@ def upgrade() -> None:
           window_end timestamptz NOT NULL,
           source text NOT NULL,
           raw_sha256 text,
+          raw bytea,
           PRIMARY KEY (sample_id, signal_name),
+          CONSTRAINT {readings}_raw_check CHECK (raw IS NULL OR (raw_sha256 IS NOT NULL AND octet_length(raw) <= {READING_RAW_LIMIT})),
           {_check(readings, "status", READING_STATUSES)},
           CONSTRAINT {readings}_value_check CHECK (status = 'ok' OR value IS NULL),
           CONSTRAINT {readings}_window_check CHECK (window_end >= window_start)
@@ -288,12 +324,45 @@ def upgrade() -> None:
         GRANT SELECT, INSERT ON {samples}, {readings} TO {OBSERVER_ROLE};
         """
     )
+    # The Observer may move an incident's lifecycle only along the two edges
+    # its sampling fires (C3 section 10): observing_recovery -> resolved and
+    # observing_recovery -> open. The column grant alone would let it write
+    # any value; this trigger checks *direct* membership of the role (a
+    # superuser is not a member, so the owner connection is unaffected).
+    op.execute(
+        f"""
+        CREATE FUNCTION opspilot_observer_lifecycle_guard() RETURNS trigger
+        LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle AND (
+            current_user = '{OBSERVER_ROLE}' OR EXISTS (
+              SELECT 1 FROM pg_auth_members m
+              JOIN pg_roles r ON r.oid = m.roleid
+              JOIN pg_roles u ON u.oid = m.member
+              WHERE r.rolname = '{OBSERVER_ROLE}' AND u.rolname = current_user
+            )
+          ) THEN
+            IF NOT (OLD.lifecycle = 'observing_recovery' AND NEW.lifecycle IN ('resolved', 'open')) THEN
+              RAISE insufficient_privilege USING MESSAGE =
+                format('{OBSERVER_ROLE} may not move lifecycle %s -> %s', OLD.lifecycle, NEW.lifecycle);
+            END IF;
+          END IF;
+          RETURN NEW;
+        END
+        $$;
+        CREATE TRIGGER opspilot_incidents_observer_lifecycle_guard
+          BEFORE UPDATE OF lifecycle ON opspilot_incidents
+          FOR EACH ROW EXECUTE FUNCTION opspilot_observer_lifecycle_guard();
+        """
+    )
 
 
 def downgrade() -> None:
     op.execute(
         f"""
         DROP OWNED BY {OBSERVER_ROLE};
+        DROP TRIGGER opspilot_incidents_observer_lifecycle_guard ON opspilot_incidents;
+        DROP FUNCTION opspilot_observer_lifecycle_guard();
         DROP TABLE opspilot_observation_signal_readings;
         DROP TABLE opspilot_observation_samples;
         DROP TABLE opspilot_observation_sessions;
