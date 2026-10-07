@@ -21,16 +21,16 @@
 owner/epoch/lease、scope generation、暂停后重新授权、持久预算与原子任务安排，
 仍需第 2–4 步集成验证。当前所测公开合同没有不一致，F6 xfail 为 0。
 
-另有 [I/O 桩与主体绑定](../../tests/f6_boundary_support.py) 的 7 个可运行负向检查，
+另有 [I/O 桩与主体绑定](../../tests/f6_boundary_support.py) 的 10 个可运行负向检查，
 位于[场景文件](../../tests/acceptance/test_f6_recovery.py)末尾：三个环境写动作均记录并抛错；
-即使驱动吞掉遥测拒绝，重放计数也能检出；错事故结果被拒绝；run/replay 吞掉模型拒绝仍留下调用计数。
+即使驱动吞掉遥测拒绝，重放计数也能检出；错事故结果被拒绝；run/replay 吞掉模型拒绝仍留下调用计数；缺失 reader、None 或非 bytes 均被拒绝。
 这些是夹具检查，不是 F6 产品验收通过。
 
 ## 外部场景及接线门槛
 
-[外部场景](../../tests/acceptance/test_f6_recovery.py) 35 个实例均 skip：
+[外部场景](../../tests/acceptance/test_f6_recovery.py) 40 个实例均 skip：
 
-- 第 1 步（17）：持续窗口前后 2、逐信号阈值 4、陈旧/时间缺口/处置前数据 3、同目标双事故隔离 4、H,H,D 与 H,H,D,H,H 窗口重置 2、退化后重新累计并达到持续窗口 2。依据 C3 §10 健康规则、主体授权与持续窗口，§4 生命周期。窗未满只要求 `recovery_confirmed=False`，不冻结中间 verdict；两个事故互换被处置身份，另一个的生命周期、观察会话和采样均不得变动。合法 stale/覆盖缺口采样必须留底且 adopted、保存已用次数，恢复结果 unknown，全 stale 采样健康窗为 0；处置前数据单列，不冻结其采纳方式。H,H,D,H,H 精确为 120 秒；预先冻结更长期限与次数的 H,H,D,H,H,H 达 180 秒后 resolved，证明退化没有禁用累计。
+- 第 1 步（22）：持续窗口前后 2、逐信号阈值 4、陈旧/时间缺口/处置前数据 3、同目标双事故隔离 4、H,H,D 与 H,H,D,H,H 窗口重置 2、退化后重新累计并达到持续窗口 2、跨目标身份拒绝 5。依据 C3 §10 健康规则、主体授权与持续窗口，§4 生命周期。窗未满只要求 `recovery_confirmed=False`，不冻结中间 verdict；两个事故互换被处置身份，另一个的生命周期、观察会话和采样均不得变动。合法 stale/覆盖缺口采样必须留底且 adopted、保存已用次数，恢复结果 unknown，全 stale 采样健康窗为 0；处置前数据单列，不冻结其采纳方式。H,H,D,H,H 精确为 120 秒；预先冻结更长期限与次数的 H,H,D,H,H,H 达 180 秒后 resolved，证明退化没有禁用累计。跨目标场景逐项改变 integration/cluster/namespace/resource/revision，先单独登记处置，再向原授权提交错误目标采样；只保存历史，水位、生命周期、健康窗与预算不推进，原授权身份/版本与处置审计不变，不能偷偷创建新授权。
 - 第 2 步（5）：零/低流量及期限前后 4，先健康有流量、后撤流量且错误率下降 1；C3 §10 有效流量与 unknown 有界继续。
 - 第 3 步（6）：逐项移除 deployment、请求量、错误、延迟、pod、依赖；到期 unknown 交接；C3 §10 必要信号缺失不能健康。
 - 第 4 步（2）：持续依赖异常，期限前 observing_recovery、期限后 open 交接，无环境写动作；C3 §10 有界继续、§13 写操作为零。
@@ -52,8 +52,8 @@ skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
 
 - `incident_lifecycle` 沿用 subjects.py 的 open/observing_recovery/resolved/closed；本切片到期未确认回 open。合法 unknown 采样的预算消耗必须持久记录（`used_sample_count`），不能丢采样而凭空交接。恢复确认与当前采样分开；窗未满、异常、缺测或无流量均不能确认恢复，H,H,D 重置窗口，不能跨 D 累计。
 - 当前场景的终态恢复 verdict、交接语义与原因码：`INSUFFICIENT_TRAFFIC`、`REQUIRED_TELEMETRY_MISSING`、`MISSING_SIGNAL:<name>`、`DEPENDENCY_UNHEALTHY`、`CONTINUED_DEGRADATION`；篡改拒绝分支 `STORED_OBSERVATION_INTEGRITY_MISMATCH`。这些是 harness 规范化码，产品原始码可不同，由适配器做保义映射。
-- 所有 outcome 的 `subject_id` 等于请求主体，已存采样绑定同一主体；同目标另一事故的持久状态、会话、采样不变。
-- 合法样本 `disposition == "adopted"`；无效身份/授权/水位只作历史。每个信号 value/source/query/observed_at 原样保存；样本与逐信号 evidence_id 唯一；hash 为 SHA-256，若可取原始 bytes 必须校验实际 hash。
+- 所有 outcome 的 `subject_id` 等于请求主体，已存采样绑定同一主体和事故不可变目标，目标同时匹配冻结 profile 和 fixture 预种记录；跨目标结果只能 history_only，不推进生命周期、水位、健康窗或预算；同目标另一事故的持久状态、会话、采样不变。
+- 合法样本 `disposition == "adopted"`；无效身份/授权/水位只作历史。每个信号 value/source/query/observed_at 原样保存；样本与逐信号 evidence_id 唯一；每个 evidence_id 必须能取回原始 bytes，实际 SHA-256 必须与记录一致，取不回即失败。历史采样同样校验证据绑定。
 - 原始 Observer 与重放 `model_requests == ()`；重放 `external_queries == ()`。完整产品 actions 只能有只读查询、处置登记、产品自身记录/生命周期转换、交接；permissions 不能授予环境写权限。
 - 除产品审计外，必须由测试拥有的环境/遥测/模型桩证明 `driver.environment_writes == ()`、`driver.telemetry_calls_during_replay == 0`、`driver.model_calls == 0`；原始 Observer/重放禁止任何模型调用；重放禁止所有遥测查询，拒绝被吞掉也要留下计数。所有相关传输必须接入桩，不允许真实网络或旁路 fallback。
 
@@ -68,13 +68,15 @@ skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
 - 采样视图含 subject_id、sample_id、目标（含 integration_id）、两类 generation、profile revision、序号、绝对窗口、disposition/outcome；信号含 value/source/query/observed_at/evidence_id/raw_sha256。冻结 profile 包括必要信号、阈值、流量、新鲜度、覆盖/窗口/频率、期限与次数。
 - `replay(profile, handled_at, samples, allow_telemetry=False, allow_model=False)`：返回重算结果或显式完整性不一致，以及 external_queries/model_requests 审计。
 - fixture 的 `recovery_runtime(recovery_boundaries)` 将桩注入所有遥测/环境/模型传输；`GuardedRecoveryDriver` 拥有 replay 模式和桩计数，不能从产品 outcome 复制计数。
-- `seed_incident` 只准备 OpsPilot 的业务记录；`snapshot_incident` 按 id 读取生命周期、观察会话、采样，供双事故隔离断言；`read_raw_payload(evidence_id)` 可返回已存 bytes，未暴露读取接口时返回 None，不能编造 payload。
+- `seed_incident` 只准备 OpsPilot 的业务记录，fixture 同时留存目标不可变副本；`snapshot_incident` 按 id 读取 target、生命周期、观察会话、采样，以及 adopted_sequence/adopted_window_end、healthy_window_seconds、used_sample_count、observation_authorization（session_id/主体及目标绑定/控制与观察 generation/profile revision/authorized）和 handling_audit。
+- `continue_observation(scenario, observations, until)` 仅向现有会话提交，不登记处置或重新授权；用于隔离人工转态与错误样本效果。
+- `read_raw_payload(evidence_id)` 是必须提供的接口，每个证据引用必须解析到已存原始 bytes 并校验实际摘要；缺接口、None 或非 bytes 都失败，不能编造 payload。
 
 真实 runtime fixture 仍显式失败；解除 skip 前须接线。测试数字只用于合成边界，
 不替代第 1 步真实环境 HealthProfile 校准，也没有新增最低样本数门槛。
 
 ## 执行证据
 
-- 定向命令：`.venv/bin/python -m pytest tests/contracts/test_f6_observation.py tests/acceptance/test_f6_recovery.py -q`：49 passed（42 领域 + 7 夹具）、35 skipped、0 xfailed，0.34 秒。
-- 本轮 `make check` 退出 0：锁/Ruff/mypy 通过，2649 passed、346 skipped、2 既有架构债 xfailed，45.83 秒；逐项处置见[任务记录](../tasks/2026-10-07-f6-acceptance-tests.md)。
+- 定向命令：`.venv/bin/python -m pytest tests/contracts/test_f6_observation.py tests/acceptance/test_f6_recovery.py -q`：52 passed（42 领域 + 10 夹具）、40 skipped、0 xfailed，0.27 秒。
+- 本轮 `make check` 退出 0：锁/Ruff/mypy 通过，2652 passed、351 skipped、2 既有架构债 xfailed，45.70 秒；逐项处置见[任务记录](../tasks/2026-10-07-f6-acceptance-tests.md)。
 - 未启动实验环境，未执行真实模型/遥测调用，未改产品或 passes。

@@ -1,6 +1,6 @@
 # F6 独立验收与合同测试作者
 
-- 状态：已完成第二轮审查修订（外部场景尚未接线，F6 未完成）
+- 状态：已完成第三轮审查修订（外部场景尚未接线，F6 未完成）
 - 更新日期：2026-10-07
 - 依据：[M1-02](2026-10-03-m1-02-recovery-observation.md)；[测试映射与接口提议](../testing/f6-acceptance-tests.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-f6-tests`；`feature/m1-02-f6-acceptance-tests`；基线 `0c97377`
@@ -39,6 +39,13 @@
 - 窗口重建：H,H,D,H,H 恰为 120 秒；新增原始期限 420 秒/次数 7 的冻结 profile，H,H,D,H,H 仍观察、H,H,D,H,H,H 达 180 秒并 resolved，不在观察途中延长预算。
 - 定向 pytest：49 passed（42 领域 + 7 夹具）、35 skipped、0 xfailed，0.34 秒；全新上下文静态复验指出 stale 健康窗仍可增长，已补等于 0 并复验，本轮无未处置合同发现；最终 `make check` 退出 0：锁/Ruff/mypy 通过，2649 passed、346 skipped、2 既有架构债 xfailed，45.83 秒。35 个外部实例未接线，不是 F6 验收通过。
 - 仅追加提交、普通 push；不触发 @codex review、不回复或 resolve thread、不合并，仍由 lead 接手审查。
+
+### 第三轮机器人 P1/P2（442c7f3 之后）
+
+- P1 跨目标：fixture 预种事故并保留不可变目标；assert_saved_basis 同时核对预种目标、事故快照目标、profile 和已存采样目标。新增 5 个目标身份字段变体，先空采样 run 授权，再 continue_observation 提交错误目标，核对 history_only 留底、无恢复确认、生命周期/采纳水位/健康窗/预算未推进；原授权身份、绑定与版本、处置审计不变，历史采样仍指向原会话。
+- P2 证据解析：read_raw_payload 是必需接口，缺失/None/非 bytes 即失败；每个证据引用均核验原始字节 SHA-256，包括错误目标历史样本；补 3 个可执行 reader 拒绝检查，文档删除可选读取表述。
+- 定向 pytest：52 passed（42 领域 + 10 夹具）、40 skipped、0 xfailed，0.27 秒；最终 make check 退出 0：锁/Ruff/mypy 通过，2652 passed、351 skipped、2 既有架构债 xfailed，45.70 秒。全新上下文静态复验补充要求核对原授权及处置审计，已修复并复验，无未处置合同发现。外部场景仍未接线，未改产品代码或 passes。
+- 仅追加提交与普通 push；不触发机器人、不回复/resolve thread、不合并。
 
 ## 下一步与交接
 

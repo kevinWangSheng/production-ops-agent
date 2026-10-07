@@ -41,6 +41,7 @@ class GuardedRecoveryDriver:
     def __init__(self, runtime, boundaries):
         self.runtime = runtime
         self.boundaries = boundaries
+        self.incident_targets = {}
 
     @property
     def environment_writes(self):
@@ -59,6 +60,12 @@ class GuardedRecoveryDriver:
         assert outcome.subject_id == scenario.subject_id
         return outcome
 
+    def continue_observation(self, scenario, **stimuli):
+        """Submit to the existing session, without handling/re-authorizing it."""
+        outcome = self.runtime.continue_observation(scenario, **stimuli)
+        assert outcome.subject_id == scenario.subject_id
+        return outcome
+
     def replay(self, **artifacts):
         assert not self.boundaries.replaying
         self.boundaries.replaying = True
@@ -69,6 +76,7 @@ class GuardedRecoveryDriver:
 
     def seed_incident(self, subject_id, **state):
         """Harness setup of OpsPilot records, never environment actuation."""
+        self.incident_targets[subject_id] = deepcopy(state["target"])
         self.runtime.seed_incident(subject_id, **state)
 
     def snapshot_incident(self, subject_id):
@@ -76,6 +84,9 @@ class GuardedRecoveryDriver:
         return deepcopy(self.runtime.snapshot_incident(subject_id))
 
     def read_raw_payload(self, evidence_id):
-        """Optional captured bytes; None means retrieval is not exposed yet."""
+        """Every evidence reference must resolve to its original bytes."""
         reader = getattr(self.runtime, "read_raw_payload", None)
-        return None if reader is None else reader(evidence_id)
+        assert callable(reader), "F6 requires read_raw_payload"
+        payload = reader(evidence_id)
+        assert isinstance(payload, bytes), "F6 evidence must resolve to original bytes"
+        return payload
