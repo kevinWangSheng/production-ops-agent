@@ -1,0 +1,161 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "93372aa7-8fd5-4f8e-bb88-161b2cbc5d1f",
+  "frozen_at": "2026-10-06T09:45:49.781243+00:00",
+  "incident_id": "efc7adc6-228a-4c62-b73f-8b10db9d4c1c",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-06T09:45:27.926029+00:00",
+  "ended": "2026-10-06T09:45:44.899293+00:00",
+  "verdicts": {
+    "status": "published",
+    "reason": null,
+    "last_status": "published",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": true,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 2,
+    "http_count": 2,
+    "prompt_tokens": 2698,
+    "completion_tokens": 3535,
+    "run_usage": {
+      "budget_limit": 2,
+      "model_requests_used": 2,
+      "model_seconds_used": 16.663088542001788,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.036875
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "completed",
+    "conclusion": "inconclusive",
+    "summary": "One authorized view was delivered for the requested window: a metrics_range_query against target checkout-prod (source prometheus, status ok, truncated false, incomplete false) returning a single series, metric http_errors_rate with value 0.042, for window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00 [98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898]. That is the only observed quantity. The same view carries no baseline period (lookback_seconds and lookback_start_at are null; data_as_of equals the window start), no label breakdown, and result_count/returned_count of 1, and its data_as_of is ~22 days older than observed_at. Consequently the claim that HTTP errors are 'elevated' on checkout is not established by the delivered evidence: a non-zero error rate value is present, but nothing in the delivered context states what the normal or expected level for this target is. No ERROR-level logs or trace data were delivered, which is unknown rather than zero. The assessment is therefore inconclusive; no cause, trend or remediation is asserted.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "For the authorized window 2026-09-14T00:00:00+00:00 to 2026-09-14T01:00:00+00:00, a metrics_range_query against target checkout-prod (source prometheus, status ok, not truncated, incomplete false, result_count 1, returned_count 1) returned exactly one series: metric http_errors_rate with value 0.042.",
+        "evidence_ids": [
+          "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The delivered view contains no comparison period or baseline: lookback_seconds and lookback_start_at are null, data_as_of is 2026-09-14T00:00:00+00:00 (equal to the window start), and source_start_at/source_start_at-style source bounds are null, so no prior-period error rate for checkout-prod was observed in this Run.",
+        "evidence_ids": [
+          "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The delivered value is stale relative to observation: observed_at is 2026-10-06T09:45:29.216312+00:00 with freshness_seconds 1935929.216312, while the returned data_as_of is 2026-09-14T00:00:00+00:00, and the query expression rate(http_errors[5m]) was answered with a single scalar series named http_errors_rate rather than a time series.",
+        "evidence_ids": [
+          "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The single returned value 0.042 does not by itself distinguish an elevated from a normal condition for checkout-prod: the view provides one aggregate number with no error-class, route, handler or service labels, no baseline series, and no per-bucket temporal detail, so the requested 'elevated HTTP errors' reading is not corroborated by anything in the delivered evidence.",
+        "evidence_ids": [
+          "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "It is possible that checkout-prod is emitting non-zero HTTP errors during the window, but whether that value exceeds its own normal level, whether it changed during the hour, and which endpoints or status classes contribute remain unverified from the delivered view.",
+        "evidence_ids": [
+          "98f6782d-0b1f-4717-aaf0-f5a77c6257a3-t0:35cc1573-b1d1-49cb-aa14-e9f6705bc898"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "No baseline or prior-window error rate was delivered, so the word 'elevated' cannot be quantified or confirmed for checkout-prod.",
+      "No label/dimension breakdown was delivered (no HTTP status class, route, handler, pod or instance), so the source of the reported error rate is unknown.",
+      "No time series or per-bucket detail was delivered; data_as_of equals the window start, so the distribution of the value across the authorized hour is unknown.",
+      "No logs (including any ERROR-level series) were delivered in this Run; absence of delivered error-log evidence is unknown, not zero, and cannot be used to confirm or deny errors.",
+      "No trace or span data was delivered, so no downstream dependency, parent-child call edge or saturation signal can be assessed.",
+      "No deployment, config-change or dependency-health evidence was delivered, so no causal explanation for any error rate is available.",
+      "The delivered metric value is stale relative to observation (freshness_seconds 1935929.216312), so its currency for the current state of checkout-prod is unknown.",
+      "Only one authorized view was delivered and collection is closed, so no additional queries (e.g. same-window baseline, sibling services) can be issued in this investigation."
+    ],
+    "next_steps": [
+      "Advisory: obtain a comparable prior-window baseline for the same metric and target before characterizing any change as elevated.",
+      "Advisory: request a label-dimensioned breakdown of HTTP errors (status class, route/handler, instance) for the same window.",
+      "Advisory: review ERROR-level logs and trace/span data for checkout-prod and its dependencies for the same window, treating absence of those series as unknown rather than zero.",
+      "Advisory: verify the semantics of the http_errors_rate series and whether data_as_of pinned at the window start reflects a rollup artifact or a genuine data gap.",
+      "Advisory: check deployment and configuration-change records for checkout-prod and its dependencies around the authorized window before attributing cause."
+    ]
+  },
+  "report_content_sha256": "2941af796cdfb352a1169684ca89d21f80d0069f507e9a8da7b36633785f8d34",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "d5d1d9efb82f324fb7ef95faa4ec604c",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-trace-pr2-2026-10-06",
+    "project_id": "ea320431-68a8-4ce7-95a5-8a1795c09f99",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-80f2-bbb9d78533c7",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ea320431-68a8-4ce7-95a5-8a1795c09f99/r/00000000-0000-0000-80f2-bbb9d78533c7?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "fc578fbc5746b9e6ebcd9d140d067afeb81ed187636f8cc43b48a1e0dbdc1b42",
+    "bytes": 5790,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/93372aa7-8fd5-4f8e-bb88-161b2cbc5d1f/ledger.json",
+    "in_repository": false
+  },
+  "review_feedback": [
+    {
+      "feedback_id": "01a1109b-ec87-7c90-80ff-2b2bc15a9947",
+      "key": "review_mechanism_check",
+      "score": 1.0,
+      "value": "pass",
+      "comment": "PR 2 mechanism check by the implementer (not an independent review): summary.json frozen, project longlived, root run read back.\nreview record: https://github.com/kevinWangSheng/production-ops-agent/blob/main/docs/tasks/2026-10-05-m1-prep-trace-langsmith.md"
+    }
+  ]
+}
