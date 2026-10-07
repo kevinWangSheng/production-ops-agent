@@ -896,27 +896,28 @@ class ObservationStore(_StoreBase):
                 (now, now, now, limit),
             ).fetchall()
             for row in rows:
-                # Read, not locked: the incident row lock in submit_sample()
-                # is what orders a sample against a suspension (the
-                # suspension paths lock every affected incident row), and
-                # a lock here would need UPDATE on the control tables.
+                # A lease is issued only under the incident row lock, which
+                # serializes the claim against the suspension paths (they lock
+                # every affected incident row FOR UPDATE, C3 section 4): a
+                # suspension that committed first is seen in the scope read
+                # below, one that comes later waits for this commit and then
+                # invalidates the lease at submit. Ending a session needs the
+                # same lock (the ending row's FK, and the lock order every
+                # other ending path keeps: incident first, then session). This
+                # transaction already holds the session row, so it must not
+                # wait for the incident: take it only if free, else leave the
+                # session for the next claim or sweep.
+                if (
+                    conn.execute(
+                        "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR NO KEY UPDATE SKIP LOCKED",
+                        (row["incident_id"],),
+                    ).fetchone()
+                    is None
+                ):
+                    continue
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
                 blocked, generations = _scope_blocks(scope, row)
                 if blocked:
-                    # Ending needs the incident row (the ending row's FK and
-                    # the lock order every other ending path keeps: incident
-                    # first, then session). This transaction already holds
-                    # the session row, so it must not wait for the incident:
-                    # take it only if free, else leave the session for the
-                    # next claim or sweep.
-                    if (
-                        conn.execute(
-                            "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE SKIP LOCKED",
-                            (row["incident_id"],),
-                        ).fetchone()
-                        is None
-                    ):
-                        continue
                     self._end_session(
                         conn,
                         row["session_id"],

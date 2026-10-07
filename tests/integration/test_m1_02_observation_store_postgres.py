@@ -1856,3 +1856,41 @@ def test_a_temporary_pg_roles_cannot_impersonate_a_superuser(
             conn.commit()
         assert "without a recorded observation ending" in str(at_commit.value)
     assert _lifecycle(owner, incident) == "observing_recovery"
+
+
+def test_claim_issues_no_lease_while_a_suspension_path_holds_the_incident(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The suspension paths lock the incident row FOR UPDATE; a claim takes
+    the row only if free (no wait), so a suspension in flight means no lease
+    now, and a committed one is seen under the lock."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    with psycopg.connect(controller.dsn) as holder:
+        holder.execute(
+            "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (incident,),
+        )
+        started = _now()
+        assert _claimable(observer, session) == []
+        assert (_now() - started) < timedelta(seconds=3), "claim must not wait"
+        row = controller.session(session)
+        assert row["state"] == "authorized" and row["active_sample_owner"] is None
+    # Lock released, nothing changed: the lease is issued.
+    lease = _claim(observer, session)
+    assert lease.target_suspension_generation == 0
+    _release_lease(owner, session)
+    # Suspension committed: no lease while it holds (the query filters the
+    # session out), and once lifted the moved generation, read under the
+    # incident lock, ends the session instead of leasing it.
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    assert _claimable(observer, session) == []
+    assert controller.session(session)["state"] == "authorized"
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+    assert _claimable(observer, session) == []
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "scope_suspended")
