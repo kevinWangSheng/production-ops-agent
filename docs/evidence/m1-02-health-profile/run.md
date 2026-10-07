@@ -33,7 +33,8 @@
 | `pod_restarts_in_window.healthy.max` | 0.5 | `increase()` 对常数计数器恰为 0，一次重启约为 1 |
 | `evaluation_window_seconds` / `freshness_seconds` / `query_timeout_seconds` | 300 / 90 / 20 | 与第 0 步观察窗一致；超时取 C3 §13 数据源请求超时 |
 | `session`：deadline / max_samples / interval / sustained | 3600 s / 40 / 60 s / 600 s | 故障钩子生效与恢复在指标上各需约 3 分钟（`m1-02-lab/run.md`），600 s 持续窗覆盖两个这样的周期；40 × 60 s 可覆盖 2340 s ≥ 600 s |
-| `minimum_samples` | 1 | **未校准**：抓取/flush 间隔未实测；采样器按窗内点数填 `sample_count` 后再收紧 |
+| `minimum_samples` | 状态信号 1；比率/分位信号 2 | **未校准**：抓取/flush 间隔未实测；采样器按窗内点数填 `sample_count` 后再收紧 |
+| `traffic_dependent` | error_ratio、latency_p95、dependency_error_ratio 为 true，其余 false | 比率/分位在低流量下无意义，不判定；副本/pod 状态与流量无关，照判 |
 
 ## 限制
 

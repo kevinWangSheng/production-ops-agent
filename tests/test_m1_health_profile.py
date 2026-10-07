@@ -57,6 +57,7 @@ def minimal_profile(**overrides) -> dict:
                 "name": "rate",
                 "description": "traffic",
                 "query": "sum(rate(x[5m]))",
+                "traffic_dependent": False,
                 "healthy": {"min": 0},
             },
             {
@@ -64,12 +65,14 @@ def minimal_profile(**overrides) -> dict:
                 "description": "error ratio",
                 "query": "e / t",
                 "minimum_samples": 3,
+                "traffic_dependent": True,
                 "healthy": {"min": 0, "max": 0.01},
             },
             {
                 "name": "ready",
                 "description": "replicas",
                 "query": "min(ready)",
+                "traffic_dependent": False,
                 "healthy": {"min": 1},
             },
             {
@@ -77,6 +80,7 @@ def minimal_profile(**overrides) -> dict:
                 "description": "optional context",
                 "required": False,
                 "query": "hint",
+                "traffic_dependent": False,
                 "healthy": {"max": 10},
             },
         ],
@@ -113,6 +117,10 @@ def reading(name: str, value=None, *, status="ok", count=5, **overrides):
     }
     fields.update(overrides)
     return SignalReading(**fields)
+
+
+def evaluate(prof, readings, sample_time=NOW):
+    return evaluate_readings(prof, readings, sample_time=sample_time)
 
 
 def healthy_readings():
@@ -201,7 +209,7 @@ def test_revision_is_opaque_to_the_session_but_binds_the_sample():
         authorized=True,
         health_profile_revision=prof.revision,
     )
-    evaluation = evaluate_readings(prof, healthy_readings())
+    evaluation = evaluate(prof, healthy_readings())
     sample = HealthSample(
         sample_id="s-1",
         session_id="obs-1",
@@ -233,6 +241,7 @@ def evaluation_window():
         lambda p: p.pop("calibration_source"),
         lambda p: p["signals"][0].pop("query"),
         lambda p: p["signals"][0].pop("healthy"),
+        lambda p: p["signals"][0].pop("traffic_dependent"),
         lambda p: p.update(unexpected="field"),
         lambda p: p["signals"][0].update(threshold=1),
         lambda p: p.update(signals=[]),
@@ -307,7 +316,7 @@ def test_reading_value_follows_status():
 
 
 def test_all_required_signals_within_bounds_is_healthy():
-    evaluation = evaluate_readings(profile(), healthy_readings())
+    evaluation = evaluate(profile(), healthy_readings())
     assert evaluation.outcome == "healthy"
     assert evaluation.required_signals_present
     assert {v.signal_name: v.verdict for v in evaluation.verdicts} == {
@@ -320,8 +329,8 @@ def test_all_required_signals_within_bounds_is_healthy():
 
 
 def test_verdict_is_deterministic():
-    first = evaluate_readings(profile(), healthy_readings())
-    second = evaluate_readings(profile(), list(reversed(healthy_readings())))
+    first = evaluate(profile(), healthy_readings())
+    second = evaluate(profile(), list(reversed(healthy_readings())))
     assert first == second
 
 
@@ -340,15 +349,13 @@ def test_a_required_signal_that_is_not_ok_never_confirms_health(status, expected
         reading("errors", status=status),
         reading("ready", 1.0),
     ]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert evaluation.outcome == expected
     assert not evaluation.required_signals_present
 
 
 def test_a_missing_required_signal_is_no_data_and_not_present():
-    evaluation = evaluate_readings(
-        profile(), [reading("rate", 2.0), reading("errors", 0.0)]
-    )
+    evaluation = evaluate(profile(), [reading("rate", 2.0), reading("errors", 0.0)])
     assert (evaluation.outcome, evaluation.required_signals_present) == (
         "no_data",
         False,
@@ -357,12 +364,12 @@ def test_a_missing_required_signal_is_no_data_and_not_present():
 
 
 def test_unknown_outcomes_rank_failed_over_timeout_over_stale_over_no_data():
-    evaluation = evaluate_readings(
+    evaluation = evaluate(
         profile(),
         [reading("rate", status="stale"), reading("errors", status="failed")],
     )
     assert evaluation.outcome == "failed"
-    evaluation = evaluate_readings(
+    evaluation = evaluate(
         profile(),
         [reading("rate", status="timeout"), reading("errors", status="stale")],
     )
@@ -375,7 +382,7 @@ def test_too_few_points_is_no_data_even_when_the_value_looks_healthy():
         reading("errors", 0.0, count=2),
         reading("ready", 1.0),
     ]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert (evaluation.outcome, evaluation.required_signals_present) == (
         "no_data",
         False,
@@ -388,45 +395,80 @@ def test_too_few_points_is_no_data_even_when_the_value_looks_healthy():
 def test_traffic_below_the_gate_cannot_confirm_recovery_even_with_zero_errors():
     """F6 step 2: error rate falls because traffic was removed."""
     readings = [reading("rate", 0.1), reading("errors", 0.0), reading("ready", 1.0)]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert evaluation.outcome == "no_data"
     assert evaluation.required_signals_present
     assert "effective-traffic" in evaluation.reason
     verdicts = {v.signal_name: v.verdict for v in evaluation.verdicts}
     assert verdicts["rate"] == "below_traffic_gate"
-    assert verdicts["errors"] == "healthy"
+    assert verdicts["errors"] == "not_judged"
 
 
-def test_traffic_below_the_gate_outranks_a_degraded_dependency():
-    """Unknown dominates degraded: nothing is asserted on meaningless traffic."""
-    readings = [reading("rate", 0.1), reading("errors", 0.5), reading("ready", 0.0)]
-    evaluation = evaluate_readings(profile(), readings)
-    assert evaluation.outcome == "no_data"
+def test_a_state_fact_is_degraded_even_without_traffic():
+    """Zero replicas is read, not inferred; low traffic does not hide it."""
+    readings = [reading("rate", 0.1), reading("errors", 0.0), reading("ready", 0.0)]
+    evaluation = evaluate(profile(), readings)
+    assert (evaluation.outcome, evaluation.required_signals_present) == (
+        "degraded",
+        True,
+    )
     verdicts = {v.signal_name: v.verdict for v in evaluation.verdicts}
-    assert verdicts["ready"] == "degraded"
+    assert verdicts == {
+        "rate": "below_traffic_gate",
+        "errors": "not_judged",
+        "ready": "degraded",
+        "hint": "missing",
+    }
+    # Traffic reading failed outright: the state fact still counts.
+    readings = [
+        reading("rate", status="failed"),
+        reading("errors", 0.9),
+        reading("ready", 0.0),
+    ]
+    evaluation = evaluate(profile(), readings)
+    assert (evaluation.outcome, evaluation.required_signals_present) == (
+        "degraded",
+        False,
+    )
+    assert {v.signal_name: v.verdict for v in evaluation.verdicts}[
+        "errors"
+    ] == "not_judged"
+
+
+def test_a_ratio_is_not_judged_below_the_traffic_gate():
+    """An error ratio over a handful of requests proves neither health nor harm."""
+    readings = [reading("rate", 0.1), reading("errors", 0.9), reading("ready", 1.0)]
+    evaluation = evaluate(profile(), readings)
+    assert (evaluation.outcome, evaluation.required_signals_present) == (
+        "no_data",
+        True,
+    )
+    assert {v.signal_name: v.verdict for v in evaluation.verdicts}[
+        "errors"
+    ] == "not_judged"
 
 
 def test_a_required_value_outside_its_bound_is_degraded():
     readings = [reading("rate", 2.0), reading("errors", 0.05), reading("ready", 1.0)]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert (evaluation.outcome, evaluation.required_signals_present) == (
         "degraded",
         True,
     )
     assert "errors" in evaluation.reason
     readings = [reading("rate", 2.0), reading("errors", 0.0), reading("ready", 0.0)]
-    assert evaluate_readings(profile(), readings).outcome == "degraded"
+    assert evaluate(profile(), readings).outcome == "degraded"
 
 
 def test_optional_signals_are_reported_but_never_move_the_outcome():
     readings = healthy_readings() + [reading("hint", 99.0)]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert evaluation.outcome == "healthy"
     assert next(v for v in evaluation.verdicts if v.signal_name == "hint").verdict == (
         "degraded"
     )
     readings = healthy_readings() + [reading("hint", status="failed")]
-    assert evaluate_readings(profile(), readings).outcome == "healthy"
+    assert evaluate(profile(), readings).outcome == "healthy"
 
 
 def test_a_reading_with_another_query_or_source_does_not_count():
@@ -436,7 +478,7 @@ def test_a_reading_with_another_query_or_source_does_not_count():
         reading("errors", 0.0, query="1"),
         reading("ready", 1.0),
     ]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert (evaluation.outcome, evaluation.required_signals_present) == (
         "failed",
         False,
@@ -446,22 +488,68 @@ def test_a_reading_with_another_query_or_source_does_not_count():
         reading("errors", 0.0, source="jaeger"),
         reading("ready", 1.0),
     ]
-    assert evaluate_readings(profile(), readings).outcome == "failed"
+    assert evaluate(profile(), readings).outcome == "failed"
 
 
 def test_readings_outside_the_profile_are_listed_and_ignored():
     readings = healthy_readings() + [reading("extra", 1.0, query="q")]
-    evaluation = evaluate_readings(profile(), readings)
+    evaluation = evaluate(profile(), readings)
     assert evaluation.outcome == "healthy"
     assert next(v for v in evaluation.verdicts if v.signal_name == "extra").verdict == (
         "not_in_profile"
     )
 
 
+def test_an_old_reading_is_stale_whatever_its_status_says():
+    """Recovery needs data taken after remediation, not a fresh query over old data."""
+    later = NOW + timedelta(seconds=61)
+    evaluation = evaluate(profile(), healthy_readings(), sample_time=later)
+    assert (evaluation.outcome, evaluation.required_signals_present) == ("stale", False)
+    assert all(
+        v.verdict == "stale" for v in evaluation.verdicts if v.signal_name != "hint"
+    )
+    assert (
+        evaluate(
+            profile(), healthy_readings(), sample_time=NOW + timedelta(seconds=60)
+        ).outcome
+        == "healthy"
+    )
+
+
+def test_a_reading_window_from_the_future_or_of_the_wrong_span_is_stale():
+    future = [
+        reading("rate", 2.0, window_start=NOW, window_end=NOW + timedelta(minutes=5)),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    assert evaluate(profile(), future).outcome == "stale"
+    short = [
+        reading("rate", 2.0, window_start=NOW - timedelta(minutes=2)),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    evaluation = evaluate(profile(), short)
+    assert evaluation.outcome == "stale"
+    assert "spans 120s" in next(
+        v.reason for v in evaluation.verdicts if v.signal_name == "rate"
+    )
+    aligned = [
+        reading("rate", 2.0, window_start=NOW - timedelta(seconds=312)),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    assert evaluate(profile(), aligned).outcome == "healthy"
+
+
+def test_sample_time_must_be_timezone_aware():
+    with pytest.raises(DomainError, match="timezone-aware"):
+        evaluate(profile(), healthy_readings(), sample_time=NOW.replace(tzinfo=None))
+
+
 def test_duplicate_readings_and_foreign_inputs_are_rejected():
     with pytest.raises(DomainError, match="duplicate"):
-        evaluate_readings(profile(), [reading("rate", 1.0), reading("rate", 2.0)])
+        evaluate(profile(), [reading("rate", 1.0), reading("rate", 2.0)])
     with pytest.raises(DomainError, match="INVALID_INPUT"):
-        evaluate_readings(profile(), [{"signal_name": "rate"}])  # type: ignore[list-item]
+        evaluate(profile(), [{"signal_name": "rate"}])  # type: ignore[list-item]
     with pytest.raises(DomainError, match="INVALID_INPUT"):
-        evaluate_readings(minimal_profile(), [])  # type: ignore[arg-type]
+        evaluate(minimal_profile(), [])  # type: ignore[arg-type]

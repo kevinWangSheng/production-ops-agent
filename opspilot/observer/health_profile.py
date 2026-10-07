@@ -31,6 +31,7 @@ import hashlib
 import json
 import math
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -55,6 +56,7 @@ from opspilot.domain.observation import SampleOutcome
 __all__ = [
     "PROFILE_DIRECTORY",
     "PROFILE_FORMAT_VERSION",
+    "WINDOW_TOLERANCE_SHARE",
     "HealthProfile",
     "HealthProfileError",
     "HealthSignal",
@@ -78,12 +80,14 @@ PROFILE_DIRECTORY = Path(__file__).resolve().parent / "profiles"
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
 ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
-#: Per-signal verdicts. The first two are the only ones that count as a
-#: present, usable reading together with ``below_traffic_gate``.
+#: Per-signal verdicts. ``healthy``, ``degraded``, ``below_traffic_gate`` and
+#: ``not_judged`` are the usable readings; the rest are unusable and make the
+#: sample unknown when the signal is required.
 SignalVerdictKind = Literal[
     "healthy",
     "degraded",
     "below_traffic_gate",
+    "not_judged",
     "missing",
     "no_data",
     "stale",
@@ -106,6 +110,13 @@ _UNKNOWN_FOR_VERDICT: dict[str, SampleOutcome] = {
     "missing": "no_data",
     "insufficient_samples": "no_data",
 }
+
+
+#: A reading's window may differ from ``evaluation_window_seconds`` by this
+#: share before it is judged stale. The Observer aligns window edges to the
+#: Prometheus step (15 s in the lab), so a 300 s window legitimately spans
+#: 285–315 s; a window that is minutes off is not the profile's window.
+WINDOW_TOLERANCE_SHARE = 0.05
 
 
 class HealthProfileError(Exception):
@@ -154,6 +165,12 @@ class HealthSignal(DTO):
     ``minimum_samples`` is the number of data points inside the evaluation
     window that must back the reading's ``value``; fewer points make the
     reading ``insufficient_samples`` rather than a healthy one.
+
+    ``traffic_dependent`` marks ratios and quantiles whose value means nothing
+    without traffic (an error ratio over two requests, a p95 over one span).
+    They are not judged while traffic is below the gate or unknown. State
+    signals such as replica counts are judged regardless of traffic: zero
+    replicas is a fact whether or not requests arrive.
     """
 
     name: Identifier
@@ -161,6 +178,7 @@ class HealthSignal(DTO):
     required: bool = True
     query: Text
     minimum_samples: Positive = 1
+    traffic_dependent: bool
     healthy: SignalBound
 
 
@@ -360,23 +378,36 @@ def load_health_profile(path: Path) -> HealthProfile:
 
 
 def evaluate_readings(
-    profile: HealthProfile, readings: Sequence[SignalReading]
+    profile: HealthProfile,
+    readings: Sequence[SignalReading],
+    *,
+    sample_time: datetime,
 ) -> SampleEvaluation:
     """Decide what one sample's readings say about the target.
 
-    Deterministic and side-effect free; the same profile and readings always
-    give the same answer, which is what F6 step 5 replays.
+    Deterministic and side-effect free; the same profile, readings and
+    ``sample_time`` always give the same answer, which is what F6 step 5
+    replays from the stored sample row.
+
+    ``sample_time`` is when the Observer took the sample (database clock,
+    stored with the sample). A reading whose window ended more than
+    ``freshness_seconds`` before it, or whose window does not span
+    ``evaluation_window_seconds`` (within ``WINDOW_TOLERANCE_SHARE``), is
+    judged ``stale`` whatever its status says: old data never confirms
+    recovery (C3 section 10).
 
     Outcome rules, in order:
 
-    1. Any required signal without a usable reading (missing, non-``ok``,
-       too few points, wrong query or source) makes the sample *unknown*:
-       the worst of ``failed`` > ``timeout`` > ``stale`` > ``no_data`` among
-       them, with ``required_signals_present`` false.
-    2. Otherwise, traffic below the effective-traffic gate is ``no_data``:
-       the ratios are present but meaningless.
-    3. Otherwise, any required value outside its healthy bound is
-       ``degraded``.
+    1. Any *judged* required signal outside its healthy bound is
+       ``degraded``. A reading is judged when it is usable (``ok``, enough
+       points, the profile's query and source, fresh) and either does not
+       depend on traffic or traffic is confirmed above the gate. Zero
+       replicas is degraded even with no traffic at all.
+    2. Otherwise any required signal without a usable reading makes the
+       sample *unknown*: the worst of ``failed`` > ``timeout`` > ``stale`` >
+       ``no_data`` among them, with ``required_signals_present`` false.
+    3. Otherwise traffic below the effective-traffic gate is ``no_data``:
+       the ratios are present but meaningless (F6 step 2).
     4. Otherwise the sample is ``healthy``.
 
     Optional signals are reported in the verdicts but never move the outcome.
@@ -387,6 +418,8 @@ def evaluate_readings(
         not isinstance(item, SignalReading) for item in readings
     ):
         raise DomainError("INVALID_INPUT", "readings must be SignalReading values")
+    if not isinstance(sample_time, datetime) or sample_time.tzinfo is None:
+        raise DomainError("INVALID_INPUT", "sample_time must be timezone-aware")
     by_name: dict[str, SignalReading] = {}
     for reading in readings:
         if reading.signal_name in by_name:
@@ -395,9 +428,49 @@ def evaluate_readings(
             )
         by_name[reading.signal_name] = reading
 
+    judged: dict[str, _Judged] = {
+        signal.name: _judge(profile, signal, by_name.get(signal.name), sample_time)
+        for signal in profile.signals
+    }
+    gate = profile.effective_traffic
+    traffic = judged[gate.signal]
+    traffic_confirmed = traffic.usable and traffic.value is not None
+    traffic_confirmed = traffic_confirmed and traffic.value >= gate.minimum  # type: ignore[operator]
+    traffic_low = traffic.usable and not traffic_confirmed
+
     verdicts: list[SignalVerdict] = []
     for signal in profile.signals:
-        verdicts.append(_judge(profile, signal, by_name.get(signal.name)))
+        item = judged[signal.name]
+        verdict: SignalVerdictKind
+        if not item.usable:
+            verdict, reason = item.unusable, item.reason
+        elif signal.name == gate.signal and traffic_low:
+            verdict = "below_traffic_gate"
+            reason = f"{item.value} < effective-traffic minimum {gate.minimum}"
+        elif signal.traffic_dependent and not traffic_confirmed:
+            verdict = "not_judged"
+            reason = f"{item.value} not judged: traffic " + (
+                "below the gate" if traffic_low else "not confirmed"
+            )
+        elif item.value is not None and not signal.healthy.contains(item.value):
+            verdict = "degraded"
+            reason = (
+                f"{item.value} outside healthy bound {_render_bound(signal.healthy)}"
+            )
+        else:
+            verdict = "healthy"
+            reason = (
+                f"{item.value} within healthy bound {_render_bound(signal.healthy)}"
+            )
+        verdicts.append(
+            SignalVerdict(
+                signal_name=signal.name,
+                required=signal.required,
+                verdict=verdict,
+                value=item.value,
+                reason=reason,
+            )
+        )
     known = {signal.name for signal in profile.signals}
     for name, reading in by_name.items():
         if name not in known:
@@ -418,8 +491,11 @@ def evaluate_readings(
         if verdict.verdict in _UNKNOWN_FOR_VERDICT
     ]
     present = not unusable
-    revision = profile_revision(profile)
-    if unusable:
+    degraded = sorted(v.signal_name for v in required if v.verdict == "degraded")
+    if degraded:
+        outcome: SampleOutcome = "degraded"
+        reason = f"required signals outside their healthy bound: {', '.join(degraded)}"
+    elif unusable:
         outcome = next(level for level in _UNKNOWN_SEVERITY if level in unusable)
         names = sorted(
             verdict.signal_name
@@ -427,21 +503,16 @@ def evaluate_readings(
             if verdict.verdict in _UNKNOWN_FOR_VERDICT
         )
         reason = f"required signals without a usable reading: {', '.join(names)}"
-    elif any(verdict.verdict == "below_traffic_gate" for verdict in required):
+    elif traffic_low:
         outcome = "no_data"
         reason = (
-            f"traffic below the effective-traffic gate "
-            f"({profile.effective_traffic.signal} < {profile.effective_traffic.minimum})"
+            f"traffic below the effective-traffic gate ({gate.signal} < {gate.minimum})"
         )
-    elif any(verdict.verdict == "degraded" for verdict in required):
-        names = sorted(v.signal_name for v in required if v.verdict == "degraded")
-        outcome = "degraded"
-        reason = f"required signals outside their healthy bound: {', '.join(names)}"
     else:
         outcome = "healthy"
         reason = "every required signal is present, fresh and within bounds"
     return SampleEvaluation(
-        health_profile_revision=revision,
+        health_profile_revision=profile_revision(profile),
         outcome=outcome,
         required_signals_present=present,
         reason=reason,
@@ -449,70 +520,67 @@ def evaluate_readings(
     )
 
 
+class _Judged(DTO):
+    """Whether one reading can be judged at all, before bounds and traffic."""
+
+    usable: bool
+    value: float | None = None
+    unusable: SignalVerdictKind = "missing"
+    reason: Text = "-"
+
+
 def _judge(
-    profile: HealthProfile, signal: HealthSignal, reading: SignalReading | None
-) -> SignalVerdict:
-    name = signal.name
-    required = signal.required
+    profile: HealthProfile,
+    signal: HealthSignal,
+    reading: SignalReading | None,
+    sample_time: datetime,
+) -> _Judged:
     if reading is None:
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict="missing",
-            reason="no reading for this signal",
+        return _Judged(
+            usable=False, unusable="missing", reason="no reading for this signal"
         )
     if reading.query != signal.query or reading.source != profile.source:
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict="query_mismatch",
+        return _Judged(
+            usable=False,
+            unusable="query_mismatch",
             reason="reading was taken with a query or source the profile does not define",
         )
     if reading.status != "ok":
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict=reading.status,
+        return _Judged(
+            usable=False,
+            unusable=reading.status,
             reason=f"reading status is {reading.status}",
+        )
+    age = (sample_time - reading.window_end).total_seconds()
+    if age < 0 or age > profile.freshness_seconds:
+        return _Judged(
+            usable=False,
+            unusable="stale",
+            reason=(
+                f"window ended {age:.0f}s before the sample; "
+                f"profile allows {profile.freshness_seconds}s"
+            ),
+        )
+    span = (reading.window_end - reading.window_start).total_seconds()
+    expected = profile.evaluation_window_seconds
+    if abs(span - expected) > expected * WINDOW_TOLERANCE_SHARE:
+        return _Judged(
+            usable=False,
+            unusable="stale",
+            reason=f"window spans {span:.0f}s; profile evaluates {expected}s",
         )
     # ``value`` and ``sample_count`` are guaranteed by the reading validator.
     value = reading.value
     count = reading.sample_count
     assert value is not None and count is not None
     if count < signal.minimum_samples:
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict="insufficient_samples",
+        return _Judged(
+            usable=False,
             value=value,
+            unusable="insufficient_samples",
             reason=f"{count} points, profile needs {signal.minimum_samples}",
         )
-    if (
-        name == profile.effective_traffic.signal
-        and value < profile.effective_traffic.minimum
-    ):
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict="below_traffic_gate",
-            value=value,
-            reason=f"{value} < effective-traffic minimum {profile.effective_traffic.minimum}",
-        )
-    if not signal.healthy.contains(value):
-        return SignalVerdict(
-            signal_name=name,
-            required=required,
-            verdict="degraded",
-            value=value,
-            reason=f"{value} outside healthy bound {_render_bound(signal.healthy)}",
-        )
-    return SignalVerdict(
-        signal_name=name,
-        required=required,
-        verdict="healthy",
-        value=value,
-        reason=f"{value} within healthy bound {_render_bound(signal.healthy)}",
-    )
+    return _Judged(usable=True, value=value)
 
 
 def _render_location(location: object) -> str:
