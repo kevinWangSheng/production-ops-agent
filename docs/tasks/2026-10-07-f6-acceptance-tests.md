@@ -1,6 +1,6 @@
 # F6 独立验收与合同测试作者
 
-- 状态：已完成（测试编写与本地检查；外部场景尚未接线，F6 未完成）
+- 状态：已完成本轮审查修订（外部场景尚未接线，F6 未完成）
 - 更新日期：2026-10-07
 - 依据：[M1-02](2026-10-03-m1-02-recovery-observation.md)；[测试映射与接口提议](../testing/f6-acceptance-tests.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-f6-tests`；`feature/m1-02-f6-acceptance-tests`；基线 `0c97377`
@@ -20,7 +20,17 @@
 - 最终 `make check` 退出 0：锁检查、Ruff lint/format、mypy 通过；pytest 2654 passed、337 skipped、2 既有 xfailed，44.76 秒。两个 xfail 是既有 persistence/domain 架构债，不是 F6 缺陷。
 - 独立审查仅做合同/断言静态审查；pytest 执行数字由作者本地运行记录，不混称独立运行验收。
 - 未运行模型、trace、实验环境或遥测调用；费用 0，无供应商调用需对账。
-- 纯函数合同未发现可复现不一致；26 个外部场景尚未接线，不能认定 F6 完成。
+- 首版纯函数合同未发现可复现不一致；当时 26 个外部场景尚未接线，不能认定 F6 完成。
+
+## 审查处置（PR #112 追加修订）
+
+- Bot P1：所有 run outcome 与请求 subject_id 绑定，采样也绑定主体；同 target 双事故交换被处置身份，分别核对观察中/确认后状态，另一事故的生命周期、会话、采样完全不变。
+- P2-1：补控制 generation=4、观察 generation=3，大于当前值同样 history_only。P2-2：补 H,H,D 与 H,H,D,H,H，分别重置为 0、后续连续健康最多 120 秒；期限前不结束/不交接，期限后回 open 交接。
+- P2-3：拆出 latest_sample_verdict 与 recovery_confirmed，不冻结窗未满 verdict；P2-4：测试-owned 环境/遥测桩记录并拒绝写请求和重放查询，driver 持有计数，另加 5 个可执行夹具负向检查；P2-5：Target 补 integration_id。
+- O1：文档列冻结语义与实现者可自定接口两清单，原因码为 harness 规范化码；O2：逐信号 evidence_id 唯一，可读原始 bytes 时核验 SHA-256；O3：篡改重放接受重算还原或显式完整性不一致，不能复述错误判定；O4：补先健康后撤流量且错误下降序列。
+- O5：文档说明运行时 reopen/新阶段未覆盖，因为移出 M1-02；O6：skip 补 #86/#87 和持久采样 #84；O7：删除非生命周期取值/触发器的空转参数；O8 按用户要求不处理，最低样本由合同/profile 决定。
+- 全新上下文静态复验额外发现 H,H,D 可提前结束的缺口，已收紧，静态复验无未处置合同发现；不是产品运行验证。定向 pytest：47 passed（42 领域 + 5 夹具）、33 skipped、0 xfailed，0.30 秒；最终 `make check` 退出 0，锁/Ruff/mypy 通过；2647 passed、344 skipped、2 既有架构债 xfailed，44.59 秒。
+- 本次仅追加提交和普通 push；不再触发机器人、不回复/resolve thread、不合并，lead 接手审查处置。
 
 ## 下一步与交接
 

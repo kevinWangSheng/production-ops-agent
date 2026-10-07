@@ -84,7 +84,9 @@ def test_current_sample_is_adopted_and_advances_watermarks(session, sample, stat
     [
         ({"session_id": "another-session"}, "session_mismatch"),
         ({"subject_control_generation": 2}, "control_generation_stale"),
+        ({"subject_control_generation": 4}, "control_generation_stale"),
         ({"observation_generation": 1}, "observation_generation_stale"),
+        ({"observation_generation": 3}, "observation_generation_stale"),
         (
             {"health_profile_revision": "checkout-v0"},
             "health_profile_revision_mismatch",
@@ -103,7 +105,9 @@ def test_current_sample_is_adopted_and_advances_watermarks(session, sample, stat
     ids=[
         "foreign-session",
         "old-control",
+        "future-control",
         "old-generation",
+        "future-generation",
         "old-profile",
         "retry-sequence",
         "old-sequence",
@@ -123,7 +127,7 @@ def test_invalid_sample_is_history_only_without_advancing(
     assert session.model_dump() == before
 
 
-@pytest.mark.parametrize("state", ["resolved", "closed", "paused", "cancelled"])
+@pytest.mark.parametrize("state", ["resolved", "closed"])
 def test_only_open_lifecycles_can_adopt(session, sample, state):
     result = evaluate_sample(session, sample, subject_state=state)
     assert not result.accepted and result.disposition == "history_only"
@@ -227,9 +231,7 @@ def test_observation_ends_with_confirmed_recovery_or_open_incident(confirmed, ex
 
 
 @pytest.mark.parametrize("state", ["open", "observing_recovery", "resolved", "closed"])
-@pytest.mark.parametrize(
-    "trigger", ["human_close", "human_reopen", "pause", "cancel", "takeover"]
-)
+@pytest.mark.parametrize("trigger", ["human_close", "human_reopen"])
 def test_human_actions_never_directly_resolve_incident(state, trigger):
     incident = Incident(
         incident_id="incident-1", target=TARGET, opened_at=END, lifecycle=state

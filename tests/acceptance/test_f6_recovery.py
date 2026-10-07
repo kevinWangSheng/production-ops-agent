@@ -1,25 +1,28 @@
 """F6 external scenarios — proposed seam, NOT an implemented harness.
 
-Minimum external interface proposal (M1-02 steps 4/5/6):
-* recovery_driver.run(IncidentScenario, *, profile, handled_at, observations,
-  until) -> IncidentOutcome. The authenticated human handling authorizes an
-  observation; inputs below are telemetry stimuli, never desired verdicts.
-* IncidentOutcome adds incident_lifecycle, recovery_verdict (healthy/degraded/
-  unknown), recovery_reasons, healthy_window_seconds, recovery_samples,
-  recovery_profile (frozen profile), recovery_handled_at, observation_ended,
-  model_requests (complete audit; must be empty for original and replay).
-  Existing handoff_reasons/human_interaction/actions/permissions remain.
-* recovery_samples are persisted records with sample_id, sequence, target,
-  subject_control_generation, observation_generation, health_profile_revision,
-  window_start/end, signals, outcome, disposition. Each signal carries value,
-  source, query, observed_at, evidence_id, raw_sha256. Frozen profile includes
-  thresholds, required signals, traffic/freshness/coverage rules and budgets.
-* recovery_driver.replay(*, profile, handled_at, samples,
-  allow_telemetry=False, allow_model=False) -> the same observable outcome,
-  adding external_queries and model_requests (audit records, both empty).
-  Replay receives persisted artifacts only, no investigator narrative.
-* actions is the complete product action audit; excludes engineer fault setup
-  and permits only read queries and OpsPilot's own record/control persistence.
+Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
+* run(IncidentScenario, *, profile, handled_at, observations, until) returns
+  an observable outcome BOUND to scenario.subject_id, never a preset verdict.
+* Outcome adds subject_id, incident_lifecycle, recovery_confirmed (True only
+  for resolved), latest_sample_verdict (not frozen for intermediate results),
+  terminal recovery_verdict/reasons, healthy_window_seconds, recovery_samples,
+  frozen recovery_profile, recovery_handled_at, observation_ended/model_requests.
+* Persisted samples include subject_id, sample_id, sequence, target, both
+  generations, profile revision, absolute window, signals/outcome/disposition.
+  Signals retain value/source/query/observed_at and unique evidence_id/hash.
+* replay uses ONLY frozen profile/handled_at/samples. It returns external_queries
+  and model_requests empty; integrity mismatch may be reported explicitly as
+  unknown instead of restoring the original verdict.
+* recovery_runtime(boundaries) must inject harness-owned telemetry_query and
+  environment_write stubs into EVERY transport, with no network fallback.
+  GuardedRecoveryDriver owns replay mode, environment_writes and
+  telemetry_calls_during_replay; these do not come from product self-report.
+* seed_incident/snapshot_incident expose OpsPilot setup and read-only lifecycle,
+  observation_sessions/recovery_samples by id for the two-incidents scenario.
+* read_raw_payload(evidence_id) optionally returns captured bytes for SHA-256
+  verification, otherwise None. No synthetic payload is invented.
+* actions is the complete product action audit; excludes engineer setup and
+  permits only read queries and OpsPilot's own record/control persistence.
 
 The fixture fails loudly if skips are removed before a real driver is wired.
 No fake successful outcomes or implementation adapter are provided here.
@@ -28,14 +31,18 @@ Numbers are synthetic test boundaries, not calibrated lab HealthProfile values.
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from types import SimpleNamespace
 
 import pytest
 
 from opspilot.acceptance import IncidentScenario
+from tests.f6_boundary_support import GuardedRecoveryDriver, RecoveryBoundaries
 
 HANDLED = datetime(2026, 10, 7, 12, tzinfo=UTC)
 REQUIRED = ("deployment", "request_volume", "errors", "latency", "pods", "dependencies")
 TARGET = {
+    "integration_id": "otel-demo",
     "cluster_uid": "lab",
     "namespace": "demo",
     "resource_uid": "checkout",
@@ -51,10 +58,20 @@ READONLY_ACTIONS = {
 
 
 @pytest.fixture
-def recovery_driver():
-    pytest.fail(
-        "待实现真实 IncidentScenario -> IncidentOutcome 驱动；不能以预制结果替代接线"
-    )
+def recovery_boundaries():
+    return RecoveryBoundaries()
+
+
+@pytest.fixture
+def recovery_runtime(recovery_boundaries):
+    # Wiring must inject these stubs into EVERY environment/telemetry transport.
+    # No real endpoints or fallback clients are permitted in this harness.
+    pytest.fail("待实现真实驱动并注入 recovery_boundaries；不能以预制结果替代接线")
+
+
+@pytest.fixture
+def recovery_driver(recovery_runtime, recovery_boundaries):
+    return GuardedRecoveryDriver(recovery_runtime, recovery_boundaries)
 
 
 @pytest.fixture
@@ -78,13 +95,13 @@ def profile():
     }
 
 
-def scenario(step, kind):
+def scenario(step, kind, subject_id="incident-f6"):
     return IncidentScenario(
         scenario_id=f"F6:{step}:{kind}",
         feature_id="F6",
         acceptance_step=str(step),
         kind=kind,
-        subject_id="incident-f6",
+        subject_id=subject_id,
     )
 
 
@@ -126,20 +143,26 @@ def observations(
     return rows
 
 
-def assert_readonly(outcome):
+def assert_readonly(outcome, driver, subject_id="incident-f6"):
+    assert outcome.subject_id == subject_id
+    assert outcome.recovery_confirmed is (outcome.incident_lifecycle == "resolved")
+    assert driver.environment_writes == ()
+    assert driver.telemetry_calls_during_replay == 0
     assert outcome.model_requests == ()
     assert "read_only" in outcome.permissions
     assert set(outcome.permissions) <= {"read_only", "human_control"}
     assert set(outcome.actions) <= READONLY_ACTIONS
 
 
-def assert_saved_basis(outcome, supplied, profile):
+def assert_saved_basis(outcome, supplied, profile, driver):
     assert outcome.recovery_profile == profile
     assert outcome.recovery_handled_at == HANDLED
     saved = outcome.recovery_samples
     assert len(saved) == len(supplied) > 0
     assert len({row["sample_id"] for row in saved}) == len(saved)
+    evidence_ids = []
     for row, original in zip(saved, supplied, strict=True):
+        assert row["subject_id"] == outcome.subject_id
         assert row["sequence"] == original["sequence"]
         assert row["target"] == original["target"]
         assert row["window_start"] == original["window_start"] >= HANDLED
@@ -161,11 +184,18 @@ def assert_saved_basis(outcome, supplied, profile):
             for key in ("value", "source", "query", "observed_at"):
                 assert signal[key] == original["signals"][name][key]
             assert signal["evidence_id"]
+            evidence_ids.append(signal["evidence_id"])
+            payload = driver.read_raw_payload(signal["evidence_id"])
+            if payload is not None:
+                assert isinstance(payload, bytes)
+                assert sha256(payload).hexdigest() == signal["raw_sha256"]
             assert len(signal["raw_sha256"]) == 64
             assert set(signal["raw_sha256"]) <= set("0123456789abcdef")
 
+    assert len(set(evidence_ids)) == len(evidence_ids)
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count,expected", [(2, "observing_recovery"), (3, "resolved")])
 def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     recovery_driver, profile, count, expected
@@ -179,16 +209,18 @@ def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
         until=supplied[-1]["window_end"],
     )
     assert outcome.incident_lifecycle == expected
-    assert outcome.recovery_verdict == "healthy"
+    assert outcome.recovery_confirmed is (expected == "resolved")
+    if expected == "resolved":
+        assert outcome.recovery_verdict == "healthy"
     assert outcome.healthy_window_seconds == count * 60
     assert outcome.observation_ended is (expected == "resolved")
     assert outcome.human_interaction != "handoff"
     assert not outcome.handoff_reasons
-    assert_saved_basis(outcome, supplied, profile)
-    assert_readonly(outcome)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [3, 5])
 @pytest.mark.parametrize("traffic", [0, 99])
 def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
@@ -202,7 +234,8 @@ def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
         observations=deepcopy(supplied),
         until=supplied[-1]["window_end"],
     )
-    assert outcome.recovery_verdict == "unknown"
+    if count == 5:
+        assert outcome.recovery_verdict == "unknown"
     assert "INSUFFICIENT_TRAFFIC" in outcome.recovery_reasons
     assert outcome.healthy_window_seconds == 0
     assert outcome.incident_lifecycle == (
@@ -212,11 +245,11 @@ def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
         assert outcome.human_interaction == "handoff"
         assert "INSUFFICIENT_TRAFFIC" in outcome.handoff_reasons
         assert outcome.observation_ended
-    assert_saved_basis(outcome, supplied, profile)
-    assert_readonly(outcome)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("missing", REQUIRED)
 def test_f6_step3_each_missing_required_signal_is_unknown_and_handed_off(
     recovery_driver, profile, missing
@@ -236,11 +269,11 @@ def test_f6_step3_each_missing_required_signal_is_unknown_and_handed_off(
     assert "REQUIRED_TELEMETRY_MISSING" in outcome.handoff_reasons
     assert f"MISSING_SIGNAL:{missing}" in outcome.recovery_reasons
     assert outcome.observation_ended
-    assert_saved_basis(outcome, supplied, profile)
-    assert_readonly(outcome)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [3, 5])
 def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     recovery_driver, profile, count
@@ -256,18 +289,19 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     assert outcome.incident_lifecycle == (
         "open" if count == 5 else "observing_recovery"
     )
-    assert outcome.recovery_verdict == "degraded"
+    if count == 5:
+        assert outcome.recovery_verdict == "degraded"
     assert outcome.healthy_window_seconds == 0
     assert "DEPENDENCY_UNHEALTHY" in outcome.recovery_reasons
     if count == 5:
         assert outcome.human_interaction == "handoff"
         assert "CONTINUED_DEGRADATION" in outcome.handoff_reasons
         assert outcome.observation_ended
-    assert_saved_basis(outcome, supplied, profile)
-    assert_readonly(outcome)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 5 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 5 步 #87 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize(
     "kind,options,count,verdict,lifecycle",
     [
@@ -290,7 +324,7 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
     )
     assert original.recovery_verdict == verdict
     assert original.incident_lifecycle == lifecycle
-    assert_saved_basis(original, supplied, profile)
+    assert_saved_basis(original, supplied, profile, recovery_driver)
     replayed = recovery_driver.replay(
         profile=deepcopy(original.recovery_profile),
         handled_at=original.recovery_handled_at,
@@ -301,7 +335,9 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
     assert replayed.external_queries == ()
     assert replayed.model_requests == ()
     for field in (
+        "subject_id",
         "incident_lifecycle",
+        "recovery_confirmed",
         "recovery_verdict",
         "recovery_reasons",
         "healthy_window_seconds",
@@ -309,12 +345,12 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
         "observation_ended",
     ):
         assert getattr(replayed, field) == getattr(original, field)
-    assert_saved_basis(replayed, supplied, profile)
-    assert_readonly(original)
-    assert_readonly(replayed)
+    assert_saved_basis(replayed, supplied, profile, recovery_driver)
+    assert_readonly(original, recovery_driver)
+    assert_readonly(replayed, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize(
     "signal,value",
     [("deployment", False), ("pods", False), ("errors", 0.02), ("latency", 501)],
@@ -338,11 +374,11 @@ def test_f6_step1_each_required_signal_threshold_blocks_recovery(
     assert outcome.observation_ended
     assert outcome.human_interaction == "handoff"
     assert "CONTINUED_DEGRADATION" in outcome.handoff_reasons
-    assert_saved_basis(outcome, supplied, profile)
-    assert_readonly(outcome)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("kind", ["stale", "coverage-gap", "before-handling"])
 def test_f6_step1_old_or_discontinuous_data_cannot_cover_healthy_window(
     recovery_driver, profile, kind
@@ -378,10 +414,10 @@ def test_f6_step1_old_or_discontinuous_data_cannot_cover_healthy_window(
     assert outcome.observation_ended
     assert outcome.human_interaction == "handoff"
     assert outcome.handoff_reasons
-    assert_readonly(outcome)
+    assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 5 步接线")
+@pytest.mark.skip(reason="待 M1-02 第 5 步 #87 接线；持久采样依赖第 2 步 #84")
 def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     recovery_driver, profile
 ):
@@ -394,7 +430,7 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
         until=supplied[-1]["window_end"],
     )
     assert original.incident_lifecycle == "resolved"
-    assert_saved_basis(original, supplied, profile)
+    assert_saved_basis(original, supplied, profile, recovery_driver)
     samples = deepcopy(original.recovery_samples)
     # Judgment metadata is not raw evidence authority. Alter ONLY judgments;
     # frozen signals, profile and captured evidence references stay identical.
@@ -409,9 +445,145 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     )
     assert replayed.external_queries == ()
     assert replayed.model_requests == ()
-    assert replayed.incident_lifecycle == "resolved"
-    assert replayed.recovery_verdict == "healthy"
-    assert replayed.healthy_window_seconds == 180
-    assert replayed.recovery_samples == original.recovery_samples
-    assert_readonly(original)
-    assert_readonly(replayed)
+    if "STORED_OBSERVATION_INTEGRITY_MISMATCH" in replayed.recovery_reasons:
+        assert replayed.recovery_verdict == "unknown"
+        assert replayed.recovery_confirmed is False
+        assert replayed.incident_lifecycle != "resolved"
+    else:
+        assert replayed.incident_lifecycle == "resolved"
+        assert replayed.recovery_verdict == "healthy"
+        assert replayed.recovery_confirmed is True
+        assert replayed.healthy_window_seconds == 180
+        assert replayed.recovery_samples == original.recovery_samples
+    assert_readonly(original, recovery_driver)
+    assert_readonly(replayed, recovery_driver)
+
+
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
+@pytest.mark.parametrize("subject_id", ["incident-f6", "incident-other"])
+@pytest.mark.parametrize("count", [2, 3])
+def test_f6_step1_same_target_incidents_only_handled_subject_changes(
+    recovery_driver, profile, subject_id, count
+):
+    ids = ("incident-f6", "incident-other")
+    for incident_id in ids:
+        recovery_driver.seed_incident(
+            incident_id, target=deepcopy(TARGET), lifecycle="open"
+        )
+    other_id = next(incident_id for incident_id in ids if incident_id != subject_id)
+    untouched = recovery_driver.snapshot_incident(other_id)
+    assert untouched["incident_lifecycle"] == "open"
+    assert untouched["recovery_samples"] == ()
+    assert untouched["observation_sessions"] == ()
+    supplied = observations(count)
+    requested = scenario(1, "same-target-two-incidents", subject_id=subject_id)
+    outcome = recovery_driver.run(
+        requested,
+        profile=profile,
+        handled_at=HANDLED,
+        observations=deepcopy(supplied),
+        until=supplied[-1]["window_end"],
+    )
+    assert outcome.subject_id == requested.subject_id
+    assert outcome.incident_lifecycle == (
+        "resolved" if count == 3 else "observing_recovery"
+    )
+    assert outcome.recovery_confirmed is (count == 3)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    changed = recovery_driver.snapshot_incident(subject_id)
+    assert changed["incident_lifecycle"] == outcome.incident_lifecycle
+    assert changed["recovery_samples"] == outcome.recovery_samples
+    assert changed["observation_sessions"]
+    assert recovery_driver.snapshot_incident(other_id) == untouched
+    assert_readonly(outcome, recovery_driver, subject_id=requested.subject_id)
+
+
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
+@pytest.mark.parametrize("count", [3, 5])
+def test_f6_step1_degradation_resets_continuous_healthy_window(
+    recovery_driver, profile, count
+):
+    # Prefix H,H,D verifies reset immediately; H,H,D,H,H verifies no summing
+    # of the two healthy runs across the degraded third window.
+    supplied = observations(count)
+    supplied[2]["signals"]["errors"]["value"] = 0.02
+    outcome = recovery_driver.run(
+        scenario(1, "healthy-then-degraded"),
+        profile=profile,
+        handled_at=HANDLED,
+        observations=deepcopy(supplied),
+        until=supplied[-1]["window_end"],
+    )
+    assert outcome.incident_lifecycle == (
+        "observing_recovery" if count == 3 else "open"
+    )
+    assert outcome.observation_ended is (count == 5)
+    if count == 3:
+        assert outcome.human_interaction != "handoff"
+        assert not outcome.handoff_reasons
+    else:
+        assert outcome.human_interaction == "handoff"
+        assert outcome.handoff_reasons
+    assert outcome.recovery_confirmed is False
+    assert 0 <= outcome.healthy_window_seconds <= (0 if count == 3 else 120)
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
+
+
+@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
+def test_f6_step2_traffic_withdrawal_after_healthy_samples_never_confirms_recovery(
+    recovery_driver, profile
+):
+    supplied = observations(error_ratio=0.005)
+    for row in supplied[2:]:
+        row["signals"]["request_volume"]["value"] = 0
+        row["signals"]["errors"]["value"] = 0
+    outcome = recovery_driver.run(
+        scenario(2, "healthy-then-traffic-withdrawn"),
+        profile=profile,
+        handled_at=HANDLED,
+        observations=deepcopy(supplied),
+        until=profile["deadline"],
+    )
+    assert outcome.incident_lifecycle == "open"
+    assert outcome.recovery_confirmed is False
+    assert outcome.recovery_verdict == "unknown"
+    assert 0 <= outcome.healthy_window_seconds <= 120
+    assert "INSUFFICIENT_TRAFFIC" in outcome.recovery_reasons
+    assert "INSUFFICIENT_TRAFFIC" in outcome.handoff_reasons
+    assert outcome.human_interaction == "handoff"
+    assert_saved_basis(outcome, supplied, profile, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
+
+
+# Harness guard checks execute NOW. They do not stand in for skipped F6 runs.
+@pytest.mark.parametrize("operation", ["deployment", "rollback", "release-gate"])
+def test_harness_environment_stub_records_and_rejects_every_write(operation):
+    boundaries = RecoveryBoundaries()
+    with pytest.raises(AssertionError, match="environment write"):
+        boundaries.environment_write("POST", operation, {"target": TARGET})
+    assert boundaries.environment_writes == (("POST", operation, {"target": TARGET}),)
+
+
+def test_harness_replay_stub_records_queries_even_if_runtime_swallows_rejection():
+    boundaries = RecoveryBoundaries()
+
+    def bad_replay(**_artifacts):
+        try:
+            boundaries.telemetry_query("some-live-query")
+        except AssertionError:
+            return None
+
+    driver = GuardedRecoveryDriver(SimpleNamespace(replay=bad_replay), boundaries)
+    driver.replay()
+    assert driver.telemetry_calls_during_replay == 1
+    assert not boundaries.replaying
+
+
+def test_harness_run_rejects_an_outcome_for_another_subject():
+    runtime = SimpleNamespace(
+        run=lambda _scenario, **_kwargs: SimpleNamespace(subject_id="another-incident")
+    )
+    driver = GuardedRecoveryDriver(runtime, RecoveryBoundaries())
+    with pytest.raises(AssertionError):
+        driver.run(scenario(1, "wrong-subject"))
