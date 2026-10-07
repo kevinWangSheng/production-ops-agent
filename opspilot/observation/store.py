@@ -982,41 +982,27 @@ class ObservationStore(_StoreBase):
         leases: list[SampleLease] = []
         with self.transaction() as conn:
             now = self._db_now(conn)
+            # A lease is issued only under the incident row lock, which
+            # serializes the claim against the suspension paths (they lock
+            # every affected incident row FOR UPDATE, C3 section 4): a
+            # suspension that committed first is seen in the scope read
+            # below, one that comes later waits for this commit and then
+            # invalidates the lease at submit. Ending a session needs the
+            # same lock (the ending row's FK, and the lock order every other
+            # ending path keeps: incident first, then session). Both rows are
+            # locked by the one statement with SKIP LOCKED, so a session whose
+            # incident another writer holds is skipped *before* LIMIT counts
+            # it (issue #86: a separate per-row SKIP LOCKED probe let locked
+            # candidates use up the limit) and the claim never waits.
             rows = conn.execute(
-                "SELECT s.session_id,s.incident_id,s.active_sample_job_id,s.active_sample_sequence,s.active_sample_epoch,s.subject_control_generation,s.observation_generation,s.health_profile_revision,s.deadline_at,s.sample_interval_seconds,s.adopted_window_end,s.authorized_global_generation,s.authorized_target_generation FROM opspilot_observation_sessions s WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false) ORDER BY s.active_sample_due_at,s.session_id LIMIT %s FOR UPDATE OF s SKIP LOCKED",
+                "SELECT s.session_id,s.incident_id,s.active_sample_job_id,s.active_sample_sequence,s.active_sample_epoch,s.subject_control_generation,s.observation_generation,s.health_profile_revision,s.deadline_at,s.sample_interval_seconds,s.adopted_window_end,s.authorized_global_generation,s.authorized_target_generation,i.lifecycle FROM opspilot_observation_sessions s JOIN opspilot_incidents i ON i.incident_id=s.incident_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false) ORDER BY s.active_sample_due_at,s.session_id LIMIT %s FOR UPDATE OF s SKIP LOCKED FOR NO KEY UPDATE OF i SKIP LOCKED",
                 (now, now, now, limit),
             ).fetchall()
             for row in rows:
-                # A lease is issued only under the incident row lock, which
-                # serializes the claim against the suspension paths (they lock
-                # every affected incident row FOR UPDATE, C3 section 4): a
-                # suspension that committed first is seen in the scope read
-                # below, one that comes later waits for this commit and then
-                # invalidates the lease at submit. Ending a session needs the
-                # same lock (the ending row's FK, and the lock order every
-                # other ending path keeps: incident first, then session). This
-                # transaction already holds the session row, so it must not
-                # wait for the incident: take it only if free, else leave the
-                # session for the next claim or sweep.
-                if (
-                    conn.execute(
-                        "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR NO KEY UPDATE SKIP LOCKED",
-                        (row["incident_id"],),
-                    ).fetchone()
-                    is None
-                ):
-                    continue
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
                 blocked, generations = _scope_blocks(scope, row)
                 if blocked:
-                    lifecycle = str(
-                        self._require_row(
-                            conn.execute(
-                                "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
-                                (row["incident_id"],),
-                            )
-                        )["lifecycle"]
-                    )
+                    lifecycle = str(row["lifecycle"])
                     self._end_session(
                         conn,
                         row["session_id"],
@@ -1055,6 +1041,34 @@ class ObservationStore(_StoreBase):
                     )
                 )
         return leases
+
+    def lease_scope_current(self, lease: SampleLease) -> bool:
+        """Is the control scope the lease was issued under still in force?
+
+        Read-only snapshot, no lock: the Observer asks this before *every*
+        Prometheus request (C3 section 4: the gateway checks the current
+        global/target control version before issuing a request; issue #86).
+        False when the global or target scope is suspended now or its
+        generation moved since the claim; the Observer then issues no further
+        request and submits what it has, which the store files as
+        ``suspended``. A request already in flight cannot be recalled
+        (bounded cancellation).
+        """
+        if not isinstance(lease, SampleLease):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            scope = self._lock_scope(conn, lease.incident_id, lock=False)
+        return (
+            not bool(scope["global_suspended"])
+            and not bool(scope["target_suspended"])
+            and int(scope["global_generation"]) == lease.global_suspension_generation
+            and int(scope["target_generation"]) == lease.target_suspension_generation
+        )
+
+    def current_time(self) -> datetime:
+        """The database clock, the only clock product code reads (ruff TID251)."""
+        with self.transaction(snapshot=True) as conn:
+            return self._db_now(conn)
 
     def submit_sample(
         self,

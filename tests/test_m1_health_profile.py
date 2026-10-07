@@ -58,6 +58,7 @@ def minimal_profile(**overrides) -> dict:
                 "description": "traffic",
                 "query": "sum(rate(x[5m]))",
                 "coverage_query": "max(count_over_time(x[5m]))",
+                "freshness_query": "max(timestamp(x))",
                 "traffic_dependent": False,
                 "healthy": {"min": 0},
             },
@@ -66,6 +67,7 @@ def minimal_profile(**overrides) -> dict:
                 "description": "error ratio",
                 "query": "e / t",
                 "coverage_query": "max(count_over_time(t[5m]))",
+                "freshness_query": "max(timestamp(t))",
                 "minimum_samples": 3,
                 "traffic_dependent": True,
                 "healthy": {"min": 0, "max": 0.01},
@@ -75,6 +77,7 @@ def minimal_profile(**overrides) -> dict:
                 "description": "replicas",
                 "query": "min(ready)",
                 "coverage_query": "min(count_over_time(ready[5m]))",
+                "freshness_query": "max(timestamp(ready))",
                 "traffic_dependent": False,
                 "healthy": {"min": 1},
             },
@@ -84,6 +87,7 @@ def minimal_profile(**overrides) -> dict:
                 "required": False,
                 "query": "hint",
                 "coverage_query": "count_over_time(hint[5m])",
+                "freshness_query": "max(timestamp(hint))",
                 "traffic_dependent": False,
                 "healthy": {"max": 10},
             },
@@ -118,6 +122,8 @@ def reading(name: str, value=None, *, status="ok", count=5, **overrides):
         "window_end": NOW,
         "source": "prometheus",
         "raw_sha256": RAW,
+        # the newest raw sample behind the reading: one scrape before NOW
+        "latest_sample_at": NOW - timedelta(seconds=30),
     }
     fields.update(overrides)
     return SignalReading(**fields)
@@ -152,6 +158,7 @@ def test_shipped_checkout_profile_loads_and_covers_f6_step_one():
     } <= names
     assert all(signal.required for signal in prof.signals)
     assert all("count_over_time" in s.coverage_query for s in prof.signals)
+    assert all("timestamp(" in s.freshness_query for s in prof.signals)
     assert all(signal.minimum_samples >= 3 for signal in prof.signals)
     assert prof.effective_traffic.signal == "request_rate_per_second"
     assert prof.session.sustained_window_seconds <= prof.session.deadline_seconds
@@ -201,6 +208,7 @@ def test_a_missing_dependency_series_cannot_read_as_available():
             window_start=NOW - timedelta(minutes=5),
             window_end=NOW,
             source="prometheus",
+            latest_sample_at=NOW - timedelta(seconds=30),
         )
 
     readings = [
@@ -213,6 +221,7 @@ def test_a_missing_dependency_series_cannot_read_as_available():
             window_start=NOW - timedelta(minutes=5),
             window_end=NOW,
             source="prometheus",
+            latest_sample_at=NOW - timedelta(seconds=30),
         )
         for s in prof.signals
         if s.name != signal.name
@@ -321,6 +330,12 @@ def evaluation_window():
         lambda p: p.update(profile_id="Bad Id"),
         lambda p: p.update(format_version=2),
         lambda p: p.update(format_version="1"),
+        lambda p: p.update(format_version=True),
+        lambda p: p["signals"][0].pop("freshness_query"),
+        # PromQL ranges must be the evaluation window (issue #86, optional)
+        lambda p: p["signals"][0].update(query="sum(rate(x[10m]))"),
+        lambda p: p["signals"][0].update(coverage_query="max(count_over_time(x[1h:]))"),
+        lambda p: p.update(evaluation_window_seconds=600),
     ],
 )
 def test_profile_validation_rejects_missing_fields_and_illegal_values(tmp_path, mutate):
@@ -577,10 +592,15 @@ def test_an_old_reading_is_stale_whatever_its_status_says():
     assert all(
         v.verdict == "stale" for v in evaluation.verdicts if v.signal_name != "hint"
     )
+    # exactly at the freshness bound (window end and newest raw sample both
+    # 60 s before the sample) is still fresh
+    at_bound = [
+        reading("rate", 2.0, latest_sample_at=NOW),
+        reading("errors", 0.0, latest_sample_at=NOW),
+        reading("ready", 1.0, latest_sample_at=NOW),
+    ]
     assert (
-        evaluate(
-            profile(), healthy_readings(), sample_time=NOW + timedelta(seconds=60)
-        ).outcome
+        evaluate(profile(), at_bound, sample_time=NOW + timedelta(seconds=60)).outcome
         == "healthy"
     )
 
@@ -608,6 +628,73 @@ def test_a_reading_window_from_the_future_or_of_the_wrong_span_is_stale():
         reading("ready", 1.0),
     ]
     assert evaluate(profile(), aligned).outcome == "healthy"
+
+
+def test_a_reading_whose_scrapes_stopped_is_stale_and_cannot_extend_health():
+    """Issue #86: after scrapes stop, ``query`` keeps answering through the
+    lookback delta and ``coverage_query`` still counts the points inside
+    the range, so the window and the point count both look fine. Freshness
+    is judged on the newest raw sample timestamp instead."""
+    scrapes_stopped_at = NOW - timedelta(seconds=61)
+    frozen = [
+        reading("rate", 2.0, latest_sample_at=scrapes_stopped_at),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    evaluation = evaluate(profile(), frozen)
+    assert (evaluation.outcome, evaluation.required_signals_present) == ("stale", False)
+    rate = next(v for v in evaluation.verdicts if v.signal_name == "rate")
+    assert rate.verdict == "stale" and "newest raw sample is 61s old" in rate.reason
+    # one second inside the freshness bound is still fresh
+    just_fresh = [
+        reading("rate", 2.0, latest_sample_at=NOW - timedelta(seconds=60)),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    assert evaluate(profile(), just_fresh).outcome == "healthy"
+    # without a raw sample timestamp the reading never counts
+    unknown_age = [
+        reading("rate", 2.0, latest_sample_at=None),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    assert evaluate(profile(), unknown_age).outcome == "stale"
+    # a timestamp after the sample is not fresh either
+    future = [
+        reading("rate", 2.0, latest_sample_at=NOW + timedelta(seconds=5)),
+        reading("errors", 0.0),
+        reading("ready", 1.0),
+    ]
+    assert evaluate(profile(), future).outcome == "stale"
+    # the stale sample never confirms health for the session
+    session = ObservationSession(
+        session_id="s",
+        purpose="incident_recovery",
+        subject=SubjectRef(kind="incident", id="i"),
+        target=Target(
+            integration_id="a",
+            cluster_uid="b",
+            namespace="c",
+            resource_uid="d",
+            revision="e",
+        ),
+        subject_control_generation=0,
+        observation_generation=1,
+        authorized=True,
+        health_profile_revision=profile().revision,
+    )
+    sample = HealthSample(
+        sample_id="x",
+        session_id="s",
+        sequence=1,
+        window=evaluation_window(),
+        outcome=evaluation.outcome,
+        subject_control_generation=0,
+        observation_generation=1,
+        health_profile_revision=profile().revision,
+        required_signals_present=evaluation.required_signals_present,
+    )
+    assert not confirms_health(session, sample)
 
 
 def test_sample_time_must_be_timezone_aware():

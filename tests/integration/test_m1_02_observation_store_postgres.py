@@ -936,6 +936,65 @@ def test_claim_limit_is_not_used_up_by_suspended_sessions(
         assert controller.session(session)["state"] == "authorized"
 
 
+def test_claim_limit_is_not_used_up_by_sessions_whose_incident_is_locked(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Issue #86 (PR #114 review, store.py:986): ``limit`` due sessions whose
+    incident rows another writer holds come first; the free one behind them
+    is still leased in the same claim, and the claim does not wait."""
+    locked = []
+    for _ in range(2):
+        incident, _, target = _incident(owner)
+        locked.append((incident, _authorize(controller, incident, target)))
+    incident, _, target = _incident(owner)
+    wanted = _authorize(controller, incident, target)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET active_sample_due_at=clock_timestamp()-interval '1 hour' WHERE session_id = ANY(%s)",
+            ([session for _, session in locked],),
+        )
+    with psycopg.connect(controller.dsn) as holder:
+        holder.execute(
+            "SELECT incident_id FROM opspilot_incidents WHERE incident_id = ANY(%s) FOR UPDATE",
+            ([incident for incident, _ in locked],),
+        )
+        started = _now()
+        leases = observer.claim_due_samples(uuid4(), limit=2)
+        assert (_now() - started) < timedelta(seconds=3), "claim must not wait"
+    assert wanted in {lease.session_id for lease in leases}
+    assert {lease.session_id for lease in leases} & {s for _, s in locked} == set()
+    for _, session in locked:
+        row = controller.session(session)
+        assert row["state"] == "authorized" and row["active_sample_owner"] is None
+
+
+def test_lease_scope_current_sees_a_suspension_after_the_claim(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The Observer asks before every Prometheus request (C3 section 4, issue
+    #86): a target or global suspension committed after the claim -- and a
+    suspension lifted again, which moved the generation -- both say no."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    assert observer.lease_scope_current(lease) is True
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    assert observer.lease_scope_current(lease) is False
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+    assert observer.lease_scope_current(lease) is False
+    # a fresh lease after the lift carries the new generation
+    _release_lease(owner, session)
+    _due_now(owner, session)
+    assert _claimable(observer, session) == []
+    assert controller.session(session)["ended_reason"] == "scope_suspended"
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        observer.lease_scope_current("not a lease")  # type: ignore[arg-type]
+
+
 # --- deadline and budget exhaustion hand back to open
 
 

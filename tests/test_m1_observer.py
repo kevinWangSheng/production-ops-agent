@@ -1,0 +1,606 @@
+"""The Observer process (M1-02 step 4, #86): sampler, source, isolation.
+
+Contract under test: C3 §3 (the Observer's isolation reaches credentials and
+imports, not only a process boundary; decision D3), §4 (the control scope is
+checked before every request; a request in flight is not recalled), §10
+(sample time after the queries, readings record success / no data / stale /
+timeout / failure with the source, one atomic submission). No database here;
+``tests/integration/test_m1_02_observer_postgres.py`` runs the same loop
+against PostgreSQL under the Observer role.
+"""
+
+import ast
+import base64
+import hashlib
+import json
+import pathlib
+import subprocess
+import sys
+import threading
+import urllib.error
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
+
+from opspilot.domain.observation import HealthSample
+from opspilot.observation.store import (
+    READING_RAW_LIMIT,
+    SampleLease,
+    SampleReceipt,
+    SignalReading,
+)
+from opspilot.observer import HealthProfile
+from opspilot.observer.__main__ import build_loop
+from opspilot.observer.loop import ObserverLoop
+from opspilot.observer.prometheus import (
+    RESPONSE_LIMIT_BYTES,
+    InstantResult,
+    PrometheusReadOnlySource,
+)
+from opspilot.observer.sampler import take_sample
+from opspilot.persistence.base import PersistenceError
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+
+PROFILE = HealthProfile.model_validate(
+    {
+        "format_version": 1,
+        "profile_id": "unit",
+        "description": "unit profile",
+        "subject": {"service": "svc", "kubernetes_namespace": "ns"},
+        "source": "prometheus",
+        "calibration_source": "unit test",
+        "evaluation_window_seconds": 300,
+        "freshness_seconds": 90,
+        "query_timeout_seconds": 10,
+        "session": {
+            "deadline_seconds": 3600,
+            "max_samples": 20,
+            "sample_interval_seconds": 60,
+            "sustained_window_seconds": 600,
+        },
+        "effective_traffic": {"signal": "rate", "minimum": 0.5},
+        "signals": [
+            {
+                "name": "rate",
+                "description": "traffic",
+                "query": "sum(rate(x[5m]))",
+                "coverage_query": "max(count_over_time(x[5m]))",
+                "freshness_query": "max(timestamp(x))",
+                "minimum_samples": 3,
+                "traffic_dependent": False,
+                "healthy": {"min": 0},
+            },
+            {
+                "name": "errors",
+                "description": "error ratio",
+                "query": "e / t",
+                "coverage_query": "max(count_over_time(t[5m]))",
+                "freshness_query": "max(timestamp(t))",
+                "minimum_samples": 3,
+                "traffic_dependent": True,
+                "healthy": {"min": 0, "max": 0.01},
+            },
+        ],
+    }
+)
+
+
+def vector(value) -> bytes:
+    return json.dumps(
+        {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [{"metric": {}, "value": [NOW.timestamp(), str(value)]}],
+            },
+        }
+    ).encode()
+
+
+EMPTY = json.dumps(
+    {"status": "success", "data": {"resultType": "vector", "result": []}}
+).encode()
+
+
+class FakeSource:
+    """Instant results by expression; records every request in order."""
+
+    def __init__(self, answers: dict[str, InstantResult]):
+        self.answers = answers
+        self.requests: list[tuple[str, datetime]] = []
+
+    def instant(self, expr, *, at, timeout_seconds):
+        self.requests.append((expr, at))
+        answer = self.answers[expr]
+        return InstantResult(
+            expr, answer.status, answer.value, answer.body, 200, answer.detail
+        )
+
+
+def ok(value: float) -> InstantResult:
+    return InstantResult("", "ok", value, vector(value), 200)
+
+
+def no_data() -> InstantResult:
+    return InstantResult("", "no_data", None, EMPTY, 200)
+
+
+def healthy_answers(latest=None):
+    latest = NOW - timedelta(seconds=30) if latest is None else latest
+    return {
+        "sum(rate(x[5m]))": ok(2.0),
+        "max(count_over_time(x[5m]))": ok(5),
+        "max(timestamp(x))": ok(latest.timestamp()),
+        "e / t": ok(0.0),
+        "max(count_over_time(t[5m]))": ok(5),
+        "max(timestamp(t))": ok(latest.timestamp()),
+    }
+
+
+class FakeStore:
+    """Only what ``take_sample`` touches: the clock, the scope check, submit."""
+
+    def __init__(self, *, clock=None, scope=None):
+        self.clock = clock or [NOW, NOW + timedelta(seconds=3)]
+        self.scope_answers = scope
+        self.scope_calls = 0
+        self.submitted: list[tuple[SampleLease, HealthSample, list[SignalReading]]] = []
+
+    def current_time(self):
+        return self.clock.pop(0) if len(self.clock) > 1 else self.clock[0]
+
+    def lease_scope_current(self, lease):
+        self.scope_calls += 1
+        if self.scope_answers is None:
+            return True
+        return self.scope_answers(self.scope_calls)
+
+    def submit_sample(self, lease, sample, readings):
+        self.submitted.append((lease, sample, list(readings)))
+        return SampleReceipt(
+            sample_id=uuid4(),
+            accepted=True,
+            disposition="adopted",
+            reason="adopted",
+            confirms_health=sample.outcome == "healthy",
+            health_basis="confirmed"
+            if sample.outcome == "healthy"
+            else "outcome_not_healthy",
+            session_state="authorized",
+            incident_lifecycle="observing_recovery",
+            transition=None,
+            next_sample_due_at=None,
+        )
+
+
+def lease(revision=PROFILE.revision) -> SampleLease:
+    return SampleLease(
+        session_id=uuid4(),
+        incident_id=uuid4(),
+        job_id=uuid4(),
+        sequence=1,
+        owner=uuid4(),
+        epoch=1,
+        lease_until=NOW + timedelta(seconds=120),
+        subject_control_generation=0,
+        observation_generation=1,
+        health_profile_revision=revision,
+        deadline_at=NOW + timedelta(hours=1),
+        sample_interval_seconds=60,
+        adopted_window_end=None,
+    )
+
+
+# --- one sample: queries, window, sample time, readings, raw bundle
+
+
+def test_a_sample_queries_every_signal_three_times_at_the_window_end_and_submits():
+    source = FakeSource(healthy_answers())
+    store = FakeStore()
+
+    taken = take_sample(lease(), PROFILE, source, store)
+
+    assert taken.requests_issued == 6 and not taken.scope_interrupted
+    assert [expr for expr, _ in source.requests] == [
+        "sum(rate(x[5m]))",
+        "max(count_over_time(x[5m]))",
+        "max(timestamp(x))",
+        "e / t",
+        "max(count_over_time(t[5m]))",
+        "max(timestamp(t))",
+    ]
+    assert {at for _, at in source.requests} == {NOW}
+    # the scope is checked before every request
+    assert store.scope_calls == 6
+    ((_, sample, readings),) = store.submitted
+    assert (sample.window.start, sample.window.end) == (NOW - timedelta(minutes=5), NOW)
+    assert (sample.outcome, sample.required_signals_present) == ("healthy", True)
+    assert sample.sequence == 1 and sample.health_profile_revision == PROFILE.revision
+    assert taken.evaluation is not None and taken.evaluation.outcome == "healthy"
+    by_name = {reading.signal_name: reading for reading in readings}
+    assert by_name["rate"].status == "ok" and by_name["rate"].value == 2.0
+    assert by_name["rate"].sample_count == 5
+    assert (
+        by_name["rate"].query == "sum(rate(x[5m]))"
+        and by_name["rate"].source == "prometheus"
+    )
+    # the raw bundle carries the exact response bytes and hashes to raw_sha256
+    raw = by_name["rate"].raw
+    assert raw is not None and len(raw) <= READING_RAW_LIMIT
+    assert hashlib.sha256(raw).hexdigest() == by_name["rate"].raw_sha256
+    bundle = json.loads(raw)
+    assert base64.b64decode(bundle["query"]["body_b64"]) == vector(2.0)
+    assert bundle["freshness"]["expr"] == "max(timestamp(x))"
+    assert bundle["evaluated_at"] == NOW.isoformat()
+
+
+def test_sample_time_is_taken_after_the_queries_return():
+    """Issue #86 (PR #113 review): ``evaluate_readings`` judges a window from
+    the future as stale and tolerates no skew, so the sample time must be
+    read after the last query, never before."""
+    before, after = NOW, NOW + timedelta(seconds=7)
+    store = FakeStore(clock=[before, after])
+    source = FakeSource(healthy_answers())
+
+    taken = take_sample(lease(), PROFILE, source, store)
+
+    assert taken.evaluation is not None and taken.evaluation.outcome == "healthy"
+    # the window ended at the first clock read, the queries ran at it
+    assert {at for _, at in source.requests} == {before}
+
+
+def test_stopped_scrapes_make_the_reading_stale_and_the_sample_unknown():
+    """Issue #86: the value and the point count still answer after scrapes
+    stop; the newest raw sample timestamp does not. The stored reading says
+    stale (value dropped, raw kept), the sample is stale and cannot confirm."""
+    store = FakeStore()
+    source = FakeSource(healthy_answers(latest=NOW - timedelta(seconds=91)))
+
+    taken = take_sample(lease(), PROFILE, source, store)
+
+    assert taken.evaluation is not None
+    assert (taken.evaluation.outcome, taken.evaluation.required_signals_present) == (
+        "stale",
+        False,
+    )
+    ((_, sample, readings),) = store.submitted
+    assert sample.outcome == "stale" and not sample.required_signals_present
+    assert {reading.status for reading in readings} == {"stale"}
+    assert all(
+        reading.value is None and reading.raw is not None for reading in readings
+    )
+
+
+def test_too_few_raw_points_are_stored_as_no_data():
+    answers = healthy_answers()
+    answers["max(count_over_time(x[5m]))"] = ok(2)
+    store = FakeStore()
+    take_sample(lease(), PROFILE, FakeSource(answers), store)
+    ((_, sample, readings),) = store.submitted
+    rate = next(reading for reading in readings if reading.signal_name == "rate")
+    assert (sample.outcome, rate.status, rate.value) == ("no_data", "no_data", None)
+
+
+def test_no_data_timeout_and_failure_keep_their_status_and_raw():
+    answers = healthy_answers()
+    answers["sum(rate(x[5m]))"] = no_data()
+    answers["e / t"] = InstantResult("", "timeout", None, b"", None, "TIMEOUT")
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    ((_, sample, readings),) = store.submitted
+    by_name = {reading.signal_name: reading for reading in readings}
+    assert by_name["rate"].status == "no_data" and by_name["errors"].status == "timeout"
+    # worst unknown first: timeout > stale > no_data
+    assert sample.outcome == "timeout" and taken.evaluation.outcome == "timeout"
+    assert json.loads(by_name["errors"].raw)["query"]["detail"] == "TIMEOUT"
+
+
+def test_a_scope_change_stops_the_requests_and_submits_the_partial_sample():
+    """C3 §4: the scope is checked before every request; after it moved no
+    further request is issued (the one in flight is not recalled) and what
+    was gathered is submitted so the store can file it as suspended."""
+    source = FakeSource(healthy_answers())
+    # the 4th check (first request of the second signal) says the scope moved
+    store = FakeStore(scope=lambda n: n < 4)
+
+    taken = take_sample(lease(), PROFILE, source, store)
+
+    assert taken.scope_interrupted and taken.requests_issued == 3
+    assert len(source.requests) == 3
+    ((_, sample, readings),) = store.submitted
+    assert [reading.signal_name for reading in readings] == ["rate"]
+    # the signal never queried is missing: unknown, never healthy
+    assert (sample.outcome, sample.required_signals_present) == ("no_data", False)
+
+
+def test_the_lease_must_carry_the_profile_revision_being_sampled():
+    with pytest.raises(ValueError, match="PROFILE_REVISION_MISMATCH"):
+        take_sample(lease("unit@000000000000"), PROFILE, FakeSource({}), FakeStore())
+
+
+def test_an_oversized_response_bundle_is_filed_as_failed_with_a_small_raw():
+    answers = healthy_answers()
+    huge = b'{"status":"success","data":{"resultType":"vector","result":[]}}' + b" " * (
+        RESPONSE_LIMIT_BYTES - 70
+    )
+    answers["sum(rate(x[5m]))"] = InstantResult("", "no_data", None, huge, 200)
+    store = FakeStore()
+    take_sample(lease(), PROFILE, FakeSource(answers), store)
+    ((_, _, readings),) = store.submitted
+    rate = next(reading for reading in readings if reading.signal_name == "rate")
+    assert rate.status == "failed" and rate.raw is not None
+    assert len(rate.raw) <= READING_RAW_LIMIT
+    assert json.loads(rate.raw)["error"] == "RAW_TOO_LARGE"
+
+
+# --- the Prometheus source: one instant query, bounded, GET only
+
+
+class FakeResponse:
+    def __init__(self, body: bytes, status: int = 200):
+        self._body, self.status = body, status
+
+    def read(self, n: int = -1) -> bytes:
+        return self._body if n < 0 else self._body[:n]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeOpener:
+    def __init__(self, body=b"", status=200, error=None):
+        self.body, self.status, self.error = body, status, error
+        self.requests = []
+
+    def open(self, request, timeout=None):
+        self.requests.append((request, timeout))
+        if self.error is not None:
+            raise self.error
+        return FakeResponse(self.body, self.status)
+
+
+def source(**kwargs):
+    opener = FakeOpener(**kwargs)
+    return PrometheusReadOnlySource(
+        "http://127.0.0.1:19090/", token=None, opener=opener
+    ), opener
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        (vector(1.5), ("ok", 1.5, "")),
+        (EMPTY, ("no_data", None, "")),
+        (vector("NaN"), ("no_data", None, "")),
+        (b"not json", ("failed", None, "NOT_JSON")),
+        (
+            json.dumps({"status": "error", "errorType": "bad_data"}).encode(),
+            ("failed", None, "STATUS_NOT_SUCCESS"),
+        ),
+        (
+            json.dumps(
+                {"status": "success", "data": {"resultType": "matrix", "result": []}}
+            ).encode(),
+            ("failed", None, "NOT_A_VECTOR"),
+        ),
+        (
+            json.dumps(
+                {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [{"value": [1, "1"]}, {"value": [1, "2"]}],
+                    },
+                }
+            ).encode(),
+            ("failed", None, "MANY_SERIES"),
+        ),
+    ],
+)
+def test_instant_query_parses_exactly_one_sample(body, expected):
+    src, opener = source(body=body)
+    result = src.instant("up", at=NOW, timeout_seconds=10)
+    assert (result.status, result.value, result.detail) == expected
+    assert result.body == body and result.http_status == 200
+    request, timeout = opener.requests[0]
+    assert request.get_method() == "GET" and timeout == 10
+    assert request.full_url.startswith("http://127.0.0.1:19090/api/v1/query?")
+    assert (
+        f"time={NOW.timestamp():.3f}" in request.full_url
+        and "timeout=10s" in request.full_url
+    )
+    assert not request.has_header("Authorization")
+
+
+def test_instant_query_reports_timeout_unreachable_http_error_and_size():
+    src, _ = source(error=TimeoutError())
+    assert src.instant("up", at=NOW, timeout_seconds=1).status == "timeout"
+    src, _ = source(error=urllib.error.URLError(ConnectionRefusedError()))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    src, _ = source(error=urllib.error.HTTPError("u", 422, "bad", {}, None))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.http_status, result.detail) == ("failed", 422, "HTTP")
+    src, _ = source(body=b"x" * (RESPONSE_LIMIT_BYTES + 1))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "TOO_LARGE")
+    assert len(result.body) < RESPONSE_LIMIT_BYTES
+
+
+def test_the_token_is_the_observers_own_and_sent_as_bearer_only():
+    opener = FakeOpener(body=EMPTY)
+    src = PrometheusReadOnlySource("http://prom", token="obs-token", opener=opener)
+    src.instant("up", at=NOW, timeout_seconds=1)
+    request, _ = opener.requests[0]
+    assert request.get_header("Authorization") == "Bearer obs-token"
+    with pytest.raises(ValueError, match="PROMETHEUS_URL_INVALID"):
+        PrometheusReadOnlySource("file:///etc/passwd")
+
+
+# --- isolation (C3 §3, D3): own variables, own imports, no model
+
+
+INVESTIGATION_SIDE = (
+    "opspilot.tools",
+    "opspilot.investigation",
+    "opspilot.worker",
+    "opspilot.worker_main",
+    "opspilot.web",
+    "opspilot.tracing",
+    "opspilot.acceptance",
+    "opspilot.intake",
+    "opspilot.recovery",
+)
+
+
+def _imports(path: pathlib.Path) -> set[str]:
+    tree = ast.parse(path.read_text())
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
+
+
+def test_observer_packages_import_nothing_from_the_investigation_side():
+    offenders = []
+    for package in ("observer", "observation"):
+        for path in sorted((REPO_ROOT / "opspilot" / package).rglob("*.py")):
+            bad = sorted(
+                name for name in _imports(path) if name.startswith(INVESTIGATION_SIDE)
+            )
+            if bad:
+                offenders.append((path.relative_to(REPO_ROOT).as_posix(), bad))
+    assert not offenders, offenders
+
+
+def test_the_observer_process_loads_no_gateway_worker_model_or_web_module():
+    """In a fresh interpreter: importing the entry point and the loop pulls in
+    none of the modules that hold the investigation credentials or the model
+    client. (``opspilot.persistence`` is imported as a package by the shared
+    store base; that is code, the DSN decides what the database allows.)"""
+    script = (
+        "import sys, opspilot.observer.__main__, opspilot.observer.loop\n"
+        "print(sorted(m for m in sys.modules if m.startswith('opspilot')))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO_ROOT,
+    )
+    loaded = set(eval(proc.stdout.strip()))  # noqa: S307 - our own print
+    leaked = sorted(m for m in loaded if m.startswith(INVESTIGATION_SIDE))
+    assert not leaked, leaked
+    assert "opspilot.observer.sampler" in loaded
+
+
+def test_build_loop_reads_only_observer_variables_and_never_falls_back():
+    """The investigation side's DSN, Prometheus URL, token and model key are
+    all present and all ignored: without the Observer's own two variables the
+    process refuses to start, and the token comes only from the Observer's."""
+    investigation = {
+        "OPSPILOT_DSN": "host=db dbname=opspilot user=worker",
+        "OPSPILOT_OTEL_PROMETHEUS_URL": "http://investigation-prometheus:9090",
+        "OPSPILOT_OTEL_TOKEN": "investigation-token",
+        "DEEPSEEK_API_KEY": "sk-model-key",
+    }
+    with pytest.raises(SystemExit, match="OPSPILOT_OBSERVER_DSN is required"):
+        build_loop(investigation, stop=threading.Event())
+    with pytest.raises(
+        SystemExit, match="OPSPILOT_OBSERVER_PROMETHEUS_URL is required"
+    ):
+        build_loop(
+            {
+                **investigation,
+                "OPSPILOT_OBSERVER_DSN": "host=db dbname=opspilot user=observer",
+            },
+            stop=threading.Event(),
+        )
+    loop = build_loop(
+        {
+            **investigation,
+            "OPSPILOT_OBSERVER_DSN": "host=db dbname=opspilot user=observer",
+            "OPSPILOT_OBSERVER_PROMETHEUS_URL": "http://observer-prometheus:9090",
+            "OPSPILOT_OBSERVER_BATCH": "3",
+        },
+        stop=threading.Event(),
+    )
+    assert isinstance(loop, ObserverLoop) and loop.batch == 3
+    assert loop.source.base_url == "http://observer-prometheus:9090"
+    assert loop.source._token is None  # the investigation token was not adopted
+    assert loop.store.dsn == "host=db dbname=opspilot user=observer"
+    loop.store.close()
+
+
+def test_build_loop_token_comes_from_the_observer_env_file(tmp_path):
+    env_file = tmp_path / "observer.env"
+    env_file.write_text(
+        "OPSPILOT_OTEL_TOKEN=not-mine\nOPSPILOT_OBSERVER_PROMETHEUS_TOKEN='mine'\n"
+    )
+    loop = build_loop(
+        {
+            "OPSPILOT_OBSERVER_DSN": "host=db dbname=opspilot user=observer",
+            "OPSPILOT_OBSERVER_PROMETHEUS_URL": "http://observer-prometheus:9090",
+            "OPSPILOT_OBSERVER_ENV_FILE": str(env_file),
+        },
+        stop=threading.Event(),
+    )
+    assert loop.source._token == "mine"
+    loop.store.close()
+
+
+def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
+    class Store:
+        def __init__(self):
+            self.calls = []
+
+        def sweep_expired_sessions(self, *, limit):
+            self.calls.append("sweep")
+            return []
+
+        def claim_due_samples(self, owner, *, limit):
+            self.calls.append("claim")
+            return [lease(), lease(), lease()]
+
+        def health_profile(self, revision):
+            raise PersistenceError("UNKNOWN_IDENTITY")
+
+        def current_time(self):
+            return NOW
+
+        def submit_sample(self, lease, sample, readings):
+            # a profile that cannot be read: filed as failed, no query issued
+            assert sample.outcome == "failed" and readings == []
+            self.calls.append("submit")
+            if len(self.calls) == 4:
+                raise PersistenceError("TIMEOUT")
+            if len(self.calls) == 5:
+                raise RuntimeError("boom")
+            return SampleReceipt(
+                sample_id=uuid4(),
+                accepted=True,
+                disposition="adopted",
+                reason="adopted",
+                confirms_health=False,
+                health_basis="outcome_not_healthy",
+                session_state="authorized",
+                incident_lifecycle="observing_recovery",
+                transition=None,
+                next_sample_due_at=None,
+            )
+
+    store = Store()
+    loop = ObserverLoop(store=store, source=FakeSource({}))
+    results = loop.poll_once()
+    assert [receipt.disposition for _, receipt in results] == ["adopted"]
+    assert store.calls == ["sweep", "claim", "submit", "submit", "submit"]

@@ -128,6 +128,21 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 脚本在宿主上只写 git 忽略的 `tmp/m1-kind-lab/`：故障历史（`engineer-only/<experiment-id>/`，越出该目录的 id 或符号链接被拒绝）、实验环境专用 kubeconfig（kubectl/helm/kind 都显式用它，不碰 `~/.kube/config` 的当前上下文）和 Helm 的仓库配置与 chart 缓存（`HELM_CONFIG_HOME`/`HELM_CACHE_HOME`/`HELM_DATA_HOME`）。`fault` 在 patch 后重新读取 ConfigMap 比对 SHA-256，不一致则非零退出。
 刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
 
+### 独立 Observer 进程（M1-02 第 4 步起）
+
+`python -m opspilot.observer` 是确定性的恢复观察进程（C3 §10，F6）：轮询 → `sweep_expired_sessions` → `claim_due_samples` → 对每个租约按会话绑定的 HealthProfile revision（内容取自 `opspilot_health_profiles`，须能重算出同一 revision）向 Prometheus 发即时查询（每个信号三条：`query`、`coverage_query`、`freshness_query`，都在窗口末尾求值；**每条请求前**重新校验租约的 scope generation，已变化则不再发请求、提交部分读数由存储按 `suspended` 结束会话）→ 查询返回后再取 `sample_time` → `evaluate_readings` → 原子 `submit_sample`。不调用模型，不 import 调查 worker、工具网关与 web（`tests/test_m1_observer.py` 以子进程校验）。
+
+只读自己的环境变量，不回退到调查侧的 `OPSPILOT_DSN` / `OPSPILOT_OTEL_*` / `DEEPSEEK_API_KEY`：
+
+```sh
+export OPSPILOT_OBSERVER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=<Observer 登录角色>"   # CREATE ROLE <login> LOGIN IN ROLE opspilot_observer（仓库外）
+export OPSPILOT_OBSERVER_PROMETHEUS_URL="http://127.0.0.1:19090"                                      # Observer 自己的只读端点
+# 可选：OPSPILOT_OBSERVER_PROMETHEUS_TOKEN（或 OPSPILOT_OBSERVER_ENV_FILE 私有文件里的同名键）、OPSPILOT_OBSERVER_POLL_SECONDS（5）、OPSPILOT_OBSERVER_BATCH（20）、OPSPILOT_OBSERVER_GRACE_SECONDS（30）
+.venv/bin/python -m opspilot.observer
+```
+
+启动时同样校验 schema 在 Alembic head（角色由 0003 授予 `alembic_version` 只读）。授权会话（人工登记处置）属第 3 步 #85；在其合并前，工程侧可用 `docs/evidence/m1-02-observer/lab_run.py prepare` 以 owner DSN 调用存储原语创建会话。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。
