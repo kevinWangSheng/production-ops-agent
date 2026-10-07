@@ -7,7 +7,7 @@
     "kubernetes_namespace": "otel-demo"
   },
   "source": "prometheus",
-  "calibration_source": "placeholder: numbers are pre-baseline candidates; see docs/evidence/m1-02-health-profile/run.md",
+  "calibration_source": "Calibrated 2026-10-07 against the M1-02 step 0 lab observations of 2026-10-06 (docs/evidence/m1-02-lab/regression, 2 locust users): see docs/evidence/m1-02-health-profile/run.md. Frozen before candidate evaluation (C3 section 13).",
   "evaluation_window_seconds": 300,
   "freshness_seconds": 90,
   "query_timeout_seconds": 20,
@@ -19,7 +19,7 @@
   },
   "effective_traffic": {
     "signal": "request_rate_per_second",
-    "minimum": 0.02
+    "minimum": 0.008
   },
   "signals": [
     {
@@ -27,56 +27,76 @@
       "description": "Available replicas of the checkout Deployment (kube-state-metrics). The lab runs spec.replicas=1.",
       "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
       "minimum_samples": 1,
-      "healthy": { "min": 1 }
+      "healthy": {
+        "min": 1
+      }
     },
     {
       "name": "request_rate_per_second",
-      "description": "PlaceOrder server spans per second over the evaluation window; the effective-traffic gate reads this signal.",
+      "description": "PlaceOrder server spans per second over the evaluation window; the effective-traffic gate reads this signal. Lab steady state with 2 locust users is about 3.75 orders per 5 minutes (0.0125/s).",
       "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
       "minimum_samples": 1,
-      "healthy": { "min": 0 }
+      "healthy": {
+        "min": 0
+      }
     },
     {
       "name": "error_ratio",
       "description": "Share of PlaceOrder server spans ending in STATUS_CODE_ERROR. `or vector(0)` keeps a service with no error series from reading as no data; no traffic makes the whole ratio empty, which the traffic gate also catches.",
       "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
       "minimum_samples": 1,
-      "healthy": { "min": 0, "max": 0.01 }
+      "healthy": {
+        "min": 0,
+        "max": 0.01
+      }
     },
     {
       "name": "latency_p95_milliseconds",
       "description": "p95 PlaceOrder server latency from the span-metrics histogram.",
       "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
       "minimum_samples": 1,
-      "healthy": { "min": 0, "max": 1500 }
+      "healthy": {
+        "min": 0,
+        "max": 500
+      }
     },
     {
       "name": "pods_running",
       "description": "checkout pods in phase Running (kube-state-metrics).",
       "query": "sum(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"})",
       "minimum_samples": 1,
-      "healthy": { "min": 1 }
+      "healthy": {
+        "min": 1
+      }
     },
     {
       "name": "pod_restarts_in_window",
       "description": "Container restarts of checkout pods inside the evaluation window; a constant counter gives exactly 0, one restart gives about 1.",
       "query": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}[5m]))",
       "minimum_samples": 1,
-      "healthy": { "min": 0, "max": 0.5 }
+      "healthy": {
+        "min": 0,
+        "max": 0.5
+      }
     },
     {
       "name": "dependency_deployments_available",
       "description": "Smallest available-replica count across the Deployments checkout calls (payment, cart and its valkey, product-catalog, currency, shipping, email) and the flagd feature-flag source.",
       "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"})",
       "minimum_samples": 1,
-      "healthy": { "min": 1 }
+      "healthy": {
+        "min": 1
+      }
     },
     {
       "name": "dependency_error_ratio",
       "description": "Share of checkout's outbound (client) spans ending in STATUS_CODE_ERROR, covering every dependency checkout calls.",
       "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
       "minimum_samples": 1,
-      "healthy": { "min": 0, "max": 0.01 }
+      "healthy": {
+        "min": 0,
+        "max": 0.01
+      }
     }
   ]
 }
