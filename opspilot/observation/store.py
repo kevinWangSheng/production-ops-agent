@@ -30,6 +30,7 @@ decision from the stored rows alone -- it never re-queries telemetry
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -72,10 +73,10 @@ WINDOW_FUTURE_SKEW_SECONDS = 30
 _SESSION_COLUMNS = (
     "session_id,incident_id,purpose,target_id,target,subject_control_generation,"
     "observation_generation,authorized,authorized_by,authorized_at,state,ended_reason,"
+    "authorized_global_generation,authorized_target_generation,"
     "health_profile_revision,deadline_at,max_samples,sample_interval_seconds,"
     "sustained_window_seconds,adopted_sequence,adopted_window_end,adopted_count,"
-    "healthy_since,healthy_since_global_generation,healthy_since_target_generation,"
-    "issued_sequence,active_sample_job_id,active_sample_sequence,"
+    "healthy_since,issued_sequence,active_sample_job_id,active_sample_sequence,"
     "active_sample_due_at,active_sample_owner,active_sample_epoch,"
     "active_sample_lease_until,created_at,updated_at"
 )
@@ -84,8 +85,11 @@ _SAMPLE_COLUMNS = (
     "required_signals_present,subject_control_generation,observation_generation,"
     "health_profile_revision,disposition,reason,confirms_health,health_basis,"
     "subject_lifecycle,incident_control_generation,incident_observation_generation,"
-    "scope_suspended,global_generation,target_generation,scope_changed_at,within_deadline,"
+    "scope_suspended,global_generation,target_generation,within_deadline,"
     "lease_valid,transition,submitted_at"
+)
+_ENDING_COLUMNS = (
+    "ending_id,session_id,incident_id,ended_reason,transition,sample_id,recorded_at"
 )
 _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"
@@ -103,6 +107,7 @@ EndedReason = Literal[
     "max_samples_exhausted",
     "authority_revoked",
     "binding_stale",
+    "scope_suspended",
 ]
 HealthBasis = Literal[
     "confirmed",
@@ -111,7 +116,6 @@ HealthBasis = Literal[
     "outcome_not_healthy",
     "required_signals_missing",
     "window_before_authorization",
-    "window_before_scope_change",
 ]
 # A sample rejected for one of these proves the session's bindings are
 # stale for good; the session ends instead of retrying until its deadline.
@@ -215,10 +219,18 @@ class ReplayedSample:
     replayed: tuple[str, str, bool, str, str | None]
     # signal names whose stored raw bytes no longer hash to raw_sha256
     raw_mismatches: tuple[str, ...] = ()
+    # required signals (per the stored profile) without an ok reading row on
+    # a healthy sample, or "required_signals_present" when that flag
+    # contradicts the reading rows
+    signal_mismatches: tuple[str, ...] = ()
 
     @property
     def matches(self) -> bool:
-        return self.stored == self.replayed and not self.raw_mismatches
+        return (
+            self.stored == self.replayed
+            and not self.raw_mismatches
+            and not self.signal_mismatches
+        )
 
 
 @dataclass(frozen=True)
@@ -279,8 +291,6 @@ class _Verdict:
     adopted_window_end: datetime | None
     adopted_count: int
     healthy_since: datetime | None
-    # (global, target) suspension generations the streak started under
-    streak_scope: tuple[int, int] | None
 
 
 def _health_basis(
@@ -289,13 +299,10 @@ def _health_basis(
     *,
     accepted: bool,
     authorized_at: datetime,
-    scope_changed_at: datetime | None,
 ) -> HealthBasis:
-    """Why ``confirms_health`` holds or not, with the store-side rules on top
-    of the domain's: data from before the authorization (the human handling)
-    or from before the latest control-scope change (a release from
-    suspension: the paused interval was not observed) is adopted as an
-    observation but never counts as healthy."""
+    """Why ``confirms_health`` holds or not, with the one store-side rule on
+    top of the domain's: data from before the authorization (the human
+    handling) is adopted as an observation but never counts as healthy."""
     if not accepted:
         return "not_adopted"
     if session.health_profile_revision is None:
@@ -306,8 +313,6 @@ def _health_basis(
         return "required_signals_missing"
     if sample.window.start < authorized_at:
         return "window_before_authorization"
-    if scope_changed_at is not None and sample.window.start < scope_changed_at:
-        return "window_before_scope_change"
     return "confirmed"
 
 
@@ -320,11 +325,8 @@ def _judge(
     suspension_blocks: bool,
     lease_valid: bool,
     authorized_at: datetime,
-    scope: tuple[int, int],
-    scope_changed_at: datetime | None,
     adopted_count: int,
     healthy_since: datetime | None,
-    streak_scope: tuple[int, int] | None,
     max_samples: int,
     sustained_window_seconds: int,
 ) -> _Verdict:
@@ -339,10 +341,11 @@ def _judge(
     The healthy streak is the span of consecutive adopted healthy samples,
     measured from the first one's ``window.start`` to the latest ``window.end``.
     It restarts when a sample is adopted after a gap (its window starts after
-    the previous adopted window ended: a paused interval is not observed
-    time, C3 section 4) or under other control scope generations (a
-    suspension happened in between), and it is cleared by any adopted sample
-    that does not confirm health.
+    the previous adopted window ended: unobserved time never counts) and it
+    is cleared by any adopted sample that does not confirm health. A
+    suspension cannot reach the streak: any change of the control scope
+    since the authorization ends the session (``scope_suspended``), a lifted
+    suspension never resumes an old authorization (C3 section 4).
     """
     if lease_valid:
         decision = evaluate_sample(
@@ -361,7 +364,6 @@ def _judge(
         sample,
         accepted=decision.accepted,
         authorized_at=authorized_at,
-        scope_changed_at=scope_changed_at,
     )
     healthy = (
         decision.accepted and confirms_health(session, sample) and basis == "confirmed"
@@ -382,9 +384,9 @@ def _judge(
             and sample.window.start > session.adopted_window_end
         )
         if not healthy:
-            healthy_since, streak_scope = None, None
-        elif healthy_since is None or gap or streak_scope != scope:
-            healthy_since, streak_scope = sample.window.start, scope
+            healthy_since = None
+        elif healthy_since is None or gap:
+            healthy_since = sample.window.start
         if (
             healthy
             and healthy_since is not None
@@ -405,6 +407,9 @@ def _judge(
     elif decision.reason in _STALE_BINDINGS and state == "authorized":
         state = OBSERVATION_SESSION.fire(state, "authority_revoked")
         ended = "binding_stale"
+    elif decision.reason == "suspended" and state == "authorized":
+        state = OBSERVATION_SESSION.fire(state, "authority_revoked")
+        ended = "scope_suspended"
     return _Verdict(
         decision=decision,
         healthy=healthy,
@@ -416,17 +421,47 @@ def _judge(
         adopted_window_end=adopted_window_end,
         adopted_count=adopted_count,
         healthy_since=healthy_since,
-        streak_scope=streak_scope,
     )
 
 
-def _streak_scope(row: dict[str, Any]) -> tuple[int, int] | None:
-    if row["healthy_since_global_generation"] is None:
+def _scope_blocks(
+    scope: dict[str, Any], row: dict[str, Any]
+) -> tuple[bool, tuple[int, int]]:
+    """Suspended now, or suspended-and-released since the authorization (the
+    generations moved): either way the session is over (C3 section 4)."""
+    generations = (int(scope["global_generation"]), int(scope["target_generation"]))
+    blocked = (
+        bool(scope["global_suspended"])
+        or bool(scope["target_suspended"])
+        or generations
+        != (
+            int(row["authorized_global_generation"]),
+            int(row["authorized_target_generation"]),
+        )
+    )
+    return blocked, generations
+
+
+def _required_signals(profile: dict[str, Any] | None) -> tuple[str, ...] | None:
+    """Required signal names from the stored profile content, ``None`` when
+    there is no profile or its content does not carry a ``signals`` list
+    (the HealthProfile step owns the format; each entry has ``name`` and an
+    optional ``required`` flag defaulting to true)."""
+    if profile is None:
         return None
-    return (
-        int(row["healthy_since_global_generation"]),
-        int(row["healthy_since_target_generation"]),
-    )
+    try:
+        content = json.loads(str(profile["content"]))
+    except ValueError:
+        return None
+    signals = content.get("signals") if isinstance(content, dict) else None
+    if not isinstance(signals, list):
+        return None
+    names = [
+        str(item["name"])
+        for item in signals
+        if isinstance(item, dict) and "name" in item and item.get("required", True)
+    ]
+    return tuple(names)
 
 
 def _domain_session(
@@ -574,6 +609,7 @@ class ObservationStore(_StoreBase):
         now = self._db_now(conn)
         if deadline_at <= now:
             raise PersistenceError("INVALID_INPUT")
+        scope = self._lock_scope(conn, incident_id, lock=False)
         generation = int(incident["observation_generation"]) + 1
         conn.execute(
             "UPDATE opspilot_incidents SET lifecycle=%s,observation_generation=%s WHERE incident_id=%s",
@@ -582,7 +618,7 @@ class ObservationStore(_StoreBase):
         identity = session_id or uuid4()
         due = first_sample_due_at or now + timedelta(seconds=sample_interval_seconds)
         conn.execute(
-            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,health_profile_revision,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,1,%s)",
+            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,health_profile_revision,authorized_global_generation,authorized_target_generation,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,1,%s)",
             (
                 identity,
                 incident_id,
@@ -592,6 +628,8 @@ class ObservationStore(_StoreBase):
                 generation,
                 actor,
                 health_profile_revision,
+                int(scope["global_generation"]),
+                int(scope["target_generation"]),
                 deadline_at,
                 max_samples,
                 sample_interval_seconds,
@@ -659,13 +697,57 @@ class ObservationStore(_StoreBase):
         ).fetchall()
         revoked: list[UUID] = []
         for row in rows:
-            state = OBSERVATION_SESSION.fire("authorized", "authority_revoked")
-            conn.execute(
-                "UPDATE opspilot_observation_sessions SET state=%s,ended_reason='authority_revoked',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
-                (state, row["session_id"]),
+            self._end_session(
+                conn,
+                row["session_id"],
+                incident_id,
+                ended_reason="authority_revoked",
+                transition=None,
             )
             revoked.append(cast(UUID, row["session_id"]))
         return revoked
+
+    def _end_session(
+        self,
+        conn: Connection,
+        session_id: UUID,
+        incident_id: UUID,
+        *,
+        ended_reason: EndedReason,
+        transition: Transition | None,
+        sample_id: UUID | None = None,
+        watermark: dict[str, Any] | None = None,
+    ) -> None:
+        """Close a session: state by the session state machine, job slot
+        cleared, and the ending recorded (the row the lifecycle evidence
+        trigger looks for when the Observer changes the incident)."""
+        trigger = {
+            "recovery_confirmed": "observation_completed",
+            "deadline_expired": "deadline_expired",
+            "max_samples_exhausted": "deadline_expired",
+            "authority_revoked": "authority_revoked",
+            "binding_stale": "authority_revoked",
+            "scope_suspended": "authority_revoked",
+        }[ended_reason]
+        state = OBSERVATION_SESSION.fire("authorized", trigger)
+        marks = watermark or {}
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET state=%s,ended_reason=%s,adopted_sequence=COALESCE(%s,adopted_sequence),adopted_window_end=COALESCE(%s,adopted_window_end),adopted_count=COALESCE(%s,adopted_count),healthy_since=CASE WHEN %s THEN %s ELSE healthy_since END,active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+            (
+                state,
+                ended_reason,
+                marks.get("adopted_sequence"),
+                marks.get("adopted_window_end"),
+                marks.get("adopted_count"),
+                watermark is not None,
+                marks.get("healthy_since"),
+                session_id,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id) VALUES(%s,%s,%s,%s,%s,%s)",
+            (uuid4(), session_id, incident_id, ended_reason, transition, sample_id),
+        )
 
     # --- sampling (Observer side)
 
@@ -676,11 +758,16 @@ class ObservationStore(_StoreBase):
         limit: int = 20,
         lease_seconds: int = OBSERVER_LEASE_SECONDS,
     ) -> list[SampleLease]:
-        """Lease due sampling jobs; a suspended scope is skipped, not leased.
+        """Lease due sampling jobs.
 
-        Re-claiming a job whose lease expired bumps the epoch and keeps the
-        logical sequence (C3 section 10). Sessions past their deadline are
-        left to :meth:`sweep_expired_sessions`.
+        A session whose scope is suspended right now is not leased (filtered
+        in the query, so it does not use up ``limit``); one whose scope
+        generation moved since its authorization is ended as
+        ``scope_suspended`` instead of being leased: a lifted suspension never
+        resumes an old authorization (C3 section 4). Re-claiming a job whose
+        lease expired bumps the epoch and keeps the logical sequence (C3
+        section 10). Sessions past their deadline are left to
+        :meth:`sweep_expired_sessions`.
         """
         if (
             not isinstance(owner, UUID)
@@ -694,7 +781,7 @@ class ObservationStore(_StoreBase):
         with self.transaction() as conn:
             now = self._db_now(conn)
             rows = conn.execute(
-                "SELECT session_id,incident_id,active_sample_job_id,active_sample_sequence,active_sample_epoch,subject_control_generation,observation_generation,health_profile_revision,deadline_at,sample_interval_seconds,adopted_window_end FROM opspilot_observation_sessions WHERE state='authorized' AND authorized AND active_sample_job_id IS NOT NULL AND active_sample_due_at<=%s AND (active_sample_lease_until IS NULL OR active_sample_lease_until<=%s) AND deadline_at>%s ORDER BY active_sample_due_at,session_id LIMIT %s FOR UPDATE SKIP LOCKED",
+                "SELECT s.session_id,s.incident_id,s.active_sample_job_id,s.active_sample_sequence,s.active_sample_epoch,s.subject_control_generation,s.observation_generation,s.health_profile_revision,s.deadline_at,s.sample_interval_seconds,s.adopted_window_end,s.authorized_global_generation,s.authorized_target_generation FROM opspilot_observation_sessions s WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false) ORDER BY s.active_sample_due_at,s.session_id LIMIT %s FOR UPDATE OF s SKIP LOCKED",
                 (now, now, now, limit),
             ).fetchall()
             for row in rows:
@@ -703,7 +790,15 @@ class ObservationStore(_StoreBase):
                 # suspension paths lock every affected incident row), and
                 # a lock here would need UPDATE on the control tables.
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
-                if scope["global_suspended"] or scope["target_suspended"]:
+                blocked, generations = _scope_blocks(scope, row)
+                if blocked:
+                    self._end_session(
+                        conn,
+                        row["session_id"],
+                        row["incident_id"],
+                        ended_reason="scope_suspended",
+                        transition=None,
+                    )
                     continue
                 epoch = int(row["active_sample_epoch"]) + 1
                 until = now + timedelta(seconds=lease_seconds)
@@ -728,8 +823,8 @@ class ObservationStore(_StoreBase):
                         deadline_at=row["deadline_at"],
                         sample_interval_seconds=int(row["sample_interval_seconds"]),
                         adopted_window_end=row["adopted_window_end"],
-                        global_suspension_generation=int(scope["global_generation"]),
-                        target_suspension_generation=int(scope["target_generation"]),
+                        global_suspension_generation=generations[0],
+                        target_suspension_generation=generations[1],
                     )
                 )
         return leases
@@ -765,22 +860,7 @@ class ObservationStore(_StoreBase):
                 raise PersistenceError("INCONSISTENT_STATE")
             now = self._db_now(conn)
             scope = self._lock_scope(conn, lease.incident_id, lock=False)
-            generations = (
-                int(scope["global_generation"]),
-                int(scope["target_generation"]),
-            )
-            # Suspended now, or suspended-and-released since the claim (the
-            # generations moved): either way the in-flight result is history
-            # (C3 section 4), like a Run lease under ``_lease_revoked``.
-            suspended = (
-                bool(scope["global_suspended"])
-                or bool(scope["target_suspended"])
-                or generations
-                != (
-                    lease.global_suspension_generation,
-                    lease.target_suspension_generation,
-                )
-            )
+            suspended, generations = _scope_blocks(scope, row)
             lease_valid = (
                 row["active_sample_job_id"] == lease.job_id
                 and row["active_sample_owner"] == lease.owner
@@ -801,9 +881,6 @@ class ObservationStore(_StoreBase):
             if sample.window.end > now + timedelta(seconds=WINDOW_FUTURE_SKEW_SECONDS):
                 # No telemetry covers a window that has not happened yet.
                 raise PersistenceError("INVALID_INPUT")
-            scope_changed_at = self._scope_changed_at(
-                conn, row["target_id"], generations, since=row["authorized_at"]
-            )
             lifecycle = str(incident["lifecycle"])
             control_generation = int(incident["control_generation"])
             observation_generation = int(incident["observation_generation"])
@@ -825,33 +902,16 @@ class ObservationStore(_StoreBase):
                 suspension_blocks=suspended,
                 lease_valid=lease_valid,
                 authorized_at=row["authorized_at"],
-                scope=generations,
-                scope_changed_at=scope_changed_at,
                 adopted_count=int(row["adopted_count"]),
                 healthy_since=row["healthy_since"],
-                streak_scope=_streak_scope(row),
                 max_samples=int(row["max_samples"]),
                 sustained_window_seconds=int(row["sustained_window_seconds"]),
             )
             next_due: datetime | None = None
-            streak = verdict.streak_scope or (None, None)
+            sample_id = uuid4()
             if verdict.ended_reason is not None:
                 if verdict.transition is not None:
                     lifecycle = self._transition(lifecycle, verdict.transition)
-                conn.execute(
-                    "UPDATE opspilot_observation_sessions SET state=%s,ended_reason=%s,adopted_sequence=%s,adopted_window_end=%s,adopted_count=%s,healthy_since=%s,healthy_since_global_generation=%s,healthy_since_target_generation=%s,active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
-                    (
-                        verdict.session_state,
-                        verdict.ended_reason,
-                        verdict.adopted_sequence,
-                        verdict.adopted_window_end,
-                        verdict.adopted_count,
-                        verdict.healthy_since,
-                        streak[0],
-                        streak[1],
-                        lease.session_id,
-                    ),
-                )
                 if lifecycle != incident["lifecycle"]:
                     conn.execute(
                         "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
@@ -860,14 +920,12 @@ class ObservationStore(_StoreBase):
             elif verdict.decision.accepted:
                 next_due = now + timedelta(seconds=int(row["sample_interval_seconds"]))
                 conn.execute(
-                    "UPDATE opspilot_observation_sessions SET adopted_sequence=%s,adopted_window_end=%s,adopted_count=%s,healthy_since=%s,healthy_since_global_generation=%s,healthy_since_target_generation=%s,issued_sequence=issued_sequence+1,active_sample_job_id=%s,active_sample_sequence=issued_sequence+1,active_sample_due_at=%s,active_sample_owner=NULL,active_sample_epoch=0,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                    "UPDATE opspilot_observation_sessions SET adopted_sequence=%s,adopted_window_end=%s,adopted_count=%s,healthy_since=%s,issued_sequence=issued_sequence+1,active_sample_job_id=%s,active_sample_sequence=issued_sequence+1,active_sample_due_at=%s,active_sample_owner=NULL,active_sample_epoch=0,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
                     (
                         verdict.adopted_sequence,
                         verdict.adopted_window_end,
                         verdict.adopted_count,
                         verdict.healthy_since,
-                        streak[0],
-                        streak[1],
                         uuid4(),
                         next_due,
                         lease.session_id,
@@ -881,9 +939,8 @@ class ObservationStore(_StoreBase):
                     "UPDATE opspilot_observation_sessions SET active_sample_due_at=%s,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
                     (next_due, lease.session_id),
                 )
-            sample_id = uuid4()
             conn.execute(
-                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,scope_changed_at,within_deadline,lease_valid,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     sample_id,
                     lease.session_id,
@@ -907,7 +964,6 @@ class ObservationStore(_StoreBase):
                     suspended,
                     generations[0],
                     generations[1],
-                    scope_changed_at,
                     within,
                     lease_valid,
                     verdict.transition,
@@ -932,6 +988,27 @@ class ObservationStore(_StoreBase):
                         )
                         for item in rows
                     ],
+                )
+            if verdict.ended_reason is not None:
+                # After the sample row: the ending points at it, and the
+                # evidence trigger checks both at commit.
+                self._end_session(
+                    conn,
+                    lease.session_id,
+                    lease.incident_id,
+                    ended_reason=verdict.ended_reason,
+                    transition=(
+                        verdict.transition
+                        if lifecycle != incident["lifecycle"]
+                        else None
+                    ),
+                    sample_id=sample_id if verdict.decision.accepted else None,
+                    watermark={
+                        "adopted_sequence": verdict.adopted_sequence,
+                        "adopted_window_end": verdict.adopted_window_end,
+                        "adopted_count": verdict.adopted_count,
+                        "healthy_since": verdict.healthy_since,
+                    },
                 )
             return SampleReceipt(
                 sample_id=sample_id,
@@ -966,18 +1043,22 @@ class ObservationStore(_StoreBase):
                     conn
                 ):
                     continue
-                state = OBSERVATION_SESSION.fire(str(row["state"]), "deadline_expired")
                 lifecycle = self._transition(
                     str(incident["lifecycle"]), "observation_ended_unconfirmed"
                 )
-                conn.execute(
-                    "UPDATE opspilot_observation_sessions SET state=%s,ended_reason='deadline_expired',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
-                    (state, candidate["session_id"]),
+                changed = lifecycle != incident["lifecycle"]
+                self._end_session(
+                    conn,
+                    candidate["session_id"],
+                    candidate["incident_id"],
+                    ended_reason="deadline_expired",
+                    transition="observation_ended_unconfirmed" if changed else None,
                 )
-                conn.execute(
-                    "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
-                    (lifecycle, candidate["incident_id"]),
-                )
+                if changed:
+                    conn.execute(
+                        "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+                        (lifecycle, candidate["incident_id"]),
+                    )
                 expired.append(cast(UUID, candidate["session_id"]))
         return expired
 
@@ -1022,6 +1103,10 @@ class ObservationStore(_StoreBase):
                 f"SELECT {_SAMPLE_COLUMNS} FROM opspilot_observation_samples WHERE session_id=%s ORDER BY submitted_at,sample_id",
                 (session_id,),
             ).fetchall()
+            endings = conn.execute(
+                f"SELECT {_ENDING_COLUMNS} FROM opspilot_observation_endings WHERE session_id=%s ORDER BY recorded_at,ending_id",
+                (session_id,),
+            ).fetchall()
             readings = conn.execute(
                 f"SELECT {_READING_COLUMNS} FROM opspilot_observation_signal_readings WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples WHERE session_id=%s) ORDER BY sample_id,signal_name",
                 (session_id,),
@@ -1036,6 +1121,7 @@ class ObservationStore(_StoreBase):
             "incident_lifecycle": str(incident["lifecycle"]),
             "health_profile": profile,
             "samples": samples,
+            "endings": endings,
         }
 
     def replay_session(self, session_id: UUID) -> ReplayReport:
@@ -1053,8 +1139,8 @@ class ObservationStore(_StoreBase):
         state = "authorized"
         adopted_sequence, adopted_window_end = 0, None
         adopted_count, healthy_since = 0, None
-        streak_scope: tuple[int, int] | None = None
         expected_lifecycle: str | None = None
+        required = _required_signals(history["health_profile"])
         replayed: list[ReplayedSample] = []
         for stored in history["samples"]:
             session = _domain_session(
@@ -1087,14 +1173,8 @@ class ObservationStore(_StoreBase):
                 suspension_blocks=bool(stored["scope_suspended"]),
                 lease_valid=bool(stored["lease_valid"]),
                 authorized_at=row["authorized_at"],
-                scope=(
-                    int(stored["global_generation"]),
-                    int(stored["target_generation"]),
-                ),
-                scope_changed_at=stored["scope_changed_at"],
                 adopted_count=adopted_count,
                 healthy_since=healthy_since,
-                streak_scope=streak_scope,
                 max_samples=int(row["max_samples"]),
                 sustained_window_seconds=int(row["sustained_window_seconds"]),
             )
@@ -1103,7 +1183,6 @@ class ObservationStore(_StoreBase):
             adopted_window_end = verdict.adopted_window_end
             adopted_count = verdict.adopted_count
             healthy_since = verdict.healthy_since
-            streak_scope = verdict.streak_scope
             if verdict.transition == "recovery_confirmed":
                 expected_lifecycle = "resolved"
             elif verdict.transition == "observation_ended_unconfirmed":
@@ -1115,10 +1194,26 @@ class ObservationStore(_StoreBase):
                 and hashlib.sha256(bytes(reading["raw"])).hexdigest()
                 != reading["raw_sha256"]
             )
+            ok_signals = {
+                str(reading["signal_name"])
+                for reading in stored["readings"]
+                if reading["status"] == "ok"
+            }
+            signal_mismatches: tuple[str, ...] = ()
+            if required is not None:
+                missing = tuple(name for name in required if name not in ok_signals)
+                # Structural check only (F6 step 5's threshold replay is #87):
+                # a healthy sample must have an ok reading for every required
+                # signal, and the stored flag must say what the rows say.
+                if (stored["outcome"] == "healthy" and missing) or bool(
+                    stored["required_signals_present"]
+                ) != (not missing):
+                    signal_mismatches = missing or ("required_signals_present",)
             replayed.append(
                 ReplayedSample(
                     sample_id=stored["sample_id"],
                     sequence=int(stored["sequence"]),
+                    signal_mismatches=signal_mismatches,
                     stored=(
                         str(stored["disposition"]),
                         str(stored["reason"]),
@@ -1136,9 +1231,13 @@ class ObservationStore(_StoreBase):
                     raw_mismatches=raw_mismatches,
                 )
             )
+        # The record to compare with: the sample that ended the session (a
+        # late duplicate filed as history afterwards says nothing new), else
+        # the last sample.
         recorded_lifecycle: str | None = None
-        if history["samples"]:
-            last = history["samples"][-1]
+        ending = [item for item in history["samples"] if item["transition"] is not None]
+        if ending or history["samples"]:
+            last = ending[-1] if ending else history["samples"][-1]
             recorded_lifecycle = str(last["subject_lifecycle"])
             trigger = last["transition"]
             if trigger is not None and trigger in INCIDENT_LIFECYCLE.triggers(
@@ -1168,30 +1267,6 @@ class ObservationStore(_StoreBase):
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
         return row
-
-    @staticmethod
-    def _scope_changed_at(
-        conn: Connection,
-        target_id: UUID,
-        generations: tuple[int, int],
-        *,
-        since: datetime,
-    ) -> datetime | None:
-        """When the current global/target suspension generations were set,
-        if that happened during this session (``since`` = its authorization;
-        earlier data is already excluded by ``window_before_authorization``).
-
-        ``opspilot_scope_controls`` has no timestamp; every generation change
-        writes an ``opspilot_suspension_audit`` row (``target_id`` NULL for the
-        global gate) carrying the new generation, so the row of the current
-        generation dates the latest change. ``None`` when neither gate changed
-        since the authorization (generation 0 has no row at all).
-        """
-        row = conn.execute(
-            "SELECT max(created_at) AS at FROM opspilot_suspension_audit WHERE created_at>=%s AND ((target_id IS NULL AND generation=%s) OR (target_id=%s AND generation=%s))",
-            (since, generations[0], target_id, generations[1]),
-        ).fetchone()
-        return None if row is None else cast(datetime | None, row["at"])
 
     def _lock_session(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         if not isinstance(session_id, UUID):

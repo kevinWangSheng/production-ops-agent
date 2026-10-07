@@ -21,6 +21,11 @@ task record 2026-10-03). Three tables:
   decision can be replayed from storage alone (F6 step 5).
 * ``opspilot_observation_signal_readings`` -- one row per signal per sample:
   the query, window, source, returned value and the sha256 of the raw result.
+* ``opspilot_observation_endings`` -- append-only record of every session
+  ending the Observer writes, with the incident transition it fired and the
+  sample that decided it; the deferred constraint trigger on
+  ``opspilot_incidents`` accepts an Observer lifecycle change only when this
+  transaction wrote the matching record.
 
 ``opspilot_incidents.observation_generation`` is the column the domain
 ``Incident.observation_generation`` never had; authorizing a session
@@ -113,6 +118,9 @@ ENDED_REASONS = (
     # a sample proved the session's bindings stale (control or observation
     # generation moved on, subject no longer adoptable): nothing to retry
     "binding_stale",
+    # the global or target suspension generation moved since authorization:
+    # a lifted suspension never resumes an old authorization (C3 section 4)
+    "scope_suspended",
 )
 DISPOSITIONS = ("adopted", "history_only")
 TRANSITIONS = ("recovery_confirmed", "observation_ended_unconfirmed")
@@ -127,9 +135,6 @@ HEALTH_BASES = (
     "outcome_not_healthy",
     "required_signals_missing",
     "window_before_authorization",
-    # the window starts before the latest control-scope change (a release
-    # from suspension): the paused interval is not observed time
-    "window_before_scope_change",
 )
 # Raw reading payloads are stored for hash verification on replay; one
 # signal's Prometheus result is bounded like the M0 response limit (128 KiB).
@@ -145,8 +150,6 @@ OBSERVER_SESSION_COLUMNS = (
     "adopted_window_end",
     "adopted_count",
     "healthy_since",
-    "healthy_since_global_generation",
-    "healthy_since_target_generation",
     "issued_sequence",
     "active_sample_job_id",
     "active_sample_sequence",
@@ -189,6 +192,7 @@ def upgrade() -> None:
     sessions = "opspilot_observation_sessions"
     samples = "opspilot_observation_samples"
     readings = "opspilot_observation_signal_readings"
+    endings = "opspilot_observation_endings"
     op.execute(
         f"""
         ALTER TABLE opspilot_incidents ADD COLUMN observation_generation integer NOT NULL DEFAULT 0;
@@ -220,6 +224,10 @@ def upgrade() -> None:
           state text NOT NULL DEFAULT 'authorized',
           ended_reason text,
           health_profile_revision text REFERENCES {profiles},
+          -- control scope versions at authorization: any later change
+          -- (suspension or release) ends the session, it is never resumed
+          authorized_global_generation integer NOT NULL,
+          authorized_target_generation integer NOT NULL,
           -- fixed at authorization (interface contract item 5)
           deadline_at timestamptz NOT NULL,
           max_samples integer NOT NULL CHECK (max_samples > 0),
@@ -230,10 +238,6 @@ def upgrade() -> None:
           adopted_window_end timestamptz,
           adopted_count integer NOT NULL DEFAULT 0,
           healthy_since timestamptz,
-          -- the control scope generations the healthy streak started under; a
-          -- suspension in between (generation moved) restarts the streak
-          healthy_since_global_generation integer,
-          healthy_since_target_generation integer,
           -- the single active sampling job; a lease retry keeps the sequence
           issued_sequence integer NOT NULL DEFAULT 0,
           active_sample_job_id uuid,
@@ -248,10 +252,6 @@ def upgrade() -> None:
           {_check(sessions, "state", CHECKS[(sessions, "state")])},
           {_check(sessions, "ended_reason", ENDED_REASONS, nullable=True)},
           CONSTRAINT {sessions}_ended_check CHECK ((state = 'authorized') = (ended_reason IS NULL)),
-          CONSTRAINT {sessions}_streak_check CHECK (
-            (healthy_since IS NULL) = (healthy_since_global_generation IS NULL)
-            AND (healthy_since IS NULL) = (healthy_since_target_generation IS NULL)
-          ),
           CONSTRAINT {sessions}_job_check CHECK (
             (active_sample_job_id IS NULL) = (active_sample_sequence IS NULL)
             AND (active_sample_job_id IS NULL) = (active_sample_due_at IS NULL)
@@ -285,12 +285,11 @@ def upgrade() -> None:
           subject_lifecycle text NOT NULL,
           incident_control_generation integer NOT NULL,
           incident_observation_generation integer NOT NULL,
-          -- scope blocked: suspended, or the generations moved since the claim
+          -- scope blocked: suspended now, or a generation moved since the
+          -- authorization
           scope_suspended boolean NOT NULL,
           global_generation integer NOT NULL,
           target_generation integer NOT NULL,
-          -- when the current scope generations were set (NULL: never changed)
-          scope_changed_at timestamptz,
           within_deadline boolean NOT NULL,
           lease_valid boolean NOT NULL,
           transition text,
@@ -326,6 +325,21 @@ def upgrade() -> None:
           CONSTRAINT {readings}_value_check CHECK (status = 'ok' OR value IS NULL),
           CONSTRAINT {readings}_window_check CHECK (window_end >= window_start)
         );
+        CREATE TABLE {endings} (
+          ending_id uuid PRIMARY KEY,
+          session_id uuid NOT NULL REFERENCES {sessions},
+          incident_id uuid NOT NULL REFERENCES opspilot_incidents,
+          ended_reason text NOT NULL,
+          -- the incident transition this ending fired (NULL: lifecycle untouched)
+          transition text,
+          -- the sample whose verdict ended the session (NULL: sweep or revoke)
+          sample_id uuid REFERENCES {samples},
+          recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+          {_check(endings, "ended_reason", ENDED_REASONS)},
+          {_check(endings, "transition", TRANSITIONS, nullable=True)},
+          CONSTRAINT {endings}_confirmed_check CHECK (transition <> 'recovery_confirmed' OR sample_id IS NOT NULL)
+        );
+        CREATE INDEX {endings}_incident_idx ON {endings}(incident_id, recorded_at);
         """
     )
     # Observer role (D3): NOLOGIN, created once per cluster, least privilege.
@@ -339,12 +353,12 @@ def upgrade() -> None:
         END
         $$;
         GRANT SELECT ON alembic_version TO {OBSERVER_ROLE};
-        GRANT SELECT ON opspilot_targets, opspilot_scope_controls, opspilot_target_suspensions, opspilot_suspension_audit TO {OBSERVER_ROLE};
+        GRANT SELECT ON opspilot_targets, opspilot_scope_controls, opspilot_target_suspensions TO {OBSERVER_ROLE};
         GRANT SELECT ({", ".join(OBSERVER_INCIDENT_COLUMNS)}) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT UPDATE (lifecycle) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT SELECT ON {profiles}, {sessions} TO {OBSERVER_ROLE};
         GRANT UPDATE ({", ".join(OBSERVER_SESSION_COLUMNS)}) ON {sessions} TO {OBSERVER_ROLE};
-        GRANT SELECT, INSERT ON {samples}, {readings} TO {OBSERVER_ROLE};
+        GRANT SELECT, INSERT ON {samples}, {readings}, {endings} TO {OBSERVER_ROLE};
         """
     )
     # The Observer may move an incident's lifecycle only along the two edges
@@ -376,14 +390,66 @@ def upgrade() -> None:
           FOR EACH ROW EXECUTE FUNCTION opspilot_observer_lifecycle_guard();
         """
     )
+    # An Observer lifecycle change must be bound to a committed observation
+    # verdict: at commit time this transaction must have written the ending
+    # record of this incident's session with the transition that matches the
+    # edge, and a confirmed recovery must point at the sample row (written
+    # in this transaction) whose verdict confirmed it. A bare UPDATE of
+    # ``lifecycle`` by the Observer role therefore fails at COMMIT.
+    op.execute(
+        f"""
+        CREATE FUNCTION opspilot_observer_lifecycle_evidence() RETURNS trigger
+        LANGUAGE plpgsql AS $$
+        DECLARE
+          expected text;
+        BEGIN
+          IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle
+            AND pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
+            AND NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
+            AND current_user <> (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = TG_RELID)
+          THEN
+            expected := CASE NEW.lifecycle
+              WHEN 'resolved' THEN 'recovery_confirmed'
+              WHEN 'open' THEN 'observation_ended_unconfirmed'
+            END;
+            IF expected IS NULL OR NOT EXISTS (
+              SELECT 1 FROM {endings} e
+              WHERE e.incident_id = NEW.incident_id
+                AND e.transition = expected
+                AND e.recorded_at >= transaction_timestamp()
+                AND (expected <> 'recovery_confirmed' OR EXISTS (
+                  SELECT 1 FROM {samples} m
+                  WHERE m.sample_id = e.sample_id
+                    AND m.session_id = e.session_id
+                    AND m.transition = 'recovery_confirmed'
+                    AND m.disposition = 'adopted'
+                    AND m.submitted_at >= transaction_timestamp()
+                ))
+            ) THEN
+              RAISE insufficient_privilege USING MESSAGE =
+                format('{OBSERVER_ROLE} changed lifecycle %s -> %s without a recorded observation ending', OLD.lifecycle, NEW.lifecycle);
+            END IF;
+          END IF;
+          RETURN NULL;
+        END
+        $$;
+        CREATE CONSTRAINT TRIGGER opspilot_incidents_observer_lifecycle_evidence
+          AFTER UPDATE OF lifecycle ON opspilot_incidents
+          DEFERRABLE INITIALLY DEFERRED
+          FOR EACH ROW EXECUTE FUNCTION opspilot_observer_lifecycle_evidence();
+        """
+    )
 
 
 def downgrade() -> None:
     op.execute(
         f"""
         DROP OWNED BY {OBSERVER_ROLE};
+        DROP TRIGGER opspilot_incidents_observer_lifecycle_evidence ON opspilot_incidents;
+        DROP FUNCTION opspilot_observer_lifecycle_evidence();
         DROP TRIGGER opspilot_incidents_observer_lifecycle_guard ON opspilot_incidents;
         DROP FUNCTION opspilot_observer_lifecycle_guard();
+        DROP TABLE opspilot_observation_endings;
         DROP TABLE opspilot_observation_signal_readings;
         DROP TABLE opspilot_observation_samples;
         DROP TABLE opspilot_observation_sessions;

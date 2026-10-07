@@ -33,9 +33,9 @@ LEGACY_DDL = (
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
 HEAD = "0003_observation_store"
-# opspilot_* tables at head: 15 in the baseline + 4 of 0003 (profiles,
-# sessions, samples, readings).
-TABLES_AT_HEAD = 19
+# opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
+# sessions, samples, readings, endings).
+TABLES_AT_HEAD = 20
 
 
 @pytest.fixture
