@@ -12,11 +12,13 @@ against PostgreSQL under the Observer role.
 import ast
 import base64
 import hashlib
+import io
 import json
 import pathlib
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -30,7 +32,7 @@ from opspilot.observation.store import (
     SampleReceipt,
     SignalReading,
 )
-from opspilot.observer import HealthProfile
+from opspilot.observer import PROFILE_DIRECTORY, HealthProfile, load_health_profile
 from opspilot.observer.__main__ import build_loop
 from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.prometheus import (
@@ -38,7 +40,7 @@ from opspilot.observer.prometheus import (
     InstantResult,
     PrometheusReadOnlySource,
 )
-from opspilot.observer.sampler import take_sample
+from opspilot.observer.sampler import replay_readings, take_sample
 from opspilot.persistence.base import PersistenceError
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -116,7 +118,13 @@ class FakeSource:
         self.requests.append((expr, at))
         answer = self.answers[expr]
         return InstantResult(
-            expr, answer.status, answer.value, answer.body, 200, answer.detail
+            expr,
+            answer.status,
+            answer.value,
+            answer.body,
+            200,
+            answer.detail,
+            body_complete=answer.body_complete,
         )
 
 
@@ -321,19 +329,139 @@ def test_the_lease_must_carry_the_profile_revision_being_sampled():
         take_sample(lease("unit@000000000000"), PROFILE, FakeSource({}), FakeStore())
 
 
-def test_an_oversized_response_bundle_is_filed_as_failed_with_a_small_raw():
+def test_an_incomplete_body_is_filed_as_failed_and_the_bundle_says_so():
+    """PR #119 review P2-4: a truncated response is not the actual return.
+    The reading fails closed (never covers), the stored bundle keeps the
+    bytes that did arrive and marks the body incomplete; the bundle itself
+    always fits the store's raw limit, so its hash is never a substitute's."""
     answers = healthy_answers()
-    huge = b'{"status":"success","data":{"resultType":"vector","result":[]}}' + b" " * (
-        RESPONSE_LIMIT_BYTES - 70
+    prefix = b'{"status":"success","data":{"resultType":"vector","result":[{"m'
+    answers["sum(rate(x[5m]))"] = InstantResult(
+        "", "failed", None, prefix, 200, "TOO_LARGE", body_complete=False
     )
-    answers["sum(rate(x[5m]))"] = InstantResult("", "no_data", None, huge, 200)
+    store = FakeStore()
+    take_sample(lease(), PROFILE, FakeSource(answers), store)
+    ((_, sample, readings),) = store.submitted
+    rate = next(reading for reading in readings if reading.signal_name == "rate")
+    assert rate.status == "failed" and rate.raw is not None
+    bundle = json.loads(rate.raw)
+    assert bundle["query"]["body_complete"] is False
+    assert base64.b64decode(bundle["query"]["body_b64"]) == prefix
+    assert bundle["query"]["detail"] == "TOO_LARGE"
+    assert sample.outcome == "failed"
+
+
+def test_three_full_size_bodies_always_fit_the_stored_raw_limit():
+    big = vector(1.0) + b" " * (RESPONSE_LIMIT_BYTES - len(vector(1.0)))
+    assert len(big) == RESPONSE_LIMIT_BYTES
+    answers = {
+        expr: InstantResult("", "ok", 2.0, big, 200) for expr in healthy_answers()
+    }
+    answers["max(timestamp(x))"] = InstantResult(
+        "", "ok", (NOW - timedelta(seconds=30)).timestamp(), big, 200
+    )
+    answers["max(timestamp(t))"] = answers["max(timestamp(x))"]
     store = FakeStore()
     take_sample(lease(), PROFILE, FakeSource(answers), store)
     ((_, _, readings),) = store.submitted
-    rate = next(reading for reading in readings if reading.signal_name == "rate")
-    assert rate.status == "failed" and rate.raw is not None
-    assert len(rate.raw) <= READING_RAW_LIMIT
-    assert json.loads(rate.raw)["error"] == "RAW_TOO_LARGE"
+    for reading in readings:
+        assert reading.raw is not None and len(reading.raw) <= READING_RAW_LIMIT
+        assert hashlib.sha256(reading.raw).hexdigest() == reading.raw_sha256
+
+
+def test_the_bundle_records_the_sample_time_and_replay_judges_with_it():
+    """PR #119 review P2-3: the instant the verdict judged freshness against
+    is stored in every reading's bundle; ``replay_readings`` uses it and
+    nothing else, so the same bytes judged at another time give another
+    verdict only when the stored time differs."""
+    latest = NOW - timedelta(seconds=89)
+    store = FakeStore(clock=[NOW, NOW + timedelta(seconds=1)])
+    take_sample(lease(), PROFILE, FakeSource(healthy_answers(latest=latest)), store)
+    ((_, sample, readings),) = store.submitted
+    assert sample.outcome == "healthy"
+    rows = [
+        {
+            "signal_name": r.signal_name,
+            "query": r.query,
+            "source": r.source,
+            "window_start": r.window_start,
+            "window_end": r.window_end,
+            "raw": r.raw,
+            "raw_sha256": r.raw_sha256,
+        }
+        for r in readings
+    ]
+    for row in rows:
+        assert (
+            json.loads(row["raw"])["sample_time"]
+            == (NOW + timedelta(seconds=1)).isoformat()
+        )
+    replayed = replay_readings(PROFILE, rows)
+    assert (replayed.outcome, replayed.required_signals_present) == ("healthy", True)
+    # the same bodies, judged two seconds later: stale -- proven by rewriting
+    # only the recorded instant (the hash is recomputed, as the store would
+    # have stored it had the Observer judged then)
+    later_rows = []
+    for row in rows:
+        bundle = json.loads(row["raw"])
+        bundle["sample_time"] = (NOW + timedelta(seconds=2)).isoformat()
+        raw = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+        later_rows.append(
+            {**row, "raw": raw, "raw_sha256": hashlib.sha256(raw).hexdigest()}
+        )
+    assert replay_readings(PROFILE, later_rows).outcome == "stale"
+    # a tampered bundle (hash no longer matches) never counts
+    broken = [{**rows[0], "raw": rows[0]["raw"] + b" "}, rows[1]]
+    assert replay_readings(PROFILE, broken).outcome == "failed"
+
+
+def test_a_stale_dependency_among_fresh_ones_blocks_health():
+    """PR #119 review P2-1: a signal over several series is as fresh as its
+    stalest required series. The shipped profile asks Prometheus for the
+    oldest of the newest samples (``min(timestamp(...))``); seven fresh
+    dependencies and one 120 s old give an old timestamp, the reading is
+    stale and the sample cannot confirm or extend health."""
+    shipped = load_health_profile(PROFILE_DIRECTORY / "otel-demo-checkout.json")
+    assert all(s.freshness_query.startswith("min(timestamp(") for s in shipped.signals)
+    dependency = shipped.signal("dependency_deployments_available")
+    assert dependency is not None
+    fresh = (NOW - timedelta(seconds=20)).timestamp()
+    stalest = (NOW - timedelta(seconds=120)).timestamp()
+    answers: dict[str, InstantResult] = {}
+    healthy = {
+        "deployment_available_replicas": 1.0,
+        "request_rate_per_second": 0.0125,
+        "error_ratio": 0.0,
+        "latency_p95_milliseconds": 100.0,
+        "pods_running": 1.0,
+        "pod_restarts_in_window": 0.0,
+        "dependency_deployments_available": 8.0,  # all eight still report
+        "dependency_error_ratio": 0.0,
+    }
+    for signal in shipped.signals:
+        answers[signal.query] = ok(healthy[signal.name])
+        answers[signal.coverage_query] = ok(5)
+        # min over the eight dependencies is the stale one; every other
+        # signal's series are fresh
+        answers[signal.freshness_query] = ok(
+            stalest if signal.name == dependency.name else fresh
+        )
+    store = FakeStore()
+    taken = take_sample(lease(shipped.revision), shipped, FakeSource(answers), store)
+    assert taken.evaluation is not None
+    assert (taken.evaluation.outcome, taken.evaluation.required_signals_present) == (
+        "stale",
+        False,
+    )
+    verdict = next(
+        v for v in taken.evaluation.verdicts if v.signal_name == dependency.name
+    )
+    assert verdict.verdict == "stale"
+    ((_, sample, readings),) = store.submitted
+    assert sample.outcome == "stale" and not sample.required_signals_present
+    dep_row = next(r for r in readings if r.signal_name == dependency.name)
+    assert dep_row.status == "stale" and dep_row.value is None
+    assert sum(1 for r in readings if r.status == "ok") == 7
 
 
 # --- the Prometheus source: one instant query, bounded, GET only
@@ -341,10 +469,10 @@ def test_an_oversized_response_bundle_is_filed_as_failed_with_a_small_raw():
 
 class FakeResponse:
     def __init__(self, body: bytes, status: int = 200):
-        self._body, self.status = body, status
+        self._buffer, self.status = io.BytesIO(body), status
 
     def read(self, n: int = -1) -> bytes:
-        return self._body if n < 0 else self._body[:n]
+        return self._buffer.read(n)
 
     def __enter__(self):
         return self
@@ -441,6 +569,82 @@ def test_the_token_is_the_observers_own_and_sent_as_bearer_only():
     assert request.get_header("Authorization") == "Bearer obs-token"
     with pytest.raises(ValueError, match="PROMETHEUS_URL_INVALID"):
         PrometheusReadOnlySource("file:///etc/passwd")
+
+
+def test_a_url_with_userinfo_is_refused_and_logs_see_only_the_endpoint(caplog):
+    """PR #119 review P2-6: a credential in the URL would be logged at start
+    and stored in evidence; it is refused outright, and what the loop logs is
+    scheme, host and port."""
+    with pytest.raises(ValueError, match="PROMETHEUS_URL_HAS_USERINFO"):
+        PrometheusReadOnlySource("https://observer:example-secret@prometheus.invalid")
+    with pytest.raises(SystemExit, match="must be an http"):
+        build_loop(
+            {
+                "OPSPILOT_OBSERVER_DSN": "host=db dbname=opspilot user=observer",
+                "OPSPILOT_OBSERVER_PROMETHEUS_URL": "https://observer:example-secret@prometheus.invalid",
+            },
+            stop=threading.Event(),
+        )
+    src = PrometheusReadOnlySource("https://prometheus.invalid:9443/prefix/?x=1")
+    assert src.endpoint == "https://prometheus.invalid:9443"
+    with caplog.at_level("INFO", logger="opspilot.observer"):
+        loop = build_loop(
+            {
+                "OPSPILOT_OBSERVER_DSN": "host=db dbname=opspilot user=observer",
+                "OPSPILOT_OBSERVER_PROMETHEUS_URL": "https://prometheus.invalid:9443/prefix/?x=1",
+            },
+            stop=threading.Event(),
+        )
+    loop.store.close()
+    assert "prometheus=https://prometheus.invalid:9443" in caplog.text
+    assert "prefix" not in caplog.text and "x=1" not in caplog.text
+
+
+def test_the_request_deadline_covers_a_slow_trickling_body():
+    """PR #119 review P2-2: ``timeout_seconds`` is an absolute bound on the
+    whole request. A server that sends a chunk every 0.6 s against a 1 s
+    timeout is cut off as a timeout within about the timeout, not read to
+    the end."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Trickle(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            for piece in (
+                b'{"status":"success",',
+                b'"data":{"resultType":"vector",',
+                b'"result":[]}}',
+            ):
+                try:
+                    self.wfile.write(f"{len(piece):x}\r\n".encode() + piece + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(0.6)
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Trickle)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        src = PrometheusReadOnlySource(f"http://127.0.0.1:{server.server_port}")
+        started = time.monotonic()
+        result = src.instant("up", at=NOW, timeout_seconds=1)
+        elapsed = time.monotonic() - started
+    finally:
+        server.shutdown()
+    assert result.status == "timeout" and result.detail == "TIMEOUT"
+    assert not result.body_complete
+    assert elapsed < 1.6, elapsed
 
 
 # --- isolation (C3 §3, D3): own variables, own imports, no model

@@ -68,6 +68,9 @@ class Telemetry:
         self.values = dict(HEALTHY_VALUES)
         self.count = 5
         self.age_seconds = 20.0
+        # per-signal override of the freshness answer (the oldest newest
+        # sample among the signal's series), in seconds before ``at``
+        self.age_by_signal: dict[str, float] = {}
         self.requests: list[tuple[str, float]] = []
         self.lock = threading.Lock()
         self.on_request: list[object] = []
@@ -87,7 +90,7 @@ class Telemetry:
             elif expr == signal.coverage_query:
                 value = self.count
             else:
-                value = at - self.age_seconds
+                value = at - self.age_by_signal.get(signal.name, self.age_seconds)
             if value is None:
                 return {
                     "status": "success",
@@ -202,6 +205,7 @@ def loop(
     state, url = telemetry
     state.values = dict(HEALTHY_VALUES)
     state.count, state.age_seconds = 5, 20.0
+    state.age_by_signal.clear()
     state.requests.clear()
     state.on_request.clear()
     yield ObserverLoop(store=observer, source=PrometheusReadOnlySource(url)), state
@@ -365,6 +369,32 @@ def test_stopped_scrapes_are_stale_samples_that_never_confirm(
     receipt = _only(observer_loop.poll_once(), session)
     assert receipt.confirms_health and receipt.transition == "recovery_confirmed"
     assert controller.replay_session(session).consistent
+
+
+def test_one_stale_dependency_among_eight_blocks_health_and_the_streak(
+    loop: tuple[ObserverLoop, Telemetry],
+    owner: DurableStore,
+    controller: ObservationStore,
+) -> None:
+    """PR #119 review P2-1: the dependency signal's freshness is the oldest
+    of the eight dependencies' newest samples; one at 120 s makes the
+    reading stale, the sample unknown, and the healthy streak restarts."""
+    observer_loop, state = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    state.age_by_signal["dependency_deployments_available"] = 120.0
+
+    receipt = _only(observer_loop.poll_once(), session)
+
+    assert receipt.accepted and not receipt.confirms_health
+    sample = controller.session_history(session)["samples"][0]
+    assert (sample["outcome"], sample["required_signals_present"]) == ("stale", False)
+    rows = {row["signal_name"]: row for row in sample["readings"]}
+    assert rows["dependency_deployments_available"]["status"] == "stale"
+    assert sum(1 for row in rows.values() if row["status"] == "ok") == 7
+    assert _lifecycle(owner, incident) == "observing_recovery"
+    assert controller.session(session)["healthy_since"] is None
 
 
 def test_withdrawn_traffic_is_no_data_even_with_zero_errors(

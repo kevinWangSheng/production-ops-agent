@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "profile_id": "otel-demo-checkout",
-  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged on each signal's newest raw sample timestamp (freshness_query), not on the query window.",
+  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others.",
   "subject": {
     "service": "checkout",
     "kubernetes_namespace": "otel-demo"
@@ -27,7 +27,7 @@
       "description": "Available replicas of the checkout Deployment (kube-state-metrics). The lab runs spec.replicas=1.",
       "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
       "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
-      "freshness_query": "max(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -39,7 +39,7 @@
       "description": "PlaceOrder server spans per second over the evaluation window; the effective-traffic gate reads this signal. Lab steady state with 2 locust users is about 3.75 orders per 5 minutes (0.0125/s).",
       "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
       "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "max(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -51,7 +51,7 @@
       "description": "Share of PlaceOrder server spans ending in STATUS_CODE_ERROR. `or vector(0)` keeps a service with no error series from reading as no data; no traffic makes the whole ratio empty, which the traffic gate also catches.",
       "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
       "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "max(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {
@@ -64,7 +64,7 @@
       "description": "p95 PlaceOrder server latency from the span-metrics histogram.",
       "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
       "coverage_query": "max(count_over_time(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "max(timestamp(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "freshness_query": "min(timestamp(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {
@@ -77,7 +77,7 @@
       "description": "checkout pods in phase Running (kube-state-metrics).",
       "query": "sum(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"})",
       "coverage_query": "min(count_over_time(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"}[5m]))",
-      "freshness_query": "max(timestamp(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"}))",
+      "freshness_query": "min(timestamp(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -89,7 +89,7 @@
       "description": "Container restarts of checkout pods inside the evaluation window; a constant counter gives exactly 0, one restart gives about 1.",
       "query": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}[5m]))",
       "coverage_query": "min(count_over_time(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}[5m]))",
-      "freshness_query": "max(timestamp(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}))",
+      "freshness_query": "min(timestamp(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -102,7 +102,7 @@
       "description": "Number of the eight named Deployments checkout depends on (payment, cart and its valkey, product-catalog, currency, shipping, email, flagd) that report at least one available replica. count() over a filtered vector drops a Deployment whose series is missing as well as one with zero replicas, so the value must equal 8 exactly; min() over the same selector would silently ignore a missing series.",
       "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
       "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"}[5m]))",
-      "freshness_query": "max(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"}))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -115,7 +115,7 @@
       "description": "Share of checkout's outbound (client) spans ending in STATUS_CODE_ERROR, covering every dependency checkout calls.",
       "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
       "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
-      "freshness_query": "max(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {

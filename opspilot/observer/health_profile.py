@@ -175,12 +175,16 @@ class HealthSignal(DTO):
     profile revision on replay.
 
     ``freshness_query`` gives the time of the newest *raw* sample behind the
-    signal (``max(timestamp(<selector>))``). Freshness is judged on that
-    timestamp, not on the query window: after scrapes stop, ``query`` keeps
-    answering through the lookback delta and ``coverage_query`` keeps
-    counting the points already inside the range for minutes, while this
-    timestamp stops moving at once. The Observer stores it on the reading
-    (``latest_sample_at``); a reading without it is stale.
+    signal, taken over every series the selector matches as the *oldest* of
+    their newest samples (``min(timestamp(<selector>))``): a signal over
+    eight dependencies is only as fresh as its stalest dependency, ``max``
+    would let one fresh series hide seven stale ones (PR #119 review P2-1).
+    Freshness is judged on that timestamp, not on the query window: after
+    scrapes stop, ``query`` keeps answering through the lookback delta and
+    ``coverage_query`` keeps counting the points already inside the range
+    for minutes, while this timestamp stops moving at once. The Observer
+    stores it on the reading (``latest_sample_at``); a reading without it is
+    stale.
 
     ``traffic_dependent`` marks ratios and quantiles whose value means nothing
     without traffic (an error ratio over two requests, a p95 over one span).

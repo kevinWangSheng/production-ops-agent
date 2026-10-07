@@ -118,7 +118,7 @@ def build_loop(
         poll_seconds=_float_env(env, "OPSPILOT_OBSERVER_POLL_SECONDS", 5.0),
         batch=_int_env(env, "OPSPILOT_OBSERVER_BATCH", 20),
     )
-    _log.info("observer owner=%s prometheus=%s", loop.owner, source.base_url)
+    _log.info("observer owner=%s prometheus=%s", loop.owner, source.endpoint)
     return loop
 
 

@@ -16,7 +16,8 @@ job (M1-02 step 4, issue #86; C3 section 10 "采样与提交"):
    finds stale or too thin is stored with that status, so the stored rows
    say what the verdict said and a replay from the rows agrees;
 5. the raw bodies of the three responses travel with the reading (a bounded
-   JSON bundle with its sha256, kept by the store) and the sample is
+   JSON bundle with its sha256 and the ``sample_time`` used, kept by the
+   store; ``replay_readings`` re-judges from it alone) and the sample is
    submitted in one transaction.
 
 No model is called anywhere on this path, and nothing here imports the
@@ -29,10 +30,10 @@ import base64
 import hashlib
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Protocol
+from datetime import datetime, timedelta, timezone
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from opspilot.domain.evidence import QueryWindow
@@ -52,9 +53,20 @@ from opspilot.observer.health_profile import (
     SignalReading,
     evaluate_readings,
 )
-from opspilot.observer.prometheus import InstantResult, epoch_to_datetime
+from opspilot.observer.prometheus import (
+    InstantResult,
+    InstantStatus,
+    _single_value,
+    epoch_to_datetime,
+)
 
-__all__ = ["InstantSource", "SampleTaken", "take_sample", "submit_without_readings"]
+__all__ = [
+    "InstantSource",
+    "SampleTaken",
+    "replay_readings",
+    "submit_without_readings",
+    "take_sample",
+]
 
 _log = logging.getLogger("opspilot.observer")
 
@@ -104,8 +116,7 @@ def take_sample(
     window_end = store.current_time()
     window_start = window_end - timedelta(seconds=profile.evaluation_window_seconds)
     timeout = profile.query_timeout_seconds
-    provisional: list[SignalReading] = []
-    bundles: dict[str, bytes] = {}
+    gathered: list[tuple[HealthSignal, dict[str, InstantResult]]] = []
     issued = 0
     interrupted = False
     for signal in profile.signals:
@@ -124,12 +135,19 @@ def take_sample(
             # A signal not fully queried has no reading: the verdict reads it
             # as missing, the store files the sample as suspended.
             break
+        gathered.append((signal, results))
+    # The time the verdict judges freshness against: read after the last
+    # query returned, and written into every reading's raw bundle so a replay
+    # judges with the same instant (PR #119 review P2-3).
+    sample_time = store.current_time()
+    provisional: list[SignalReading] = []
+    bundles: dict[str, bytes] = {}
+    for signal, results in gathered:
         reading, raw = _reading(
-            signal, profile.source, results, window_start, window_end
+            signal, profile.source, results, window_start, window_end, sample_time
         )
         provisional.append(reading)
         bundles[signal.name] = raw
-    sample_time = store.current_time()
     first = evaluate_readings(profile, provisional, sample_time=sample_time)
     readings = [_finalized(reading, first) for reading in provisional]
     evaluation = evaluate_readings(profile, readings, sample_time=sample_time)
@@ -215,6 +233,7 @@ def _reading(
     results: dict[str, InstantResult],
     window_start: datetime,
     window_end: datetime,
+    sample_time: datetime,
 ) -> tuple[SignalReading, bytes]:
     value = results["query"]
     coverage = results["coverage"]
@@ -238,15 +257,11 @@ def _reading(
         status = coverage.status if coverage.status != "no_data" else "failed"
     if status == "ok" and count == 0:
         status = "no_data"
-    raw = _bundle(window_start, window_end, results)
-    if len(raw) > READING_RAW_LIMIT:
-        status = "failed" if status in ("ok", "no_data") else status
-        raw = json.dumps(
-            {
-                "error": "RAW_TOO_LARGE",
-                "bytes": {kind: len(item.body) for kind, item in results.items()},
-            }
-        ).encode()
+    if status == "ok" and not all(item.body_complete for item in results.values()):
+        # A truncated body is not the actual return: fail closed, the
+        # bundle records which body is incomplete (PR #119 review P2-4).
+        status = "failed"
+    raw = _bundle(window_start, window_end, sample_time, results)
     reading = SignalReading(
         signal_name=signal.name,
         status=status,
@@ -277,16 +292,27 @@ def _finalized(reading: SignalReading, evaluation: SampleEvaluation) -> SignalRe
 
 
 def _bundle(
-    window_start: datetime, window_end: datetime, results: dict[str, InstantResult]
+    window_start: datetime,
+    window_end: datetime,
+    sample_time: datetime,
+    results: dict[str, InstantResult],
 ) -> bytes:
     """The three responses as one JSON document: exact body bytes (base64)
-    with their own sha256 each, the expression, HTTP status and the time the
-    query was evaluated at. Deterministic for the same inputs."""
+    with their own sha256 each, whether each body is complete, the
+    expression, HTTP status, the instant the queries were evaluated at and
+    the ``sample_time`` the verdict used. Deterministic for the same inputs.
+
+    Always within ``READING_RAW_LIMIT``: each body is bounded by
+    ``RESPONSE_LIMIT_BYTES`` (three of them base64-encoded fit with room for
+    the fields), so the stored hash is always the hash of the actual
+    returns, never of a substitute.
+    """
     document: dict[str, Any] = {
-        "format": "opspilot.observer.reading/1",
+        "format": "opspilot.observer.reading/2",
         "window_start": window_start.isoformat(),
         "window_end": window_end.isoformat(),
         "evaluated_at": window_end.isoformat(),
+        "sample_time": sample_time.isoformat(),
     }
     for kind, item in results.items():
         document[kind] = {
@@ -294,10 +320,103 @@ def _bundle(
             "status": item.status,
             "detail": item.detail,
             "http_status": item.http_status,
+            "body_complete": item.body_complete,
             "body_sha256": hashlib.sha256(item.body).hexdigest(),
             "body_b64": base64.b64encode(item.body).decode("ascii"),
         }
-    return json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    assert len(raw) <= READING_RAW_LIMIT, len(raw)
+    return raw
+
+
+def replay_readings(
+    profile: HealthProfile, stored: Sequence[Mapping[str, Any]]
+) -> SampleEvaluation:
+    """Re-judge a stored sample from its reading rows' raw bundles alone.
+
+    Rebuilds every reading from the exact response bytes in the bundle
+    (value, point count, newest raw sample time) and judges with the
+    ``sample_time`` the bundle recorded -- never the wall clock -- so the
+    same bundles always give the same verdict (F6 step 5). A row without a
+    bundle, or whose bundle no longer hashes to ``raw_sha256``, is rebuilt
+    as ``failed`` and so never counts.
+    """
+    readings: list[SignalReading] = []
+    sample_time: datetime | None = None
+    for row in stored:
+        raw = row.get("raw")
+        raw = None if raw is None else bytes(raw)
+        bundle: dict[str, Any] | None = None
+        if raw is not None and hashlib.sha256(raw).hexdigest() == row.get("raw_sha256"):
+            try:
+                parsed = json.loads(raw)
+                bundle = parsed if isinstance(parsed, dict) else None
+            except ValueError:
+                bundle = None
+        signal = profile.signal(str(row["signal_name"]))
+        if bundle is not None and sample_time is None:
+            sample_time = datetime.fromisoformat(str(bundle["sample_time"]))
+        results = {
+            kind: _result_from_bundle(bundle, kind)
+            for kind in ("query", "coverage", "freshness")
+        }
+        if signal is None or bundle is None:
+            readings.append(
+                SignalReading(
+                    signal_name=str(row["signal_name"]),
+                    status="failed",
+                    query=str(row["query"]),
+                    window_start=row["window_start"],
+                    window_end=row["window_end"],
+                    source=str(row["source"]),
+                )
+            )
+            continue
+        reading, _ = _reading(
+            signal,
+            str(row["source"]),
+            results,
+            row["window_start"],
+            row["window_end"],
+            sample_time or row["window_end"],
+        )
+        readings.append(reading)
+    if sample_time is None:
+        # no bundle carried the instant: judge at the latest window end,
+        # which can only make readings staler, never fresher
+        sample_time = max(
+            (row["window_end"] for row in stored), default=None
+        ) or datetime.fromtimestamp(0, tz=timezone.utc)
+    return evaluate_readings(profile, readings, sample_time=sample_time)
+
+
+def _result_from_bundle(bundle: dict[str, Any] | None, kind: str) -> InstantResult:
+    part = None if bundle is None else bundle.get(kind)
+    if not isinstance(part, dict):
+        return InstantResult(
+            "", "failed", None, b"", None, "MISSING", body_complete=False
+        )
+    body = base64.b64decode(str(part.get("body_b64", "")))
+    if hashlib.sha256(body).hexdigest() != part.get("body_sha256"):
+        return InstantResult(
+            "", "failed", None, body, None, "BODY_HASH", body_complete=False
+        )
+    complete = bool(part.get("body_complete", True))
+    status, value, detail = (
+        _single_value(body) if complete else ("failed", None, "INCOMPLETE")
+    )
+    if str(part.get("status")) in ("timeout", "failed") and status == "ok":
+        # the Observer recorded a transport failure for this body
+        status, value = cast(InstantStatus, str(part["status"])), None
+    return InstantResult(
+        str(part.get("expr", "")),
+        status,
+        value,
+        body,
+        part.get("http_status"),
+        detail,
+        body_complete=complete,
+    )
 
 
 def readings_of(sample: Sequence[StoredReading]) -> list[str]:
