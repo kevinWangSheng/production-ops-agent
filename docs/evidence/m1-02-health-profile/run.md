@@ -33,7 +33,8 @@
 | `pod_restarts_in_window.healthy.max` | 0.5 | `increase()` 对常数计数器恰为 0，一次重启约为 1 |
 | `evaluation_window_seconds` / `freshness_seconds` / `query_timeout_seconds` | 300 / 90 / 20 | 与第 0 步观察窗一致；超时取 C3 §13 数据源请求超时 |
 | `session`：deadline / max_samples / interval / sustained | 3600 s / 40 / 60 s / 600 s | 故障钩子生效与恢复在指标上各需约 3 分钟（`m1-02-lab/run.md`），600 s 持续窗覆盖两个这样的周期；40 × 60 s 可覆盖 2340 s ≥ 600 s |
-| `minimum_samples` | 状态信号 1；比率/分位信号 2 | **未校准**：抓取/flush 间隔未实测；采样器按窗内点数填 `sample_count` 后再收紧 |
+| `minimum_samples` | 3（全部信号） | `sample_count` = 窗内原始样本数，由 Observer 用各信号的 `coverage_query`（同选择器的 `count_over_time(...[5m])`，状态信号取 `min`、span 指标取 `max`）得到；不能用 `query` 的 range 查询点数（Prometheus 按 lookback delta 评估，抓取中断后仍会返回点）。抓取间隔：kind 分支 `scripts/kind_lab/values.yaml` 与 `kube-state-metrics-values.yaml` 都没有设 `scrape_interval`，按 prometheus-community chart / Prometheus 默认 **1 m**；span 指标是 collector spanmetrics 按 flush 间隔（默认 60 s）经 OTLP 推送。期望 300 s 窗 5 个样本，下限取一半向上取整 = 3。**待实验环境实测确认**（`count_over_time` 实测值见 `collect_baseline.py` 的 `scrape_interval_*` 检查） |
+| `dependency_deployments_available` | `count(kube_deployment_status_replicas_available{8 个依赖} >= 1)`，healthy min = max = 8 | `min()` 只作用于存在的序列，某依赖序列缺失时仍可能返回 1；`count()` 对缺失序列和 0 副本都会使计数低于 8 → degraded，全部缺失 → 空向量 → no_data |
 | `traffic_dependent` | error_ratio、latency_p95、dependency_error_ratio 为 true，其余 false | 比率/分位在低流量下无意义，不判定；副本/pod 状态与流量无关，照判 |
 
 ## 限制

@@ -162,9 +162,16 @@ class SignalBound(DTO):
 class HealthSignal(DTO):
     """One observable the Observer queries every sample.
 
-    ``minimum_samples`` is the number of data points inside the evaluation
-    window that must back the reading's ``value``; fewer points make the
-    reading ``insufficient_samples`` rather than a healthy one.
+    ``sample_count`` on a reading is the number of *raw* samples the signal's
+    underlying series carry inside the evaluation window, obtained by the
+    Observer from ``coverage_query`` (a ``count_over_time`` over the same
+    selector and range as ``query``). A range query over ``query`` would not
+    do: Prometheus evaluates each step with a lookback delta, so a series
+    whose scrapes stopped minutes ago still yields points. ``minimum_samples``
+    is the floor on that count; fewer raw samples make the reading
+    ``insufficient_samples`` rather than a healthy one. The Observer stores
+    the reading's ``query`` only; ``coverage_query`` is recovered from the
+    profile revision on replay.
 
     ``traffic_dependent`` marks ratios and quantiles whose value means nothing
     without traffic (an error ratio over two requests, a p95 over one span).
@@ -177,6 +184,7 @@ class HealthSignal(DTO):
     description: Text
     required: bool = True
     query: Text
+    coverage_query: Text
     minimum_samples: Positive = 1
     traffic_dependent: bool
     healthy: SignalBound
@@ -361,11 +369,19 @@ def load_health_profile(path: Path) -> HealthProfile:
         raise HealthProfileError(
             "PROFILE_INVALID", f"{path.name}: top level is not an object"
         )
-    declared = payload.get("format_version")
-    if declared != PROFILE_FORMAT_VERSION:
+    # The declared value is a file value and stays out of the error, like
+    # every other rejected input.
+    if payload.get("format_version") != PROFILE_FORMAT_VERSION:
         raise HealthProfileError(
             "PROFILE_INVALID",
-            f"{path.name}: format_version {declared!r} is not {PROFILE_FORMAT_VERSION}",
+            f"{path.name}: format_version is not {PROFILE_FORMAT_VERSION}",
+            [
+                {
+                    "type": "format_version",
+                    "loc": ("format_version",),
+                    "msg": "unsupported",
+                }
+            ],
         )
     try:
         return HealthProfile.model_validate(payload)

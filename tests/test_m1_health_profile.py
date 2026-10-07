@@ -57,6 +57,7 @@ def minimal_profile(**overrides) -> dict:
                 "name": "rate",
                 "description": "traffic",
                 "query": "sum(rate(x[5m]))",
+                "coverage_query": "max(count_over_time(x[5m]))",
                 "traffic_dependent": False,
                 "healthy": {"min": 0},
             },
@@ -64,6 +65,7 @@ def minimal_profile(**overrides) -> dict:
                 "name": "errors",
                 "description": "error ratio",
                 "query": "e / t",
+                "coverage_query": "max(count_over_time(t[5m]))",
                 "minimum_samples": 3,
                 "traffic_dependent": True,
                 "healthy": {"min": 0, "max": 0.01},
@@ -72,6 +74,7 @@ def minimal_profile(**overrides) -> dict:
                 "name": "ready",
                 "description": "replicas",
                 "query": "min(ready)",
+                "coverage_query": "min(count_over_time(ready[5m]))",
                 "traffic_dependent": False,
                 "healthy": {"min": 1},
             },
@@ -80,6 +83,7 @@ def minimal_profile(**overrides) -> dict:
                 "description": "optional context",
                 "required": False,
                 "query": "hint",
+                "coverage_query": "count_over_time(hint[5m])",
                 "traffic_dependent": False,
                 "healthy": {"max": 10},
             },
@@ -147,6 +151,8 @@ def test_shipped_checkout_profile_loads_and_covers_f6_step_one():
         "dependency_error_ratio",
     } <= names
     assert all(signal.required for signal in prof.signals)
+    assert all("count_over_time" in s.coverage_query for s in prof.signals)
+    assert all(signal.minimum_samples >= 3 for signal in prof.signals)
     assert prof.effective_traffic.signal == "request_rate_per_second"
     assert prof.session.sustained_window_seconds <= prof.session.deadline_seconds
     assert re.fullmatch(r"otel-demo-checkout@[0-9a-f]{12}", prof.revision)
@@ -162,6 +168,59 @@ def test_shipped_profile_kubernetes_signals_come_from_kube_state_metrics():
     ):
         assert "kube_" in prof.signal(name).query
         assert 'namespace="otel-demo"' in prof.signal(name).query
+
+
+HEALTHY_CHECKOUT = {
+    "deployment_available_replicas": 1.0,
+    "request_rate_per_second": 0.0125,
+    "error_ratio": 0.0,
+    "latency_p95_milliseconds": 120.0,
+    "pods_running": 1.0,
+    "pod_restarts_in_window": 0.0,
+    "dependency_error_ratio": 0.0,
+}
+
+
+def test_a_missing_dependency_series_cannot_read_as_available():
+    """count() over the filtered vector exposes a Deployment with no series."""
+    prof = load_health_profile(SHIPPED)
+    signal = prof.signal("dependency_deployments_available")
+    assert signal.query.startswith("count(") and ">= 1" in signal.query
+    deployments = re.search(r'deployment=~"([^"]+)"', signal.query).group(1).split("|")
+    assert len(deployments) == 8 and len(set(deployments)) == 8
+    assert (signal.healthy.min, signal.healthy.max) == (8, 8)
+    assert "min(" not in signal.query
+
+    def dep(value):
+        return SignalReading(
+            signal_name=signal.name,
+            status="ok",
+            value=value,
+            sample_count=5,
+            query=signal.query,
+            window_start=NOW - timedelta(minutes=5),
+            window_end=NOW,
+            source="prometheus",
+        )
+
+    readings = [
+        SignalReading(
+            signal_name=s.name,
+            status="ok",
+            value=HEALTHY_CHECKOUT[s.name],
+            sample_count=5,
+            query=s.query,
+            window_start=NOW - timedelta(minutes=5),
+            window_end=NOW,
+            source="prometheus",
+        )
+        for s in prof.signals
+        if s.name != signal.name
+    ]
+    assert evaluate(prof, readings + [dep(8.0)]).outcome == "healthy"
+    seven = evaluate(prof, readings + [dep(7.0)])
+    assert seven.outcome == "degraded"
+    assert "dependency_deployments_available" in seven.reason
 
 
 # 2. Revision follows content.
@@ -242,6 +301,7 @@ def evaluation_window():
         lambda p: p["signals"][0].pop("query"),
         lambda p: p["signals"][0].pop("healthy"),
         lambda p: p["signals"][0].pop("traffic_dependent"),
+        lambda p: p["signals"][0].pop("coverage_query"),
         lambda p: p.update(unexpected="field"),
         lambda p: p["signals"][0].update(threshold=1),
         lambda p: p.update(signals=[]),
@@ -279,6 +339,15 @@ def test_profile_error_reports_locations_without_values(tmp_path):
     rendered = str(excinfo.value) + repr(excinfo.value.errors)
     assert "signals/1/healthy" in rendered
     assert "synthetic-secret-value" not in rendered
+
+
+def test_rejected_format_version_is_not_echoed(tmp_path):
+    payload = minimal_profile(format_version="synthetic-leak-9")
+    with pytest.raises(HealthProfileError) as excinfo:
+        load_health_profile(write(tmp_path, payload))
+    rendered = str(excinfo.value) + repr(excinfo.value.errors)
+    assert "format_version" in rendered
+    assert "synthetic-leak-9" not in rendered
 
 
 def test_unreadable_or_non_json_profiles_are_refused(tmp_path):
