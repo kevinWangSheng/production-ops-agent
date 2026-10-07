@@ -421,7 +421,7 @@ def test_observer_role_cannot_write_investigation_runs_reports_or_evidence(
         "UPDATE opspilot_observation_endings SET transition=NULL",
         # timestamps come from the database clock only
         "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,recorded_at) VALUES(gen_random_uuid(),%(s)s,%(i)s,'authority_revoked',clock_timestamp()-interval '1 day')",
-        "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,clock_timestamp())",
+        "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,true,clock_timestamp())",
         "DELETE FROM opspilot_observation_endings",
         "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES('x@000000000000','x',repeat('0',64),'{}')",
         "UPDATE opspilot_health_profiles SET content='{}'",
@@ -717,27 +717,67 @@ def test_a_sample_from_a_lost_lease_is_history_only_and_the_retry_keeps_the_sequ
     "overrides",
     [
         {"sequence": 5},
-        {"session_id": "00000000-0000-0000-0000-000000000000"},
         {"subject_control_generation": 9},
         {"observation_generation": 9},
         {"health_profile_revision": "other@000000000000"},
         {"health_profile_revision": None},
     ],
 )
-def test_the_stamps_come_with_the_lease(
+def test_a_sample_with_other_stamps_than_its_lease_is_history_only(
     observer: ObservationStore,
     owner: DurableStore,
     controller: ObservationStore,
     overrides: dict[str, object],
 ) -> None:
-    """Sequence, session, generations and profile revision are the lease's;
-    an Observer that stamps something else is refused outright: nothing is
-    stored, the session is not ended as stale, the job is still leased."""
+    """Sequence, generations and profile revision are the lease's; a sample
+    stamped otherwise is an invalid identity: kept as history with its
+    readings (C3 section 10), never judged against the session (so the
+    session is not ended as stale), the lease released and the same job
+    retried one interval later."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+
+    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 30), **overrides))
+
+    assert (receipt.accepted, receipt.reason) == (False, "lease_stamp_mismatch")
+    assert receipt.session_state == "authorized" and receipt.transition is None
+    assert receipt.next_sample_due_at is not None
+    history = controller.session_history(session)
+    assert [
+        (s["disposition"], s["reason"], s["lease_valid"], s["lease_stamps_match"])
+        for s in history["samples"]
+    ] == [("history_only", "lease_stamp_mismatch", True, False)]
+    assert [r["signal_name"] for r in history["samples"][0]["readings"]] == [
+        "error_ratio"
+    ]
+    row = controller.session(session)
+    assert row["state"] == "authorized" and row["adopted_count"] == 0
+    assert row["active_sample_job_id"] == lease.job_id
+    assert row["active_sample_owner"] is None
+    assert row["active_sample_due_at"] == receipt.next_sample_due_at
+    assert _claimable(observer, session) == []
+    _due_now(owner, session)
+    retry = _claim(observer, session)
+    assert (retry.job_id, retry.sequence, retry.epoch) == (lease.job_id, 1, 2)
+    assert _submit(observer, retry, _sample(retry, _window(_t0(), 30))).accepted
+    _assert_replay_consistent(controller, session)
+
+
+def test_a_sample_for_another_session_is_refused_outright(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The session is the lease's; a different one is not a sample of this
+    session at all (nothing to file it under), so it is refused as input."""
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target)
     lease = _claim(observer, session)
     with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-        _submit(observer, lease, _sample(lease, _window(_t0(), 30), **overrides))
+        _submit(
+            observer,
+            lease,
+            _sample(lease, _window(_t0(), 30), session_id=str(uuid4())),
+        )
     assert controller.session_history(session)["samples"] == []
     row = controller.session(session)
     assert row["state"] == "authorized" and row["active_sample_owner"] == lease.owner

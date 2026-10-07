@@ -97,6 +97,7 @@ CHECKS: dict[tuple[str, str], tuple[str, ...]] = {
         "deadline_expired",
         "suspended",
         "lease_revoked",
+        "lease_stamp_mismatch",
     ),
     # opspilot.domain.subjects.IncidentLifecycle
     ("opspilot_observation_samples", "subject_lifecycle"): (
@@ -292,6 +293,9 @@ def upgrade() -> None:
           target_generation integer NOT NULL,
           within_deadline boolean NOT NULL,
           lease_valid boolean NOT NULL,
+          -- the sample's sequence/generations/profile revision equal the
+          -- lease's (false: filed as lease_stamp_mismatch)
+          lease_stamps_match boolean NOT NULL,
           transition text,
           submitted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           CONSTRAINT {samples}_window_check CHECK (window_end > window_start),
@@ -362,7 +366,7 @@ def upgrade() -> None:
         GRANT SELECT ON {samples}, {endings} TO {OBSERVER_ROLE};
         -- the timestamps come from the database clock (DEFAULT), never from
         -- the Observer: the evidence trigger dates rows by them
-        GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,transition) ON {samples} TO {OBSERVER_ROLE};
+        GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,transition) ON {samples} TO {OBSERVER_ROLE};
         GRANT INSERT (ending_id,session_id,incident_id,ended_reason,transition,sample_id) ON {endings} TO {OBSERVER_ROLE};
         """
     )

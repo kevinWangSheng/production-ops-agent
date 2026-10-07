@@ -86,7 +86,7 @@ _SAMPLE_COLUMNS = (
     "health_profile_revision,disposition,reason,confirms_health,health_basis,"
     "subject_lifecycle,incident_control_generation,incident_observation_generation,"
     "scope_suspended,global_generation,target_generation,within_deadline,"
-    "lease_valid,transition,submitted_at"
+    "lease_valid,lease_stamps_match,transition,submitted_at"
 )
 _ENDING_COLUMNS = (
     "ending_id,session_id,incident_id,ended_reason,transition,sample_id,recorded_at"
@@ -324,6 +324,7 @@ def _judge(
     within_deadline: bool,
     suspension_blocks: bool,
     lease_valid: bool,
+    stamps_match: bool,
     authorized_at: datetime,
     adopted_count: int,
     healthy_since: datetime | None,
@@ -347,17 +348,21 @@ def _judge(
     since the authorization ends the session (``scope_suspended``), a lifted
     suspension never resumes an old authorization (C3 section 4).
     """
-    if lease_valid:
+    if not lease_valid:
+        decision = SampleAcceptance(
+            accepted=False, disposition="history_only", reason="lease_revoked"
+        )
+    elif not stamps_match:
+        decision = SampleAcceptance(
+            accepted=False, disposition="history_only", reason="lease_stamp_mismatch"
+        )
+    else:
         decision = evaluate_sample(
             session,
             sample,
             subject_state=subject_state,
             within_deadline=within_deadline,
             suspension_blocks=suspension_blocks,
-        )
-    else:
-        decision = SampleAcceptance(
-            accepted=False, disposition="history_only", reason="lease_revoked"
         )
     basis = _health_basis(
         session,
@@ -893,16 +898,17 @@ class ObservationStore(_StoreBase):
                 and row["active_sample_lease_until"] is not None
                 and row["active_sample_lease_until"] > now
             )
-            if lease_valid and (
-                sample.sequence != int(row["active_sample_sequence"])
-                or sample.subject_control_generation != lease.subject_control_generation
-                or sample.observation_generation != lease.observation_generation
-                or sample.health_profile_revision != lease.health_profile_revision
-            ):
-                # Sequence, generations and profile revision came with the
-                # lease; different stamps are an Observer bug, not an
-                # observation, and must not end the session as stale.
-                raise PersistenceError("INVALID_INPUT")
+            # Sequence, generations and profile revision came with the lease;
+            # other stamps are an invalid identity: filed as history
+            # (``lease_stamp_mismatch``), never judged against the session
+            # (so never ``binding_stale``), the job retried later.
+            stamps_match = not lease_valid or (
+                sample.sequence == int(row["active_sample_sequence"])
+                and sample.subject_control_generation
+                == lease.subject_control_generation
+                and sample.observation_generation == lease.observation_generation
+                and sample.health_profile_revision == lease.health_profile_revision
+            )
             if sample.window.end > now + timedelta(seconds=WINDOW_FUTURE_SKEW_SECONDS):
                 # No telemetry covers a window that has not happened yet.
                 raise PersistenceError("INVALID_INPUT")
@@ -926,6 +932,7 @@ class ObservationStore(_StoreBase):
                 within_deadline=within,
                 suspension_blocks=suspended,
                 lease_valid=lease_valid,
+                stamps_match=stamps_match,
                 authorized_at=row["authorized_at"],
                 adopted_count=int(row["adopted_count"]),
                 healthy_since=row["healthy_since"],
@@ -965,7 +972,7 @@ class ObservationStore(_StoreBase):
                     (next_due, lease.session_id),
                 )
             conn.execute(
-                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     sample_id,
                     lease.session_id,
@@ -991,6 +998,7 @@ class ObservationStore(_StoreBase):
                     generations[1],
                     within,
                     lease_valid,
+                    stamps_match,
                     verdict.transition,
                 ),
             )
@@ -1206,6 +1214,7 @@ class ObservationStore(_StoreBase):
                 within_deadline=bool(stored["within_deadline"]),
                 suspension_blocks=bool(stored["scope_suspended"]),
                 lease_valid=bool(stored["lease_valid"]),
+                stamps_match=bool(stored["lease_stamps_match"]),
                 authorized_at=row["authorized_at"],
                 adopted_count=adopted_count,
                 healthy_since=healthy_since,

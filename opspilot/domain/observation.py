@@ -110,6 +110,10 @@ SampleReason = Literal[
     # the atomic submission checks. Decided by the store, not by
     # ``evaluate_sample``, which has no lease in its inputs.
     "lease_revoked",
+    # The lease is current but the sample carries other stamps (sequence,
+    # generations, profile revision) than the lease handed out: an invalid
+    # identity, kept as history (C3 section 10), the job stays retryable.
+    "lease_stamp_mismatch",
 ]
 
 
