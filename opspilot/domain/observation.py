@@ -105,6 +105,19 @@ SampleReason = Literal[
     "subject_state_not_adoptable",
     "deadline_expired",
     "suspended",
+    # The submission did not carry the session's current sampling lease
+    # (job, owner, epoch, expiry): C3 section 10 lists owner/epoch/lease among
+    # the atomic submission checks. Decided by the store, not by
+    # ``evaluate_sample``, which has no lease in its inputs.
+    "lease_revoked",
+    # The lease is current but the sample carries other stamps (sequence,
+    # generations, profile revision) than the lease handed out: an invalid
+    # identity, kept as history (C3 section 10), the job stays retryable.
+    "lease_stamp_mismatch",
+    # The sample claims health or complete required signals that its own
+    # reading rows do not show (C3 section 10: data coverage is a necessary
+    # condition of healthy, and the readings are the record of it).
+    "readings_inconsistent",
 ]
 
 
