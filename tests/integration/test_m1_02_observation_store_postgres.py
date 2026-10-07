@@ -285,6 +285,7 @@ def _readings_for(sample: HealthSample) -> list[SignalReading]:
             signal_name="error_ratio",
             status="ok" if sample.required_signals_present else "no_data",
             value=0.0 if sample.required_signals_present else None,
+            sample_count=12 if sample.required_signals_present else None,
             query="q",
             window_start=sample.window.start,
             window_end=sample.window.end,
@@ -1894,3 +1895,48 @@ def test_claim_issues_no_lease_while_a_suspension_path_holds_the_incident(
     assert _claimable(observer, session) == []
     row = controller.session(session)
     assert (row["state"], row["ended_reason"]) == ("revoked", "scope_suspended")
+
+
+def test_an_ok_reading_without_data_behind_it_is_no_coverage(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """``status='ok'`` with no value, or with zero underlying samples, does
+    not cover a required signal: a healthy sample built on it is filed as
+    ``readings_inconsistent`` and never resolves."""
+    window = _window(_t0(), 60)
+    base = dict(
+        signal_name="error_ratio",
+        status="ok",
+        query="q",
+        window_start=window[0],
+        window_end=window[1],
+        source="prometheus",
+    )
+    with pytest.raises(ValidationError):
+        SignalReading(**base, value=None, sample_count=12)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        SignalReading(**{**base, "status": "no_data"}, value=0.0)  # type: ignore[arg-type]
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=30)
+    for sample_count in (0, None):
+        lease = _claim(observer, session)
+        reading = SignalReading(**base, value=0.0, sample_count=sample_count)  # type: ignore[arg-type]
+        receipt = observer.submit_sample(lease, _sample(lease, window), [reading])
+        assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
+        assert receipt.transition is None
+        assert _lifecycle(owner, incident) == "observing_recovery"
+        _due_now(owner, session)
+    with psycopg.connect(controller.dsn) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings SET value=NULL WHERE sample_id=%s",
+                (receipt.sample_id,),
+            )
+    _assert_replay_consistent(controller, session)
+    lease = _claim(observer, session)
+    receipt = observer.submit_sample(
+        lease,
+        _sample(lease, window),
+        [SignalReading(**base, value=0.0, sample_count=1)],  # type: ignore[arg-type]
+    )
+    assert receipt.transition == "recovery_confirmed"

@@ -156,8 +156,8 @@ class SignalReading(DTO):
 
     @model_validator(mode="after")
     def consistent(self) -> SignalReading:
-        if self.status != "ok" and self.value is not None:
-            raise ValueError("VALUE_WITHOUT_OK_STATUS")
+        if (self.status == "ok") != (self.value is not None):
+            raise ValueError("VALUE_STATUS_MISMATCH")
         if self.window_end < self.window_start:
             raise ValueError("INVALID_WINDOW")
         if self.raw is not None:
@@ -497,6 +497,19 @@ def _parse_required(
         return required_signals(str(profile["content"])), False
     except PersistenceError:
         return None, True
+
+
+def _covers(status: object, value: object, sample_count: object) -> bool:
+    """A reading covers its signal only as an ok result with a value and at
+    least one underlying sample (``coverage_query``); an ok with nothing
+    behind it is no coverage (C3 section 10: minimum samples are a necessary
+    condition of healthy)."""
+    return (
+        status == "ok"
+        and value is not None
+        and isinstance(sample_count, int)
+        and sample_count > 0
+    )
 
 
 def _missing_required_signals(
@@ -1013,7 +1026,11 @@ class ObservationStore(_StoreBase):
                 unreadable=unreadable,
                 outcome=sample.outcome,
                 required_signals_present=sample.required_signals_present,
-                ok_signals={item.signal_name for item in rows if item.status == "ok"},
+                ok_signals={
+                    item.signal_name
+                    for item in rows
+                    if _covers(item.status, item.value, item.sample_count)
+                },
             )
             if sample.window.end > now + timedelta(seconds=WINDOW_FUTURE_SKEW_SECONDS):
                 # No telemetry covers a window that has not happened yet.
@@ -1313,7 +1330,7 @@ class ObservationStore(_StoreBase):
             ok_signals = {
                 str(reading["signal_name"])
                 for reading in stored["readings"]
-                if reading["status"] == "ok"
+                if _covers(reading["status"], reading["value"], reading["sample_count"])
             }
             # Recomputed from the stored rows: a deleted reading changes the
             # replayed decision (readings_inconsistent) as well as this list.

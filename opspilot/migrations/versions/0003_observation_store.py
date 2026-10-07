@@ -330,7 +330,8 @@ def upgrade() -> None:
           PRIMARY KEY (sample_id, signal_name),
           CONSTRAINT {readings}_raw_check CHECK (raw IS NULL OR (raw_sha256 IS NOT NULL AND octet_length(raw) <= {READING_RAW_LIMIT})),
           {_check(readings, "status", READING_STATUSES)},
-          CONSTRAINT {readings}_value_check CHECK (status = 'ok' OR value IS NULL),
+          -- an ok reading carries its value; any other status carries none
+          CONSTRAINT {readings}_value_check CHECK ((status = 'ok') = (value IS NOT NULL)),
           CONSTRAINT {readings}_window_check CHECK (window_end >= window_start)
         );
         CREATE TABLE {endings} (
