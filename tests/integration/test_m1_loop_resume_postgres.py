@@ -37,6 +37,7 @@ from tests.m1_investigation_support import (
     tool_call,
 )
 from tests.m1_tool_support import WINDOW_END, WINDOW_START, body, build
+from tests.target_support import ANY_TARGETS
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -891,6 +892,7 @@ def test_the_runner_announces_a_handoff_and_the_page_reads_it_back():
         evidence=evidence,
         ledger=ledger,
         run_versions=dict(VERSIONS),
+        targets=ANY_TARGETS,
     )
     snapshot = workbench.snapshot(h.incident)
     assert snapshot["run"]["state"] == "waiting_human"

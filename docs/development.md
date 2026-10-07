@@ -34,6 +34,7 @@ pytest 没有收集到测试返回 5，不算通过；make 可能将子命令错
 - 运行时 `DurableStore.install()` 及三个 web 模块的 `install()` 签名不变，但只做上面这项校验，不是 head 就抛 `PersistenceError("SCHEMA_NOT_MIGRATED")` 拒绝启动；因此 M1-02 的受限 Observer 角色不需要 DDL 权限。调用 `install()` 的脚本（`scripts/m1_live_runner.py` 等）同样要先 `make migrate`。
 - `0002_state_checks` 给 `opspilot_runs.state`、`opspilot_incidents.lifecycle` 加 CHECK，取值等于 `opspilot/domain` 的 `RunExecution`、`IncidentLifecycle`（`tests/test_schema_state_checks.py` 比对）。升级前先数已有非法值，有则抛 `IllegalStateValues`（表/列/值/行数）、退出 1、不改数据，库停在上一版本；修好数据后重跑 `make migrate`。旧库接管现在是：与新建库升到 `0001_baseline` 的 dump 比对 → stamp 0001 → 升到 head，输出 `schema stamped: <head>`。其余枚举型列为何未加约束见任务记录 PR-c 段。
 - `0003_observation_store`（M1-02 第 2 步，#84）：建 `opspilot_health_profiles`（按 `health_profile_revision` 去重保存 profile 的规范化 JSON 文本与 sha256，CHECK revision = `<profile_id>@<sha256 前 12 位>`；授权会话时传入内容并校验）、`opspilot_observation_sessions`（观察会话，含授权时固定的期限/次数/间隔/持续窗口、已采纳水位和唯一的活动采样任务）、`opspilot_observation_samples`（每次提交的采样与判定依据）、`opspilot_observation_signal_readings`（逐信号读数），给 `opspilot_incidents` 加 `observation_generation` 列；状态列 CHECK 等于 `ObservationPurpose`/`ObservationSessionState`/`SampleOutcome`/`SampleReason`/`IncidentLifecycle`（`tests/test_schema_observation_store.py` 比对）。同一迁移建 `NOLOGIN` 角色 `opspilot_observer`（集群级，已存在则跳过）并只授予采样所需的最小权限：`alembic_version`、目标/挂起表只读；`opspilot_incidents` 只读身份与生命周期列、只能更新 `lifecycle`；会话表只能更新水位、任务槽与状态列；采样表与读数表只能插入。触发器 `opspilot_incidents_observer_lifecycle_guard` 再把 Observer 角色（`pg_has_role` 成员，含嵌套；superuser 与表 owner 除外）对 `lifecycle` 的改动限制在 `observing_recovery → resolved | open` 两条边，其他角色不受影响。约束触发器 `opspilot_incidents_observer_lifecycle_evidence`（DEFERRABLE INITIALLY DEFERRED）在提交时要求该改动在同一事务内有 `opspilot_observation_endings`（append-only，Observer 只能插入）里本事故会话的结束记录且 transition 与边一致，`resolved` 还须指向同事务写入的确认采样行。两个触发器的边界：它们只防 Observer 代码或 SQL 的错误（裸 `UPDATE`、复用旧行、写错边），不防被攻陷的 Observer 凭据——Observer 凭据本身就是观察判定的权威，可以伪造自己的采样行与结束记录；要防这一层须把写 `resolved` 拆到独立角色，不在本切片。另：暂停生效期间授权的会话，恢复后首次被领取或提交即以 `scope_suspended` 结束，需第 3 步重新授权。读数表的 `raw bytea`（≤128 KiB，须带 `raw_sha256`）保存原始返回供重放核对哈希。Observer 进程的登录角色在仓库外建（`CREATE ROLE <login> LOGIN IN ROLE opspilot_observer`，凭据不入库；建议不给它数据库级 TEMP 权限——`REVOKE TEMP ON DATABASE <db> FROM <login>`——迁移不改 PUBLIC 的 TEMP 默认，以免影响其他角色）。领取采样任务在事故行锁下重读控制范围，与暂停路径串行。downgrade 删触发器、三张表与列、`DROP OWNED BY` 收回本库授权，只有集群里再无数据库引用该角色时才 `DROP ROLE`。
+- `0004_target_identity`（M1-02 第 3 步，#85，用户决定 2026-10-07）：给 `opspilot_targets` 补 `integration_id`、`cluster_uid`、`namespace` 三列（NOT NULL、非空 CHECK），与已有 `resource_uid` 共同构成不可变目标身份；`revision` 不属于身份，只在授权观察时快照到会话行。已有行无法从库内回填：升级前设 `OPSPILOT_TARGET_IDENTITIES=<JSON 文件>`（格式 `{"<resource_uid>": {"integration_id": "...", "cluster_uid": "...", "namespace": "..."}}`，与工作台运行时读的是同一个文件），每个已登记的 `resource_uid` 都要有条目；缺条目、文件未设、条目缺字段或为空、顶层不是对象都抛 `TargetIdentityMissing`（列出未覆盖的 uid）、退出 1、不改任何东西，库停在 0003。文件里多出的条目不会登记新目标（登记只发生在事故接收）。空登记表不需要该文件。downgrade 只删三列。`DurableStore.register_target(resource_uid, *, integration_id, cluster_uid, namespace)` 对已知 uid 的不同身份报 `IDENTITY_CONFLICT`，登记后的身份不原地改。本机 55431 lab 库合并后升级：`OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump OPSPILOT_TARGET_IDENTITIES=<文件> make migrate`，先用 `psql -c "SELECT resource_uid FROM opspilot_targets"` 列出要回填的 uid。
 - 新增迁移：`.venv/bin/alembic revision -m "<说明>"`（配置在 `pyproject.toml` 的 `[tool.alembic]`，DSN 来自 `OPSPILOT_DSN`），文件名改成 `000N_<slug>.py`、`revision` 同名，SQL 写进 `op.execute`，补 `downgrade()`。改表结构属用户门 PR。
 - 测试：`tests/integration/conftest.py` 在 `M1_DURABLE_POSTGRES=1`/`M0_B_POSTGRES=1` 下先对 lab 库跑一次 `migrate`（lab 用户是 owner），现有测试里的 `install()` 调用不动；设 `OPSPILOT_LAB_DSN`（库名仍须是 `m0_budget`；由 `scripts/m0/postgres_lab.py` 读取，子进程也继承）可把整套集成测试指向另一端口的临时实例，而不动 55431 的 lab 与其数据；lab 库是旧版建的时会走接管，所以本机也要有 PG 17 的 `pg_dump`（Homebrew：`/opt/homebrew/opt/postgresql@17/bin`）。两条 CI 路径（空库→head；旧 DDL 建库→接管→head，并比对两边 dump）在 `m0-postgres` 作业里。
 
@@ -76,7 +77,12 @@ export OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab"
 make migrate   # owner 连接把 schema 升到 head；web/worker 启动时只校验版本
 # 工作台登录：哈希从 stdin 读密码，只打印哈希
 .venv/bin/python -m opspilot.web hash-password
+# 目标登记表（迁移 0004 起必填）：操作者 target_id → 不可变身份；不在表里的 target_id 提交事故被拒（UNKNOWN_TARGET）。
+# fixture profile 的示例值（合成演示，不是任何真实集群的身份）：
+echo '{"checkout-prod": {"integration_id": "fixture", "cluster_uid": "fixture-cluster", "namespace": "checkout"}}' > /tmp/opspilot-targets.json
+OPSPILOT_TARGET_IDENTITIES=/tmp/opspilot-targets.json \
 OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.web serve
+# 「登记处置」用的 HealthProfile 默认是随产品发布的 otel-demo-checkout.json；OPSPILOT_HEALTH_PROFILE=<路径> 可换
 # 另一个终端：worker（SIGTERM/Ctrl-C 停止领取，等在跑的尝试最多 OPSPILOT_WORKER_GRACE_SECONDS 秒）
 OPSPILOT_ENV_FILE=/绝对路径/.env .venv/bin/python -m opspilot.worker_main
 # 提交事故（目标固定为 fixture 的 checkout-prod；Origin 必须是绑定地址）
@@ -91,6 +97,11 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
   -d action=follow_up -d expected_generation=<页面上的代际> -d idempotency_key=f-1 \
   --data-urlencode 'text=Also compare against the previous hour.' \
   http://127.0.0.1:8080/incidents/<incident_id>/control
+# 登记处置（M1-02 第 3 步）：人工在系统外处置后登记，事故进入 observing_recovery，授权一个按 HealthProfile 定界的观察会话；
+# revision 是处置后的目标版本（审计快照，不是身份）；同一 idempotency_key 重放不产生第二个会话；暂停/取消/续开/new_run 在同一事务撤销授权
+curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
+  -d action=register_remediation -d expected_generation=<页面上的代际> -d idempotency_key=rem-1 \
+  -d revision=checkout:v2.0.3 http://127.0.0.1:8080/incidents/<incident_id>/control
 .venv/bin/python -m scripts.m0.postgres_lab stop
 ```
 

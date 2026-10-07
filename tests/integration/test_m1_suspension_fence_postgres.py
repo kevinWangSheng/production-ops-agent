@@ -19,6 +19,7 @@ import pytest
 
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
+from tests.target_support import register
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -60,7 +61,7 @@ class _Scope:
 
     def __init__(self, kind: str, s: DurableStore):
         self.kind, self.s = kind, s
-        self.target = s.register_target("target-" + str(uuid4()))
+        self.target = register(s, "target-" + str(uuid4()))
         self.generation: int | None = None
 
     def suspend(self, lease) -> None:

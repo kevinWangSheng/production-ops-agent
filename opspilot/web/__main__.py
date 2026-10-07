@@ -13,6 +13,12 @@ Configuration comes from the environment only, and only as hashes:
   above the freeze.
 * ``OPSPILOT_TOOL_PROFILE``   ``fixture`` (default) or ``otel-demo``; must
   match the worker (``opspilot.tools.profiles``).
+* ``OPSPILOT_TARGET_IDENTITIES`` JSON file mapping each operator
+  ``target_id`` to its immutable identity (``opspilot.schema
+  .load_target_identities``); intake refuses an id the file does not list.
+* ``OPSPILOT_HEALTH_PROFILE``  path of the HealthProfile JSON the
+  "register remediation" action fixes an observation session by (default:
+  the shipped ``otel-demo-checkout`` profile).
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -26,16 +32,29 @@ from __future__ import annotations
 import getpass
 import os
 import sys
+from pathlib import Path
 
 from opspilot.investigation.limits import RUN_WALL_SECONDS
+from opspilot.observer.health_profile import (
+    PROFILE_DIRECTORY,
+    HealthProfile,
+    HealthProfileError,
+    load_health_profile,
+)
 from opspilot.persistence import DurableStore
+from opspilot.schema import TARGET_IDENTITIES_ENV, TargetIdentityMissing
 from opspilot.tools.profiles import select_profile
 from opspilot.web.app import create_app
 from opspilot.web.auth import AuthConfig, Authenticator, hash_password, token_digest
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
 from opspilot.web.service import Workbench
-from opspilot.web.store import DurableClock, DurableIncidentStore, DurableWebLedger
+from opspilot.web.store import (
+    DurableClock,
+    DurableIncidentStore,
+    DurableWebLedger,
+    MappingTargetRegistry,
+)
 
 
 def _pairs(raw: str) -> dict[str, str]:
@@ -59,6 +78,31 @@ def _run_seconds() -> float:
     if not 0 < value <= RUN_WALL_SECONDS:
         raise SystemExit("OPSPILOT_RUN_SECONDS must be within the frozen wall")
     return value
+
+
+def _target_registry() -> MappingTargetRegistry:
+    """The deployment's target identities (migration 0004): intake refuses
+    a ``target_id`` the file does not list, so the file is required."""
+    path = os.environ.get(TARGET_IDENTITIES_ENV)
+    if not path:
+        raise SystemExit(f"{TARGET_IDENTITIES_ENV} is required (target registry file)")
+    try:
+        return MappingTargetRegistry.from_file(path)
+    except TargetIdentityMissing as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def _health_profile() -> HealthProfile:
+    """The HealthProfile "register remediation" fixes a session by; the
+    shipped checkout profile unless ``OPSPILOT_HEALTH_PROFILE`` names a file."""
+    path = Path(
+        os.environ.get("OPSPILOT_HEALTH_PROFILE")
+        or PROFILE_DIRECTORY / "otel-demo-checkout.json"
+    )
+    try:
+        return load_health_profile(path)
+    except HealthProfileError as exc:
+        raise SystemExit(f"OPSPILOT_HEALTH_PROFILE: {exc}") from None
 
 
 def _serve() -> int:
@@ -92,6 +136,8 @@ def _serve() -> int:
         events=events,
         evidence=evidence,
         ledger=ledger,
+        targets=_target_registry(),
+        health_profile=_health_profile(),
         # The same versions and tool face ``python -m opspilot.worker_main``
         # claims and runs with: a Run recorded under other versions is
         # blocked on claim (C3 §5), and without the face it has no input.

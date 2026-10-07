@@ -104,26 +104,45 @@ class _IncidentOps(_StoreBase):
                 )
 
     def register_target(
-        self, resource_uid: str, *, target_id: UUID | None = None
+        self,
+        resource_uid: str,
+        *,
+        integration_id: str,
+        cluster_uid: str,
+        namespace: str,
+        target_id: UUID | None = None,
     ) -> UUID:
-        """Register an immutable target identity before it can be suspended."""
-        if not isinstance(resource_uid, str) or not resource_uid:
+        """Register an immutable target identity before it can be suspended.
+
+        The identity is the four fields the user decision of 2026-10-07 fixed
+        (``revision`` is not part of it); ``resource_uid`` is the registry
+        key. Registering a known ``resource_uid`` again returns its id when
+        every field is the same and is ``IDENTITY_CONFLICT`` otherwise: a
+        registered identity never changes in place (C3 section 4, "目标重新
+        绑定 ... 在事务中撤销" is a separate, not yet built, operation).
+        """
+        fields = (resource_uid, integration_id, cluster_uid, namespace)
+        if any(not isinstance(value, str) or not value for value in fields):
             raise PersistenceError("INVALID_INPUT")
         identity = target_id or uuid4()
         with self.transaction() as conn:
             existing = conn.execute(
-                "SELECT target_id,resource_uid FROM opspilot_targets WHERE resource_uid=%s OR target_id=%s",
+                "SELECT target_id,resource_uid,integration_id,cluster_uid,namespace FROM opspilot_targets WHERE resource_uid=%s OR target_id=%s",
                 (resource_uid, identity),
             ).fetchone()
             if existing:
-                if existing["resource_uid"] != resource_uid or (
-                    target_id is not None and existing["target_id"] != identity
+                if (
+                    existing["resource_uid"] != resource_uid
+                    or existing["integration_id"] != integration_id
+                    or existing["cluster_uid"] != cluster_uid
+                    or existing["namespace"] != namespace
+                    or (target_id is not None and existing["target_id"] != identity)
                 ):
                     raise PersistenceError("IDENTITY_CONFLICT")
                 return cast(UUID, existing["target_id"])
             conn.execute(
-                "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
-                (identity, resource_uid),
+                "INSERT INTO opspilot_targets(target_id,resource_uid,integration_id,cluster_uid,namespace) VALUES(%s,%s,%s,%s,%s)",
+                (identity, resource_uid, integration_id, cluster_uid, namespace),
             )
             conn.execute(
                 "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",

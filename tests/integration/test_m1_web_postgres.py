@@ -44,6 +44,7 @@ from tests.m1_web_support import (
     same_origin,
     stream,
 )
+from tests.target_support import ANY_TARGETS
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -66,6 +67,7 @@ def _build():
         evidence=evidence,
         ledger=ledger,
         run_versions={"state": "v1"},
+        targets=ANY_TARGETS,
         run_seconds=600,
     )
     config = AuthConfig(

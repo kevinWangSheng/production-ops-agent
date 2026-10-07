@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident dca0ef1c-2e1c-53ac-89e9-4dab55c603ab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>dca0ef1c-2e1c-53ac-89e9-4dab55c603ab</code></h1>
+<p>
+  lifecycle <span class="badge">observing_recovery</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">1</strong>
+  · run <code>4052d45e-adc0-5faa-bb06-e085b3cc7df9</code> <span class="badge" id="run-state">queued</span>
+  · epoch 0
+  · budget 0 spent / 0 reserved / 0 unknown of 100
+  · deadline 2026-10-07 14:29:13.600190-07:00
+</p>
+
+<p>Target request: <code>checkout-prod</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Checkout shows elevated HTTP errors; investigate.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 1. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="cancel-1-482f92afa3194c94b3257216df12e626">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="correct-1-482f92afa3194c94b3257216df12e626">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="follow_up-1-482f92afa3194c94b3257216df12e626">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="new_run-1-482f92afa3194c94b3257216df12e626">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="pause-1-482f92afa3194c94b3257216df12e626">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="register_remediation">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="register_remediation-1-482f92afa3194c94b3257216df12e626">
+  
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  
+  <button type="submit">register_remediation</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="resume-1-482f92afa3194c94b3257216df12e626">
+  
+  <button type="submit">resume</button>
+</form>
+
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation under HealthProfile <code>otel-demo-checkout@cb52da44e49b</code>. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+
+<table id="observation-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td><code>fddc7639-aa7f-52a4-92a2-b78cc40bec66</code></td>
+    <td><span class="badge">authorized</span></td>
+    <td>control 1 · observation 1</td>
+    <td><code>otel-demo-checkout@cb52da44e49b</code></td>
+    <td><code>checkout:v2.0.3</code></td>
+    <td>2026-10-07 12:31:19.682931-07:00 by <code>demo</code></td>
+    <td>2026-10-07 13:31:19.672379-07:00</td>
+    <td>0 / 40 adopted, next due 2026-10-07 12:32:19.679071-07:00</td>
+  </tr>
+  
+  </tbody>
+</table>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report above does not certify recovery.</p>
+
+
+<h2>Report</h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  </p>
+  
+
+
+
+
+
+
+<h2>Steps</h2>
+
+<p class="muted">No committed steps.</p>
+
+
+<h2>Human decisions</h2>
+
+<table>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <tbody>
+  
+  <tr><td>2</td><td><code>register_remediation</code></td><td><code>demo</code></td>
+      <td>0 → 1</td><td></td></tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 2)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "Checkout shows elevated HTTP errors; investigate.", "received_at": "2026-10-07T12:29:13.597028-07:00", "request_id": "39d53acc-5c52-4b32-80b8-83a22be4e0ef", "run_id": "4052d45e-adc0-5faa-bb06-e085b3cc7df9", "target_id": "checkout-prod"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>control_applied</strong> <span class="muted">{"action": "register_remediation", "actor_id": "demo", "expected_generation": 0, "generation": 1, "revision": "checkout:v2.0.3"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 2;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/dca0ef1c-2e1c-53ac-89e9-4dab55c603ab/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

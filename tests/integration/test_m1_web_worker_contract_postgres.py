@@ -64,6 +64,7 @@ from tests.m1_web_support import (
     same_origin,
     stream,
 )
+from tests.target_support import ANY_TARGETS
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -92,6 +93,7 @@ class _Stack:
             evidence=self.evidence,
             ledger=ledger,
             run_versions=fixture_versions(),
+            targets=ANY_TARGETS,
             run_seconds=600,
             tool_face=fixture_face(),
         )

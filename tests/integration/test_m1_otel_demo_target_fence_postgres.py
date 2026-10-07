@@ -54,6 +54,7 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
+from tests.target_support import ANY_TARGETS, register
 from tests.test_m1_otel_demo_contract import (
     GOOD_EXPR,
     JAEGER_URL,
@@ -85,6 +86,7 @@ def _workbench():
         evidence=evidence,
         ledger=ledger,
         run_versions=profile.versions(),
+        targets=ANY_TARGETS,
         run_seconds=600,
         tool_face=profile.face(FakeClock(start=WINDOW_END)),
     )
@@ -127,7 +129,7 @@ def _release(store: DurableStore, target: UUID) -> None:
 
 def test_a_submitted_incident_is_bound_to_its_registered_target(monkeypatch):
     app, store, evidence = _workbench()
-    target = store.register_target(TARGET_ID)
+    target = register(store, TARGET_ID)
     _release(store, target)
     incident, run = _submit(app)
     with store.transaction() as conn:
@@ -136,14 +138,14 @@ def test_a_submitted_incident_is_bound_to_its_registered_target(monkeypatch):
         ).fetchone()
     assert row["target_id"] == target
     # A second registration of the same resource uid is the same identity.
-    assert store.register_target(TARGET_ID) == target
+    assert register(store, TARGET_ID) == target
 
 
 def test_a_target_suspension_fences_a_live_otel_run(monkeypatch):
     """Claim first, then a human suspends the target: the profile's own
     control source reports it and the executor denies without a request."""
     app, store, evidence = _workbench()
-    target = store.register_target(TARGET_ID)
+    target = register(store, TARGET_ID)
     _release(store, target)
     incident, run = _submit(app)
     lease = store.claim(incident, run, uuid4(), otel_demo_versions())
@@ -202,7 +204,7 @@ def test_a_target_suspension_fences_a_live_otel_run(monkeypatch):
 
 def test_a_target_suspended_before_claim_keeps_the_run_off_the_queue():
     app, store, evidence = _workbench()
-    target = store.register_target(TARGET_ID)
+    target = register(store, TARGET_ID)
     _release(store, target)
     with store.transaction() as conn:
         row = conn.execute(

@@ -57,6 +57,7 @@ __all__ = [
     "PROFILE_DIRECTORY",
     "PROFILE_FORMAT_VERSION",
     "WINDOW_TOLERANCE_SHARE",
+    "canonical_content",
     "HealthProfile",
     "HealthProfileError",
     "HealthSignal",
@@ -334,16 +335,24 @@ def profile_revision(profile: HealthProfile) -> str:
     so formatting and key order in the file do not change the revision while
     every value does.
     """
+    canonical = canonical_content(profile)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{profile.profile_id}@{digest[:12]}"
+
+
+def canonical_content(profile: HealthProfile) -> str:
+    """The text the revision hashes: the validated model as JSON with sorted
+    keys and no whitespace. The session store keeps this text behind the
+    revision (``opspilot_health_profiles``) so a replay reads exactly what
+    was hashed."""
     if not isinstance(profile, HealthProfile):
         raise DomainError("INVALID_INPUT", "health profile is required")
-    canonical = json.dumps(
+    return json.dumps(
         profile.model_dump(mode="json"),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
     )
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return f"{profile.profile_id}@{digest[:12]}"
 
 
 def load_health_profile(path: Path) -> HealthProfile:

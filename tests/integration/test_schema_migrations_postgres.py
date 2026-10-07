@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0003_observation_store"
+HEAD = "0004_target_identity"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -469,3 +469,154 @@ def test_0003_role_is_dropped_only_when_no_database_references_it(
                     sql.Identifier(other)
                 )
             )
+
+
+# --- 0004_target_identity (M1-02 step 3, issue #85) ---
+
+
+IDENTITY_COLUMNS = ("integration_id", "cluster_uid", "namespace")
+
+
+def _target_columns(dsn: str) -> set[str]:
+    with psycopg.connect(dsn) as conn:
+        return {
+            row[0]
+            for row in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='opspilot_targets'"
+            )
+        }
+
+
+def _seed_target(dsn: str, uid: str) -> None:
+    with psycopg.connect(dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
+            (uuid4(), uid),
+        )
+
+
+def test_0004_fails_closed_without_identities_for_existing_targets(
+    scratch_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """Rows registered before 0004 cannot be completed from the database;
+    the migration refuses (listing them) instead of inventing an identity,
+    the database stays at 0003 and the columns are not added."""
+    monkeypatch.delenv(schema.TARGET_IDENTITIES_ENV, raising=False)
+    schema.upgrade_to(scratch_dsn, "0003_observation_store")
+    _seed_target(scratch_dsn, "checkout-a")
+    _seed_target(scratch_dsn, "checkout-b")
+
+    with pytest.raises(schema.TargetIdentityMissing) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    assert refused.value.resource_uids == ["checkout-a", "checkout-b"]
+    assert "is not set" in str(refused.value)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == "0003_observation_store"
+    assert not set(IDENTITY_COLUMNS) & _target_columns(scratch_dsn)
+
+    # A file that covers only one of them is refused as well, naming the other.
+    partial = tmp_path / "partial.json"
+    partial.write_text(
+        '{"checkout-a": {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"}}'
+    )
+    monkeypatch.setenv(schema.TARGET_IDENTITIES_ENV, str(partial))
+    with pytest.raises(schema.TargetIdentityMissing) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    assert refused.value.resource_uids == ["checkout-b"]
+    # A malformed entry (empty namespace) is refused before anything is read.
+    bad = tmp_path / "bad.json"
+    bad.write_text(
+        '{"checkout-a": {"integration_id": "otel", "cluster_uid": "kind", "namespace": ""},'
+        ' "checkout-b": {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"}}'
+    )
+    monkeypatch.setenv(schema.TARGET_IDENTITIES_ENV, str(bad))
+    with pytest.raises(schema.TargetIdentityMissing, match="malformed"):
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == "0003_observation_store"
+    with pytest.raises(PersistenceError, match="SCHEMA_NOT_MIGRATED"):
+        DurableStore(scratch_dsn).install()
+
+
+def test_0004_backfills_from_the_identities_file_and_downgrades(
+    scratch_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    schema.upgrade_to(scratch_dsn, "0003_observation_store")
+    _seed_target(scratch_dsn, "checkout-a")
+    identities = tmp_path / "identities.json"
+    identities.write_text(
+        '{"checkout-a": {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"},'
+        ' "unused": {"integration_id": "x", "cluster_uid": "y", "namespace": "z"}}'
+    )
+    monkeypatch.setenv(schema.TARGET_IDENTITIES_ENV, str(identities))
+
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    head_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT integration_id,cluster_uid,namespace FROM opspilot_targets WHERE resource_uid='checkout-a'"
+        ).fetchone() == ("otel", "kind", "demo")
+        # The file's extra entry registers nothing: the registry is written
+        # by intake, the migration only completes existing rows.
+        assert conn.execute("SELECT count(*) FROM opspilot_targets").fetchone() == (1,)
+        # NOT NULL and non-empty from now on.
+        with pytest.raises(psycopg.errors.NotNullViolation):
+            conn.execute(
+                "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,'bare')",
+                (uuid4(),),
+            )
+    with psycopg.connect(scratch_dsn) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                "INSERT INTO opspilot_targets(target_id,resource_uid,integration_id,cluster_uid,namespace) VALUES(%s,'empty','','kind','demo')",
+                (uuid4(),),
+            )
+    store = DurableStore(scratch_dsn)
+    store.install()
+    # The runtime registration carries the identity and keeps it immutable.
+    registered = store.register_target(
+        "checkout-b", integration_id="otel", cluster_uid="kind", namespace="demo"
+    )
+    assert (
+        store.register_target(
+            "checkout-b", integration_id="otel", cluster_uid="kind", namespace="demo"
+        )
+        == registered
+    )
+    with pytest.raises(PersistenceError, match="IDENTITY_CONFLICT"):
+        store.register_target(
+            "checkout-b", integration_id="otel", cluster_uid="other", namespace="demo"
+        )
+    store.close()
+
+    schema.command.downgrade(schema._config(scratch_dsn), "0003_observation_store")
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == "0003_observation_store"
+        assert conn.execute("SELECT count(*) FROM opspilot_targets").fetchone() == (2,)
+    assert not set(IDENTITY_COLUMNS) & _target_columns(scratch_dsn)
+    # Upgrading again completes both rows (the downgrade dropped the columns,
+    # so the runtime-registered target needs an entry too; without it the
+    # same fail-closed refusal applies).
+    with pytest.raises(schema.TargetIdentityMissing) as refused:
+        schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    assert refused.value.resource_uids == ["checkout-b"]
+    identities.write_text(
+        '{"checkout-a": {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"},'
+        ' "checkout-b": {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"}}'
+    )
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+
+
+def test_0004_on_an_empty_registry_needs_no_identities_file(
+    scratch_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(schema.TARGET_IDENTITIES_ENV, raising=False)
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert set(IDENTITY_COLUMNS) <= _target_columns(scratch_dsn)

@@ -81,6 +81,12 @@ class _RunOps(_StoreBase):
                     None if input is None else Jsonb(input),
                 ),
             )
+            # A new Run never inherits an observation authorization (C3 §10
+            # "更换 Run 不默认继承旧观察授权"): revoke before the lifecycle
+            # goes back to open, in this transaction.
+            from opspilot.observation.revocation import revoke_authorized_sessions
+
+            revoke_authorized_sessions(conn, incident_id)
             conn.execute(
                 "UPDATE opspilot_incidents SET state=%s,lifecycle='open',control_generation=%s,current_run_id=%s,conclusion=NULL WHERE incident_id=%s",
                 (next_state, nxt, run_id, incident_id),

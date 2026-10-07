@@ -53,6 +53,7 @@ from opspilot.domain.observation import (
     evaluate_sample,
 )
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
+from opspilot.observation.revocation import end_session, revoke_authorized_sessions
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 # How long one claimed sampling job stays leased to its owner. A Prometheus
@@ -636,6 +637,17 @@ def required_signals(content: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _identity(target: Target) -> tuple[str, str, str, str]:
+    """The four identity fields (user decision 2026-10-07): ``revision`` is a
+    snapshot, not identity."""
+    return (
+        target.integration_id,
+        target.cluster_uid,
+        target.namespace,
+        target.resource_uid,
+    )
+
+
 def _domain_session(
     row: dict[str, Any],
     *,
@@ -673,7 +685,7 @@ class ObservationStore(_StoreBase):
         self,
         incident_id: UUID,
         *,
-        target: Target,
+        revision: str,
         actor: str,
         deadline_at: datetime,
         max_samples: int,
@@ -686,19 +698,25 @@ class ObservationStore(_StoreBase):
     ) -> UUID:
         """Create one authorized session and its first sampling job.
 
-        ``health_profile`` is the canonical JSON text of the profile the
-        revision names; it is stored once per revision so a replay can read
-        the coverage queries and thresholds the samples were judged by.
+        The session's ``Target`` is the identity the incident was accepted
+        against (``opspilot_targets``, migration 0004), never a caller's;
+        ``revision`` is the one field that is not identity -- the target
+        revision after the handling, snapshotted for the audit (user decision
+        2026-10-07). ``health_profile`` is the canonical JSON text of the
+        profile the revision names; it is stored once per revision so a
+        replay can read the coverage queries and thresholds the samples were
+        judged by.
 
-        Storage primitive only: the human "handling registered" action with
-        its ``expected_version``, idempotency key and audit row is step 3,
-        which calls :meth:`authorize_session_in` inside its own transaction.
+        Storage primitive only: the human "register remediation" action with
+        its ``expected_version``, idempotency key and audit row is
+        :meth:`register_remediation`, which calls
+        :meth:`authorize_session_in` inside its own transaction.
         """
         with self.transaction() as conn:
             return self.authorize_session_in(
                 conn,
                 incident_id,
-                target=target,
+                revision=revision,
                 actor=actor,
                 deadline_at=deadline_at,
                 max_samples=max_samples,
@@ -715,7 +733,7 @@ class ObservationStore(_StoreBase):
         conn: Connection,
         incident_id: UUID,
         *,
-        target: Target,
+        revision: str,
         actor: str,
         deadline_at: datetime,
         max_samples: int,
@@ -732,10 +750,18 @@ class ObservationStore(_StoreBase):
         (an incident already observing keeps its lifecycle), increments the
         incident's observation generation and binds the session to it. Only
         one authorized session may exist per incident.
+
+        The identity (integration, cluster, namespace, resource uid) is read
+        from the registry row the incident points at and must equal the
+        identity every earlier session on that target was authorized with;
+        a difference is ``TARGET_MISMATCH`` and nothing is written. A changed
+        ``revision`` is not a difference (a redeployed target can be observed
+        again).
         """
         if (
             not isinstance(incident_id, UUID)
-            or not isinstance(target, Target)
+            or not isinstance(revision, str)
+            or not revision
             or not isinstance(actor, str)
             or not actor
             or not isinstance(deadline_at, datetime)
@@ -762,23 +788,18 @@ class ObservationStore(_StoreBase):
         incident = self._lock_incident(conn, incident_id)
         if incident["target_id"] is None:
             raise PersistenceError("UNKNOWN_TARGET")
-        registered = self._require_row(
-            conn.execute(
-                "SELECT resource_uid FROM opspilot_targets WHERE target_id=%s",
-                (incident["target_id"],),
-            )
-        )
-        if registered["resource_uid"] != target.resource_uid:
-            raise PersistenceError("TARGET_MISMATCH")
-        # The registry (``opspilot_targets``) records only ``resource_uid``;
-        # the other Target fields are fixed by the first session authorized
-        # on the target, every later one must bring the same identity.
-        earlier = conn.execute(
-            "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s ORDER BY created_at,session_id LIMIT 1",
+        target = self._registered_target(conn, incident["target_id"], revision)
+        # Every session on this target recorded the identity it was
+        # authorized with; the registry row must still say the same (a
+        # rebound or edited registry row is not this target any more, C3
+        # section 4: rebinding is its own transaction that revokes first).
+        expected_identity = _identity(target)
+        for earlier in conn.execute(
+            "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s",
             (incident["target_id"],),
-        ).fetchone()
-        if earlier is not None and Target(**earlier["target"]) != target:
-            raise PersistenceError("TARGET_MISMATCH")
+        ).fetchall():
+            if _identity(Target(**earlier["target"])) != expected_identity:
+                raise PersistenceError("TARGET_MISMATCH")
         if conn.execute(
             "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
             (incident_id,),
@@ -862,6 +883,89 @@ class ObservationStore(_StoreBase):
             raise PersistenceError("UNKNOWN_IDENTITY")
         return row
 
+    def register_remediation(
+        self,
+        incident_id: UUID,
+        *,
+        expected_generation: int,
+        actor: str,
+        revision: str,
+        deadline_at: datetime,
+        max_samples: int,
+        sample_interval_seconds: int,
+        sustained_window_seconds: int,
+        health_profile_revision: str | None = None,
+        health_profile: str | None = None,
+        session_id: UUID | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        """The human action "the incident was handled outside the system":
+        one transaction that increments ``control_generation`` under
+        ``expected_generation`` (``CONTROL_CONFLICT`` otherwise, like every
+        other human decision), withdraws an earlier authorization, authorizes
+        a new observation session bound to the new generation, moves the
+        incident to ``observing_recovery`` and writes the ``opspilot_controls``
+        audit row (action ``register_remediation``).
+
+        The session parameters are the HealthProfile's, handed over by the
+        caller that loaded it; the idempotency key is the workbench's (its
+        ledger and audit reconciliation, as for the other actions). Refused
+        while the global or target scope is suspended (``SCOPE_SUSPENDED``):
+        a suspension outranks a separately granted observation authorization
+        (C3 section 4), so the decision is not recorded as granted. The
+        investigation Run is left alone (D3: observation is independent of
+        the investigation); the generation step fences a lease an older
+        attempt still holds, as any human decision does. Returns the new
+        generation.
+        """
+        if (
+            type(expected_generation) is not int
+            or expected_generation < 0
+            or (payload is not None and not isinstance(payload, dict))
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            # Same order as control(): scope FOR SHARE, then the incident row.
+            scope = self._lock_scope(conn, incident_id)
+            incident = self._lock_incident(conn, incident_id)
+            if int(incident["control_generation"]) != expected_generation:
+                raise PersistenceError("CONTROL_CONFLICT")
+            if scope["global_suspended"] or scope["target_suspended"]:
+                raise PersistenceError("SCOPE_SUSPENDED")
+            nxt = expected_generation + 1
+            # Generation first: the session is bound to the generation this
+            # decision creates, and the old authorization ends under it.
+            conn.execute(
+                "UPDATE opspilot_incidents SET control_generation=%s WHERE incident_id=%s",
+                (nxt, incident_id),
+            )
+            revoked = revoke_authorized_sessions(conn, incident_id)
+            session = self.authorize_session_in(
+                conn,
+                incident_id,
+                revision=revision,
+                actor=actor,
+                deadline_at=deadline_at,
+                max_samples=max_samples,
+                sample_interval_seconds=sample_interval_seconds,
+                sustained_window_seconds=sustained_window_seconds,
+                health_profile_revision=health_profile_revision,
+                health_profile=health_profile,
+                session_id=session_id,
+            )
+            audit = dict(payload or {})
+            audit.update(
+                revision=revision,
+                session_id=str(session),
+                health_profile_revision=health_profile_revision,
+                revoked_sessions=[str(item) for item in revoked],
+            )
+            conn.execute(
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'register_remediation',%s,%s,%s,%s)",
+                (uuid4(), incident_id, expected_generation, nxt, actor, Jsonb(audit)),
+            )
+            return nxt
+
     def revoke_sessions(self, incident_id: UUID) -> list[UUID]:
         with self.transaction() as conn:
             self._lock_incident(conn, incident_id)
@@ -869,37 +973,13 @@ class ObservationStore(_StoreBase):
 
     def revoke_sessions_in(self, conn: Connection, incident_id: UUID) -> list[UUID]:
         """Withdraw every authorized session of an incident (caller holds the
-        incident lock). The lifecycle is the caller's decision, not this one's."""
-        if not isinstance(incident_id, UUID):
-            raise PersistenceError("INVALID_INPUT")
-        rows = conn.execute(
-            "SELECT session_id FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized' ORDER BY session_id FOR UPDATE",
-            (incident_id,),
-        ).fetchall()
-        lifecycle = str(
-            self._require_row(
-                conn.execute(
-                    "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
-                    (incident_id,),
-                )
-            )["lifecycle"]
-        )
-        revoked: list[UUID] = []
-        for row in rows:
-            self._end_session(
-                conn,
-                row["session_id"],
-                incident_id,
-                ended_reason="authority_revoked",
-                transition=None,
-                lifecycle_before=lifecycle,
-                lifecycle_after=lifecycle,
-            )
-            revoked.append(cast(UUID, row["session_id"]))
-        return revoked
+        incident lock). The lifecycle is the caller's decision, not this one's.
+        The human-control paths call the same function directly
+        (``opspilot.observation.revocation``)."""
+        return revoke_authorized_sessions(conn, incident_id)
 
+    @staticmethod
     def _end_session(
-        self,
         conn: Connection,
         session_id: UUID,
         incident_id: UUID,
@@ -914,41 +994,35 @@ class ObservationStore(_StoreBase):
         """Close a session: state by the session state machine, job slot
         cleared, and the ending recorded (the row the lifecycle evidence
         trigger looks for when the Observer changes the incident)."""
-        trigger = {
-            "recovery_confirmed": "observation_completed",
-            "deadline_expired": "deadline_expired",
-            "max_samples_exhausted": "deadline_expired",
-            "authority_revoked": "authority_revoked",
-            "binding_stale": "authority_revoked",
-            "scope_suspended": "authority_revoked",
-        }[ended_reason]
-        state = OBSERVATION_SESSION.fire("authorized", trigger)
-        marks = watermark or {}
-        conn.execute(
-            "UPDATE opspilot_observation_sessions SET state=%s,ended_reason=%s,adopted_sequence=COALESCE(%s,adopted_sequence),adopted_window_end=COALESCE(%s,adopted_window_end),adopted_count=COALESCE(%s,adopted_count),healthy_since=CASE WHEN %s THEN %s ELSE healthy_since END,active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
-            (
-                state,
-                ended_reason,
-                marks.get("adopted_sequence"),
-                marks.get("adopted_window_end"),
-                marks.get("adopted_count"),
-                watermark is not None,
-                marks.get("healthy_since"),
-                session_id,
-            ),
+        end_session(
+            conn,
+            session_id,
+            incident_id,
+            ended_reason=ended_reason,
+            transition=transition,
+            lifecycle_before=lifecycle_before,
+            lifecycle_after=lifecycle_after,
+            sample_id=sample_id,
+            watermark=watermark,
         )
-        conn.execute(
-            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
-            (
-                uuid4(),
-                session_id,
-                incident_id,
-                ended_reason,
-                transition,
-                sample_id,
-                lifecycle_before,
-                lifecycle_after,
-            ),
+
+    def _registered_target(
+        self, conn: Connection, target_id: UUID, revision: str
+    ) -> Target:
+        """The immutable identity the registry holds for ``target_id`` plus
+        the revision snapshot of this authorization."""
+        row = self._require_row(
+            conn.execute(
+                "SELECT integration_id,cluster_uid,namespace,resource_uid FROM opspilot_targets WHERE target_id=%s",
+                (target_id,),
+            )
+        )
+        return Target(
+            integration_id=row["integration_id"],
+            cluster_uid=row["cluster_uid"],
+            namespace=row["namespace"],
+            resource_uid=row["resource_uid"],
+            revision=revision,
         )
 
     # --- sampling (Observer side)
@@ -1315,6 +1389,18 @@ class ObservationStore(_StoreBase):
         return expired
 
     # --- reading back
+
+    def incident_sessions(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Every session of an incident, oldest first (the workbench's view)."""
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE incident_id=%s ORDER BY created_at,session_id",
+                    (incident_id,),
+                ).fetchall()
+            )
 
     def session(self, session_id: UUID) -> dict[str, Any]:
         with self.transaction(snapshot=True) as conn:
