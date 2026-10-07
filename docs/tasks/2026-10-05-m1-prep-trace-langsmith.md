@@ -47,7 +47,7 @@
 
 ## 下一步与交接
 
-- PR 2 待用户门合并；合并后触碰调查 loop 的 PR 按 AGENTS.md 新句附 trace 链接与 `summary.json`。
+- PR 2 已合并（#110）；此后触碰调查 loop 的 PR 按 AGENTS.md 附 trace 链接与 `summary.json`。
 - 未执行（两个 PR 共同）：独立审查（全新上下文）凭 API 读 trace 并用 `lab_review_feedback.py` 写判定；`otel-demo` profile 下的 lab Run。
 - 本记录的第一个真实 PR 2 Run 之后，PR 2 worktree 的临时 PostgreSQL（127.0.0.1:55471）已停止并删除，原始 ledger 只在该 worktree 的 `tmp/lab-ledgers/` 下，以 sha256 识别。
 
