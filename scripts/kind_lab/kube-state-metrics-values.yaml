@@ -1,0 +1,19 @@
+# kube-state-metrics for the M1-02 lab: deployment and pod state as Prometheus
+# metrics (kube_deployment_status_replicas_available, kube_pod_status_phase,
+# kube_pod_container_status_restarts_total ...). The chart's default
+# prometheus.io/scrape annotation is what the demo's Prometheus
+# kubernetes-service-endpoints job discovers; nothing else is wired.
+prometheusScrape: true
+resources:
+  limits:
+    memory: 96Mi
+  requests:
+    cpu: 10m
+    memory: 32Mi
+# Only the resources the health profile will read; the rest stay off to keep
+# the series count and memory small.
+collectors:
+  - deployments
+  - pods
+  - replicasets
+  - services

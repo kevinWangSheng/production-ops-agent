@@ -1,0 +1,53 @@
+colima: colima version 0.10.1
+m1-kind    Running    aarch64    4       8GiB      30GiB    docker     
+kind: kind v0.33.0 go1.27.0 darwin/arm64
+kubectl: Client Version: v1.37.1
+helm: v4.3.0+gbec5b06
+node image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+Server Version: v1.37.0
+NAME              	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART                    	APP VERSION
+kube-state-metrics	otel-demo	2       	2026-10-06 03:15:57.884654 -0700 PDT	deployed	kube-state-metrics-8.6.0 	2.20.0     
+otel-demo         	otel-demo	2       	2026-10-06 03:15:54.201459 -0700 PDT	deployed	opentelemetry-demo-0.37.8	2.0.2      
+## images
+	otel/opentelemetry-collector-contrib:0.131.0 	docker.io/otel/opentelemetry-collector-contrib@sha256:13b685dc9f68fbbb0fce06d3be84e9d70ba5b90085d79dcbd4c4c0d909ee2d6e
+ad	ghcr.io/open-telemetry/demo:2.0.2-ad 	ghcr.io/open-telemetry/demo@sha256:7f6c3fda7fed57ea4dbca92d801d8a3c01909a848b33170f16494da89e90343c
+all-in-one	jaegertracing/all-in-one:1.53.0 	docker.io/jaegertracing/all-in-one@sha256:60e65bfffe1f66aee96d6fc8b6bf65afd42016be5dcc09d2e15d8462f7d9409c
+cart	ghcr.io/open-telemetry/demo:2.0.2-cart 	ghcr.io/open-telemetry/demo@sha256:2ec7601655cbe5d295d0e5bd85f5b8acaf3b0f2651f8ea33ba1150edbf6000bf
+checkout	ghcr.io/open-telemetry/demo:2.0.2-checkout 	ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635
+currency	ghcr.io/open-telemetry/demo:2.0.2-currency 	ghcr.io/open-telemetry/demo@sha256:03fb9bf6d8072cacabdf018396f6d48082ad5f824443965573a064c7faecd944
+email	ghcr.io/open-telemetry/demo:2.0.2-email 	ghcr.io/open-telemetry/demo@sha256:270c487983d8aaf111df31eb1075ddc366d9eafec1e4c937899d05be9a6dd4b3
+flagd	ghcr.io/open-feature/flagd:v0.12.8 	ghcr.io/open-feature/flagd@sha256:634bd05995f5fd0a1b8196822feb8c2d99d37be9e2a25cb17b5d6c4c8fd7e821
+frontend	ghcr.io/open-telemetry/demo:2.0.2-frontend 	ghcr.io/open-telemetry/demo@sha256:3a0c7649f63d59656f6ba76fcd7ec79c1974cc3db0ae624efdf38fbdc8a14d4c
+frontend-proxy	ghcr.io/open-telemetry/demo:2.0.2-frontend-proxy 	ghcr.io/open-telemetry/demo@sha256:9cc478aa226b33cd80af46971683bfa963283a4309adf36d39706a406641ac7e
+image-provider	ghcr.io/open-telemetry/demo:2.0.2-image-provider 	ghcr.io/open-telemetry/demo@sha256:bfa0b940f79df27c564778bc70eaf506c7234fcef328d8139e30d0f592e8fbfc
+load-generator	ghcr.io/open-telemetry/demo:2.0.2-load-generator 	ghcr.io/open-telemetry/demo@sha256:d257288d374e1f6ebceb9997049fd4a31437037e85fc6dccaedd0c4810e1ca11
+metrics	registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0 	registry.k8s.io/kube-state-metrics/kube-state-metrics@sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b
+payment	ghcr.io/open-telemetry/demo:2.0.2-payment 	ghcr.io/open-telemetry/demo@sha256:33f327b357617379bfa3b292f430d1f06e66e2872494125a40bae14d8fe57d87
+product-catalog	ghcr.io/open-telemetry/demo:2.0.2-product-catalog 	ghcr.io/open-telemetry/demo@sha256:050a0fc2026b75cc8716cbd5daf9c9e5fd552808a59928a6bfca18bfb8edd2d5
+quote	ghcr.io/open-telemetry/demo:2.0.2-quote 	ghcr.io/open-telemetry/demo@sha256:38f9d9abe0808c154011f3286754c848977bb9816923bdddd6dd39043c1e2139
+recommendation	ghcr.io/open-telemetry/demo:2.0.2-recommendation 	ghcr.io/open-telemetry/demo@sha256:2ca9d61f520e94c7d28fd77d9715483513773a248bf10e8612885868b2c147e5
+server	quay.io/prometheus/prometheus:v3.5.0 	quay.io/prometheus/prometheus@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+shipping	ghcr.io/open-telemetry/demo:2.0.2-shipping 	ghcr.io/open-telemetry/demo@sha256:e29cb4277ebd2f0532eb43ae704038cbc47f220205fdb389ac8292a6356d1a0a
+valkey-cart	valkey/valkey:7.2-alpine 	docker.io/valkey/valkey@sha256:c6c2f0020be34bbf684a53a0ef716ab16ff70295186d4d9f2518435beb7afbff
+## deployments
+NAME                 READY   UP-TO-DATE   AVAILABLE   AGE
+ad                   1/1     1            1           25m
+cart                 1/1     1            1           25m
+checkout             1/1     1            1           25m
+currency             1/1     1            1           25m
+email                1/1     1            1           25m
+flagd                1/1     1            1           25m
+frontend             1/1     1            1           25m
+frontend-proxy       1/1     1            1           25m
+image-provider       1/1     1            1           25m
+jaeger               1/1     1            1           25m
+kube-state-metrics   1/1     1            1           25m
+load-generator       1/1     1            1           25m
+otel-collector       1/1     1            1           25m
+payment              1/1     1            1           25m
+product-catalog      1/1     1            1           25m
+prometheus           1/1     1            1           25m
+quote                1/1     1            1           25m
+recommendation       1/1     1            1           25m
+shipping             1/1     1            1           25m
+valkey-cart          1/1     1            1           25m
