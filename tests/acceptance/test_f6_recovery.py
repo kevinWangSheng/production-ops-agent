@@ -33,8 +33,13 @@ Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
   no effect on lifecycle/watermarks/health/budget. Snapshots also retain
   observation_authorization (session identity/binding/versions/authorized) and
   handling_audit so re-authorization cannot masquerade as sample submission.
-  Full observation_sessions and exposed sample_jobs collections stay unchanged
+  Full observation_sessions and REQUIRED sample_jobs collections stay unchanged
   after a rejected foreign-target sample, not only the current authorization.
+  sample_jobs projects all incident jobs: job_id/session_id/sequence/due_at/state,
+  excluding lease owner/epoch and other retry-dependent fields.
+  observation_sessions projects only session_id/purpose/subject/target, both
+  generations/state/authorized/profile revision, adopted sequence/window end
+  and active_sample_job_id; no auxiliary counts or creation/update timestamps.
 * actions is the complete product action audit; excludes engineer setup and
   permits only read queries and OpsPilot's own record/control persistence.
 
@@ -819,9 +824,7 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
         "handling_audit",
     ):
         assert after[field] == before[field]
-    if "sample_jobs" in before or "sample_jobs" in after:
-        assert "sample_jobs" in before and "sample_jobs" in after
-        assert after["sample_jobs"] == before["sample_jobs"]
+    assert after["sample_jobs"] == before["sample_jobs"]
     assert history in after["recovery_samples"]
     assert_readonly(started, recovery_driver)
     assert_readonly(outcome, recovery_driver)

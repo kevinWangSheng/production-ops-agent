@@ -55,6 +55,8 @@
 - 定向 pytest：53 passed（42 领域 + 11 夹具）、40 skipped、0 xfailed，0.35 秒；最终 make check 退出 0：锁/Ruff/mypy 通过，2653 passed、351 skipped、2 既有架构债 xfailed，45.57 秒；限定静态复验确认三项已处置，无 C3/PRODUCT-CONSTRAINTS 原文支撑的新 P1。
 - 机器人审查已按用户停机规则收口：本轮三项合在一个追加提交，此后仅修能引用 C3/PRODUCT-CONSTRAINTS 原文的 P1；不继续扩展 P2/可选项。普通 push，不触发 @codex review、不回复/resolve thread、不合并。
 
+- 停机后 C3 §10 P1（7a992ad 之后）：依据「失效结果只保留历史……也不安排后续任务」，删除 sample_jobs 条件守卫，完整任务集合必须提供且前后相等；文档明确任务五字段及会话合同字段的稳定投影，排除租约重试字段和辅助计数/时间戳；定向 pytest 53 passed、40 skipped、0 xfailed，0.35 秒，make check 退出 0（锁/Ruff/mypy 通过，2653 passed、351 skipped、2 既有架构债 xfailed，45.04 秒），一个追加提交普通推送，不触发审查、不操作 thread、不合并。
+
 ## 下一步与交接
 
 检查和独立审查完成，提交本分支 PR，等待接线；不合并。解除 skip 时提供真实外部驱动；原断言只按合同或验收变更处理。
