@@ -1,7 +1,7 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：待开始（D1–D4 已决；门槛已合并 #73；排在 M1 基础设施准备之后）
-- 更新日期：2026-10-05
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0 步 kind 环境已执行并开 PR，与 M1 基础设施准备并行——2026-10-05 用户决定只对第 0 步放开先后顺序；第 1 步起仍排在基础设施准备之后）
+- 更新日期：2026-10-06
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
 
@@ -88,6 +88,19 @@
 
 - **D4 实验环境规格**（2026-10-05 用户）：本机运行精简版——Homebrew 安装 kind、kubectl、helm（第 0 步执行时安装），colima 约 8 GiB，关闭 checkout 故障路径用不到的 OTel Demo 服务；运行期间不同时跑其他重负载。依据：本机 16 GB 内存、10 核、磁盘余 34 GB；旧 Compose VM `m0-otel` 为 6 GiB。精简后的服务清单与实测内存写进第 0 步证据；若精简后仍无法稳定运行，停在决策边界报告，不擅自改用远程环境。
 
+## 第 0 步执行（2026-10-05/06，#82，分支 `chore/m1-02-kind-lab`，worktree `../production-ops-agent-kind`）
+
+证据：[docs/evidence/m1-02-lab/run.md](../evidence/m1-02-lab/run.md)（版本、服务清单、内存、回归 Run、启停）。产品代码零改动。
+
+- 版本：colima 0.10.1 profile `m1-kind`（4 CPU / 8 GiB / 30 GiB，`m0-otel`/`default` 保留）；kind v0.33.0 节点 `kindest/node:v1.37.0`；kubectl v1.37.1、helm v4.3.0（Homebrew，D4 第 0 步安装）；chart `opentelemetry-demo` 0.37.8（appVersion 2.0.2，与 M0 一致）+ `kube-state-metrics` 8.6.0（v2.20.0）。
+- 服务清单（精简，`scripts/kind_lab/values.yaml`）：关闭 accounting、fraud-detection、kafka（checkout 跳过 producer）、grafana、opensearch、flagd-ui；保留 20 个 Deployment（frontend-proxy、frontend、checkout、cart、valkey-cart、payment、product-catalog、currency、shipping、quote、email、ad、recommendation、image-provider、flagd、load-generator 2 用户、otel-collector、jaeger、prometheus、kube-state-metrics）。
+- 实测内存：容器 working set 合计 1.29 GiB；kind 节点 2.5–2.7 GiB；VM 进程在宿主 RSS 1.2 GiB；运行期间无 pod 重启。宿主 16 GB 全程紧张（并行 agent），但本环境稳定，未触及 D4「无法稳定运行」边界。
+- K8s 状态信号：Prometheus 经默认 `kubernetes-service-endpoints` 抓到 kube-state-metrics（`kube_deployment_status_replicas_available`、`kube_pod_status_phase`、`kube_pod_container_status_restarts_total`）；可供 #92 的 RBAC 取证使用（本步未做）。
+- 回归：M1-01 `otel-demo` profile **不改地址、不改服务标签**（NodePort 发布到 127.0.0.1:19090 / 16686 / 18080，与默认值一致；Jaeger 子 chart 的 query Service 为 headless，加了一个工程侧 NodePort Service）。三次真实 Run 全部 `published`：normal-1（17 工具，窗口含环境启动期 cart 连接拒绝，报告如实报出）、fault-1（20 工具，定位 checkout→payment `Charge` Invalid token，独立观察先行确认 3/6 trace）、normal-2（31 工具，干净窗口无错误）。费用 ≤ 0.57 CNY（余额差上界）。
+- 启停：`.venv/bin/python scripts/kind_lab.py up|health|stop|fault inject|restore --experiment-id <id>`；`up` 先查宿主可回收内存 ≥ 3 GiB；`stop` 只停 VM，集群与 release 保留，再 `up` 约 90 s 恢复且 Prometheus 历史保留。故障钩子 patch `flagd-config` ConfigMap，指标可见约 3 分钟（kubelet 同步），恢复同样。
+- 已修的两个坑：kind 把宿主 `HTTP_PROXY=127.0.0.1:1087` 写进节点导致所有镜像拉取失败（脚本对 kind 剥离代理变量）；chart 的 opensearch exporter 不能用 `null` 删除（保留定义、移出 logs pipeline）。
+- 自行决定并记录理由：Helm chart 版本取 appVersion 2.0.2 的最新 patch（0.37.8）以保持与 M1-01 的服务名/指标一致；kube-state-metrics 单独安装而非经 prometheus 子 chart，便于独立锁版本；Jaeger NodePort 用独立 Service 而非改产品默认地址。
+
 ## 待决
 
 - 无。HealthProfile 的具体数值属于可逆技术细节，由实施 Agent 校准并记录来源，候选评测前冻结。
@@ -95,8 +108,8 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；M1 基础设施准备完成后从计划 0（kind 环境）开工。
-- 当前没有运行中的服务或进程。
+- 上游核对已完成（见上表）；计划 0 已执行（PR 见 #82），M1 基础设施准备完成后从计划 1 开工。
+- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复）；回归用一次性 PG 55481 已停并位于会话临时目录。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
 
@@ -125,4 +138,3 @@
   - 第 4 步须知：`within_deadline` 用提交时的数据库时钟 `now < deadline_at`，不看样本窗口。
 - 未执行：真实实验环境采样（第 4 步）、本机 55431 lab 库升级到 0003（用户待办：`make migrate`）。
 - 风险：`controls.control()` 的续开路径把生命周期写回 `open` 而不撤销会话，第 3 步须在同一事务撤销（本步对这种状态的处置：确认恢复整笔回滚、到期只结束会话）；`observation_generation` 列是本步新增的权威位置，第 3 步递增 `control_generation` 时须经 `authorize_session_in` 同步递增它。
-
