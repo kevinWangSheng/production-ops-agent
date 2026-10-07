@@ -1,0 +1,8 @@
+2026-10-06T10:38:51Z
+configmap/flagd-config patched
+inject completed on the lab ConfigMap only; flagd reloads the mounted file after the kubelet sync (about a minute)
+fault visible at 2026-10-06T10:42:07Z
+2026-10-06T10:46:32Z
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> off)
+restore completed on the lab ConfigMap only; flagd reloads the mounted file after the kubelet sync (about a minute)
+restore visible (2 min of error-free Charge) at 2026-10-06T10:48:16Z

@@ -1,0 +1,1184 @@
+{
+ "script": "scripts/otel_demo_observe.py",
+ "window": {
+  "start": "2026-10-06T10:38:47+00:00",
+  "end": "2026-10-06T10:43:47+00:00",
+  "seconds": 300
+ },
+ "observed_at": "2026-10-06T10:43:47.362154+00:00",
+ "sources": {
+  "prometheus": "http://127.0.0.1:19090",
+  "jaeger": "http://127.0.0.1:16686/jaeger/ui"
+ },
+ "expect": "fault",
+ "authorized_dependencies": [
+  "cart",
+  "currency",
+  "email",
+  "payment",
+  "product-catalog",
+  "shipping"
+ ],
+ "metrics": {
+  "checkout_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"checkout\"}[300s])",
+   "evaluated_at": "2026-10-06T10:43:47+00:00",
+   "series": [
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "prepareOrderItemsAndShippingQuoteFromCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-7c846c8d98-877t6",
+      "instance": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-7c846c8d98-877t6",
+      "service_instance_id": "1093bb7b-46b0-45d7-a69e-d000e933beea",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 20.0
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.5
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "prepareOrderItemsAndShippingQuoteFromCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 4.125884382369852
+    },
+    {
+     "metric": {
+      "host_name": "checkout-6578865d87-wxg7h",
+      "instance": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "job": "opentelemetry-demo/checkout",
+      "k8s_deployment_name": "checkout",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "checkout-6578865d87-wxg7h",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "708142f8-6ae0-448b-90a1-e207fee494fd",
+      "service_name": "checkout",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "oteldemo.CheckoutService/PlaceOrder",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 4.125884382369852
+    }
+   ]
+  },
+  "payment_calls_by_span_status": {
+   "expr": "increase(traces_span_metrics_calls_total{service_name=\"payment\"}[300s])",
+   "evaluated_at": "2026-10-06T10:43:47+00:00",
+   "series": [
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tls.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "GET",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-7bd449ddbf-vzsx5",
+      "instance": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-7bd449ddbf-vzsx5",
+      "service_instance_id": "1a717285-d058-46d3-8bb5-e6a7c729ac65",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "GET",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "dns.lookup",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tcp.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "tls.connect",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_CLIENT",
+      "span_name": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 1.25
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_INTERNAL",
+      "span_name": "charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "host_name": "payment-6f7bc865d6-bfxbv",
+      "instance": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "job": "opentelemetry-demo/payment",
+      "k8s_deployment_name": "payment",
+      "k8s_namespace_name": "otel-demo",
+      "k8s_node_name": "opspilot-m1-control-plane",
+      "k8s_pod_name": "payment-6f7bc865d6-bfxbv",
+      "opspilot_integration_id": "m0-otel-20260909",
+      "service_instance_id": "6998b25a-8cd8-48d1-bcc9-6edc1ff46661",
+      "service_name": "payment",
+      "service_namespace": "opentelemetry-demo",
+      "service_version": "2.0.2",
+      "span_kind": "SPAN_KIND_SERVER",
+      "span_name": "grpc.oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 4.125884382369852
+    }
+   ]
+  },
+  "checkout_client_calls_by_peer": {
+   "expr": "sum by (span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[300s]))",
+   "evaluated_at": "2026-10-06T10:43:47+00:00",
+   "series": [
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/GetQuote",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "span_name": "HTTP POST",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CurrencyService/Convert",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 20.0
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/GetCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 7.5
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ProductCatalogService/GetProduct",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 12.5
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.ShippingService/ShipOrder",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.CartService/EmptyCart",
+      "status_code": "STATUS_CODE_UNSET"
+     },
+     "value": 3.75
+    },
+    {
+     "metric": {
+      "span_name": "oteldemo.PaymentService/Charge",
+      "status_code": "STATUS_CODE_ERROR"
+     },
+     "value": 4.125884382369852
+    }
+   ]
+  },
+  "all_services_error_calls": {
+   "expr": "sum by (service_name) (increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[300s]))",
+   "evaluated_at": "2026-10-06T10:43:47+00:00",
+   "series": [
+    {
+     "metric": {
+      "service_name": "frontend"
+     },
+     "value": 12.377653147109557
+    },
+    {
+     "metric": {
+      "service_name": "ad"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "checkout"
+     },
+     "value": 8.251768764739705
+    },
+    {
+     "metric": {
+      "service_name": "load-generator"
+     },
+     "value": 4.125884382369852
+    },
+    {
+     "metric": {
+      "service_name": "frontend-proxy"
+     },
+     "value": 7.875884382369852
+    },
+    {
+     "metric": {
+      "service_name": "recommendation"
+     },
+     "value": 0.0
+    },
+    {
+     "metric": {
+      "service_name": "payment"
+     },
+     "value": 4.125884382369852
+    },
+    {
+     "metric": {
+      "service_name": "cart"
+     },
+     "value": 0.0
+    }
+   ]
+  }
+ },
+ "positive_series_count": {
+  "checkout_calls_by_span_status": 12,
+  "payment_calls_by_span_status": 4,
+  "checkout_client_calls_by_peer": 9,
+  "all_services_error_calls": 5
+ },
+ "jaeger": {
+  "query": {
+   "service": "checkout",
+   "limit": 500
+  },
+  "returned_traces": 6,
+  "traces_in_window": 6,
+  "distinct_trace_ids": 6,
+  "traces_with_checkout_error_and_failed_dependency_child": 3,
+  "failed_dependency_services": [
+   "payment"
+  ],
+  "traces": [
+   {
+    "trace_id": "6c5ba27bae735a87a4ed3db688ef7825",
+    "span_count": 45,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "7f43320a0dd10c77d65b7f6e6fec6748",
+    "span_count": 31,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "fad325137af1a559",
+      "operation": "oteldemo.PaymentService/Charge",
+      "start_us": 1791283213700787,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     },
+     {
+      "span_id": "0cb3f3fd177ae2f0",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1791283213685727,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "59d7eb5a941b8c44",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "start_us": 1791283213705000,
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      },
+      "service": "payment",
+      "parent_span_ids": [
+       "fad325137af1a559"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "d36ec0553ed6dfa5ef6c64773b3c82ae",
+    "span_count": 45,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   },
+   {
+    "trace_id": "06c5286b0019a39fbf755fc785bde0dd",
+    "span_count": 31,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "5eac454451c82cd1",
+      "operation": "oteldemo.PaymentService/Charge",
+      "start_us": 1791283307928247,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     },
+     {
+      "span_id": "2be3e9aecd382f18",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1791283307903948,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "744939bbc6af9fc5",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "start_us": 1791283307935000,
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      },
+      "service": "payment",
+      "parent_span_ids": [
+       "5eac454451c82cd1"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "a60c724ffd4dcfff13752c788040a36c",
+    "span_count": 39,
+    "any_span_in_window": true,
+    "checkout_error_spans": [
+     {
+      "span_id": "ef0c4b65b3024393",
+      "operation": "oteldemo.PaymentService/Charge",
+      "start_us": 1791283360413785,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 2,
+       "error": true
+      }
+     },
+     {
+      "span_id": "a9b5f3e5f4707921",
+      "operation": "oteldemo.CheckoutService/PlaceOrder",
+      "start_us": 1791283360392819,
+      "status": {
+       "otel.status_code": "ERROR",
+       "otel.status_description": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+       "rpc.grpc.status_code": 13,
+       "error": true
+      }
+     }
+    ],
+    "failed_dependency_child_spans": [
+     {
+      "span_id": "7190b6375a34d3f0",
+      "operation": "grpc.oteldemo.PaymentService/Charge",
+      "start_us": 1791283360420000,
+      "status": {
+       "otel.status_code": "ERROR",
+       "error": true
+      },
+      "service": "payment",
+      "parent_span_ids": [
+       "ef0c4b65b3024393"
+      ]
+     }
+    ]
+   },
+   {
+    "trace_id": "60585240bbf1b43d3ed0a8719b58b71b",
+    "span_count": 45,
+    "any_span_in_window": true,
+    "checkout_error_spans": [],
+    "failed_dependency_child_spans": []
+   }
+  ]
+ },
+ "precondition": {
+  "control_window_ok": true,
+  "dependency_traffic": true,
+  "fault_confirmed": true
+ }
+}

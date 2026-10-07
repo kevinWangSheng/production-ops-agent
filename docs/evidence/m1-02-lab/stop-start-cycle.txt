@@ -1,0 +1,94 @@
+# stop/start cycle 2026-10-06T11:05:26Z
++ colima stop m1-kind
+time="2026-10-06T04:05:27-07:00" level=info msg="stopping colima [profile=m1-kind]"
+time="2026-10-06T04:05:27-07:00" level=info msg="stopping ..." context=docker
+Stopping 'docker.service', but its triggering units are still active:
+docker.socket
+colima-m1-kind
+time="2026-10-06T04:05:39-07:00" level=info msg="stopping ..." context=vm
+time="2026-10-06T04:05:41-07:00" level=info msg="Sending SIGINT to hostagent process 10996"
+time="2026-10-06T04:05:41-07:00" level=info msg="Waiting for the host agent and the driver processes to shut down"
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Received SIGINT, shutting down the host agent"
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Shutting down the host agent"
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/docker.sock\" (guest) to \"/Users/shenghuikevin/.colima/m1-kind/docker.sock\" (host)"
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Stopping forwarding \"/var/run/containerd/containerd.sock\" (guest) to \"/Users/shenghuikevin/.colima/m1-kind/containerd.sock\" (host)"
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Unmounting disk \"colima-m1-kind\""
+time="2026-10-06T04:05:41-07:00" level=info msg="[hostagent] Shutting down VZ"
+time="2026-10-06T04:05:44-07:00" level=info msg="[hostagent] [VZ] - vm state change: stopped"
+time="2026-10-06T04:05:44-07:00" level=info msg="Waiting for the instance to shut down"
+time="2026-10-06T04:05:44-07:00" level=info msg="The instance colima-m1-kind has shut down"
+time="2026-10-06T04:05:45-07:00" level=info msg=done
+m1-kind    Stopped    aarch64    4       8GiB      30GiB               
+# up again 2026-10-06T11:05:45Z
+{"host_reclaimable_gib": 4.518585205078125}
++ colima start m1-kind --cpu 4 --memory 8 --disk 30 --activate=false --ssh-agent=false --ssh-config=false
++ kubectl --context kind-opspilot-m1 wait --for=condition=Ready node --all --timeout=180s
+Error from server (Forbidden): nodes is forbidden: User "kubernetes-admin" cannot list resource "nodes" in API group "" at the cluster scope
+# done 2026-10-06T11:06:00Z
+# up again (retry after RBAC warm-up fix) 2026-10-06T11:06:47Z
+{"host_reclaimable_gib": 2.5467529296875}
++ kubectl --context kind-opspilot-m1 wait --for=condition=Ready node --all --timeout=180s
+node/opspilot-m1-control-plane condition met
++ helm repo add --force-update open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
++ helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
++ helm repo update open-telemetry prometheus-community
++ helm --kube-context kind-opspilot-m1 upgrade --install otel-demo open-telemetry/opentelemetry-demo --version 0.37.8 --namespace otel-demo --create-namespace --values /Users/shenghuikevin/dev/AI/production-ops-agent-kind/scripts/kind_lab/values.yaml --timeout 15m
+STATUS: deployed
++ helm --kube-context kind-opspilot-m1 upgrade --install kube-state-metrics prometheus-community/kube-state-metrics --version 8.6.0 --namespace otel-demo --values /Users/shenghuikevin/dev/AI/production-ops-agent-kind/scripts/kind_lab/kube-state-metrics-values.yaml --timeout 5m
+STATUS: deployed
++ kubectl --context kind-opspilot-m1 apply -f /Users/shenghuikevin/dev/AI/production-ops-agent-kind/scripts/kind_lab/jaeger-nodeport.yaml
++ kubectl --context kind-opspilot-m1 -n otel-demo wait --for=condition=Available deployment --all --timeout=420s
+deployment.apps/ad condition met
+deployment.apps/cart condition met
+deployment.apps/checkout condition met
+deployment.apps/currency condition met
+deployment.apps/email condition met
+deployment.apps/flagd condition met
+deployment.apps/frontend condition met
+deployment.apps/frontend-proxy condition met
+deployment.apps/image-provider condition met
+deployment.apps/jaeger condition met
+deployment.apps/kube-state-metrics condition met
+deployment.apps/load-generator condition met
+deployment.apps/otel-collector condition met
+deployment.apps/payment condition met
+deployment.apps/product-catalog condition met
+deployment.apps/prometheus condition met
+deployment.apps/quote condition met
+deployment.apps/recommendation condition met
+deployment.apps/shipping condition met
+deployment.apps/valkey-cart condition met
+    "ok": true
+    "ok": true,
+  "deployments_not_ready": [],
+  "ok": true
+# done 2026-10-06T11:07:15Z
+NAME                                 RESTARTS   AGE
+ad-757d59f5dd-vtqz5                  1          2026-10-06T10:33:01Z
+cart-549b8757d-4lvb7                 1          2026-10-06T10:33:01Z
+checkout-6578865d87-wxg7h            1          2026-10-06T10:33:01Z
+currency-6db8974b78-xr9h8            1          2026-10-06T10:33:01Z
+email-6cd97b67f9-h7gxg               1          2026-10-06T10:33:01Z
+flagd-d6485586b-vhr8v                1          2026-10-06T10:33:02Z
+frontend-6c9bc688bf-5m75b            1          2026-10-06T10:33:02Z
+frontend-proxy-844799bcdb-hl89c      1          2026-10-06T10:33:02Z
+image-provider-575d7b4846-2gzg7      1          2026-10-06T10:33:02Z
+jaeger-58b867498d-vj7x6              1          2026-10-06T10:04:39Z
+kube-state-metrics-7cbf5b996-crwbv   1          2026-10-06T10:04:40Z
+load-generator-5ff476786d-nfvnb      1          2026-10-06T10:33:02Z
+otel-collector-5698775c44-bjfdm      1          2026-10-06T10:15:57Z
+payment-6f7bc865d6-bfxbv             1          2026-10-06T10:33:02Z
+product-catalog-777f5468d4-xwgl6     1          2026-10-06T10:33:02Z
+prometheus-c7d89d9-25vtb             1          2026-10-06T10:04:40Z
+quote-75774ddb4c-pfpt2               1          2026-10-06T10:33:03Z
+recommendation-9d497476-gqmk2        1          2026-10-06T10:33:03Z
+shipping-6fc5f694db-dq5xd            1          2026-10-06T10:33:03Z
+valkey-cart-d6456b5b6-6zh54          1          2026-10-06T10:33:03Z
+# Prometheus samples from before the VM stop (10:40-11:00Z) still present?
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"host_name":"checkout-7c846c8d98-877t6","instance":"1093bb7b-46b0-45d7-a69e-d000e933beea","job":"opentelemetry-demo/checkout","k8s_deployment_name":"checkout","k8s_namespace_name":"otel-demo","k8s_node_name":"opspilot-m1-control-
+# final stop 2026-10-06T11:08:02Z
+time="2026-10-06T04:08:17-07:00" level=info msg=done
+PROFILE    STATUS     ARCH       CPUS    MEMORY    DISK     RUNTIME    ADDRESS
+default    Stopped    aarch64    2       4GiB      20GiB               
+m0-otel    Stopped    aarch64    4       6GiB      24GiB               
+m1-kind    Stopped    aarch64    4       8GiB      30GiB               
