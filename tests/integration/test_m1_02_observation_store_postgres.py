@@ -34,6 +34,7 @@ from opspilot.observation import (
     SampleReceipt,
     SignalReading,
     profile_revision,
+    required_signals,
 )
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.persistence.base import _StoreBase
@@ -418,6 +419,9 @@ def test_observer_role_cannot_write_investigation_runs_reports_or_evidence(
         "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds) SELECT gen_random_uuid(),incident_id,purpose,target_id,target,0,0,'observer',deadline_at,1,1,1 FROM opspilot_observation_sessions WHERE session_id=%(s)s",
         "DELETE FROM opspilot_observation_samples",
         "UPDATE opspilot_observation_endings SET transition=NULL",
+        # timestamps come from the database clock only
+        "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,recorded_at) VALUES(gen_random_uuid(),%(s)s,%(i)s,'authority_revoked',clock_timestamp()-interval '1 day')",
+        "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,clock_timestamp())",
         "DELETE FROM opspilot_observation_endings",
         "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES('x@000000000000','x',repeat('0',64),'{}')",
         "UPDATE opspilot_health_profiles SET content='{}'",
@@ -1499,6 +1503,22 @@ def test_observer_lifecycle_change_without_a_recorded_ending_fails_at_commit(
             conn.commit()
     assert _lifecycle(owner, incident) == "observing_recovery"
     assert controller.session_history(session)["endings"] == []
+    # An ending row that names this incident but a session of another
+    # incident is not evidence either.
+    other, _, other_target = _incident(owner)
+    other_session = _authorize(controller, other, other_target)
+    with psycopg.connect(observer_dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed')",
+            (other_session, incident),
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open' WHERE incident_id=%s",
+            (incident,),
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.commit()
+    assert _lifecycle(owner, incident) == "observing_recovery"
     # The real paths still commit: a sweep ending reopens, a confirmed
     # sample resolves.
     with owner.transaction() as conn:
@@ -1586,3 +1606,95 @@ def test_replay_checks_the_required_signal_readings_of_a_healthy_sample(
     assert receipt.accepted and not receipt.confirms_health
     report = controller.replay_session(session)
     assert report.samples[1].signal_mismatches == ("required_signals_present",)
+
+
+def test_claim_never_waits_for_a_locked_incident_when_ending_a_session(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Every ending path locks the incident row before the session row; the
+    claim already holds the session row when it finds the scope moved, so it
+    takes the incident only if free (no wait, no deadlock) and otherwise
+    leaves the session for the next claim or sweep."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+    with psycopg.connect(controller.dsn) as holder:
+        # Another writer holds the incident row (as submit/sweep/revoke do).
+        holder.execute(
+            "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (incident,),
+        )
+        started = _now()
+        assert _claimable(observer, session) == []
+        assert (_now() - started) < timedelta(seconds=3), "claim must not wait"
+        assert controller.session(session)["state"] == "authorized"
+    assert _claimable(observer, session) == []
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "scope_suspended")
+
+
+STEP1_SHAPED_PROFILE = json.dumps(
+    {
+        "format_version": 1,
+        "profile_id": "otel-demo-checkout",
+        "signals": [
+            {"name": "deployment_available_replicas", "required": True, "query": "q1"},
+            {"name": "request_rate_per_second", "query": "q2"},
+            {"name": "latency_p95_milliseconds", "required": False, "query": "q3"},
+        ],
+    },
+    sort_keys=True,
+    separators=(",", ":"),
+)
+
+
+def test_required_signals_follow_the_health_profile_shape() -> None:
+    assert required_signals(STEP1_SHAPED_PROFILE) == (
+        "deployment_available_replicas",
+        "request_rate_per_second",
+    )
+    for broken in (
+        "not json",
+        "[]",
+        json.dumps({"profile_id": "x"}),
+        json.dumps({"signals": "none"}),
+        json.dumps({"signals": []}),
+        json.dumps({"signals": [{"name": "a", "required": False}]}),
+        json.dumps({"signals": [{"query": "q"}]}),
+        json.dumps({"signals": [{"name": "a", "required": "yes"}]}),
+    ):
+        with pytest.raises(PersistenceError, match="HEALTH_PROFILE_UNREADABLE"):
+            required_signals(broken)
+
+
+def test_replay_fails_closed_when_the_profile_yields_no_required_signals(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    content = json.dumps({"profile_id": "bare"}, separators=(",", ":"))
+    revision = profile_revision("bare", content)
+    incident, _, target = _incident(owner)
+    session = controller.authorize_session(
+        incident,
+        target=target,
+        actor="tester",
+        deadline_at=_now() + timedelta(hours=1),
+        max_samples=5,
+        sample_interval_seconds=15,
+        sustained_window_seconds=600,
+        health_profile_revision=revision,
+        health_profile=content,
+        first_sample_due_at=_now(),
+    )
+    _backdate_authorization(owner, session)
+    lease = _claim(observer, session)
+    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 30), "degraded"))
+    assert receipt.accepted
+    report = controller.replay_session(session)
+    assert not report.consistent
+    assert report.samples[0].signal_mismatches == ("health_profile_unreadable",)
+    assert report.samples[0].stored == report.samples[0].replayed

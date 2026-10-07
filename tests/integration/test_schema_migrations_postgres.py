@@ -389,7 +389,7 @@ def _observer_grants(dsn: str) -> set[tuple[str, str]]:
         return {
             (row[0], row[1])
             for row in conn.execute(
-                "SELECT table_name, privilege_type FROM information_schema.table_privileges WHERE grantee='opspilot_observer' UNION SELECT table_name, privilege_type || ':' || column_name FROM information_schema.column_privileges WHERE grantee='opspilot_observer' AND table_name IN ('opspilot_incidents','opspilot_observation_sessions')"
+                "SELECT table_name, privilege_type FROM information_schema.table_privileges WHERE grantee='opspilot_observer' UNION SELECT table_name, privilege_type || ':' || column_name FROM information_schema.column_privileges WHERE grantee='opspilot_observer' AND table_name IN ('opspilot_incidents','opspilot_observation_sessions','opspilot_observation_samples','opspilot_observation_endings')"
             )
         }
 
@@ -410,7 +410,10 @@ def test_0003_downgrade_removes_tables_column_and_grants(scratch_dsn: str) -> No
     assert ("opspilot_incidents", "SELECT:conclusion") not in grants
     assert ("opspilot_observation_sessions", "UPDATE:deadline_at") not in grants
     assert ("opspilot_runs", "SELECT") not in grants
-    assert ("opspilot_observation_samples", "INSERT") in grants
+    assert ("opspilot_observation_samples", "INSERT:sample_id") in grants
+    assert ("opspilot_observation_samples", "INSERT:submitted_at") not in grants
+    assert ("opspilot_observation_endings", "INSERT:ending_id") in grants
+    assert ("opspilot_observation_endings", "INSERT:recorded_at") not in grants
     assert ("opspilot_observation_samples", "UPDATE") not in grants
 
     schema.command.downgrade(schema._config(scratch_dsn), "0002_state_checks")

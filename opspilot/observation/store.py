@@ -442,25 +442,36 @@ def _scope_blocks(
     return blocked, generations
 
 
-def _required_signals(profile: dict[str, Any] | None) -> tuple[str, ...] | None:
-    """Required signal names from the stored profile content, ``None`` when
-    there is no profile or its content does not carry a ``signals`` list
-    (the HealthProfile step owns the format; each entry has ``name`` and an
-    optional ``required`` flag defaulting to true)."""
-    if profile is None:
-        return None
+def required_signals(content: str) -> tuple[str, ...]:
+    """Required signal names from a stored profile's canonical content.
+
+    The HealthProfile step owns the format: ``signals`` is a list of objects
+    with ``name`` and a ``required`` flag that defaults to true (the
+    canonical dump writes it explicitly). Fail closed: unparsable content,
+    no ``signals`` list, a malformed entry or an empty required list raises
+    ``PersistenceError("HEALTH_PROFILE_UNREADABLE")``; a replay then reports
+    every sample as inconsistent instead of silently skipping the check.
+    """
     try:
-        content = json.loads(str(profile["content"]))
-    except ValueError:
-        return None
-    signals = content.get("signals") if isinstance(content, dict) else None
+        parsed = json.loads(content)
+    except ValueError as exc:
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE") from exc
+    signals = parsed.get("signals") if isinstance(parsed, dict) else None
     if not isinstance(signals, list):
-        return None
-    names = [
-        str(item["name"])
-        for item in signals
-        if isinstance(item, dict) and "name" in item and item.get("required", True)
-    ]
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+    names: list[str] = []
+    for item in signals:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("name"), str)
+            or not item["name"]
+            or type(item.get("required", True)) is not bool
+        ):
+            raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+        if item.get("required", True):
+            names.append(item["name"])
+    if not names:
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
     return tuple(names)
 
 
@@ -792,6 +803,20 @@ class ObservationStore(_StoreBase):
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
                 blocked, generations = _scope_blocks(scope, row)
                 if blocked:
+                    # Ending needs the incident row (the ending row's FK and
+                    # the lock order every other ending path keeps: incident
+                    # first, then session). This transaction already holds
+                    # the session row, so it must not wait for the incident:
+                    # take it only if free, else leave the session for the
+                    # next claim or sweep.
+                    if (
+                        conn.execute(
+                            "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE SKIP LOCKED",
+                            (row["incident_id"],),
+                        ).fetchone()
+                        is None
+                    ):
+                        continue
                     self._end_session(
                         conn,
                         row["session_id"],
@@ -1140,7 +1165,16 @@ class ObservationStore(_StoreBase):
         adopted_sequence, adopted_window_end = 0, None
         adopted_count, healthy_since = 0, None
         expected_lifecycle: str | None = None
-        required = _required_signals(history["health_profile"])
+        # No profile revision: nothing to check (such a session never confirms
+        # health). A revision whose stored content cannot yield the required
+        # signals fails every sample of the replay.
+        required: tuple[str, ...] | None = None
+        unreadable = False
+        if history["health_profile"] is not None:
+            try:
+                required = required_signals(str(history["health_profile"]["content"]))
+            except PersistenceError:
+                unreadable = True
         replayed: list[ReplayedSample] = []
         for stored in history["samples"]:
             session = _domain_session(
@@ -1200,7 +1234,9 @@ class ObservationStore(_StoreBase):
                 if reading["status"] == "ok"
             }
             signal_mismatches: tuple[str, ...] = ()
-            if required is not None:
+            if unreadable:
+                signal_mismatches = ("health_profile_unreadable",)
+            elif required is not None:
                 missing = tuple(name for name in required if name not in ok_signals)
                 # Structural check only (F6 step 5's threshold replay is #87):
                 # a healthy sample must have an ok reading for every required

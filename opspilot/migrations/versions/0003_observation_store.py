@@ -358,7 +358,12 @@ def upgrade() -> None:
         GRANT UPDATE (lifecycle) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT SELECT ON {profiles}, {sessions} TO {OBSERVER_ROLE};
         GRANT UPDATE ({", ".join(OBSERVER_SESSION_COLUMNS)}) ON {sessions} TO {OBSERVER_ROLE};
-        GRANT SELECT, INSERT ON {samples}, {readings}, {endings} TO {OBSERVER_ROLE};
+        GRANT SELECT, INSERT ON {readings} TO {OBSERVER_ROLE};
+        GRANT SELECT ON {samples}, {endings} TO {OBSERVER_ROLE};
+        -- the timestamps come from the database clock (DEFAULT), never from
+        -- the Observer: the evidence trigger dates rows by them
+        GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,transition) ON {samples} TO {OBSERVER_ROLE};
+        GRANT INSERT (ending_id,session_id,incident_id,ended_reason,transition,sample_id) ON {endings} TO {OBSERVER_ROLE};
         """
     )
     # The Observer may move an incident's lifecycle only along the two edges
@@ -414,7 +419,9 @@ def upgrade() -> None:
             END;
             IF expected IS NULL OR NOT EXISTS (
               SELECT 1 FROM {endings} e
+              JOIN {sessions} s ON s.session_id = e.session_id
               WHERE e.incident_id = NEW.incident_id
+                AND s.incident_id = NEW.incident_id
                 AND e.transition = expected
                 AND e.recorded_at >= transaction_timestamp()
                 AND (expected <> 'recovery_confirmed' OR EXISTS (
