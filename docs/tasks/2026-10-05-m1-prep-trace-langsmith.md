@@ -1,6 +1,6 @@
 # M1 准备：OTel 埋点接 LangSmith，实验证据上平台
 
-- 状态：PR 1 已合并（#108，issue #80）；PR 2 已实现并完成真实 Run 验证，待用户门合并（issue #81）
+- 状态：PR 1 已合并（#108，issue #80）；PR 2 已合并（#110，issue #81）；完成条件中「全新上下文审查凭 API 读 trace」与 `otel-demo` lab Run 未执行
 - 更新日期：2026-10-06
 - 依据：[ADR-0006](../adr/0006-trace-evidence-and-backlog.md)；C3 §2（第 31 行）、§11「可观测性」「保留与删除」、第 440–441 行（私有字段与凭据不出域）；F8 第 1 步
 - 工作区：PR 1 `../production-ops-agent-trace`（`chore/m1-prep-trace`，已合并）；PR 2 `../production-ops-agent-trace2`，分支 `chore/m1-prep-trace-evidence`
