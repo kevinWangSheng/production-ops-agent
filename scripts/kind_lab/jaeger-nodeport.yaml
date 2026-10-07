@@ -1,0 +1,22 @@
+# The jaeger subchart's query Service is headless (clusterIP: None), so it
+# cannot be a NodePort. This extra Service selects the same all-in-one pod and
+# publishes the query API on NodePort 30686 (host 16686 via kind-config.yaml),
+# keeping the product profile's default Jaeger address unchanged.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query-nodeport
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/component: all-in-one
+  ports:
+    - name: http-query
+      port: 16686
+      targetPort: 16686
+      nodePort: 30686
