@@ -11,6 +11,9 @@ Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
 * Persisted samples include subject_id, sample_id, sequence, target, both
   generations, profile revision, absolute window, signals/outcome/disposition.
   Signals retain value/source/query/observed_at and unique evidence_id/hash.
+  Each stimulus supplies test-owned raw_payload bytes, frozen after mutations;
+  the telemetry stub returns those bytes for query + absolute window. Retrieved
+  evidence must equal them byte-for-byte as well as matching its SHA-256.
 * replay uses ONLY frozen profile/handled_at/samples. It returns external_queries
   and model_requests empty; integrity mismatch may be reported explicitly as
   unknown instead of restoring the original verdict.
@@ -30,6 +33,8 @@ Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
   no effect on lifecycle/watermarks/health/budget. Snapshots also retain
   observation_authorization (session identity/binding/versions/authorized) and
   handling_audit so re-authorization cannot masquerade as sample submission.
+  Full observation_sessions and exposed sample_jobs collections stay unchanged
+  after a rejected foreign-target sample, not only the current authorization.
 * actions is the complete product action audit; excludes engineer setup and
   permits only read queries and OpsPilot's own record/control persistence.
 
@@ -38,6 +43,7 @@ No fake successful outcomes or implementation adapter are provided here.
 Numbers are synthetic test boundaries, not calibrated lab HealthProfile values.
 """
 
+import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -154,6 +160,30 @@ def observations(
     return rows
 
 
+def with_raw_payloads(rows):
+    """Freeze test-owned synthetic telemetry AFTER each scenario's mutations.
+
+    The stub returns these exact bytes. This synthetic JSON wire format is a
+    fixture format, not a requirement on product telemetry/evidence encoding.
+    """
+    for row in rows:
+        for name, signal in row["signals"].items():
+            captured = {
+                "signal": name,
+                "target": row["target"],
+                "window_start": row["window_start"].isoformat(),
+                "window_end": row["window_end"].isoformat(),
+                "value": signal["value"],
+                "source": signal["source"],
+                "query": signal["query"],
+                "observed_at": signal["observed_at"].isoformat(),
+            }
+            signal["raw_payload"] = json.dumps(
+                captured, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+    return rows
+
+
 def assert_readonly(outcome, driver, subject_id="incident-f6"):
     assert outcome.subject_id == subject_id
     assert outcome.recovery_confirmed is (outcome.incident_lifecycle == "resolved")
@@ -176,6 +206,7 @@ def assert_signal_basis(row, original, driver):
         evidence_ids.append(signal["evidence_id"])
         payload = driver.read_raw_payload(signal["evidence_id"])
         assert isinstance(payload, bytes)
+        assert payload == original["signals"][name]["raw_payload"]
         assert sha256(payload).hexdigest() == signal["raw_sha256"]
         assert len(signal["raw_sha256"]) == 64
         assert set(signal["raw_sha256"]) <= set("0123456789abcdef")
@@ -221,6 +252,7 @@ def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     recovery_driver, profile, count, expected
 ):
     supplied = observations(count)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, "handled-recovery"),
         profile=profile,
@@ -247,6 +279,7 @@ def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
     recovery_driver, profile, count, traffic
 ):
     supplied = observations(count, traffic=traffic, error_ratio=0)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(2, "traffic-withdrawn"),
         profile=profile,
@@ -265,6 +298,10 @@ def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
         assert outcome.human_interaction == "handoff"
         assert "INSUFFICIENT_TRAFFIC" in outcome.handoff_reasons
         assert outcome.observation_ended
+    else:
+        assert outcome.observation_ended is False
+        assert outcome.human_interaction != "handoff"
+        assert not outcome.handoff_reasons
     assert_saved_basis(outcome, supplied, profile, recovery_driver)
     assert_readonly(outcome, recovery_driver)
 
@@ -275,6 +312,7 @@ def test_f6_step3_each_missing_required_signal_is_unknown_and_handed_off(
     recovery_driver, profile, missing
 ):
     supplied = observations(missing=missing)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(3, f"missing-{missing}"),
         profile=profile,
@@ -299,6 +337,7 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     recovery_driver, profile, count
 ):
     supplied = observations(count, degraded=True)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(4, "dependency-degraded"),
         profile=profile,
@@ -317,6 +356,10 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
         assert outcome.human_interaction == "handoff"
         assert "CONTINUED_DEGRADATION" in outcome.handoff_reasons
         assert outcome.observation_ended
+    else:
+        assert outcome.observation_ended is False
+        assert outcome.human_interaction != "handoff"
+        assert not outcome.handoff_reasons
     assert_saved_basis(outcome, supplied, profile, recovery_driver)
     assert_readonly(outcome, recovery_driver)
 
@@ -335,6 +378,7 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
     recovery_driver, profile, kind, options, count, verdict, lifecycle
 ):
     supplied = observations(count, **options)
+    supplied = with_raw_payloads(supplied)
     original = recovery_driver.run(
         scenario(5, kind),
         profile=profile,
@@ -381,6 +425,7 @@ def test_f6_step1_each_required_signal_threshold_blocks_recovery(
     supplied = observations()
     for row in supplied:
         row["signals"][signal]["value"] = value
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, f"unhealthy-{signal}"),
         profile=profile,
@@ -415,6 +460,7 @@ def test_f6_step1_stale_or_discontinuous_data_is_saved_without_confirming_recove
             row["window_end"] += timedelta(seconds=60)
             for signal in row["signals"].values():
                 signal["observed_at"] += timedelta(seconds=60)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, kind),
         profile=profile,
@@ -442,6 +488,7 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     recovery_driver, profile
 ):
     supplied = observations(3)
+    supplied = with_raw_payloads(supplied)
     original = recovery_driver.run(
         scenario(5, "verdict-integrity"),
         profile=profile,
@@ -497,6 +544,7 @@ def test_f6_step1_same_target_incidents_only_handled_subject_changes(
     assert untouched["observation_sessions"] == ()
     supplied = observations(count)
     requested = scenario(1, "same-target-two-incidents", subject_id=subject_id)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         requested,
         profile=profile,
@@ -527,6 +575,7 @@ def test_f6_step1_degradation_resets_continuous_healthy_window(
     # of the two healthy runs across the degraded third window.
     supplied = observations(count)
     supplied[2]["signals"]["errors"]["value"] = 0.02
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, "healthy-then-degraded"),
         profile=profile,
@@ -558,6 +607,7 @@ def test_f6_step2_traffic_withdrawal_after_healthy_samples_never_confirms_recove
     for row in supplied[2:]:
         row["signals"]["request_volume"]["value"] = 0
         row["signals"]["errors"]["value"] = 0
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(2, "healthy-then-traffic-withdrawn"),
         profile=profile,
@@ -619,6 +669,7 @@ def test_f6_step1_before_handling_data_cannot_confirm_recovery(
         row["window_end"] -= timedelta(seconds=180)
         for signal in row["signals"].values():
             signal["observed_at"] -= timedelta(seconds=180)
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, "before-handling"),
         profile=profile,
@@ -649,6 +700,7 @@ def test_f6_step1_healthy_window_rebuilds_after_degradation_and_can_resolve(
     longer_profile["max_samples"] = 7
     supplied = observations(count)
     supplied[2]["signals"]["errors"]["value"] = 0.02
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.run(
         scenario(1, "recovery-after-degradation"),
         profile=longer_profile,
@@ -729,6 +781,7 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
     foreign_target = deepcopy(TARGET)
     foreign_target[identity_field] = f"another-{identity_field}"
     supplied[0]["target"] = foreign_target
+    supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.continue_observation(
         requested,
         observations=deepcopy(supplied),
@@ -762,9 +815,13 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
         "healthy_window_seconds",
         "used_sample_count",
         "observation_authorization",
+        "observation_sessions",
         "handling_audit",
     ):
         assert after[field] == before[field]
+    if "sample_jobs" in before or "sample_jobs" in after:
+        assert "sample_jobs" in before and "sample_jobs" in after
+        assert after["sample_jobs"] == before["sample_jobs"]
     assert history in after["recovery_samples"]
     assert_readonly(started, recovery_driver)
     assert_readonly(outcome, recovery_driver)
@@ -780,3 +837,21 @@ def test_harness_evidence_reader_rejects_unresolvable_or_nonbyte_payloads(reader
     driver = GuardedRecoveryDriver(runtime, RecoveryBoundaries())
     with pytest.raises(AssertionError, match="read_raw_payload|original bytes"):
         driver.read_raw_payload("unresolvable-evidence")
+
+
+def test_harness_telemetry_returns_exact_test_owned_raw_signal_bytes():
+    supplied = with_raw_payloads(observations(2))
+    boundaries = RecoveryBoundaries()
+    boundaries.configure_telemetry(supplied)
+    for row in supplied:
+        for signal in row["signals"].values():
+            payload = boundaries.telemetry_query(
+                signal["query"],
+                window_start=row["window_start"],
+                window_end=row["window_end"],
+            )
+            assert payload == signal["raw_payload"]
+            decoded = json.loads(payload)
+            assert decoded["target"] == row["target"]
+            assert decoded["value"] == signal["value"]
+            assert decoded["observed_at"] == signal["observed_at"].isoformat()

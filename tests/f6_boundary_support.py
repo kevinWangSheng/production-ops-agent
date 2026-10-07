@@ -28,13 +28,24 @@ class RecoveryBoundaries:
         self.model_calls += 1
         raise AssertionError("F6 harness rejected a model call")
 
-    def telemetry_query(self, query):
+    def configure_telemetry(self, observations):
+        self.telemetry_responses = {}
+        for row in observations:
+            for signal in row["signals"].values():
+                payload = signal["raw_payload"]
+                assert isinstance(payload, bytes)
+                key = (signal["query"], row["window_start"], row["window_end"])
+                assert key not in self.telemetry_responses
+                self.telemetry_responses[key] = payload
+
+    def telemetry_query(self, query, *, window_start=None, window_end=None):
         if self.replaying:
             self.telemetry_calls_during_replay += 1
             raise AssertionError("F6 harness rejected telemetry during replay")
-        if query not in self.telemetry_responses:
+        key = (query, window_start, window_end)
+        if key not in self.telemetry_responses:
             raise AssertionError("F6 telemetry stub has no configured response")
-        return deepcopy(self.telemetry_responses[query])
+        return self.telemetry_responses[key]
 
 
 class GuardedRecoveryDriver:
@@ -56,12 +67,14 @@ class GuardedRecoveryDriver:
         return self.boundaries.model_calls
 
     def run(self, scenario, **stimuli):
+        self.boundaries.configure_telemetry(stimuli.get("observations", ()))
         outcome = self.runtime.run(scenario, **stimuli)
         assert outcome.subject_id == scenario.subject_id
         return outcome
 
     def continue_observation(self, scenario, **stimuli):
         """Submit to the existing session, without handling/re-authorizing it."""
+        self.boundaries.configure_telemetry(stimuli.get("observations", ()))
         outcome = self.runtime.continue_observation(scenario, **stimuli)
         assert outcome.subject_id == scenario.subject_id
         return outcome

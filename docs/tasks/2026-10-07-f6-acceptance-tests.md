@@ -1,6 +1,6 @@
 # F6 独立验收与合同测试作者
 
-- 状态：已完成第三轮审查修订（外部场景尚未接线，F6 未完成）
+- 状态：最后一轮修订完成、机器人审查按停机规则收口（外部场景尚未接线，F6 未完成）
 - 更新日期：2026-10-07
 - 依据：[M1-02](2026-10-03-m1-02-recovery-observation.md)；[测试映射与接口提议](../testing/f6-acceptance-tests.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/production-ops-agent-f6-tests`；`feature/m1-02-f6-acceptance-tests`；基线 `0c97377`
@@ -46,6 +46,14 @@
 - P2 证据解析：read_raw_payload 是必需接口，缺失/None/非 bytes 即失败；每个证据引用均核验原始字节 SHA-256，包括错误目标历史样本；补 3 个可执行 reader 拒绝检查，文档删除可选读取表述。
 - 定向 pytest：52 passed（42 领域 + 10 夹具）、40 skipped、0 xfailed，0.27 秒；最终 make check 退出 0：锁/Ruff/mypy 通过，2652 passed、351 skipped、2 既有架构债 xfailed，45.70 秒。全新上下文静态复验补充要求核对原授权及处置审计，已修复并复验，无未处置合同发现。外部场景仍未接线，未改产品代码或 passes。
 - 仅追加提交与普通 push；不触发机器人、不回复/resolve thread、不合并。
+
+### 第 4 轮：最后一轮修复与停机收口（f3a9bad 之后）
+
+- P2 信号绑定：每个场景修改刺激后生成测试-owned raw_payload bytes，桩按查询/绝对窗口返回这些字节；证据读取必须逐字节等于刺激，随后核 SHA-256；补可运行桩检查，不再只验证产品字节与产品摘要自洽。
+- P2 有界继续：低流量及依赖退化 count=3（180 秒，原预算 300 秒/5 次）均要求 observation_ended=False、无交接/交接原因。
+- P1 会话/任务：错误目标提交前后完整 observation_sessions 不变；若暴露 sample_jobs，完整集合也必须不变，不限于当前授权。
+- 定向 pytest：53 passed（42 领域 + 11 夹具）、40 skipped、0 xfailed，0.35 秒；最终 make check 退出 0：锁/Ruff/mypy 通过，2653 passed、351 skipped、2 既有架构债 xfailed，45.57 秒；限定静态复验确认三项已处置，无 C3/PRODUCT-CONSTRAINTS 原文支撑的新 P1。
+- 机器人审查已按用户停机规则收口：本轮三项合在一个追加提交，此后仅修能引用 C3/PRODUCT-CONSTRAINTS 原文的 P1；不继续扩展 P2/可选项。普通 push，不触发 @codex review、不回复/resolve thread、不合并。
 
 ## 下一步与交接
 
