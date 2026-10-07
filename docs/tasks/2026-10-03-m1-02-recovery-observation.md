@@ -1,6 +1,6 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0 步 kind 环境已合并 #111；第 1 步 PR #113、第 2 步 PR #114 并行开发）
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–2 步已合并 #111 #113 #114；F6 验收与合同测试已合并 #112；下一步第 3 步 #85 与第 4 步 #86 并行）
 - 更新日期：2026-10-07
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
@@ -45,7 +45,7 @@
 | 环境 | OTel Demo 2.0.2 跑在 colima + Docker Compose 上，**没有 Kubernetes**，没有 deployment 状态和 pod 健康信号 | `scripts/otel_demo_lab.py:1-20`；本机无 kind/k3d/kubectl |
 | 上游 | HolmesGPT main `9e21560`（2026-10-04 核对）：只有 `holmes/checks/`，check 无状态、由 LLM 判 pass/fail/error、无观察窗口、`schedule` 字段注释为未来实现；没有「处置后观察」。可借鉴 pass/fail/error 三态输出；判定须按 C3 确定性实现，不照搬 LLM 判定 | [`holmes/checks/models.py:11-45` @ `9e21560`](https://github.com/HolmesGPT/holmesgpt/blob/9e21560c7ad1d02fdac29c9d9979999992bc3edb/holmes/checks/models.py#L11-L45) |
 
-## 计划（每项一个 PR，按序合并，不做 stacked PR）
+## 计划（每项一个 PR，不做 stacked PR；无依赖的步骤可并行开发，各自基于 main，前置 PR 先合）
 
 0. **kind 实验环境**
    - colima 上起 kind，装固定版本的 OTel Demo 官方 Helm chart 和 kube-state-metrics，Prometheus 抓取 deployment/pod 指标。
@@ -130,7 +130,7 @@
 - 判定规则（按序，PR #113 独立审查后修订）：(a) 任一「已判定」的必要信号越界 → degraded——读数可用（ok、点数足、query/source 一致、新鲜）且（信号不依赖流量 `traffic_dependent=false`，或流量已确认过门槛）才算判定，所以 0 副本在无流量时仍是 degraded；(b) 否则有必要信号读数不可用 → unknown（failed > timeout > stale > no_data，`required_signals_present=false`）；(c) 否则流量低于门槛 → no_data（错误率为 0 也不行，F6 第 2 步；依赖流量的比率/分位信号在低流量或流量未知时标 `not_judged`）；(d) 否则 healthy。可选信号只记录不影响结果。新鲜度：`evaluate_readings` 多一个输入 `sample_time`（采样时刻，带时区）；读数 `window_end` 早于采样时刻超过 `freshness_seconds`、或窗口跨度与 `evaluation_window_seconds` 相差超过 5%（采样器按 Prometheus step 对齐窗口边界的容差）→ 该信号按 stale。**第 2 步需存采样时刻**（会话/采样行本来就有），重放用存下的 `sample_time`；读数字段不变，接口约定不改。 `sample_count` 语义（供第 4 步实现）：窗内原始样本数，Observer 对每个信号额外执行 profile 的 `coverage_query`（`count_over_time` 同选择器同范围）取整填入；读数只存 `query`，`coverage_query` 由 revision 对应的 profile 恢复。依赖可用性改用 `count(... >= 1)` 并要求等于 8（`min` 会忽略缺失序列，@codex review P1）；`format_version` 校验失败不再回显文件值（P2）。revision = `<profile_id>@<规范化 JSON sha256 前 12 位>`，内容变即变、格式与键序不变则不变。
 - 自行决定并记录理由：文件格式用 JSON（仓库无 YAML 依赖，不加第三方包）；模块放 `opspilot/observer/` 作为第 4 步 Observer 进程的归属包；unknown 优先于 degraded（流量无意义时不对任何比率下断言）；读数 `query`/`source` 必须与 profile 完全一致，否则按 failed 处理（保证第 5 步重放用的是存下来的查询）。
 - 数值校准：[docs/evidence/m1-02-health-profile/run.md](../evidence/m1-02-health-profile/run.md)。kind 启动中止（宿主 swap 2 分钟内 8.9 → 10.9 GB / 11.3 GB），未新采集；数值按第 0 步同一环境 2026-10-06 的四个独立观察窗校准（稳态 3.75 单 / 5 min → 流量门槛 0.008 /s；p95 37.5–182.5 ms → 上限 500 ms；错误率正常窗 0 / 故障窗 0.52 → 上限 0.01）。`minimum_samples` 全部 3：按 Prometheus 默认 1 m 抓取 / 60 s flush 估计 300 s 窗 5 个样本取一半，抓取间隔待实验环境实测确认（run.md）。当前 revision 见 PR #113 最新提交（`load_health_profile(...).revision`），候选评测前冻结。
-- 状态：代码与测试完成；PR 待独立审查。
+- 状态：已合并（#113，2026-10-07）。
 - 待决：无（数值属可逆技术细节）。限制：稳态流量薄（2 locust 用户），比率分辨力有限；要更稳定的 F6 验收可在实验环境加用户数（第 0 步 values，不在本步）。
 
 ## 待决
@@ -140,7 +140,7 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；计划 0 已执行（PR 见 #82），M1 基础设施准备完成后从计划 1 开工。
+- 上游核对已完成（见上表）；第 0–2 步已合并。第 3 步（#85）与第 4 步（#86）互不依赖，可并行，各自基于 main；第 5 步（#87）、第 6 步（#88）在其后。第 4 步合并前须完成 #86 中转入的要求（新鲜度基于底层样本时间戳等）。
 - 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复）；回归用一次性 PG 55481 已停并位于会话临时目录。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
@@ -168,5 +168,5 @@
   - 读数覆盖（2026-10-07，复验 P2）：读数表 CHECK 改为 `(status='ok') = (value IS NOT NULL)`，`SignalReading` 同步；结构校验里 ok 但 value 为空、或 sample_count 为空/0 的读数不算覆盖必要信号，提交走 `readings_inconsistent`，重放同一判定。
   - 最后一轮机器人修复（2026-10-07，停机规则生效，此后只修能引用 C3/PRODUCT-CONSTRAINTS 原文的 P1）：① 读数窗口须属于本次采样：`_covers` 要求读数 window_start/end 与样本窗口之差 ≤ 样本窗口长度的 5%（Prometheus 范围查询按 step 对齐边界，与第 1 步一致），否则不算覆盖 → `readings_inconsistent`，重放同判。② 证据触发器按事务身份绑定：结束记录与确认采样行的 `xmin = pg_current_xact_id()::xid`，去掉时间比较；另一连接后写并提交的记录不再能被借用（测试复现）。③ 授权校验完整 Target：注册表只有 resource_uid，其余字段由该目标第一个会话固定，后续授权的 Target 任一字段不同 → `TARGET_MISMATCH`、不写任何东西；**限制**：第一个会话的非 resource_uid 字段无处可核对（`opspilot_targets` 是基线表，加列属另一决定）。④ 结束记录新增 `lifecycle_before` / `lifecycle_after`；期限/次数结束一律记 `observation_ended_unconfirmed`（事故已是 open 时 before=after=open），触发器也要求记录的前后值等于本次改动；重放只接受精确 transition，并校验 after == fire(before, transition)（非法时 after == before）。⑤ 重放与提交读取 profile 时重算 sha256，须等于 `content_sha256` 且与 revision 后缀一致，否则 fail-closed（`health_profile_unreadable` / `readings_inconsistent`）。
   - 第 4 步须知：`within_deadline` 用提交时的数据库时钟 `now < deadline_at`，不看样本窗口。
-- 未执行：真实实验环境采样（第 4 步）、本机 55431 lab 库升级到 0003（用户待办：`make migrate`）。
+- 未执行：真实实验环境采样（第 4 步）。本机 55431 lab 库已于 2026-10-07 升级到 0003（`make migrate` 需设 `OPSPILOT_DSN` 与 `OPSPILOT_PG_DUMP`，见开发指南）。
 - 风险：`controls.control()` 的续开路径把生命周期写回 `open` 而不撤销会话，第 3 步须在同一事务撤销（本步对这种状态的处置：确认恢复整笔回滚、到期只结束会话）；`observation_generation` 列是本步新增的权威位置，第 3 步递增 `control_generation` 时须经 `authorize_session_in` 同步递增它。
