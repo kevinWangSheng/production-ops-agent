@@ -127,6 +127,9 @@ HEALTH_BASES = (
     "outcome_not_healthy",
     "required_signals_missing",
     "window_before_authorization",
+    # the window starts before the latest control-scope change (a release
+    # from suspension): the paused interval is not observed time
+    "window_before_scope_change",
 )
 # Raw reading payloads are stored for hash verification on replay; one
 # signal's Prometheus result is bounded like the M0 response limit (128 KiB).
@@ -286,6 +289,8 @@ def upgrade() -> None:
           scope_suspended boolean NOT NULL,
           global_generation integer NOT NULL,
           target_generation integer NOT NULL,
+          -- when the current scope generations were set (NULL: never changed)
+          scope_changed_at timestamptz,
           within_deadline boolean NOT NULL,
           lease_valid boolean NOT NULL,
           transition text,
@@ -334,7 +339,7 @@ def upgrade() -> None:
         END
         $$;
         GRANT SELECT ON alembic_version TO {OBSERVER_ROLE};
-        GRANT SELECT ON opspilot_targets, opspilot_scope_controls, opspilot_target_suspensions TO {OBSERVER_ROLE};
+        GRANT SELECT ON opspilot_targets, opspilot_scope_controls, opspilot_target_suspensions, opspilot_suspension_audit TO {OBSERVER_ROLE};
         GRANT SELECT ({", ".join(OBSERVER_INCIDENT_COLUMNS)}) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT UPDATE (lifecycle) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT SELECT ON {profiles}, {sessions} TO {OBSERVER_ROLE};
@@ -345,21 +350,19 @@ def upgrade() -> None:
     # The Observer may move an incident's lifecycle only along the two edges
     # its sampling fires (C3 section 10): observing_recovery -> resolved and
     # observing_recovery -> open. The column grant alone would let it write
-    # any value; this trigger checks *direct* membership of the role (a
-    # superuser is not a member, so the owner connection is unaffected).
+    # any value; this trigger checks membership of the role, direct or
+    # inherited (``pg_has_role``), excluding superusers and the table owner,
+    # for whom pg_has_role is always true and who are not the Observer.
     op.execute(
         f"""
         CREATE FUNCTION opspilot_observer_lifecycle_guard() RETURNS trigger
         LANGUAGE plpgsql AS $$
         BEGIN
-          IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle AND (
-            current_user = '{OBSERVER_ROLE}' OR EXISTS (
-              SELECT 1 FROM pg_auth_members m
-              JOIN pg_roles r ON r.oid = m.roleid
-              JOIN pg_roles u ON u.oid = m.member
-              WHERE r.rolname = '{OBSERVER_ROLE}' AND u.rolname = current_user
-            )
-          ) THEN
+          IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle
+            AND pg_has_role(current_user, '{OBSERVER_ROLE}', 'MEMBER')
+            AND NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
+            AND current_user <> (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = TG_RELID)
+          THEN
             IF NOT (OLD.lifecycle = 'observing_recovery' AND NEW.lifecycle IN ('resolved', 'open')) THEN
               RAISE insufficient_privilege USING MESSAGE =
                 format('{OBSERVER_ROLE} may not move lifecycle %s -> %s', OLD.lifecycle, NEW.lifecycle);
