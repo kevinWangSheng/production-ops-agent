@@ -1,0 +1,880 @@
+"""Durable observation sessions and health samples (C3 section 10, issue #84).
+
+The store is the first persistence module built directly on the domain state
+machines: adoption is decided by ``evaluate_sample`` / ``adopt_sample`` /
+``confirms_health`` from ``opspilot.domain.observation`` and the lifecycle
+moves through ``INCIDENT_LIFECYCLE`` / ``OBSERVATION_SESSION``; nothing here
+re-states those rules. ``opspilot/persistence`` keeps its "built on domain?"
+question open (``tests/test_architecture.py`` records it as an xfail); this
+package does not reopen it.
+
+Role split (C3 section 3, decision D3): the Observer process holds
+``claim_due_samples`` / ``submit_sample`` / ``sweep_expired_sessions`` under
+the ``opspilot_observer`` role that migration 0003 grants; authorizing or
+revoking a session is Controller work (step 3) and runs under the owner
+connection. The class is the same; the DSN decides what the database allows.
+
+Every submission is kept: an adopted sample moves the watermark, a rejected
+one stays ``history_only`` with its reason and never changes the incident.
+Adoption, watermark, lifecycle transition and the next sampling job commit in
+one transaction, under the incident row lock first and the session row lock
+second (the lock order step 3's revoke path must keep).
+
+The adopted sample's decision is stored together with the conditions it was
+taken under (lifecycle, scope suspension, deadline, lease, incident control
+and observation generations), so ``replay_session`` recomputes every
+decision from the stored rows alone -- it never re-queries telemetry
+(F6 step 5).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Literal, cast
+from uuid import UUID, uuid4
+
+from psycopg.types.json import Jsonb
+from pydantic import AwareDatetime, model_validator
+
+from opspilot.domain.base import DTO, Count, DomainError, Text
+from opspilot.domain.evidence import QueryWindow
+from opspilot.domain.intake import Target
+from opspilot.domain.observation import (
+    OBSERVATION_SESSION,
+    HealthSample,
+    ObservationSession,
+    SampleAcceptance,
+    adopt_sample,
+    confirms_health,
+    evaluate_sample,
+)
+from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
+from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
+
+# How long one claimed sampling job stays leased to its owner. A Prometheus
+# query is bounded by the data-source timeout (C3 section 13: 20 s); the lease
+# only has to outlive one attempt, a crashed Observer's job is reclaimable
+# after this and keeps its logical sequence (C3 section 10).
+OBSERVER_LEASE_SECONDS = 120
+
+# Rows are read by name through the dict_row connection; the column lists are
+# spelled out so no read depends on physical column order
+# (tests/test_sql_column_order_independence.py).
+_SESSION_COLUMNS = (
+    "session_id,incident_id,purpose,target_id,target,subject_control_generation,"
+    "observation_generation,authorized,authorized_by,state,ended_reason,"
+    "health_profile_revision,deadline_at,max_samples,sample_interval_seconds,"
+    "sustained_window_seconds,adopted_sequence,adopted_window_end,adopted_count,"
+    "healthy_since,issued_sequence,active_sample_job_id,active_sample_sequence,"
+    "active_sample_due_at,active_sample_owner,active_sample_epoch,"
+    "active_sample_lease_until,created_at,updated_at"
+)
+_SAMPLE_COLUMNS = (
+    "sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,"
+    "required_signals_present,subject_control_generation,observation_generation,"
+    "health_profile_revision,disposition,reason,confirms_health,subject_lifecycle,"
+    "incident_control_generation,incident_observation_generation,scope_suspended,"
+    "within_deadline,lease_valid,transition,submitted_at"
+)
+_READING_COLUMNS = (
+    "sample_id,signal_name,status,value,sample_count,query,window_start,"
+    "window_end,source,raw_sha256"
+)
+
+Disposition = Literal["adopted", "history_only"]
+Transition = Literal["recovery_confirmed", "observation_ended_unconfirmed"]
+EndedReason = Literal[
+    "recovery_confirmed",
+    "deadline_expired",
+    "max_samples_exhausted",
+    "authority_revoked",
+]
+ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
+
+
+class SignalReading(DTO):
+    """One signal's reading inside a sample (interface contract item 3).
+
+    The field names and types are the contract shared with the HealthProfile
+    step; the store does not interpret ``signal_name`` or judge ``value``.
+    """
+
+    signal_name: Text
+    status: ReadingStatus
+    value: float | None = None
+    sample_count: Count | None = None
+    query: Text
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    source: Text
+    raw_sha256: Text | None = None
+
+    @model_validator(mode="after")
+    def consistent(self) -> SignalReading:
+        if self.status != "ok" and self.value is not None:
+            raise ValueError("VALUE_WITHOUT_OK_STATUS")
+        if self.window_end < self.window_start:
+            raise ValueError("INVALID_WINDOW")
+        return self
+
+
+@dataclass(frozen=True)
+class SampleLease:
+    """The credential a claimed sampling job hands the Observer."""
+
+    session_id: UUID
+    incident_id: UUID
+    job_id: UUID
+    sequence: int
+    owner: UUID
+    epoch: int
+    lease_until: datetime
+    subject_control_generation: int
+    observation_generation: int
+    health_profile_revision: str | None
+    deadline_at: datetime
+    sample_interval_seconds: int
+    adopted_window_end: datetime | None
+
+
+@dataclass(frozen=True)
+class SampleReceipt:
+    """What one submission did, as committed."""
+
+    sample_id: UUID
+    accepted: bool
+    disposition: Disposition
+    reason: str
+    confirms_health: bool
+    session_state: str
+    incident_lifecycle: str
+    transition: Transition | None
+    next_sample_due_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ReplayedSample:
+    sample_id: UUID
+    sequence: int
+    stored: tuple[str, str, bool, str | None]
+    replayed: tuple[str, str, bool, str | None]
+
+    @property
+    def matches(self) -> bool:
+        return self.stored == self.replayed
+
+
+@dataclass(frozen=True)
+class ReplayReport:
+    session_id: UUID
+    samples: tuple[ReplayedSample, ...]
+
+    @property
+    def consistent(self) -> bool:
+        return all(item.matches for item in self.samples)
+
+
+@dataclass(frozen=True)
+class _Verdict:
+    """The outcome of judging one sample against the session's fold state."""
+
+    decision: SampleAcceptance
+    healthy: bool
+    transition: Transition | None
+    session_state: str
+    ended_reason: EndedReason | None
+    adopted_sequence: int
+    adopted_window_end: datetime | None
+    adopted_count: int
+    healthy_since: datetime | None
+
+
+def _judge(
+    session: ObservationSession,
+    sample: HealthSample,
+    *,
+    subject_state: str,
+    within_deadline: bool,
+    suspension_blocks: bool,
+    lease_valid: bool,
+    adopted_count: int,
+    healthy_since: datetime | None,
+    max_samples: int,
+    sustained_window_seconds: int,
+) -> _Verdict:
+    """The one decision procedure ``submit_sample`` and ``replay_session`` share.
+
+    The lease is checked first (it is the store's own check, C3 section 10
+    "owner、epoch 和 lease"); everything else is ``evaluate_sample``. A
+    rejected sample changes nothing except that a sample rejected for the
+    deadline ends the session (interface contract item 6).
+    """
+    if lease_valid:
+        decision = evaluate_sample(
+            session,
+            sample,
+            subject_state=subject_state,
+            within_deadline=within_deadline,
+            suspension_blocks=suspension_blocks,
+        )
+    else:
+        decision = SampleAcceptance(
+            accepted=False, disposition="history_only", reason="lease_revoked"
+        )
+    healthy = decision.accepted and confirms_health(session, sample)
+    transition: Transition | None = None
+    ended: EndedReason | None = None
+    state: str = session.state
+    adopted_sequence = session.adopted_sequence
+    adopted_window_end = session.adopted_window_end
+    if decision.accepted:
+        advanced = adopt_sample(session, sample)
+        adopted_sequence = advanced.adopted_sequence
+        adopted_window_end = advanced.adopted_window_end
+        adopted_count += 1
+        # Any adopted non-healthy sample (no_data/stale/failed included)
+        # resets the streak; the window is the span the streak covers.
+        healthy_since = (healthy_since or sample.window.start) if healthy else None
+        if (
+            healthy
+            and healthy_since is not None
+            and (sample.window.end - healthy_since).total_seconds()
+            >= sustained_window_seconds
+        ):
+            transition = "recovery_confirmed"
+            state = OBSERVATION_SESSION.fire(state, "observation_completed")
+            ended = "recovery_confirmed"
+        elif adopted_count >= max_samples:
+            transition = "observation_ended_unconfirmed"
+            state = OBSERVATION_SESSION.fire(state, "deadline_expired")
+            ended = "max_samples_exhausted"
+    elif decision.reason == "deadline_expired" and state == "authorized":
+        transition = "observation_ended_unconfirmed"
+        state = OBSERVATION_SESSION.fire(state, "deadline_expired")
+        ended = "deadline_expired"
+    return _Verdict(
+        decision=decision,
+        healthy=healthy,
+        transition=transition,
+        session_state=state,
+        ended_reason=ended,
+        adopted_sequence=adopted_sequence,
+        adopted_window_end=adopted_window_end,
+        adopted_count=adopted_count,
+        healthy_since=healthy_since,
+    )
+
+
+def _domain_session(
+    row: dict[str, Any],
+    *,
+    control_generation: int,
+    observation_generation: int,
+    state: str,
+    adopted_sequence: int,
+    adopted_window_end: datetime | None,
+    active_job: UUID | None,
+) -> ObservationSession:
+    """The domain view of a session row, bound to the *current* incident
+    generations so a sample stamped with older ones is judged stale."""
+    return ObservationSession(
+        session_id=str(row["session_id"]),
+        purpose=row["purpose"],
+        subject=SubjectRef(kind="incident", id=str(row["incident_id"])),
+        target=Target(**row["target"]),
+        subject_control_generation=control_generation,
+        observation_generation=observation_generation,
+        authorized=True,
+        state=cast(Any, state),
+        health_profile_revision=row["health_profile_revision"],
+        adopted_sequence=adopted_sequence,
+        adopted_window_end=adopted_window_end,
+        active_sample_job_id=None if active_job is None else str(active_job),
+    )
+
+
+class ObservationStore(_StoreBase):
+    """Observation sessions, sampling jobs and samples on PostgreSQL."""
+
+    # --- authorization (Controller side; step 3 wraps this in the human action)
+
+    def authorize_session(
+        self,
+        incident_id: UUID,
+        *,
+        target: Target,
+        actor: str,
+        deadline_at: datetime,
+        max_samples: int,
+        sample_interval_seconds: int,
+        sustained_window_seconds: int,
+        health_profile_revision: str | None = None,
+        session_id: UUID | None = None,
+        first_sample_due_at: datetime | None = None,
+    ) -> UUID:
+        """Create one authorized session and its first sampling job.
+
+        Storage primitive only: the human "handling registered" action with
+        its ``expected_version``, idempotency key and audit row is step 3,
+        which calls :meth:`authorize_session_in` inside its own transaction.
+        """
+        with self.transaction() as conn:
+            return self.authorize_session_in(
+                conn,
+                incident_id,
+                target=target,
+                actor=actor,
+                deadline_at=deadline_at,
+                max_samples=max_samples,
+                sample_interval_seconds=sample_interval_seconds,
+                sustained_window_seconds=sustained_window_seconds,
+                health_profile_revision=health_profile_revision,
+                session_id=session_id,
+                first_sample_due_at=first_sample_due_at,
+            )
+
+    def authorize_session_in(
+        self,
+        conn: Connection,
+        incident_id: UUID,
+        *,
+        target: Target,
+        actor: str,
+        deadline_at: datetime,
+        max_samples: int,
+        sample_interval_seconds: int,
+        sustained_window_seconds: int,
+        health_profile_revision: str | None = None,
+        session_id: UUID | None = None,
+        first_sample_due_at: datetime | None = None,
+    ) -> UUID:
+        """Same as :meth:`authorize_session`, inside the caller's transaction.
+
+        Locks the incident row, moves ``open`` to ``observing_recovery``
+        (an incident already observing keeps its lifecycle), increments the
+        incident's observation generation and binds the session to it. Only
+        one authorized session may exist per incident.
+        """
+        if (
+            not isinstance(incident_id, UUID)
+            or not isinstance(target, Target)
+            or not isinstance(actor, str)
+            or not actor
+            or not isinstance(deadline_at, datetime)
+            or deadline_at.tzinfo is None
+            or type(max_samples) is not int
+            or max_samples <= 0
+            or type(sample_interval_seconds) is not int
+            or sample_interval_seconds <= 0
+            or type(sustained_window_seconds) is not int
+            or sustained_window_seconds <= 0
+            or (
+                health_profile_revision is not None
+                and (
+                    not isinstance(health_profile_revision, str)
+                    or not health_profile_revision
+                )
+            )
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        incident = self._lock_incident(conn, incident_id)
+        if incident["target_id"] is None:
+            raise PersistenceError("UNKNOWN_TARGET")
+        registered = self._require_row(
+            conn.execute(
+                "SELECT resource_uid FROM opspilot_targets WHERE target_id=%s",
+                (incident["target_id"],),
+            )
+        )
+        if registered["resource_uid"] != target.resource_uid:
+            raise PersistenceError("TARGET_MISMATCH")
+        if conn.execute(
+            "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
+            (incident_id,),
+        ).fetchone():
+            raise PersistenceError("OBSERVATION_ALREADY_AUTHORIZED")
+        lifecycle = str(incident["lifecycle"])
+        if lifecycle != "observing_recovery":
+            lifecycle = self._fire_incident(lifecycle, "start_recovery_observation")
+        now = self._db_now(conn)
+        if deadline_at <= now:
+            raise PersistenceError("INVALID_INPUT")
+        generation = int(incident["observation_generation"]) + 1
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle=%s,observation_generation=%s WHERE incident_id=%s",
+            (lifecycle, generation, incident_id),
+        )
+        identity = session_id or uuid4()
+        due = first_sample_due_at or now + timedelta(seconds=sample_interval_seconds)
+        conn.execute(
+            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,health_profile_revision,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,1,%s)",
+            (
+                identity,
+                incident_id,
+                incident["target_id"],
+                Jsonb(target.model_dump()),
+                int(incident["control_generation"]),
+                generation,
+                actor,
+                health_profile_revision,
+                deadline_at,
+                max_samples,
+                sample_interval_seconds,
+                sustained_window_seconds,
+                uuid4(),
+                due,
+            ),
+        )
+        return identity
+
+    def revoke_sessions(self, incident_id: UUID) -> list[UUID]:
+        with self.transaction() as conn:
+            self._lock_incident(conn, incident_id)
+            return self.revoke_sessions_in(conn, incident_id)
+
+    def revoke_sessions_in(self, conn: Connection, incident_id: UUID) -> list[UUID]:
+        """Withdraw every authorized session of an incident (caller holds the
+        incident lock). The lifecycle is the caller's decision, not this one's."""
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        rows = conn.execute(
+            "SELECT session_id FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized' ORDER BY session_id FOR UPDATE",
+            (incident_id,),
+        ).fetchall()
+        revoked: list[UUID] = []
+        for row in rows:
+            state = OBSERVATION_SESSION.fire("authorized", "authority_revoked")
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET state=%s,ended_reason='authority_revoked',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                (state, row["session_id"]),
+            )
+            revoked.append(cast(UUID, row["session_id"]))
+        return revoked
+
+    # --- sampling (Observer side)
+
+    def claim_due_samples(
+        self,
+        owner: UUID,
+        *,
+        limit: int = 20,
+        lease_seconds: int = OBSERVER_LEASE_SECONDS,
+    ) -> list[SampleLease]:
+        """Lease due sampling jobs; a suspended scope is skipped, not leased.
+
+        Re-claiming a job whose lease expired bumps the epoch and keeps the
+        logical sequence (C3 section 10). Sessions past their deadline are
+        left to :meth:`sweep_expired_sessions`.
+        """
+        if (
+            not isinstance(owner, UUID)
+            or type(limit) is not int
+            or limit <= 0
+            or type(lease_seconds) is not int
+            or lease_seconds <= 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        leases: list[SampleLease] = []
+        with self.transaction() as conn:
+            now = self._db_now(conn)
+            rows = conn.execute(
+                "SELECT session_id,incident_id,active_sample_job_id,active_sample_sequence,active_sample_epoch,subject_control_generation,observation_generation,health_profile_revision,deadline_at,sample_interval_seconds,adopted_window_end FROM opspilot_observation_sessions WHERE state='authorized' AND authorized AND active_sample_job_id IS NOT NULL AND active_sample_due_at<=%s AND (active_sample_lease_until IS NULL OR active_sample_lease_until<=%s) AND deadline_at>%s ORDER BY active_sample_due_at,session_id LIMIT %s FOR UPDATE SKIP LOCKED",
+                (now, now, now, limit),
+            ).fetchall()
+            for row in rows:
+                # Read, not locked: the incident row lock in submit_sample()
+                # is what orders a sample against a suspension (the
+                # suspension paths lock every affected incident row), and
+                # a lock here would need UPDATE on the control tables.
+                scope = self._lock_scope(conn, row["incident_id"], lock=False)
+                if scope["global_suspended"] or scope["target_suspended"]:
+                    continue
+                epoch = int(row["active_sample_epoch"]) + 1
+                until = now + timedelta(seconds=lease_seconds)
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET active_sample_owner=%s,active_sample_epoch=%s,active_sample_lease_until=%s,updated_at=clock_timestamp() WHERE session_id=%s",
+                    (owner, epoch, until, row["session_id"]),
+                )
+                leases.append(
+                    SampleLease(
+                        session_id=row["session_id"],
+                        incident_id=row["incident_id"],
+                        job_id=row["active_sample_job_id"],
+                        sequence=int(row["active_sample_sequence"]),
+                        owner=owner,
+                        epoch=epoch,
+                        lease_until=until,
+                        subject_control_generation=int(
+                            row["subject_control_generation"]
+                        ),
+                        observation_generation=int(row["observation_generation"]),
+                        health_profile_revision=row["health_profile_revision"],
+                        deadline_at=row["deadline_at"],
+                        sample_interval_seconds=int(row["sample_interval_seconds"]),
+                        adopted_window_end=row["adopted_window_end"],
+                    )
+                )
+        return leases
+
+    def submit_sample(
+        self,
+        lease: SampleLease,
+        sample: HealthSample,
+        readings: Sequence[SignalReading],
+    ) -> SampleReceipt:
+        """Adopt or file one sample; everything commits in one transaction.
+
+        Order inside the transaction: incident row lock, session row lock,
+        control scope read, lease check, ``evaluate_sample``, watermark,
+        session state, incident lifecycle, next job (or none), sample row,
+        reading rows. A rejected sample with a valid lease releases the lease
+        so the same job (same sequence) can be retried.
+        """
+        if not isinstance(lease, SampleLease) or not isinstance(sample, HealthSample):
+            raise PersistenceError("INVALID_INPUT")
+        rows = tuple(readings)
+        if any(not isinstance(item, SignalReading) for item in rows):
+            raise PersistenceError("INVALID_INPUT")
+        if len({item.signal_name for item in rows}) != len(rows):
+            raise PersistenceError("INVALID_INPUT")
+        if sample.session_id != str(lease.session_id):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            incident = self._lock_incident(conn, lease.incident_id)
+            row = self._lock_session(conn, lease.session_id)
+            if row["incident_id"] != lease.incident_id:
+                raise PersistenceError("INCONSISTENT_STATE")
+            now = self._db_now(conn)
+            scope = self._lock_scope(conn, lease.incident_id, lock=False)
+            suspended = bool(scope["global_suspended"]) or bool(
+                scope["target_suspended"]
+            )
+            lease_valid = (
+                row["active_sample_job_id"] == lease.job_id
+                and row["active_sample_owner"] == lease.owner
+                and int(row["active_sample_epoch"]) == lease.epoch
+                and row["active_sample_lease_until"] is not None
+                and row["active_sample_lease_until"] > now
+            )
+            if lease_valid and sample.sequence != int(row["active_sample_sequence"]):
+                # The sequence came with the lease; a different one is an
+                # Observer bug, not an observation.
+                raise PersistenceError("INVALID_INPUT")
+            lifecycle = str(incident["lifecycle"])
+            control_generation = int(incident["control_generation"])
+            observation_generation = int(incident["observation_generation"])
+            session = _domain_session(
+                row,
+                control_generation=control_generation,
+                observation_generation=observation_generation,
+                state=str(row["state"]),
+                adopted_sequence=int(row["adopted_sequence"]),
+                adopted_window_end=row["adopted_window_end"],
+                active_job=row["active_sample_job_id"],
+            )
+            within = now < row["deadline_at"]
+            verdict = _judge(
+                session,
+                sample,
+                subject_state=lifecycle,
+                within_deadline=within,
+                suspension_blocks=suspended,
+                lease_valid=lease_valid,
+                adopted_count=int(row["adopted_count"]),
+                healthy_since=row["healthy_since"],
+                max_samples=int(row["max_samples"]),
+                sustained_window_seconds=int(row["sustained_window_seconds"]),
+            )
+            next_due: datetime | None = None
+            if verdict.transition is not None:
+                lifecycle = self._transition(lifecycle, verdict.transition)
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET state=%s,ended_reason=%s,adopted_sequence=%s,adopted_window_end=%s,adopted_count=%s,healthy_since=%s,active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                    (
+                        verdict.session_state,
+                        verdict.ended_reason,
+                        verdict.adopted_sequence,
+                        verdict.adopted_window_end,
+                        verdict.adopted_count,
+                        verdict.healthy_since,
+                        lease.session_id,
+                    ),
+                )
+                conn.execute(
+                    "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+                    (lifecycle, lease.incident_id),
+                )
+            elif verdict.decision.accepted:
+                next_due = now + timedelta(seconds=int(row["sample_interval_seconds"]))
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET adopted_sequence=%s,adopted_window_end=%s,adopted_count=%s,healthy_since=%s,issued_sequence=issued_sequence+1,active_sample_job_id=%s,active_sample_sequence=issued_sequence+1,active_sample_due_at=%s,active_sample_owner=NULL,active_sample_epoch=0,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                    (
+                        verdict.adopted_sequence,
+                        verdict.adopted_window_end,
+                        verdict.adopted_count,
+                        verdict.healthy_since,
+                        uuid4(),
+                        next_due,
+                        lease.session_id,
+                    ),
+                )
+            elif lease_valid:
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                    (lease.session_id,),
+                )
+            sample_id = uuid4()
+            conn.execute(
+                "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,within_deadline,lease_valid,transition) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    sample_id,
+                    lease.session_id,
+                    lease.job_id,
+                    sample.sequence,
+                    lease.epoch,
+                    sample.window.start,
+                    sample.window.end,
+                    sample.outcome,
+                    sample.required_signals_present,
+                    sample.subject_control_generation,
+                    sample.observation_generation,
+                    sample.health_profile_revision,
+                    verdict.decision.disposition,
+                    verdict.decision.reason,
+                    verdict.healthy,
+                    incident["lifecycle"],
+                    control_generation,
+                    observation_generation,
+                    suspended,
+                    within,
+                    lease_valid,
+                    verdict.transition,
+                ),
+            )
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT INTO opspilot_observation_signal_readings(sample_id,signal_name,status,value,sample_count,query,window_start,window_end,source,raw_sha256) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    [
+                        (
+                            sample_id,
+                            item.signal_name,
+                            item.status,
+                            item.value,
+                            item.sample_count,
+                            item.query,
+                            item.window_start,
+                            item.window_end,
+                            item.source,
+                            item.raw_sha256,
+                        )
+                        for item in rows
+                    ],
+                )
+            return SampleReceipt(
+                sample_id=sample_id,
+                accepted=verdict.decision.accepted,
+                disposition=verdict.decision.disposition,
+                reason=verdict.decision.reason,
+                confirms_health=verdict.healthy,
+                session_state=verdict.session_state,
+                incident_lifecycle=lifecycle,
+                transition=verdict.transition,
+                next_sample_due_at=next_due,
+            )
+
+    def sweep_expired_sessions(self, *, limit: int = 20) -> list[UUID]:
+        """End authorized sessions whose deadline passed without confirmation:
+        the session expires and the incident goes back to ``open`` (interface
+        contract item 6). One transaction per session, incident lock first."""
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            candidates = conn.execute(
+                "SELECT session_id,incident_id FROM opspilot_observation_sessions WHERE state='authorized' AND deadline_at<=clock_timestamp() ORDER BY deadline_at,session_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        expired: list[UUID] = []
+        for candidate in candidates:
+            with self.transaction() as conn:
+                incident = self._lock_incident(conn, candidate["incident_id"])
+                row = self._lock_session(conn, candidate["session_id"])
+                if row["state"] != "authorized" or row["deadline_at"] > self._db_now(
+                    conn
+                ):
+                    continue
+                state = OBSERVATION_SESSION.fire(str(row["state"]), "deadline_expired")
+                lifecycle = self._transition(
+                    str(incident["lifecycle"]), "observation_ended_unconfirmed"
+                )
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET state=%s,ended_reason='deadline_expired',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                    (state, candidate["session_id"]),
+                )
+                conn.execute(
+                    "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+                    (lifecycle, candidate["incident_id"]),
+                )
+                expired.append(cast(UUID, candidate["session_id"]))
+        return expired
+
+    # --- reading back
+
+    def session(self, session_id: UUID) -> dict[str, Any]:
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        return row
+
+    def session_history(self, session_id: UUID) -> dict[str, Any]:
+        """The session row and every sample with its readings, one snapshot."""
+        if not isinstance(session_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            samples = conn.execute(
+                f"SELECT {_SAMPLE_COLUMNS} FROM opspilot_observation_samples WHERE session_id=%s ORDER BY submitted_at,sample_id",
+                (session_id,),
+            ).fetchall()
+            readings = conn.execute(
+                f"SELECT {_READING_COLUMNS} FROM opspilot_observation_signal_readings WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples WHERE session_id=%s) ORDER BY sample_id,signal_name",
+                (session_id,),
+            ).fetchall()
+        by_sample: dict[UUID, list[dict[str, Any]]] = {}
+        for reading in readings:
+            by_sample.setdefault(reading["sample_id"], []).append(reading)
+        for sample in samples:
+            sample["readings"] = by_sample.get(sample["sample_id"], [])
+        return {"session": row, "samples": samples}
+
+    def replay_session(self, session_id: UUID) -> ReplayReport:
+        """Recompute every stored decision from the stored rows alone.
+
+        Reads nothing but the session and its samples; the conditions each
+        decision was taken under travel with the sample row. A mismatch
+        means the stored basis no longer reproduces the stored verdict.
+        """
+        history = self.session_history(session_id)
+        row = history["session"]
+        state = "authorized"
+        adopted_sequence, adopted_window_end = 0, None
+        adopted_count, healthy_since = 0, None
+        replayed: list[ReplayedSample] = []
+        for stored in history["samples"]:
+            session = _domain_session(
+                row,
+                control_generation=int(stored["incident_control_generation"]),
+                observation_generation=int(stored["incident_observation_generation"]),
+                state=state,
+                adopted_sequence=adopted_sequence,
+                adopted_window_end=adopted_window_end,
+                active_job=stored["job_id"],
+            )
+            sample = HealthSample(
+                sample_id=str(stored["sample_id"]),
+                session_id=str(session_id),
+                sequence=int(stored["sequence"]),
+                window=QueryWindow(
+                    start=stored["window_start"], end=stored["window_end"]
+                ),
+                outcome=stored["outcome"],
+                subject_control_generation=int(stored["subject_control_generation"]),
+                observation_generation=int(stored["observation_generation"]),
+                health_profile_revision=stored["health_profile_revision"],
+                required_signals_present=bool(stored["required_signals_present"]),
+            )
+            verdict = _judge(
+                session,
+                sample,
+                subject_state=str(stored["subject_lifecycle"]),
+                within_deadline=bool(stored["within_deadline"]),
+                suspension_blocks=bool(stored["scope_suspended"]),
+                lease_valid=bool(stored["lease_valid"]),
+                adopted_count=adopted_count,
+                healthy_since=healthy_since,
+                max_samples=int(row["max_samples"]),
+                sustained_window_seconds=int(row["sustained_window_seconds"]),
+            )
+            state = verdict.session_state
+            adopted_sequence = verdict.adopted_sequence
+            adopted_window_end = verdict.adopted_window_end
+            adopted_count = verdict.adopted_count
+            healthy_since = verdict.healthy_since
+            replayed.append(
+                ReplayedSample(
+                    sample_id=stored["sample_id"],
+                    sequence=int(stored["sequence"]),
+                    stored=(
+                        str(stored["disposition"]),
+                        str(stored["reason"]),
+                        bool(stored["confirms_health"]),
+                        stored["transition"],
+                    ),
+                    replayed=(
+                        verdict.decision.disposition,
+                        verdict.decision.reason,
+                        verdict.healthy,
+                        verdict.transition,
+                    ),
+                )
+            )
+        return ReplayReport(session_id=session_id, samples=tuple(replayed))
+
+    # --- helpers
+
+    def _lock_incident(self, conn: Connection, incident_id: UUID) -> dict[str, Any]:
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        row = conn.execute(
+            "SELECT incident_id,lifecycle,control_generation,observation_generation,target_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (incident_id,),
+        ).fetchone()
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        return row
+
+    def _lock_session(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
+        if not isinstance(session_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        row = conn.execute(
+            f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s FOR UPDATE",
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        return row
+
+    @staticmethod
+    def _fire_incident(lifecycle: str, trigger: str) -> str:
+        try:
+            return INCIDENT_LIFECYCLE.fire(lifecycle, trigger)
+        except DomainError as exc:
+            raise PersistenceError("ILLEGAL_TRANSITION") from exc
+
+    @classmethod
+    def _transition(cls, lifecycle: str, trigger: Transition) -> str:
+        """Apply the trigger a session ending fires on its incident.
+
+        ``recovery_confirmed`` must be legal or nothing is written: an
+        authorized session on an incident that is not observing (a human
+        renewal moved it back to ``open`` without revoking the session; step 3
+        closes that gap in one transaction) cannot be confirmed recovered.
+        ``observation_ended_unconfirmed`` asserts nothing, so a lifecycle that
+        cannot take it (already ``open``) is left as it is and only the
+        session ends.
+        """
+        if trigger == "recovery_confirmed":
+            return cls._fire_incident(lifecycle, trigger)
+        if trigger in INCIDENT_LIFECYCLE.triggers(lifecycle):
+            return INCIDENT_LIFECYCLE.fire(lifecycle, trigger)
+        return lifecycle

@@ -97,3 +97,16 @@
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
 - 上游核对已完成（见上表）；M1 基础设施准备完成后从计划 0（kind 环境）开工。
 - 当前没有运行中的服务或进程。
+
+## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
+
+- 工作区：`../production-ops-agent-obs-store`，分支 `feature/m1-02-observation-store`，基于 main `0c97377`。与第 1 步并行，只按「接口约定」对齐，未 import 对方代码。
+- 迁移 `0003_observation_store`（downgrade 完整撤销，含条件删角色）：三张表 + `opspilot_incidents.observation_generation`；表结构、CHECK 与角色授权见 [development.md](../development.md#数据库迁移alembic)。会话行同时承载唯一的活动采样任务（`active_sample_*` 列），「每个会话最多一个活动采样任务」由结构保证；租约重试保持 `job_id` 与逻辑序号、只递增 epoch。
+- 代码：`opspilot/observation/store.py` 的 `ObservationStore`（继承 `persistence.base._StoreBase`，共用连接池与超时）。`authorize_session[_in]`（Controller 侧存储原语：锁事故行、`open → observing_recovery`、递增 `observation_generation`、建会话与第一个任务；人工动作语义留给第 3 步）、`revoke_sessions[_in]`、`claim_due_samples`（`FOR UPDATE SKIP LOCKED`，全局/目标挂起只跳过不租）、`submit_sample`、`sweep_expired_sessions`、`session_history`、`replay_session`。
+- `submit_sample` 事务内顺序：锁事故行 → 锁会话行 → 读控制范围（不加锁；挂起路径会锁事故行，事故行锁即排序点，且 Observer 角色没有控制表的 UPDATE 权限、无法 `FOR SHARE`）→ 租约校验（job/owner/epoch/到期，失败即 `lease_revoked` 只作历史）→ `evaluate_sample`（事故当前控制代际与观察代际作为会话代际，旧样本判 stale）→ `adopt_sample` 推进水位 → `confirms_health` 与持续窗口折叠（任何非健康已采纳样本重置连续计数）→ 会话状态机 → 事故生命周期（`recovery_confirmed` 非法则整笔回滚；`observation_ended_unconfirmed` 对已是 `open` 的事故不改生命周期）→ 安排下一任务或清空任务槽 → 写采样行（含判定与判定时的条件：生命周期、挂起、期限、租约、两种代际）→ 写读数行。被拒样本不改水位、不改生命周期、不排新任务，只释放租约让同一任务重试。
+- 领域层唯一改动：`SampleReason` 增加 `lease_revoked`（C3 §10 把 owner/epoch/lease 列为提交时原子校验项，`evaluate_sample` 的输入里没有租约，由存储层判定）。`evaluate_sample`/`adopt_sample`/`confirms_health` 未改。
+- 位置说明（待用户决定）：模块放在 `opspilot/observation/` 而非 `opspilot/persistence/`，因为 `tests/test_architecture.py` 的 strict xfail 把「持久化层是否建立在 domain 状态机之上」记为未决（ADR-0007 明示另决）；本模块直接建立在 domain 之上，放进 `persistence/` 会让该 xfail 变成 XPASS 失败。是否把它并入 `persistence/` 并撤掉 xfail，属架构决定。
+- 验证（PostgreSQL 17.9 Homebrew 临时实例，端口 55471，数据目录在 scratchpad，`OPSPILOT_LAB_DSN` 指向，未碰 55431 lab）：空库 `make migrate` → `schema upgraded: 0003_observation_store`；`downgrade 0002` 后 15 张表、列与角色均消失、无残留授权；再 `migrate` 后 dump 与 fresh head 一致。`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration`：325 passed、10 skipped（仅既有 opt-in/重启 lab 用例）。新 PG 测试 `tests/integration/test_m1_02_observation_store_postgres.py`（19 例）：Observer 登录角色跑通 claim/submit/sweep/replay，同时 20 条越权语句（写 runs/steps/evidence/controls/inputs、改事故 `conclusion`/`control_generation`/`state`、读 `conclusion`、改会话参数、插会话、删改采样）全部 `InsufficientPrivilege`；持续健康窗口 → `resolved`；no_data/stale/failed/缺必要信号可采纳但不确认且重置连续计数；无 profile revision 永不确认；profile/观察代际/控制代际过期只作历史；丢失租约的样本 `lease_revoked`、重领同序号 epoch+1；目标/全局挂起挡住 claim 与采纳；期限到（提交时与 sweep 两条路径）与次数耗尽 → 会话 expired、事故回 `open`；两线程同一租约并发提交只一个推进水位；篡改已存判定后 replay 报不一致。`make check` 结果见 PR。
+- 未执行：真实实验环境采样（第 4 步）、本机 55431 lab 库升级到 0003（用户待办：`make migrate`）、gitleaks 扫描（见 PR）。
+- 风险：`controls.control()` 的续开路径把生命周期写回 `open` 而不撤销会话，第 3 步须在同一事务撤销（本步对这种状态的处置：确认恢复整笔回滚、到期只结束会话）；`observation_generation` 列是本步新增的权威位置，第 3 步递增 `control_generation` 时须经 `authorize_session_in` 同步递增它。
+

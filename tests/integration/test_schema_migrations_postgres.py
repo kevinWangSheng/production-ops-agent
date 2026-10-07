@@ -32,7 +32,9 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0002_state_checks"
+HEAD = "0003_observation_store"
+# opspilot_* tables at head: 15 in the baseline + 3 observation tables (0003).
+TABLES_AT_HEAD = 18
 
 
 @pytest.fixture
@@ -104,7 +106,7 @@ def test_empty_database_upgrades_to_head_and_runtime_accepts(scratch_dsn: str) -
                 "SELECT tablename FROM pg_tables WHERE tablename LIKE 'opspilot\\_%'"
             )
         }
-    assert len(tables) == 15
+    assert len(tables) == TABLES_AT_HEAD
     _install_all(scratch_dsn)
     assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP).action == "unchanged"
 
@@ -278,11 +280,12 @@ def _seed_run(dsn: str, *, run_state: str = "queued", lifecycle: str = "open") -
 
 
 def _check_constraints(dsn: str) -> set[str]:
+    """The 0002 constraints (0003 adds its own tables with their own CHECKs)."""
     with psycopg.connect(dsn) as conn:
         return {
             row[0]
             for row in conn.execute(
-                "SELECT conname FROM pg_constraint WHERE contype='c' AND conname LIKE 'opspilot\\_%\\_check' AND conname <> 'opspilot_scope_controls_scope_id_check'"
+                "SELECT conname FROM pg_constraint WHERE contype='c' AND conrelid IN ('opspilot_runs'::regclass,'opspilot_incidents'::regclass) AND conname LIKE 'opspilot\\_%\\_check'"
             )
         }
 
@@ -375,3 +378,90 @@ def test_upgrade_downgrade_upgrade_round_trip(scratch_dsn: str) -> None:
     assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
     assert _check_constraints(scratch_dsn) == EXPECTED_CHECKS
     _install_all(scratch_dsn)
+
+
+# --- 0003_observation_store (M1-02 step 2, issue #84) ---
+
+
+def _observer_grants(dsn: str) -> set[tuple[str, str]]:
+    with psycopg.connect(dsn) as conn:
+        return {
+            (row[0], row[1])
+            for row in conn.execute(
+                "SELECT table_name, privilege_type FROM information_schema.table_privileges WHERE grantee='opspilot_observer' UNION SELECT table_name, privilege_type || ':' || column_name FROM information_schema.column_privileges WHERE grantee='opspilot_observer' AND table_name IN ('opspilot_incidents','opspilot_observation_sessions')"
+            )
+        }
+
+
+def _role_exists() -> bool:
+    with psycopg.connect(DSN) as conn:
+        return conn.execute(
+            "SELECT count(*) FROM pg_roles WHERE rolname='opspilot_observer'"
+        ).fetchone() == (1,)
+
+
+def test_0003_downgrade_removes_tables_column_and_grants(scratch_dsn: str) -> None:
+    schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    head_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    grants = _observer_grants(scratch_dsn)
+    assert ("opspilot_incidents", "UPDATE:lifecycle") in grants
+    assert ("opspilot_incidents", "UPDATE:conclusion") not in grants
+    assert ("opspilot_incidents", "SELECT:conclusion") not in grants
+    assert ("opspilot_observation_sessions", "UPDATE:deadline_at") not in grants
+    assert ("opspilot_runs", "SELECT") not in grants
+    assert ("opspilot_observation_samples", "INSERT") in grants
+    assert ("opspilot_observation_samples", "UPDATE") not in grants
+
+    schema.command.downgrade(schema._config(scratch_dsn), "0002_state_checks")
+
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == "0002_state_checks"
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE tablename LIKE 'opspilot\\_observation%'"
+            )
+        }
+        assert tables == set()
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_name='opspilot_incidents' AND column_name='observation_generation'"
+        ).fetchone() == (0,)
+    assert _observer_grants(scratch_dsn) == set()
+    # The role is cluster-wide: it is dropped only once no database on the
+    # server references it any more. The lab database (migrated to head by
+    # the session fixture) still does, so it stays; see the next test.
+    assert _role_exists()
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+    _install_all(scratch_dsn)
+
+
+def test_0003_role_is_dropped_only_when_no_database_references_it(
+    scratch_dsn: str,
+) -> None:
+    """Two databases at head share the one role; downgrading one keeps it,
+    downgrading the last drops it, upgrading recreates it."""
+    schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    other = f"opspilot_mig_{uuid4().hex[:12]}"
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(other)
+            )
+        )
+    other_dsn = make_conninfo(DSN, dbname=other)
+    try:
+        schema.migrate(other_dsn, pg_dump=PG_DUMP)
+        assert _role_exists()
+        schema.command.downgrade(schema._config(other_dsn), "0002_state_checks")
+        assert _role_exists(), "still referenced by scratch_dsn and the lab"
+        assert _observer_grants(scratch_dsn)
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(other)
+                )
+            )

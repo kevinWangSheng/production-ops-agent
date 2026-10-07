@@ -105,6 +105,11 @@ SampleReason = Literal[
     "subject_state_not_adoptable",
     "deadline_expired",
     "suspended",
+    # The submission did not carry the session's current sampling lease
+    # (job, owner, epoch, expiry): C3 section 10 lists owner/epoch/lease among
+    # the atomic submission checks. Decided by the store, not by
+    # ``evaluate_sample``, which has no lease in its inputs.
+    "lease_revoked",
 ]
 
 
