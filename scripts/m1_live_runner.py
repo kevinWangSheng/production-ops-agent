@@ -8,12 +8,19 @@ a qualified report is published; anything else parks the Run
 follow_up, and the page's event stream ends in ``run_completed`` or
 ``run_handoff``.
 
-Reads DEEPSEEK_API_KEY from ``M0_ENV_FILE`` (never printed) and writes a
-business ledger under docs/evidence/m1-01-handoff-runner/live-runs/<run_id>/
-(or ``M1_ACCEPTANCE_OUT``). Fixture tool, no real OTel. Not product intake.
+Reads DEEPSEEK_API_KEY from ``M0_ENV_FILE`` (never printed). Evidence follows
+ADR-0006 decision 3: the repository gets one frozen ``summary.json`` per Run
+under docs/evidence/m1-01-handoff-runner/live-runs/<run_id>/ (or
+``M1_ACCEPTANCE_OUT``) -- report, verdicts, counts, cost, trace id and link,
+sha256 of the raw ledger -- while the raw ledger itself goes to the ignored
+``tmp/lab-ledgers/`` (or ``OPSPILOT_LEDGER_DIR``). Fixture tool, no real OTel.
+Not product intake.
 
 ``OPSPILOT_TRACE=lab`` exports the Run's spans to LangSmith through
-``opspilot.tracing`` (fail-closed: project must be ``opspilot-lab-*``). The
+``opspilot.tracing`` (fail-closed: project must be ``opspilot-lab-*``). In
+that mode ``--lab-round <name>`` (or ``OPSPILOT_LAB_ROUND``) is required: the
+project becomes ``opspilot-lab-<name>`` and is set to the longest retention
+before the Run; afterwards the root run is read back and its link frozen. The
 ``LANGSMITH_*`` entries of ``M0_ENV_FILE`` are loaded into the environment
 only where the shell did not already set them; values are never printed.
 ``OPSPILOT_LAB_DSN`` points at a throwaway PostgreSQL instead of the 55431
@@ -21,7 +28,7 @@ lab (``verify_server`` is then skipped: it checks the lab's own pid file).
 
     .venv/bin/python -m scripts.m0.postgres_lab start
     M0_ENV_FILE=/abs/.env .venv/bin/python scripts/m1_live_runner.py \\
-        [--model-requests N] [--follow-up]
+        [--model-requests N] [--follow-up] [--lab-round NAME]
 
 ``--model-requests 1`` forces a budget handoff after the first (tool) round.
 ``--follow-up`` then applies one follow_up control and resumes once more, so
@@ -60,11 +67,20 @@ from opspilot.tools.fixture import FIXTURE_TARGET, FIXTURE_TOOL, fixture_face
 from opspilot.web import DurableEventLog, DurableEvidenceStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
+from scripts.lab_evidence import (
+    LAB_ROUND_ENV,
+    freeze,
+    langsmith_client,
+    parse_report,
+    prepare_lab_project,
+    trace_evidence,
+)
 from scripts.m0.postgres_lab import DSN, verify_server
 from scripts.m1_live_flash_loop import (
     QUESTION,
     RecordingClient,
     cost_cny,
+    load_langsmith_env,
     read_key,
     resolve_env_file,
 )
@@ -82,38 +98,6 @@ VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
 }
-
-
-LANGSMITH_KEYS = (
-    "LANGSMITH_API_KEY",
-    "LANGSMITH_PROJECT",
-    "LANGSMITH_ENDPOINT",
-    "LANGSMITH_WORKSPACE_ID",
-)
-
-
-def load_langsmith_env(path: Path) -> list[str]:
-    """Copy the ``LANGSMITH_*`` entries the shell left unset; return the names."""
-    loaded = []
-    for name in LANGSMITH_KEYS:
-        if os.environ.get(name):
-            continue
-        value = read_named(path, name)
-        if value:
-            os.environ[name] = value
-            loaded.append(name)
-    return loaded
-
-
-def read_named(path: Path, name: str) -> str:
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line.startswith(f"{name}="):
-            value = line.split("=", 1)[1].strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-                value = value[1:-1]
-            return value
-    return ""
 
 
 class SystemClock:
@@ -247,6 +231,7 @@ def main() -> int:
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--timeout-follow-up", action="store_true")
     parser.add_argument("--renew-seconds", type=int, default=12 * 60)
+    parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
     args = parser.parse_args()
     if args.timeout_follow_up and not args.sweep:
         raise SystemExit("--timeout-follow-up requires --sweep")
@@ -262,6 +247,11 @@ def main() -> int:
     if not os.environ.get("OPSPILOT_LAB_DSN"):
         verify_server()
     load_langsmith_env(env_file)
+    # Lab mode: prove the lab target first (zero LangSmith calls otherwise),
+    # then create the round's project and set retention before the Run.
+    project = prepare_lab_project(
+        os.environ, args.lab_round, client_factory=langsmith_client
+    )
     trace = tracing.configure(os.environ)
     store = DurableStore(DSN)
     store.install()
@@ -374,10 +364,13 @@ def main() -> int:
         "dropped_spans": getattr(trace, "dropped_spans", 0),
     }
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
-    ledger = {
-        "experiment": "m1-01-timeout-followup"
+    experiment = (
+        "m1-01-timeout-followup"
         if args.timeout_follow_up
-        else ("m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner"),
+        else ("m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner")
+    )
+    ledger = {
+        "experiment": experiment,
         "deadline_seconds": args.deadline_seconds,
         "driver": "opspilot.investigation.runner.InvestigationRunner",
         "incident_id": str(incident),
@@ -403,29 +396,92 @@ def main() -> int:
     out = resolve_out_dir(
         str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
     )
-    out.mkdir(parents=True, exist_ok=False)
-    (out / "ledger.json").write_text(
-        json.dumps(ledger, indent=2, ensure_ascii=False, default=str)
-    )
-    first = attempts[0]["outcome"]["loop"]
+    # The report is the last committed conclusion; its digest and evidence
+    # ids come from the attempt that produced it, not from the first attempt
+    # (Codex review, PR #110 B1).
+    first = final_loop(attempts)
     report = None if first is None else runner_report(store, incident)
-    if report is not None:
-        (out / "report.json").write_text(report)
+    # Frozen summary (ADR-0006 decision 3): report, verdicts, counts, cost,
+    # trace link; the raw ledger (HTTP attempts, row snapshots, event stream)
+    # stays out of the repository and is identified by its sha256.
+    frozen, summary_path = freeze(
+        ledger,
+        experiment=experiment,
+        run_id=str(run_id),
+        evidence_dir=out,
+        summary={
+            "incident_id": str(incident),
+            "driver": ledger["driver"],
+            "model": ledger["model"],
+            "started": ledger["started"],
+            "ended": ledger["ended"],
+            "verdicts": {
+                "status": attempts[0]["outcome"]["status"],
+                "reason": attempts[0]["outcome"]["reason"],
+                "last_status": attempts[-1]["outcome"]["status"],
+                "last_reason": attempts[-1]["outcome"]["reason"],
+                "run_state": attempts[-1]["rows_after"]["run_state"],
+                "conclusion_published": attempts[-1]["rows_after"][
+                    "conclusion_published"
+                ],
+                "attempts": [
+                    {
+                        "label": a["label"],
+                        "status": a["outcome"]["status"],
+                        "reason": a["outcome"]["reason"],
+                        "handoff_reasons": (a["outcome"]["loop"] or {}).get(
+                            "handoff_reasons"
+                        ),
+                    }
+                    for a in attempts
+                ],
+                "control": None
+                if control is None
+                else {k: v for k, v in control.items() if k != "rows_after"},
+                "event_kinds": [e["kind"] for e in ledger["events"]],
+            },
+            "counts": {
+                "model_requests_bound": args.model_requests,
+                "http_count": ledger["http_count"],
+                "prompt_tokens": ledger["prompt_tokens"],
+                "completion_tokens": ledger["completion_tokens"],
+                "run_usage": ledger["run_usage"],
+                "evidence_ids": None if first is None else first["evidence_ids"],
+            },
+            "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
+            "report": parse_report(report),
+            "report_content_sha256": None
+            if first is None
+            else first["report_content_sha256"],
+            "trace": trace_evidence(
+                trace_record,
+                run_id=str(run_id),
+                project=project,
+                client_factory=langsmith_client,
+            ),
+        },
+    )
     summary = {
-        "status": attempts[0]["outcome"]["status"],
-        "reason": attempts[0]["outcome"]["reason"],
-        "last_status": attempts[-1]["outcome"]["status"],
-        "last_reason": attempts[-1]["outcome"]["reason"],
-        "run_state": attempts[-1]["rows_after"]["run_state"],
-        "conclusion_published": attempts[-1]["rows_after"]["conclusion_published"],
-        "last_event": ledger["events"][-1]["kind"] if ledger["events"] else None,
+        **frozen["verdicts"],
         "http_count": ledger["http_count"],
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
-        "trace": trace_record,
-        "out_dir": str(out.relative_to(ROOT)) if out.is_relative_to(ROOT) else str(out),
+        "trace": frozen["trace"],
+        "ledger_sha256": frozen["raw_ledger"]["sha256"],
+        "summary": str(summary_path.relative_to(ROOT))
+        if summary_path.is_relative_to(ROOT)
+        else str(summary_path),
     }
-    print(json.dumps(summary))
+    print(json.dumps(summary, default=str))
     return 0
+
+
+def final_loop(attempts) -> dict | None:
+    """The loop outcome of the last attempt that ran the loop, if any."""
+    for attempt in reversed(attempts):
+        loop = attempt["outcome"]["loop"]
+        if loop is not None:
+            return loop
+    return None
 
 
 def runner_report(store, incident) -> str | None:
