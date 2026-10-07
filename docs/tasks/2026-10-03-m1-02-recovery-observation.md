@@ -113,6 +113,7 @@
   - P2-1 被拒样本：可恢复原因（profile revision 不符、挂起、窗口倒退）释放租约并把 `active_sample_due_at` 推迟一个采样间隔；不可恢复原因（控制代际/观察代际过期、事故状态不可采纳）直接结束会话（state `revoked`、`ended_reason='binding_stale'`），不再排任务，生命周期不动。
   - P2-2 生命周期护栏：触发器只允许 Observer 角色（`current_user` 为该角色或其直接成员；嵌套成员不识别，部署时登录角色须直接 `IN ROLE`）做 `observing_recovery → resolved | open`，其余 `insufficient_privilege`；代码只用这两条边。
   - 原始返回：读数表加 `raw bytea`（CHECK ≤ 131072 字节且必须带 `raw_sha256`；取 M0 的 128 KiB 响应上限）；`SignalReading.raw` 给出时自动算 sha256、与给定值不符拒绝；`replay_session` 对存有 raw 的读数重算 sha256，并比对折叠出的会话终态与已存终态（sweep/撤销导致的结束按「无样本结束」接受）、已存判定蕴含的事故生命周期（resolved / open）与事故当前生命周期。
+  - profile 内容留底（PR #113 复验补充）：新表 `opspilot_health_profiles`（主键 revision、profile_id、content_sha256、content text）；用 text 而不是 jsonb 存，因为 jsonb 会重排键、改写数字格式，哈希只能对原文算。`authorize_session[_in]` 新增 `health_profile`（规范化 JSON 文本），给了 revision 必须给内容，校验 `revision == <profile_id>@<sha256(content)[:12]>` 且已存同 revision 的完整 sha256 一致，否则 `HEALTH_PROFILE_REVISION_MISMATCH`，不写任何东西；按 revision 去重（一张表而非会话列：同一 revision 多次授权只存一份，重放按 revision 取回）。会话 `health_profile_revision` 外键指向它；`session_history` 带回内容；Observer 角色只读。
   - 第 4 步须知：`within_deadline` 用提交时的数据库时钟 `now < deadline_at`，不看样本窗口。
 - 未执行：真实实验环境采样（第 4 步）、本机 55431 lab 库升级到 0003（用户待办：`make migrate`）。
 - 风险：`controls.control()` 的续开路径把生命周期写回 `open` 而不撤销会话，第 3 步须在同一事务撤销（本步对这种状态的处置：确认恢复整笔回滚、到期只结束会话）；`observation_generation` 列是本步新增的权威位置，第 3 步递增 `control_generation` 时须经 `authorize_session_in` 同步递增它。

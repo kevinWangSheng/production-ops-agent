@@ -8,6 +8,7 @@ from opspilot.observation.store import (
     SampleLease,
     SampleReceipt,
     SignalReading,
+    profile_revision,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "SampleLease",
     "SampleReceipt",
     "SignalReading",
+    "profile_revision",
 ]

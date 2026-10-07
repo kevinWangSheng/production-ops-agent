@@ -118,6 +118,11 @@ _STALE_BINDINGS = frozenset(
 ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
 
 
+def profile_revision(profile_id: str, content: str) -> str:
+    """``<profile_id>@<sha256(content)[:12]>`` (interface contract item 1)."""
+    return f"{profile_id}@{hashlib.sha256(content.encode()).hexdigest()[:12]}"
+
+
 class SignalReading(DTO):
     """One signal's reading inside a sample (interface contract item 3).
 
@@ -449,10 +454,15 @@ class ObservationStore(_StoreBase):
         sample_interval_seconds: int,
         sustained_window_seconds: int,
         health_profile_revision: str | None = None,
+        health_profile: str | None = None,
         session_id: UUID | None = None,
         first_sample_due_at: datetime | None = None,
     ) -> UUID:
         """Create one authorized session and its first sampling job.
+
+        ``health_profile`` is the canonical JSON text of the profile the
+        revision names; it is stored once per revision so a replay can read
+        the coverage queries and thresholds the samples were judged by.
 
         Storage primitive only: the human "handling registered" action with
         its ``expected_version``, idempotency key and audit row is step 3,
@@ -469,6 +479,7 @@ class ObservationStore(_StoreBase):
                 sample_interval_seconds=sample_interval_seconds,
                 sustained_window_seconds=sustained_window_seconds,
                 health_profile_revision=health_profile_revision,
+                health_profile=health_profile,
                 session_id=session_id,
                 first_sample_due_at=first_sample_due_at,
             )
@@ -485,6 +496,7 @@ class ObservationStore(_StoreBase):
         sample_interval_seconds: int,
         sustained_window_seconds: int,
         health_profile_revision: str | None = None,
+        health_profile: str | None = None,
         session_id: UUID | None = None,
         first_sample_due_at: datetime | None = None,
     ) -> UUID:
@@ -516,6 +528,10 @@ class ObservationStore(_StoreBase):
                 )
             )
         ):
+            raise PersistenceError("INVALID_INPUT")
+        if health_profile_revision is not None:
+            self._store_profile(conn, health_profile_revision, health_profile)
+        elif health_profile is not None:
             raise PersistenceError("INVALID_INPUT")
         incident = self._lock_incident(conn, incident_id)
         if incident["target_id"] is None:
@@ -566,6 +582,47 @@ class ObservationStore(_StoreBase):
             ),
         )
         return identity
+
+    def _store_profile(
+        self, conn: Connection, revision: str, content: str | None
+    ) -> None:
+        """Keep the profile content behind a revision, once per revision.
+
+        The revision must be ``<profile_id>@<sha256(content)[:12]>``; a
+        revision already stored must carry the same content hash (a 12-hex
+        prefix is not unique by construction, the full hash is checked).
+        """
+        if not isinstance(content, str) or not content:
+            raise PersistenceError("INVALID_INPUT")
+        profile_id, separator, suffix = revision.rpartition("@")
+        digest = hashlib.sha256(content.encode()).hexdigest()
+        if not separator or not profile_id or suffix != digest[:12]:
+            raise PersistenceError("HEALTH_PROFILE_REVISION_MISMATCH")
+        existing = conn.execute(
+            "SELECT content_sha256 FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (revision,),
+        ).fetchone()
+        if existing is not None:
+            if existing["content_sha256"] != digest:
+                raise PersistenceError("HEALTH_PROFILE_REVISION_MISMATCH")
+            return
+        conn.execute(
+            "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES(%s,%s,%s,%s) ON CONFLICT (health_profile_revision) DO NOTHING",
+            (revision, profile_id, digest, content),
+        )
+
+    def health_profile(self, revision: str) -> dict[str, Any]:
+        """The stored canonical content of one profile revision."""
+        if not isinstance(revision, str) or not revision:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT health_profile_revision,profile_id,content_sha256,content,created_at FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+                (revision,),
+            ).fetchone()
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        return row
 
     def revoke_sessions(self, incident_id: UUID) -> list[UUID]:
         with self.transaction() as conn:
@@ -920,6 +977,14 @@ class ObservationStore(_StoreBase):
                     (row["incident_id"],),
                 )
             )
+            profile = (
+                conn.execute(
+                    "SELECT health_profile_revision,profile_id,content_sha256,content,created_at FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+                    (row["health_profile_revision"],),
+                ).fetchone()
+                if row["health_profile_revision"] is not None
+                else None
+            )
             samples = conn.execute(
                 f"SELECT {_SAMPLE_COLUMNS} FROM opspilot_observation_samples WHERE session_id=%s ORDER BY submitted_at,sample_id",
                 (session_id,),
@@ -936,6 +1001,7 @@ class ObservationStore(_StoreBase):
         return {
             "session": row,
             "incident_lifecycle": str(incident["lifecycle"]),
+            "health_profile": profile,
             "samples": samples,
         }
 

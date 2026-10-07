@@ -7,6 +7,10 @@ Create Date: 2026-10-07
 M1-02 step 2 (issue #84; C3 section 10 "观察主体与授权" / "采样与提交";
 task record 2026-10-03). Three tables:
 
+* ``opspilot_health_profiles`` -- the canonical content of every
+  HealthProfile revision a session was authorized under, keyed by the
+  revision (``<profile_id>@<sha256 prefix>``), so a replay can read the
+  coverage queries and thresholds the revision stood for (F6 step 5).
 * ``opspilot_observation_sessions`` -- one explicitly authorized observation
   period per incident, with the parameters fixed at authorization (deadline,
   sample budget, cadence, sustained window), the adopted watermark and the
@@ -178,12 +182,26 @@ def _check(
 
 
 def upgrade() -> None:
+    profiles = "opspilot_health_profiles"
     sessions = "opspilot_observation_sessions"
     samples = "opspilot_observation_samples"
     readings = "opspilot_observation_signal_readings"
     op.execute(
         f"""
         ALTER TABLE opspilot_incidents ADD COLUMN observation_generation integer NOT NULL DEFAULT 0;
+        CREATE TABLE {profiles} (
+          -- <profile_id>@<first 12 hex of sha256(content)>; content is the
+          -- canonical JSON text exactly as hashed (jsonb would re-serialize it)
+          health_profile_revision text PRIMARY KEY,
+          profile_id text NOT NULL,
+          content_sha256 text NOT NULL,
+          content text NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+          CONSTRAINT {profiles}_revision_check CHECK (
+            health_profile_revision = profile_id || '@' || left(content_sha256, 12)
+          ),
+          CONSTRAINT {profiles}_sha256_check CHECK (content_sha256 ~ '^[0-9a-f]{{64}}$')
+        );
         CREATE TABLE {sessions} (
           session_id uuid PRIMARY KEY,
           incident_id uuid NOT NULL REFERENCES opspilot_incidents,
@@ -198,7 +216,7 @@ def upgrade() -> None:
           authorized_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           state text NOT NULL DEFAULT 'authorized',
           ended_reason text,
-          health_profile_revision text,
+          health_profile_revision text REFERENCES {profiles},
           -- fixed at authorization (interface contract item 5)
           deadline_at timestamptz NOT NULL,
           max_samples integer NOT NULL CHECK (max_samples > 0),
@@ -319,7 +337,7 @@ def upgrade() -> None:
         GRANT SELECT ON opspilot_targets, opspilot_scope_controls, opspilot_target_suspensions TO {OBSERVER_ROLE};
         GRANT SELECT ({", ".join(OBSERVER_INCIDENT_COLUMNS)}) ON opspilot_incidents TO {OBSERVER_ROLE};
         GRANT UPDATE (lifecycle) ON opspilot_incidents TO {OBSERVER_ROLE};
-        GRANT SELECT ON {sessions} TO {OBSERVER_ROLE};
+        GRANT SELECT ON {profiles}, {sessions} TO {OBSERVER_ROLE};
         GRANT UPDATE ({", ".join(OBSERVER_SESSION_COLUMNS)}) ON {sessions} TO {OBSERVER_ROLE};
         GRANT SELECT, INSERT ON {samples}, {readings} TO {OBSERVER_ROLE};
         """
@@ -366,6 +384,7 @@ def downgrade() -> None:
         DROP TABLE opspilot_observation_signal_readings;
         DROP TABLE opspilot_observation_samples;
         DROP TABLE opspilot_observation_sessions;
+        DROP TABLE opspilot_health_profiles;
         ALTER TABLE opspilot_incidents DROP COLUMN observation_generation;
         DO $$
         BEGIN

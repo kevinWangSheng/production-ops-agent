@@ -11,6 +11,7 @@ the gate before returning.
 """
 
 import hashlib
+import json
 import os
 import threading
 from collections.abc import Iterator
@@ -32,6 +33,7 @@ from opspilot.observation import (
     SampleLease,
     SampleReceipt,
     SignalReading,
+    profile_revision,
 )
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from scripts.m0.postgres_lab import DSN
@@ -42,7 +44,21 @@ pytestmark = pytest.mark.skipif(
 
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
 POOL = PoolConfig(min_size=1, max_size=3, timeout=5.0)
-PROFILE = "checkout@abc123def456"
+PROFILE_CONTENT = json.dumps(
+    {
+        "profile_id": "checkout",
+        "signals": {
+            "error_ratio": {
+                "query": "sum(rate(http_errors[1m]))/sum(rate(http_requests[1m]))",
+                "coverage_query": "count_over_time(http_requests[5m])",
+                "max": 0.01,
+            }
+        },
+    },
+    sort_keys=True,
+    separators=(",", ":"),
+)
+PROFILE = profile_revision("checkout", PROFILE_CONTENT)
 
 
 @pytest.fixture(scope="module")
@@ -158,6 +174,7 @@ def _authorize(
         sample_interval_seconds=15,
         sustained_window_seconds=sustained,
         health_profile_revision=profile,
+        health_profile=PROFILE_CONTENT if profile == PROFILE else None,
         first_sample_due_at=_now(),
     )
 
@@ -338,6 +355,9 @@ def test_observer_role_cannot_write_investigation_runs_reports_or_evidence(
         "UPDATE opspilot_observation_sessions SET health_profile_revision='x' WHERE session_id=%(s)s",
         "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds) SELECT gen_random_uuid(),incident_id,purpose,target_id,target,0,0,'observer',deadline_at,1,1,1 FROM opspilot_observation_sessions WHERE session_id=%(s)s",
         "DELETE FROM opspilot_observation_samples",
+        "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES('x@000000000000','x',repeat('0',64),'{}')",
+        "UPDATE opspilot_health_profiles SET content='{}'",
+        "DELETE FROM opspilot_health_profiles",
         "UPDATE opspilot_observation_samples SET disposition='adopted'",
         "DELETE FROM opspilot_observation_sessions WHERE session_id=%(s)s",
     ]
@@ -983,6 +1003,7 @@ def test_data_from_before_the_authorization_never_confirms_health(
         sample_interval_seconds=60,
         sustained_window_seconds=600,
         health_profile_revision=PROFILE,
+        health_profile=PROFILE_CONTENT,
         first_sample_due_at=_now(),
     )
     authorized_at = controller.session(session)["authorized_at"]
@@ -1166,3 +1187,61 @@ def test_replay_compares_the_final_session_state_and_the_lifecycle(
             (session,),
         )
     assert not controller.replay_session(session).session_consistent
+
+
+def test_the_profile_content_is_stored_once_per_revision_and_checked(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """A revision is only a hash; the content it names is kept so a replay
+    can read the coverage queries and thresholds (F6 step 5)."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    stored = observer.health_profile(PROFILE)
+    assert stored["content"] == PROFILE_CONTENT
+    assert stored["profile_id"] == "checkout"
+    assert (
+        stored["content_sha256"] == hashlib.sha256(PROFILE_CONTENT.encode()).hexdigest()
+    )
+    assert PROFILE == f"checkout@{stored['content_sha256'][:12]}"
+    history = observer.session_history(session)
+    assert history["health_profile"]["content"] == PROFILE_CONTENT
+    assert json.loads(history["health_profile"]["content"])["signals"]["error_ratio"][
+        "coverage_query"
+    ].startswith("count_over_time")
+    # Same revision again: deduplicated, not duplicated.
+    other, _, other_target = _incident(owner)
+    _authorize(controller, other, other_target)
+    with owner.transaction(snapshot=True) as conn:
+        assert conn.execute(
+            "SELECT count(*) AS n FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (PROFILE,),
+        ).fetchone() == {"n": 1}
+    # Content that does not hash to the revision, a revision without
+    # content, or content without a revision: refused before any write.
+    third, _, third_target = _incident(owner)
+    for kwargs in (
+        {"health_profile_revision": PROFILE, "health_profile": PROFILE_CONTENT + " "},
+        {
+            "health_profile_revision": "checkout@000000000000",
+            "health_profile": PROFILE_CONTENT,
+        },
+        {"health_profile_revision": "no-separator", "health_profile": PROFILE_CONTENT},
+        {"health_profile_revision": PROFILE, "health_profile": None},
+        {"health_profile_revision": None, "health_profile": PROFILE_CONTENT},
+    ):
+        with pytest.raises(
+            PersistenceError, match="HEALTH_PROFILE_REVISION_MISMATCH|INVALID_INPUT"
+        ):
+            controller.authorize_session(
+                third,
+                target=third_target,
+                actor="tester",
+                deadline_at=_now() + timedelta(hours=1),
+                max_samples=3,
+                sample_interval_seconds=15,
+                sustained_window_seconds=60,
+                **kwargs,  # type: ignore[arg-type]
+            )
+    assert _lifecycle(owner, third) == "open"
+    with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
+        observer.health_profile("checkout@000000000000")
