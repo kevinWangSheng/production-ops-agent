@@ -421,7 +421,7 @@ def test_observer_role_cannot_write_investigation_runs_reports_or_evidence(
         "DELETE FROM opspilot_observation_samples",
         "UPDATE opspilot_observation_endings SET transition=NULL",
         # timestamps come from the database clock only
-        "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,recorded_at) VALUES(gen_random_uuid(),%(s)s,%(i)s,'authority_revoked',clock_timestamp()-interval '1 day')",
+        "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,lifecycle_before,lifecycle_after,recorded_at) VALUES(gen_random_uuid(),%(s)s,%(i)s,'authority_revoked','observing_recovery','observing_recovery',clock_timestamp()-interval '1 day')",
         "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent,submitted_at) VALUES(gen_random_uuid(),%(s)s,gen_random_uuid(),1,1,clock_timestamp()-interval '1 minute',clock_timestamp(),'healthy',true,0,1,'adopted','adopted',false,'not_adopted','observing_recovery',0,1,false,0,0,true,true,true,true,clock_timestamp())",
         "DELETE FROM opspilot_observation_endings",
         "INSERT INTO opspilot_health_profiles(health_profile_revision,profile_id,content_sha256,content) VALUES('x@000000000000','x',repeat('0',64),'{}')",
@@ -1525,7 +1525,7 @@ def test_observer_lifecycle_change_without_a_recorded_ending_fails_at_commit(
     # An ending whose transition does not match the edge is not evidence.
     with psycopg.connect(observer_dsn) as conn:
         conn.execute(
-            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed')",
+            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,lifecycle_before,lifecycle_after) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed','observing_recovery','open')",
             (session, incident),
         )
         conn.execute(
@@ -1542,7 +1542,7 @@ def test_observer_lifecycle_change_without_a_recorded_ending_fails_at_commit(
     other_session = _authorize(controller, other, other_target)
     with psycopg.connect(observer_dsn) as conn:
         conn.execute(
-            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed')",
+            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,lifecycle_before,lifecycle_after) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed','observing_recovery','open')",
             (other_session, incident),
         )
         conn.execute(
@@ -1791,6 +1791,8 @@ def test_replay_checks_the_ending_record_of_a_session_ended_without_a_sample(
         "deadline_expired",
         "observation_ended_unconfirmed",
         None,
+        "observing_recovery",
+        "open",
     )
     # The record says something else than the session.
     with owner.transaction() as conn:
@@ -1940,3 +1942,155 @@ def test_an_ok_reading_without_data_behind_it_is_no_coverage(
         [SignalReading(**base, value=0.0, sample_count=1)],  # type: ignore[arg-type]
     )
     assert receipt.transition == "recovery_confirmed"
+
+
+# --- final bot round (stop rule): windows, transaction binding, full target,
+# exact endings, profile integrity
+
+
+def test_readings_from_another_window_do_not_cover_this_sample(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """A result must belong to the current logical sample (C3 section 10):
+    an ok reading taken over an earlier window (pre-handling data) does not
+    cover a required signal of this sample's window; 5 % of the window is
+    the step-snapping tolerance."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=30)
+    lease = _claim(observer, session)
+    window = _window(_t0(), 60)
+    earlier = (window[0] - timedelta(minutes=30), window[1] - timedelta(minutes=30))
+    receipt = observer.submit_sample(lease, _sample(lease, window), _readings(earlier))
+    assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
+    assert _lifecycle(owner, incident) == "observing_recovery"
+    _due_now(owner, session)
+    lease = _claim(observer, session)
+    # Within tolerance (2 s of a 60 s window): covered and confirmed.
+    snapped = (window[0] + timedelta(seconds=2), window[1] - timedelta(seconds=2))
+    receipt = observer.submit_sample(lease, _sample(lease, window), _readings(snapped))
+    assert receipt.transition == "recovery_confirmed"
+    _assert_replay_consistent(controller, session)
+    # Moving the stored reading rows to another window changes the replay.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_signal_readings SET window_start=window_start-interval '1 hour',window_end=window_end-interval '1 hour' WHERE sample_id=%s",
+            (receipt.sample_id,),
+        )
+    assert not controller.replay_session(session).consistent
+
+
+def test_an_ending_committed_by_another_connection_is_not_this_transactions_evidence(
+    observer_dsn: str, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    with psycopg.connect(observer_dsn) as a:
+        a.execute("SELECT 1")  # transaction A is open before B writes
+        with psycopg.connect(observer_dsn) as b:
+            b.execute(
+                "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,lifecycle_before,lifecycle_after) VALUES(gen_random_uuid(),%s,%s,'deadline_expired','observation_ended_unconfirmed','observing_recovery','open')",
+                (session, incident),
+            )
+            b.commit()
+        a.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open' WHERE incident_id=%s",
+            (incident,),
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege) as refused:
+            a.commit()
+        assert "without a recorded observation ending" in str(refused.value)
+    assert _lifecycle(owner, incident) == "observing_recovery"
+
+
+def test_authorization_requires_the_whole_immutable_target(
+    owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The registry holds the resource_uid; the first session fixes the rest
+    of the Target, every later authorization must bring the same identity."""
+    incident, _, target = _incident(owner)
+    first = _authorize(controller, incident, target)
+    assert controller.revoke_sessions(incident) == [first]
+    for field in ("integration_id", "cluster_uid", "namespace", "revision"):
+        other = target.model_copy(update={field: "other"})
+        with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
+            controller.authorize_session(
+                incident,
+                target=other,
+                actor="tester",
+                deadline_at=_now() + timedelta(hours=1),
+                max_samples=3,
+                sample_interval_seconds=15,
+                sustained_window_seconds=60,
+            )
+        with owner.transaction(snapshot=True) as conn:
+            assert conn.execute(
+                "SELECT count(*) AS n FROM opspilot_observation_sessions WHERE incident_id=%s",
+                (incident,),
+            ).fetchone() == {"n": 1}
+    assert _authorize(controller, incident, target)
+
+
+def test_replay_requires_the_exact_ending_transition_and_lifecycles(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET deadline_at=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+            (session,),
+        )
+    assert observer.sweep_expired_sessions() == [session]
+    assert controller.replay_session(session).consistent
+    for tamper in (
+        "transition=NULL",
+        "lifecycle_after='observing_recovery'",
+        # an unconfirmed ending cannot have moved a resolved incident to open
+        "lifecycle_before='resolved'",
+    ):
+        with owner.transaction() as conn:
+            conn.execute(
+                f"UPDATE opspilot_observation_endings SET {tamper} WHERE session_id=%s",
+                (session,),
+            )
+        assert not controller.replay_session(session).ending_consistent, tamper
+        with owner.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_endings SET transition='observation_ended_unconfirmed',lifecycle_before='observing_recovery',lifecycle_after='open' WHERE session_id=%s",
+                (session,),
+            )
+    assert controller.replay_session(session).consistent
+
+
+def test_replay_fails_closed_on_a_tampered_profile(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=600)
+    lease = _claim(observer, session)
+    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 30)))
+    assert receipt.accepted and controller.replay_session(session).consistent
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_health_profiles SET content=content||' ' WHERE health_profile_revision=%s",
+            (PROFILE,),
+        )
+    try:
+        report = controller.replay_session(session)
+        assert not report.consistent
+        assert report.samples[0].signal_mismatches == ("health_profile_unreadable",)
+        # Submitting under the tampered profile fails closed as well.
+        _due_now(owner, session)
+        lease = _claim(observer, session)
+        receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 30)))
+        assert (receipt.accepted, receipt.reason) == (False, "readings_inconsistent")
+    finally:
+        with owner.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_health_profiles SET content=%s WHERE health_profile_revision=%s",
+                (PROFILE_CONTENT, PROFILE),
+            )
+    # Restored: the first sample replays; the one filed under the tampered
+    # profile keeps its verdict and now stands out, as it should.
+    report = controller.replay_session(session)
+    assert report.samples[0].matches and not report.samples[1].matches

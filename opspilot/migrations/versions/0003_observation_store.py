@@ -343,10 +343,15 @@ def upgrade() -> None:
           transition text,
           -- the sample whose verdict ended the session (NULL: sweep or revoke)
           sample_id uuid REFERENCES {samples},
+          -- the incident lifecycle before and after this ending
+          lifecycle_before text NOT NULL,
+          lifecycle_after text NOT NULL,
           recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           {_check(endings, "ended_reason", ENDED_REASONS)},
           {_check(endings, "transition", TRANSITIONS, nullable=True)},
-          CONSTRAINT {endings}_confirmed_check CHECK (transition <> 'recovery_confirmed' OR sample_id IS NOT NULL)
+          CONSTRAINT {endings}_confirmed_check CHECK (transition <> 'recovery_confirmed' OR sample_id IS NOT NULL),
+          {_check(endings, "lifecycle_before", CHECKS[("opspilot_observation_samples", "subject_lifecycle")])},
+          {_check(endings, "lifecycle_after", CHECKS[("opspilot_observation_samples", "subject_lifecycle")])}
         );
         CREATE INDEX {endings}_incident_idx ON {endings}(incident_id, recorded_at);
         """
@@ -372,7 +377,7 @@ def upgrade() -> None:
         -- the timestamps come from the database clock (DEFAULT), never from
         -- the Observer: the evidence trigger dates rows by them
         GRANT INSERT (sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent,transition) ON {samples} TO {OBSERVER_ROLE};
-        GRANT INSERT (ending_id,session_id,incident_id,ended_reason,transition,sample_id) ON {endings} TO {OBSERVER_ROLE};
+        GRANT INSERT (ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after) ON {endings} TO {OBSERVER_ROLE};
         """
     )
     # The Observer may move an incident's lifecycle only along the two edges
@@ -435,14 +440,18 @@ def upgrade() -> None:
               WHERE e.incident_id = NEW.incident_id
                 AND s.incident_id = NEW.incident_id
                 AND e.transition = expected
-                AND e.recorded_at >= pg_catalog.transaction_timestamp()
+                AND e.lifecycle_before = OLD.lifecycle
+                AND e.lifecycle_after = NEW.lifecycle
+                -- written by this very transaction (a record another
+                -- connection committed meanwhile is not this change's evidence)
+                AND e.xmin = pg_catalog.pg_current_xact_id()::xid
                 AND (expected <> 'recovery_confirmed' OR EXISTS (
                   SELECT 1 FROM public.{samples} m
                   WHERE m.sample_id = e.sample_id
                     AND m.session_id = e.session_id
                     AND m.transition = 'recovery_confirmed'
                     AND m.disposition = 'adopted'
-                    AND m.submitted_at >= pg_catalog.transaction_timestamp()
+                    AND m.xmin = pg_catalog.pg_current_xact_id()::xid
                 ))
             ) THEN
               RAISE insufficient_privilege USING MESSAGE =

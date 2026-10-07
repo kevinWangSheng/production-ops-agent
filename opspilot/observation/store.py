@@ -89,7 +89,8 @@ _SAMPLE_COLUMNS = (
     "lease_valid,lease_stamps_match,readings_consistent,transition,submitted_at"
 )
 _ENDING_COLUMNS = (
-    "ending_id,session_id,incident_id,ended_reason,transition,sample_id,recorded_at"
+    "ending_id,session_id,incident_id,ended_reason,transition,sample_id,"
+    "lifecycle_before,lifecycle_after,recorded_at"
 )
 _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"
@@ -253,9 +254,10 @@ class ReplayReport:
     expected_lifecycle: str | None
     recorded_lifecycle: str | None
     # how the session says it ended, and the last ending record
-    # (ended_reason, transition, sample_id); None when there is none
+    # (ended_reason, transition, sample_id, lifecycle_before, lifecycle_after);
+    # None when there is none
     stored_ended_reason: str | None = None
-    recorded_ending: tuple[str, str | None, UUID | None] | None = None
+    recorded_ending: tuple[str, str | None, UUID | None, str, str] | None = None
     # the sample whose replayed verdict ended the session, if any
     ending_sample_id: UUID | None = None
 
@@ -265,17 +267,20 @@ class ReplayReport:
 
         A session still authorized has no ending record. An ended one has a
         record whose reason is the session's, whose reason implies the stored
-        state, whose transition fits the reason (a confirmation carries
-        ``recovery_confirmed`` and points at the confirming sample; an
-        unconfirmed ending carries ``observation_ended_unconfirmed`` or
-        nothing; a revocation carries nothing), and -- when a replayed
-        verdict ended the session -- which points at exactly that sample.
+        state, whose transition is exactly what the reason fires (a
+        confirmation carries ``recovery_confirmed`` and points at the
+        confirming sample; a deadline or budget ending carries
+        ``observation_ended_unconfirmed``; a revocation carries nothing),
+        whose recorded lifecycle after equals the lifecycle before advanced
+        by that transition (unchanged when the incident could not take it,
+        e.g. already ``open``), and -- when a replayed verdict ended the
+        session -- which points at exactly that sample.
         """
         if self.stored_session_state == "authorized":
             return self.stored_ended_reason is None and self.recorded_ending is None
         if self.recorded_ending is None or self.stored_ended_reason is None:
             return False
-        reason, transition, sample_id = self.recorded_ending
+        reason, transition, sample_id, before, after = self.recorded_ending
         if reason != self.stored_ended_reason:
             return False
         implied_state = {
@@ -291,9 +296,18 @@ class ReplayReport:
         if reason == "recovery_confirmed":
             fits = transition == "recovery_confirmed" and sample_id is not None
         elif reason in {"deadline_expired", "max_samples_exhausted"}:
-            fits = transition in {None, "observation_ended_unconfirmed"}
+            fits = transition == "observation_ended_unconfirmed"
         else:
             fits = transition is None
+        if transition is None:
+            fits = fits and after == before
+        elif transition in INCIDENT_LIFECYCLE.triggers(before):
+            fits = fits and after == INCIDENT_LIFECYCLE.fire(before, transition)
+        else:
+            # A confirmation that the lifecycle could not take is never
+            # written (the store rolls back); an unconfirmed ending on an
+            # incident already open leaves it as it is.
+            fits = fits and transition != "recovery_confirmed" and after == before
         if self.ending_sample_id is not None:
             fits = fits and sample_id == self.ending_sample_id
         return fits
@@ -490,25 +504,59 @@ def _parse_required(
     profile: dict[str, Any] | None,
 ) -> tuple[tuple[str, ...] | None, bool]:
     """``(required names, unreadable)`` for a stored profile row; ``(None,
-    False)`` when the session has no profile revision."""
+    False)`` when the session has no profile revision.
+
+    Fail closed on integrity as well as on shape: the stored content must
+    still hash to ``content_sha256`` and that hash must still name the
+    revision, or the profile is treated as unreadable.
+    """
     if profile is None:
         return None, False
+    content = str(profile["content"])
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    revision = str(profile["health_profile_revision"])
+    profile_id, _, suffix = revision.rpartition("@")
+    if (
+        digest != profile["content_sha256"]
+        or suffix != digest[:12]
+        or revision != profile_revision(profile_id, content)
+    ):
+        return None, True
     try:
-        return required_signals(str(profile["content"])), False
+        return required_signals(content), False
     except PersistenceError:
         return None, True
 
 
-def _covers(status: object, value: object, sample_count: object) -> bool:
+# A reading's window must be the sample's window: Prometheus range queries
+# snap their bounds to the step, so a small difference is normal, a window
+# of its own (older data standing in for this sample's) is not. 5 % of the
+# sample window is the tolerance the HealthProfile step uses as well.
+WINDOW_TOLERANCE_FRACTION = 0.05
+
+
+def _covers(
+    status: object,
+    value: object,
+    sample_count: object,
+    *,
+    reading_window: tuple[datetime, datetime],
+    sample_window: tuple[datetime, datetime],
+) -> bool:
     """A reading covers its signal only as an ok result with a value and at
-    least one underlying sample (``coverage_query``); an ok with nothing
-    behind it is no coverage (C3 section 10: minimum samples are a necessary
-    condition of healthy)."""
+    least one underlying sample (``coverage_query``), taken over this
+    sample's window; an ok with nothing behind it, or data from another
+    window, is no coverage (C3 section 10: minimum samples are a necessary
+    condition of healthy, and a result must belong to the current logical
+    sample)."""
+    tolerance = (sample_window[1] - sample_window[0]) * WINDOW_TOLERANCE_FRACTION
     return (
         status == "ok"
         and value is not None
         and isinstance(sample_count, int)
         and sample_count > 0
+        and abs(reading_window[0] - sample_window[0]) <= tolerance
+        and abs(reading_window[1] - sample_window[1]) <= tolerance
     )
 
 
@@ -722,6 +770,15 @@ class ObservationStore(_StoreBase):
         )
         if registered["resource_uid"] != target.resource_uid:
             raise PersistenceError("TARGET_MISMATCH")
+        # The registry (``opspilot_targets``) records only ``resource_uid``;
+        # the other Target fields are fixed by the first session authorized
+        # on the target, every later one must bring the same identity.
+        earlier = conn.execute(
+            "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s ORDER BY created_at,session_id LIMIT 1",
+            (incident["target_id"],),
+        ).fetchone()
+        if earlier is not None and Target(**earlier["target"]) != target:
+            raise PersistenceError("TARGET_MISMATCH")
         if conn.execute(
             "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
             (incident_id,),
@@ -819,6 +876,14 @@ class ObservationStore(_StoreBase):
             "SELECT session_id FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized' ORDER BY session_id FOR UPDATE",
             (incident_id,),
         ).fetchall()
+        lifecycle = str(
+            self._require_row(
+                conn.execute(
+                    "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
+                    (incident_id,),
+                )
+            )["lifecycle"]
+        )
         revoked: list[UUID] = []
         for row in rows:
             self._end_session(
@@ -827,6 +892,8 @@ class ObservationStore(_StoreBase):
                 incident_id,
                 ended_reason="authority_revoked",
                 transition=None,
+                lifecycle_before=lifecycle,
+                lifecycle_after=lifecycle,
             )
             revoked.append(cast(UUID, row["session_id"]))
         return revoked
@@ -839,6 +906,8 @@ class ObservationStore(_StoreBase):
         *,
         ended_reason: EndedReason,
         transition: Transition | None,
+        lifecycle_before: str,
+        lifecycle_after: str,
         sample_id: UUID | None = None,
         watermark: dict[str, Any] | None = None,
     ) -> None:
@@ -869,8 +938,17 @@ class ObservationStore(_StoreBase):
             ),
         )
         conn.execute(
-            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id) VALUES(%s,%s,%s,%s,%s,%s)",
-            (uuid4(), session_id, incident_id, ended_reason, transition, sample_id),
+            "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                uuid4(),
+                session_id,
+                incident_id,
+                ended_reason,
+                transition,
+                sample_id,
+                lifecycle_before,
+                lifecycle_after,
+            ),
         )
 
     # --- sampling (Observer side)
@@ -931,12 +1009,22 @@ class ObservationStore(_StoreBase):
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
                 blocked, generations = _scope_blocks(scope, row)
                 if blocked:
+                    lifecycle = str(
+                        self._require_row(
+                            conn.execute(
+                                "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
+                                (row["incident_id"],),
+                            )
+                        )["lifecycle"]
+                    )
                     self._end_session(
                         conn,
                         row["session_id"],
                         row["incident_id"],
                         ended_reason="scope_suspended",
                         transition=None,
+                        lifecycle_before=lifecycle,
+                        lifecycle_after=lifecycle,
                     )
                     continue
                 epoch = int(row["active_sample_epoch"]) + 1
@@ -1029,7 +1117,13 @@ class ObservationStore(_StoreBase):
                 ok_signals={
                     item.signal_name
                     for item in rows
-                    if _covers(item.status, item.value, item.sample_count)
+                    if _covers(
+                        item.status,
+                        item.value,
+                        item.sample_count,
+                        reading_window=(item.window_start, item.window_end),
+                        sample_window=(sample.window.start, sample.window.end),
+                    )
                 },
             )
             if sample.window.end > now + timedelta(seconds=WINDOW_FUTURE_SKEW_SECONDS):
@@ -1155,11 +1249,9 @@ class ObservationStore(_StoreBase):
                     lease.session_id,
                     lease.incident_id,
                     ended_reason=verdict.ended_reason,
-                    transition=(
-                        verdict.transition
-                        if lifecycle != incident["lifecycle"]
-                        else None
-                    ),
+                    transition=verdict.transition,
+                    lifecycle_before=str(incident["lifecycle"]),
+                    lifecycle_after=lifecycle,
                     sample_id=sample_id if verdict.decision.accepted else None,
                     watermark={
                         "adopted_sequence": verdict.adopted_sequence,
@@ -1210,7 +1302,9 @@ class ObservationStore(_StoreBase):
                     candidate["session_id"],
                     candidate["incident_id"],
                     ended_reason="deadline_expired",
-                    transition="observation_ended_unconfirmed" if changed else None,
+                    transition="observation_ended_unconfirmed",
+                    lifecycle_before=str(incident["lifecycle"]),
+                    lifecycle_after=lifecycle,
                 )
                 if changed:
                     conn.execute(
@@ -1330,7 +1424,13 @@ class ObservationStore(_StoreBase):
             ok_signals = {
                 str(reading["signal_name"])
                 for reading in stored["readings"]
-                if _covers(reading["status"], reading["value"], reading["sample_count"])
+                if _covers(
+                    reading["status"],
+                    reading["value"],
+                    reading["sample_count"],
+                    reading_window=(reading["window_start"], reading["window_end"]),
+                    sample_window=(stored["window_start"], stored["window_end"]),
+                )
             }
             # Recomputed from the stored rows: a deleted reading changes the
             # replayed decision (readings_inconsistent) as well as this list.
@@ -1426,6 +1526,8 @@ class ObservationStore(_StoreBase):
                 str(last_ending["ended_reason"]),
                 last_ending["transition"],
                 last_ending["sample_id"],
+                str(last_ending["lifecycle_before"]),
+                str(last_ending["lifecycle_after"]),
             )
         return ReplayReport(
             session_id=session_id,
@@ -1458,7 +1560,7 @@ class ObservationStore(_StoreBase):
         if revision is None:
             return None, False
         profile = conn.execute(
-            "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            "SELECT health_profile_revision,content_sha256,content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
             (revision,),
         ).fetchone()
         return _parse_required(profile)
