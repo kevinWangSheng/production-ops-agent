@@ -35,8 +35,9 @@ Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
   handling_audit so re-authorization cannot masquerade as sample submission.
   Full observation_sessions and REQUIRED sample_jobs collections stay unchanged
   after a rejected foreign-target sample, not only the current authorization.
-  sample_jobs projects all incident jobs: job_id/session_id/sequence/due_at/state,
-  excluding lease owner/epoch and other retry-dependent fields.
+  sample_jobs compares all incident jobs as a set of job_id/session_id/sequence.
+  due_at/state/lease fields are excluded: releasing or delaying the SAME task
+  after rejection is not scheduling a subsequent logical sample.
   observation_sessions projects only session_id/purpose/subject/target, both
   generations/state/authorized/profile revision, adopted sequence/window end
   and active_sample_job_id; no auxiliary counts or creation/update timestamps.
@@ -824,7 +825,10 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
         "handling_audit",
     ):
         assert after[field] == before[field]
-    assert after["sample_jobs"] == before["sample_jobs"]
+    job_fields = ("job_id", "session_id", "sequence")
+    assert {
+        tuple(job[field] for field in job_fields) for job in after["sample_jobs"]
+    } == {tuple(job[field] for field in job_fields) for job in before["sample_jobs"]}
     assert history in after["recovery_samples"]
     assert_readonly(started, recovery_driver)
     assert_readonly(outcome, recovery_driver)

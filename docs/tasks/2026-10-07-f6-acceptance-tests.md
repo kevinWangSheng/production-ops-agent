@@ -57,6 +57,8 @@
 
 - 停机后 C3 §10 P1（7a992ad 之后）：依据「失效结果只保留历史……也不安排后续任务」，删除 sample_jobs 条件守卫，完整任务集合必须提供且前后相等；文档明确任务五字段及会话合同字段的稳定投影，排除租约重试字段和辅助计数/时间戳；定向 pytest 53 passed、40 skipped、0 xfailed，0.35 秒，make check 退出 0（锁/Ruff/mypy 通过，2653 passed、351 skipped、2 既有架构债 xfailed，45.04 秒），一个追加提交普通推送，不触发审查、不操作 thread、不合并。
 
+- 用户修正（da9f04a 之后）：sample_jobs 比较收窄为 job_id/session_id/sequence 集合，允许同一任务释放租约或推迟，不把 due_at/state 变化误判为安排后续任务；已用源文件实际断言验证重试字段变化通过、任务新增/身份与序号变化拒绝。定向 pytest 53 passed、40 skipped、0 xfailed（0.35 秒）；make check 退出 0，锁/Ruff/mypy 通过，2653 passed、351 skipped、2 既有架构债 xfailed（45.97 秒）；普通追加提交，不触发 review、不操作 thread、不合并。
+
 ## 下一步与交接
 
 检查和独立审查完成，提交本分支 PR，等待接线；不合并。解除 skip 时提供真实外部驱动；原断言只按合同或验收变更处理。
