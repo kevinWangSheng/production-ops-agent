@@ -59,7 +59,6 @@ import pytest
 
 from opspilot.acceptance import IncidentScenario
 from tests.f6_boundary_support import (
-    ContractInterfaceConflict,
     GuardedRecoveryDriver,
     RecoveryBoundaries,
 )
@@ -728,8 +727,7 @@ def test_harness_model_stub_records_calls_even_if_runtime_swallows_rejection(pha
 
 @pytest.mark.xfail(
     strict=True,
-    raises=ContractInterfaceConflict,
-    reason="合同/接口冲突: 公开采样提交无目标字段，无法提交并拒绝异目标结果 见 opspilot/domain/observation.py:82、opspilot/observation/store.py:1287",
+    reason="产品缺口: 提交未校验结果目标（C3 §10），见 #138",
 )
 @pytest.mark.parametrize("identity_field", list(TARGET))
 def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
@@ -775,19 +773,7 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
     assert outcome.subject_id == requested.subject_id
     assert outcome.incident_lifecycle == started.incident_lifecycle
     assert outcome.recovery_confirmed is False
-    try:
-        assert outcome.healthy_window_seconds == 0
-    except AssertionError as exc:
-        if (
-            outcome.healthy_window_seconds == 60
-            and len(outcome.recovery_samples) == 1
-            and outcome.recovery_samples[0]["disposition"] == "adopted"
-            and outcome.recovery_samples[0]["target"] == foreign_target
-        ):
-            raise ContractInterfaceConflict(
-                "foreign target has no public submit field"
-            ) from exc
-        raise
+    assert outcome.healthy_window_seconds == 0
     assert outcome.used_sample_count == 0
     assert not outcome.observation_ended
     assert outcome.human_interaction != "handoff"

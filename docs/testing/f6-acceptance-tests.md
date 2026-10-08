@@ -28,7 +28,8 @@ owner/epoch/lease、scope generation、暂停后重新授权、持久预算与�
 
 ## 外部场景及接线门槛
 
-[外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例：第 1–4 步 36 个已去掉功能等待 skip，按 `M1_DURABLE_POSTGRES=1` opt-in；第 5 步 5 个继续 skip，原因统一为「待 #87 合并」。真实 PG 结果：第 1 步 17 passed / 5 xfailed，第 2/3/4 步分别 6/6/2 passed；另有 2 个持久合同 strict xfail。所有 xfail 都是合同/接口冲突，且限定 `raises=ContractInterfaceConflict`：只捕获已核查的冲突形态，其他权限/状态/证据/环境失败正常失败。未发现另外的产品行为失败：
+[外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例：第 1–4 步 36 个已去掉功能等待 skip，按 `M1_DURABLE_POSTGRES=1` opt-in；第 5 步 5 个继续 skip，原因统一为「待 #87 合并」。按 lead 最终归类，真实 PG 结果：第 1 步 17 passed / 5 xfailed，第 2/3/4 步分别 6/6/2 passed；另有 2 个持久合同 strict xfail。跨目标五例在 #138 修复前整体 strict xfail，无 raises 限制或中途已知差异分支，函数正文恢复为 main 的原始顺序断言；错误采纳以及预算、水位、任务偏离均属同一产品缺口的后果。strict=True 在修复后全部断言通过时使 CI 报 XPASS，届时须移除标记。
+
 
 - 第 1 步（22）：持续窗口前后 2、逐信号阈值 4、陈旧/时间缺口/处置前数据 3、同目标双事故隔离 4、H,H,D 与 H,H,D,H,H 窗口重置 2、退化后重新累计并达到持续窗口 2、跨目标身份拒绝 5。依据 C3 §10 健康规则、主体授权与持续窗口，§4 生命周期。窗未满只要求 `recovery_confirmed=False`，不冻结中间 verdict；两个事故互换被处置身份，另一个的生命周期、观察会话和采样均不得变动。合法 stale/覆盖缺口采样必须留底且 adopted、保存已用次数，恢复结果 unknown，全 stale 采样健康窗为 0；处置前数据单列，不冻结其采纳方式。H,H,D,H,H 精确为 120 秒；预先冻结更长期限与次数的 H,H,D,H,H,H 达 180 秒后 resolved，证明退化没有禁用累计。跨目标场景逐项改变 integration/cluster/namespace/resource/revision，先单独登记处置，再向原授权提交错误目标采样；只保存历史，水位、生命周期、健康窗与预算不推进，原授权身份/版本与处置审计不变，不能偷偷创建新授权。
 - 第 2 步（6）：零/低流量及期限前后 4，先健康有流量、后撤流量且错误率下降 1；C3 §10 有效流量与 unknown 有界继续；180 秒/3 次时会话未结束、没有交接，原期限为 300 秒/5 次。新增独立次数预算：原期限 600 秒、max_samples=4，240 秒低流量耗尽次数后结束/交接，不能再领取逻辑采样。
@@ -42,9 +43,10 @@ owner/epoch/lease、scope generation、暂停后重新授权、持久预算与�
 PG fixture 自建/删除具名测试库与 Observer login；CI 的 m0-postgres 作业已包含 F6 验收与合同测试入口。
 第 5 步仍待 [#87](https://github.com/kevinWangSheng/production-ops-agent/issues/87)。
 
-接线接口冲突（保持原断言，经真实 PG 失败确认后按 lead 指示 strict xfail）：
+产品缺口与接口冲突（原断言保留，按 lead 明确决策标记）：
 
-- `HealthSample` 与提交 readings 无目标字段：跨目标刺激只能进入原始 bytes，不能保义映射为不同提交目标；5 个身份场景仍保留 history_only/无推进断言；实际健康窗口为 60 秒，期望 0 秒，分别标 strict xfail。位置：`opspilot/domain/observation.py:82`、`opspilot/observer/sampler.py:191`。
+- 产品缺口 [#138](https://github.com/kevinWangSheng/production-ops-agent/issues/138)：C3 §10 要求原子提交校验结果目标，`submit_sample` 未校验，错误目标样本被当作合法样本采纳。integration_id、cluster_uid、namespace、resource_uid、revision 五个场景均整体标 `pytest.mark.xfail(strict=True, reason="产品缺口: 提交未校验结果目标（C3 §10），见 #138")`。健康窗60而非0、消耗1次预算、adopted而非history_only、水位推进和新增任务是同一错误采纳的后果；没有为标记改变或放宽断言。移除 raises 限制、临时断言收集器和中途已知差异分支，函数正文 AST 与 main `8aae433` 完全一致。位置：`opspilot/observation/store.py:1287`、`opspilot/domain/observation.py:82`。
+
 - 撤销/结束清空活动 job，结束记录不存 job 身份；没有旧采样时公开持久接口无法稳定列出全部已发放任务。快照从 samples + 当前活动槽投影，迟到历史会暴露旧 job，不能据集合新增推断产品安排新任务。2 个持久授权场景保留完整集合断言，实际提交前集合为空、历史落库后出现同一个旧 job。已复核 `incident_sessions/session/session_history`、工作台 `observation_sessions` 与 Observer `sample/submit_sample`，没有另一个公开任务清单或目标提交接口；位置：`opspilot/observation/revocation.py:53`。需合同/接口决策，不用内存领取账本冒充持久状态。
 
 synthetic HealthProfile 的阈值、流量、新鲜度、窗口、频率、次数保持原义；profile 的内容 revision、source 与 scoped PromQL 做校验后的可逆映射。原始 bytes 取自已存 Observer bundle，先核 bundle 摘要再核其中 query body 摘要，正常 reading.value/source/query 必须与其冻结映射一致。
@@ -84,16 +86,15 @@ skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
 - `continue_observation(scenario, observations, until)` 仅向现有会话提交，不登记处置或重新授权；用于隔离人工转态与错误样本效果。
 - `read_raw_payload(evidence_id)` 是必须提供的接口，每个证据引用必须解析到与测试提供字节完全一致的已存原始 bytes 并校验实际摘要；缺接口、None 或非 bytes 都失败，不能编造 payload。
 
-真实 runtime fixture 已接线并使用 lead 启动的 PG17（55651）完成运行；7 个合同/接口冲突保留 strict xfail。另有 8 个适配器负向/映射检查（`tests/test_f6_driver_guards.py`），不计为产品验收。测试数字只用于合成边界，
+真实 runtime fixture 已接线并使用 lead 启动的 PG17（55651）完成运行；5 个产品缺口整体 strict xfail，2 个任务清单接口冲突 strict xfail。另有 8 个适配器负向/映射检查（`tests/test_f6_driver_guards.py`），不计为产品验收。测试数字只用于合成边界，
 不替代第 1 步真实环境 HealthProfile 校准，也没有新增最低样本数门槛。
 
-## 执行证据（接线 2026-10-08）
+## 执行证据（接线 2026-10-08，lead 最终归类）
 
-- `UV_CACHE_DIR=tmp/uv-cache make setup` 退出 0；默认缓存目录被沙箱拒绝，所以仅更换本地缓存位置。
-- 沙箱内 initdb 曾因 `shmget ... Operation not permitted` 失败；lead 随后在沙箱外启动指定 PG17、端口 55651。使用该实例，没有再次 initdb，没有停止实例，也未接触其他端口。
-- PG 命令：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **92 passed、5 skipped、7 xfailed**，退出 0（3.52 秒）。passed=31 产品外部场景 + 42 领域合同 + 11 原夹具 + 8 适配器检查；5 skip 待 #87；7 strict xfail=5 跨目标 + 2 已撤销/结束任务身份清单。
-- PG 首轮未加标时 92 passed、7 failed、5 skipped；撤销/结束的原始授权标记不代表当前有效授权，驱动已按公开 session state 映射当前授权，保留原始 authority_history。两例最后的任务清单断言仍失败，状态/水位/预算/控制/历史/原始证据/只读边界断言均先执行通过。没有削弱或删除断言。
-- `UV_CACHE_DIR=tmp/uv-cache make check` 退出 0：锁/Ruff/mypy 全过，3144 passed、460 skipped、2 个既有架构债 xfailed（68.45 秒）；独立审查静态发现的投影问题已修复并复验，运行验证与静态验证分别记录。独立审查者真实 PG 复跑同样为 92 passed、5 skipped、7 xfailed（3.48 秒、退出 0），复验无新增合同缺口。
-- 未启动 kind，未执行真实模型/遥测，未改产品、profile 文件、迁移或 passes。费用 0。按 lead 指示只留工作区，不提交、不 push、不开 PR，PG 由 lead 停止。
+- lead 已启动 PG17、端口55651；本轮直接使用，未initdb、未停止实例、未提交或修改产品。无真实模型/遥测调用，未启动kind，费用0。
+- PR #137 审查原文见 `/Users/shenghuikevin/dev/AI/production-ops-agent/tmp/m1-02-review/137-review-final.md`。审查修订曾使五例普通失败，进一步确认预算、采纳、水位与新增任务均偏离。lead 明确决定这些都是 #138 的后果，按原始顺序断言整体 strict xfail，不加 raises、不保留已知差异分支；不是将这些场景认定通过。
+- 撤销/到期两例未改，仍在全部其他状态、证据及只读断言之后严格匹配旧任务身份冲突，限定 `raises=ContractInterfaceConflict`。
+- PG 命令：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **92 passed、5 skipped、7 xfailed**（3.75秒、退出0）。passed=31产品外部 +42领域 +11原夹具 +8适配器；xfail=5产品目标校验缺口 +2任务身份接口冲突；skip=5重放待#87。
+- `UV_CACHE_DIR=tmp/uv-cache make check` 退出0：锁/Ruff/mypy全过，**3144 passed、460 skipped、2个既有架构债 xfailed**（69.85秒）；默认未启用PG。独立只读复核确认原断言正文AST和顺序与main一致，撤销/到期两例未改，本轮PG数字由执行者实际运行。
 
-#115 五项：① 全新存储驱动按主体/会话取回重放输入；② 重放前后原始持久业务快照不变；①②已写，随第 5 步 skip；③ Observer 经遥测桩取数与独立调用集合断言在 31 个外部场景通过；④ 撤销/到期两例在持久提交边界执行，状态及历史检查通过、任务身份清单缺公开接口而 strict xfail；⑤ 次数先于期限耗尽场景在真实 PG 通过。
+#115：① 新存储读取重放输入、② 重放前后完整持久状态比较仅接好防护，产品重放仍未实现，待#87后验证，不称完成；③ 遥测桩查询/窗口调用集合已真实运行；④ 提交前撤销/到期的状态、历史及证据检查已运行，全部旧任务清单仍为接口缺口；⑤ 次数先于期限耗尽场景真实PG通过。
