@@ -368,3 +368,106 @@ def test_mapping_rejects_tampered_product_subject_or_profile(
         )
     with pytest.raises(AssertionError):
         runtime._normalize(requested.subject_id, projected, records=records)
+
+
+def test_replay_earlier_session_excludes_later_handling_and_lifecycle(
+    recovery_driver, f6_profile
+):
+    from datetime import timedelta
+
+    from tests.acceptance.test_f6_recovery import TARGET, assert_readonly, scenario
+
+    requested = scenario(5, "earlier-session-isolated")
+    first_rows = with_raw_payloads(observations(2))
+    first = recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=deepcopy(first_rows),
+        until=first_rows[-1]["window_end"],
+    )
+    session_id = first.recovery_samples[0]["session_id"]
+    updated = deepcopy(f6_profile)
+    updated["target"] = {**TARGET, "revision": "second-revision"}
+    later_rows = observations(3)
+    for row in later_rows:
+        row["target"] = updated["target"]
+        for key in ("window_start", "window_end"):
+            row[key] += timedelta(seconds=120)
+        for signal in row["signals"].values():
+            signal["observed_at"] += timedelta(seconds=120)
+    later_rows = with_raw_payloads(later_rows)
+    current = recovery_driver.run(
+        requested,
+        profile=updated,
+        handled_at=HANDLED + timedelta(seconds=120),
+        observations=deepcopy(later_rows),
+        until=later_rows[-1]["window_end"],
+    )
+    assert current.incident_lifecycle == "resolved"
+    assert current.actions.count("record_handling") == 2
+    persisted = recovery_driver.persisted_replay_input(requested.subject_id, session_id)
+    replayed = recovery_driver.replay(
+        persisted=persisted, allow_telemetry=False, allow_model=False
+    )
+    assert replayed.incident_lifecycle == "observing_recovery"
+    assert replayed.recorded_lifecycle == "observing_recovery"
+    assert replayed.recovery_confirmed is False
+    assert replayed.target == TARGET
+    assert len(replayed.observation_sessions) == 1
+    assert len(replayed.handling_audit) == 1
+    assert replayed.handling_audit[0]["payload"]["session_id"] == session_id
+    assert replayed.actions.count("record_handling") == 1
+    assert replayed.actions.count("persist_observation") == 2
+    assert replayed.actions.count("advance_incident_lifecycle") == 1
+    assert replayed.actions.count("read_only_query") == 36
+    assert replayed.recovery_samples == first.recovery_samples
+    assert_readonly(replayed, recovery_driver)
+
+
+@pytest.mark.parametrize(
+    "removed",
+    [
+        "empty",
+        "record_handling",
+        "read_only_query",
+        "persist_observation",
+        "advance_incident_lifecycle",
+        "human_handoff",
+        "truncate_persist",
+        "truncate_query",
+    ],
+)
+def test_action_contract_rejects_empty_or_truncated_audit(
+    recovery_driver, f6_profile, removed
+):
+    from tests.acceptance.test_f6_recovery import assert_readonly, scenario
+
+    handoff = removed == "human_handoff"
+    rows = with_raw_payloads(
+        observations(5 if handoff else 3, traffic=0 if handoff else 200)
+    )
+    outcome = recovery_driver.run(
+        scenario(1, "action-audit-missing"),
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=rows,
+        until=rows[-1]["window_end"],
+    )
+    assert_readonly(outcome, recovery_driver)
+    altered = deepcopy(outcome)
+    actions = list(outcome.actions)
+    if removed == "empty":
+        actions = []
+    elif removed.startswith("truncate_"):
+        actions.remove(
+            "persist_observation"
+            if removed == "truncate_persist"
+            else "read_only_query"
+        )
+    else:
+        assert removed in actions
+        actions = [action for action in actions if action != removed]
+    altered.actions = tuple(actions)
+    with pytest.raises(AssertionError):
+        assert_readonly(altered, recovery_driver)

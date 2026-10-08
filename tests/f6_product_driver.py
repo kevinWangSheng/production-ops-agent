@@ -316,6 +316,7 @@ class ProductRecoveryRuntime:
             # The race test submits a result that finished just before the fault.
             # Gather via the real Observer using the still-current lease, then
             # inject the fault at the public atomic submission boundary below.
+            query_start = len(self.boundaries.telemetry_calls)
             if getattr(self, "submission_fault", None):
                 fault = self.submission_fault
                 self.submission_fault = None
@@ -335,9 +336,14 @@ class ProductRecoveryRuntime:
 
                 with self.monkeypatch.context() as patch:
                     patch.setattr(self.observer, "submit_sample", submit_after_fault)
-                    loop.sample(lease)
+                    receipt = loop.sample(lease)
             else:
-                loop.sample(lease)
+                receipt = loop.sample(lease)
+            sample_id = str(receipt.sample_id)
+            assert sample_id not in self.boundaries.sample_query_counts
+            self.boundaries.sample_query_counts[sample_id] = (
+                len(self.boundaries.telemetry_calls) - query_start
+            )
         # Advance the synthetic scheduling horizon, not any judgement state.
         frozen = decode_profile(native)
         session = self.controller.session(session["session_id"])
@@ -373,11 +379,47 @@ class ProductRecoveryRuntime:
             records = with_store.incident_records(self.ids[subject_id])
         finally:
             with_store.close()
-        history = next(
-            h
-            for h in records["sessions"]
+        selected_index = next(
+            i
+            for i, h in enumerate(records["sessions"])
             if str(h["session"]["session_id"]) == session_id
         )
+        history = records["sessions"][selected_index]
+        registration = next(
+            row
+            for row in records["controls"]
+            if row["action"] == "register_remediation"
+            and str(row["payload"]["session_id"]) == session_id
+        )
+        endings = history["endings"]
+        boundary = (
+            endings[-1]["recorded_at"]
+            if endings
+            else (
+                history["samples"][-1]["submitted_at"]
+                if history["samples"]
+                else registration["created_at"]
+            )
+        )
+        # Retain the incident's history only THROUGH the selected session.
+        # A subsequent registration's audit is after the ending it caused;
+        # it belongs to the new session and must not appear in this replay.
+        records["sessions"] = records["sessions"][: selected_index + 1]
+        records["controls"] = [
+            row for row in records["controls"] if row["created_at"] <= boundary
+        ]
+        assert registration in records["controls"]
+        incident = records["incident"]
+        incident["lifecycle"] = (
+            endings[-1]["lifecycle_after"] if endings else "observing_recovery"
+        )
+        incident["control_generation"] = records["controls"][-1]["resulting_generation"]
+        incident["observation_generation"] = history["session"][
+            "observation_generation"
+        ]
+        incident["target_id"] = history["session"]["target_id"]
+        # No historical mode is stored; do not reuse a later/current mode.
+        incident["mode"] = None
         return dict(
             subject_id=subject_id,
             session_id=session_id,
@@ -656,12 +698,19 @@ class ProductRecoveryRuntime:
         # Explicit offline product API; no lookup of original outcome.
         replayed = replay_history(history)
         records = deepcopy(persisted["records"])
-        records["sessions"] = [history]
+        selected = next(
+            i
+            for i, h in enumerate(records["sessions"])
+            if str(h["session"]["session_id"]) == persisted["session_id"]
+        )
+        assert selected == len(records["sessions"]) - 1
+        records["sessions"][selected] = history
         result = self._product_projection(subject_id, records)
         assert result.replay == replayed
         evidence = {
             f"{sample['sample_id']}:{reading['signal_name']}": reading
-            for sample in history["samples"]
+            for included in records["sessions"]
+            for sample in included["samples"]
             for reading in sample["readings"]
         }
         return self._normalize(

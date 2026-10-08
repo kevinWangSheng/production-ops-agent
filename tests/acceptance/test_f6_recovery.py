@@ -204,6 +204,23 @@ def assert_readonly(outcome, driver, subject_id="incident-f6"):
     assert "read_only" in outcome.permissions
     assert set(outcome.permissions) <= {"read_only", "human_control"}
     assert set(outcome.actions) <= READONLY_ACTIONS
+    # Tightened frozen contract: a permitted but missing/truncated audit
+    # is not evidence that the handling, queries or persistence happened.
+    handling = sum(
+        row["action"] == "register_remediation" for row in outcome.handling_audit
+    )
+    assert handling > 0
+    assert outcome.actions.count("record_handling") == handling
+    assert outcome.actions.count("persist_observation") == len(outcome.recovery_samples)
+    emitted = driver.emitted_queries_for_samples(outcome.recovery_samples)
+    assert outcome.actions.count("read_only_query") == emitted
+    if outcome.recovery_samples:
+        assert emitted > 0
+    assert outcome.actions.count("advance_incident_lifecycle") >= 1
+    if outcome.human_interaction == "handoff":
+        assert outcome.actions.count("human_handoff") >= 1
+    if outcome.recorded_lifecycle in {"resolved", "open"}:
+        assert outcome.actions.count("advance_incident_lifecycle") >= 2
 
 
 def assert_signal_basis(row, original, driver):

@@ -67,7 +67,7 @@ F6 第 6 步真实环境、持久化原子边界与角色隔离验证留在原 M
 
 ## 接线（2026-10-08，main 280e550 改接）
 
-- 状态：F6五步41个外部场景全部pass，无skip；纯领域42pass，持久授权2xfail，原夹具11pass，驱动检查21pass。F6仍未全部合同/真实生产验收完成。工作区`production-ops-agent-f6-wiring`、分支`test/f6-acceptance-wiring`；lead负责提交和停55651，本轮只改测试/文档，未改产品、迁移、profile、原M1-02任务、ROADMAP或passes。
+- 状态：F6五步41个外部场景全部pass，无skip；纯领域42pass，持久授权2xfail，原夹具11pass，驱动检查30pass。F6仍未全部合同/真实生产验收完成。工作区`production-ops-agent-f6-wiring`、分支`test/f6-acceptance-wiring`；lead负责提交和停55651，本轮只改测试/文档，未改产品、迁移、profile、原M1-02任务、ROADMAP或passes。
 - 产品入口：真实登记处置→受限Observer领取→产品PrometheusReadOnlySource（测试opener）查询→原子提交→incident_records→recovery_outcome(RecoveryRecords)。判定/原因/交接/健康窗/actions由产品给出；permissions从Observer自己的table_privileges实测，不拼装或过滤。target只取产品会话不可变绑定。映射表见[测试说明](../testing/f6-acceptance-tests.md)。
 - 合同变更（用户2026-10-08）：四身份字段分别异身份再登记同一目标必须TARGET_MISMATCH拒绝，完整快照不变；现有会话正常采样只能落在原绑定目标，遥测元数据不能改目标。revision登记产生新会话/控制与观察版本，旧会话撤销，已领取旧结果只history_only且不推进新会话。原5个xfail与不存在的caller-target提交断言移除，逐条旧→新断言与理由见测试说明；#138已关闭。
 - 重放：去掉第5步5个skip。新ObservationStore以incident_records单快照按主体/会话取回全部持久输入；产品replay_history和recovery_outcome给出结果，信号字节映射同样取捕获快照，不读原始outcome或外部遥测。重放前后完整业务快照相等；篡改判定得到unknown+完整性码及unverified（recorded_lifecycle仍为已存值）。模型/遥测边界计数均为0。
@@ -78,5 +78,8 @@ F6 第 6 步真实环境、持久化原子边界与角色隔离验证留在原 M
 - 剩余2xfail：revoke/expire在所有状态、授权、水位、预算、历史/证据、只读断言通过后，产品sample_jobs集合从空变为原已领取旧job。投影仍缺已结束且无样本任务身份（acceptance_recovery.py sample_jobs、revocation.py:53），不能推定安排了新任务。第1/2/3/4/5步分别22/6/6/2/5pass，0xfail/skip；合同42pass/2xfail。
 - 独立审查：全新上下文Agent复核产品入口、TEMP、不可信payload目标、合同变更及时间准备，无新增合同/正确性缺口；改接阶段独立PG复跑105pass/2xfail（8.27秒）。静态审查与运行证据分别记录。
 - 复验P2（137-recheck2-final.md）已处置：别名转换前核验顶层/样本/会话/授权主体UUID；revision必须存在且与对应持久会话绑定一致，内容SHA-256与持久值及规范化revision一致；未知版本不回退当前profile，顶层profile缺失也不得清空样本。新增10类投影/记录篡改检查直接AssertionError、无xfail；独立复验21个驱动检查通过，原缺失profile复现现在直接失败。测试说明raises已统一为实际ContractInterfaceConflict；m0-postgres作业增加驱动检查入口，确保新增PG guard不会在默认非PG检查中仅skip。
-- 本地PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **115 passed、2 xfailed、0 skipped**（9.10秒、退出0），日志`tmp/f6-binding-guard-pg-final.txt`。
-- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、483 skipped、2个既有架构债xfailed**（73.55秒、退出0），锁/Ruff/mypy全过，日志`tmp/f6-binding-guard-check-final.txt`；默认非PG。另Ruff与git diff --check通过。无提交/push/PR，未initdb/停PG/操作其它端口。
+- 最后P1（PRRT_kwDOUSm_486qdOfc）：选择事故/控制快照按所选会话时间边界裁剪，保留之前会话以维持产品登记/action关联；截止所选结束记录时间（无结束则最后采样/授权审计时间），移除后续登记/控制，生命周期取结束后的历史值或授权观察阶段，历史mode未知则None。新增第一会话观察→第二会话resolved→重放第一会话检查，1次登记/2次持久化/36次查询、观察中生命周期，不能混入第二次登记与当前resolved。仍使用产品重放和投影，无业务状态写入。
+- 最后P1（PRRT_kwDOUSm_486qdOfm）：动作验收仅收紧，必需登记/查询/持久化/生命周期转换与交接动作；登记次数核对审计、持久化次数核对提交样本数、查询次数核对测试桩按真实receipt.sample_id关联的实际发出次数。新增8种空/缺/截断audit拒绝检查，范围规则及数量在测试说明写明。
+- 最后两P1全新上下文审查者独立复验124pass/2xfail（9.62秒），无未处理正确性缺口；两项既有任务身份投影限制保留。
+- 本地PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **124 passed、2 xfailed、0 skipped**（9.66秒、退出0），日志`tmp/f6-final-p1-pg.txt`。
+- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、492 skipped、2个既有架构债xfailed**（72.18秒、退出0），锁/Ruff/mypy全过，日志`tmp/f6-final-p1-check.txt`；默认非PG。另Ruff与git diff --check通过。无提交/push/PR，未initdb/停PG/操作其它端口。

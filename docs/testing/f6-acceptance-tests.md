@@ -11,7 +11,7 @@
 
 [外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例全部启用 PG opt-in：
 第 1 步22、第 2 步6、第 3 步6、第 4 步2、第 5 步5，**41 passed、0 xfailed、0 skipped**。
-纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查21 passed（权限实测1例及新增10项绑定负向检查需PG）。
+纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查30 passed（权限实测1例、10项绑定负向检查及本轮9项重放/动作检查需PG）。
 
 - 第1步：持续窗口、四个信号阈值、陈旧/时间缺口/处置前数据、同目标双事故隔离、退化重置与重新累计；目标四身份与revision共5例按下述批准合同改写。
 - 第2步：零/低流量、期限前后、先健康后撤流量；独立次数预算（4次、240秒，早于600秒期限）通过。
@@ -65,6 +65,11 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 | revision旧提交前后所有job集合必须完全相等 | 旧无样本job仅在历史落库后重新可见；最新活动任务槽不变，完整集合只允许新增原已领取旧job，不得新增其他逻辑任务；与下面已知投影限制区分 |
 | 旧身份历史判定、健康窗0、无恢复确认等 | 拒绝登记阶段保留无推进；正常采样阶段以有效会话判断。revision旧结果仍不推进健康窗或预算、不确认恢复；主体/会话绑定、序号、窗口、原始证据、只读边界继续检查 |
 
+## 最后两条 P1（PR #137）
+
+- **PRRT_kwDOUSm_486qdOfc：选择按时间边界裁剪的事故级重放。** 新存储快照选中会话后，仅保留截至该会话的 sessions 前缀（保持每次登记与对应会话的产品关联），控制行截止该会话最后结束记录的 recorded_at；尚未结束则截止最后采样 submitted_at，没有采样则截止授权审计 created_at。排除之后的新登记/控制行。事故生命周期复制所选会话结束记录 lifecycle_after；无结束记录按登记授权的 observing_recovery 合同值；代际/目标引用取范围内记录，历史 mode 无持久值则为None，不沿用当前模式。再交给产品 recovery_outcome，驱动不重新判定。新增真实PG检查：第一会话2样本仍观察，第二会话3样本resolved后重放第一会话，必须仍为observing_recovery，仅1次登记、2次持久化、36次查询，不携带第二次登记或当前resolved。重放前后当前业务快照仍相等。
+- **PRRT_kwDOUSm_486qdOfm：冻结动作合同仅收紧。** 保留 actions ⊆ READONLY_ACTIONS，同时要求 record_handling 次数等于范围内登记审计且大于0，persist_observation 次数等于已提交样本数，read_only_query 次数等于测试桩独立见证的实际发出查询数；有采样必须有查询，生命周期变化必须有 advance_incident_lifecycle，交接必须有 human_handoff。查询见证由真实采样调用前后桩差量关联到实际receipt.sample_id，重放较早会话按其样本范围核对，不从产品动作自报计数。新增8类空/缺/截断动作审计负向检查，无删弱其他断言。
+
 ## 剩余 xfail 与验证边界
 
 仅两个持久合同（revoke/expire）strict xfail、raises=ContractInterfaceConflict：产品 `sample_jobs` 仍从活动槽与样本历史投影，
@@ -107,10 +112,11 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 ## 执行证据（main 280e550 改接）
 
-- `137-recheck2-final.md` P2 已处置：映射先核主体 UUID、每个 revision 的存在/持久绑定及内容 SHA，一律不修正错绑。新增10类实际产品投影篡改负向检查（主体/subject_id、未知revision、已存在但属于另一会话的revision、持久digest、投影content、顶层profile缺失），全部直接AssertionError，不带xfail。独立复验驱动检查21 passed，并确认原缺失profile复现现直接报错、不会清空样本。
-- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **115 passed、2 xfailed、0 skipped**（9.10秒，退出0）。其中41产品外部、42领域、11原夹具、21驱动检查通过。
+- `137-recheck2-final.md` P2 已处置：映射先核主体 UUID、每个 revision 的存在/持久绑定及内容 SHA，一律不修正错绑。新增10类实际产品投影篡改负向检查（主体/subject_id、未知revision、已存在但属于另一会话的revision、持久digest、投影content、顶层profile缺失），全部直接AssertionError，不带xfail。该轮独立复验驱动检查21 passed，并确认原缺失profile复现现直接报错、不会清空样本。
+- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **124 passed、2 xfailed、0 skipped**（9.66秒，退出0）。其中41产品外部、42领域、11原夹具、30驱动检查通过。
 - 改接阶段全新上下文独立审查者曾同命令复跑 **105 passed、2 xfailed**（8.27秒），未发现新增合同/正确性缺口。
-- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、483 skipped、2个既有架构债xfailed**（73.55秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
+- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、492 skipped、2个既有架构债xfailed**（72.18秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
+- 最后两条P1独立复验：同一PG命令 **124 passed、2 xfailed**（9.62秒），较早会话隔离与8类动作审计负向检查通过，无未处理正确性缺口。
 - #115①持久快照取回与②重放不写业务状态现已在5个产品重放场景实际验证；③遥测边界集合、④撤销/到期持久提交、⑤次数先于期限耗尽已运行，④仅完整任务身份清单仍为上述2个xfail。
 - 4条机器人线程：结果拼装改为产品投影；权限硬编码改为实际grants/TEMP准备；payload目标改为产品绑定；原5个目标xfail随批准合同改写移除。保留2个任务身份xfail的RuntimeError回归继续覆盖（实际7个身份/授权场景全为普通RuntimeError failure，不被xfail吞掉）。
 - 未改产品/迁移/profile或passes，未initdb/停PG/提交/push/PR；PG仍由lead管理，费用0。

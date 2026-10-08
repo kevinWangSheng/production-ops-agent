@@ -21,6 +21,7 @@ class RecoveryBoundaries:
         self.model_calls = 0
         self.replaying = False
         self.telemetry_calls = []
+        self.sample_query_counts = {}
         self.telemetry_windows = set()
 
     @property
@@ -117,6 +118,13 @@ class GuardedRecoveryDriver:
                 expected
             )
         return outcome
+
+    def emitted_queries_for_samples(self, samples):
+        counts = self.boundaries.sample_query_counts
+        assert all(row["sample_id"] in counts for row in samples), (
+            "sample lacks harness query witness"
+        )
+        return sum(counts[row["sample_id"]] for row in samples)
 
     def run(self, scenario, **stimuli):
         return self._dispatch(self.runtime.run, scenario, stimuli)
