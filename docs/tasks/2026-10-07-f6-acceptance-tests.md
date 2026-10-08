@@ -83,3 +83,6 @@ F6 第 6 步真实环境、持久化原子边界与角色隔离验证留在原 M
 - 最后两P1全新上下文审查者独立复验124pass/2xfail（9.62秒），无未处理正确性缺口；两项既有任务身份投影限制保留。
 - 本地PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **124 passed、2 xfailed、0 skipped**（9.66秒、退出0），日志`tmp/f6-final-p1-pg.txt`。
 - `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、492 skipped、2个既有架构债xfailed**（72.18秒、退出0），锁/Ruff/mypy全过，日志`tmp/f6-final-p1-check.txt`；默认非PG。另Ruff与git diff --check通过。无提交/push/PR，未initdb/停PG/操作其它端口。
+
+- #145 收紧（PR #155，2026-10-08）：驱动逐样本绑定持久会话，生命周期/交接动作精确计数；测试作者 Codex，独立审查另一 Codex 会话。PG 套件 134 passed、3 xfailed。
+- #154 条件 xfail：`test_non_handoff_result_after_prior_handoff_has_no_handoff_action`（先交接后恢复）全历史 actions 含 1 次真实交接，与「非交接结果 human_handoff 为 0」冲突；仅当去掉 human_handoff 后其余断言全过才 xfail，其它失败照常红。用户 2026-10-08 决定：actions 为完整审计，#145 第 2 条限定为最新会话/当前范围，该场景期望 human_handoff=1；落地另开 PR（`test/f6-154-handoff-scope`），不在 #155 改断言。

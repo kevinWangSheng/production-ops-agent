@@ -130,6 +130,6 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 - 红：先仅加入3项逐样本会话/revision错绑、7项动作精确性检查，PG `-k 'sample_session_or_its_profile or surplus_handoff_or_inexact'` 得 **8 failed、2 passed、30 deselected**（2.18秒）。三种错绑、两种虚假交接和三种重复生命周期动作均未被旧断言拒绝；终态少一次生命周期动作已被拒绝。
 - 收紧后上述10项与原套件共 **134 passed、2 xfailed**（12.18秒）。追加独立审查指出的“先交接再恢复”可达场景，保留真实产品失败；两会话观察→恢复与较早会话重放均核对精确生命周期动作次数。
-- 最终PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55632 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **134 passed、1 failed、2 xfailed、0 skipped**（14.32秒，退出1）。失败断言与实际/期望值见上方。
+- 最终PG（收窄 xfail 并合并 main 后的 HEAD，端口 55632）：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55632 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **134 passed、3 xfailed**（11.13秒；3 个 xfail = 2 个持久合同 + #154 条件 xfail）。此前未收窄时曾为 1 failed，现已由运行期条件 xfail 取代。
 - 最终 `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、503 skipped、2个既有架构债xfailed、0 failed**（74.13秒，退出0），锁/Ruff/mypy通过；默认非PG，503个skip包含本次新增PG检查，不能替代上述产品失败证据。`git diff --check`通过；仅改测试及本文档，无提交，无产品修改。
 - 全新上下文独立审查未发现违反用户 #145 冻结要求的测试缺口；指出现行公开最新会话交接/全历史动作合同冲突，作者按要求运行连续场景并保留失败。静态审查不代替PG证据。
