@@ -272,12 +272,11 @@ class MemoryIncidentStore:
         # Mirror DurableStore.control: a note on an overdue Run starts a
         # fresh Run (user decision 2026-09-25) instead of re-queueing it.
         overdue = run["state"] in _CONTROL_OPEN and run["deadline"] <= self.now()
-        renew = action in {"follow_up", "correct"} and overdue
+        renew = action in {"follow_up", "correct"} and overdue and not human_owned
         # Mirror DurableStore.control: resume carries no input to continue an
-        # overdue Run with, so it is refused rather than re-queued.
-        if action == "resume" and overdue:
-            raise PersistenceError("ILLEGAL_TRANSITION")
-        if human_owned and (action == "resume" or renew):
+        # overdue Run with, so it is refused rather than re-queued; under human
+        # ownership resume lifts the pause only and touches no Run.
+        if action == "resume" and overdue and not human_owned:
             raise PersistenceError("ILLEGAL_TRANSITION")
         if human_owned and action in {"follow_up", "correct"} and payload is None:
             raise PersistenceError("ILLEGAL_TRANSITION")
@@ -316,10 +315,12 @@ class MemoryIncidentStore:
         target, allowed = transitions[action]
         if keep_paused:
             target, allowed = "paused", {"running", "waiting_human"}
-        if human_owned and action in {"follow_up", "correct"}:
-            # Recorded only: the Run stays with the human, the mirror unchanged.
+        if human_owned and action in {"follow_up", "correct", "pause", "resume"}:
+            # The Run stays with the human; notes change no mirror, pause and
+            # resume change only the mirror.
             target, allowed = None, set()
-            row["state"] = original_state
+            if action in {"follow_up", "correct"}:
+                row["state"] = original_state
         if renew:
             target, allowed = "cancelled", transitions["cancel"][1]
         for candidate in self.runs.values():

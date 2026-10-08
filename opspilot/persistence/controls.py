@@ -282,15 +282,16 @@ class _ControlOps(_StoreBase):
             overdue = run["run_state"] in _CONTROL_OPEN_RUN_STATES and run[
                 "deadline"
             ] <= self._db_now(conn)
-            renew = action in {"follow_up", "correct"} and overdue
-            # human_owned（C3 §10）：不恢复 Agent 自动调查——resume 与续开（会开出
-            # 新 Run）都拒绝；带内容的追问/纠正只记录为输入，Run 留在人手里。
-            if human_owned and (action == "resume" or renew):
-                raise PersistenceError("ILLEGAL_TRANSITION")
+            # human_owned（C3 §10）：不恢复 Agent 自动调查——不自动续开（过期的
+            # Run 也不换新 Run），带内容的追问/纠正只记录为输入、照常审计与推进
+            # 代际，Run 留在人手里；resume 只解除主体暂停（领域 apply_control 的
+            # resume 不改 mode），同样不碰 Run（独立审查 PR #123 第 1、2 条）。
+            renew = action in {"follow_up", "correct"} and overdue and not human_owned
             # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
             # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
             # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
-            if action == "resume" and overdue:
+            # human_owned 下 resume 不排队任何 Run，所以不受此限。
+            if action == "resume" and overdue and not human_owned:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             if (
                 row["state"] in {"cancelled", "completed"}
@@ -338,6 +339,10 @@ class _ControlOps(_StoreBase):
             if human_owned and action in {"follow_up", "correct"}:
                 # A note under human ownership changes no control mirror.
                 state = row["state"]
+            if human_owned and action == "resume":
+                # Lifts the pause only (C3 §4 "显式恢复"); the Run stays with
+                # the human and the mode stays human_owned.
+                state = "running"
             conn.execute(
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
@@ -355,6 +360,11 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
+            elif human_owned and action in {"pause", "resume", "follow_up", "correct"}:
+                # Under human ownership the Run is the human's (waiting_human):
+                # pausing, resuming and notes change the incident's control
+                # mirror and inputs, never the Run.
+                pass
             elif renew:
                 # 与 new_run 同一套写入：旧 Run 关闭、新行沿用预算上限与版本、
                 # 事故指向新 Run；只是代际推进一步而不是两步，审计行仍是这条追问。
