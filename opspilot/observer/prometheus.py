@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.client import HTTPConnection, HTTPResponse, HTTPSConnection
+from http.client import HTTPConnection, HTTPException, HTTPResponse, HTTPSConnection
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -171,7 +171,11 @@ class PrometheusReadOnlySource:
             )
         except _Overloaded:
             return InstantResult(expr, "failed", None, b"", None, "IN_FLIGHT_LIMIT")
-        except (urllib.error.URLError, OSError):
+        except (urllib.error.URLError, OSError, HTTPException):
+            # ``HTTPException`` (``BadStatusLine`` on a non-HTTP answer,
+            # ``IncompleteRead``, ...) is not an ``OSError``: the same
+            # transport failure, classified like the investigation client
+            # does (issue #126), never a crash out of the sampler.
             return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
         if http_status != 200:
             return InstantResult(

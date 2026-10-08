@@ -28,9 +28,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from opspilot.observer import PROFILE_DIRECTORY, load_health_profile  # noqa: E402
-from scripts.kind_lab import lab_authorization  # noqa: E402
-
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+from scripts.kind_lab import OPENER, lab_authorization  # noqa: E402
 
 
 def get(base: str, path: str, params: dict[str, object]) -> dict:

@@ -77,7 +77,18 @@ JAEGER = os.environ.get(
     "OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui"
 ).rstrip("/")
 FRONTEND = "http://127.0.0.1:18080/"
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: object, **kwargs: object) -> None:
+        return None
+
+
+# The opener every engineer script uses for the lab Prometheus: no proxy and
+# no redirects. urllib would otherwise follow a 30x and copy the lab
+# ``Authorization`` header onto the new request, another origin included
+# (issue #126); a redirect surfaces as its 30x status instead.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 FLAG = "paymentFailure"
 FLAG_FILE = "demo.flagd.json"

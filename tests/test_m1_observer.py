@@ -944,6 +944,35 @@ def test_a_prompt_error_status_is_reported_with_its_body():
     assert elapsed < 1
 
 
+def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
+    """Issue #126: a peer that answers with something other than HTTP raises
+    ``http.client.BadStatusLine`` -- an ``HTTPException``, not an ``OSError``
+    -- and must become ``failed``/``UNREACHABLE`` at the request layer, the
+    same classification the investigation client gives it."""
+    from http.client import BadStatusLine, IncompleteRead
+    from http.server import BaseHTTPRequestHandler
+
+    class NotHttp(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.wfile.write(b"SMTP 220 not an http status line\r\n\r\n")
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(NotHttp), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        None,
+        "UNREACHABLE",
+    )
+    assert elapsed < 1
+    # the injected-opener path classifies the same protocol errors alike
+    for error in (BadStatusLine("garbage"), IncompleteRead(b"partial")):
+        src, _ = source(error=error)
+        result = src.instant("up", at=NOW, timeout_seconds=1)
+        assert (result.status, result.detail) == ("failed", "UNREACHABLE"), error
+
+
 def _http_workers() -> int:
     return sum(1 for t in threading.enumerate() if t.name == "opspilot-observer-http")
 

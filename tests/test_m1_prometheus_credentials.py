@@ -432,6 +432,67 @@ def test_otel_demo_observe_and_collect_baseline_authenticate_as_lab(
         server.shutdown()
 
 
+def test_engineer_scripts_never_follow_a_redirect_with_the_lab_credential(
+    monkeypatch, tmp_path
+):
+    """Issue #126: a default urllib opener follows 30x and copies the
+    ``Authorization`` header onto the redirected request, including to
+    another origin. Every engineer-script request to the lab Prometheus
+    (``kind_lab.get_json``, ``otel_demo_observe.get``,
+    ``collect_baseline.get``) stops at the redirect: the other origin never
+    sees the credential and the caller gets the 30x as an explicit error."""
+    import importlib.util
+    import urllib.error
+
+    from scripts import otel_demo_observe
+
+    spec = importlib.util.spec_from_file_location(
+        "collect_baseline_redirect",
+        Path(kind_lab.ROOT) / "docs/evidence/m1-02-health-profile/collect_baseline.py",
+    )
+    assert spec is not None and spec.loader is not None
+    collect_baseline = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(collect_baseline)
+
+    # the other origin: records whatever reaches it and answers everything
+    other, other_seen = _engineer_stub()
+    other_url = f"http://127.0.0.1:{other.server_port}"
+
+    class Redirect(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.send_response(302)
+            self.send_header("Location", other_url + self.path)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            return
+
+    origin = HTTPServer(("127.0.0.1", 0), Redirect)
+    threading.Thread(target=origin.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{origin.server_port}"
+        monkeypatch.setattr(otel_demo_observe, "PROM", url)
+        monkeypatch.setattr(kind_lab, "AUTH_FILE", tmp_path / "missing.json")
+        monkeypatch.setenv("OPSPILOT_LAB_PROMETHEUS_USERNAME", "lab")
+        monkeypatch.setenv("OPSPILOT_LAB_PROMETHEUS_PASSWORD", "lab-pw")
+
+        status, payload = kind_lab.get_json(
+            f"{url}/api/v1/query?query=up", authorization=kind_lab.lab_authorization()
+        )
+        assert (status, payload) == (302, None)
+        with pytest.raises(urllib.error.HTTPError) as stopped:
+            otel_demo_observe.prom_instant("up", NOW)
+        assert stopped.value.code == 302
+        with pytest.raises(urllib.error.HTTPError) as stopped:
+            collect_baseline.get(url, "/api/v1/query", {"query": "up"})
+        assert stopped.value.code == 302
+        assert other_seen == []
+    finally:
+        origin.shutdown()
+        other.shutdown()
+
+
 def test_htpasswd_never_sees_the_password_on_argv_or_in_errors(monkeypatch):
     """PR #119 recheck: the password goes to htpasswd on stdin; a timeout or
     failure is reported without it (TimeoutExpired quotes the command)."""
