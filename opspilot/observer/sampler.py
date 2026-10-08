@@ -156,6 +156,14 @@ def take_sample(
             ("freshness", signal.freshness_query),
         ):
             left = budget_end - time.monotonic()
+            if not exhausted and left >= 1.0:
+                if not check(lease):
+                    interrupted = True
+                    break
+                # the scope check is a store round trip that can take
+                # seconds: size the request from what is left *after* it
+                # (issue #125, PR #119 P2)
+                left = budget_end - time.monotonic()
             if exhausted or left < 1.0:
                 # no time for another bounded request inside the lease: the
                 # query is recorded as a timeout that was never sent, and no
@@ -172,9 +180,6 @@ def take_sample(
                     body_complete=False,
                 )
                 continue
-            if not check(lease):
-                interrupted = True
-                break
             results[kind] = source.instant(
                 expr, at=window_end, timeout_seconds=min(timeout, int(left))
             )

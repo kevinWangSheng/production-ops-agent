@@ -1388,3 +1388,64 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
         "submit",
         "claim",
     ]
+
+
+def _slow_scope_setup(monkeypatch, scope_cost):
+    """A controllable monotonic clock; ``scope_cost(calls_so_far)`` s per scope check."""
+    from opspilot.observer import sampler
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(sampler.time, "monotonic", lambda: clock["now"])
+
+    class Store(FakeStore):
+        def lease_scope_current(self, lease):
+            clock["now"] += scope_cost(self.scope_calls)
+            return super().lease_scope_current(lease)
+
+    class Source:
+        def __init__(self):
+            self.timeouts: list[int] = []
+
+        def instant(self, expr, *, at, timeout_seconds):
+            self.timeouts.append(timeout_seconds)
+            clock["now"] += 1.0
+            return ok(1.0)
+
+    short = lease().__class__(
+        **{**lease().__dict__, "lease_until": NOW + timedelta(seconds=25)}
+    )
+    return clock, Store(), Source(), short
+
+
+def test_the_request_timeout_is_computed_after_the_scope_check(monkeypatch):
+    """Issue #125 (PR #119 P2): a slow scope check must not leave the request
+    a timeout sized before the check -- it could run past the budget end and
+    eat the submission margin."""
+    # budget = 25 - 5 = 20 s; the first scope check takes 17 s -> 3 s left
+    clock, store, source, short = _slow_scope_setup(
+        monkeypatch, lambda n: 17.0 if n == 0 else 0.0
+    )
+    take_sample(short, PROFILE, source, store)
+
+    assert source.timeouts[0] == 3  # not min(10, 20)
+    assert clock["now"] - 1000.0 <= 20.0 + 1.0  # never past the budget end
+
+
+def test_a_scope_check_that_spends_the_budget_sends_no_request(monkeypatch):
+    clock, store, source, short = _slow_scope_setup(
+        monkeypatch, lambda n: 19.5 if n == 0 else 0.0
+    )
+    taken = take_sample(short, PROFILE, source, store)
+
+    assert source.timeouts == [] and taken.requests_issued == 0
+    assert taken.budget_exhausted and not taken.scope_interrupted
+    # the one check that spent the budget is the only one: no more store trips
+    assert store.scope_calls == 1
+    ((_, sample, readings),) = store.submitted
+    assert (sample.outcome, sample.required_signals_present) == ("timeout", False)
+    details = [
+        json.loads(r.raw)[k]["detail"]
+        for r in readings
+        for k in ("query", "coverage", "freshness")
+    ]
+    assert set(details) == {"LEASE_BUDGET"}
