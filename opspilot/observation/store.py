@@ -230,6 +230,9 @@ class ReplayedSample:
     # ``None`` when the fold ran on the stored outcome alone
     stored_outcome: tuple[str, bool] | None = None
     replayed_outcome: tuple[str, bool] | None = None
+    # the row says the sample was within the deadline but its window ends
+    # at or after the session's frozen ``deadline_at``
+    deadline_mismatch: bool = False
 
     @property
     def matches(self) -> bool:
@@ -239,6 +242,7 @@ class ReplayedSample:
         return (
             self.stored == self.replayed
             and self.stored_outcome == self.replayed_outcome
+            and not self.deadline_mismatch
             and not self.raw_mismatches
             and (
                 not self.signal_mismatches or self.stored[1] == "readings_inconsistent"
@@ -275,6 +279,15 @@ class ReplayReport:
     adopted_sequence: int = 0
     adopted_window_end: datetime | None = None
     adopted_count: int = 0
+    # how many ending records the session has (a session ends once), the
+    # reason the replayed fold ended it with (None: the fold did not end
+    # it), the frozen budget and deadline, and when the last record was
+    # written -- every ending must be backed by the fold or by the deadline
+    recorded_endings_count: int = 0
+    replayed_ended_reason: str | None = None
+    max_samples: int | None = None
+    deadline_at: datetime | None = None
+    recorded_ending_at: datetime | None = None
 
     @property
     def healthy_window_seconds(self) -> int:
@@ -298,11 +311,39 @@ class ReplayReport:
         session -- which points at exactly that sample.
         """
         if self.stored_session_state == "authorized":
-            return self.stored_ended_reason is None and self.recorded_ending is None
+            return (
+                self.stored_ended_reason is None
+                and self.recorded_ending is None
+                and self.recorded_endings_count == 0
+            )
         if self.recorded_ending is None or self.stored_ended_reason is None:
+            return False
+        if self.recorded_endings_count != 1:
+            # a session ends exactly once; a second record (e.g. a
+            # revocation slipped in before the confirmation) is forged
             return False
         reason, transition, sample_id, before, after = self.recorded_ending
         if reason != self.stored_ended_reason:
+            return False
+        if (
+            self.replayed_ended_reason is not None
+            and reason != self.replayed_ended_reason
+        ):
+            return False
+        if reason == "max_samples_exhausted" and (
+            self.max_samples is None or self.adopted_count < self.max_samples
+        ):
+            # a budget ending is backed only by the replayed adopted count
+            return False
+        if (
+            reason == "deadline_expired"
+            and self.replayed_ended_reason is None
+            and self.deadline_at is not None
+            and self.recorded_ending_at is not None
+            and self.recorded_ending_at < self.deadline_at
+        ):
+            # a deadline ending without a sample (the sweep) is written
+            # after the frozen deadline, never before it
             return False
         implied_state = {
             "recovery_confirmed": "completed",
@@ -747,6 +788,8 @@ def fold_history(
     healthy_until: datetime | None = None
     expected_lifecycle: str | None = None
     ending_sample_id: UUID | None = None
+    replayed_ended_reason: str | None = None
+    deadline = cast(datetime | None, row.get("deadline_at"))
     # No profile revision: nothing to check (such a session never confirms
     # health). A revision whose stored content cannot yield the required
     # signals fails every sample of the replay.
@@ -799,11 +842,21 @@ def fold_history(
             required_signals_present=present,
             ok_signals=ok_signals,
         )
+        # The deadline is recomputed from the frozen ``deadline_at`` and the
+        # window end rather than trusted from the row: a window ending at
+        # or after the deadline cannot have been within it (the row's flag
+        # was taken at submission, later still). The reverse -- a window
+        # before the deadline submitted after it -- is a legitimate
+        # ``deadline_expired`` and is kept.
+        within = bool(stored["within_deadline"])
+        deadline_mismatch = (
+            within and deadline is not None and stored["window_end"] >= deadline
+        )
         verdict = _judge(
             session,
             sample,
             subject_state=str(stored["subject_lifecycle"]),
-            within_deadline=bool(stored["within_deadline"]),
+            within_deadline=within and not deadline_mismatch,
             suspension_blocks=bool(stored["scope_suspended"]),
             lease_valid=bool(stored["lease_valid"]),
             stamps_match=bool(stored["lease_stamps_match"]),
@@ -863,8 +916,11 @@ def fold_history(
                 raw_mismatches=raw_mismatches,
                 stored_outcome=None if recomputed is None else stored_outcome,
                 replayed_outcome=recomputed,
+                deadline_mismatch=deadline_mismatch,
             )
         )
+        if verdict.ended_reason is not None and replayed_ended_reason is None:
+            replayed_ended_reason = verdict.ended_reason
     # The record to compare with: the sample that ended the session (a
     # late duplicate filed as history afterwards says nothing new), else
     # the last sample.
@@ -880,6 +936,7 @@ def fold_history(
             recorded_lifecycle = INCIDENT_LIFECYCLE.fire(recorded_lifecycle, trigger)
     endings = history["endings"]
     recorded_ending = None
+    recorded_ending_at: datetime | None = None
     if endings:
         last_ending = endings[-1]
         recorded_ending = (
@@ -889,6 +946,7 @@ def fold_history(
             str(last_ending["lifecycle_before"]),
             str(last_ending["lifecycle_after"]),
         )
+        recorded_ending_at = cast(datetime | None, last_ending.get("recorded_at"))
     return ReplayReport(
         session_id=session_id,
         samples=tuple(replayed),
@@ -904,6 +962,11 @@ def fold_history(
         adopted_sequence=adopted_sequence,
         adopted_window_end=adopted_window_end,
         adopted_count=adopted_count,
+        recorded_endings_count=len(endings),
+        replayed_ended_reason=replayed_ended_reason,
+        max_samples=int(row["max_samples"]) if row.get("max_samples") else None,
+        deadline_at=deadline,
+        recorded_ending_at=recorded_ending_at,
     )
 
 

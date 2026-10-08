@@ -23,6 +23,7 @@ import pytest
 
 from opspilot.observer.replay import (
     INTEGRITY_MISMATCH,
+    PROFILE_SENTINEL,
     SessionReplay,
     main,
     replay,
@@ -36,6 +37,7 @@ from tests.m1_02_replay_support import (
     rehash,
     stored_history,
     take,
+    take_unavailable,
     with_sample_time,
 )
 
@@ -428,3 +430,134 @@ def test_a_malformed_reading_row_is_an_integrity_mismatch_not_a_crash():
     (document,) = json.loads(out.getvalue())
     assert document["recovery_verdict"] == "unknown" and not document["consistent"]
     assert any(c.startswith("REPLAY_FAILED") for c in document["integrity"])
+
+
+# --- Codex recheck of PR #139 (4 x P2)
+
+
+@pytest.mark.parametrize("kind", ["coverage", "freshness"])
+def test_coverage_and_freshness_queries_must_be_the_frozen_profiles(kind):
+    """Recheck P2-1: the point-count and freshness queries carry the
+    minimum-samples and staleness judgement; a bundle whose expression is
+    another target's is no basis even when its hash is rewritten."""
+    history = healthy_history()
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    bundle[kind]["expr"] = "some_other_target_query"
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert f"READING_BASIS_MISMATCH:rate:bundle_{kind}" in result.samples[0].integrity
+
+
+def test_the_frozen_deadline_is_recomputed_not_trusted():
+    """Recheck P2-2: ``within_deadline`` is recomputed from the session's
+    frozen ``deadline_at`` and the sample window end; a stored flag that
+    contradicts it is an integrity mismatch and nothing is confirmed."""
+    history = healthy_history()
+    history["session"]["deadline_at"] = NOW - timedelta(seconds=1)
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "DEADLINE_MISMATCH" in result.integrity
+    assert "DEADLINE_MISMATCH" in result.samples[0].integrity
+    assert result.recovery_confirmed is False
+
+
+def test_every_ending_must_be_backed_by_the_replayed_fold():
+    """Recheck P2-3: a budget ending needs the replayed adopted count to
+    reach the frozen budget; a second ending record is one too many."""
+    forged = healthy_history(count=1)
+    session = forged["session"]
+    session["state"], session["ended_reason"] = "expired", "max_samples_exhausted"
+    forged["endings"] = [
+        {
+            "ending_id": uuid4(),
+            "session_id": session["session_id"],
+            "incident_id": session["incident_id"],
+            "ended_reason": "max_samples_exhausted",
+            "transition": "observation_ended_unconfirmed",
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "open",
+            "recorded_at": NOW + timedelta(seconds=5),
+        }
+    ]
+    forged["incident_lifecycle"] = "open"
+    result = replay_history(forged)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "ENDING_MISMATCH" in result.integrity
+
+    extra = healthy_history()
+    extra["endings"].insert(
+        0,
+        {
+            "ending_id": uuid4(),
+            "session_id": extra["session"]["session_id"],
+            "incident_id": extra["session"]["incident_id"],
+            "ended_reason": "authority_revoked",
+            "transition": None,
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "observing_recovery",
+            "recorded_at": NOW - timedelta(seconds=30),
+        },
+    )
+    result = replay_history(extra)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "ENDING_MISMATCH" in result.integrity
+
+
+def test_a_sample_filed_while_the_profile_was_unavailable_is_a_recorded_reason():
+    """Recheck P2-4: the Observer files a sample it could not judge (profile
+    row unreadable at the time) with one sentinel reading that records why;
+    the replay verifies that record and exempts the sample from the
+    coverage check -- a sample whose readings were simply deleted has no
+    such record and stays an integrity mismatch."""
+    session_id = uuid4()
+    first = take("healthy", sequence=1, window_end=NOW, session_id=session_id)
+    unavailable = take_unavailable(
+        sequence=2, window_end=NOW + timedelta(seconds=60), session_id=session_id
+    )
+    sample, readings = unavailable
+    assert sample.outcome == "failed" and len(readings) == 1
+    (sentinel,) = readings
+    assert sentinel.signal_name == PROFILE_SENTINEL and sentinel.status == "failed"
+    bundle = json.loads(sentinel.raw)
+    assert bundle["reading_error"] == "HEALTH_PROFILE_UNAVAILABLE"
+    assert bundle["error_type"] == "PersistenceError"
+    later = [
+        take(
+            "healthy",
+            sequence=3 + i,
+            window_end=NOW + timedelta(seconds=120 + 60 * i),
+            session_id=session_id,
+        )
+        for i in range(6)
+    ]
+    history = stored_history(
+        [first, unavailable, *later],
+        session_id=session_id,
+        authorized_at=NOW - timedelta(seconds=600),
+    )
+    result = replay_history(history)
+    assert result.consistent, result.integrity
+    assert result.samples[1].recompute_skipped == "HEALTH_PROFILE_UNAVAILABLE"
+    assert result.samples[1].integrity == ()
+    assert result.recovery_verdict == "healthy"
+    # without the record, the same empty sample is a damaged basis
+    history["samples"][1]["readings"] = []
+    result = replay_history(history)
+    assert "NO_READINGS" in result.samples[1].integrity
+    # a sentinel whose bundle does not verify is no record either
+    history = stored_history(
+        [first, unavailable, *later],
+        session_id=session_id,
+        authorized_at=NOW - timedelta(seconds=600),
+    )
+    row = history["samples"][1]["readings"][0]
+    row["raw"] = bytes(row["raw"]) + b" "
+    result = replay_history(history)
+    assert not result.consistent
+    assert "RAW_HASH_MISMATCH:health_profile" in result.samples[1].integrity

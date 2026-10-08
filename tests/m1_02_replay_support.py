@@ -24,7 +24,9 @@ from opspilot.domain.observation import HealthSample
 from opspilot.observation.store import SignalReading as StoredReading
 from opspilot.observation.store import profile_revision
 from opspilot.observer.health_profile import HealthProfile, canonical_content
+from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.sampler import take_sample
+from opspilot.persistence.base import PersistenceError
 from tests.test_m1_observer import (
     PROFILE,
     FakeSource,
@@ -307,3 +309,32 @@ def with_sample_time(reading: Mapping[str, Any], at: datetime) -> dict[str, Any]
     return rehash(
         reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
     )
+
+
+def take_unavailable(
+    *, sequence: int, window_end: datetime, session_id: UUID
+) -> tuple[HealthSample, list[StoredReading]]:
+    """The sample the Observer loop files when the profile row cannot be
+    read at sampling time (store raises): ``failed``, no query issued, one
+    sentinel reading recording the reason."""
+
+    class Store(FakeStore):
+        def health_profile(self, revision):
+            raise PersistenceError("STORAGE_UNAVAILABLE")
+
+        def sweep_expired_sessions(self, *, limit):
+            return []
+
+        def claim_due_samples(self, owner, *, limit, lease_seconds=120):
+            return []
+
+    store = Store(clock=[window_end, window_end + timedelta(seconds=1)])
+    sample_lease = replace(
+        lease(PROFILE.revision),
+        session_id=session_id,
+        sequence=sequence,
+        lease_until=window_end + timedelta(seconds=120),
+    )
+    ObserverLoop(store=store, source=FakeSource({})).sample(sample_lease)
+    ((_, sample, readings),) = store.submitted
+    return sample, readings

@@ -35,4 +35,14 @@
 3. 改读数 query / source / 窗口：读数行的 query 须等于冻结 profile 的 `signal.query`、source 等于 `profile.source`、窗口等于采样窗口，捆绑校验通过时其 `query.expr` 与窗口亦须一致，否则 `READING_BASIS_MISMATCH:<signal>:<field>`；信号不在 profile 内 → `UNKNOWN_SIGNAL:<signal>`。
 4. 畸形读数（如 `source="BAD SOURCE"`）：读数重建异常改为 `BASIS_UNPARSABLE:<ExcType>` 完整性不一致 + unknown；CLI 对每会话重放再兜底捕获异常输出 `REPLAY_FAILED:<ExcType>` 文档并退出 1；页面已有 `REPLAY_FAILED` 兜底。
 
-复验数字：`tests/test_m1_02_replay.py` 16 + `tests/test_m1_02_recovery_page.py` 5 passed；`tests/integration/test_m1_02_replay_postgres.py` 6 passed（新增用例在真实行上：改 query → `READING_BASIS_MISMATCH:error_ratio:query`；`healthy_since` 置 NULL → `WATERMARK_MISMATCH`；删一条读数并把 outcome 改为 no_data → `READING_MISSING:error_ratio`，三者 verdict 均 unknown）；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3157 passed / 463 skipped / 2 xfailed。
+### 复验第二轮（2026-10-08，同一审查者，4 条 P2，全部采纳；原文 `tmp/m1-02-review/139-recheck-final.md`）
+
+1. coverage / freshness 查询未绑定冻结 profile：捆绑里三条查询的 `expr` 都须等于 profile 对应字段（`READING_BASIS_MISMATCH:<signal>:bundle_coverage|bundle_freshness`）。
+2. 期限沿用已存 `within_deadline`：`fold_history` 按会话冻结 `deadline_at` 与采样窗尾重算（窗尾 ≥ 期限而行说在期限内 → `DEADLINE_MISMATCH`，折叠按不在期限内处理；窗尾在期限内而提交迟到仍是合法 `deadline_expired`）。
+3. ending 校验：恰好一条结束记录（多一条即不一致）；重算折叠若自己结束了会话，记录的原因须相同；`max_samples_exhausted` 须由重算已采纳次数 ≥ 冻结 `max_samples` 支撑；无采样的 `deadline_expired`（sweep）须记录在冻结期限之后。
+4. 上一轮误报：Observer 在线取不到 / 无法验证 profile 行时 `submit_without_readings` 现在写一条 `health_profile` 哨兵读数（status failed、query = revision、source `observer`、哈希捆绑记 `reading_error` = `HEALTH_PROFILE_UNAVAILABLE`（存储错误）/ `HEALTH_PROFILE_INVALID`（内容不验证或 revision 不符）、error_type、revision），用已有读数表列，无迁移；重放验证该记录（哈希、revision、唯一一行）后才豁免覆盖检查，`recompute_skipped` 报该原因；删掉它仍是 `NO_READINGS`。无 revision 的会话照旧不写读数（会话列即依据）。PG 测试：一次 poll 让 `store.health_profile` 抛 `PersistenceError` → `failed` + 哨兵，恢复后确认恢复，重放一致；删哨兵 → 不一致。
+   范围边界已写入 PR 正文与 development.md：拥有写权限者把原始数据、哈希、判定与会话一致改写无法被检出，不是本步目标（ADR-0003）。
+
+第二轮复验数字：`tests/test_m1_02_replay.py` 21 + `tests/test_m1_02_recovery_page.py` 5 + `tests/test_m1_observer.py` 47 + schema/合同 44 = 117 passed；`tests/integration/test_m1_02_replay_postgres.py` 7 passed；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3162 passed / 464 skipped / 2 xfailed。
+
+第一轮复验数字：`tests/test_m1_02_replay.py` 16 + `tests/test_m1_02_recovery_page.py` 5 passed；`tests/integration/test_m1_02_replay_postgres.py` 6 passed（新增用例在真实行上：改 query → `READING_BASIS_MISMATCH:error_ratio:query`；`healthy_since` 置 NULL → `WATERMARK_MISMATCH`；删一条读数并把 outcome 改为 no_data → `READING_MISSING:error_ratio`，三者 verdict 均 unknown）；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3157 passed / 463 skipped / 2 xfailed。

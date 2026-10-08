@@ -24,10 +24,12 @@ import pytest
 from opspilot.observation import ObservationStore
 from opspilot.observer.replay import (
     INTEGRITY_MISMATCH,
+    PROFILE_SENTINEL,
     main,
     replay_stored_session,
 )
 from opspilot.persistence import DurableStore
+from opspilot.persistence.base import PersistenceError
 from tests.integration.test_m1_02_observer_postgres import (  # noqa: F401 - fixtures
     SHIPPED,
     Telemetry,
@@ -284,3 +286,42 @@ def test_deleted_rows_and_rewritten_watermarks_are_integrity_mismatches(
     result = replay_stored_session(controller, session)
     assert not result.consistent and result.recovery_verdict == "unknown"
     assert "READING_MISSING:error_ratio" in result.samples[0].integrity
+
+
+def test_a_transient_profile_read_failure_is_filed_with_its_reason_and_replays(
+    loop: tuple, owner: DurableStore, controller: ObservationStore, monkeypatch
+) -> None:
+    """Codex recheck of PR #139, P2-4: one poll cannot read the profile row
+    (store error) and files ``failed`` with a sentinel reading; the next
+    poll confirms recovery; the replay accepts the recorded reason."""
+    observer_loop, state = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1, max_samples=3)
+    _backdate_authorization(owner, session)
+    original = observer_loop.store.health_profile
+
+    def unavailable(revision):
+        raise PersistenceError("STORAGE_UNAVAILABLE")
+
+    monkeypatch.setattr(observer_loop.store, "health_profile", unavailable)
+    (first,) = _run(loop, owner, session, 1)
+    assert first.accepted and not first.confirms_health
+    monkeypatch.setattr(observer_loop.store, "health_profile", original)
+    _due_now(owner, session)
+    (second,) = _run(loop, owner, session, 1)
+    assert second.transition == "recovery_confirmed"
+
+    result = replay_stored_session(controller, session)
+    assert result.consistent, result.integrity
+    assert result.recovery_verdict == "healthy"
+    assert result.samples[0].stored_outcome == "failed"
+    assert result.samples[0].recompute_skipped == "HEALTH_PROFILE_UNAVAILABLE"
+    (sentinel,) = result.samples[0].readings
+    assert sentinel.signal_name == PROFILE_SENTINEL and sentinel.raw_verified
+    with owner.transaction() as conn:
+        conn.execute(
+            "DELETE FROM opspilot_observation_signal_readings WHERE sample_id=%s",
+            (first.sample_id,),
+        )
+    result = replay_stored_session(controller, session)
+    assert not result.consistent and "NO_READINGS" in result.samples[0].integrity

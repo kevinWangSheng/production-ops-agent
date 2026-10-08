@@ -57,11 +57,18 @@ from opspilot.observer.health_profile import (
     SampleEvaluation,
     canonical_content,
 )
-from opspilot.observer.sampler import replay_sample
+from opspilot.observer.sampler import (
+    PROFILE_INVALID,
+    PROFILE_SENTINEL,
+    PROFILE_SENTINEL_SOURCE,
+    PROFILE_UNAVAILABLE,
+    replay_sample,
+)
 from opspilot.persistence.base import PersistenceError
 
 __all__ = [
     "INTEGRITY_MISMATCH",
+    "PROFILE_SENTINEL",
     "PROFILE_UNREADABLE",
     "ReplayedBasis",
     "ReplayedReading",
@@ -244,7 +251,10 @@ def _basis_codes(
     if verified:
         try:
             bundle = json.loads(bytes(row["raw"]))
-            expr = bundle["query"]["expr"]
+            exprs = {
+                kind: bundle[kind]["expr"]
+                for kind in ("query", "coverage", "freshness")
+            }
             window = (
                 datetime.fromisoformat(str(bundle["window_start"])),
                 datetime.fromisoformat(str(bundle["window_end"])),
@@ -253,11 +263,55 @@ def _basis_codes(
             # a bundle without these fields was filed as failed by the
             # Observer (construction failure); the rebuild says so
             return codes
-        if expr != signal.query:
-            codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_query")
+        # all three queries carry the verdict: the value, the point count
+        # (minimum samples) and the newest raw sample (freshness) -- each
+        # must be the frozen profile's (codex recheck of PR #139, P2-1)
+        for kind, frozen in (
+            ("query", signal.query),
+            ("coverage", signal.coverage_query),
+            ("freshness", signal.freshness_query),
+        ):
+            if exprs[kind] != frozen:
+                codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_{kind}")
         if window != sample_window:
             codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_window")
     return codes
+
+
+def _profile_unavailable_record(
+    rows: Sequence[Mapping[str, Any]], revision: str
+) -> str | None:
+    """The reason recorded by the one sentinel reading of a sample the
+    Observer filed without a usable profile (``sampler.submit_without_readings``),
+    verified against its hash and bound to this session's revision; ``None``
+    when the rows are anything else."""
+    if len(rows) != 1:
+        return None
+    row = rows[0]
+    raw = row.get("raw")
+    if (
+        str(row.get("signal_name")) != PROFILE_SENTINEL
+        or str(row.get("source")) != PROFILE_SENTINEL_SOURCE
+        or str(row.get("status")) != "failed"
+        or raw is None
+        or hashlib.sha256(bytes(raw)).hexdigest() != row.get("raw_sha256")
+    ):
+        return None
+    try:
+        bundle = json.loads(bytes(raw))
+    except ValueError:
+        return None
+    if not isinstance(bundle, dict):
+        return None
+    reason = bundle.get("reading_error")
+    if reason not in (PROFILE_UNAVAILABLE, PROFILE_INVALID):
+        return None
+    if (
+        bundle.get("health_profile_revision") != revision
+        or row.get("query") != revision
+    ):
+        return None
+    return str(reason)
 
 
 def _basis_only(
@@ -390,19 +444,26 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
             # legitimately partial and is not held to this.
             adopted = str(stored.get("disposition")) == "adopted"
             present = {str(r["signal_name"]) for r in rows}
-            if adopted:
-                if not rows:
+            # The one exemption: the Observer could not use the profile row
+            # at sampling time and said so in a hashed sentinel reading
+            # (codex recheck of PR #139, P2-4).
+            recorded = _profile_unavailable_record(rows, str(revision))
+            if recorded is not None:
+                skipped = recorded
+                readings, _, more = _readings(None, rows, sample_window=window)
+                codes.extend(more)
+            elif not rows:
+                skipped = "NO_READINGS"
+                readings = ()
+                if adopted:
                     codes.append("NO_READINGS")
-                else:
+            else:
+                if adopted:
                     codes.extend(
                         f"READING_MISSING:{signal.name}"
                         for signal in profile.signals
                         if signal.name not in present
                     )
-            if not rows:
-                skipped = "NO_READINGS"
-                readings = ()
-            else:
                 readings, evaluation, more = _readings(
                     profile, rows, sample_window=window
                 )
@@ -433,6 +494,8 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         stored_samples, partial, report.samples, strict=True
     ):
         codes = list(item["codes"])
+        if decision.deadline_mismatch:
+            codes.append("DEADLINE_MISMATCH")
         if decision.stored != decision.replayed:
             codes.append("DECISION_MISMATCH")
         if decision.signal_mismatches and decision.stored[1] != "readings_inconsistent":
@@ -472,6 +535,8 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         integrity.append("SESSION_STATE_MISMATCH")
     if not report.lifecycle_consistent:
         integrity.append("LIFECYCLE_MISMATCH")
+    if any(item.deadline_mismatch for item in report.samples):
+        integrity.append("DEADLINE_MISMATCH")
     # The session row's watermarks are the fold's own output: a deleted
     # sample or a rewritten count/sequence/window end/streak start shows up
     # here (codex review of PR #139, P2-2).

@@ -64,6 +64,10 @@ from opspilot.observer.prometheus import (
 )
 
 __all__ = [
+    "PROFILE_INVALID",
+    "PROFILE_SENTINEL",
+    "PROFILE_SENTINEL_SOURCE",
+    "PROFILE_UNAVAILABLE",
     "SUBMIT_MARGIN_SECONDS",
     "InstantSource",
     "SampleTaken",
@@ -88,6 +92,14 @@ _log = logging.getLogger("opspilot.observer")
 #: Chosen over lease renewal because it needs no extra store round trips and
 #: its bound is provable from the lease alone.
 SUBMIT_MARGIN_SECONDS = 5
+
+#: The reading row a sample filed without a usable profile carries: its
+#: bundle records why no signal could be read (``submit_without_readings``).
+PROFILE_SENTINEL = "health_profile"
+PROFILE_SENTINEL_SOURCE = "observer"
+#: The reasons the sentinel records.
+PROFILE_UNAVAILABLE = "HEALTH_PROFILE_UNAVAILABLE"
+PROFILE_INVALID = "HEALTH_PROFILE_INVALID"
 
 
 class InstantSource(Protocol):
@@ -261,26 +273,65 @@ def submit_without_readings(
     *,
     outcome: str,
     window_seconds: int,
+    reason: str | None = None,
+    error_type: str | None = None,
 ) -> SampleReceipt:
     """File a sample that could not be taken (no usable profile): an unknown
     observation that uses one of the session's samples, so a session that
     can never be judged still ends at its budget or deadline (C3 section 10:
-    bounded continuation, then handoff)."""
+    bounded continuation, then handoff).
+
+    With ``reason`` (the session has a revision but its profile row could
+    not be used: ``HEALTH_PROFILE_UNAVAILABLE`` for a store error,
+    ``HEALTH_PROFILE_INVALID`` for content that does not validate or does
+    not reproduce the revision) the sample carries one sentinel reading
+    row, ``PROFILE_SENTINEL``, whose hashed bundle records that reason and
+    the error type. It is the persistent record that distinguishes "no
+    profile at the time" from "readings deleted since": the replay exempts
+    a sample from the coverage check only when it verifies this record
+    (codex recheck of PR #139, P2-4). A session without a revision files no
+    reading (the session row says so).
+    """
     window_end = store.current_time()
+    window_start = window_end - timedelta(seconds=window_seconds)
     sample = HealthSample(
         sample_id=str(uuid4()),
         session_id=str(lease.session_id),
         sequence=lease.sequence,
-        window=QueryWindow(
-            start=window_end - timedelta(seconds=window_seconds), end=window_end
-        ),
+        window=QueryWindow(start=window_start, end=window_end),
         outcome=outcome,  # type: ignore[arg-type]
         subject_control_generation=lease.subject_control_generation,
         observation_generation=lease.observation_generation,
         health_profile_revision=lease.health_profile_revision,
         required_signals_present=False,
     )
-    return store.submit_sample(lease, sample, [])
+    readings: list[StoredReading] = []
+    if reason is not None:
+        raw = json.dumps(
+            {
+                "format": "opspilot.observer.reading/2",
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+                "sample_time": window_end.isoformat(),
+                "reading_error": reason,
+                "error_type": error_type or "",
+                "health_profile_revision": lease.health_profile_revision,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        readings.append(
+            StoredReading(
+                signal_name=PROFILE_SENTINEL,
+                status="failed",
+                query=str(lease.health_profile_revision),
+                window_start=window_start,
+                window_end=window_end,
+                source=PROFILE_SENTINEL_SOURCE,
+                raw=raw,
+            )
+        )
+    return store.submit_sample(lease, sample, readings)
 
 
 def _reading(
