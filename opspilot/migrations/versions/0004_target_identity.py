@@ -22,7 +22,8 @@ used -- registering a remediation / authorizing an observation -- which
 fails closed on a row that lacks it (``TARGET_IDENTITY_MISSING``) and
 completes it from the configured identity file the first time; once
 written, the identity never changes in place (``TARGET_MISMATCH``). A
-present value must be a non-empty string.
+present value must be a non-empty string. ``workload`` travels with the
+identity and is what the HealthProfile's ``subject`` is compared with.
 """
 
 from collections.abc import Sequence
@@ -31,6 +32,13 @@ from alembic import op
 
 from opspilot.schema import TARGET_IDENTITY_FIELDS
 
+# The workload (Deployment / service name) the target's HealthProfile
+# observes: not identity, but the field an authorization compares with the
+# profile's ``subject`` so one profile cannot certify another target's
+# recovery (PR #120 bot review P1). Nullable like the identity columns,
+# completed with them.
+BINDING_COLUMNS = ("workload",)
+
 revision: str = "0004_target_identity"
 down_revision: str | Sequence[str] | None = "0003_observation_store"
 branch_labels: str | Sequence[str] | None = None
@@ -38,7 +46,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    for column in TARGET_IDENTITY_FIELDS:
+    for column in TARGET_IDENTITY_FIELDS + BINDING_COLUMNS:
         op.execute(
             f"ALTER TABLE opspilot_targets ADD COLUMN {column} text "
             f"CONSTRAINT opspilot_targets_{column}_check CHECK ({column} IS NULL OR {column} <> '')"
@@ -46,5 +54,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for column in TARGET_IDENTITY_FIELDS:
+    for column in TARGET_IDENTITY_FIELDS + BINDING_COLUMNS:
         op.execute(f"ALTER TABLE opspilot_targets DROP COLUMN {column}")

@@ -551,18 +551,37 @@ class MemoryIncidentStore:
         if row["control_generation"] != expected_generation:
             raise PersistenceError("CONTROL_CONFLICT")
         registered = self.targets[row["target_id"]]
-        fields = ("integration_id", "cluster_uid", "namespace")
+        fields = ("integration_id", "cluster_uid", "namespace", "workload")
         if identity is not None and identity.resource_uid != registered["resource_uid"]:
             raise PersistenceError("TARGET_MISMATCH")
+        if identity is not None and identity.workload is None:
+            raise PersistenceError("INVALID_INPUT")
         if all(field in registered for field in fields):
             if identity is not None and any(
                 registered[field] != getattr(identity, field) for field in fields
             ):
                 raise PersistenceError("TARGET_MISMATCH")
+            completed = dict(registered)
         elif identity is None:
             raise PersistenceError("TARGET_IDENTITY_MISSING")
         else:
-            registered.update({field: getattr(identity, field) for field in fields})
+            completed = {
+                **registered,
+                **{field: getattr(identity, field) for field in fields},
+            }
+        # Mirror the store: the profile's subject must be this target. Checked
+        # before anything is written (the store's transaction rolls back).
+        try:
+            subject = json.loads(health_profile).get("subject")
+        except (TypeError, ValueError, AttributeError):
+            subject = None
+        if health_profile_revision is not None and isinstance(subject, dict):
+            if (subject.get("kubernetes_namespace"), subject.get("service")) != (
+                completed["namespace"],
+                completed["workload"],
+            ):
+                raise PersistenceError("HEALTH_PROFILE_TARGET_MISMATCH")
+        registered.update(completed)
         if row["lifecycle"] not in {"open", "observing_recovery"}:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # Mirror ObservationStore: a paused incident takes no authorization.

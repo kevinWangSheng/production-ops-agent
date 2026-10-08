@@ -21,7 +21,7 @@ from tests.m1_web_support import (
     same_origin,
     submit_incident,
 )
-from tests.target_support import ANY_TARGETS, IDENTITY, PROFILE_ID
+from tests.target_support import ANY_TARGETS, IDENTITY, PROFILE_ID, WORKLOAD
 
 
 def _control(app, incident, fields):
@@ -211,7 +211,8 @@ def test_intake_needs_no_registry_and_registration_needs_the_identity():
             "checkout-prod": {
                 "integration_id": "otel",
                 "cluster_uid": "kind",
-                "namespace": "demo",
+                "namespace": "otel-demo",
+                "workload": "checkout",
                 "health_profile_id": "otel-demo-checkout",
             }
         }
@@ -225,7 +226,8 @@ def test_intake_needs_no_registry_and_registration_needs_the_identity():
         "resource_uid": "checkout-prod",
         "integration_id": "otel",
         "cluster_uid": "kind",
-        "namespace": "demo",
+        "namespace": "otel-demo",
+        "workload": "checkout",
         "revision": "checkout:v2",
     }
     other = _control(
@@ -320,7 +322,10 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
         health_profile="{}",
         session_id=uuid4(),
         identity=TargetIdentity(
-            resource_uid="checkout-prod", health_profile_id=PROFILE_ID, **IDENTITY
+            resource_uid="checkout-prod",
+            health_profile_id=PROFILE_ID,
+            workload=WORKLOAD,
+            **IDENTITY,
         ),
         payload={"channel": "web", "idempotency_key": f"{subject}:A"},
     )
@@ -367,14 +372,10 @@ def test_the_profile_must_be_the_one_declared_for_the_target():
         "idempotency_key": "rem-1",
         "revision": "checkout:v2",
     }
+    base = {"integration_id": "otel", "cluster_uid": "kind", "namespace": "otel-demo"}
     for entry in (
-        {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"},
-        {
-            "integration_id": "otel",
-            "cluster_uid": "kind",
-            "namespace": "demo",
-            "health_profile_id": "payment-profile",
-        },
+        {**base, "workload": "checkout"},
+        {**base, "workload": "checkout", "health_profile_id": "payment-profile"},
     ):
         workbench.targets = MappingTargetRegistry({"checkout-prod": entry})
         refused = _control(app, incident, fields)
@@ -388,12 +389,29 @@ def test_the_profile_must_be_the_one_declared_for_the_target():
         assert workbench.incidents.targets[row["target_id"]] == {
             "resource_uid": "checkout-prod"
         }
+    # The right profile id but another namespace / workload (the recheck's
+    # payment-prod reproduction): the subject comparison refuses it.
+    for entry in (
+        {
+            **base,
+            "namespace": "payments-prod",
+            "workload": "payment",
+            "health_profile_id": "otel-demo-checkout",
+        },
+        {**base, "workload": "payment", "health_profile_id": "otel-demo-checkout"},
+    ):
+        workbench.targets = MappingTargetRegistry({"checkout-prod": entry})
+        refused = _control(app, incident, fields)
+        assert (refused.status, refused.json()["code"]) == (
+            409,
+            "HEALTH_PROFILE_TARGET_MISMATCH",
+        )
+        assert workbench.incidents.sessions == [] and workbench.incidents.controls == []
     workbench.targets = MappingTargetRegistry(
         {
             "checkout-prod": {
-                "integration_id": "otel",
-                "cluster_uid": "kind",
-                "namespace": "demo",
+                **base,
+                "workload": "checkout",
                 "health_profile_id": workbench.health_profile.profile_id,
             }
         }

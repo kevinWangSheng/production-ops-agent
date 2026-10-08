@@ -39,7 +39,7 @@ from opspilot.observation import (
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.persistence.base import _StoreBase
 from scripts.m0.postgres_lab import DSN
-from tests.target_support import IDENTITY
+from tests.target_support import IDENTITY, WORKLOAD
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -50,6 +50,7 @@ POOL = PoolConfig(min_size=1, max_size=3, timeout=5.0)
 PROFILE_CONTENT = json.dumps(
     {
         "profile_id": "checkout",
+        "subject": {"service": "checkout", "kubernetes_namespace": "otel-demo"},
         "signals": [
             {
                 "name": "error_ratio",
@@ -174,11 +175,12 @@ def _incident(owner: DurableStore) -> tuple[UUID, UUID, Target]:
     # they complete it directly.
     with owner.transaction() as conn:
         conn.execute(
-            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s WHERE target_id=%s",
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload=%s WHERE target_id=%s",
             (
                 IDENTITY["integration_id"],
                 IDENTITY["cluster_uid"],
                 IDENTITY["namespace"],
+                WORKLOAD,
                 target_id,
             ),
         )
@@ -1716,7 +1718,15 @@ def test_required_signals_follow_the_health_profile_shape() -> None:
 def test_replay_fails_closed_when_the_profile_yields_no_required_signals(
     observer: ObservationStore, owner: DurableStore, controller: ObservationStore
 ) -> None:
-    content = json.dumps({"profile_id": "bare"}, separators=(",", ":"))
+    # A subject the authorization accepts (step 3 compares it with the
+    # registry row), but no signals: the replay must fail closed on that.
+    content = json.dumps(
+        {
+            "profile_id": "bare",
+            "subject": {"service": "checkout", "kubernetes_namespace": "otel-demo"},
+        },
+        separators=(",", ":"),
+    )
     revision = profile_revision("bare", content)
     incident, _, target = _incident(owner)
     session = controller.authorize_session(

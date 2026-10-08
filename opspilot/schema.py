@@ -160,7 +160,9 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
     ``health_profile_id`` names the HealthProfile (its ``profile_id``) whose
     recovery definition applies to this target; a remediation is registered
     only under that profile (the workbench compares it with the loaded
-    profile, PR #120 bot review P1).
+    profile, PR #120 bot review P1). ``workload`` is the Deployment /
+    service name the profile observes on this target; the store compares it
+    and the namespace with the profile's ``subject`` before authorizing.
 
     Shared by the workbench (intake resolves the operator's target id here)
     and migration 0004 (completing rows registered before the columns
@@ -186,13 +188,11 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
             or not isinstance(entry, dict)
             or set(entry)
             - set(TARGET_IDENTITY_FIELDS)
-            - {"resource_uid", "health_profile_id"}
-            or (
-                "health_profile_id" in entry
-                and (
-                    not isinstance(entry["health_profile_id"], str)
-                    or not entry["health_profile_id"]
-                )
+            - {"resource_uid", "health_profile_id", "workload"}
+            or any(
+                optional in entry
+                and (not isinstance(entry[optional], str) or not entry[optional])
+                for optional in ("health_profile_id", "workload")
             )
             or any(
                 not isinstance(entry.get(column), str) or not entry[column]
@@ -202,8 +202,9 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
         ):
             raise TargetIdentityMissing([str(uid)], detail="malformed entry")
         identities[uid] = {column: entry[column] for column in TARGET_IDENTITY_FIELDS}
-        if "health_profile_id" in entry:
-            identities[uid]["health_profile_id"] = entry["health_profile_id"]
+        for optional in ("health_profile_id", "workload"):
+            if optional in entry:
+                identities[uid][optional] = entry[optional]
     return identities
 
 

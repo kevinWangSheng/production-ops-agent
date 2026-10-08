@@ -474,7 +474,7 @@ def test_0003_role_is_dropped_only_when_no_database_references_it(
 # --- 0004_target_identity (M1-02 step 3, issue #85) ---
 
 
-IDENTITY_COLUMNS = ("integration_id", "cluster_uid", "namespace")
+IDENTITY_COLUMNS = ("integration_id", "cluster_uid", "namespace", "workload")
 
 
 def _target_columns(dsn: str) -> dict[str, bool]:
@@ -508,8 +508,8 @@ def test_0004_adds_nullable_identity_columns_and_keeps_existing_rows(
     assert all(columns[column] for column in IDENTITY_COLUMNS), columns
     with psycopg.connect(scratch_dsn) as conn:
         assert conn.execute(
-            "SELECT integration_id,cluster_uid,namespace FROM opspilot_targets WHERE resource_uid='checkout-a'"
-        ).fetchone() == (None, None, None)
+            "SELECT integration_id,cluster_uid,namespace,workload FROM opspilot_targets WHERE resource_uid='checkout-a'"
+        ).fetchone() == (None, None, None, None)
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
                 "UPDATE opspilot_targets SET integration_id='' WHERE resource_uid='checkout-a'"

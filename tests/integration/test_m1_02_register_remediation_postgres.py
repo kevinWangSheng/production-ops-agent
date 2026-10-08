@@ -63,7 +63,7 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
-from tests.target_support import ANY_TARGETS, IDENTITY, identity_of
+from tests.target_support import ANY_TARGETS, IDENTITY, WORKLOAD, identity_of
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -172,7 +172,7 @@ def _register(
 def _registered(owner: DurableStore, target_id: UUID) -> dict[str, Any]:
     with owner.transaction(snapshot=True) as conn:
         row = conn.execute(
-            "SELECT resource_uid,integration_id,cluster_uid,namespace FROM opspilot_targets WHERE target_id=%s",
+            "SELECT resource_uid,integration_id,cluster_uid,namespace,workload FROM opspilot_targets WHERE target_id=%s",
             (target_id,),
         ).fetchone()
     assert row is not None
@@ -269,7 +269,11 @@ def test_registration_steps_the_generation_authorizes_and_observes(
     assert Target(**session["target"]) == Target(
         resource_uid=uid, revision="checkout:v2", **IDENTITY
     )
-    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
+    assert _registered(owner, target_id) == {
+        "resource_uid": uid,
+        "workload": WORKLOAD,
+        **IDENTITY,
+    }
     (audit,) = _audit(owner, incident)
     assert (audit["action"], audit["expected_generation"]) == (
         "register_remediation",
@@ -731,6 +735,7 @@ def test_a_bare_registry_row_without_a_configured_identity_refuses_registration(
         "integration_id": None,
         "cluster_uid": None,
         "namespace": None,
+        "workload": None,
     }
     # The storage primitive is fail-closed too.
     with pytest.raises(PersistenceError, match="TARGET_IDENTITY_MISSING"):
@@ -746,7 +751,11 @@ def test_a_bare_registry_row_without_a_configured_identity_refuses_registration(
     # With the identity the same registration goes through under the same
     # generation, and the row is complete from then on.
     assert _register(controller, incident, expected=0) == 1
-    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
+    assert _registered(owner, target_id) == {
+        "resource_uid": uid,
+        "workload": WORKLOAD,
+        **IDENTITY,
+    }
 
 
 def test_a_completed_identity_never_changes_in_place(
@@ -765,10 +774,71 @@ def test_a_completed_identity_never_changes_in_place(
             revision="v3",
             identity={**identity_of(uid), "resource_uid": "another"},
         )
-    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
+    assert _registered(owner, target_id) == {
+        "resource_uid": uid,
+        "workload": WORKLOAD,
+        **IDENTITY,
+    }
     assert _incident_row(owner, incident)["control_generation"] == 1
     assert len(_sessions(owner, incident)) == 1
     # Without a registry entry a complete row is still usable.
     assert (
         _register(controller, incident, expected=1, revision="v3", identity=None) == 2
     )
+
+
+def test_the_profile_authorizes_only_the_workload_its_subject_names(
+    owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Second recheck of PR #120, P1 reproduction: an identity for
+    ``payment-prod`` in namespace ``payments-prod`` declared under the checkout
+    profile. The store compares the profile's ``subject`` (namespace,
+    service) with the registry row (namespace, workload) under the incident
+    lock: refused, nothing written -- also for a target in the profile's
+    namespace that is another workload, and for the storage primitive."""
+    incident, _, target_id, uid = _incident(owner)
+    payment = {**identity_of(uid, workload="payment"), "namespace": "payments-prod"}
+    with pytest.raises(PersistenceError, match="HEALTH_PROFILE_TARGET_MISMATCH"):
+        _register(controller, incident, expected=0, identity=payment)
+    other, _, other_target, other_uid = _incident(owner)
+    with pytest.raises(PersistenceError, match="HEALTH_PROFILE_TARGET_MISMATCH"):
+        _register(
+            controller,
+            other,
+            expected=0,
+            identity=identity_of(other_uid, workload="payment"),
+        )
+    for subject, tid in ((incident, target_id), (other, other_target)):
+        row = _incident_row(owner, subject)
+        assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
+        assert _sessions(owner, subject) == [] and _audit(owner, subject) == []
+        # The transaction rolled back: the registry row is still bare.
+        assert _registered(owner, tid)["workload"] is None
+    # The checkout workload in the profile's namespace is authorized.
+    assert _register(controller, incident, expected=0) == 1
+    # The primitive is bound too: a complete row for another workload.
+    foreign, _, foreign_target, _ = _incident(owner)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload='payment' WHERE target_id=%s",
+            (
+                IDENTITY["integration_id"],
+                IDENTITY["cluster_uid"],
+                IDENTITY["namespace"],
+                foreign_target,
+            ),
+        )
+    with pytest.raises(PersistenceError, match="HEALTH_PROFILE_TARGET_MISMATCH"):
+        controller.authorize_session(
+            foreign,
+            revision="payment:v2",
+            actor="tester",
+            deadline_at=_now() + timedelta(hours=1),
+            max_samples=3,
+            sample_interval_seconds=15,
+            sustained_window_seconds=60,
+            health_profile_revision=PROFILE.revision,
+            health_profile=canonical_content(PROFILE),
+        )
+    assert _incident_row(owner, foreign)["lifecycle"] == "open"
+    assert _sessions(owner, foreign) == []

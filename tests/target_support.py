@@ -13,16 +13,20 @@ from opspilot.web.store import TargetIdentity, TargetRegistry
 
 #: ``profile_id`` of the shipped checkout profile the tests register under.
 PROFILE_ID = "otel-demo-checkout"
+#: Namespace and workload the shipped checkout profile's ``subject`` names;
+#: an authorization under that profile requires exactly these.
+NAMESPACE = "otel-demo"
+WORKLOAD = "checkout"
 IDENTITY = {
     "integration_id": "test-integration",
     "cluster_uid": "test-cluster",
-    "namespace": "test-namespace",
+    "namespace": NAMESPACE,
 }
 
 
-def identity_of(resource_uid: str) -> dict[str, str]:
-    """The four identity fields ``ObservationStore`` takes for ``resource_uid``."""
-    return {**IDENTITY, "resource_uid": resource_uid}
+def identity_of(resource_uid: str, *, workload: str = WORKLOAD) -> dict[str, str]:
+    """The identity (plus workload) ``ObservationStore`` takes for ``resource_uid``."""
+    return {**IDENTITY, "resource_uid": resource_uid, "workload": workload}
 
 
 class AnyTargetRegistry(TargetRegistry):
@@ -31,7 +35,10 @@ class AnyTargetRegistry(TargetRegistry):
 
     def resolve(self, target_id: str) -> TargetIdentity | None:
         return TargetIdentity(
-            resource_uid=target_id, health_profile_id=PROFILE_ID, **IDENTITY
+            resource_uid=target_id,
+            health_profile_id=PROFILE_ID,
+            workload=WORKLOAD,
+            **IDENTITY,
         )
 
 

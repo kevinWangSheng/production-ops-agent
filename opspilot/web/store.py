@@ -82,6 +82,10 @@ class TargetIdentity:
     #: to this target; a remediation is registered only under that profile.
     #: Not part of the identity written to the registry.
     health_profile_id: str | None = None
+    #: The Deployment / service name that profile observes on this target;
+    #: completed on the registry row with the identity and compared with the
+    #: profile's ``subject`` at every authorization.
+    workload: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("integration_id", "cluster_uid", "namespace", "resource_uid"):
@@ -110,6 +114,7 @@ class MappingTargetRegistry:
                 namespace=entry["namespace"],
                 resource_uid=uid,
                 health_profile_id=entry.get("health_profile_id"),
+                workload=entry.get("workload"),
             )
             for uid, entry in identities.items()
         }

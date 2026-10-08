@@ -640,6 +640,24 @@ def required_signals(content: str) -> tuple[str, ...]:
 # The identity columns of ``opspilot_targets`` (migration 0004), in the order
 # ``_complete_identity`` and ``_registered_target`` read them.
 _IDENTITY_FIELDS = ("integration_id", "cluster_uid", "namespace", "resource_uid")
+# Completed together with the identity: the workload the profile observes.
+_BINDING_FIELDS = ("workload",)
+
+
+def _profile_subject(content: str) -> tuple[str, str]:
+    """``(kubernetes_namespace, service)`` of a stored profile's ``subject``
+    (the HealthProfile format, step 1); fail closed when absent or empty."""
+    try:
+        parsed = json.loads(content)
+    except ValueError as exc:
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE") from exc
+    subject = parsed.get("subject") if isinstance(parsed, dict) else None
+    if not isinstance(subject, dict):
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+    namespace, service = subject.get("kubernetes_namespace"), subject.get("service")
+    if not all(isinstance(value, str) and value for value in (namespace, service)):
+        raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+    return str(namespace), str(service)
 
 
 def _identity(target: Target) -> tuple[str, str, str, str]:
@@ -788,8 +806,12 @@ class ObservationStore(_StoreBase):
             raise PersistenceError("INVALID_INPUT")
         if health_profile_revision is not None:
             self._store_profile(conn, health_profile_revision, health_profile)
+            assert health_profile is not None
+            subject: tuple[str, str] | None = _profile_subject(health_profile)
         elif health_profile is not None:
             raise PersistenceError("INVALID_INPUT")
+        else:
+            subject = None
         incident = self._lock_incident(conn, incident_id)
         # A paused incident takes no new observation authorization: human
         # control outranks it (C3 section 4 "暂停期间 ... 不发起自动查询"),
@@ -808,6 +830,21 @@ class ObservationStore(_StoreBase):
         if incident["target_id"] is None:
             raise PersistenceError("UNKNOWN_TARGET")
         target = self._registered_target(conn, incident["target_id"], revision)
+        if subject is not None:
+            # The profile observes one workload in one namespace (its
+            # ``subject``); it may authorize only the registered target that
+            # is that workload -- checkout's health must never confirm a
+            # payment incident (PR #120 bot review P1, second recheck).
+            # Compared under the incident lock from the registry row, so the
+            # storage primitive is bound as well as the workbench action.
+            workload = self._require_row(
+                conn.execute(
+                    "SELECT workload FROM opspilot_targets WHERE target_id=%s",
+                    (incident["target_id"],),
+                )
+            )["workload"]
+            if subject != (target.namespace, workload):
+                raise PersistenceError("HEALTH_PROFILE_TARGET_MISMATCH")
         # Every session on this target recorded the identity it was
         # authorized with; the registry row must still say the same (a
         # rebound or edited registry row is not this target any more, C3
@@ -1043,37 +1080,41 @@ class ObservationStore(_StoreBase):
         """Write the identity columns of a bare registry row once; a complete
         row must agree with ``identity`` when one is given. The caller holds
         the incident row lock; the registry row is locked here."""
+        fields = _IDENTITY_FIELDS + _BINDING_FIELDS
         if identity is not None and (
-            set(identity) != set(_IDENTITY_FIELDS)
+            set(identity) != set(fields)
             or any(
                 not isinstance(identity[field], str) or not identity[field]
-                for field in _IDENTITY_FIELDS
+                for field in fields
             )
         ):
             raise PersistenceError("INVALID_INPUT")
         row = self._require_row(
             conn.execute(
-                "SELECT integration_id,cluster_uid,namespace,resource_uid FROM opspilot_targets WHERE target_id=%s FOR UPDATE",
+                "SELECT integration_id,cluster_uid,namespace,resource_uid,workload FROM opspilot_targets WHERE target_id=%s FOR UPDATE",
                 (target_id,),
             )
         )
         if identity is not None and identity["resource_uid"] != row["resource_uid"]:
             raise PersistenceError("TARGET_MISMATCH")
-        complete = all(row[field] is not None for field in _IDENTITY_FIELDS[:3])
+        complete = all(
+            row[field] is not None for field in fields if field != "resource_uid"
+        )
         if complete:
             if identity is not None and any(
-                row[field] != identity[field] for field in _IDENTITY_FIELDS
+                row[field] != identity[field] for field in fields
             ):
                 raise PersistenceError("TARGET_MISMATCH")
             return
         if identity is None:
             raise PersistenceError("TARGET_IDENTITY_MISSING")
         conn.execute(
-            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s WHERE target_id=%s AND integration_id IS NULL AND cluster_uid IS NULL AND namespace IS NULL",
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload=%s WHERE target_id=%s AND integration_id IS NULL AND cluster_uid IS NULL AND namespace IS NULL AND workload IS NULL",
             (
                 identity["integration_id"],
                 identity["cluster_uid"],
                 identity["namespace"],
+                identity["workload"],
                 target_id,
             ),
         )
