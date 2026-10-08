@@ -7,66 +7,85 @@
 仅查看公开领域接口、外部入口及测试，不读并行实现。
 实现者不能为通过测试修改断言；下面区分冻结语义与可由适配器自定的产品接口。
 
-## 现在可执行
+## 当前覆盖（main 280e550，#139 / #143 改接）
 
-[领域合同](../../tests/contracts/test_f6_observation.py) 42 个纯领域实例；另有 2 个 PG 持久授权故障场景（撤销/期限过期）：
+[外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例全部启用 PG opt-in：
+第 1 步22、第 2 步6、第 3 步6、第 4 步2、第 5 步5，**41 passed、0 xfailed、0 skipped**。
+纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查11 passed（其中权限实测1例需PG）。
 
-- 当前结果合法采纳并推进水位、相等窗尾允许但重复序号拒绝：C3 §10，支撑 F6 第 1、5 步。
-- 外会话、控制/观察 generation 小于或大于当前值、规则 revision 不符、相等/倒退序号与倒退窗口只作历史：C3 §10 共同采纳条件，支撑全部步骤。
-- 仅 open/observing_recovery 可采纳；resolved/closed、suspension、原期限及撤销/结束授权挡住采纳；每会话最多一个活动任务：C3 §4/§10/§13，支撑全部步骤。
-- 无 profile、缺必要信号不确认健康；no_data/stale/timeout/failed/degraded 可采纳，但不延长健康窗口：C3 §10，支撑第 1–4 步。
-- 观察阶段才能确认恢复，未确认回 open，人工关闭不是 resolved；纯领域状态机的 close/reopen 保留合同校验：C3 §4/§10。pause/cancel/takeover 不是生命周期触发器，paused/cancelled 不是生命周期取值，已删除这些空转参数，不计入覆盖。
+- 第1步：持续窗口、四个信号阈值、陈旧/时间缺口/处置前数据、同目标双事故隔离、退化重置与重新累计；目标四身份与revision共5例按下述批准合同改写。
+- 第2步：零/低流量、期限前后、先健康后撤流量；独立次数预算（4次、240秒，早于600秒期限）通过。
+- 第3步：分别缺 deployment、请求量、错误、延迟、pods、dependencies，到期 unknown 与交接通过。
+- 第4步：持续依赖退化，有界观察后交接，环境写入为零。
+- 第5步：恢复、撤流量、缺测、异常四种存储重放，以及只篡改判定的完整性重放全部通过。输入由全新 ObservationStore 的 `incident_records` 在一个快照中按主体/会话取回；调用产品 `replay_history` 与 `recovery_outcome`，原始证据映射也只读捕获快照；无模型/遥测查询，重放前后完整业务快照相等。不一致分支保留产品 `unverified`，不复述已存 `resolved`。
 
-`adopt_sample` 只在 `evaluate_sample` 通过后调用，不冒充事务边界。
-owner/epoch/lease、scope generation、暂停后重新授权、持久预算与原子任务安排仍需完整集成验证。
-新增的持久化场景检查真实 Observer 完成取数后、提交前撤销/到期的竞态；真实 PG 上状态/水位/控制/历史及证据断言通过，但最后的全部任务清单断言因接口冲突 strict xfail。纯领域合同 42 个通过。
+## 产品入口与字段映射
 
-另有 [I/O 桩与主体绑定](../../tests/f6_boundary_support.py) 的 11 个可运行夹具检查，
-位于[场景文件](../../tests/acceptance/test_f6_recovery.py)末尾：三个环境写动作均记录并抛错；
-即使驱动吞掉遥测拒绝，重放计数也能检出；错事故结果被拒绝；run/replay 吞掉模型拒绝仍留下调用计数；缺失 reader、None 或非 bytes 均被拒绝；遥测桩确实返回测试提供的原始信号字节。
-这些是夹具检查，不是 F6 产品验收通过。
+驱动只有刺激、时间/环境准备、身份/表示转换；判定、健康窗、原因、交接、动作、权限来自
+`recovery_outcome(IncidentScenario, RecoveryRecords)`。Records 来自 `incident_records`，grants 来自 Observer 登录的 `table_privileges()`；不再调用 evaluate_readings 或按计数拼动作/交接。
 
-## 外部场景及接线门槛
+| 产品字段/表示 | Harness 保义映射 |
+|---|---|
+| scenario/subject 的持久 UUID | fixture 预种别名与 UUID 双向表；产品先校验真实主体，返回后才转回别名 |
+| verdict、confirmed、healthy_window、used_count、结束/交接、actions、permissions | 原样复制；不重算、不补造、不筛权限 |
+| `DEGRADED_SIGNAL:dependencies`，该信号 required | `DEPENDENCY_UNHEALTHY`；其余原因码原样保留，handoff_reasons 使用同一命名表 |
+| `incident_lifecycle="unverified"`，`recorded_lifecycle` | 两者原样保留，满足完整性场景 `!= resolved` |
+| RecoverySample.target / 顶层 target | 产品会话的不可变绑定原样复制；不读取遥测 JSON.target 决定目标 |
+| RecoverySample / RecoverySignal DTO | 转为原场景字典；序号、绝对窗、两类 generation、disposition/outcome 原样保留 |
+| native profile 内容 / 内容 hash revision | 读取冻结 calibration 元数据恢复原 synthetic profile；每个会话/样本分别按自己的 revision 映射，不混用最新规则 |
+| scoped `synthetic_<name>{namespace="demo",service="checkout"}` 与 source `synthetic-lab` | 校验与所属冻结 profile 一致后，仅表示为原 query 名及 `prometheus:synthetic-lab`；真实查询仍是 scoped 表达式 |
+| Signal.value 为 None（如 stale） | 原始值从已存、双重验证的 query body 取回，保留 status/verdict 不变；正常 value 必须与该 body 一致 |
+| signal.observed_at | 产品投影的 freshness 原始样本时间原样复制，不用窗尾代替 |
+| raw_sha256 / body_sha256 | 验证完整 bundle hash 后解出原始 query body，场景 raw_sha256 为产品 body_sha256；逐字节等于测试刺激 |
+| 缺信号的 no_data 空向量占位 | 仅在真实 query body 为空向量且status=no_data时映射为稀疏字典中的缺项，保留原始产品记录与原因 |
 
-[外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例：第 1–4 步 36 个已去掉功能等待 skip，按 `M1_DURABLE_POSTGRES=1` opt-in；第 5 步 5 个继续 skip，原因统一为「待 #87 合并」。按 lead 最终归类，真实 PG 结果：第 1 步 17 passed / 5 xfailed，第 2/3/4 步分别 6/6/2 passed；另有 2 个持久合同 strict xfail。跨目标五例在 #138 修复前整体 strict xfail，限定 `raises=AssertionError`，无中途已知差异分支，函数正文恢复为 main 的原始顺序断言；错误采纳以及预算、水位、任务偏离均属同一产品缺口的后果。#138 修复 PR 须移除这五例 xfail 标记，以普通测试全部通过作为门槛；strict=True 会在仍带标记且全部断言通过时使 CI 报 XPASS。
+测试刺激改为真实 Prometheus vector JSON（保留fixture附带元数据）；value/coverage/freshness分别提供bytes。
+Observer 的 `PrometheusReadOnlySource` 使用注入 opener，经 telemetry_query 桩取数；无真实网络fallback。
+Guarded驱动独立比较 query/绝对窗/类型调用集合，不冻结内部顺序；模型/环境传输由桩拒绝且先计数。
 
+### TEMP 与 CI
 
-- 第 1 步（22）：持续窗口前后 2、逐信号阈值 4、陈旧/时间缺口/处置前数据 3、同目标双事故隔离 4、H,H,D 与 H,H,D,H,H 窗口重置 2、退化后重新累计并达到持续窗口 2、跨目标身份拒绝 5。依据 C3 §10 健康规则、主体授权与持续窗口，§4 生命周期。窗未满只要求 `recovery_confirmed=False`，不冻结中间 verdict；两个事故互换被处置身份，另一个的生命周期、观察会话和采样均不得变动。合法 stale/覆盖缺口采样必须留底且 adopted、保存已用次数，恢复结果 unknown，全 stale 采样健康窗为 0；处置前数据单列，不冻结其采纳方式。H,H,D,H,H 精确为 120 秒；预先冻结更长期限与次数的 H,H,D,H,H,H 达 180 秒后 resolved，证明退化没有禁用累计。跨目标场景逐项改变 integration/cluster/namespace/resource/revision，先单独登记处置，再向原授权提交错误目标采样；只保存历史，水位、生命周期、健康窗与预算不推进，原授权身份/版本与处置审计不变，不能偷偷创建新授权。
-- 第 2 步（6）：零/低流量及期限前后 4，先健康有流量、后撤流量且错误率下降 1；C3 §10 有效流量与 unknown 有界继续；180 秒/3 次时会话未结束、没有交接，原期限为 300 秒/5 次。新增独立次数预算：原期限 600 秒、max_samples=4，240 秒低流量耗尽次数后结束/交接，不能再领取逻辑采样。
-- 第 3 步（6）：逐项移除 deployment、请求量、错误、延迟、pod、依赖；到期 unknown 交接；C3 §10 必要信号缺失不能健康。
-- 第 4 步（2）：持续依赖异常，期限前 observing_recovery、期限后 open 交接，期限前 observation_ended=False 且没有交接，无环境写动作；C3 §10 有界继续、§13 写操作为零。
-- 第 5 步（5）：恢复、撤流量、缺测、异常四类重放，以及仅篡改已存判定的完整性场景；只用持久采样与冻结 profile/处置时间，不用调查叙述或遥测。篡改时接受重算原正确结果，或明确 unknown + 完整性不一致；不能复述错误判定。依据 F6 第 5 步及 M1-02 第 2、5 步。
+PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自己创建的 `f6_acceptance_*` 测试库执行
+`REVOKE TEMP ON DATABASE <fixture_db> FROM PUBLIC`，之后使用受限 Observer 登录；不改 m0_budget 或其他库。
+这是 PostgreSQL17 通用SQL，CI m0-postgres 服务使用同一准备逻辑。CI 已执行 F6 验收与合同入口；驱动检查由 checks 的 make check 覆盖。
+新增PG检查临时授 TEMP 后确认产品与适配器都报告 database_temp，且冻结只读断言拒绝，finally收回，证明没有过滤多余权限。
 
-第 1–4 步经真实登记处置、受限 Observer DSN 领取、`ObserverLoop.sample` 与原子提交接线；
-输入仅含调度元数据，信号 bytes 只能经测试-owned `telemetry_query` 取得。
-查询、coverage、freshness 的 query/绝对窗调用集合独立核对，不冻结内部调用顺序。
-PG fixture 自建/删除具名测试库与 Observer login；CI 的 m0-postgres 作业已包含 F6 验收与合同测试入口。
-第 5 步仍待 [#87](https://github.com/kevinWangSheng/production-ops-agent/issues/87)。
+## 合同变更（用户 2026-10-08）
 
-产品缺口与接口冲突（原断言保留，按 lead 明确决策标记）：
+独立核查结论：不可变会话绑定、绑定目标的查询和提交版本栅栏满足 C3 §10；公开提交接口不接受caller提供目标。
+#138已关闭。用户批准原跨目标5例改为公开接口可表达的等价合同，移除原5个xfail；其余验收场景断言未放宽。
 
-- 产品缺口 [#138](https://github.com/kevinWangSheng/production-ops-agent/issues/138)：C3 §10 要求原子提交校验结果目标，`submit_sample` 未校验，错误目标样本被当作合法样本采纳。integration_id、cluster_uid、namespace、resource_uid、revision 五个场景均整体标 `pytest.mark.xfail(strict=True, raises=AssertionError, reason="产品缺口: 提交未校验结果目标（C3 §10），见 #138")`。健康窗60而非0、消耗1次预算、adopted而非history_only、水位推进和新增任务是同一错误采纳的后果；没有为标记改变或放宽断言。移除临时断言收集器和中途已知差异分支，限定断言类异常为预期失败，函数正文 AST 与 main `8aae433` 完全一致。位置：`opspilot/observation/store.py:1287`、`opspilot/domain/observation.py:82`。
+| 原断言/刺激 | 新断言（对应删除理由） |
+|---|---|
+| integration_id / cluster_uid / namespace / resource_uid 随采样payload改变，必须history_only | 四例分别改变登记身份，再登记同一目标必须TARGET_MISMATCH拒绝；拒绝前后整个持久快照相等。身份在登记与查询授权处校验，不构造不存在的目标提交参数 |
+| 错误payload目标采样不得耗预算、推进健康窗或任务 | 拒绝登记时预算/水位/任务/生命周期/授权/会话/审计都不变；随后旧有效会话正常采样可adopted、用1次预算并有60秒健康窗，其目标仍是登记目标，遥测元数据不能改变绑定 |
+| 保存history.target等于payload的foreign target | 现有会话样本的产品target恒等于原登记目标；原始payload仍逐字节留存及核hash，JSON.target无授权权威 |
+| 错误payload提交后全部授权/会话/任务集合不变 | 拒绝再次登记时完整集合不变；正常旧会话采样后授权身份/版本、原目标、处置审计不变，允许合法水位与下一任务推进 |
+| revision当作其他身份字段拒绝/旧采样不改变目标 | 新revision再次登记形成新会话，控制/观察generation推进，旧会话撤销、原target不变；已领取旧结果仅history_only，新会话生命周期/水位/预算/授权/审计不变 |
+| revision旧提交前后所有job集合必须完全相等 | 旧无样本job仅在历史落库后重新可见；最新活动任务槽不变，完整集合只允许新增原已领取旧job，不得新增其他逻辑任务；与下面已知投影限制区分 |
+| 旧身份历史判定、健康窗0、无恢复确认等 | 拒绝登记阶段保留无推进；正常采样阶段以有效会话判断。revision旧结果仍不推进健康窗或预算、不确认恢复；主体/会话绑定、序号、窗口、原始证据、只读边界继续检查 |
 
-- 撤销/结束清空活动 job，结束记录不存 job 身份；没有旧采样时公开持久接口无法稳定列出全部已发放任务。快照从 samples + 当前活动槽投影，迟到历史会暴露旧 job，不能据集合新增推断产品安排新任务。2 个持久授权场景保留完整集合断言，实际提交前集合为空、历史落库后出现同一个旧 job。已复核 `incident_sessions/session/session_history`、工作台 `observation_sessions` 与 Observer `sample/submit_sample`，没有另一个公开任务清单或目标提交接口；位置：`opspilot/observation/revocation.py:53`。需合同/接口决策，不用内存领取账本冒充持久状态。
+## 剩余 xfail 与验证边界
 
-synthetic HealthProfile 的阈值、流量、新鲜度、窗口、频率、次数保持原义；profile 的内容 revision、source 与 scoped PromQL 做校验后的可逆映射。原始 bytes 取自已存 Observer bundle，先核 bundle 摘要再核其中 query body 摘要，正常 reading.value/source/query 必须与其冻结映射一致。
-采样绝对窗与处理时间为合成日期；通过 owner SQL 设置授权时间、任务 due 与到期 fault，sampler 公共时钟注入合成窗尾，PG 租约校验仍用数据库时钟。此夹具不证明真实生产时钟/期限调度。
+仅两个持久合同（revoke/expire）strict xfail、raises=AssertionError：产品 `sample_jobs` 仍从活动槽与样本历史投影，
+已结束且无样本的job身份不可见，迟到历史后原job才出现，故完整集合由空变为旧job。其余状态/水位/预算/授权/会话/审计/历史证据/只读断言先执行通过。
+源为 `opspilot/acceptance_recovery.py` 的 sample_jobs 投影与 `opspilot/observation/revocation.py:53`；不是产品安排新任务的证明。
+无其他产品缺口xfail，没有skip，F6仍不能宣称全部合同或真实生产验收完成。
 
-第 4 步的「或按审核策略重新打开」以及新异常/人工 reopen 的新观察阶段，
-未纳入运行时场景：M1-02 任务记录已将人工 close/reopen 移出范围。
-已有纯领域状态机测试不代表该运行时路径完成。
-最低样本数能否由单样本满足由合同/profile 决定，本次不新增该冻结要求（O8）。
-skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
+时间准备保持合成窗尾与人工处置日期；只有due/授权日期和成对的created_at/deadline_at用于模拟已过原duration，
+由产品 sweep_expired_sessions 写结束状态，夹具不写判定、生命周期、水位或计数。
+旧单独把deadline移到created之前会被新重放报 SESSION_PARAMETER_MISMATCH，现保持冻结正duration。
+本运行证明到期边界与离线一致性，不证明真实时间流逝、调度延迟或生产时钟；未启动kind或调用真实模型/遥测。
 
 ## 必须冻结的验收清单
 
 以下是作者维护的测试规范；实现者不能改断言来迁就实现：
 
-- `incident_lifecycle` 沿用 subjects.py 的 open/observing_recovery/resolved/closed；本切片到期未确认回 open。合法 unknown 采样的预算消耗必须持久记录（`used_sample_count`），不能丢采样而凭空交接。恢复确认与当前采样分开；窗未满、异常、缺测或无流量均不能确认恢复，H,H,D 重置窗口，不能跨 D 累计。
+- `incident_lifecycle` 正常沿用 subjects.py 的 open/observing_recovery/resolved/closed；完整性不一致时产品投影为 unverified，已存生命周期另列 recorded_lifecycle，不改写业务状态；到期未确认回 open。合法 unknown 采样的预算消耗必须持久记录（`used_sample_count`），不能丢采样而凭空交接。恢复确认与当前采样分开；窗未满、异常、缺测或无流量均不能确认恢复，H,H,D 重置窗口，不能跨 D 累计。
 - 当前场景的终态恢复 verdict、交接语义与原因码：`INSUFFICIENT_TRAFFIC`、`REQUIRED_TELEMETRY_MISSING`、`MISSING_SIGNAL:<name>`、`DEPENDENCY_UNHEALTHY`、`CONTINUED_DEGRADATION`；篡改拒绝分支 `STORED_OBSERVATION_INTEGRITY_MISMATCH`。这些是 harness 规范化码，产品原始码可不同，由适配器做保义映射。
-- 所有 outcome 的 `subject_id` 等于请求主体，已存采样绑定同一主体和事故不可变目标，目标同时匹配冻结 profile 和 fixture 预种记录；跨目标结果只能 history_only，不推进生命周期、水位、健康窗或预算；同目标另一事故的持久状态、会话、采样不变。错误目标提交前后完整 observation_sessions 不变，必须暴露的 sample_jobs 的 job_id/session_id/sequence 集合不变，不能只核对当前授权，也不能省略任务集合。
+- 所有 outcome 的 `subject_id` 等于请求主体，已存采样绑定同一主体及所属会话不可变目标；目标合同按用户2026-10-08批准变更：异身份再次登记被拒前后完整快照不变，旧有效会话采样目标不受遥测元数据影响，revision新登记使旧结果仅历史。具体替换见上表；同目标另一事故的持久状态、会话、采样不变。
 - 合法样本 `disposition == "adopted"`；无效身份/授权/水位只作历史。每个信号 value/source/query/observed_at 原样保存；样本与逐信号 evidence_id 唯一；每个信号的原始 bytes 由测试在修改刺激后冻结，遥测桩按 query/绝对窗口返回。每个 evidence_id 必须能取回与测试刺激逐字节相同的 bytes，实际 SHA-256 必须与记录一致，取不回或字节不同即失败。历史采样同样校验证据绑定。
-- 原始 Observer 与重放 `model_requests == ()`；重放 `external_queries == ()`。完整产品 actions 只能有只读查询、处置登记、产品自身记录/生命周期转换、交接；permissions 不能授予环境写权限。
+- 原始 Observer 与重放 `model_requests == ()`；重放 `external_queries == ()`。完整产品 actions/permissions 直接来自产品投影与实测授权；基线词汇仍限read_only/human_control，环境写入由独立桩禁止。
 - 除产品审计外，必须由测试拥有的环境/遥测/模型桩证明 `driver.environment_writes == ()`、`driver.telemetry_calls_during_replay == 0`、`driver.model_calls == 0`；原始 Observer/重放禁止任何模型调用；重放禁止所有遥测查询，拒绝被吞掉也要留下计数。所有相关传输必须接入桩，不允许真实网络或旁路 fallback。
 
 ## 实现者可自定的清单与最小接口提议
@@ -78,7 +97,7 @@ skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
 - `run(IncidentScenario, profile, handled_at, observations, until)`：真实产品驱动接收原始遥测与人工登记，不接收预设结果。
 - `IncidentOutcome` 视图增加 subject_id、incident_lifecycle、recovery_confirmed、latest_sample_verdict、终态 recovery_verdict/reasons、healthy_window_seconds、observation_ended、recovery_samples、recovery_profile、recovery_handled_at、model_requests、used_sample_count。现有 final_state 属于调查 Run，不能替代事故生命周期。
 - 采样视图含 subject_id、sample_id、目标（含 integration_id）、两类 generation、profile revision、序号、绝对窗口、disposition/outcome；信号含 value/source/query/observed_at/evidence_id/raw_sha256。冻结 profile 包括必要信号、阈值、流量、新鲜度、覆盖/窗口/频率、期限与次数。
-- `replay(profile, handled_at, samples, allow_telemetry=False, allow_model=False)`：返回重算结果或显式完整性不一致，以及 external_queries/model_requests 审计。
+- `replay(persisted, allow_telemetry=False, allow_model=False)`：产品 replay_history 从新存储快照重放，返回产品 recovery_outcome 表示及 external_queries/model_requests 审计。
 - fixture 的 `recovery_runtime(recovery_boundaries)` 将桩注入所有遥测/环境/模型传输；`GuardedRecoveryDriver` 拥有 replay 模式和桩计数，不能从产品 outcome 复制计数。
 - `seed_incident` 只准备 OpsPilot 的业务记录，fixture 同时留存目标不可变副本；`snapshot_incident` 按 id 读取 target、生命周期、观察会话、采样，以及 adopted_sequence/adopted_window_end、healthy_window_seconds、used_sample_count、observation_authorization（session_id/主体及目标绑定/控制与观察 generation/profile revision/authorized）和 handling_audit；完整 observation_sessions 与必须提供的 sample_jobs 快照须稳定投影，供提交前后比较。
 - `sample_jobs` 必须列出该事故全部采样任务（包括非当前会话的任务），比较投影只含 job_id、session_id、sequence（逻辑序号），提交前后按集合比较，保证不新增任务、不改变归属或逻辑序号。缺少集合即验收失败。不比较 due_at、state 或租约字段：拒绝提交后释放租约或推迟同一任务属于处置该提交，不是 C3 §10 的「安排后续任务」，不能因这些合理变化判失败。
@@ -86,16 +105,11 @@ skip 不代表 F6 通过，第 6 步真实实验验收仍未执行。
 - `continue_observation(scenario, observations, until)` 仅向现有会话提交，不登记处置或重新授权；用于隔离人工转态与错误样本效果。
 - `read_raw_payload(evidence_id)` 是必须提供的接口，每个证据引用必须解析到与测试提供字节完全一致的已存原始 bytes 并校验实际摘要；缺接口、None 或非 bytes 都失败，不能编造 payload。
 
-真实 runtime fixture 已接线并使用 lead 启动的 PG17（55651）完成运行；5 个产品缺口整体 strict xfail，2 个任务清单接口冲突 strict xfail。另有 9 个适配器负向/映射检查（`tests/test_f6_driver_guards.py`），不计为产品验收。测试数字只用于合成边界，
-不替代第 1 步真实环境 HealthProfile 校准，也没有新增最低样本数门槛。
+## 执行证据（main 280e550 改接）
 
-## 执行证据（接线 2026-10-08，lead 最终归类）
-
-- lead 已启动 PG17、端口55651；本轮直接使用，未initdb、未停止实例、未提交或修改产品。无真实模型/遥测调用，未启动kind，费用0。
-- PR #137 审查原文见 `/Users/shenghuikevin/dev/AI/production-ops-agent/tmp/m1-02-review/137-review-final.md`。审查修订曾使五例普通失败，进一步确认预算、采纳、水位与新增任务均偏离。lead 明确决定这些都是 #138 的后果，按原始顺序断言整体 strict xfail，不保留已知差异分支；复验审查 P2 再要求七例限定 `raises=AssertionError`，让非断言类异常正常失败；不是将这些场景认定通过。
-- 撤销/到期两例函数正文未改，仍在全部其他状态、证据及只读断言之后严格匹配旧任务身份冲突，xfail 限定 `raises=AssertionError`，函数正文及末尾冲突匹配不变。
-- 复验审查 `/Users/shenghuikevin/dev/AI/production-ops-agent/tmp/m1-02-review/137-recheck-final.md` P2 已处置：七例标记只接受 AssertionError，传输/驱动/环境 RuntimeError 不再作为 xfail。该限制不替代 #138 修复时移除标记后的普通验收。
-- PG 命令：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **93 passed、5 skipped、7 xfailed**（4.45秒、退出0）。passed=31产品外部 +42领域 +11原夹具 +9适配器；xfail=5产品目标校验缺口 +2任务身份接口冲突；skip=5重放待#87。
-- `UV_CACHE_DIR=tmp/uv-cache make check` 退出0：锁/Ruff/mypy全过，**3145 passed、460 skipped、2个既有架构债 xfailed**（68.95秒）；默认未启用PG。函数正文 AST 与本轮 HEAD 完全一致。新增夹具检查在独立 pytest 子进程中调用实际七例并注入无关 RuntimeError，要求退出1且 JUnit 七例全部为 failure、没有 skipped（xfail）或 error；已定向通过，不需要PG；独立复验guards为9passed（0.42秒）。无关AssertionError仍可能被整体xfail接纳，不能以该限制代替无标记验收。
-
-#115：① 新存储读取重放输入、② 重放前后完整持久状态比较仅接好防护，产品重放仍未实现，待#87后验证，不称完成；③ 遥测桩查询/窗口调用集合已真实运行；④ 提交前撤销/到期的状态、历史及证据检查已运行，全部旧任务清单仍为接口缺口；⑤ 次数先于期限耗尽场景真实PG通过。
+- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **105 passed、2 xfailed、0 skipped**（8.71秒，退出0）。其中41产品外部、42领域、11原夹具、11驱动检查通过。
+- 全新上下文独立审查者同命令复跑 **105 passed、2 xfailed**（8.27秒），未发现新增合同/正确性缺口。
+- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、473 skipped、2个既有架构债xfailed**（78.35秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
+- #115①持久快照取回与②重放不写业务状态现已在5个产品重放场景实际验证；③遥测边界集合、④撤销/到期持久提交、⑤次数先于期限耗尽已运行，④仅完整任务身份清单仍为上述2个xfail。
+- 4条机器人线程：结果拼装改为产品投影；权限硬编码改为实际grants/TEMP准备；payload目标改为产品绑定；原5个目标xfail随批准合同改写移除。保留2个任务身份xfail的RuntimeError回归继续覆盖（实际7个身份/授权场景全为普通RuntimeError failure，不被xfail吞掉）。
+- 未改产品/迁移/profile或passes，未initdb/停PG/提交/push/PR；PG仍由lead管理，费用0。

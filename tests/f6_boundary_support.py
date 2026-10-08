@@ -43,9 +43,17 @@ class RecoveryBoundaries:
             for signal in row["signals"].values():
                 payload = signal["raw_payload"]
                 assert isinstance(payload, bytes)
-                key = (signal["query"], row["window_start"], row["window_end"])
-                assert key not in self.telemetry_responses
-                self.telemetry_responses[key] = payload
+                for kind in ("query", "coverage", "freshness"):
+                    key = (
+                        signal["query"],
+                        row["window_start"],
+                        row["window_end"],
+                        kind,
+                    )
+                    assert key not in self.telemetry_responses
+                    self.telemetry_responses[key] = signal[
+                        "raw_payload" if kind == "query" else f"{kind}_payload"
+                    ]
 
     def telemetry_query(
         self, query, *, window_start=None, window_end=None, query_kind="query"
@@ -54,7 +62,7 @@ class RecoveryBoundaries:
             self.telemetry_calls_during_replay += 1
             raise AssertionError("F6 harness rejected telemetry during replay")
         self.telemetry_calls.append((query, window_start, window_end, query_kind))
-        key = (query, window_start, window_end)
+        key = (query, window_start, window_end, query_kind)
         if key not in self.telemetry_responses:
             if (window_start, window_end) in self.telemetry_windows:
                 return None  # configured missing signal, never a network fallback
@@ -129,6 +137,18 @@ class GuardedRecoveryDriver:
             self.runtime.revoke_observation
             if fault == "revoke"
             else self.runtime.expire_observation
+        )
+
+    def register_again(self, scenario, **stimuli):
+        return self.runtime.register_again(scenario, **stimuli)
+
+    def replace_revision_at_submission(self, scenario, *, profile, handled_at):
+        self.runtime.submission_fault = lambda _subject_id: self.runtime.run(
+            scenario,
+            profile=profile,
+            handled_at=handled_at,
+            schedule=[],
+            until=handled_at,
         )
 
     def submission_snapshots(self):

@@ -1,6 +1,5 @@
 """Adapter negative checks, not PostgreSQL product acceptance evidence."""
 
-import base64
 import json
 from copy import deepcopy
 from hashlib import sha256
@@ -37,9 +36,18 @@ def test_source_queries_harness_for_value_coverage_and_freshness():
     boundaries.configure_telemetry(supplied)
     source = BoundarySource(boundaries, native)
     signal = native.signals[0]
-    for expr in (signal.query, signal.coverage_query, signal.freshness_query):
+    for kind, expr in (
+        ("query", signal.query),
+        ("coverage", signal.coverage_query),
+        ("freshness", signal.freshness_query),
+    ):
         result = source.instant(expr, at=supplied[0]["window_end"], timeout_seconds=1)
-        assert result.body == supplied[0]["signals"][signal.name]["raw_payload"]
+        assert (
+            result.body
+            == supplied[0]["signals"][signal.name][
+                "raw_payload" if kind == "query" else f"{kind}_payload"
+            ]
+        )
     assert {row[3] for row in boundaries.telemetry_calls} == {
         "query",
         "coverage",
@@ -51,49 +59,84 @@ def test_source_queries_harness_for_value_coverage_and_freshness():
     )
 
 
+def projected_sample_fixture():
+    from opspilot.acceptance import RecoverySample, RecoverySignal
+
+    native = encode_profile(profile.__wrapped__(), HANDLED)
+    supplied = with_raw_payloads(observations(1))[0]
+    name = "deployment"
+    payload = supplied["signals"][name]["raw_payload"]
+    identity = uuid4()
+    signal = RecoverySignal(
+        signal_name=name,
+        status="ok",
+        value=1.0,
+        sample_count=1,
+        query=native.signal(name).query,
+        source=native.source,
+        window_start=supplied["window_start"],
+        window_end=supplied["window_end"],
+        evaluated_at=supplied["window_end"],
+        sample_time=supplied["window_end"],
+        observed_at=supplied["signals"][name]["observed_at"],
+        evidence_id="fixture:deployment",
+        raw_sha256="0" * 64,
+        body_sha256=sha256(payload).hexdigest(),
+        verdict="healthy",
+        reason="fixture",
+    )
+    sample = RecoverySample(
+        subject_id=str(identity),
+        sample_id=str(uuid4()),
+        session_id=str(uuid4()),
+        sequence=1,
+        target=deepcopy(supplied["target"]),
+        subject_control_generation=1,
+        observation_generation=1,
+        health_profile_revision=native.revision,
+        window_start=supplied["window_start"],
+        window_end=supplied["window_end"],
+        disposition="adopted",
+        reason="adopted",
+        outcome="healthy",
+        required_signals_present=True,
+        confirms_health=False,
+        health_basis="confirmed",
+        transition=None,
+        signals={name: signal},
+    )
+    runtime = ProductRecoveryRuntime.__new__(ProductRecoveryRuntime)
+    runtime.ids = {"incident-f6": identity}
+    runtime.read_raw_payload = lambda _: payload
+    return runtime, native, sample, payload
+
+
 @pytest.mark.parametrize(
     "field,bad",
     [("query", "foreign-query"), ("source", "foreign-source"), ("value", 999)],
 )
 def test_saved_reading_mismatch_cannot_be_hidden_by_raw_stimulus(field, bad):
-    native = encode_profile(profile.__wrapped__(), HANDLED)
-    supplied = with_raw_payloads(observations(1))[0]
-    name = "deployment"
-    payload = supplied["signals"][name]["raw_payload"]
-    query = dict(
-        body_b64=base64.b64encode(payload).decode(),
-        body_sha256=sha256(payload).hexdigest(),
-    )
-    raw = json.dumps(dict(query=query, freshness=query)).encode()
-    reading = dict(
-        signal_name=name,
-        query=native.signal(name).query,
-        source=native.source,
-        value=1.0,
-        status="ok",
-        raw=raw,
-        raw_sha256=sha256(raw).hexdigest(),
-    )
-    reading[field] = bad
-    sample = dict(
-        sample_id=uuid4(),
-        sequence=1,
-        subject_control_generation=1,
-        observation_generation=1,
-        window_start=supplied["window_start"],
-        window_end=supplied["window_end"],
-        disposition="adopted",
-        outcome="healthy",
-        readings=[reading],
-    )
-    history = dict(
-        session=dict(session_id=uuid4(), target=supplied["target"]),
-        health_profile=dict(content=native.model_dump_json()),
-        samples=[sample],
-    )
-    runtime = ProductRecoveryRuntime.__new__(ProductRecoveryRuntime)
+    from dataclasses import replace
+
+    runtime, native, sample, _ = projected_sample_fixture()
+    signal = replace(sample.signals["deployment"], **{field: bad})
+    sample = replace(sample, signals={"deployment": signal})
     with pytest.raises(AssertionError):
-        runtime._samples("incident-f6", [history])
+        runtime._mapped_samples(
+            "incident-f6", SimpleNamespace(recovery_samples=(sample,)), native
+        )
+
+
+def test_mapped_sample_target_comes_from_product_not_telemetry():
+    runtime, native, sample, payload = projected_sample_fixture()
+    altered = json.loads(payload)
+    altered["target"] = {**sample.target, "namespace": "another-demo"}
+    runtime.read_raw_payload = lambda _: json.dumps(altered).encode()
+    mapped = runtime._mapped_samples(
+        "incident-f6", SimpleNamespace(recovery_samples=(sample,)), native
+    )
+    assert mapped[0]["target"] == sample.target
+    assert mapped[0]["target"] != altered["target"]
 
 
 @pytest.mark.parametrize("raises", [False, True])
@@ -132,7 +175,7 @@ def test_driver_does_not_forward_structured_observations_and_rejects_missing_io(
         driver.run(SimpleNamespace(subject_id="incident-f6"), observations=supplied)
 
 
-def test_unrelated_runtime_error_is_failure_in_all_seven_xfail_scenarios(tmp_path):
+def test_unrelated_runtime_error_is_failure_in_all_seven_authority_scenarios(tmp_path):
     """Run the actual marked functions with a broken transport, without PG."""
     import os
     import subprocess
@@ -146,7 +189,8 @@ def test_unrelated_runtime_error_is_failure_in_all_seven_xfail_scenarios(tmp_pat
 import pytest
 from tests.acceptance.test_f6_recovery import (
     profile as original_profile,
-    test_f6_step1_foreign_target_sample_is_history_only_without_advancing as test_foreign_target,
+    test_f6_step1_target_identity_reregistration_is_rejected_and_sampling_stays_bound as test_target_identity,
+    test_f6_step1_revision_rehandling_fences_old_session_result as test_revision,
 )
 from tests.contracts.test_f6_observation import (
     test_persisted_authority_guard_keeps_late_result_only_as_history as test_persisted_authority,
@@ -203,3 +247,45 @@ def recovery_driver():
         assert "RuntimeError: F6_UNRELATED_TRANSPORT_FAILURE" in failure.text
         assert case.find("skipped") is None
         assert case.find("error") is None
+
+
+def test_permissions_are_measured_and_extra_temp_is_not_filtered(
+    recovery_driver, f6_profile
+):
+    from psycopg import sql
+
+    from tests.acceptance.test_f6_recovery import assert_readonly, scenario
+
+    requested = scenario(1, "permissions-not-filtered")
+    baseline = recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=[],
+        until=HANDLED,
+    )
+    assert baseline.permissions == ("read_only", "human_control")
+    owner = recovery_driver.runtime.owner
+    with owner.transaction() as conn:
+        db = conn.info.dbname
+        conn.execute(
+            sql.SQL("GRANT TEMP ON DATABASE {} TO PUBLIC").format(sql.Identifier(db))
+        )
+    try:
+        measured = recovery_driver.runtime.outcome(requested.subject_id)
+        assert "database_temp" in measured.permissions
+        assert (
+            measured.permissions
+            == recovery_driver.runtime._product_projection(
+                requested.subject_id
+            ).permissions
+        )
+        with pytest.raises(AssertionError):
+            assert_readonly(measured, recovery_driver)
+    finally:
+        with owner.transaction() as conn:
+            conn.execute(
+                sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(
+                    sql.Identifier(db)
+                )
+            )

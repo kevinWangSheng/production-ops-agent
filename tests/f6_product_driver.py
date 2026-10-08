@@ -9,20 +9,23 @@ This is a bounded integration test, not a production timing proof.
 import base64
 import json
 from copy import deepcopy
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from io import BytesIO
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
+from opspilot.acceptance import IncidentScenario, RecoveryRecords, recovery_outcome
 from opspilot.observation import ObservationStore
 from opspilot.observer import (
     HealthProfile,
-    SignalReading,
     canonical_content,
-    evaluate_readings,
 )
 from opspilot.observer.loop import ObserverLoop
-from opspilot.observer.prometheus import InstantResult
+from opspilot.observer.prometheus import PrometheusReadOnlySource
+from opspilot.observer.replay import replay_history
 from opspilot.persistence import DurableStore, PoolConfig
 
 POOL = PoolConfig(min_size=1, max_size=2, timeout=5)
@@ -120,7 +123,12 @@ class BoundarySource:
         self.boundaries = boundaries
         self.profile = profile
 
-    def instant(self, expr, *, at, timeout_seconds):
+    def open(self, request, timeout=None):
+        if request.get_method() != "GET":
+            self.boundaries.environment_write(request.get_method(), request.full_url)
+        params = parse_qs(urlsplit(request.full_url).query)
+        expr = params["query"][0]
+        at = datetime.fromtimestamp(float(params["time"][0]), UTC)
         signal = next(
             s
             for s in self.profile.signals
@@ -133,22 +141,26 @@ class BoundarySource:
             if expr == signal.coverage_query
             else "freshness"
         )
-        query = f"synthetic_{signal.name}{{service='checkout'}}"
-        start = at - timedelta(seconds=self.profile.evaluation_window_seconds)
         payload = self.boundaries.telemetry_query(
-            query, window_start=start, window_end=at, query_kind=kind
+            f"synthetic_{signal.name}{{service='checkout'}}",
+            window_start=at - timedelta(seconds=self.profile.evaluation_window_seconds),
+            window_end=at,
+            query_kind=kind,
         )
         if payload is None:
-            return InstantResult(expr, "no_data", None, b"", 200)
-        row = json.loads(payload)
-        value = (
-            float(row["value"])
-            if kind == "query"
-            else 1.0
-            if kind == "coverage"
-            else datetime.fromisoformat(row["observed_at"]).timestamp()
+            payload = b'{"status":"success","data":{"resultType":"vector","result":[]}}'
+        response = BytesIO(payload)
+        response.status = 200
+        return response
+
+    def instant(self, expr, *, at, timeout_seconds):
+        # Product decoding both online and on replay; this opener is the
+        # sole transport, with no live endpoint or fallback.
+        return PrometheusReadOnlySource("http://f6.invalid", opener=self).instant(
+            expr,
+            at=at,
+            timeout_seconds=timeout_seconds,
         )
-        return InstantResult(expr, "ok", value, payload, 200)
 
 
 class ProductRecoveryRuntime:
@@ -166,6 +178,7 @@ class ProductRecoveryRuntime:
         self.clock = None
         self.monkeypatch.setattr(self.observer, "current_time", lambda: self.clock)
         self.pending = {}
+        self.scenarios = {}
 
     def close(self):
         for store in (self.observer, self.controller, self.owner):
@@ -191,6 +204,7 @@ class ProductRecoveryRuntime:
         self.targets[subject_id] = deepcopy(target)
 
     def run(self, scenario, *, profile, handled_at, schedule, until):
+        self.scenarios[scenario.subject_id] = scenario
         native = encode_profile(profile, handled_at)
         session = uuid4()
         generation = self.owner.recovery_metadata(self.ids[scenario.subject_id])[
@@ -243,12 +257,42 @@ class ProductRecoveryRuntime:
 
     def expire_observation(self, subject_id):
         session = self.controller.incident_sessions(self.ids[subject_id])[-1]
+        native = HealthProfile.model_validate_json(
+            self.controller.health_profile(session["health_profile_revision"])[
+                "content"
+            ]
+        )
+        # Simulate passage of the ORIGINAL duration as a pair of scheduling
+        # timestamps, never a verdict/watermark write. Replay rejects a
+        # deadline moved before creation; keep the frozen positive span.
         with self.owner.transaction() as conn:
             conn.execute(
-                "UPDATE opspilot_observation_sessions SET deadline_at=clock_timestamp()-interval '1 second' WHERE session_id=%s",
-                (session["session_id"],),
+                "UPDATE opspilot_observation_sessions SET deadline_at=clock_timestamp()-interval '1 second',created_at=clock_timestamp()-%s WHERE session_id=%s",
+                (
+                    timedelta(seconds=native.session.deadline_seconds + 1),
+                    session["session_id"],
+                ),
             )
         self.observer.sweep_expired_sessions()
+
+    def register_again(self, scenario, *, profile, handled_at, identity):
+        native = encode_profile(profile, handled_at)
+        return self.controller.register_remediation(
+            self.ids[scenario.subject_id],
+            expected_generation=self.owner.recovery_metadata(
+                self.ids[scenario.subject_id]
+            )["control_generation"],
+            actor="f6-acceptance",
+            revision=profile["target"]["revision"],
+            deadline_at=datetime.now(UTC)
+            + timedelta(seconds=native.session.deadline_seconds),
+            max_samples=native.session.max_samples,
+            sample_interval_seconds=native.session.sample_interval_seconds,
+            sustained_window_seconds=native.session.sustained_window_seconds,
+            health_profile_revision=native.revision,
+            health_profile=canonical_content(native),
+            identity={**identity, "workload": native.subject.service},
+        )
 
     def continue_observation(self, scenario, *, schedule, until):
         subject_id = scenario.subject_id
@@ -322,83 +366,152 @@ class ProductRecoveryRuntime:
         ]
 
     def persisted_replay_input(self, subject_id, session_id):
-        histories = self._history(subject_id, fresh=True)
+        # New storage driver, one public consistent snapshot. No original
+        # outcome object supplies any profile, sample, control or ending.
+        with_store = ObservationStore(self.dsn, pool=POOL)
+        try:
+            records = with_store.incident_records(self.ids[subject_id])
+        finally:
+            with_store.close()
         history = next(
-            h for h in histories if str(h["session"]["session_id"]) == session_id
+            h
+            for h in records["sessions"]
+            if str(h["session"]["session_id"]) == session_id
         )
-        return dict(subject_id=subject_id, session_id=session_id, history=history)
+        return dict(
+            subject_id=subject_id,
+            session_id=session_id,
+            history=history,
+            records=records,
+        )
 
-    def _samples(self, subject_id, histories):
+    @staticmethod
+    def _payload(reading):
+        raw = bytes(reading["raw"])
+        assert sha256(raw).hexdigest() == reading["raw_sha256"]
+        query = json.loads(raw)["query"]
+        payload = base64.b64decode(query["body_b64"], validate=True)
+        assert sha256(payload).hexdigest() == query["body_sha256"]
+        return payload
+
+    def _mapped_samples(
+        self, subject_id, projected, native, *, profiles=None, reader=None
+    ):
         saved = []
-        for history in histories:
-            session = history["session"]
-            native = HealthProfile.model_validate_json(
-                history["health_profile"]["content"]
+        for sample in projected.recovery_samples:
+            sample_profile = (profiles or {}).get(
+                sample.health_profile_revision, native
             )
-            for sample in history["samples"]:
-                signals = {}
-                target = deepcopy(session["target"])
-                for reading in sample["readings"]:
-                    raw = bytes(reading["raw"])
-                    assert sha256(raw).hexdigest() == reading["raw_sha256"]
-                    bundle = json.loads(raw)
-                    payload = base64.b64decode(
-                        bundle["query"]["body_b64"], validate=True
-                    )
-                    assert sha256(payload).hexdigest() == bundle["query"]["body_sha256"]
-                    if not payload:
-                        continue  # explicit no_data placeholder has no fixture signal
-                    stimulus = json.loads(payload)
-                    target = stimulus["target"]
-                    defined = native.signal(reading["signal_name"])
-                    assert defined is not None
-                    assert reading["query"] == defined.query
-                    assert reading["source"] == native.source
-                    expected_query = (
-                        f"synthetic_{reading['signal_name']}{{service='checkout'}}"
-                    )
-                    assert stimulus["query"] == expected_query
-                    assert stimulus["source"] == "prometheus:synthetic-lab"
-                    freshness_body = base64.b64decode(
-                        bundle["freshness"]["body_b64"], validate=True
-                    )
-                    if freshness_body:
-                        assert (
-                            json.loads(freshness_body)["observed_at"]
-                            == stimulus["observed_at"]
-                        )
-                    if reading["status"] == "ok":
-                        assert reading["value"] == float(stimulus["value"])
-                    # Unknown/stale readings clear their interpreted value;
-                    # the original value remains authoritative in saved bytes.
-                    signals[reading["signal_name"]] = dict(
-                        value=reading["value"]
-                        if reading["status"] == "ok"
-                        else stimulus["value"],
-                        source="prometheus:" + reading["source"],
-                        query=expected_query,
-                        observed_at=datetime.fromisoformat(stimulus["observed_at"]),
-                        evidence_id=f"{sample['sample_id']}:{reading['signal_name']}",
-                        raw_sha256=bundle["query"]["body_sha256"],
-                    )
-                saved.append(
-                    dict(
-                        subject_id=subject_id,
-                        sample_id=str(sample["sample_id"]),
-                        session_id=str(session["session_id"]),
-                        sequence=sample["sequence"],
-                        target=target,
-                        subject_control_generation=sample["subject_control_generation"],
-                        observation_generation=sample["observation_generation"],
-                        health_profile_revision=decode_profile(native)["revision"],
-                        window_start=sample["window_start"],
-                        window_end=sample["window_end"],
-                        disposition=sample["disposition"],
-                        outcome=sample["outcome"],
-                        signals=signals,
-                    )
+            assert sample_profile.revision == sample.health_profile_revision
+            frozen = decode_profile(sample_profile)
+            row = asdict(sample)
+            assert sample.subject_id == str(self.ids[subject_id])
+            row["subject_id"] = subject_id
+            row["health_profile_revision"] = frozen["revision"]
+            # Target is the PRODUCT session binding, never telemetry metadata.
+            row["target"] = dict(sample.target)
+            row["signals"] = {}
+            for name, signal in sample.signals.items():
+                payload = (reader or self.read_raw_payload)(signal.evidence_id)
+                body = json.loads(payload)
+                points = body["data"]["result"]
+                if not points:
+                    assert signal.status == "no_data"
+                    continue  # absent telemetry placeholder -> sparse harness signals
+                defined = sample_profile.signal(name)
+                assert defined is not None
+                assert (
+                    signal.query == defined.query
+                    and signal.source == sample_profile.source
                 )
+                value = float(points[0]["value"][1])
+                if signal.status == "ok":
+                    assert signal.value == value
+                row["signals"][name] = dict(
+                    value=signal.value if signal.value is not None else value,
+                    source="prometheus:" + signal.source,
+                    query=f"synthetic_{name}{{service='checkout'}}",
+                    observed_at=signal.observed_at,
+                    evidence_id=signal.evidence_id,
+                    raw_sha256=signal.body_sha256,
+                )
+            saved.append(row)
         return tuple(saved)
+
+    def _normalize(self, subject_id, projected, *, records=None, reader=None):
+        result = asdict(projected)
+        assert projected.subject_id == str(self.ids[subject_id])
+        native = (
+            HealthProfile.model_validate_json(projected.recovery_profile_content)
+            if projected.recovery_profile_content
+            else None
+        )
+        profiles = {
+            history["session"][
+                "health_profile_revision"
+            ]: HealthProfile.model_validate_json(history["health_profile"]["content"])
+            for history in (records or {}).get("sessions", ())
+            if history["health_profile"]
+        }
+        result["subject_id"] = subject_id
+        result["recovery_profile"] = decode_profile(native) if native else None
+        result["recovery_samples"] = (
+            self._mapped_samples(
+                subject_id, projected, native, profiles=profiles, reader=reader
+            )
+            if native
+            else ()
+        )
+        for view in result["observation_sessions"]:
+            view["subject"]["id"] = subject_id
+            view["health_profile_revision"] = decode_profile(
+                profiles.get(view["health_profile_revision"], native)
+            )["revision"]
+        if result["observation_authorization"]:
+            auth = result["observation_authorization"]
+            auth["subject"]["id"] = subject_id
+            auth["subject_id"] = subject_id
+            auth["health_profile_revision"] = decode_profile(
+                profiles.get(auth["health_profile_revision"], native)
+            )["revision"]
+
+        def reason_alias(codes):
+            return tuple(
+                dict.fromkeys(
+                    "DEPENDENCY_UNHEALTHY"
+                    if code == "DEGRADED_SIGNAL:dependencies"
+                    and native is not None
+                    and native.signal("dependencies") is not None
+                    and native.signal("dependencies").required
+                    else code
+                    for code in codes
+                )
+            )
+
+        result["recovery_reasons"] = reason_alias(projected.recovery_reasons)
+        result["handoff_reasons"] = reason_alias(projected.handoff_reasons)
+        result["external_queries"] = (
+            projected.replay.external_queries if projected.replay else ()
+        )
+        # permissions/actions/verdict/health/handoff are copied unchanged.
+        return SimpleNamespace(**result)
+
+    def _product_projection(self, subject_id, records=None):
+        records = records or self.controller.incident_records(self.ids[subject_id])
+        requested = self.scenarios.get(
+            subject_id,
+            IncidentScenario("F6:snapshot", "F6", "1", "snapshot", subject_id),
+        )
+        product_scenario = replace(requested, subject_id=str(self.ids[subject_id]))
+        return recovery_outcome(
+            product_scenario,
+            RecoveryRecords(
+                incident=records["incident"],
+                sessions=tuple(records["sessions"]),
+                controls=tuple(records["controls"]),
+                grants=self.observer.table_privileges(),
+            ),
+        )
 
     def read_raw_payload(self, evidence_id):
         sample_id, name = evidence_id.split(":", 1)
@@ -410,214 +523,56 @@ class ProductRecoveryRuntime:
                     reading = next(
                         r for r in sample["readings"] if r["signal_name"] == name
                     )
-                    raw = bytes(reading["raw"])
-                    assert sha256(raw).hexdigest() == reading["raw_sha256"]
-                    query = json.loads(raw)["query"]
-                    payload = base64.b64decode(query["body_b64"], validate=True)
-                    assert sha256(payload).hexdigest() == query["body_sha256"]
-                    return payload
+                    return self._payload(reading)
         raise AssertionError("persisted evidence reference not found")
 
     def snapshot_incident(self, subject_id):
-        histories = self._history(subject_id)
-        sessions = []
-        jobs = set()
-        for history in histories:
-            s = history["session"]
-            native = HealthProfile.model_validate_json(
-                history["health_profile"]["content"]
-            )
-            sessions.append(
-                dict(
-                    session_id=str(s["session_id"]),
-                    purpose=s["purpose"],
-                    subject=dict(kind="incident", id=subject_id),
-                    target=s["target"],
-                    subject_control_generation=s["subject_control_generation"],
-                    observation_generation=s["observation_generation"],
-                    state=s["state"],
-                    authorized=s["authorized"] and s["state"] == "authorized",
-                    health_profile_revision=decode_profile(native)["revision"],
-                    adopted_sequence=s["adopted_sequence"],
-                    adopted_window_end=s["adopted_window_end"],
-                    active_sample_job_id=s["active_sample_job_id"],
-                )
-            )
-            jobs.update(
-                (str(r["job_id"]), str(s["session_id"]), r["sequence"])
-                for r in history["samples"]
-            )
-            if s["active_sample_job_id"]:
-                jobs.add(
-                    (
-                        str(s["active_sample_job_id"]),
-                        str(s["session_id"]),
-                        s["active_sample_sequence"],
-                    )
-                )
-        with self.owner.transaction(snapshot=True) as conn:
-            incident = conn.execute(
-                "SELECT * FROM opspilot_incidents WHERE incident_id=%s",
-                (self.ids[subject_id],),
-            ).fetchone()
-            audit = tuple(
-                conn.execute(
-                    "SELECT action,expected_generation,resulting_generation,actor,payload FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at,audit_id",
-                    (self.ids[subject_id],),
-                ).fetchall()
-            )
-        last = histories[-1]["session"] if histories else {}
-        since, end = last.get("healthy_since"), last.get("adopted_window_end")
-        authorization = deepcopy(sessions[-1]) if sessions else None
-        if authorization:
-            authorization["subject_id"] = subject_id
+        records = self.controller.incident_records(self.ids[subject_id])
+        outcome = self._normalize(
+            subject_id, self._product_projection(subject_id, records), records=records
+        )
+        last = records["sessions"][-1]["session"] if records["sessions"] else {}
         return dict(
-            target=deepcopy(last.get("target", self.targets[subject_id])),
-            incident_lifecycle=incident["lifecycle"],
-            control_state=incident,
-            authority_history=deepcopy(histories),
-            recovery_samples=self._samples(subject_id, histories),
-            observation_sessions=tuple(sessions),
-            observation_authorization=authorization,
-            handling_audit=audit,
-            sample_jobs=tuple(
-                dict(zip(("job_id", "session_id", "sequence"), job, strict=True))
-                for job in sorted(jobs)
-            ),
+            target=dict(outcome.target or self.targets[subject_id]),
+            incident_lifecycle=outcome.incident_lifecycle,
+            control_state=deepcopy(records["incident"]),
+            authority_history=deepcopy(records),
+            recovery_samples=outcome.recovery_samples,
+            observation_sessions=outcome.observation_sessions,
+            observation_authorization=outcome.observation_authorization,
+            handling_audit=outcome.handling_audit,
+            sample_jobs=outcome.sample_jobs,
             adopted_sequence=last.get("adopted_sequence", 0),
-            adopted_window_end=end,
-            healthy_window_seconds=int((end - since).total_seconds())
-            if since and end
-            else 0,
-            used_sample_count=last.get("adopted_count", 0),
+            adopted_window_end=last.get("adopted_window_end"),
+            healthy_window_seconds=outcome.healthy_window_seconds,
+            used_sample_count=outcome.used_sample_count,
         )
 
     def outcome(self, subject_id):
-        snapshot = self.snapshot_incident(subject_id)
-        history = self._history(subject_id)[-1]
-        session = history["session"]
-        native = HealthProfile.model_validate_json(history["health_profile"]["content"])
-        reasons = []
-        latest = history["samples"][-1] if history["samples"] else None
-        if latest:
-            readings = []
-            for row in latest["readings"]:
-                bundle = json.loads(bytes(row["raw"]))
-                timestamp = (
-                    json.loads(base64.b64decode(bundle["freshness"]["body_b64"]))[
-                        "observed_at"
-                    ]
-                    if bundle["freshness"]["body_b64"]
-                    else None
-                )
-                readings.append(
-                    SignalReading(
-                        signal_name=row["signal_name"],
-                        status=row["status"],
-                        value=row["value"],
-                        sample_count=row["sample_count"],
-                        query=row["query"],
-                        source=row["source"],
-                        window_start=row["window_start"],
-                        window_end=row["window_end"],
-                        raw_sha256=row["raw_sha256"],
-                        latest_sample_at=datetime.fromisoformat(timestamp)
-                        if timestamp
-                        else None,
-                    )
-                )
-            evaluation = evaluate_readings(
-                native, readings, sample_time=latest["window_end"]
-            )
-            for verdict in evaluation.verdicts:
-                if verdict.verdict == "below_traffic_gate":
-                    reasons.append("INSUFFICIENT_TRAFFIC")
-                if verdict.verdict in {"missing", "no_data"}:
-                    reasons.extend(
-                        (
-                            "REQUIRED_TELEMETRY_MISSING",
-                            f"MISSING_SIGNAL:{verdict.signal_name}",
-                        )
-                    )
-                if (
-                    verdict.signal_name == "dependencies"
-                    and verdict.verdict == "degraded"
-                ):
-                    reasons.append("DEPENDENCY_UNHEALTHY")
-                if verdict.verdict == "stale":
-                    reasons.append("STALE_TELEMETRY")
-        ended = session["state"] != "authorized"
-        confirmed = snapshot["incident_lifecycle"] == "resolved"
-        verdict = (
-            "healthy"
-            if confirmed
-            else "degraded"
-            if latest and latest["outcome"] == "degraded"
-            else "unknown"
-        )
-        handoff = ended and session["ended_reason"] in {
-            "deadline_expired",
-            "max_samples_exhausted",
-        }
-        handoff_reasons = (
-            tuple(
-                dict.fromkeys(
-                    reasons
-                    + (
-                        ["CONTINUED_DEGRADATION"]
-                        if verdict == "degraded"
-                        else ["OBSERVATION_UNCONFIRMED"]
-                    )
-                )
-            )
-            if handoff
-            else ()
-        )
-        with self.observer.transaction(snapshot=True) as conn:
-            role = conn.execute(
-                "SELECT pg_has_role(current_user,'opspilot_observer','member') AS observer,has_column_privilege(current_user,'opspilot_observation_sessions','health_profile_revision','UPDATE') AS can_authorize"
-            ).fetchone()
-        assert role["observer"] and not role["can_authorize"]
-        actions = []
-        for audit in snapshot["handling_audit"]:
-            # Unknown controls cannot silently disappear from the full audit.
-            assert audit["action"] == "register_remediation", audit["action"]
-            actions.extend(("record_handling", "advance_incident_lifecycle"))
-        for saved in history["samples"]:
-            actions.extend(["read_only_query"] * len(saved["readings"]))
-            actions.append("persist_observation")
-        for ending in history["endings"]:
-            if ending["lifecycle_before"] != ending["lifecycle_after"]:
-                actions.append("advance_incident_lifecycle")
-            if ending["ended_reason"] in {"deadline_expired", "max_samples_exhausted"}:
-                actions.append("human_handoff")
-        return SimpleNamespace(
-            **{
-                k: snapshot[k]
-                for k in (
-                    "incident_lifecycle",
-                    "recovery_samples",
-                    "healthy_window_seconds",
-                    "used_sample_count",
-                )
-            },
-            subject_id=subject_id,
-            recovery_confirmed=confirmed,
-            recovery_verdict=verdict,
-            recovery_reasons=tuple(dict.fromkeys(reasons)),
-            latest_sample_verdict=latest["outcome"] if latest else None,
-            recovery_profile=decode_profile(native),
-            recovery_handled_at=session["authorized_at"],
-            observation_ended=ended,
-            human_interaction="handoff" if handoff else "none",
-            handoff_reasons=handoff_reasons,
-            model_requests=(),
-            external_queries=(),
-            permissions=("read_only", "human_control"),
-            actions=tuple(actions),
+        records = self.controller.incident_records(self.ids[subject_id])
+        return self._normalize(
+            subject_id, self._product_projection(subject_id, records), records=records
         )
 
-    def replay(self, **artifacts):
-        # Deliberately unavailable until #87 is merged and its public report
-        # contract is reviewed. Persisted input + nonmutation guard are ready.
-        raise NotImplementedError("待 #87 合并")
+    def replay(self, *, persisted, allow_telemetry=False, allow_model=False):
+        if allow_telemetry or allow_model:
+            raise ValueError("REPLAY_IS_OFFLINE")
+        subject_id = persisted["subject_id"]
+        history = deepcopy(persisted["history"])
+        # Explicit offline product API; no lookup of original outcome.
+        replayed = replay_history(history)
+        records = deepcopy(persisted["records"])
+        records["sessions"] = [history]
+        result = self._product_projection(subject_id, records)
+        assert result.replay == replayed
+        evidence = {
+            f"{sample['sample_id']}:{reading['signal_name']}": reading
+            for sample in history["samples"]
+            for reading in sample["readings"]
+        }
+        return self._normalize(
+            subject_id,
+            result,
+            records=records,
+            reader=lambda ref: self._payload(evidence[ref]),
+        )

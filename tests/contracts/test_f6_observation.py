@@ -269,7 +269,7 @@ def test_human_close_is_closed_and_reopen_needs_a_new_stage():
 @pytest.mark.xfail(
     strict=True,
     raises=ContractInterfaceConflict,
-    reason="合同/接口冲突: 结束会话丢失无样本任务身份，公开存储缺全部已发放任务清单 见 opspilot/observation/revocation.py:53、opspilot/observation/store.py:1569",
+    reason="合同/接口冲突: 产品 sample_jobs 缺已结束且无样本的任务身份，见 opspilot/acceptance_recovery.py:616、opspilot/observation/revocation.py:53",
 )
 @pytest.mark.parametrize("fault", ["revoke", "expire"])
 def test_persisted_authority_guard_keeps_late_result_only_as_history(

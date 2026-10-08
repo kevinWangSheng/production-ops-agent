@@ -31,6 +31,13 @@ def f6_database():
     try:
         schema.migrate(dsn, pg_dump=os.environ.get("OPSPILOT_PG_DUMP", "pg_dump"))
         with psycopg.connect(dsn, autocommit=True) as conn:
+            # PUBLIC default TEMP would truthfully appear as database_temp.
+            # Revoke only in this fixture-owned database, also on CI PG17.
+            conn.execute(
+                sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(
+                    sql.Identifier(name)
+                )
+            )
             conn.execute(
                 sql.SQL("CREATE ROLE {} LOGIN IN ROLE opspilot_observer").format(
                     sql.Identifier(login)

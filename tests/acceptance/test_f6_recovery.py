@@ -168,9 +168,29 @@ def with_raw_payloads(rows):
                 "query": signal["query"],
                 "observed_at": signal["observed_at"].isoformat(),
             }
-            signal["raw_payload"] = json.dumps(
-                captured, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            for kind, value in (
+                ("query", float(signal["value"])),
+                ("coverage", 1.0),
+                ("freshness", signal["observed_at"].timestamp()),
+            ):
+                wire = {
+                    **captured,
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [
+                            {
+                                "metric": {},
+                                "value": [row["window_end"].timestamp(), str(value)],
+                            }
+                        ],
+                    },
+                }
+                signal["raw_payload" if kind == "query" else f"{kind}_payload"] = (
+                    json.dumps(wire, sort_keys=True, separators=(",", ":")).encode(
+                        "utf-8"
+                    )
+                )
     return rows
 
 
@@ -350,7 +370,6 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 #87 合并")
 @pytest.mark.parametrize(
     "kind,options,count,verdict,lifecycle",
     [
@@ -467,7 +486,6 @@ def test_f6_step1_stale_or_discontinuous_data_is_saved_without_confirming_recove
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 #87 合并")
 def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     recovery_driver, profile
 ):
@@ -725,75 +743,124 @@ def test_harness_model_stub_records_calls_even_if_runtime_swallows_rejection(pha
     assert driver.model_calls == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="产品缺口: 提交未校验结果目标（C3 §10），见 #138",
+@pytest.mark.parametrize(
+    "identity_field", ("integration_id", "cluster_uid", "namespace", "resource_uid")
 )
-@pytest.mark.parametrize("identity_field", list(TARGET))
-def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
+def test_f6_step1_target_identity_reregistration_is_rejected_and_sampling_stays_bound(
     recovery_driver, profile, identity_field
 ):
-    requested = scenario(1, f"foreign-target-{identity_field}")
-    # Authorize once, but do not query/adopt any sample. A subsequent foreign
-    # submission must not be confused with the human lifecycle transition.
+    # Contract change authorized by the user, 2026-10-08: target is bound
+    # at registration/query time, not a caller-provided submit payload.
+    from opspilot.persistence import PersistenceError
+
+    requested = scenario(1, f"immutable-target-{identity_field}")
     started = recovery_driver.run(
-        requested,
-        profile=profile,
-        handled_at=HANDLED,
-        observations=[],
-        until=HANDLED,
+        requested, profile=profile, handled_at=HANDLED, observations=[], until=HANDLED
     )
     assert started.incident_lifecycle == "observing_recovery"
-    assert started.recovery_confirmed is False
     before = recovery_driver.snapshot_incident(requested.subject_id)
-    assert before["target"] == TARGET
-    assert before["adopted_sequence"] == 0
-    assert before["adopted_window_end"] is None
-    assert before["healthy_window_seconds"] == 0
-    assert before["used_sample_count"] == 0
-    authorization = before["observation_authorization"]
-    assert authorization["session_id"]
-    assert authorization["subject_id"] == requested.subject_id
-    assert isinstance(authorization["subject_control_generation"], int)
-    assert isinstance(authorization["observation_generation"], int)
-    assert authorization["health_profile_revision"] == profile["revision"]
-    assert authorization["target"] == TARGET
-    assert authorization["authorized"] is True
-    assert before["handling_audit"]
-    supplied = observations(1)
+    identity = {key: value for key, value in TARGET.items() if key != "revision"}
     foreign_target = deepcopy(TARGET)
-    foreign_target[identity_field] = f"another-{identity_field}"
+    alternate = {
+        "integration_id": "another-integration",
+        "cluster_uid": "another-cluster",
+        "namespace": "another-demo",
+        "resource_uid": "another-checkout",
+    }
+    identity[identity_field] = alternate[identity_field]
+    foreign_target[identity_field] = alternate[identity_field]
+    with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
+        recovery_driver.register_again(
+            requested, profile=profile, handled_at=HANDLED, identity=identity
+        )
+    assert recovery_driver.snapshot_incident(requested.subject_id) == before
+    supplied = observations(1)
     supplied[0]["target"] = foreign_target
     supplied = with_raw_payloads(supplied)
     outcome = recovery_driver.continue_observation(
-        requested,
-        observations=deepcopy(supplied),
-        until=supplied[-1]["window_end"],
+        requested, observations=deepcopy(supplied), until=supplied[0]["window_end"]
     )
-    assert outcome.subject_id == requested.subject_id
-    assert outcome.incident_lifecycle == started.incident_lifecycle
+    assert outcome.target == TARGET
+    assert outcome.incident_lifecycle == "observing_recovery"
     assert outcome.recovery_confirmed is False
-    assert outcome.healthy_window_seconds == 0
-    assert outcome.used_sample_count == 0
-    assert not outcome.observation_ended
+    assert outcome.observation_ended is False
     assert outcome.human_interaction != "handoff"
     assert not outcome.handoff_reasons
+    assert outcome.healthy_window_seconds == 60
+    assert outcome.used_sample_count == 1
     assert len(outcome.recovery_samples) == 1
-    history = outcome.recovery_samples[0]
-    assert history["disposition"] == "history_only"
-    assert history["subject_id"] == requested.subject_id
-    assert history["session_id"] == authorization["session_id"]
-    assert history["target"] == foreign_target
-    assert history["sequence"] == supplied[0]["sequence"]
-    assert history["window_start"] == supplied[0]["window_start"]
-    assert history["window_end"] == supplied[0]["window_end"]
-    evidence_ids = assert_signal_basis(history, supplied[0], recovery_driver)
-    assert len(set(evidence_ids)) == len(evidence_ids)
+    saved = outcome.recovery_samples[0]
+    assert saved["target"] == TARGET != foreign_target
+    assert saved["session_id"] == before["observation_authorization"]["session_id"]
+    assert saved["subject_id"] == requested.subject_id
+    assert saved["disposition"] == "adopted"
+    assert saved["sequence"] == supplied[0]["sequence"]
+    assert saved["window_start"] == supplied[0]["window_start"]
+    assert saved["window_end"] == supplied[0]["window_end"]
+    assert len(set(assert_signal_basis(saved, supplied[0], recovery_driver))) == len(
+        REQUIRED
+    )
     after = recovery_driver.snapshot_incident(requested.subject_id)
+    assert after["target"] == TARGET
+    assert after["handling_audit"] == before["handling_audit"]
+    for key in (
+        "session_id",
+        "subject_id",
+        "target",
+        "subject_control_generation",
+        "observation_generation",
+        "health_profile_revision",
+        "authorized",
+    ):
+        assert (
+            after["observation_authorization"][key]
+            == before["observation_authorization"][key]
+        )
+    assert (
+        len(after["observation_sessions"]) == len(before["observation_sessions"]) == 1
+    )
+    assert saved in after["recovery_samples"]
+    assert_readonly(started, recovery_driver)
+    assert_readonly(outcome, recovery_driver)
+
+
+def test_f6_step1_revision_rehandling_fences_old_session_result(
+    recovery_driver, profile
+):
+    requested = scenario(1, "revision-new-session")
+    recovery_driver.run(
+        requested, profile=profile, handled_at=HANDLED, observations=[], until=HANDLED
+    )
+    original = recovery_driver.snapshot_incident(requested.subject_id)
+    old_auth = original["observation_authorization"]
+    recovery_driver.prepare_submission(requested.subject_id)
+    updated = deepcopy(profile)
+    updated["target"] = {**TARGET, "revision": "new-handled-revision"}
+    recovery_driver.replace_revision_at_submission(
+        requested, profile=updated, handled_at=HANDLED + timedelta(seconds=60)
+    )
+    supplied = with_raw_payloads(observations(1))
+    outcome = recovery_driver.continue_observation(
+        requested, observations=deepcopy(supplied), until=supplied[0]["window_end"]
+    )
+    before, after = recovery_driver.submission_snapshots()
+    auth = before["observation_authorization"]
+    assert auth["session_id"] != old_auth["session_id"]
+    assert auth["target"] == updated["target"]
+    assert auth["subject_control_generation"] > old_auth["subject_control_generation"]
+    assert auth["observation_generation"] > old_auth["observation_generation"]
+    assert len(before["observation_sessions"]) == 2
+    old = next(
+        row
+        for row in before["observation_sessions"]
+        if row["session_id"] == old_auth["session_id"]
+    )
+    assert old["state"] == "revoked" and old["authorized"] is False
+    assert old["target"] == TARGET
     for field in (
         "target",
         "incident_lifecycle",
+        "control_state",
         "adopted_sequence",
         "adopted_window_end",
         "healthy_window_seconds",
@@ -802,13 +869,35 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
         "observation_sessions",
         "handling_audit",
     ):
-        assert after[field] == before[field]
-    job_fields = ("job_id", "session_id", "sequence")
-    assert {
-        tuple(job[field] for field in job_fields) for job in after["sample_jobs"]
-    } == {tuple(job[field] for field in job_fields) for job in before["sample_jobs"]}
-    assert history in after["recovery_samples"]
-    assert_readonly(started, recovery_driver)
+        assert after[field] == before[field], field
+    assert len(outcome.recovery_samples) == 1
+    saved = outcome.recovery_samples[0]
+    assert saved["disposition"] == "history_only"
+    assert saved["subject_id"] == requested.subject_id
+    assert saved["session_id"] == old_auth["session_id"]
+    assert saved["target"] == TARGET
+    assert saved["subject_control_generation"] == old_auth["subject_control_generation"]
+    assert saved["observation_generation"] == old_auth["observation_generation"]
+    assert len(set(assert_signal_basis(saved, supplied[0], recovery_driver))) == len(
+        REQUIRED
+    )
+    # Old claimed job becomes visible when history is filed; no new logical
+    # work is scheduled by that rejection (the latest active slot is stable).
+    assert set(
+        tuple(row[key] for key in ("job_id", "session_id", "sequence"))
+        for row in after["sample_jobs"]
+    ) == set(
+        tuple(row[key] for key in ("job_id", "session_id", "sequence"))
+        for row in before["sample_jobs"]
+    ) | {
+        tuple(
+            recovery_driver.submitted_job_witness()[key]
+            for key in ("job_id", "session_id", "sequence")
+        )
+    }
+    assert outcome.recovery_confirmed is False
+    assert outcome.used_sample_count == 0
+    assert outcome.healthy_window_seconds == 0
     assert_readonly(outcome, recovery_driver)
 
 
