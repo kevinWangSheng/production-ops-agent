@@ -9,6 +9,7 @@ plus the registry-resolved intake target.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import uuid4
 
 from opspilot.web.store import MappingTargetRegistry, TargetIdentity
@@ -216,3 +217,118 @@ def test_intake_resolves_the_target_through_the_registry_only():
         headers={**basic(), **same_origin()},
     )
     assert retried.status == 201
+
+
+def test_a_paused_incident_takes_no_registration_until_resumed():
+    """Independent review of PR #120, P1: registering a remediation must not
+    bypass or lift a pause; resume is its own explicit decision."""
+    app, workbench, _ = build_workbench()
+    incident = submit_incident(app).json()["incident_id"]
+    paused = _control(
+        app,
+        incident,
+        {"action": "pause", "expected_generation": "0", "idempotency_key": "p-1"},
+    )
+    assert paused.status == 200 and paused.json()["generation"] == 1
+    refused = _control(
+        app,
+        incident,
+        {
+            "action": "register_remediation",
+            "expected_generation": "1",
+            "idempotency_key": "rem-1",
+            "revision": "checkout:v2",
+        },
+    )
+    assert (refused.status, refused.json()["code"]) == (409, "ILLEGAL_TRANSITION")
+    row = next(iter(workbench.incidents.incidents.values()))
+    assert (row["state"], row["lifecycle"], row["control_generation"]) == (
+        "paused",
+        "open",
+        1,
+    )
+    assert workbench.incidents.sessions == []
+    assert [c["action"] for c in workbench.incidents.controls] == ["pause"]
+    resumed = _control(
+        app,
+        incident,
+        {"action": "resume", "expected_generation": "1", "idempotency_key": "r-1"},
+    )
+    assert resumed.status == 200 and resumed.json()["generation"] == 2
+    accepted = _control(
+        app,
+        incident,
+        {
+            "action": "register_remediation",
+            "expected_generation": "2",
+            "idempotency_key": "rem-2",
+            "revision": "checkout:v2",
+        },
+    )
+    assert accepted.status == 200 and accepted.json()["generation"] == 3
+    assert row["lifecycle"] == "observing_recovery"
+
+
+def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
+    """Independent review of PR #120, P2: two unconfirmed intents (keys A and
+    B, revisions rev-A and rev-B) for the same incident, operator and
+    generation; only A's store transaction committed before the crash. B must
+    not be confirmed as that decision; A must."""
+    app, workbench, _ = build_workbench()
+    incident_id = submit_incident(app).json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    for key, revision in (("A", "rev-A"), ("B", "rev-B")):
+        workbench.ledger.put(
+            "control_intent",
+            f"{subject}:{key}",
+            {
+                "action": "register_remediation",
+                "actor_id": "alice",
+                "expected_generation": 0,
+                "revision": revision,
+            },
+        )
+    # A's transaction committed (audit row bound to A's key); no confirm row.
+    profile = workbench.health_profile
+    workbench.incidents.register_remediation(
+        subject,
+        expected_generation=0,
+        actor="alice",
+        revision="rev-A",
+        deadline_at=workbench.incidents.now() + timedelta(hours=1),
+        max_samples=profile.session.max_samples,
+        sample_interval_seconds=profile.session.sample_interval_seconds,
+        sustained_window_seconds=profile.session.sustained_window_seconds,
+        health_profile_revision=profile.revision,
+        health_profile="{}",
+        session_id=uuid4(),
+        payload={"channel": "web", "idempotency_key": f"{subject}:A"},
+    )
+    retry_b = _control(
+        app,
+        incident_id,
+        {
+            "action": "register_remediation",
+            "expected_generation": "0",
+            "idempotency_key": "B",
+            "revision": "rev-B",
+        },
+    )
+    assert retry_b.status == 409
+    assert retry_b.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
+    assert workbench.ledger.get("control", f"{subject}:B") is None
+    retry_a = _control(
+        app,
+        incident_id,
+        {
+            "action": "register_remediation",
+            "expected_generation": "0",
+            "idempotency_key": "A",
+            "revision": "rev-A",
+        },
+    )
+    assert retry_a.status == 200
+    assert retry_a.json()["generation"] == 1 and retry_a.json()["replayed"] is True
+    (session,) = workbench.incidents.sessions
+    assert session["target"]["revision"] == "rev-A"
+    assert [c["revision"] for c in workbench.snapshot(subject)["controls"]] == ["rev-A"]

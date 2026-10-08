@@ -552,6 +552,9 @@ class MemoryIncidentStore:
             raise PersistenceError("CONTROL_CONFLICT")
         if row["lifecycle"] not in {"open", "observing_recovery"}:
             raise PersistenceError("ILLEGAL_TRANSITION")
+        # Mirror ObservationStore: a paused incident takes no authorization.
+        if row["state"] == "paused":
+            raise PersistenceError("ILLEGAL_TRANSITION")
         if deadline_at <= self.now():
             raise PersistenceError("INVALID_INPUT")
         nxt = expected_generation + 1

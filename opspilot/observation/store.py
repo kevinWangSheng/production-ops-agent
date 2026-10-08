@@ -786,6 +786,20 @@ class ObservationStore(_StoreBase):
         elif health_profile is not None:
             raise PersistenceError("INVALID_INPUT")
         incident = self._lock_incident(conn, incident_id)
+        # A paused incident takes no new observation authorization: human
+        # control outranks it (C3 section 4 "暂停期间 ... 不发起自动查询"),
+        # and registering a remediation must not lift a pause by the side;
+        # resume is its own explicit decision (independent review of PR
+        # #120, P1). Read apart from ``_lock_incident``: that helper also
+        # serves the Observer role, which is not granted ``state``.
+        control_state = self._require_row(
+            conn.execute(
+                "SELECT state FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
+            )
+        )["state"]
+        if control_state == "paused":
+            raise PersistenceError("ILLEGAL_TRANSITION")
         if incident["target_id"] is None:
             raise PersistenceError("UNKNOWN_TARGET")
         target = self._registered_target(conn, incident["target_id"], revision)

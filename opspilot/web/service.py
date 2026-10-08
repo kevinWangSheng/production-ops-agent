@@ -368,7 +368,7 @@ class Workbench:
             # Intent recorded, decision not confirmed: fall through and apply.
         try:
             generation, new_run_id = self._apply(
-                summary, action, expected_generation, actor_id, text, revision
+                summary, action, expected_generation, actor_id, text, revision, key
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -429,6 +429,7 @@ class Workbench:
         actor_id: str,
         text: str | None,
         revision: str | None = None,
+        key: str | None = None,
     ) -> tuple[int, UUID | None]:
         # The run id is derived from ``expected + 1`` so a stale form either
         # conflicts on identity or replays the very run it already created;
@@ -456,7 +457,7 @@ class Workbench:
                     _INTAKE_NAMESPACE,
                     f"{summary.intake_key}:observation:{expected + 1}",
                 ),
-                payload={"channel": "web"},
+                payload={"channel": "web", "idempotency_key": key},
             )
             return generation, None
         if action != "new_run":
@@ -569,9 +570,10 @@ class Workbench:
         intent: Mapping[str, Any],
         audit: ControlAudit,
         *,
+        key: str,
         unconfirmed_peers: int,
     ) -> bool:
-        """Whether ``audit`` provably is the decision ``intent`` asked for.
+        """Whether ``audit`` provably is the decision ``intent`` (ledger ``key``) asked for.
 
         Action, expected generation and actor must match. A text action
         additionally needs the audit payload (PR #31) to carry the same
@@ -584,6 +586,17 @@ class Workbench:
             or audit.actor != intent["actor_id"]
         ):
             return False
+        payload = audit.payload or {}
+        if intent["action"] == REGISTER_REMEDIATION:
+            # The registration writes its ledger key and revision into the
+            # audit row in the same transaction, so a decision is confirmed
+            # only against the request that made it; two unconfirmed intents
+            # with different revisions can never take each other's row
+            # (independent review of PR #120, P2).
+            return bool(
+                payload.get("idempotency_key") == key
+                and payload.get("revision") == intent.get("revision")
+            )
         text = intent.get("text")
         if text is None:
             return True
@@ -643,7 +656,9 @@ class Workbench:
             matches = [
                 (key, intent)
                 for key, intent in peers
-                if self._audit_matches(intent, audit, unconfirmed_peers=len(peers))
+                if self._audit_matches(
+                    intent, audit, key=key, unconfirmed_peers=len(peers)
+                )
             ]
             if len(matches) != 1:
                 continue
@@ -675,7 +690,9 @@ class Workbench:
         for audit in self.incidents.control_audit(incident_id):
             if audit.resulting_generation in taken:
                 continue
-            if self._audit_matches(intent, audit, unconfirmed_peers=len(peers)):
+            if self._audit_matches(
+                intent, audit, key=key, unconfirmed_peers=len(peers)
+            ):
                 return self._confirm(incident_id, key, intent, audit)
         return None
 

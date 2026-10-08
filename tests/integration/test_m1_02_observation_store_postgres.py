@@ -848,7 +848,12 @@ def test_target_suspension_ends_the_session_rather_than_pausing_it(
         ("scope_suspended", None)
     ]
     _assert_replay_consistent(controller, session)
-    # The incident is still observing: a new session can be authorized.
+    # The incident is still observing but its control mirror stayed paused
+    # when the suspension was lifted; a paused incident takes no new
+    # authorization (step 3, review P1) until a human resumes explicitly.
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        _authorize(controller, incident, target)
+    assert owner.control(incident, 0, "resume", "tester") == 1
     assert _authorize(controller, incident, target)
 
 

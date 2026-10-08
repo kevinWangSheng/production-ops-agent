@@ -318,8 +318,14 @@ def test_registration_is_refused_while_the_scope_is_suspended(
     assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
     assert _sessions(owner, incident) == []
     assert _audit(owner, incident) == []
-    # Released: the registration goes through under the unchanged generation.
-    assert _register(controller, incident, expected=0) == 1
+    # Released: the control mirror stays paused until a human resumes
+    # (C3 section 4), so the registration is still refused; after the
+    # explicit resume it goes through under the new generation.
+    assert _incident_row(owner, incident)["state"] == "paused"
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        _register(controller, incident, expected=0)
+    assert owner.control(incident, 0, "resume", "operator") == 1
+    assert _register(controller, incident, expected=1) == 2
 
 
 def test_registration_is_refused_on_a_resolved_or_closed_incident(
@@ -400,7 +406,18 @@ def test_pause_and_cancel_revoke_the_authorization_in_their_transaction(
     # registration is a fresh decision under the new generation).
     assert row["lifecycle"] == "observing_recovery"
     assert row["state"] == ("paused" if action == "pause" else "cancelled")
-    assert _register(controller, incident, expected=2, revision="checkout:v3") == 3
+    generation = 2
+    if action == "pause":
+        # A paused incident takes no new authorization (review P1): the
+        # registration waits for an explicit resume.
+        with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+            _register(controller, incident, expected=2, revision="checkout:v3")
+        assert owner.control(incident, 2, "resume", "operator") == 3
+        generation = 3
+    assert (
+        _register(controller, incident, expected=generation, revision="checkout:v3")
+        == generation + 1
+    )
     sessions = _sessions(owner, incident)
     assert [s["state"] for s in sessions] == ["revoked", "authorized"]
 
@@ -628,3 +645,36 @@ def test_the_workbench_action_is_idempotent_and_the_page_shows_the_session(
         assert _incident_row(owner, incident)["lifecycle"] == "observing_recovery"
     finally:
         store.close()
+
+
+def test_a_paused_incident_takes_no_registration(
+    owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Independent review of PR #120, P1 (its reproduction: pause, then
+    register under the new generation): refused, nothing written, the pause
+    stands; after an explicit resume the registration goes through."""
+    incident, run, _, _ = _incident(owner)
+    owner.claim(incident, run, uuid4(), VERSIONS, lease_seconds=60)
+    assert owner.control(incident, 0, "pause", "operator") == 1
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        _register(controller, incident, expected=1)
+    row = _incident_row(owner, incident)
+    assert (row["state"], row["lifecycle"]) == ("paused", "open")
+    assert (row["control_generation"], row["observation_generation"]) == (1, 0)
+    assert _sessions(owner, incident) == []
+    assert [a["action"] for a in _audit(owner, incident)] == ["pause"]
+    # The storage primitive refuses as well, not only the human action.
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        controller.authorize_session(
+            incident,
+            revision="checkout:v2",
+            actor="tester",
+            deadline_at=_now() + timedelta(hours=1),
+            max_samples=3,
+            sample_interval_seconds=15,
+            sustained_window_seconds=60,
+        )
+    assert owner.control(incident, 1, "resume", "operator") == 2
+    assert _register(controller, incident, expected=2) == 3
+    row = _incident_row(owner, incident)
+    assert (row["state"], row["lifecycle"]) == ("running", "observing_recovery")
