@@ -216,11 +216,22 @@ def assert_readonly(outcome, driver, subject_id="incident-f6"):
     assert outcome.actions.count("read_only_query") == emitted
     if outcome.recovery_samples:
         assert emitted > 0
-    assert outcome.actions.count("advance_incident_lifecycle") >= 1
+    # Incidents are seeded open. Count each observed registration/ending move,
+    # including historical sessions; repeated authorization while observing
+    # and endings that retain the lifecycle are not additional transitions.
+    lifecycle = "open"
+    changes = 0
+    for _, before, after in outcome.lifecycle_events:
+        changes += (lifecycle if before is None else before) != after
+        lifecycle = after
+    actual = outcome.actions.count("advance_incident_lifecycle")
+    assert actual == changes, (
+        f"lifecycle action count: actual={actual}, expected={changes}"
+    )
     if outcome.human_interaction == "handoff":
         assert outcome.actions.count("human_handoff") >= 1
-    if outcome.recorded_lifecycle in {"resolved", "open"}:
-        assert outcome.actions.count("advance_incident_lifecycle") >= 2
+    else:
+        assert outcome.actions.count("human_handoff") == 0
 
 
 def assert_signal_basis(row, original, driver):

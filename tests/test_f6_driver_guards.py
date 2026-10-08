@@ -406,6 +406,8 @@ def test_replay_earlier_session_excludes_later_handling_and_lifecycle(
     )
     assert current.incident_lifecycle == "resolved"
     assert current.actions.count("record_handling") == 2
+    assert_readonly(first, recovery_driver)
+    assert_readonly(current, recovery_driver)
     persisted = recovery_driver.persisted_replay_input(requested.subject_id, session_id)
     replayed = recovery_driver.replay(
         persisted=persisted, allow_telemetry=False, allow_model=False
@@ -471,3 +473,157 @@ def test_action_contract_rejects_empty_or_truncated_audit(
     altered.actions = tuple(actions)
     with pytest.raises(AssertionError):
         assert_readonly(altered, recovery_driver)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["unknown_session", "other_session", "other_revision"]
+)
+def test_mapping_rejects_sample_session_or_its_profile_mismatch(
+    recovery_driver, f6_profile, mutation
+):
+    from dataclasses import replace
+
+    from tests.acceptance.test_f6_recovery import scenario
+
+    requested = scenario(1, "sample-session-binding")
+    rows = with_raw_payloads(observations(1))
+    recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=deepcopy(rows),
+        until=rows[-1]["window_end"],
+    )
+    updated = deepcopy(f6_profile)
+    if mutation == "other_revision":
+        updated["max_error_ratio"] = 0.005
+    recovery_driver.run(
+        requested,
+        profile=updated,
+        handled_at=HANDLED,
+        observations=deepcopy(rows),
+        until=rows[-1]["window_end"],
+    )
+    runtime = recovery_driver.runtime
+    records = runtime.controller.incident_records(runtime.ids[requested.subject_id])
+    projected = runtime._product_projection(requested.subject_id, records)
+    first = projected.recovery_samples[0]
+    assert first.session_id == str(records["sessions"][0]["session"]["session_id"])
+    other = records["sessions"][1]["session"]
+    if mutation == "other_revision":
+        assert first.health_profile_revision != other["health_profile_revision"]
+        altered = replace(
+            first, health_profile_revision=other["health_profile_revision"]
+        )
+        message = "sample session/profile binding mismatch"
+    else:
+        if mutation == "other_session":
+            assert first.health_profile_revision == other["health_profile_revision"]
+        altered = replace(
+            first,
+            session_id=str(
+                uuid4() if mutation == "unknown_session" else other["session_id"]
+            ),
+        )
+        message = "sample persistent session binding mismatch"
+    projected = replace(
+        projected, recovery_samples=(altered, *projected.recovery_samples[1:])
+    )
+    with pytest.raises(AssertionError, match=message):
+        runtime._normalize(requested.subject_id, projected, records=records)
+
+
+@pytest.mark.parametrize(
+    "state,mutation",
+    [
+        ("observing", "spurious_handoff"),
+        ("resolved", "spurious_handoff"),
+        ("observing", "duplicate_lifecycle"),
+        ("resolved", "duplicate_lifecycle"),
+        ("handoff", "duplicate_lifecycle"),
+        ("resolved", "truncate_lifecycle"),
+        ("handoff", "truncate_lifecycle"),
+    ],
+)
+def test_action_contract_rejects_surplus_handoff_or_inexact_lifecycle(
+    recovery_driver, f6_profile, state, mutation
+):
+    from tests.acceptance.test_f6_recovery import assert_readonly, scenario
+
+    rows = with_raw_payloads(
+        observations(
+            {"observing": 1, "resolved": 3, "handoff": 5}[state],
+            traffic=0 if state == "handoff" else 200,
+        )
+    )
+    outcome = recovery_driver.run(
+        scenario(1, "action-audit-exact"),
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=rows,
+        until=rows[-1]["window_end"],
+    )
+    assert_readonly(outcome, recovery_driver)
+    altered = deepcopy(outcome)
+    actions = list(outcome.actions)
+    if mutation == "spurious_handoff":
+        assert outcome.human_interaction != "handoff"
+        actions.append("human_handoff")
+    elif mutation == "duplicate_lifecycle":
+        actions.append("advance_incident_lifecycle")
+    else:
+        actions.remove("advance_incident_lifecycle")
+    altered.actions = tuple(actions)
+    with pytest.raises(AssertionError):
+        assert_readonly(altered, recovery_driver)
+
+
+def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
+    recovery_driver, f6_profile
+):
+    from datetime import timedelta
+
+    from tests.acceptance.test_f6_recovery import assert_readonly, scenario
+
+    requested = scenario(1, "resolved-after-prior-handoff")
+    first_rows = with_raw_payloads(observations(5, traffic=0))
+    first = recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=first_rows,
+        until=first_rows[-1]["window_end"],
+    )
+    assert first.human_interaction == "handoff"
+    assert first.incident_lifecycle == "open"
+    assert_readonly(first, recovery_driver)
+    updated = deepcopy(f6_profile)
+    shift = timedelta(seconds=300)
+    updated["deadline"] += shift
+    later_rows = observations(3)
+    for row in later_rows:
+        for key in ("window_start", "window_end"):
+            row[key] += shift
+        for signal in row["signals"].values():
+            signal["observed_at"] += shift
+    current = recovery_driver.run(
+        requested,
+        profile=updated,
+        handled_at=HANDLED + shift,
+        observations=with_raw_payloads(later_rows),
+        until=later_rows[-1]["window_end"],
+    )
+    assert current.incident_lifecycle == "resolved"
+    assert current.human_interaction is None
+    try:
+        assert_readonly(current, recovery_driver)
+    except AssertionError:
+        # Only the history-scoped handoff action is the open contract
+        # question (#154); every other check must still hold without it.
+        rest = deepcopy(current)
+        rest.actions = tuple(a for a in current.actions if a != "human_handoff")
+        assert_readonly(rest, recovery_driver)
+        assert current.actions.count("human_handoff") == 1
+        pytest.xfail(
+            "合同待定 #154：全历史 actions 含已发生的交接，与「非交接结果 human_handoff 为 0」冲突"
+        )
