@@ -128,10 +128,17 @@ def test_a_client_without_a_connection_hook_is_refused():
         script.TimestampedRecordingClient(client, _Clock())  # type: ignore[arg-type]
 
 
+def _with_takeover_rows(summary: dict) -> tuple[dict, dict]:
+    verdicts = summary["verdicts"]
+    # Newer summaries also carry the rows read right after the takeover.
+    verdicts.setdefault("run_state_at_takeover", "waiting_human")
+    verdicts.setdefault("run_owner_at_takeover", None)
+    return verdicts, summary["takeover"]
+
+
 def _held() -> tuple[dict, dict]:
     """Verdicts of a takeover that held (shape of the frozen evidence)."""
-    summary = json.loads(HELD.read_text())
-    return summary["verdicts"], summary["takeover"]
+    return _with_takeover_rows(json.loads(HELD.read_text()))
 
 
 @pytest.mark.skipif(not FROZEN, reason="no frozen takeover evidence")
@@ -140,14 +147,13 @@ def test_the_frozen_evidence_has_the_shape_the_required_verdicts_expect():
     request time is taken on entry to ``complete()``), so this does not prove
     the socket-write invariant; the script change applies to later runs (#127)
     and the frozen evidence is deliberately left as it is."""
-    summary = json.loads(HELD.read_text())
-    assert script.failed_verdicts(summary["verdicts"], summary["takeover"]) == []
+    assert script.failed_verdicts(*_held()) == []
 
 
 @pytest.mark.skipif(not NO_REQUEST_YET.exists(), reason="evidence not present")
 def test_a_takeover_before_any_request_was_sent_is_not_accepted():
-    summary = json.loads(NO_REQUEST_YET.read_text())
-    assert script.failed_verdicts(summary["verdicts"], summary["takeover"]) == [
+    verdicts, takeover = _with_takeover_rows(json.loads(NO_REQUEST_YET.read_text()))
+    assert script.failed_verdicts(verdicts, takeover) == [
         "model_request_sent_before_takeover"
     ]
 
@@ -163,6 +169,14 @@ def test_a_takeover_before_any_request_was_sent_is_not_accepted():
         ),
         ("run_parked_waiting_human", lambda v, t: v.update(run_state_after="running")),
         ("run_owner_released", lambda v, t: v.update(run_owner_after="set")),
+        (
+            "run_parked_by_takeover",
+            lambda v, t: v.update(run_state_at_takeover="running"),
+        ),
+        (
+            "run_parked_by_takeover",
+            lambda v, t: v.update(run_owner_at_takeover="set"),
+        ),
         ("incident_human_owned", lambda v, t: v.update(incident_mode_after="auto")),
         (
             "control_generation_stepped",

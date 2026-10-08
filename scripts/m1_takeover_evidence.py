@@ -174,6 +174,14 @@ def failed_verdicts(verdicts: dict, takeover: dict) -> list[str]:
         "run_parked_waiting_human", verdicts.get("run_state_after") == "waiting_human"
     )
     require("run_owner_released", verdicts.get("run_owner_after") is None)
+    # The same two facts as read in the takeover's own aftermath, before the
+    # worker thread finished: the worker's later generation-fence handling
+    # must not be able to stand in for the takeover transaction parking the Run.
+    require(
+        "run_parked_by_takeover",
+        verdicts.get("run_state_at_takeover") == "waiting_human"
+        and verdicts.get("run_owner_at_takeover") is None,
+    )
     require(
         "incident_human_owned", verdicts.get("incident_mode_after") == "human_owned"
     )
@@ -434,6 +442,8 @@ def main() -> int:
         "takeover_applied": takeover.get("applied", False),
         "run_state_after": attempts[-1]["rows_after"].get("run_state"),
         "run_owner_after": attempts[-1]["rows_after"].get("owner"),
+        "run_state_at_takeover": (takeover.get("rows_after") or {}).get("run_state"),
+        "run_owner_at_takeover": (takeover.get("rows_after") or {}).get("owner"),
         "incident_mode_after": ledger["incident_after"]["mode"],
         "control_generation_after": ledger["incident_after"]["control_generation"],
         "model_requests_before_takeover": takeover.get("model_requests_started_before"),
