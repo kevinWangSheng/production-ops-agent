@@ -7,11 +7,11 @@
 仅查看公开领域接口、外部入口及测试，不读并行实现。
 实现者不能为通过测试修改断言；下面区分冻结语义与可由适配器自定的产品接口。
 
-## 当前覆盖（main 280e550，#139 / #143 改接）
+## 当前覆盖（main 510dcd3，#145 验收收紧）
 
 [外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例全部启用 PG opt-in：
 第 1 步22、第 2 步6、第 3 步6、第 4 步2、第 5 步5，**41 passed、0 xfailed、0 skipped**。
-纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查30 passed（权限实测1例、10项绑定负向检查及本轮9项重放/动作检查需PG）。
+纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查40 passed、1 xfailed（权限实测1例、13项绑定负向检查及17项重放/动作检查需PG）。失败为先交接再重新授权恢复的事故，见下方 #145 证据；不能据其余场景通过宣称本次收紧全部通过。
 
 - 第1步：持续窗口、四个信号阈值、陈旧/时间缺口/处置前数据、同目标双事故隔离、退化重置与重新累计；目标四身份与revision共5例按下述批准合同改写。
 - 第2步：零/低流量、期限前后、先健康后撤流量；独立次数预算（4次、240秒，早于600秒期限）通过。
@@ -31,7 +31,7 @@
 | `DEGRADED_SIGNAL:dependencies`，该信号 required | `DEPENDENCY_UNHEALTHY`；其余原因码原样保留，handoff_reasons 使用同一命名表 |
 | `incident_lifecycle="unverified"`，`recorded_lifecycle` | 两者原样保留，满足完整性场景 `!= resolved` |
 | RecoverySample.target / 顶层 target | 产品会话的不可变绑定原样复制；不读取遥测 JSON.target 决定目标 |
-| RecoverySample / RecoverySignal DTO | 转为原场景字典；序号、绝对窗、两类 generation、disposition/outcome 原样保留 |
+| RecoverySample / RecoverySignal DTO | 转换前按 sample_id 核对同一持久快照中所属会话，sample.session_id 必须等于该会话，revision 必须等于该会话绑定的 revision；未知采样或错绑直接 AssertionError。序号、绝对窗、两类 generation、disposition/outcome 原样保留 |
 | native profile 内容 / 内容 hash revision | 逐项核验 revision 存在、SHA-256 与持久内容一致、内容规范化 hash/revision 一致、且符合对应持久会话绑定；不回退当前 profile。顶层缺失或错绑同样直接 AssertionError，再从冻结 calibration 元数据恢复 synthetic 表示 |
 | scoped `synthetic_<name>{namespace="demo",service="checkout"}` 与 source `synthetic-lab` | 校验与所属冻结 profile 一致后，仅表示为原 query 名及 `prometheus:synthetic-lab`；真实查询仍是 scoped 表达式 |
 | Signal.value 为 None（如 stale） | 原始值从已存、双重验证的 query body 取回，保留 status/verdict 不变；正常 value 必须与该 body 一致 |
@@ -68,9 +68,14 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 ## 最后两条 P1（PR #137）
 
 - **PRRT_kwDOUSm_486qdOfc：选择按时间边界裁剪的事故级重放。** 新存储快照选中会话后，仅保留截至该会话的 sessions 前缀（保持每次登记与对应会话的产品关联），控制行截止该会话最后结束记录的 recorded_at；尚未结束则截止最后采样 submitted_at，没有采样则截止授权审计 created_at。排除之后的新登记/控制行。事故生命周期复制所选会话结束记录 lifecycle_after；无结束记录按登记授权的 observing_recovery 合同值；代际/目标引用取范围内记录，历史 mode 无持久值则为None，不沿用当前模式。再交给产品 recovery_outcome，驱动不重新判定。新增真实PG检查：第一会话2样本仍观察，第二会话3样本resolved后重放第一会话，必须仍为observing_recovery，仅1次登记、2次持久化、36次查询，不携带第二次登记或当前resolved。重放前后当前业务快照仍相等。
-- **PRRT_kwDOUSm_486qdOfm：冻结动作合同仅收紧。** 保留 actions ⊆ READONLY_ACTIONS，同时要求 record_handling 次数等于范围内登记审计且大于0，persist_observation 次数等于已提交样本数，read_only_query 次数等于测试桩独立见证的实际发出查询数；有采样必须有查询，生命周期变化必须有 advance_incident_lifecycle，交接必须有 human_handoff。查询见证由真实采样调用前后桩差量关联到实际receipt.sample_id，重放较早会话按其样本范围核对，不从产品动作自报计数。新增8类空/缺/截断动作审计负向检查，无删弱其他断言。
+- **PRRT_kwDOUSm_486qdOfm：冻结动作合同仅收紧。** 保留 actions ⊆ READONLY_ACTIONS，同时要求 record_handling 次数等于范围内登记审计且大于0，persist_observation 次数等于已提交样本数，read_only_query 次数等于测试桩独立见证的实际发出查询数；有采样必须有查询，交接必须有 human_handoff。#145 进一步要求非 handoff 结果的 human_handoff 为0；所有结果的 advance_incident_lifecycle 次数精确等于范围内持久登记和结束记录所见的生命周期变化数。夹具初始 open，登记进入 observing_recovery；按事件时间核对结束记录 before/after，重复授权及生命周期未改变的结束记录不多计。完整性重放按持久变化计数，不能把 unverified 当作一次持久转态；较早会话重放仅用裁剪快照。查询见证由真实采样调用前后桩差量关联到实际receipt.sample_id，不从产品动作自报计数。原8类空/缺/截断动作审计负向检查保留，新增7类虚假交接/重复或缺少生命周期动作检查。
 
 ## 剩余 xfail 与验证边界
+
+另有一个 strict xfail（合同待定，issue #154；原为普通 failure，xfail 仅为使 CI 可读，断言未放宽）：`test_non_handoff_result_after_prior_handoff_has_no_handoff_action`。
+同事故第一会话零流量5次采样后交接回 open，再登记新会话，3次健康采样后 resolved。
+最新 `human_interaction=None`，但产品全历史 `actions` 中 `human_handoff` 实际1、期望0。
+公开 seam 的最新会话交接字段与全历史动作范围不同，导致不满足 #145 冻结的非交接零动作要求；断言不变，不修改产品；归属待 #154 决定。
 
 仅两个持久合同（revoke/expire）strict xfail、raises=ContractInterfaceConflict：产品 `sample_jobs` 仍从活动槽与样本历史投影，
 已结束且无样本的job身份不可见，迟到历史后原job才出现，故完整集合由空变为旧job。其余状态/水位/预算/授权/会话/审计/历史证据/只读断言先执行通过。
@@ -120,3 +125,11 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 - #115①持久快照取回与②重放不写业务状态现已在5个产品重放场景实际验证；③遥测边界集合、④撤销/到期持久提交、⑤次数先于期限耗尽已运行，④仅完整任务身份清单仍为上述2个xfail。
 - 4条机器人线程：结果拼装改为产品投影；权限硬编码改为实际grants/TEMP准备；payload目标改为产品绑定；原5个目标xfail随批准合同改写移除。保留2个任务身份xfail的RuntimeError回归继续覆盖（实际7个身份/授权场景全为普通RuntimeError failure，不被xfail吞掉）。
 - 未改产品/迁移/profile或passes，未initdb/停PG/提交/push/PR；PG仍由lead管理，费用0。
+
+### #145 收紧（main 510dcd3，2026-10-08）
+
+- 红：先仅加入3项逐样本会话/revision错绑、7项动作精确性检查，PG `-k 'sample_session_or_its_profile or surplus_handoff_or_inexact'` 得 **8 failed、2 passed、30 deselected**（2.18秒）。三种错绑、两种虚假交接和三种重复生命周期动作均未被旧断言拒绝；终态少一次生命周期动作已被拒绝。
+- 收紧后上述10项与原套件共 **134 passed、2 xfailed**（12.18秒）。追加独立审查指出的“先交接再恢复”可达场景，保留真实产品失败；两会话观察→恢复与较早会话重放均核对精确生命周期动作次数。
+- 最终PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55632 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **134 passed、1 failed、2 xfailed、0 skipped**（14.32秒，退出1）。失败断言与实际/期望值见上方。
+- 最终 `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、503 skipped、2个既有架构债xfailed、0 failed**（74.13秒，退出0），锁/Ruff/mypy通过；默认非PG，503个skip包含本次新增PG检查，不能替代上述产品失败证据。`git diff --check`通过；仅改测试及本文档，无提交，无产品修改。
+- 全新上下文独立审查未发现违反用户 #145 冻结要求的测试缺口；指出现行公开最新会话交接/全历史动作合同冲突，作者按要求运行连续场景并保留失败。静态审查不代替PG证据。
