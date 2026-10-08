@@ -388,6 +388,10 @@ def summarize(args: argparse.Namespace) -> int:
             ],
         },
         "recovery_outcome": projection,
+        # the grant map measured on the Observer login that ``permissions``
+        # was derived from (bot review P2 on PR #158): verifiable without
+        # the temporary database
+        "observer_grants": _jsonable(grants),
     }
     _save(args.out, summary)
     print(

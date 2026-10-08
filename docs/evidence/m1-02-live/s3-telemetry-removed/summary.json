@@ -1,7 +1,7 @@
 {
   "experiment_id": "f6-live-s3",
   "scenario_id": "F6:3:telemetry_removed",
-  "frozen_at": "2026-10-08T17:58:38.787101+00:00",
+  "frozen_at": "2026-10-08T19:12:55.228216+00:00",
   "incident_id": "300c5951-3877-5d08-a259-3dabd66d1026",
   "session_id": "7b2e0af8-6209-5898-adbc-a749342b8847",
   "intake": {
@@ -6755,5 +6755,124 @@
     },
     "model_requests": [],
     "recovery_profile_content_sha256": "8f91519db7fa7318bca08c3cc697b45a06ce1fa653f9cc2ec1fde58e16548d6b"
+  },
+  "observer_grants": {
+    "product_schema": "public",
+    "tables": {
+      "public.alembic_version": {
+        "SELECT": "*"
+      },
+      "public.opspilot_budget_reservations": {},
+      "public.opspilot_controls": {},
+      "public.opspilot_evidence": {},
+      "public.opspilot_health_profiles": {
+        "SELECT": "*"
+      },
+      "public.opspilot_incidents": {
+        "SELECT": [
+          "incident_id",
+          "lifecycle",
+          "control_generation",
+          "target_id",
+          "observation_generation"
+        ],
+        "UPDATE": [
+          "lifecycle"
+        ]
+      },
+      "public.opspilot_input_rounds": {},
+      "public.opspilot_inputs": {},
+      "public.opspilot_observation_endings": {
+        "SELECT": "*",
+        "INSERT": [
+          "ending_id",
+          "session_id",
+          "incident_id",
+          "ended_reason",
+          "transition",
+          "sample_id",
+          "lifecycle_before",
+          "lifecycle_after"
+        ]
+      },
+      "public.opspilot_observation_samples": {
+        "SELECT": "*",
+        "INSERT": [
+          "sample_id",
+          "session_id",
+          "job_id",
+          "sequence",
+          "epoch",
+          "window_start",
+          "window_end",
+          "outcome",
+          "required_signals_present",
+          "subject_control_generation",
+          "observation_generation",
+          "health_profile_revision",
+          "disposition",
+          "reason",
+          "confirms_health",
+          "health_basis",
+          "subject_lifecycle",
+          "incident_control_generation",
+          "incident_observation_generation",
+          "scope_suspended",
+          "global_generation",
+          "target_generation",
+          "within_deadline",
+          "lease_valid",
+          "lease_stamps_match",
+          "readings_consistent",
+          "transition"
+        ]
+      },
+      "public.opspilot_observation_sessions": {
+        "SELECT": "*",
+        "UPDATE": [
+          "state",
+          "ended_reason",
+          "adopted_sequence",
+          "adopted_window_end",
+          "adopted_count",
+          "healthy_since",
+          "issued_sequence",
+          "active_sample_job_id",
+          "active_sample_sequence",
+          "active_sample_due_at",
+          "active_sample_owner",
+          "active_sample_epoch",
+          "active_sample_lease_until",
+          "updated_at"
+        ]
+      },
+      "public.opspilot_observation_signal_readings": {
+        "SELECT": "*",
+        "INSERT": "*"
+      },
+      "public.opspilot_runs": {},
+      "public.opspilot_scope_controls": {
+        "SELECT": "*"
+      },
+      "public.opspilot_steps": {},
+      "public.opspilot_subject_events": {},
+      "public.opspilot_suspension_audit": {},
+      "public.opspilot_target_suspensions": {
+        "SELECT": "*"
+      },
+      "public.opspilot_targets": {
+        "SELECT": "*"
+      },
+      "public.opspilot_tool_charges": {},
+      "public.opspilot_web_ledger": {}
+    },
+    "sequences": {},
+    "schemas": {
+      "public": [
+        "USAGE"
+      ]
+    },
+    "database": [],
+    "functions": []
   }
 }
