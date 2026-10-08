@@ -1,0 +1,169 @@
+{
+  "format_version": 1,
+  "profile_id": "otel-demo-checkout",
+  "description": "LAB-BOUNDED VARIANT for F6 real-lab scenarios 2-4 (#88): identical to the shipped otel-demo-checkout profile except session.max_samples=11 (the smallest budget the loader accepts for a 600 s sustained window at 60 s) so a non-confirming session reaches its real max_samples_exhausted handoff inside the bounded lab run. Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported; pod health is read at Deployment level (ready replicas, lowest available replicas inside the window) because a pod name prefix does not prove which workload a pod belongs to. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals bind the namespace through k8s_namespace_name, which the lab's span series carry next to service_name (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json).",
+  "subject": {
+    "service": "checkout",
+    "kubernetes_namespace": "otel-demo"
+  },
+  "source": "prometheus",
+  "calibration_source": "Calibrated 2026-10-07 against the M1-02 step 0 lab observations of 2026-10-06 (docs/evidence/m1-02-lab/regression, 2 locust users): see docs/evidence/m1-02-health-profile/run.md. Frozen before candidate evaluation (C3 section 13).",
+  "evaluation_window_seconds": 300,
+  "freshness_seconds": 90,
+  "query_timeout_seconds": 20,
+  "session": {
+    "deadline_seconds": 3600,
+    "max_samples": 11,
+    "sample_interval_seconds": 60,
+    "sustained_window_seconds": 600
+  },
+  "effective_traffic": {
+    "signal": "request_rate_per_second",
+    "minimum": 0.008
+  },
+  "signals": [
+    {
+      "name": "deployment_available_replicas",
+      "description": "Available replicas of the checkout Deployment (kube-state-metrics). The lab runs spec.replicas=1.",
+      "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": false,
+      "healthy": {
+        "min": 1
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment"
+      }
+    },
+    {
+      "name": "request_rate_per_second",
+      "description": "PlaceOrder server spans per second over the evaluation window; the effective-traffic gate reads this signal. Lab steady state with 2 locust users is about 3.75 orders per 5 minutes (0.0125/s).",
+      "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": false,
+      "healthy": {
+        "min": 0
+      },
+      "scope": {
+        "namespace_label": "k8s_namespace_name",
+        "workload_label": "service_name"
+      }
+    },
+    {
+      "name": "error_ratio",
+      "description": "Share of PlaceOrder server spans ending in STATUS_CODE_ERROR. `or vector(0)` keeps a service with no error series from reading as no data; no traffic makes the whole ratio empty, which the traffic gate also catches.",
+      "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": true,
+      "healthy": {
+        "min": 0,
+        "max": 0.01
+      },
+      "scope": {
+        "namespace_label": "k8s_namespace_name",
+        "workload_label": "service_name"
+      }
+    },
+    {
+      "name": "latency_p95_milliseconds",
+      "description": "p95 PlaceOrder server latency from the span-metrics histogram.",
+      "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": true,
+      "healthy": {
+        "min": 0,
+        "max": 500
+      },
+      "scope": {
+        "namespace_label": "k8s_namespace_name",
+        "workload_label": "service_name"
+      }
+    },
+    {
+      "name": "deployment_ready_replicas",
+      "description": "Ready replicas of the checkout Deployment (kube-state-metrics kube_deployment_status_replicas_ready). Replaces the pod-level pods_running signal: a pod name prefix cannot prove which workload a pod belongs to, so pod health is read at Deployment level (user decision B, 2026-10-08). The lab runs spec.replicas=1.",
+      "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": false,
+      "healthy": {
+        "min": 1
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment"
+      }
+    },
+    {
+      "name": "deployment_available_replicas_min_in_window",
+      "description": "Lowest number of available replicas of the checkout Deployment at any scrape inside the evaluation window (min_over_time over kube_deployment_status_replicas_available). Replaces the pod-level restart counter: a dip to 0 inside the window is what a restart or crash loop looks like at Deployment level; a restart that comes and goes between two scrapes (60 s in the lab) is not seen, which the restart counter would have shown (user decision B, 2026-10-08).",
+      "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": false,
+      "healthy": {
+        "min": 1
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment"
+      }
+    },
+    {
+      "name": "dependency_deployments_available",
+      "description": "Number of the eight named Deployments checkout depends on (payment, cart and its valkey, product-catalog, currency, shipping, email, flagd) that report at least one available replica. count() over a filtered vector drops a Deployment whose series is missing as well as one with zero replicas, so the value must equal 8 exactly; min() over the same selector would silently ignore a missing series.",
+      "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": false,
+      "healthy": {
+        "min": 8,
+        "max": 8
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment",
+        "workload_match": "dependencies",
+        "dependencies": [
+          "payment",
+          "cart",
+          "valkey-cart",
+          "product-catalog",
+          "currency",
+          "shipping",
+          "email",
+          "flagd"
+        ]
+      }
+    },
+    {
+      "name": "dependency_error_ratio",
+      "description": "Share of checkout's outbound (client) spans ending in STATUS_CODE_ERROR, covering every dependency checkout calls.",
+      "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}))",
+      "minimum_samples": 3,
+      "traffic_dependent": true,
+      "healthy": {
+        "min": 0,
+        "max": 0.01
+      },
+      "scope": {
+        "namespace_label": "k8s_namespace_name",
+        "workload_label": "service_name"
+      }
+    }
+  ]
+}
