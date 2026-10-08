@@ -1124,11 +1124,20 @@ def test_vector_selectors_are_extracted_with_decoded_values():
 #: ``step_invariant_expr`` ``AT signed_or_unsigned_number``,
 #: ``aggregate_expr`` and the lexer keywords ``inf`` / ``nan``). Every
 #: selector is namespace-bound, so scope binding never decides the outcome:
-#: the scanner must reject exactly what Prometheus rejects. Keyword case
-#: (``SUM(...) BY (s)``) is not covered here.
+#: the scanner must reject exactly what Prometheus rejects. Not covered:
+#: keyword case (``SUM(...) BY (s)``) and chained ``offset`` signs
+#: (``offset --5m`` is valid there; the scanner refuses any chain).
 PROMQL_PARSER_ORACLE = [
     ('x{a="b"} atan2 y{a="b"}', True),
     ('x{a="b"} @ START()', True),
+    ('x{a="b"} offset 1or y{a="b"}', False),
+    ('x{a="b"} @ 1and y{a="b"}', False),
+    ('x{a="b"} offset 1 or y{a="b"}', True),
+    ('x{a="b"} offset 5m or y{a="b"}', True),
+    ('x{a="b"} offset 5munless y{a="b"}', False),
+    ('rate(x{a="b"}[5m] offset 5m)', True),
+    ('x{a="b"} @ 1+y{a="b"}', True),
+    ('x{a="b"} offset 5m+y{a="b"}', True),
     ('x{a="b"} offset 1s1h', False),
     ('x{a="b"} @ 1m1m', False),
     ('x{a="b"} offset 1h1m1s1ms', True),
@@ -1155,7 +1164,6 @@ PROMQL_PARSER_ORACLE = [
     ('x{a="b"} @ End()', True),
     ('x{a="b"} @ --1', False),
     ('x{a="b"} @ -+1', False),
-    ('x{a="b"} offset -+5m', True),
     ('x{a="b"} atan2 on(s) y{a="b"}', True),
     ('x{a="b"} atan2 bool y{a="b"}', False),
     ('x{a="b"} ATAN2 y{a="b"}', True),
@@ -1163,7 +1171,6 @@ PROMQL_PARSER_ORACLE = [
     ('x{a="b"} offset 5m', True),
     ('x{a="b"} offset +5m', True),
     ('x{a="b"} offset - 5m', True),
-    ('x{a="b"} offset --5m', True),
     ('x{a="b"} @ -1', True),
     ('x{a="b"} @ 1', True),
     ('x{a="b"} @ +1', True),

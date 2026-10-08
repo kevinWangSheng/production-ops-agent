@@ -861,8 +861,11 @@ _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 #: a plain number (``5``, ``1.5e3``). The generic number token swallows any
 #: letters after a digit run (``1h`` of ``1h30m``, the ``bogus`` of
 #: ``1bogus``), so these two states match their operand themselves and leave
-#: whatever follows (``bogus``, ``s`` of ``1.5s``) to fail as an operand.
-_OFFSET_OPERAND = re.compile(rf"{_DURATION_CORE}|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+#: whatever follows (``bogus``, ``s`` of ``1.5s``) to fail as an operand. The
+#: operand must end at a boundary: ``1or y`` is not ``1`` then ``or``.
+_OFFSET_OPERAND = re.compile(
+    rf"(?:{_DURATION_CORE}|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?![0-9A-Za-z_:.])"
+)
 
 
 def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
@@ -954,12 +957,12 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 continue
             raise ValueError("SCOPE_SELECTOR_UNBOUND")  # a bare metric
         if state in {"offset", "at"} and text in {"+", "-"}:
-            # ``offset`` takes a unary expression (``offset --5m``); ``@`` a
-            # single sign (``@ -1``, not ``@ --1``).
-            if state == "at":
-                state = "at_signed"
+            # One sign for both (``offset -5m``, ``@ -1``). Prometheus lets
+            # ``offset`` chain signs (``offset --5m``) but then rejects some
+            # continuations (``offset --5m+y``); the scanner refuses the chain.
+            state = "offset_signed" if state == "offset" else "at_signed"
             continue
-        if state == "offset":
+        if state in {"offset", "offset_signed"}:
             if kind != "number":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             operand = _OFFSET_OPERAND.match(query, token.start())
