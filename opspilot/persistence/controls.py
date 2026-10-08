@@ -229,15 +229,14 @@ class _ControlOps(_StoreBase):
                 raise PersistenceError("INVALID_INPUT")
             human_owned = row["mode"] == "human_owned"
             if action == "takeover":
-                # C3 §10 接管：mode -> human_owned（领域 apply_control 同一条边，
-                # 已是 human_owned 再接管是非法迁移），同一事务递增代际、撤销观察
+                # C3 §10 接管：mode -> human_owned，同一事务递增代际、撤销观察
                 # 授权、停下自动调查：当前 Run 交给人（waiting_human，收回租约），
-                # 之后 claim/new_run/resume/续开都按 mode 拒绝。结论已发布或
-                # Run 已取消的事故同样可接管——接管要收回的是观察授权与自动化，
-                # 不以 Run 状态为前提；事故的控制镜像 state 不改。领域模型没有
-                # 回到 automatic 的边，这里也不提供。
-                if human_owned:
-                    raise PersistenceError("ILLEGAL_TRANSITION")
+                # 之后 claim/new_run/续开都按 mode 拒绝。结论已发布或 Run 已取消
+                # 的事故同样可接管——接管要收回的是观察授权与自动化，不以 Run 状态
+                # 为前提；事故的控制镜像 state 不改。已是 human_owned 时再次接管
+                # 与领域 apply_control 一致：总是清掉观察授权（撤销 human_owned 下
+                # 单独登记的新会话）、推进代际、写审计，mode 与 Run 不动（机器人
+                # 审查 PR #123）。回到 automatic 的边见 #124。
                 nxt = expected_generation + 1
                 conn.execute(
                     "UPDATE opspilot_incidents SET control_generation=%s,mode='human_owned' WHERE incident_id=%s",
@@ -246,10 +245,11 @@ class _ControlOps(_StoreBase):
                 from opspilot.observation.revocation import revoke_authorized_sessions
 
                 revoke_authorized_sessions(conn, incident_id)
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','paused','blocked')",
-                    (nxt, incident_id),
-                )
+                if not human_owned:
+                    conn.execute(
+                        "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','paused','blocked')",
+                        (nxt, incident_id),
+                    )
                 conn.execute(
                     "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'takeover',%s,%s,%s,%s)",
                     (

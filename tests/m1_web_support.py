@@ -227,13 +227,14 @@ class MemoryIncidentStore:
         human_owned = row["mode"] == "human_owned"
         if action == "takeover":
             # Mirror DurableStore.control: mode, generation, revocation, the
-            # Run handed to the human; no way back to automatic.
-            if human_owned:
-                raise PersistenceError("ILLEGAL_TRANSITION")
+            # Run handed to the human; a repeated takeover revokes again and
+            # leaves the Run alone; no way back to automatic (#124).
             nxt = expected_generation + 1
             row.update(control_generation=nxt, mode="human_owned")
             self._revoke_sessions(incident_id)
             for candidate in self.runs.values():
+                if human_owned:
+                    break
                 if candidate["incident_id"] == incident_id and candidate["state"] in {
                     "queued",
                     "running",

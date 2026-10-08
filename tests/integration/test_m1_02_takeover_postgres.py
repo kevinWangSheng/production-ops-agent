@@ -280,8 +280,6 @@ def test_takeover_steps_the_generation_revokes_observation_and_parks_the_run(
     # takeover is an illegal transition.
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         owner.claim(incident, run, uuid4(), VERSIONS)
-    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
-        owner.control(incident, 2, "takeover", "operator")
     assert owner.claimable_incidents(limit=100).count(incident) == 0
     # resume under human ownership lifts a pause only (review item 1): here
     # nothing was paused, so it steps the generation and changes no Run.
@@ -534,3 +532,43 @@ def test_resume_under_human_ownership_does_not_outrank_a_scope_suspension(
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         owner.claim(incident, run, uuid4(), VERSIONS)
     assert owner.claimable_incidents(limit=100).count(incident) == 0
+
+
+def test_a_repeated_takeover_revokes_the_observation_registered_under_human_ownership(
+    owner: DurableStore, controller: ObservationStore, observer: ObservationStore
+) -> None:
+    """Bot review of PR #123: the domain's takeover always clears the
+    observation authorization, also under human ownership. takeover ->
+    register (new session) -> takeover: the new session is revoked, the
+    Observer leases nothing, the generation steps, mode and Run unchanged."""
+    incident, run, uid = _incident(owner)
+    assert owner.control(incident, 0, "takeover", "operator") == 1
+    assert _register(controller, incident, uid, expected=1) == 2
+    (session,) = _sessions(owner, incident)
+    assert session["state"] == "authorized"
+    _due_now(owner, session["session_id"])
+
+    assert owner.control(incident, 2, "takeover", "operator") == 3
+
+    row = _incident_row(owner, incident)
+    assert (row["mode"], row["control_generation"], row["lifecycle"]) == (
+        "human_owned",
+        3,
+        "observing_recovery",
+    )
+    (session,) = _sessions(owner, incident)
+    assert (session["state"], session["ended_reason"]) == (
+        "revoked",
+        "authority_revoked",
+    )
+    assert session["active_sample_job_id"] is None
+    assert [
+        item
+        for item in observer.claim_due_samples(uuid4())
+        if item.incident_id == incident
+    ] == []
+    assert _run_row(owner, run)["state"] == "waiting_human"
+    assert _audit(owner, incident) == ["takeover", "register_remediation", "takeover"]
+    # And a remediation can be registered once more under the new generation.
+    assert _register(controller, incident, uid, expected=3) == 4
+    assert [s["state"] for s in _sessions(owner, incident)] == ["revoked", "authorized"]

@@ -66,12 +66,6 @@ def test_takeover_withdraws_observation_and_stops_automatic_investigation():
         {"action": "takeover", "expected_generation": "1", "idempotency_key": "t-1"},
     )
     assert replay.status == 200 and replay.json()["replayed"] is True
-    again = _control(
-        app,
-        incident,
-        {"action": "takeover", "expected_generation": "2", "idempotency_key": "t-2"},
-    )
-    assert (again.status, again.json()["code"]) == (409, "ILLEGAL_TRANSITION")
 
     summary = workbench.list_incidents()[0]
     assert summary.mode == "human_owned" and summary.control_generation == 2
@@ -195,3 +189,36 @@ def test_pause_then_takeover_is_lifted_by_resume_and_notes_outlive_the_deadline(
     assert set(workbench.incidents.runs) == runs_before
     assert run["state"] == "waiting_human"
     assert workbench.incidents.inputs[-1]["content"]["text"] == "human record"
+
+
+def test_a_repeated_takeover_revokes_a_human_authorized_observation():
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
+    incident = submit_incident(app).json()["incident_id"]
+    assert (
+        _control(
+            app,
+            incident,
+            {
+                "action": "takeover",
+                "expected_generation": "0",
+                "idempotency_key": "t-1",
+            },
+        ).status
+        == 200
+    )
+    assert _register(app, incident, 1, "rem-1").status == 200
+    (session,) = workbench.incidents.sessions
+    assert session["state"] == "authorized"
+    again = _control(
+        app,
+        incident,
+        {"action": "takeover", "expected_generation": "2", "idempotency_key": "t-2"},
+    )
+    assert again.status == 200 and again.json()["generation"] == 3
+    assert (session["state"], session["ended_reason"]) == (
+        "revoked",
+        "authority_revoked",
+    )
+    summary = workbench.list_incidents()[0]
+    assert (summary.mode, summary.control_generation) == ("human_owned", 3)
+    assert workbench.incidents.runs[summary.current_run_id]["state"] == "waiting_human"

@@ -86,9 +86,16 @@ class TimestampedRecordingClient(RecordingClient):
     def __init__(self, inner: DeepSeekClient, clock: SystemClock) -> None:
         super().__init__(inner)
         self._clock = clock
+        #: Set right before the first HTTP request leaves; the main thread
+        #: applies the takeover only after this (bot review of PR #123: a
+        #: lease alone does not prove a model request is in flight).
+        self.first_request_sent = threading.Event()
+        self.request_starts: list[str] = []
 
     def complete(self, call):  # type: ignore[no-untyped-def]
         started_at = self._clock.now().isoformat()
+        self.request_starts.append(started_at)
+        self.first_request_sent.set()
         try:
             return super().complete(call)
         finally:
@@ -196,7 +203,9 @@ def main() -> int:
 
     thread = threading.Thread(target=investigate, name="investigator")
     thread.start()
-    # Wait until the worker thread holds the lease (the Run is running).
+    # Wait until the worker thread holds the lease (the Run is running) and
+    # the first model HTTP request has actually left (the event is set just
+    # before the request; ``recorder.attempts`` is filled on return).
     waited = 0.0
     leased = False
     while waited < CLAIM_WAIT_S:
@@ -206,10 +215,11 @@ def main() -> int:
             break
         time.sleep(0.2)
         waited += 0.2
+    request_in_flight = leased and recorder.first_request_sent.wait(CLAIM_WAIT_S)
     takeover: dict = {"applied": False}
-    if leased:
+    if leased and request_in_flight:
         generation = store.rebuild(incident)["control_generation"]
-        requests_before = len(recorder.attempts)
+        requests_before = len(recorder.request_starts)
         takeover_at = _db_now(store)
         try:
             resulting = store.control(
@@ -221,6 +231,7 @@ def main() -> int:
                 "resulting_generation": resulting,
                 "at": takeover_at.isoformat(),
                 "model_requests_started_before": requests_before,
+                "model_requests_returned_before": len(recorder.attempts),
                 "rows_after": _rows(store, incident),
             }
         except PersistenceError as exc:
@@ -248,7 +259,7 @@ def main() -> int:
         "dropped_spans": getattr(trace, "dropped_spans", 0),
     }
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
-    request_starts = [a.get("started_at") for a in recorder.attempts]
+    request_starts = list(recorder.request_starts)
     ledger = {
         "experiment": EXPERIMENT,
         "driver": "opspilot.investigation.runner.InvestigationRunner in a thread; takeover from the main thread",
