@@ -672,8 +672,15 @@ def _owner_mismatch(tamper):
         lambda h: h["samples"][0]["readings"][0].update(sample_id=uuid4()),
         lambda h: h["endings"][0].update(session_id=uuid4()),
         lambda h: h["endings"][0].update(incident_id=uuid4()),
+        lambda h: h["endings"][0].update(sample_id=uuid4()),
     ],
-    ids=["sample-session", "reading-sample", "ending-session", "ending-incident"],
+    ids=[
+        "sample-session",
+        "reading-sample",
+        "ending-session",
+        "ending-incident",
+        "ending-sample",
+    ],
 )
 def test_a_nested_record_of_another_owner_is_refused(tamper):
     _owner_mismatch(tamper)

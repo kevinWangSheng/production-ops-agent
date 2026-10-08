@@ -664,10 +664,15 @@ def _require_owned(subject_id: str, history: Mapping[str, Any]) -> None:
         for row in stored.get("readings") or ():
             if str(row.get("sample_id")) != str(stored.get("sample_id")):
                 raise ValueError("SUBJECT_MISMATCH")
+    own_samples = {str(stored.get("sample_id")) for stored in history["samples"]}
     for ending in history.get("endings") or ():
         if (
             str(ending.get("session_id")) != session_id
             or str(ending.get("incident_id")) != subject_id
+            or (
+                ending.get("sample_id") is not None
+                and str(ending["sample_id"]) not in own_samples
+            )
         ):
             raise ValueError("SUBJECT_MISMATCH")
 
