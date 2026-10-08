@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol, cast
@@ -489,7 +489,15 @@ class Workbench:
             # a timed-out Run starts a fresh Run with the same id derivation
             # and wall as new_run (user decision 2026-09-25); the store
             # decides that from the row, and the changed pointer says so.
-            payload = None if text is None else {"text": text, "channel": "web"}
+            # Every decision writes its ledger key into the audit row in the
+            # store's transaction (#128, as register_remediation does), so a
+            # crash before the confirm row can be reconciled only by the
+            # request that made it; an action without text used to leave the
+            # row anonymous. Inputs copy the payload, where the model-facing
+            # projection drops the key (INPUT_CONTENT_FIELDS).
+            payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
+            if text is not None:
+                payload["text"] = text
             renewal: dict[str, Any] = {}
             if action in _TEXT_ACTIONS:
                 renewal = {
@@ -519,6 +527,7 @@ class Workbench:
             versions=dict(self.run_versions),
             actor=actor_id,
             input=self._successor_input(summary, run_id, deadline),
+            payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
 
@@ -593,13 +602,23 @@ class Workbench:
         *,
         key: str,
         unconfirmed_peers: int,
+        unconfirmed_same_text: int,
     ) -> bool:
         """Whether ``audit`` provably is the decision ``intent`` (ledger ``key``) asked for.
 
-        Action, expected generation and actor must match. A text action
-        additionally needs the audit payload (PR #31) to carry the same
-        text; on a store without payloads the audit is accepted only when
-        this is the single unconfirmed intent that could have produced it.
+        Action, expected generation and actor must match. Every decision
+        writes its ledger key into the audit payload in the store's
+        transaction (register_remediation since PR #120, the rest since
+        #128), so a row that carries a key is the decision of that key and
+        no other: two unconfirmed intents can never take each other's row.
+        A row without a key predates #128 (or a store without payloads,
+        PR #31): a text action is then matched by its text, and only when
+        this is the single unconfirmed intent with that text (on a store
+        without payloads: the single unconfirmed intent at all) that could
+        have produced it; an action without text is never matched, because
+        nothing distinguishes the request that made it from a peer that
+        never ran. An unmatched retry is refused with the current
+        generation rather than reported as a replay.
         """
         if (
             audit.action != intent["action"]
@@ -608,21 +627,19 @@ class Workbench:
         ):
             return False
         payload = audit.payload or {}
-        if intent["action"] == REGISTER_REMEDIATION:
-            # The registration writes its ledger key and revision into the
-            # audit row in the same transaction, so a decision is confirmed
-            # only against the request that made it; two unconfirmed intents
-            # with different revisions can never take each other's row
-            # (independent review of PR #120, P2).
-            return bool(
-                payload.get("idempotency_key") == key
-                and payload.get("revision") == intent.get("revision")
-            )
         text = intent.get("text")
+        if "idempotency_key" in payload:
+            if payload["idempotency_key"] != key:
+                return False
+            if intent["action"] == REGISTER_REMEDIATION:
+                return bool(payload.get("revision") == intent.get("revision"))
+            return text is None or bool(payload.get("text") == text)
         if text is None:
-            return True
+            return False
         if audit.payload is not None:
-            return bool(audit.payload.get("text") == text)
+            return (
+                bool(audit.payload.get("text") == text) and unconfirmed_same_text == 1
+            )
         return not self.incidents.payload_supported and unconfirmed_peers == 1
 
     def _confirm(
@@ -678,7 +695,13 @@ class Workbench:
                 (key, intent)
                 for key, intent in peers
                 if self._audit_matches(
-                    intent, audit, key=key, unconfirmed_peers=len(peers)
+                    intent,
+                    audit,
+                    key=key,
+                    unconfirmed_peers=len(peers),
+                    unconfirmed_same_text=_same_text(
+                        (other for _, other in peers), intent
+                    ),
                 )
             ]
             if len(matches) != 1:
@@ -712,7 +735,11 @@ class Workbench:
             if audit.resulting_generation in taken:
                 continue
             if self._audit_matches(
-                intent, audit, key=key, unconfirmed_peers=len(peers)
+                intent,
+                audit,
+                key=key,
+                unconfirmed_peers=len(peers),
+                unconfirmed_same_text=_same_text(peers, intent),
             ):
                 return self._confirm(incident_id, key, intent, audit)
         return None
@@ -1332,6 +1359,12 @@ def _envelope_json(envelope: IntakeEnvelope) -> dict[str, Any]:
         },
         "received_at": envelope.received_at.isoformat(),
     }
+
+
+def _same_text(peers: Iterable[Mapping[str, Any]], intent: Mapping[str, Any]) -> int:
+    """How many unconfirmed peers (``intent`` included) carry ``intent``'s text."""
+    text = intent.get("text")
+    return sum(1 for other in peers if other.get("text") == text)
 
 
 def _envelope_from_json(stored: Mapping[str, Any]) -> IntakeEnvelope:

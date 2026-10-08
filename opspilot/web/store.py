@@ -184,6 +184,7 @@ class IncidentStore(Protocol):
         versions: dict[str, str],
         actor: str,
         input: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> int: ...
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]: ...
@@ -424,6 +425,12 @@ class DurableIncidentStore:
         # keywords; an older base gets the positional call it accepts and
         # keeps re-queueing (bot review, PR #47).
         self._renewal_supported = "renew_run_id" in parameters
+        # #128 adds ``payload`` to DurableStore.new_run (the request key on
+        # the audit row); an older base gets the call it accepts.
+        new_run = getattr(store, "new_run", None)
+        self._new_run_payload_supported = (
+            new_run is not None and "payload" in inspect.signature(new_run).parameters
+        )
 
     @property
     def payload_supported(self) -> bool:
@@ -501,7 +508,11 @@ class DurableIncidentStore:
         versions: dict[str, str],
         actor: str,
         input: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> int:
+        extra: dict[str, Any] = {}
+        if payload is not None and self._new_run_payload_supported:
+            extra["payload"] = payload
         return self._store.new_run(
             incident_id,
             run_id,
@@ -511,6 +522,7 @@ class DurableIncidentStore:
             versions=versions,
             actor=actor,
             input=input,
+            **extra,
         )
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]:
