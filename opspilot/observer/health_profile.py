@@ -818,7 +818,31 @@ _LABEL_LIST = re.compile(
 _LABEL_LIST_KEYWORDS = frozenset(
     {"by", "without", "on", "ignoring", "group_left", "group_right"}
 )
-_BINARY_KEYWORDS = frozenset({"and", "or", "unless"})
+#: Keyword operators are case-insensitive in Prometheus's lexer; ``atan2``
+#: is the one arithmetic operator spelled as a word.
+_BINARY_KEYWORDS = frozenset({"and", "or", "unless", "atan2"})
+#: Aggregation operators, the only calls that take a trailing ``by`` /
+#: ``without`` (``rate(x) by (s)`` and ``x by (s)`` are parse errors).
+_AGGREGATORS = frozenset(
+    {
+        "sum",
+        "min",
+        "max",
+        "avg",
+        "group",
+        "stddev",
+        "stdvar",
+        "count",
+        "count_values",
+        "bottomk",
+        "topk",
+        "quantile",
+        "limitk",
+        "limit_ratio",
+    }
+)
+#: ``Inf`` and ``NaN`` lex as number literals, whatever their case.
+_SPECIAL_NUMBERS = frozenset({"inf", "nan"})
 #: Characters a binary operator is made of; ``=!<>`` are the comparisons
 #: after which ``bool`` is a modifier.
 _OPERATOR_CHARS = frozenset("+-*/%^=!<>")
@@ -863,7 +887,11 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
     # ``offset``: a duration is required; ``at``: an @ timestamp is required.
     state = "expr"
     comparison = False  # the pending operator is a comparison (``bool`` legal)
-    parens: list[str] = []  # "call" (function/aggregation) or "expr"
+    # ("call" | "expr", trailing by/without allowed once it closes): "call" is
+    # a function or aggregation, and only an aggregation without a prefix
+    # ``by`` list may take a trailing one.
+    parens: list[tuple[str, bool]] = []
+    grouping_allowed = False  # the previous token closed such an aggregation
     just_opened = False  # ``(`` was the last token: ``)`` may close an empty call
 
     def label_list(at: int) -> int:
@@ -883,19 +911,20 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
         kind, text, position = token.lastgroup or "", token.group(), token.end()
         if kind == "space":
             continue
-        empty_call = just_opened and parens[-1:] == ["call"]
+        empty_call = just_opened and bool(parens) and parens[-1][0] == "call"
         just_opened = False
+        trailing_grouping, grouping_allowed = grouping_allowed, False
         if pending is not None:
             # The identifier before this token: a call, a selector, an
             # aggregation with a prefix label list, or a bare metric.
-            pending = None
+            name, pending = pending, None
             if kind == "brace":
                 matchers, position = _matcher_body(query, position)
                 selectors.append(matchers)
                 state = "operand"
                 continue
             if text == "(":
-                parens.append("call")
+                parens.append(("call", name.lower() in _AGGREGATORS))
                 state = "expr"
                 just_opened = True
                 continue
@@ -904,11 +933,13 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 position = skip_space(position)
                 if position >= len(query) or query[position] != "(":
                     raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-                parens.append("call")
+                parens.append(("call", False))
                 position += 1
                 state = "expr"
                 continue
             raise ValueError("SCOPE_SELECTOR_UNBOUND")  # a bare metric
+        if state in {"offset", "at"} and text in {"+", "-"}:
+            continue  # a signed duration or timestamp: ``offset -5m``, ``@ -1``
         if state == "offset":
             if kind != "number":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
@@ -918,20 +949,21 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
             if kind == "number":
                 state = "operand"
                 continue
-            if kind == "ident":  # ``@ start()`` / ``@ end()``: a call
+            if kind == "ident" and text in {"start", "end"}:  # ``@ start()``
                 pending = text
                 state = "expr"
                 continue
             raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
         if kind == "ident":
             if state == "operand":
-                if text in _BINARY_KEYWORDS:
+                if text.lower() in _BINARY_KEYWORDS:
                     state, comparison = "operator", False
                     continue
                 if text == "offset":
                     state = "offset"
                     continue
-                if text in {"by", "without"}:  # ``sum(...) by (le)``
+                if text in {"by", "without"} and trailing_grouping:
+                    # ``sum(...) by (le)``, but not ``x by (le)``
                     position = label_list(skip_space(position))
                     continue
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
@@ -947,6 +979,9 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 if after < len(query) and query[after] == "(":
                     position = _skip_label_list(query, after + 1)
                 state = "expr"
+                continue
+            if text.lower() in _SPECIAL_NUMBERS:
+                state = "operand"
                 continue
             # every other identifier starts an expression: a metric name
             pending = text
@@ -968,17 +1003,17 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
         if text == "(":
             if state == "operand":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-            parens.append("expr")
+            parens.append(("expr", False))
             state = "expr"
             continue
         if text == ")":
             if not parens or (state != "operand" and not empty_call):
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-            parens.pop()
+            grouping_allowed = parens.pop()[1]
             state = "operand"  # ``start()`` / ``end()`` take no argument
             continue
         if text == ",":
-            if state != "operand" or not parens or parens[-1] != "call":
+            if state != "operand" or not parens or parens[-1][0] != "call":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             state = "expr"
             continue

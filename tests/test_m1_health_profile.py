@@ -1115,3 +1115,95 @@ def test_vector_selectors_are_extracted_with_decoded_values():
         [("__name__", "=", "x")],
         [("y", "=", "z")],
     ]
+
+
+#: ``(query, accepted by Prometheus's own parser)``, recorded by running each
+#: query through ``parser.ParseExpr`` of ``github.com/prometheus/prometheus``
+#: v0.307.2 (Prometheus 3.7.2, ``promql/parser``; grammar in
+#: ``generated_parser.y``: ``bin_expr`` ``ATAN2``, ``offset_expr``,
+#: ``step_invariant_expr`` ``AT signed_or_unsigned_number``,
+#: ``aggregate_expr`` and the lexer keywords ``inf`` / ``nan``). Every
+#: selector is namespace-bound, so scope binding never decides the outcome:
+#: the scanner must reject exactly what Prometheus rejects. Keyword case
+#: (``SUM(...) BY (s)``) is not covered here.
+PROMQL_PARSER_ORACLE = [
+    ('x{a="b"} atan2 y{a="b"}', True),
+    ('x{a="b"} atan2 on(s) y{a="b"}', True),
+    ('x{a="b"} atan2 bool y{a="b"}', False),
+    ('x{a="b"} ATAN2 y{a="b"}', True),
+    ('x{a="b"} offset -5m', True),
+    ('x{a="b"} offset 5m', True),
+    ('x{a="b"} offset +5m', True),
+    ('x{a="b"} offset - 5m', True),
+    ('x{a="b"} offset --5m', True),
+    ('x{a="b"} @ -1', True),
+    ('x{a="b"} @ 1', True),
+    ('x{a="b"} @ +1', True),
+    ('x{a="b"} @ -1.5', True),
+    ('x{a="b"} @ - 1', True),
+    ('x{a="b"} @ start()', True),
+    ('x{a="b"} @ end()', True),
+    ('x{a="b"} @ Inf', False),
+    ('x{a="b"}[5m] @ -1', True),
+    ('rate(x{a="b"}[5m] offset -1w)', True),
+    ('rate(x{a="b"}[5m] offset 1w)', True),
+    ('rate(x{a="b"}[5m] @ -1 offset -1m)', True),
+    ('x{a="b"} by(service)', False),
+    ('x{a="b"} without(service)', False),
+    ('x{a="b"} + y{a="b"} by(service)', False),
+    ('sum(x{a="b"}) by (s)', True),
+    ('sum(x{a="b"}) without (s)', True),
+    ('sum by (s) (x{a="b"})', True),
+    ('sum by (s) (x{a="b"}) by (t)', False),
+    ('sum(x{a="b"}) by (s) by (t)', False),
+    ('sum(x{a="b"}) by (s) without (t)', False),
+    ('rate(x{a="b"}[5m]) by (s)', False),
+    ('sum(rate(x{a="b"}[5m])) by (s)', True),
+    ('sum(rate(x{a="b"}[5m]) by (s))', False),
+    ('(x{a="b"}) by (s)', False),
+    ('topk(3, x{a="b"}) by (s)', True),
+    ('count_values("v", x{a="b"}) by (s)', True),
+    ('quantile(0.9, x{a="b"}) by (s)', True),
+    ('quantile by (s) (0.9, x{a="b"})', True),
+    ('clamp(x{a="b"}, 0, +Inf)', True),
+    ('clamp(x{a="b"}, -Inf, 1)', True),
+    ('clamp(x{a="b"}, 0, inf)', True),
+    ('clamp(x{a="b"}, 0, INF)', True),
+    ('x{a="b"} > NaN', True),
+    ('x{a="b"} > nan', True),
+    ('x{a="b"} > -NaN', True),
+    ('Inf + x{a="b"}', True),
+    ('x{a="b"} * Inf', True),
+    ('inf{a="b"}', False),
+    ('inf(x{a="b"})', False),
+    ('Inf x{a="b"}', False),
+    ('x{a="b"} Inf', False),
+    ('x{a="b"} AND y{a="b"}', True),
+    ('x{a="b"} Or y{a="b"}', True),
+    ('x{a="b"} unLESS y{a="b"}', True),
+    ('x{a="b"} + on(s) group_left y{a="b"}', True),
+    ('sum(x{a="b"}) by (s) + sum(y{a="b"}) by (s)', True),
+    ('sum(x{a="b"}) by (s) / on(s) sum(y{a="b"}) without (s)', True),
+    ('x{a="b"} offset', False),
+    ('x{a="b"} offset -', False),
+    ('x{a="b"} @', False),
+    ('x{a="b"} @ -', False),
+    ('x{a="b"} offset -x', False),
+]
+
+
+@pytest.mark.parametrize(("query", "accepted"), PROMQL_PARSER_ORACLE)
+def test_vector_selector_scanner_agrees_with_prometheus_parser(query, accepted):
+    from opspilot.observer.health_profile import _vector_selectors
+
+    if accepted:
+        found = _vector_selectors(query)
+        assert found, query
+        assert all(
+            any(m.label == "a" and m.value == "b" for m in selector)
+            for selector in found
+        )
+    else:
+        # ``atan2 bool`` reads ``bool`` as a bare metric: still refused.
+        with pytest.raises(ValueError, match="SCOPE_SELECTOR_(UNPARSABLE|UNBOUND)"):
+            _vector_selectors(query)
