@@ -553,6 +553,20 @@ def test_0005_adds_the_mode_column_with_automatic_default(scratch_dsn: str) -> N
         ).fetchall() == [("automatic",)]
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute("UPDATE opspilot_incidents SET mode='robot'")
+    # A human_owned incident refuses the downgrade (bot review of PR #123,
+    # P1): the column, the row and the revision are untouched.
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute("UPDATE opspilot_incidents SET mode='human_owned'")
+    with pytest.raises(schema.HumanOwnershipWouldBeLost) as refused:
+        schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
+    assert refused.value.count == 1
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == HEAD
+        assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
+            ("human_owned",)
+        ]
+        conn.execute("UPDATE opspilot_incidents SET mode='automatic'")
+    # Without a human_owned row the downgrade proceeds.
     schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
     with psycopg.connect(scratch_dsn) as conn:
         assert conn.execute(

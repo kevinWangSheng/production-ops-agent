@@ -12,12 +12,17 @@ every path that would start automatic investigation (claim, new Run,
 resume, a renewal) reads it. Values equal the domain Literal
 (``tests/test_schema_incident_mode.py`` compares ``CHECKS``). Existing rows
 are ``automatic``, which is what they were. The domain defines no transition
-back to ``automatic``, so none exists here either.
+back to ``automatic``, so none exists here either (#124). ``downgrade()``
+refuses while any incident is ``human_owned``: dropping the column would turn
+a human takeover back into automation.
 """
 
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
+
+from opspilot.schema import HumanOwnershipWouldBeLost
 
 revision: str = "0005_incident_mode"
 down_revision: str | Sequence[str] | None = "0004_target_identity"
@@ -41,4 +46,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Fail closed: a human takeover is a control decision the schema must not
+    # erase (bot review of PR #123, P1). Count under the migration's own
+    # transaction; any human_owned row refuses the downgrade untouched.
+    owned: int = int(
+        op.get_bind()
+        .execute(
+            text("SELECT count(*) FROM opspilot_incidents WHERE mode='human_owned'")
+        )
+        .scalar_one()
+    )
+    if owned:
+        raise HumanOwnershipWouldBeLost(owned)
     op.execute("ALTER TABLE opspilot_incidents DROP COLUMN mode")
