@@ -573,6 +573,98 @@ def test_a_freshness_query_transport_failure_is_the_readings_status(transport):
     )
 
 
+def test_an_oversized_bundle_is_truncated_and_failed_instead_of_crashing():
+    """Codex round 4: three near-limit bodies plus long expressions can push
+    the rendered bundle past the store's 128 KiB; the bundle is cut to fit
+    (body_complete false, truncated true), the reading fails closed and the
+    sample is still submitted."""
+    # three full bodies leave ~8 KiB of headroom; a 12 KiB expression exceeds it
+    long_expr = "sum(rate(x[5m]))" + " " * 12000
+    wide = HealthProfile.model_validate(
+        {
+            **json.loads(PROFILE.model_dump_json()),
+            "signals": [
+                {
+                    **json.loads(PROFILE.signals[0].model_dump_json()),
+                    "query": long_expr,
+                },
+                json.loads(PROFILE.signals[1].model_dump_json()),
+            ],
+        }
+    )
+    big = vector(1.0) + b" " * (RESPONSE_LIMIT_BYTES - len(vector(1.0)))
+    answers = {
+        expr: InstantResult("", "ok", 2.0, big, 200) for expr in healthy_answers()
+    }
+    answers[long_expr] = InstantResult("", "ok", 2.0, big, 200)
+    for coverage in ("max(count_over_time(x[5m]))", "max(count_over_time(t[5m]))"):
+        answers[coverage] = InstantResult("", "ok", 5.0, big, 200)
+    fresh = (NOW - timedelta(seconds=30)).timestamp()
+    answers["max(timestamp(x))"] = InstantResult("", "ok", fresh, big, 200)
+    answers["max(timestamp(t))"] = InstantResult("", "ok", fresh, big, 200)
+    store = FakeStore()
+    taken = take_sample(lease(wide.revision), wide, FakeSource(answers), store)
+    ((_, sample, readings),) = store.submitted
+    rate = next(r for r in readings if r.signal_name == "rate")
+    assert rate.status == "failed" and rate.raw is not None
+    assert len(rate.raw) <= READING_RAW_LIMIT
+    bundle = json.loads(rate.raw)
+    assert bundle["truncated"] is True
+    assert any(
+        not bundle[k]["body_complete"] for k in ("query", "coverage", "freshness")
+    )
+    assert hashlib.sha256(rate.raw).hexdigest() == rate.raw_sha256
+    assert taken.evaluation is not None and sample.outcome == "failed"
+
+
+def test_an_out_of_range_freshness_epoch_fails_the_signal_not_the_sample():
+    """Codex round 4: ``timestamp()`` returning 1e20 is finite but not an
+    epoch; the signal is failed with a fixed code and the sample submitted."""
+    answers = healthy_answers()
+    answers["max(timestamp(x))"] = ok(1e20)
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    ((_, sample, readings),) = store.submitted
+    rate = next(r for r in readings if r.signal_name == "rate")
+    assert rate.status == "failed" and rate.value is None
+    assert json.loads(rate.raw)["reading_error"] == "FRESHNESS_EPOCH_INVALID"
+    assert sample.outcome == "failed" and taken.evaluation is not None
+    errors = next(r for r in readings if r.signal_name == "errors")
+    assert errors.status == "ok"
+
+
+def test_any_exception_while_building_one_reading_fails_that_signal_only(monkeypatch):
+    """Codex round 4 fallback: whatever a single signal's reading construction
+    raises, the signal is filed as failed with a fixed code (type name only),
+    the other signals are untouched and the sample is submitted -- never a
+    crash before submission that would re-lease the same sequence forever."""
+    from opspilot.observer import sampler
+
+    real = sampler._reading
+
+    def exploding(signal, *args, **kwargs):
+        if signal.name == "errors":
+            raise KeyError("response-quoted-text-must-not-leak")
+        return real(signal, *args, **kwargs)
+
+    monkeypatch.setattr(sampler, "_reading", exploding)
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(healthy_answers()), store)
+    ((_, sample, readings),) = store.submitted
+    by_name = {r.signal_name: r for r in readings}
+    assert by_name["errors"].status == "failed"
+    bundle = json.loads(by_name["errors"].raw)
+    assert bundle["reading_error"] == "READING_CONSTRUCTION_FAILED"
+    assert bundle["error_type"] == "KeyError"
+    assert "must-not-leak" not in by_name["errors"].raw.decode()
+    assert by_name["rate"].status == "ok"
+    assert sample.outcome == "failed" and taken.evaluation is not None
+    assert (
+        hashlib.sha256(by_name["errors"].raw).hexdigest()
+        == by_name["errors"].raw_sha256
+    )
+
+
 # --- the Prometheus source: one instant query, bounded, GET only
 
 

@@ -191,7 +191,7 @@ def take_sample(
     provisional: list[SignalReading] = []
     bundles: dict[str, bytes] = {}
     for signal, results in gathered:
-        reading, raw = _reading(
+        reading, raw = _reading_or_failed(
             signal, profile.source, results, window_start, window_end, sample_time
         )
         provisional.append(reading)
@@ -299,8 +299,16 @@ def _reading(
     elif coverage.status == "no_data":
         count = 0
     latest: datetime | None = None
+    reading_error: str | None = None
     if freshness.status == "ok" and freshness.value is not None:
-        latest = epoch_to_datetime(freshness.value)
+        try:
+            latest = epoch_to_datetime(freshness.value)
+        except (OverflowError, OSError, ValueError):
+            # a finite number that is not a usable epoch (codex round 4):
+            # the signal fails closed instead of crashing the sample
+            latest = None
+            reading_error = "FRESHNESS_EPOCH_INVALID"
+            status = "failed"
     if status == "ok" and count is None:
         # the value came back but the point count did not: the coverage
         # query failed or timed out, the reading cannot count
@@ -317,7 +325,12 @@ def _reading(
         # A truncated body is not the actual return: fail closed, the
         # bundle records which body is incomplete (PR #119 review P2-4).
         status = "failed"
-    raw = _bundle(window_start, window_end, sample_time, results)
+    raw, truncated = _bundle(
+        window_start, window_end, sample_time, results, reading_error=reading_error
+    )
+    if truncated:
+        # the stored bundle could not hold the complete returns: fail closed
+        status = "failed"
     reading = SignalReading(
         signal_name=signal.name,
         status=status,
@@ -352,37 +365,133 @@ def _bundle(
     window_end: datetime,
     sample_time: datetime,
     results: dict[str, InstantResult],
-) -> bytes:
+    *,
+    reading_error: str | None = None,
+) -> tuple[bytes, bool]:
     """The three responses as one JSON document: exact body bytes (base64)
     with their own sha256 each, whether each body is complete, the
     expression, HTTP status, the instant the queries were evaluated at and
     the ``sample_time`` the verdict used. Deterministic for the same inputs.
 
-    Always within ``READING_RAW_LIMIT``: each body is bounded by
-    ``RESPONSE_LIMIT_BYTES`` (three of them base64-encoded fit with room for
-    the fields), so the stored hash is always the hash of the actual
-    returns, never of a substitute.
+    Bounded as a whole by ``READING_RAW_LIMIT`` (the store's CHECK): three
+    complete bodies at ``RESPONSE_LIMIT_BYTES`` fit with room to spare, but
+    the expressions count too, so when the rendered document is still too
+    large the largest body is cut (``body_complete`` false, ``truncated``
+    true) until it fits. Returns ``(raw, truncated)``; a truncated bundle
+    never backs an ``ok`` reading (codex round 4: no assert, no crash before
+    the sample is submitted).
     """
-    document: dict[str, Any] = {
-        "format": "opspilot.observer.reading/2",
-        "window_start": window_start.isoformat(),
-        "window_end": window_end.isoformat(),
-        "evaluated_at": window_end.isoformat(),
-        "sample_time": sample_time.isoformat(),
-    }
-    for kind, item in results.items():
-        document[kind] = {
-            "expr": item.expr,
-            "status": item.status,
-            "detail": item.detail,
-            "http_status": item.http_status,
-            "body_complete": item.body_complete,
-            "body_sha256": hashlib.sha256(item.body).hexdigest(),
-            "body_b64": base64.b64encode(item.body).decode("ascii"),
+    bodies = {kind: item.body for kind, item in results.items()}
+    complete = {kind: item.body_complete for kind, item in results.items()}
+    truncated = False
+    while True:
+        document: dict[str, Any] = {
+            "format": "opspilot.observer.reading/2",
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "evaluated_at": window_end.isoformat(),
+            "sample_time": sample_time.isoformat(),
         }
-    raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
-    assert len(raw) <= READING_RAW_LIMIT, len(raw)
-    return raw
+        if reading_error is not None:
+            document["reading_error"] = reading_error
+        if truncated:
+            document["truncated"] = True
+        for kind, item in results.items():
+            document[kind] = {
+                "expr": item.expr,
+                "status": item.status,
+                "detail": item.detail,
+                "http_status": item.http_status,
+                "body_complete": complete[kind],
+                "body_sha256": hashlib.sha256(bodies[kind]).hexdigest(),
+                "body_b64": base64.b64encode(bodies[kind]).decode("ascii"),
+            }
+        raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+        excess = len(raw) - READING_RAW_LIMIT
+        if excess <= 0:
+            return raw, truncated
+        largest = max(bodies, key=lambda kind: len(bodies[kind]))
+        if not bodies[largest]:
+            # nothing left to cut (an absurd expression): keep the fields,
+            # drop every body; the reading is failed either way
+            for kind in bodies:
+                bodies[kind] = b""
+                complete[kind] = False
+            truncated = True
+            document_without = json.dumps(
+                {
+                    "format": "opspilot.observer.reading/2",
+                    "sample_time": sample_time.isoformat(),
+                    "truncated": True,
+                    "reading_error": reading_error or "BUNDLE_TOO_LARGE",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+            return document_without, True
+        # base64 inflates 4/3; cut a little more than the excess
+        cut = min(len(bodies[largest]), excess * 3 // 4 + 64)
+        bodies[largest] = bodies[largest][: len(bodies[largest]) - cut]
+        complete[largest] = False
+        truncated = True
+
+
+def _failed_reading(
+    signal: HealthSignal,
+    source_name: str,
+    window_start: datetime,
+    window_end: datetime,
+    sample_time: datetime,
+    error: BaseException,
+) -> tuple[SignalReading, bytes]:
+    """The reading for a signal whose construction raised: ``failed`` with a
+    fixed code and the exception *type* only (never its text, which could
+    quote a response), so one bad signal cannot crash the sample before it
+    is submitted (codex round 4). The sample is still adopted as unknown and
+    consumes its budget."""
+    raw = json.dumps(
+        {
+            "format": "opspilot.observer.reading/2",
+            "sample_time": sample_time.isoformat(),
+            "reading_error": "READING_CONSTRUCTION_FAILED",
+            "error_type": type(error).__name__,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    reading = SignalReading(
+        signal_name=signal.name,
+        status="failed",
+        query=signal.query,
+        window_start=window_start,
+        window_end=window_end,
+        source=source_name,
+        raw_sha256=hashlib.sha256(raw).hexdigest(),
+    )
+    return reading, raw
+
+
+def _reading_or_failed(
+    signal: HealthSignal,
+    source_name: str,
+    results: dict[str, InstantResult],
+    window_start: datetime,
+    window_end: datetime,
+    sample_time: datetime,
+) -> tuple[SignalReading, bytes]:
+    try:
+        return _reading(
+            signal, source_name, results, window_start, window_end, sample_time
+        )
+    except Exception as exc:  # noqa: BLE001 - one signal must not sink the sample
+        _log.warning(
+            "reading construction failed signal=%s error=%s",
+            signal.name,
+            type(exc).__name__,
+        )
+        return _failed_reading(
+            signal, source_name, window_start, window_end, sample_time, exc
+        )
 
 
 def replay_readings(
@@ -428,7 +537,7 @@ def replay_readings(
                 )
             )
             continue
-        reading, _ = _reading(
+        reading, _ = _reading_or_failed(
             signal,
             str(row["source"]),
             results,
