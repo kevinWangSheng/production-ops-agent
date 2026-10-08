@@ -542,7 +542,9 @@ def _session_parameter_codes(
     """The session row's parameters must be the frozen profile's session
     values (interface contract item 5): the row cannot vouch for itself.
     The deadline is an absolute instant chosen at authorization; it is
-    checked as the span from the row's creation and must equal the frozen
+    checked as the span from the authorization instant (``authorized_at``, the
+    anchor sample windows are also held to; ``created_at`` only when absent)
+    and must equal the frozen
     ``deadline_seconds`` in both directions, within a minute: the deadline is
     computed by the web service from its clock reading and the row is created
     in a later database transaction, so the two differ by that latency and
@@ -558,7 +560,7 @@ def _session_parameter_codes(
         if name in row and int(row[name]) != expected:
             codes.append(f"SESSION_PARAMETER_MISMATCH:{name}")
     deadline = row.get("deadline_at")
-    created = row.get("created_at") or row.get("authorized_at")
+    created = row.get("authorized_at") or row.get("created_at")
     if isinstance(deadline, datetime) and isinstance(created, datetime):
         span = (deadline - created).total_seconds()
         if abs(span - frozen.deadline_seconds) > _DEADLINE_SKEW_SECONDS:

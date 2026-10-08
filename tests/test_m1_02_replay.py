@@ -792,3 +792,16 @@ def test_a_forged_reading_error_marker_does_not_exempt_a_query_bundle():
     result = replay_history(history)
     assert not result.consistent and result.recovery_verdict == "unknown"
     assert result.recovery_confirmed is False
+
+
+def test_the_deadline_is_anchored_to_the_authorization_instant():
+    """PR #150 bot P2: moving ``deadline_at`` and ``created_at`` together
+    keeps the span but not the authorization instant."""
+    history = healthy_history()
+    history["session"]["deadline_at"] += timedelta(hours=1)
+    history["session"]["created_at"] = history["session"]["authorized_at"] + timedelta(
+        hours=1
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "SESSION_PARAMETER_MISMATCH:deadline_at" in result.integrity
