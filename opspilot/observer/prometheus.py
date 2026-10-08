@@ -241,7 +241,8 @@ class PrometheusReadOnlySource:
         except urllib.error.HTTPError as error:
             status = int(error.code)
             try:
-                return status, error.read(_ERROR_BODY_BYTES), True
+                kept = error.read(_ERROR_BODY_BYTES + 1)
+                return status, kept[:_ERROR_BODY_BYTES], _error_body_ended(error, kept)
             except HTTPException as cut:
                 # the error body was cut mid-read: same classification as
                 # below, with the status line that did arrive
@@ -459,7 +460,9 @@ def _perform(
     conn.response_class = _recording_response(seen)
     response = conn.getresponse()
     status = int(response.status)
-    limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES
+    # one byte past what is kept: an error body of exactly the keep limit is
+    # complete, a longer one is a prefix (``_read_until`` returns False)
+    limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES + 1
     complete = _read_until(response, deadline, limit, chunks)
     return status, b"".join(chunks), complete
 
@@ -513,10 +516,31 @@ def _read_until(
         reader = getattr(response, "read1", response.read)
         chunk = reader(min(_READ_CHUNK, limit - received))
         if not chunk:
+            # a peer that closes before the declared Content-Length is a cut
+            # body, not an ended one (issue #133); ``length`` is what the
+            # response still owes (None when chunked or undeclared, where
+            # ``http.client`` raises ``IncompleteRead`` by itself)
+            owed = getattr(response, "length", None)
+            if isinstance(owed, int) and owed > 0:
+                raise IncompleteRead(b"", owed)
             return True
         chunks.append(chunk)
         received += len(chunk)
     return False
+
+
+def _error_body_ended(error: urllib.error.HTTPError, kept: bytes) -> bool:
+    """True when an error body read through the opener is the whole body:
+    it fit the keep limit and covers the declared Content-Length. A short
+    body raises ``IncompleteRead`` like the ``_fetch`` path does."""
+    if len(kept) > _ERROR_BODY_BYTES:
+        return False
+    declared = error.headers.get("Content-Length") if error.headers else None
+    if declared is not None and declared.strip().isdigit():
+        owed = int(declared) - len(kept)
+        if owed > 0:
+            raise IncompleteRead(kept, owed)
+    return True
 
 
 def _rearm(response: HTTPResponse, seconds: float) -> None:
