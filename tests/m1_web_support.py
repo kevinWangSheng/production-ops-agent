@@ -676,6 +676,8 @@ class MemoryIncidentStore:
                 "sustained_window_seconds": sustained_window_seconds,
                 "adopted_count": 0,
                 "purpose": "incident_recovery",
+                "authorized_global_generation": 0,
+                "authorized_target_generation": 0,
                 "active_sample_due_at": self.now()
                 + timedelta(seconds=sample_interval_seconds),
             }

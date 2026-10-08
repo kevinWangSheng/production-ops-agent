@@ -34,6 +34,7 @@ from tests.m1_02_replay_support import (
     NOW,
     PROFILE,
     healthy_history,
+    profile_with,
     rehash,
     stored_history,
     take,
@@ -133,20 +134,24 @@ def test_a_bundle_rehashed_after_tampering_still_changes_the_verdict():
 )
 def test_unknown_and_degraded_sessions_replay_consistently(kind, outcome):
     session_id = uuid4()
+    short = profile_with(max_samples=3, sustained_window_seconds=60)
     taken = [
         take(
             kind,
             sequence=i + 1,
             window_end=NOW + timedelta(seconds=60 * i),
             session_id=session_id,
+            profile=short,
         )
         for i in range(3)
     ]
     history = stored_history(
         taken,
+        profile=short,
         session_id=session_id,
         authorized_at=NOW - timedelta(seconds=600),
         max_samples=3,
+        sustained_window_seconds=60,
     )
     assert history["session"]["state"] == "expired"
     result = replay_history(history)
@@ -561,3 +566,114 @@ def test_a_sample_filed_while_the_profile_was_unavailable_is_a_recorded_reason()
     result = replay_history(history)
     assert not result.consistent
     assert "RAW_HASH_MISMATCH:health_profile" in result.samples[1].integrity
+
+
+# --- final bot round on PR #139 (threads) and issue #141
+
+
+def test_session_parameters_must_be_the_frozen_profiles():
+    """store.py thread: the fold's budget, sustained window, interval and
+    deadline come from the session row, which cannot vouch for itself; each
+    must equal the frozen HealthProfile's session value."""
+    for field, value in (
+        ("max_samples", 5),
+        ("sustained_window_seconds", 120),
+        ("sample_interval_seconds", 30),
+        ("deadline_at", NOW + timedelta(hours=5)),
+    ):
+        history = healthy_history()
+        history["session"][field] = value
+        result = replay_history(history)
+        assert not result.consistent, field
+        assert result.recovery_verdict == "unknown", field
+        assert f"SESSION_PARAMETER_MISMATCH:{field}" in result.integrity, field
+    assert replay_history(healthy_history()).consistent
+
+
+def test_a_session_without_a_profile_never_yields_a_verdict():
+    """replay.py thread, PRODUCT-CONSTRAINTS: no profile -> unknown, even
+    when the stored samples say degraded."""
+    session_id = uuid4()
+    taken = [
+        take(
+            "degraded",
+            sequence=i + 1,
+            window_end=NOW + timedelta(seconds=60 * i),
+            session_id=session_id,
+        )
+        for i in range(2)
+    ]
+    history = stored_history(
+        taken,
+        profile=None,
+        session_id=session_id,
+        authorized_at=NOW - timedelta(seconds=600),
+    )
+    for row in history["samples"]:
+        row["health_profile_revision"] = None
+    result = replay_history(history)
+    assert result.consistent, result.integrity
+    assert result.recovery_verdict == result.recomputed_verdict == "unknown"
+    assert result.latest_sample_verdict == "degraded"
+    assert "NO_HEALTH_PROFILE" in result.reasons
+
+
+def test_scope_generations_are_recomputed_not_the_stored_flag():
+    """store.py thread, C3 section 4: a sample whose recorded control-scope
+    generations differ from the authorization's was taken under a moved
+    scope whatever ``scope_suspended`` says; the contradiction is reported
+    and the sample never counts towards recovery."""
+    moved = healthy_history()
+    moved["samples"][0]["global_generation"] = 1
+    result = replay_history(moved)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "SCOPE_MISMATCH" in result.samples[0].integrity
+    assert result.samples[0].decision.replayed[0] == "history_only"
+    assert result.samples[0].decision.replayed[1] == "suspended"
+    flagged = healthy_history()
+    flagged["samples"][1]["scope_suspended"] = True
+    result = replay_history(flagged)
+    assert not result.consistent and "SCOPE_MISMATCH" in result.samples[1].integrity
+
+
+def test_a_sentinel_sample_keeps_the_outcome_and_window_the_observer_wrote():
+    """Issue #141: the sentinel sample's outcome is what that path writes
+    (failed, required signals missing) and its reading window is the
+    sample's and the bundle's, like any other reading."""
+    session_id = uuid4()
+    first = take("healthy", sequence=1, window_end=NOW, session_id=session_id)
+    unavailable = take_unavailable(
+        sequence=2, window_end=NOW + timedelta(seconds=60), session_id=session_id
+    )
+
+    def build():
+        return stored_history(
+            [first, unavailable],
+            session_id=session_id,
+            authorized_at=NOW - timedelta(seconds=600),
+        )
+
+    assert replay_history(build()).consistent
+    history = build()
+    history["samples"][1]["outcome"] = "degraded"
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "SENTINEL_MISMATCH:outcome" in result.samples[1].integrity
+    history = build()
+    history["samples"][1]["required_signals_present"] = True
+    result = replay_history(history)
+    assert "SENTINEL_MISMATCH:required_signals_present" in result.samples[1].integrity
+    history = build()
+    history["samples"][1]["readings"][0]["window_start"] = NOW - timedelta(hours=2)
+    result = replay_history(history)
+    assert not result.consistent
+    assert "SENTINEL_MISMATCH:window" in result.samples[1].integrity
+    history = build()
+    row = history["samples"][1]["readings"][0]
+    bundle = json.loads(bytes(row["raw"]))
+    bundle["window_start"] = (NOW - timedelta(hours=2)).isoformat()
+    history["samples"][1]["readings"][0] = rehash(
+        row, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    result = replay_history(history)
+    assert "SENTINEL_MISMATCH:bundle_window" in result.samples[1].integrity

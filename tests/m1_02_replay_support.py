@@ -23,7 +23,11 @@ from uuid import UUID, uuid4
 from opspilot.domain.observation import HealthSample
 from opspilot.observation.store import SignalReading as StoredReading
 from opspilot.observation.store import profile_revision
-from opspilot.observer.health_profile import HealthProfile, canonical_content
+from opspilot.observer.health_profile import (
+    HealthProfile,
+    SessionParameters,
+    canonical_content,
+)
 from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.sampler import take_sample
 from opspilot.persistence.base import PersistenceError
@@ -231,9 +235,12 @@ def stored_history(
         "authorized_global_generation": 0,
         "authorized_target_generation": 0,
         "health_profile_revision": revision,
-        "deadline_at": authorized_at + timedelta(hours=1),
+        "deadline_at": authorized_at
+        + timedelta(seconds=profile.session.deadline_seconds if profile else 3600),
         "max_samples": max_samples,
-        "sample_interval_seconds": 60,
+        "sample_interval_seconds": (
+            profile.session.sample_interval_seconds if profile else 60
+        ),
         "sustained_window_seconds": sustained_window_seconds,
         "adopted_sequence": filed[-1][0].sequence if filed else 0,
         "adopted_window_end": last_end if filed else None,
@@ -338,3 +345,24 @@ def take_unavailable(
     ObserverLoop(store=store, source=FakeSource({})).sample(sample_lease)
     ((_, sample, readings),) = store.submitted
     return sample, readings
+
+
+def profile_with(
+    *,
+    max_samples: int = 20,
+    sustained_window_seconds: int = 600,
+    sample_interval_seconds: int = 60,
+    deadline_seconds: int = 3600,
+) -> HealthProfile:
+    """The unit profile with other session parameters (its own revision):
+    a session is replayed against the parameters its frozen profile fixes."""
+    return PROFILE.model_copy(
+        update={
+            "session": SessionParameters(
+                deadline_seconds=deadline_seconds,
+                max_samples=max_samples,
+                sample_interval_seconds=sample_interval_seconds,
+                sustained_window_seconds=sustained_window_seconds,
+            )
+        }
+    )

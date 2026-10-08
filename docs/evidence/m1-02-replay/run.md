@@ -46,3 +46,12 @@
 第二轮复验数字：`tests/test_m1_02_replay.py` 21 + `tests/test_m1_02_recovery_page.py` 5 + `tests/test_m1_observer.py` 47 + schema/合同 44 = 117 passed；`tests/integration/test_m1_02_replay_postgres.py` 7 passed；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3162 passed / 464 skipped / 2 xfailed。
 
 第一轮复验数字：`tests/test_m1_02_replay.py` 16 + `tests/test_m1_02_recovery_page.py` 5 passed；`tests/integration/test_m1_02_replay_postgres.py` 6 passed（新增用例在真实行上：改 query → `READING_BASIS_MISMATCH:error_ratio:query`；`healthy_since` 置 NULL → `WATERMARK_MISMATCH`；删一条读数并把 outcome 改为 no_data → `READING_MISSING:error_ratio`，三者 verdict 均 unknown）；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3157 passed / 463 skipped / 2 xfailed。
+
+### 最后一轮（2026-10-08，机器人线程分诊 4 条 + issue #141，lead 采纳，全部处置）
+
+1. 会话参数不能自证：`max_samples / sustained_window_seconds / sample_interval_seconds` 须等于冻结 profile 的 `session` 值，`deadline_at` 须落在会话行 `created_at` 之后、不超过 `deadline_seconds`+60 s 偏差，否则 `SESSION_PARAMETER_MISMATCH:<field>`。测试夹具据此改为按需派生 profile 变体（`profile_with(...)`、PG 测试 `_authorize` 存入与参数匹配的 profile 内容与 revision）。
+2. 无 HealthProfile 的会话 verdict 一律 unknown（不回退到已存 degraded；PRODUCT-CONSTRAINTS「无 profile 不能判定恢复」）。
+3. 挂起条件按采样行 `global_generation / target_generation` 与会话 `authorized_*_generation` 重算：代际已变即按挂起处理（不计入恢复），与 `scope_suspended` 标志矛盾 → `SCOPE_MISMATCH`。
+4. #141：哨兵采样 outcome 须为 `failed` 且 `required_signals_present=false`（`SENTINEL_MISMATCH:outcome|required_signals_present`）；哨兵读数窗口须等于采样窗口与捆绑窗口（`SENTINEL_MISMATCH:window|bundle_window`）。
+
+数字：`tests/test_m1_02_replay.py` 25 + 页面 5 + observer 47 + schema/合同 44 = 121 passed；重放 PG 套件 7 passed；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3166 passed / 464 skipped / 2 xfailed。

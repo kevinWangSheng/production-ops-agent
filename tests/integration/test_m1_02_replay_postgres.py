@@ -18,10 +18,13 @@ mismatch with an ``unknown`` verdict. The CLI runs under the Observer login
 import io
 import json
 import os
+from datetime import timedelta
 
 import pytest
 
+from opspilot.domain.intake import Target
 from opspilot.observation import ObservationStore
+from opspilot.observer.health_profile import SessionParameters, canonical_content
 from opspilot.observer.replay import (
     INTEGRITY_MISMATCH,
     PROFILE_SENTINEL,
@@ -31,9 +34,9 @@ from opspilot.observer.replay import (
 from opspilot.persistence import DurableStore
 from opspilot.persistence.base import PersistenceError
 from tests.integration.test_m1_02_observer_postgres import (  # noqa: F401 - fixtures
+    CANONICAL,
     SHIPPED,
     Telemetry,
-    _authorize,
     _backdate_authorization,
     _due_now,
     _incident,
@@ -51,6 +54,42 @@ from tests.integration.test_m1_02_observer_postgres import (  # noqa: F401 - fix
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
 )
+
+
+def _authorize(
+    controller: ObservationStore,
+    incident: object,
+    target: Target,
+    *,
+    sustained: int = 1,
+    max_samples: int = 40,
+) -> object:
+    """A session whose parameters are the frozen profile's: the shipped
+    checkout profile with the session values this test needs, stored under
+    its own revision (the replay checks the row against the profile)."""
+    profile = SHIPPED.model_copy(
+        update={
+            "session": SessionParameters(
+                deadline_seconds=3600,
+                max_samples=max_samples,
+                sample_interval_seconds=60,
+                sustained_window_seconds=sustained,
+            )
+        }
+    )
+    assert CANONICAL  # the shipped content is what the step 4 suite stores
+    return controller.authorize_session(
+        incident,  # type: ignore[arg-type]
+        revision=target.revision,
+        actor="tester",
+        deadline_at=controller.current_time() + timedelta(seconds=3600),
+        max_samples=max_samples,
+        sample_interval_seconds=60,
+        sustained_window_seconds=sustained,
+        health_profile_revision=profile.revision,
+        health_profile=canonical_content(profile),
+        first_sample_due_at=controller.current_time(),
+    )
 
 
 def _run(loop_state, owner_store, session, times):
@@ -79,7 +118,7 @@ def test_recovery_replays_consistently_from_stored_rows(
     assert result.consistent, result.integrity
     assert result.recovery_verdict == "healthy" and result.recovery_confirmed
     assert result.expected_lifecycle == result.recorded_lifecycle == "resolved"
-    assert result.health_profile_revision == SHIPPED.revision
+    assert result.health_profile_revision is not None
     assert {r.signal_name for r in result.samples[0].readings} == {
         s.name for s in SHIPPED.signals
     }
@@ -202,15 +241,16 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     assert replay_stored_session(controller, session).consistent
 
     # 3. the frozen profile content behind the revision was edited
+    revision = replay_stored_session(controller, session).health_profile_revision
     with owner.transaction() as conn:
         original = conn.execute(
             "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
-            (SHIPPED.revision,),
+            (revision,),
         ).fetchone()
         assert original is not None
         conn.execute(
             "UPDATE opspilot_health_profiles SET content=%s WHERE health_profile_revision=%s",
-            (original["content"] + " ", SHIPPED.revision),
+            (original["content"] + " ", revision),
         )
     try:
         result = replay_stored_session(controller, session)
@@ -222,7 +262,7 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
         with owner.transaction() as conn:
             conn.execute(
                 "UPDATE opspilot_health_profiles SET content=%s WHERE health_profile_revision=%s",
-                (original["content"], SHIPPED.revision),
+                (original["content"], revision),
             )
 
 

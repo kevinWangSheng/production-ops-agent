@@ -404,6 +404,51 @@ def _readings(
     return tuple(compared), evaluation, codes
 
 
+def _sentinel_window_codes(
+    row: Mapping[str, Any], *, sample_window: tuple[datetime, datetime]
+) -> list[str]:
+    codes: list[str] = []
+    if (row.get("window_start"), row.get("window_end")) != sample_window:
+        codes.append("SENTINEL_MISMATCH:window")
+    try:
+        bundle = json.loads(bytes(row["raw"]))
+        window = (
+            datetime.fromisoformat(str(bundle["window_start"])),
+            datetime.fromisoformat(str(bundle["window_end"])),
+        )
+    except (ValueError, KeyError, TypeError):
+        return codes + ["SENTINEL_MISMATCH:bundle_window"]
+    if window != sample_window:
+        codes.append("SENTINEL_MISMATCH:bundle_window")
+    return codes
+
+
+def _session_parameter_codes(
+    row: Mapping[str, Any], profile: HealthProfile
+) -> list[str]:
+    """The session row's parameters must be the frozen profile's session
+    values (interface contract item 5): the row cannot vouch for itself.
+    The deadline is an absolute instant chosen at authorization; it is
+    checked as the span from the row's creation, with a minute of skew
+    between the authorizing clock and the database's."""
+    frozen = profile.session
+    codes: list[str] = []
+    for name, expected in (
+        ("max_samples", frozen.max_samples),
+        ("sustained_window_seconds", frozen.sustained_window_seconds),
+        ("sample_interval_seconds", frozen.sample_interval_seconds),
+    ):
+        if name in row and int(row[name]) != expected:
+            codes.append(f"SESSION_PARAMETER_MISMATCH:{name}")
+    deadline = row.get("deadline_at")
+    created = row.get("created_at") or row.get("authorized_at")
+    if isinstance(deadline, datetime) and isinstance(created, datetime):
+        span = (deadline - created).total_seconds()
+        if span <= 0 or span > frozen.deadline_seconds + 60:
+            codes.append("SESSION_PARAMETER_MISMATCH:deadline_at")
+    return codes
+
+
 def replay_history(history: Mapping[str, Any]) -> SessionReplay:
     """Recompute one session from its stored history alone.
 
@@ -452,6 +497,13 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
                 skipped = recorded
                 readings, _, more = _readings(None, rows, sample_window=window)
                 codes.extend(more)
+                # the sentinel path writes exactly this verdict and binds
+                # its reading to the sample window like any other (#141)
+                if stored_outcome != "failed":
+                    codes.append("SENTINEL_MISMATCH:outcome")
+                if bool(stored["required_signals_present"]):
+                    codes.append("SENTINEL_MISMATCH:required_signals_present")
+                codes.extend(_sentinel_window_codes(rows[0], sample_window=window))
             elif not rows:
                 skipped = "NO_READINGS"
                 readings = ()
@@ -496,6 +548,8 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         codes = list(item["codes"])
         if decision.deadline_mismatch:
             codes.append("DEADLINE_MISMATCH")
+        if decision.scope_mismatch:
+            codes.append("SCOPE_MISMATCH")
         if decision.stored != decision.replayed:
             codes.append("DECISION_MISMATCH")
         if decision.signal_mismatches and decision.stored[1] != "readings_inconsistent":
@@ -527,6 +581,11 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
     integrity: list[str] = []
     if profile_error is not None:
         integrity.append(profile_error)
+    if profile is not None:
+        parameter_codes = _session_parameter_codes(row, profile)
+        if parameter_codes:
+            integrity.append(INTEGRITY_MISMATCH)
+            integrity.extend(parameter_codes)
     if any(sample.integrity for sample in samples) or not report.consistent:
         integrity.append(INTEGRITY_MISMATCH)
     if not report.ending_consistent:
@@ -581,8 +640,12 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         if decision.replayed[0] == "adopted":
             latest = sample.replayed_outcome or sample.stored_outcome
             latest_reason = sample.replayed_reason
-    if confirmed:
-        recomputed: Verdict = "healthy"
+    if revision is None:
+        # no HealthProfile: recovery can never be judged, in either
+        # direction (PRODUCT-CONSTRAINTS "Recovery observations")
+        recomputed: Verdict = "unknown"
+    elif confirmed:
+        recomputed = "healthy"
     elif latest == "degraded":
         recomputed = "degraded"
     else:

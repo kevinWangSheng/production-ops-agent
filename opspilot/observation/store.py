@@ -233,6 +233,9 @@ class ReplayedSample:
     # the row says the sample was within the deadline but its window ends
     # at or after the session's frozen ``deadline_at``
     deadline_mismatch: bool = False
+    # the row's ``scope_suspended`` flag contradicts the scope generations it
+    # recorded against the session's authorization
+    scope_mismatch: bool = False
 
     @property
     def matches(self) -> bool:
@@ -243,6 +246,7 @@ class ReplayedSample:
             self.stored == self.replayed
             and self.stored_outcome == self.replayed_outcome
             and not self.deadline_mismatch
+            and not self.scope_mismatch
             and not self.raw_mismatches
             and (
                 not self.signal_mismatches or self.stored[1] == "readings_inconsistent"
@@ -852,12 +856,26 @@ def fold_history(
         deadline_mismatch = (
             within and deadline is not None and stored["window_end"] >= deadline
         )
+        # The control scope is recomputed from the generations the row
+        # recorded against the ones the session was authorized under
+        # (``_scope_blocks``): a moved generation blocks adoption whatever
+        # the stored flag says, and a flag that contradicts the generations
+        # is reported (C3 section 4, human control first).
+        moved = (
+            int(stored["global_generation"]),
+            int(stored["target_generation"]),
+        ) != (
+            int(row["authorized_global_generation"]),
+            int(row["authorized_target_generation"]),
+        )
+        flagged = bool(stored["scope_suspended"])
+        scope_mismatch = moved != flagged
         verdict = _judge(
             session,
             sample,
             subject_state=str(stored["subject_lifecycle"]),
             within_deadline=within and not deadline_mismatch,
-            suspension_blocks=bool(stored["scope_suspended"]),
+            suspension_blocks=flagged or moved,
             lease_valid=bool(stored["lease_valid"]),
             stamps_match=bool(stored["lease_stamps_match"]),
             readings_consistent=not signal_mismatches,
@@ -917,6 +935,7 @@ def fold_history(
                 stored_outcome=None if recomputed is None else stored_outcome,
                 replayed_outcome=recomputed,
                 deadline_mismatch=deadline_mismatch,
+                scope_mismatch=scope_mismatch,
             )
         )
         if verdict.ended_reason is not None and replayed_ended_reason is None:
