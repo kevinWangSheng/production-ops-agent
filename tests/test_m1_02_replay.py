@@ -775,3 +775,20 @@ def test_deleting_the_window_does_not_escape_the_evaluated_at_binding():
     assert (
         "READING_BASIS_MISMATCH:rate:bundle_evaluated_at" in result.samples[0].integrity
     )
+
+
+def test_a_forged_reading_error_marker_does_not_exempt_a_query_bundle():
+    """PR #150 bot P1: ``reading_error`` on a bundle that still carries its
+    query sections is no construction-failure bundle."""
+    history = healthy_history()
+    _retime(
+        history,
+        0,
+        reading_error="FORGED",
+        evaluated_at=(
+            history["samples"][0]["window_end"] - timedelta(hours=2)
+        ).isoformat(),
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False

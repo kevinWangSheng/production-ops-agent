@@ -352,7 +352,8 @@ def _bundle_time_codes(
     another instant would otherwise pass with a rewritten hash. Bundles
     that carry no window (construction failure, too large) are filed
     ``failed`` and bind only their ``sample_time``: they are told apart by
-    ``reading_error``, which only those writers set."""
+    carrying none of the three query sections (a ``reading_error`` marker
+    alone exempts nothing: the rebuild ignores it)."""
     codes: list[str] = []
     instants: dict[str, datetime] = {}
     for row in rows:
@@ -363,7 +364,7 @@ def _bundle_time_codes(
             bundle = json.loads(bytes(row["raw"]))
             if not isinstance(bundle, dict):
                 continue
-            if "reading_error" not in bundle:
+            if any(kind in bundle for kind in ("query", "coverage", "freshness")):
                 # a query bundle always names its window: deleting the key
                 # is not a way out of the binding
                 if (
