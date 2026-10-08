@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "profile_id": "otel-demo-checkout",
-  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals bind the namespace through k8s_namespace_name, which the lab's span series carry next to service_name (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json).",
+  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported; pod health is read at Deployment level (ready replicas, lowest available replicas inside the window) because a pod name prefix does not prove which workload a pod belongs to. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals bind the namespace through k8s_namespace_name, which the lab's span series carry next to service_name (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json).",
   "subject": {
     "service": "checkout",
     "kubernetes_namespace": "otel-demo"
@@ -89,11 +89,11 @@
       }
     },
     {
-      "name": "pods_running",
-      "description": "checkout pods in phase Running (kube-state-metrics).",
-      "query": "sum(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"})",
-      "coverage_query": "min(count_over_time(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"}[5m]))",
-      "freshness_query": "min(timestamp(kube_pod_status_phase{namespace=\"otel-demo\",pod=~\"checkout-.*\",phase=\"Running\"}))",
+      "name": "deployment_ready_replicas",
+      "description": "Ready replicas of the checkout Deployment (kube-state-metrics kube_deployment_status_replicas_ready). Replaces the pod-level pods_running signal: a pod name prefix cannot prove which workload a pod belongs to, so pod health is read at Deployment level (user decision B, 2026-10-08). The lab runs spec.replicas=1.",
+      "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
@@ -101,26 +101,23 @@
       },
       "scope": {
         "namespace_label": "namespace",
-        "workload_label": "pod",
-        "workload_match": "prefix"
+        "workload_label": "deployment"
       }
     },
     {
-      "name": "pod_restarts_in_window",
-      "description": "Container restarts of checkout pods inside the evaluation window; a constant counter gives exactly 0, one restart gives about 1.",
-      "query": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}[5m]))",
-      "coverage_query": "min(count_over_time(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}[5m]))",
-      "freshness_query": "min(timestamp(kube_pod_container_status_restarts_total{namespace=\"otel-demo\",pod=~\"checkout-.*\"}))",
+      "name": "deployment_available_replicas_min_in_window",
+      "description": "Lowest number of available replicas of the checkout Deployment at any scrape inside the evaluation window (min_over_time over kube_deployment_status_replicas_available). Replaces the pod-level restart counter: a dip to 0 inside the window is what a restart or crash loop looks like at Deployment level; a restart that comes and goes between two scrapes (60 s in the lab) is not seen, which the restart counter would have shown (user decision B, 2026-10-08).",
+      "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "coverage_query": "min(count_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+      "freshness_query": "min(timestamp(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
-        "min": 0,
-        "max": 0.5
+        "min": 1
       },
       "scope": {
         "namespace_label": "namespace",
-        "workload_label": "pod",
-        "workload_match": "prefix"
+        "workload_label": "deployment"
       }
     },
     {

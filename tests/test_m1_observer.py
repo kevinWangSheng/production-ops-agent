@@ -441,8 +441,8 @@ def test_a_stale_dependency_among_fresh_ones_blocks_health():
         "request_rate_per_second": 0.0125,
         "error_ratio": 0.0,
         "latency_p95_milliseconds": 100.0,
-        "pods_running": 1.0,
-        "pod_restarts_in_window": 0.0,
+        "deployment_ready_replicas": 1.0,
+        "deployment_available_replicas_min_in_window": 1.0,
         "dependency_deployments_available": 8.0,  # all eight still report
         "dependency_error_ratio": 0.0,
     }

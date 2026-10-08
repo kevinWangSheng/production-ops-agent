@@ -53,8 +53,8 @@ HEALTHY_VALUES = {
     "request_rate_per_second": 0.0125,
     "error_ratio": 0.0,
     "latency_p95_milliseconds": 120.0,
-    "pods_running": 1.0,
-    "pod_restarts_in_window": 0.0,
+    "deployment_ready_replicas": 1.0,
+    "deployment_available_replicas_min_in_window": 1.0,
     "dependency_deployments_available": 8.0,
     "dependency_error_ratio": 0.0,
 }
@@ -442,7 +442,7 @@ def test_a_missing_required_signal_is_unknown_and_the_budget_hands_back_to_open(
     never healthy; after ``max_samples`` the session expires and the
     incident returns to ``open``."""
     observer_loop, state = loop
-    state.values["pods_running"] = None  # type: ignore[assignment]
+    state.values["deployment_ready_replicas"] = None  # type: ignore[assignment]
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1, max_samples=2)
     _backdate_authorization(owner, session)
@@ -464,7 +464,11 @@ def test_a_missing_required_signal_is_unknown_and_the_budget_hands_back_to_open(
             "no_data",
             False,
         )
-        pods = next(r for r in sample["readings"] if r["signal_name"] == "pods_running")
+        pods = next(
+            r
+            for r in sample["readings"]
+            if r["signal_name"] == "deployment_ready_replicas"
+        )
         assert pods["status"] == "no_data"
     assert controller.replay_session(session).consistent
 

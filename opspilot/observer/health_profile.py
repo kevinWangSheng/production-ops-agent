@@ -92,8 +92,8 @@ PROFILE_DIRECTORY = Path(__file__).resolve().parent / "profiles"
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
 #: A Kubernetes DNS-1123 label: the shape of a namespace, a Deployment name
 #: and the OTel ``service.name`` values the lab emits. The scope check
-#: derives regular expressions from these values (``<service>-.*``,
-#: ``a|b|c``), so they may not contain regex metacharacters.
+#: derives a regular expression from these values (``a|b|c``), so they may
+#: not contain regex metacharacters.
 DnsLabel = Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
 #: A Prometheus label name.
 LabelName = Annotated[str, Field(pattern=r"^[a-zA-Z_][a-zA-Z0-9_]{0,127}$")]
@@ -181,8 +181,7 @@ class SignalScope(DTO):
     """How one signal's selectors name the profile's ``subject`` (rule 4).
 
     Metric families spell the same workload differently: kube-state-metrics
-    carries ``namespace`` and ``deployment`` (or a ``pod`` name prefixed by
-    the Deployment), the span metrics carry ``k8s_namespace_name`` and
+    carries ``namespace`` and ``deployment``, the span metrics carry ``k8s_namespace_name`` and
     ``service_name``. The signal therefore declares the label names; the
     values are never declared, they are the subject's. The validator then
     requires, in every vector selector of ``query``, ``coverage_query`` and
@@ -191,10 +190,15 @@ class SignalScope(DTO):
     - ``<namespace_label>="<subject.kubernetes_namespace>"``; every series
       the profile may read carries a namespace label, so there is no
       opt-out (codex review of PR #132, P1-2);
-    - ``<workload_label>="<subject.service>"`` (``exact``),
-      ``<workload_label>=~"<subject.service>-.*"`` (``prefix``, pod names),
-      or ``<workload_label>=~"<dep1>|<dep2>|..."`` (``dependencies``, the
+    - ``<workload_label>="<subject.service>"`` (``exact``) or
+      ``<workload_label>=~"<dep1>|<dep2>|..."`` (``dependencies``, the
       named objects a dependency signal watches).
+
+    There is no name-prefix match: a pod name starting with the service's
+    name does not prove the pod belongs to it (``checkout-canary-...`` also
+    does), so pod-level series are not readable under a profile; the
+    workload is observed through its Deployment series (codex review of PR
+    #132, P1-3; user decision B, 2026-10-08).
 
     Any other matcher on those labels (``!=``, a regex, another value) is a
     mismatch; a selector without them is unbound. Both are refused.
@@ -202,7 +206,7 @@ class SignalScope(DTO):
 
     namespace_label: LabelName
     workload_label: LabelName
-    workload_match: Literal["exact", "prefix", "dependencies"] = "exact"
+    workload_match: Literal["exact", "dependencies"] = "exact"
     dependencies: tuple[DnsLabel, ...] = ()
 
     @field_validator("dependencies", mode="before")
@@ -958,8 +962,6 @@ def _expected_matchers(
     expected[scope.namespace_label] = ("=", subject.kubernetes_namespace)
     if scope.workload_match == "exact":
         expected[scope.workload_label] = ("=", subject.service)
-    elif scope.workload_match == "prefix":
-        expected[scope.workload_label] = ("=~", f"{subject.service}-.*")
     else:
         expected[scope.workload_label] = ("=~", "|".join(scope.dependencies))
     return expected

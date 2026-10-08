@@ -160,8 +160,8 @@ def test_shipped_checkout_profile_loads_and_covers_f6_step_one():
         "request_rate_per_second",
         "error_ratio",
         "latency_p95_milliseconds",
-        "pods_running",
-        "pod_restarts_in_window",
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
         "dependency_deployments_available",
         "dependency_error_ratio",
     } <= names
@@ -178,8 +178,8 @@ def test_shipped_profile_kubernetes_signals_come_from_kube_state_metrics():
     prof = load_health_profile(SHIPPED)
     for name in (
         "deployment_available_replicas",
-        "pods_running",
-        "pod_restarts_in_window",
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
         "dependency_deployments_available",
     ):
         assert "kube_" in prof.signal(name).query
@@ -191,8 +191,8 @@ HEALTHY_CHECKOUT = {
     "request_rate_per_second": 0.0125,
     "error_ratio": 0.0,
     "latency_p95_milliseconds": 120.0,
-    "pods_running": 1.0,
-    "pod_restarts_in_window": 0.0,
+    "deployment_ready_replicas": 1.0,
+    "deployment_available_replicas_min_in_window": 1.0,
     "dependency_error_ratio": 0.0,
 }
 
@@ -784,7 +784,19 @@ def test_the_shipped_profile_declares_a_scope_for_every_signal():
     for name in ("request_rate_per_second", "error_ratio", "latency_p95_milliseconds"):
         assert by_name[name].namespace_label == "k8s_namespace_name"
         assert by_name[name].workload_label == "service_name"
-    assert by_name["pods_running"].workload_match == "prefix"
+    # pod health is read at Deployment level: no pod-name prefix anywhere
+    assert {s.scope.workload_label for s in prof.signals} == {
+        "deployment",
+        "service_name",
+    }
+    assert {s.scope.workload_match for s in prof.signals} == {"exact", "dependencies"}
+    assert prof.signal("pods_running") is None
+    assert prof.signal("pod_restarts_in_window") is None
+    for name in (
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
+    ):
+        assert by_name[name].workload_label == "deployment"
     deps = by_name["dependency_deployments_available"]
     assert deps.workload_match == "dependencies" and len(deps.dependencies) == 8
     assert prof.subject.service not in deps.dependencies
@@ -942,17 +954,21 @@ def test_keywords_in_their_syntactic_position_still_load(query):
     assert profile(**scoped(query)).signals[0].query == query
 
 
-def test_prefix_and_dependency_scopes_are_derived_from_the_subject():
-    prefix = {"workload_label": "pod", "workload_match": "prefix"}
-    assert profile(**scoped("x{namespace='ns',pod=~'svc-.*'}", **prefix))
-    for bad in (
-        "x{namespace='ns',pod='svc-abc'}",
-        "x{namespace='ns',pod=~'.*'}",
-        "x{namespace='ns',pod=~'svc.*'}",
-        "x{namespace='ns',pod=~'payment-.*'}",
-    ):
-        with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
-            profile(**scoped(bad, **prefix))
+def test_dependency_scopes_are_derived_from_the_subject_and_prefixes_are_refused():
+    """A pod-name prefix (``checkout-.*``) is not a workload identity:
+    ``checkout-canary-...`` matches too (codex review of PR #132, P1-3), so
+    there is no ``prefix`` match kind and a prefix regex on the workload
+    label is a mismatch like any other regex."""
+    with pytest.raises(ValueError, match="literal_error"):
+        profile(
+            **scoped(
+                "x{namespace='ns',pod=~'svc-.*'}",
+                workload_label="pod",
+                workload_match="prefix",
+            )
+        )
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
+        profile(**scoped("x{namespace='ns',service=~'svc-.*'}"))
     deps = {
         "workload_label": "deployment",
         "workload_match": "dependencies",
