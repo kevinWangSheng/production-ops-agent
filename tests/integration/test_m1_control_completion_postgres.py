@@ -8,7 +8,6 @@ import pytest
 
 from opspilot.persistence import DurableStore, PersistenceError
 from scripts.m0.postgres_lab import DSN
-from tests.target_support import register
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -45,7 +44,7 @@ def _accept(s, *, target=None):
 
 def test_scope_suspension_fences_claim_and_release_does_not_resume_old_run():
     s = _store()
-    t = register(s, "target-" + str(uuid4()))
+    t = s.register_target("target-" + str(uuid4()))
     i, r = _accept(s, target=t)
     assert (
         s.set_target_suspension(t, True, expected_generation=0, actor="operator") == 1
@@ -69,7 +68,7 @@ def test_claim_allows_a_fresh_never_suspended_target_at_generation_zero():
     have misread as meaningful; it never fires because target_suspended is
     False here, and claim() must still succeed."""
     s = _store()
-    t = register(s, "target-" + str(uuid4()))
+    t = s.register_target("target-" + str(uuid4()))
     i, r = _accept(s, target=t)
     lease = s.claim(i, r, uuid4(), {"v": "1"})
     assert lease.target_suspension_generation == 0
@@ -130,7 +129,7 @@ def test_same_value_global_suspension_write_does_not_revoke_active_leases():
 
 def test_same_value_target_suspension_write_does_not_revoke_active_leases():
     s = _store()
-    t = register(s, "target-" + str(uuid4()))
+    t = s.register_target("target-" + str(uuid4()))
     i, r = _accept(s, target=t)
     lease = s.claim(i, r, uuid4(), {"v": "1"})
     assert lease.target_suspension_generation == 0
@@ -150,7 +149,7 @@ def test_new_run_created_while_suspended_persists_paused_on_the_run_row_too():
     from opspilot.recovery import rebuild_plan
 
     s = _store()
-    t = register(s, "target-" + str(uuid4()))
+    t = s.register_target("target-" + str(uuid4()))
     i, r, next_run = uuid4(), uuid4(), uuid4()
     s.accept(
         i,

@@ -62,7 +62,6 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
-from tests.target_support import ANY_TARGETS, register
 from tests.test_m1_otel_demo_contract import (
     CHECKOUT_BODY,
     CHECKOUT_TRACES,
@@ -145,7 +144,7 @@ def _call(tool: str, params: dict, *, index: int) -> ToolRequest:
 
 def test_control_state_reflects_incident_global_and_target_control():
     store = _store()
-    target = register(store, f"otel-contract-target-{uuid4()}")
+    target = store.register_target(f"otel-contract-target-{uuid4()}")
     incident, run = _accept(store, target=target)
     lease = store.claim(incident, run, uuid4(), otel_demo_versions())
 
@@ -244,7 +243,7 @@ def _executor(store: DurableStore, lease, opener: FakeOpener, monkeypatch):
 
 def test_durable_control_snapshot_mirrors_the_store(monkeypatch):
     store = _store()
-    target = register(store, f"otel-contract-target-{uuid4()}")
+    target = store.register_target(f"otel-contract-target-{uuid4()}")
     incident, run = _accept(store, target=target)
     lease = store.claim(incident, run, uuid4(), otel_demo_versions())
     executor = _executor(store, lease, FakeOpener(), monkeypatch)
@@ -281,7 +280,7 @@ def test_a_global_suspension_makes_the_executor_deny_without_contacting_the_sour
     CONTROL_GENERATION_CHANGED after the release, and the transport is never
     contacted for either."""
     store = _store()
-    target = register(store, f"otel-contract-target-{uuid4()}")
+    target = store.register_target(f"otel-contract-target-{uuid4()}")
     incident, run = _accept(store, target=target)
     lease = store.claim(incident, run, uuid4(), otel_demo_versions())
     opener = FakeOpener(by_query={GOOD_EXPR: CHECKOUT_BODY})
@@ -316,7 +315,7 @@ def test_a_global_suspension_makes_the_executor_deny_without_contacting_the_sour
 
 def test_a_target_suspension_makes_the_executor_deny_this_target(monkeypatch):
     store = _store()
-    target = register(store, f"otel-contract-target-{uuid4()}")
+    target = store.register_target(f"otel-contract-target-{uuid4()}")
     incident, run = _accept(store, target=target)
     lease = store.claim(incident, run, uuid4(), otel_demo_versions())
     opener = FakeOpener(routes={"/api/traces": CHECKOUT_TRACES})
@@ -370,7 +369,6 @@ def _build(profile):
         evidence=evidence,
         ledger=ledger,
         run_versions=profile.versions(),
-        targets=ANY_TARGETS,
         run_seconds=600,
         # The face's clock fixes the Run's policy window to the recorded
         # window the fixtures answer for; the worker keeps the real clock.

@@ -37,7 +37,6 @@ from tests.integration.test_m1_deadline_sweep_postgres import (
 )
 from tests.integration.test_m1_loop_resume_postgres import Harness, _tool_rounds
 from tests.m1_investigation_support import report_from_transcript
-from tests.target_support import ANY_TARGETS, register
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -232,7 +231,6 @@ def test_the_workbench_note_after_a_timeout_shows_a_new_run_and_no_refusals():
         evidence=evidence,
         ledger=ledger,
         run_versions=dict(VERSIONS),
-        targets=ANY_TARGETS,
         run_seconds=600,
     )
     incident, old = _accepted(store, "workbench")
@@ -300,7 +298,7 @@ def test_a_note_on_an_overdue_run_of_a_paused_incident_renews_it_paused():
 
 def test_a_note_on_an_overdue_run_under_a_suspended_target_renews_it_paused():
     store = _store()
-    target = register(store, f"resource-{uuid4()}")
+    target = store.register_target(f"resource-{uuid4()}")
     incident, old = uuid4(), uuid4()
     store.accept(
         incident,

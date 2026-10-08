@@ -38,6 +38,7 @@ from opspilot.observer.health_profile import (
     load_health_profile,
 )
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
+from opspilot.persistence.base import _StoreBase
 from opspilot.web import (
     AuthConfig,
     Authenticator,
@@ -62,7 +63,7 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
-from tests.target_support import ANY_TARGETS, IDENTITY, register
+from tests.target_support import ANY_TARGETS, IDENTITY, identity_of
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -119,7 +120,7 @@ def _now() -> datetime:
 def _incident(owner: DurableStore) -> tuple[UUID, UUID, UUID, str]:
     incident, run = uuid4(), uuid4()
     uid = f"deployment/checkout-{uuid4().hex[:8]}"
-    target_id = register(owner, uid)
+    target_id = owner.register_target(uid)
     owner.accept(
         incident,
         run,
@@ -132,6 +133,10 @@ def _incident(owner: DurableStore) -> tuple[UUID, UUID, UUID, str]:
     return incident, run, target_id, uid
 
 
+# Sentinel: ``_register`` resolves the identity like the workbench would.
+_REGISTRY = object()
+
+
 def _register(
     controller: ObservationStore,
     incident: UUID,
@@ -140,7 +145,12 @@ def _register(
     revision: str = "checkout:v2",
     actor: str = "operator",
     session_id: UUID | None = None,
+    identity: dict[str, str] | None | object = _REGISTRY,
 ) -> int:
+    """``identity`` defaults to the configured registry's answer for the
+    incident's target (what the workbench passes); ``None`` means no registry."""
+    if identity is _REGISTRY:
+        identity = identity_of(_resource_uid(controller, incident))
     parameters = PROFILE.session
     return controller.register_remediation(
         incident,
@@ -154,8 +164,29 @@ def _register(
         health_profile_revision=PROFILE.revision,
         health_profile=canonical_content(PROFILE),
         session_id=session_id,
+        identity=identity,  # type: ignore[arg-type]
         payload={"channel": "test"},
     )
+
+
+def _registered(owner: DurableStore, target_id: UUID) -> dict[str, Any]:
+    with owner.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT resource_uid,integration_id,cluster_uid,namespace FROM opspilot_targets WHERE target_id=%s",
+            (target_id,),
+        ).fetchone()
+    assert row is not None
+    return row
+
+
+def _resource_uid(store: _StoreBase, incident: UUID) -> str:
+    with store.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT t.resource_uid FROM opspilot_incidents i JOIN opspilot_targets t ON t.target_id=i.target_id WHERE i.incident_id=%s",
+            (incident,),
+        ).fetchone()
+    assert row is not None
+    return str(row["resource_uid"])
 
 
 def _incident_row(owner: DurableStore, incident: UUID) -> dict[str, Any]:
@@ -207,6 +238,7 @@ def test_registration_steps_the_generation_authorizes_and_observes(
     incident, _, target_id, uid = _incident(owner)
     before = _incident_row(owner, incident)
     assert (before["lifecycle"], before["control_generation"]) == ("open", 0)
+    assert _registered(owner, target_id)["integration_id"] is None
 
     assert _register(controller, incident, expected=0, revision="checkout:v2") == 1
 
@@ -232,10 +264,12 @@ def test_registration_steps_the_generation_authorizes_and_observes(
         seconds=PROFILE.session.deadline_seconds
     )
     # The Target is the registry's identity plus the revision snapshot; the
-    # caller never passed an identity.
+    # operator never passed an identity. Intake registered the uid alone;
+    # this first registration completed the row from the configured registry.
     assert Target(**session["target"]) == Target(
         resource_uid=uid, revision="checkout:v2", **IDENTITY
     )
+    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
     (audit,) = _audit(owner, incident)
     assert (audit["action"], audit["expected_generation"]) == (
         "register_remediation",
@@ -678,3 +712,63 @@ def test_a_paused_incident_takes_no_registration(
     assert _register(controller, incident, expected=2) == 3
     row = _incident_row(owner, incident)
     assert (row["state"], row["lifecycle"]) == ("running", "observing_recovery")
+
+
+def test_a_bare_registry_row_without_a_configured_identity_refuses_registration(
+    owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Intake registered the uid alone (M1-01 contract, unchanged); without a
+    configured identity to complete it, the registration fails closed and
+    writes nothing -- the generation, the lifecycle, the row."""
+    incident, _, target_id, uid = _incident(owner)
+    with pytest.raises(PersistenceError, match="TARGET_IDENTITY_MISSING"):
+        _register(controller, incident, expected=0, identity=None)
+    row = _incident_row(owner, incident)
+    assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
+    assert _sessions(owner, incident) == [] and _audit(owner, incident) == []
+    assert _registered(owner, target_id) == {
+        "resource_uid": uid,
+        "integration_id": None,
+        "cluster_uid": None,
+        "namespace": None,
+    }
+    # The storage primitive is fail-closed too.
+    with pytest.raises(PersistenceError, match="TARGET_IDENTITY_MISSING"):
+        controller.authorize_session(
+            incident,
+            revision="checkout:v2",
+            actor="tester",
+            deadline_at=_now() + timedelta(hours=1),
+            max_samples=3,
+            sample_interval_seconds=15,
+            sustained_window_seconds=60,
+        )
+    # With the identity the same registration goes through under the same
+    # generation, and the row is complete from then on.
+    assert _register(controller, incident, expected=0) == 1
+    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
+
+
+def test_a_completed_identity_never_changes_in_place(
+    owner: DurableStore, controller: ObservationStore
+) -> None:
+    incident, _, target_id, uid = _incident(owner)
+    assert _register(controller, incident, expected=0) == 1
+    other = {**identity_of(uid), "namespace": "elsewhere"}
+    with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
+        _register(controller, incident, expected=1, revision="v3", identity=other)
+    with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
+        _register(
+            controller,
+            incident,
+            expected=1,
+            revision="v3",
+            identity={**identity_of(uid), "resource_uid": "another"},
+        )
+    assert _registered(owner, target_id) == {"resource_uid": uid, **IDENTITY}
+    assert _incident_row(owner, incident)["control_generation"] == 1
+    assert len(_sessions(owner, incident)) == 1
+    # Without a registry entry a complete row is still usable.
+    assert (
+        _register(controller, incident, expected=1, revision="v3", identity=None) == 2
+    )

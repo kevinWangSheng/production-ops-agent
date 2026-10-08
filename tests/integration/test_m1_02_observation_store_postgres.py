@@ -39,7 +39,7 @@ from opspilot.observation import (
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.persistence.base import _StoreBase
 from scripts.m0.postgres_lab import DSN
-from tests.target_support import IDENTITY, register
+from tests.target_support import IDENTITY
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -168,7 +168,20 @@ def _target(uid: str) -> Target:
 def _incident(owner: DurableStore) -> tuple[UUID, UUID, Target]:
     incident, run = uuid4(), uuid4()
     uid = f"deployment/checkout-{uuid4().hex[:8]}"
-    target_id = register(owner, uid)
+    target_id = owner.register_target(uid)
+    # Intake registers the uid alone; the identity (0004) is completed when a
+    # remediation is registered. These tests drive the storage primitive, so
+    # they complete it directly.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s WHERE target_id=%s",
+            (
+                IDENTITY["integration_id"],
+                IDENTITY["cluster_uid"],
+                IDENTITY["namespace"],
+                target_id,
+            ),
+        )
     owner.accept(
         incident,
         run,

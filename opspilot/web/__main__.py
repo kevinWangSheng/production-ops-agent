@@ -13,9 +13,10 @@ Configuration comes from the environment only, and only as hashes:
   above the freeze.
 * ``OPSPILOT_TOOL_PROFILE``   ``fixture`` (default) or ``otel-demo``; must
   match the worker (``opspilot.tools.profiles``).
-* ``OPSPILOT_TARGET_IDENTITIES`` JSON file mapping each operator
+* ``OPSPILOT_TARGET_IDENTITIES`` JSON file mapping an operator
   ``target_id`` to its immutable identity (``opspilot.schema
-  .load_target_identities``); intake refuses an id the file does not list.
+  .load_target_identities``); read when a remediation is registered,
+  optional (without it registrations are refused for lack of identity).
 * ``OPSPILOT_HEALTH_PROFILE``  path of the HealthProfile JSON the
   "register remediation" action fixes an observation session by (default:
   the shipped ``otel-demo-checkout`` profile).
@@ -80,12 +81,13 @@ def _run_seconds() -> float:
     return value
 
 
-def _target_registry() -> MappingTargetRegistry:
-    """The deployment's target identities (migration 0004): intake refuses
-    a ``target_id`` the file does not list, so the file is required."""
+def _target_registry() -> MappingTargetRegistry | None:
+    """The deployment's target identities (migration 0004), used only when a
+    remediation is registered; without the file every registration is
+    refused for lack of identity, intake is unaffected."""
     path = os.environ.get(TARGET_IDENTITIES_ENV)
     if not path:
-        raise SystemExit(f"{TARGET_IDENTITIES_ENV} is required (target registry file)")
+        return None
     try:
         return MappingTargetRegistry.from_file(path)
     except TargetIdentityMissing as exc:

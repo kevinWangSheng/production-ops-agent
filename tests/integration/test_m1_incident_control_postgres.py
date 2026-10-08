@@ -30,7 +30,6 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
-from tests.target_support import register
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -136,7 +135,7 @@ class _Suspension:
 
     def __init__(self, store, kind, target_name):
         self.store, self.kind = store, kind
-        self.target = register(store, target_name)
+        self.target = store.register_target(target_name)
         self.generation = None
 
     def _current(self):

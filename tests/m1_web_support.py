@@ -55,7 +55,6 @@ from tests.m1_tool_support import (
     body,
     build,
 )
-from tests.target_support import ANY_TARGETS
 
 UI_USER = "alice"
 UI_PASSWORD = "correct horse battery staple"
@@ -127,14 +126,13 @@ class MemoryIncidentStore:
 
     # -- IncidentStore ------------------------------------------------------
 
-    def register_target(self, identity):
-        # Stable id per resource uid, like the durable store's
-        # ``opspilot_targets`` row; a known uid with other identity fields is
-        # the same IDENTITY_CONFLICT the durable store raises.
-        known = self.targets.setdefault(identity.resource_uid, identity)
-        if known != identity:
-            raise PersistenceError("IDENTITY_CONFLICT")
-        return uuid5(NAMESPACE_URL, f"memory-target:{identity.resource_uid}")
+    def register_target(self, resource_uid):
+        # Stable identity per resource uid, like the durable store's
+        # ``opspilot_targets`` row (uid alone; the identity columns are
+        # completed by register_remediation).
+        target_id = uuid5(NAMESPACE_URL, f"memory-target:{resource_uid}")
+        self.targets.setdefault(target_id, {"resource_uid": resource_uid})
+        return target_id
 
     def accept(
         self,
@@ -541,15 +539,30 @@ class MemoryIncidentStore:
         health_profile_revision,
         health_profile,
         session_id,
+        identity=None,
         payload=None,
     ):
         """Mirror ObservationStore.register_remediation: generation step,
-        earlier authorization withdrawn, new session, observing_recovery."""
+        earlier authorization withdrawn, new session, observing_recovery;
+        the registry row is completed from ``identity`` the first time."""
         row = self.incidents.get(incident_id)
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
         if row["control_generation"] != expected_generation:
             raise PersistenceError("CONTROL_CONFLICT")
+        registered = self.targets[row["target_id"]]
+        fields = ("integration_id", "cluster_uid", "namespace")
+        if identity is not None and identity.resource_uid != registered["resource_uid"]:
+            raise PersistenceError("TARGET_MISMATCH")
+        if all(field in registered for field in fields):
+            if identity is not None and any(
+                registered[field] != getattr(identity, field) for field in fields
+            ):
+                raise PersistenceError("TARGET_MISMATCH")
+        elif identity is None:
+            raise PersistenceError("TARGET_IDENTITY_MISSING")
+        else:
+            registered.update({field: getattr(identity, field) for field in fields})
         if row["lifecycle"] not in {"open", "observing_recovery"}:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # Mirror ObservationStore: a paused incident takes no authorization.
@@ -574,7 +587,7 @@ class MemoryIncidentStore:
                 "observation_generation": row["observation_generation"],
                 "health_profile_revision": health_profile_revision,
                 "health_profile": health_profile,
-                "target": {"revision": revision},
+                "target": {**registered, "revision": revision},
                 "deadline_at": deadline_at,
                 "max_samples": max_samples,
                 "sample_interval_seconds": sample_interval_seconds,
@@ -873,6 +886,7 @@ def build_workbench(
     sse_repair=5.0,
     tool_face=None,
     health_profile=HEALTH_PROFILE,
+    targets=None,
 ):
     clock = clock or FakeClock(start=NOW)
     incidents = MemoryIncidentStore(clock)
@@ -885,7 +899,7 @@ def build_workbench(
         evidence=evidence,
         ledger=ledger,
         run_versions={"state": "v1"},
-        targets=ANY_TARGETS,
+        targets=targets,
         health_profile=health_profile,
         run_seconds=600,
         tool_face=tool_face,

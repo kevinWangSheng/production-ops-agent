@@ -56,3 +56,34 @@ otel-demo-checkout@cb52da44e49b
 (1 row)
 
 ```
+
+## 审查第 4 条后的补充运行（2026-10-07，用户决定：事故接收不依赖身份文件）
+
+同一台临时 PG（55495）新库 `migrate` → `schema upgraded: 0004_target_identity`（三列可空，无需输入）。先**不设** `OPSPILOT_TARGET_IDENTITIES` 起工作台：任意 target_id 的事故接收照旧 201（`checkout-prod`、未列出的 `checkout-canary` 都登记为只有 uid 的行），登记处置 `TARGET_IDENTITY_MISSING`、不写任何东西；再**设**文件重启：同一事故登记处置 generation 1，登记行从文件补齐，`checkout-canary` 的行仍为空。
+
+```
+--- intake any target
+{"incident_id":"9813aafe-ecfb-5ca9-82f0-fe3f54812e27","run_id":"067dbd20-29b7-5a2b-98f2-f46464ce1e42","replayed":false,"sequence":1}
+--- intake unlisted target
+{"incident_id":"4e22ed17-80a3-5c9e-b1dd-cb81084d43db","run_id":"09c8bc27-d71d-59f0-8109-c828e9ed27c6","replayed":false,"sequence":1}
+--- register without identity file
+{"code":"TARGET_IDENTITY_MISSING"}
+--- register with the identity file
+{"incident_id":"9813aafe-ecfb-5ca9-82f0-fe3f54812e27","action":"register_remediation","generation":1,"replayed":false,"sequence":2}
+  resource_uid   | integration_id |   cluster_uid   | namespace 
+-----------------+----------------+-----------------+-----------
+ checkout-canary |                |                 | 
+ checkout-prod   | fixture        | fixture-cluster | checkout
+(2 rows)
+
+     lifecycle      | control_generation | observation_generation 
+--------------------+--------------------+------------------------
+ observing_recovery |                  1 |                      1
+(1 row)
+
+   state    |    revision     | namespace 
+------------+-----------------+-----------
+ authorized | checkout:v2.0.3 | checkout
+(1 row)
+
+```

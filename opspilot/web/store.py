@@ -13,7 +13,7 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
@@ -69,7 +69,9 @@ class TargetIdentity:
     The four fields of ``opspilot.domain.intake.Target`` that identify a
     target (user decision 2026-10-07); ``revision`` is not one of them and is
     recorded only when an observation is authorized. ``resource_uid`` is the
-    registry key, which is also the operator's ``target_id`` today.
+    registry key, which is also the operator's ``target_id`` today. Intake
+    does not need it (it registers the uid alone); registering a remediation
+    completes the registry row from it the first time.
     """
 
     integration_id: str
@@ -86,8 +88,9 @@ class TargetIdentity:
 
 class TargetRegistry(Protocol):
     def resolve(self, target_id: str) -> TargetIdentity | None:
-        """The registered identity for an operator's target id, or ``None``
-        when the id is unknown (intake refuses it; nothing is guessed)."""
+        """The configured identity for an operator's target id, or ``None``
+        when the id is unknown (a remediation on it is then refused for
+        lack of identity; nothing is guessed)."""
         ...
 
 
@@ -135,9 +138,8 @@ class IncidentStore(Protocol):
         global gate only)."""
         ...
 
-    def register_target(self, identity: TargetIdentity) -> UUID:
-        """The registered id for ``identity``; idempotent for the same
-        identity, ``IDENTITY_CONFLICT`` for a known uid with other fields."""
+    def register_target(self, resource_uid: str) -> UUID:
+        """The registered identity for ``resource_uid``; idempotent."""
         ...
 
     def control(
@@ -233,11 +235,14 @@ class IncidentStore(Protocol):
         health_profile_revision: str | None,
         health_profile: str | None,
         session_id: UUID,
+        identity: TargetIdentity | None = None,
         payload: dict[str, Any] | None = None,
     ) -> int:
         """Record the human handling and authorize a bounded observation
         session in one transaction (``ObservationStore.register_remediation``);
-        returns the new control generation."""
+        ``identity`` completes the registry row the first time (from the
+        configured registry, never the operator); returns the new control
+        generation."""
         ...
 
     def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:
@@ -429,13 +434,8 @@ class DurableIncidentStore:
             target_id=target_id,
         )
 
-    def register_target(self, identity: TargetIdentity) -> UUID:
-        return self._store.register_target(
-            identity.resource_uid,
-            integration_id=identity.integration_id,
-            cluster_uid=identity.cluster_uid,
-            namespace=identity.namespace,
-        )
+    def register_target(self, resource_uid: str) -> UUID:
+        return self._store.register_target(resource_uid)
 
     def control(
         self,
@@ -573,6 +573,7 @@ class DurableIncidentStore:
         health_profile_revision: str | None,
         health_profile: str | None,
         session_id: UUID,
+        identity: TargetIdentity | None = None,
         payload: dict[str, Any] | None = None,
     ) -> int:
         return self._observation.register_remediation(
@@ -587,6 +588,7 @@ class DurableIncidentStore:
             health_profile_revision=health_profile_revision,
             health_profile=health_profile,
             session_id=session_id,
+            identity=None if identity is None else asdict(identity),
             payload=payload,
         )
 

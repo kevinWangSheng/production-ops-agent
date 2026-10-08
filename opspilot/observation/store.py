@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal, cast
@@ -637,6 +637,11 @@ def required_signals(content: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+# The identity columns of ``opspilot_targets`` (migration 0004), in the order
+# ``_complete_identity`` and ``_registered_target`` read them.
+_IDENTITY_FIELDS = ("integration_id", "cluster_uid", "namespace", "resource_uid")
+
+
 def _identity(target: Target) -> tuple[str, str, str, str]:
     """The four identity fields (user decision 2026-10-07): ``revision`` is a
     snapshot, not identity."""
@@ -911,6 +916,7 @@ class ObservationStore(_StoreBase):
         health_profile_revision: str | None = None,
         health_profile: str | None = None,
         session_id: UUID | None = None,
+        identity: Mapping[str, str] | None = None,
         payload: dict[str, Any] | None = None,
     ) -> int:
         """The human action "the incident was handled outside the system":
@@ -921,8 +927,16 @@ class ObservationStore(_StoreBase):
         incident to ``observing_recovery`` and writes the ``opspilot_controls``
         audit row (action ``register_remediation``).
 
-        The session parameters are the HealthProfile's, handed over by the
-        caller that loaded it; the idempotency key is the workbench's (its
+        ``identity`` (``integration_id``, ``cluster_uid``, ``namespace``,
+        ``resource_uid`` from the configured registry, never the operator)
+        completes the registry row the first time a remediation is
+        registered on the target; a row already complete must agree with it
+        (``TARGET_MISMATCH``), a row still bare without an identity to
+        complete it refuses the registration (``TARGET_IDENTITY_MISSING``),
+        both before anything is written (user decision 2026-10-07: intake
+        does not need the identity, authorization does). The session
+        parameters are the HealthProfile's, handed over by the caller that
+        loaded it; the idempotency key is the workbench's (its
         ledger and audit reconciliation, as for the other actions). Refused
         while the global or target scope is suspended (``SCOPE_SUSPENDED``):
         a suspension outranks a separately granted observation authorization
@@ -946,6 +960,9 @@ class ObservationStore(_StoreBase):
                 raise PersistenceError("CONTROL_CONFLICT")
             if scope["global_suspended"] or scope["target_suspended"]:
                 raise PersistenceError("SCOPE_SUSPENDED")
+            if incident["target_id"] is None:
+                raise PersistenceError("UNKNOWN_TARGET")
+            self._complete_identity(conn, incident["target_id"], identity)
             nxt = expected_generation + 1
             # Generation first: the session is bound to the generation this
             # decision creates, and the old authorization ends under it.
@@ -1020,17 +1037,61 @@ class ObservationStore(_StoreBase):
             watermark=watermark,
         )
 
+    def _complete_identity(
+        self, conn: Connection, target_id: UUID, identity: Mapping[str, str] | None
+    ) -> None:
+        """Write the identity columns of a bare registry row once; a complete
+        row must agree with ``identity`` when one is given. The caller holds
+        the incident row lock; the registry row is locked here."""
+        if identity is not None and (
+            set(identity) != set(_IDENTITY_FIELDS)
+            or any(
+                not isinstance(identity[field], str) or not identity[field]
+                for field in _IDENTITY_FIELDS
+            )
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        row = self._require_row(
+            conn.execute(
+                "SELECT integration_id,cluster_uid,namespace,resource_uid FROM opspilot_targets WHERE target_id=%s FOR UPDATE",
+                (target_id,),
+            )
+        )
+        if identity is not None and identity["resource_uid"] != row["resource_uid"]:
+            raise PersistenceError("TARGET_MISMATCH")
+        complete = all(row[field] is not None for field in _IDENTITY_FIELDS[:3])
+        if complete:
+            if identity is not None and any(
+                row[field] != identity[field] for field in _IDENTITY_FIELDS
+            ):
+                raise PersistenceError("TARGET_MISMATCH")
+            return
+        if identity is None:
+            raise PersistenceError("TARGET_IDENTITY_MISSING")
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s WHERE target_id=%s AND integration_id IS NULL AND cluster_uid IS NULL AND namespace IS NULL",
+            (
+                identity["integration_id"],
+                identity["cluster_uid"],
+                identity["namespace"],
+                target_id,
+            ),
+        )
+
     def _registered_target(
         self, conn: Connection, target_id: UUID, revision: str
     ) -> Target:
         """The immutable identity the registry holds for ``target_id`` plus
-        the revision snapshot of this authorization."""
+        the revision snapshot of this authorization; a row without the
+        identity cannot be observed (``TARGET_IDENTITY_MISSING``)."""
         row = self._require_row(
             conn.execute(
                 "SELECT integration_id,cluster_uid,namespace,resource_uid FROM opspilot_targets WHERE target_id=%s",
                 (target_id,),
             )
         )
+        if any(row[field] is None for field in _IDENTITY_FIELDS):
+            raise PersistenceError("TARGET_IDENTITY_MISSING")
         return Target(
             integration_id=row["integration_id"],
             cluster_uid=row["cluster_uid"],

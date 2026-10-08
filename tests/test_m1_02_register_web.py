@@ -10,7 +10,7 @@ plus the registry-resolved intake target.
 from __future__ import annotations
 
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from opspilot.web.store import MappingTargetRegistry, TargetIdentity
 from tests.m1_web_support import (
@@ -21,6 +21,7 @@ from tests.m1_web_support import (
     same_origin,
     submit_incident,
 )
+from tests.target_support import ANY_TARGETS, IDENTITY
 
 
 def _control(app, incident, fields):
@@ -33,7 +34,7 @@ def _control(app, incident, fields):
 
 
 def test_register_remediation_starts_observation_once_per_key():
-    app, workbench, _ = build_workbench()
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
     incident = submit_incident(app).json()["incident_id"]
     fields = {
         "action": "register_remediation",
@@ -80,7 +81,7 @@ def test_register_remediation_starts_observation_once_per_key():
 
 
 def test_revision_belongs_to_register_remediation_only():
-    app, _, _ = build_workbench()
+    app, _, _ = build_workbench(targets=ANY_TARGETS)
     incident = submit_incident(app).json()["incident_id"]
     missing = _control(
         app,
@@ -120,7 +121,7 @@ def test_revision_belongs_to_register_remediation_only():
 
 
 def test_without_a_health_profile_the_action_is_refused():
-    app, workbench, _ = build_workbench(health_profile=None)
+    app, workbench, _ = build_workbench(health_profile=None, targets=ANY_TARGETS)
     incident = submit_incident(app).json()["incident_id"]
     refused = _control(
         app,
@@ -140,7 +141,7 @@ def test_without_a_health_profile_the_action_is_refused():
 
 
 def test_pause_and_cancel_withdraw_the_authorization():
-    app, workbench, _ = build_workbench()
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
     incident = submit_incident(app).json()["incident_id"]
     assert (
         _control(
@@ -170,26 +171,16 @@ def test_pause_and_cancel_withdraw_the_authorization():
     assert "revoked" in page.text and "authority_revoked" in page.text
 
 
-def test_intake_resolves_the_target_through_the_registry_only():
-    app, workbench, _ = build_workbench()
-    workbench.targets = MappingTargetRegistry(
-        {
-            "checkout-prod": {
-                "integration_id": "otel",
-                "cluster_uid": "kind",
-                "namespace": "demo",
-            }
-        }
-    )
+def test_intake_needs_no_registry_and_registration_needs_the_identity():
+    """User decision 2026-10-07 (PR #120 review item 4): intake keeps the
+    M1-01 contract -- any target id is registered by uid, no identity file
+    needed -- and the identity is required only when a remediation is
+    registered: without a registry entry the registration is refused and
+    nothing is written; with one, the registry row is completed once."""
+    app, workbench, _ = build_workbench(targets=None)
     accepted = submit_incident(app, key=f"k-{uuid4()}")
     assert accepted.status == 201
-    assert workbench.incidents.targets["checkout-prod"] == TargetIdentity(
-        integration_id="otel",
-        cluster_uid="kind",
-        namespace="demo",
-        resource_uid="checkout-prod",
-    )
-    unknown = post_form(
+    canary = post_form(
         app,
         "/intake/ui",
         {
@@ -199,30 +190,55 @@ def test_intake_resolves_the_target_through_the_registry_only():
         },
         headers={**basic(), **same_origin()},
     )
-    assert (unknown.status, unknown.json()) == (400, {"code": "UNKNOWN_TARGET"})
-    assert len(workbench.list_incidents()) == 1
-    # The refused key is not poisoned: the same key with a known target goes through.
-    key = f"k-{uuid4()}"
-    refused = post_form(
-        app,
-        "/intake/ui",
-        {"target_id": "nope", "question": "q", "idempotency_key": key},
-        headers={**basic(), **same_origin()},
+    assert canary.status == 201
+    assert len(workbench.list_incidents()) == 2
+    incident = accepted.json()["incident_id"]
+    fields = {
+        "action": "register_remediation",
+        "expected_generation": "0",
+        "idempotency_key": "rem-1",
+        "revision": "checkout:v2",
+    }
+    refused = _control(app, incident, fields)
+    assert (refused.status, refused.json()["code"]) == (409, "TARGET_IDENTITY_MISSING")
+    assert workbench.incidents.sessions == [] and workbench.incidents.controls == []
+    row = workbench.incidents.incidents[UUID(incident)]
+    assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
+    # A registry that lists only checkout-prod: the registration completes
+    # that row; checkout-canary stays refused.
+    workbench.targets = MappingTargetRegistry(
+        {
+            "checkout-prod": {
+                "integration_id": "otel",
+                "cluster_uid": "kind",
+                "namespace": "demo",
+            }
+        }
     )
-    assert refused.status == 400
-    retried = post_form(
-        app,
-        "/intake/ui",
-        {"target_id": "checkout-prod", "question": "q", "idempotency_key": key},
-        headers={**basic(), **same_origin()},
+    accepted_registration = _control(
+        app, incident, {**fields, "idempotency_key": "rem-2"}
     )
-    assert retried.status == 201
+    assert accepted_registration.status == 200, accepted_registration.text
+    (session,) = workbench.incidents.sessions
+    assert session["target"] == {
+        "resource_uid": "checkout-prod",
+        "integration_id": "otel",
+        "cluster_uid": "kind",
+        "namespace": "demo",
+        "revision": "checkout:v2",
+    }
+    other = _control(
+        app,
+        canary.json()["incident_id"],
+        {**fields, "idempotency_key": "rem-3"},
+    )
+    assert (other.status, other.json()["code"]) == (409, "TARGET_IDENTITY_MISSING")
 
 
 def test_a_paused_incident_takes_no_registration_until_resumed():
     """Independent review of PR #120, P1: registering a remediation must not
     bypass or lift a pause; resume is its own explicit decision."""
-    app, workbench, _ = build_workbench()
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
     incident = submit_incident(app).json()["incident_id"]
     paused = _control(
         app,
@@ -274,7 +290,7 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
     B, revisions rev-A and rev-B) for the same incident, operator and
     generation; only A's store transaction committed before the crash. B must
     not be confirmed as that decision; A must."""
-    app, workbench, _ = build_workbench()
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
     incident_id = submit_incident(app).json()["incident_id"]
     subject = workbench.list_incidents()[0].incident_id
     for key, revision in (("A", "rev-A"), ("B", "rev-B")):
@@ -302,6 +318,7 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
         health_profile_revision=profile.revision,
         health_profile="{}",
         session_id=uuid4(),
+        identity=TargetIdentity(resource_uid="checkout-prod", **IDENTITY),
         payload={"channel": "web", "idempotency_key": f"{subject}:A"},
     )
     retry_b = _control(

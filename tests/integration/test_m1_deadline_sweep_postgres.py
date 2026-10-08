@@ -31,7 +31,6 @@ from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
 from tests.integration.test_m1_loop_resume_postgres import SystemClock, _input
 from tests.m1_investigation_support import ScriptedModel
-from tests.target_support import ANY_TARGETS
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -294,7 +293,6 @@ def test_the_workbench_reconciles_an_overdue_run_into_a_visible_timeout():
         evidence=evidence,
         ledger=ledger,
         run_versions=dict(VERSIONS),
-        targets=ANY_TARGETS,
         run_seconds=600,
     )
     incident, run = _accepted(store, "workbench")

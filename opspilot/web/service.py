@@ -177,11 +177,6 @@ class Workbench:
     evidence: EvidenceStore
     ledger: WebLedger
     run_versions: dict[str, str]
-    #: Resolves an operator's ``target_id`` into the immutable identity that
-    #: intake registers (``opspilot_targets``, migration 0004). Exact target
-    #: resolution is scoped outside the model's and the operator's authority
-    #: (PRODUCT-CONSTRAINTS "Runtime and human control requirements").
-    targets: TargetRegistry
     budget_limit: int = MAX_MODEL_REQUESTS_PER_RUN
     run_seconds: float = RUN_WALL_SECONDS
     #: The model-visible tool profile every Run this workbench creates is
@@ -194,6 +189,12 @@ class Workbench:
     #: window; C3 section 10). ``None`` refuses the action: without a profile
     #: nothing bounded can be authorized.
     health_profile: HealthProfile | None = None
+    #: The configured identities (``OPSPILOT_TARGET_IDENTITIES``) a
+    #: remediation completes the registry row from the first time it is
+    #: registered on a target (migration 0004). ``None``, or an id the file
+    #: does not list, leaves a bare row and the registration is refused for
+    #: lack of identity -- nothing is guessed, and intake never needs it.
+    targets: TargetRegistry | None = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -225,16 +226,10 @@ class Workbench:
         # Bind the incident to the registered identity of its target so a
         # target suspension fences its Runs; without it the incident row
         # carried no target and only the global gate applied (PR #54 bot
-        # review P1). The intake string is resolved through the configured
-        # target registry into the whole immutable identity (migration 0004;
-        # user decision 2026-10-07) -- an unknown id is refused, never
-        # registered as a bare uid. The tool gateway still resolves query
-        # authorization from its own registry.
-        identity = self.targets.resolve(envelope.request.target_id)
-        if identity is None:
-            if inserted:
-                self.ledger.delete("intake", key)
-            raise WorkbenchError("UNKNOWN_TARGET")
+        # review P1). The intake string is the resource uid (M1-01 intake
+        # contract, kept by user decision 2026-10-07); the rest of the
+        # identity is completed when a remediation is registered. The tool
+        # gateway still resolves authorization from its own registry.
         self.incidents.accept(
             incident_id,
             run_id,
@@ -243,7 +238,7 @@ class Workbench:
             budget_limit=self.budget_limit,
             versions=dict(self.run_versions),
             input=self._fresh_input(envelope.request, run_id, deadline),
-            target_id=self.incidents.register_target(identity),
+            target_id=self.incidents.register_target(envelope.request.target_id),
         )
         if not inserted:
             # A retry after the process died between accept() and the
@@ -442,6 +437,12 @@ class Workbench:
             # same decision re-creates the same session or conflicts on it.
             assert self.health_profile is not None and revision is not None
             parameters = self.health_profile.session
+            identity = None
+            intake = self.ledger.get("intake", summary.intake_key)
+            if self.targets is not None and intake is not None:
+                identity = self.targets.resolve(
+                    _envelope_from_json(intake["envelope"]).request.target_id
+                )
             generation = self.incidents.register_remediation(
                 summary.incident_id,
                 expected_generation=expected,
@@ -457,6 +458,7 @@ class Workbench:
                     _INTAKE_NAMESPACE,
                     f"{summary.intake_key}:observation:{expected + 1}",
                 ),
+                identity=identity,
                 payload={"channel": "web", "idempotency_key": key},
             )
             return generation, None
