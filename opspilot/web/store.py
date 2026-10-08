@@ -78,6 +78,10 @@ class TargetIdentity:
     cluster_uid: str
     namespace: str
     resource_uid: str
+    #: ``profile_id`` of the HealthProfile whose recovery definition applies
+    #: to this target; a remediation is registered only under that profile.
+    #: Not part of the identity written to the registry.
+    health_profile_id: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("integration_id", "cluster_uid", "namespace", "resource_uid"):
@@ -105,6 +109,7 @@ class MappingTargetRegistry:
                 cluster_uid=entry["cluster_uid"],
                 namespace=entry["namespace"],
                 resource_uid=uid,
+                health_profile_id=entry.get("health_profile_id"),
             )
             for uid, entry in identities.items()
         }
@@ -588,7 +593,15 @@ class DurableIncidentStore:
             health_profile_revision=health_profile_revision,
             health_profile=health_profile,
             session_id=session_id,
-            identity=None if identity is None else asdict(identity),
+            identity=(
+                None
+                if identity is None
+                else {
+                    field: value
+                    for field, value in asdict(identity).items()
+                    if field != "health_profile_id"
+                }
+            ),
             payload=payload,
         )
 

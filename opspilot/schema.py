@@ -154,8 +154,13 @@ TARGET_IDENTITY_FIELDS = ("integration_id", "cluster_uid", "namespace")
 
 
 def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
-    """``resource_uid -> {integration_id, cluster_uid, namespace}`` from the
-    ``OPSPILOT_TARGET_IDENTITIES`` file.
+    """``resource_uid -> {integration_id, cluster_uid, namespace[,
+    health_profile_id]}`` from the ``OPSPILOT_TARGET_IDENTITIES`` file.
+
+    ``health_profile_id`` names the HealthProfile (its ``profile_id``) whose
+    recovery definition applies to this target; a remediation is registered
+    only under that profile (the workbench compares it with the loaded
+    profile, PR #120 bot review P1).
 
     Shared by the workbench (intake resolves the operator's target id here)
     and migration 0004 (completing rows registered before the columns
@@ -179,7 +184,16 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
             not isinstance(uid, str)
             or not uid
             or not isinstance(entry, dict)
-            or set(entry) - set(TARGET_IDENTITY_FIELDS) - {"resource_uid"}
+            or set(entry)
+            - set(TARGET_IDENTITY_FIELDS)
+            - {"resource_uid", "health_profile_id"}
+            or (
+                "health_profile_id" in entry
+                and (
+                    not isinstance(entry["health_profile_id"], str)
+                    or not entry["health_profile_id"]
+                )
+            )
             or any(
                 not isinstance(entry.get(column), str) or not entry[column]
                 for column in TARGET_IDENTITY_FIELDS
@@ -188,6 +202,8 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
         ):
             raise TargetIdentityMissing([str(uid)], detail="malformed entry")
         identities[uid] = {column: entry[column] for column in TARGET_IDENTITY_FIELDS}
+        if "health_profile_id" in entry:
+            identities[uid]["health_profile_id"] = entry["health_profile_id"]
     return identities
 
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from opspilot.web.store import TargetIdentity, TargetRegistry
 
+#: ``profile_id`` of the shipped checkout profile the tests register under.
+PROFILE_ID = "otel-demo-checkout"
 IDENTITY = {
     "integration_id": "test-integration",
     "cluster_uid": "test-cluster",
@@ -28,7 +30,9 @@ class AnyTargetRegistry(TargetRegistry):
     the product registry knows only the ids its file lists)."""
 
     def resolve(self, target_id: str) -> TargetIdentity | None:
-        return TargetIdentity(resource_uid=target_id, **IDENTITY)
+        return TargetIdentity(
+            resource_uid=target_id, health_profile_id=PROFILE_ID, **IDENTITY
+        )
 
 
 ANY_TARGETS = AnyTargetRegistry()

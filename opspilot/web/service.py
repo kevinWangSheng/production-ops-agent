@@ -443,6 +443,17 @@ class Workbench:
                 identity = self.targets.resolve(
                     _envelope_from_json(intake["envelope"]).request.target_id
                 )
+            # Without a configured identity there is nothing to observe
+            # (fail closed before any write, even for a registry row that an
+            # earlier registration completed: the profile binding below
+            # cannot be checked without the entry). The profile must be the
+            # one declared for this target (identity file
+            # ``health_profile_id``): a single loaded profile must not certify
+            # an unrelated target's recovery (bot review P1).
+            if identity is None:
+                raise PersistenceError("TARGET_IDENTITY_MISSING")
+            if identity.health_profile_id != self.health_profile.profile_id:
+                raise PersistenceError("HEALTH_PROFILE_TARGET_MISMATCH")
             generation = self.incidents.register_remediation(
                 summary.incident_id,
                 expected_generation=expected,

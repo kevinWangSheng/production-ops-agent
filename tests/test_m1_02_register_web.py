@@ -21,7 +21,7 @@ from tests.m1_web_support import (
     same_origin,
     submit_incident,
 )
-from tests.target_support import ANY_TARGETS, IDENTITY
+from tests.target_support import ANY_TARGETS, IDENTITY, PROFILE_ID
 
 
 def _control(app, incident, fields):
@@ -212,6 +212,7 @@ def test_intake_needs_no_registry_and_registration_needs_the_identity():
                 "integration_id": "otel",
                 "cluster_uid": "kind",
                 "namespace": "demo",
+                "health_profile_id": "otel-demo-checkout",
             }
         }
     )
@@ -318,7 +319,9 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
         health_profile_revision=profile.revision,
         health_profile="{}",
         session_id=uuid4(),
-        identity=TargetIdentity(resource_uid="checkout-prod", **IDENTITY),
+        identity=TargetIdentity(
+            resource_uid="checkout-prod", health_profile_id=PROFILE_ID, **IDENTITY
+        ),
         payload={"channel": "web", "idempotency_key": f"{subject}:A"},
     )
     retry_b = _control(
@@ -349,3 +352,51 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
     (session,) = workbench.incidents.sessions
     assert session["target"]["revision"] == "rev-A"
     assert [c["revision"] for c in workbench.snapshot(subject)["controls"]] == ["rev-A"]
+
+
+def test_the_profile_must_be_the_one_declared_for_the_target():
+    """Bot review P1 on PR #120: the workbench loads one HealthProfile; a
+    target whose identity entry names another profile (or none) must not be
+    observed under it -- checkout's health would otherwise certify an
+    unrelated incident. Refused before anything is written."""
+    app, workbench, _ = build_workbench(targets=None)
+    incident = submit_incident(app).json()["incident_id"]
+    fields = {
+        "action": "register_remediation",
+        "expected_generation": "0",
+        "idempotency_key": "rem-1",
+        "revision": "checkout:v2",
+    }
+    for entry in (
+        {"integration_id": "otel", "cluster_uid": "kind", "namespace": "demo"},
+        {
+            "integration_id": "otel",
+            "cluster_uid": "kind",
+            "namespace": "demo",
+            "health_profile_id": "payment-profile",
+        },
+    ):
+        workbench.targets = MappingTargetRegistry({"checkout-prod": entry})
+        refused = _control(app, incident, fields)
+        assert (refused.status, refused.json()["code"]) == (
+            409,
+            "HEALTH_PROFILE_TARGET_MISMATCH",
+        )
+        assert workbench.incidents.sessions == [] and workbench.incidents.controls == []
+        row = workbench.incidents.incidents[UUID(incident)]
+        assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
+        assert workbench.incidents.targets[row["target_id"]] == {
+            "resource_uid": "checkout-prod"
+        }
+    workbench.targets = MappingTargetRegistry(
+        {
+            "checkout-prod": {
+                "integration_id": "otel",
+                "cluster_uid": "kind",
+                "namespace": "demo",
+                "health_profile_id": workbench.health_profile.profile_id,
+            }
+        }
+    )
+    accepted = _control(app, incident, fields)
+    assert accepted.status == 200 and accepted.json()["generation"] == 1
