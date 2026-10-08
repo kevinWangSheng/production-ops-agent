@@ -18,13 +18,14 @@ import base64
 import json
 import math
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.client import HTTPResponse
+from http.client import HTTPConnection, HTTPResponse, HTTPSConnection
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -104,9 +105,9 @@ class PrometheusReadOnlySource:
         )
         self._token = token or None
         self._basic_auth = basic_auth
-        self._opener = opener or urllib.request.build_opener(
-            urllib.request.ProxyHandler({}), _NoRedirect()
-        )
+        # ``None``: the deadline-bounded ``_fetch`` path (no proxy, no
+        # redirects by construction). An injected opener is the test seam.
+        self._opener = opener
 
     @property
     def base_url(self) -> str:
@@ -128,11 +129,12 @@ class PrometheusReadOnlySource:
         ``timeout``. Nothing here retries: the sampling job retries later
         under its lease.
 
-        ``timeout_seconds`` bounds the *whole* request -- connect, headers
-        and the complete body read -- as one absolute deadline (C3 section 4
-        bounded cancellation, section 8 gateway total timeout; PR #119 review
-        P2-2): a server that keeps trickling bytes cannot hold the sampler
-        past it.
+        ``timeout_seconds`` bounds the *whole* request -- connect, request,
+        response headers and the complete body, success or error -- as one
+        absolute deadline (C3 section 4 bounded cancellation, section 8
+        gateway total timeout; PR #119 review P2-2 and recheck): a server
+        that keeps trickling header or body bytes cannot hold the sampler
+        past it (``_fetch``).
         """
         url = f"{self._base}/api/v1/query?" + urllib.parse.urlencode(
             {
@@ -147,35 +149,37 @@ class PrometheusReadOnlySource:
             headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
         elif self._token:
             headers["Authorization"] = f"Bearer {self._token}"
-        request = urllib.request.Request(url, headers=headers, method="GET")
-        deadline = time.monotonic() + timeout_seconds
-        body = b""
         try:
-            response: HTTPResponse
-            with self._opener.open(request, timeout=timeout_seconds) as response:
-                http_status = int(response.status)
-                body = _read_until(response, deadline, RESPONSE_LIMIT_BYTES + 1)
-        except urllib.error.HTTPError as error:
-            body = error.read(_ERROR_BODY_BYTES)
-            return InstantResult(expr, "failed", None, body, int(error.code), "HTTP")
-        except (TimeoutError, socket.timeout):
+            if self._opener is not None:
+                http_status, body, complete = self._fetch_via_opener(
+                    url, headers, timeout_seconds
+                )
+            else:
+                http_status, body, complete = _fetch(url, headers, timeout_seconds)
+        except _Timeout as cut:
             # what arrived before the deadline is kept, marked incomplete
             return InstantResult(
                 expr,
                 "timeout",
                 None,
-                body[:_ERROR_BODY_BYTES],
+                cut.partial[:_ERROR_BODY_BYTES],
                 None,
                 "TIMEOUT",
                 body_complete=False,
             )
-        except urllib.error.URLError as error:
-            if isinstance(error.reason, (TimeoutError, socket.timeout)):
-                return InstantResult(expr, "timeout", None, b"", None, "TIMEOUT")
+        except (urllib.error.URLError, OSError):
             return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
-        except OSError:
-            return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
-        if len(body) > RESPONSE_LIMIT_BYTES:
+        if http_status != 200:
+            return InstantResult(
+                expr,
+                "failed",
+                None,
+                body[:_ERROR_BODY_BYTES],
+                http_status,
+                "HTTP",
+                body_complete=complete,
+            )
+        if not complete or len(body) > RESPONSE_LIMIT_BYTES:
             return InstantResult(
                 expr,
                 "failed",
@@ -188,16 +192,138 @@ class PrometheusReadOnlySource:
         status, value, detail = _single_value(body)
         return InstantResult(expr, status, value, body, http_status, detail)
 
+    def _fetch_via_opener(
+        self, url: str, headers: dict[str, str], timeout_seconds: int
+    ) -> tuple[int, bytes, bool]:
+        """The injected-opener path (tests): same deadline on the body read."""
+        assert self._opener is not None
+        deadline = time.monotonic() + timeout_seconds
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        chunks: list[bytes] = []
+        try:
+            response: HTTPResponse
+            with self._opener.open(request, timeout=timeout_seconds) as response:
+                status = int(response.status)
+                complete = _read_until(
+                    response, deadline, RESPONSE_LIMIT_BYTES + 1, chunks
+                )
+                return status, b"".join(chunks), complete
+        except urllib.error.HTTPError as error:
+            return int(error.code), error.read(_ERROR_BODY_BYTES), True
+        except (TimeoutError, socket.timeout):
+            raise _Timeout(b"".join(chunks)) from None
+        except urllib.error.URLError as error:
+            if isinstance(error.reason, (TimeoutError, socket.timeout)):
+                raise _Timeout(b"".join(chunks)) from None
+            raise
 
-def _read_until(response: HTTPResponse, deadline: float, limit: int) -> bytes:
-    """Read at most ``limit`` bytes before ``deadline`` (monotonic seconds).
+
+class _Timeout(Exception):
+    """The absolute deadline passed; ``partial`` is what had arrived."""
+
+    def __init__(self, partial: bytes = b"") -> None:
+        super().__init__("deadline")
+        self.partial = partial
+
+
+def _fetch(
+    url: str, headers: dict[str, str], timeout_seconds: int
+) -> tuple[int, bytes, bool]:
+    """One GET under one absolute deadline: connect, request, response headers
+    and body (success or error) together may take ``timeout_seconds``.
+
+    The standard library has no deadline of its own and a peer that trickles
+    bytes resets every per-call socket timeout, so the request runs on a
+    worker thread that is joined for exactly the time left: at the deadline
+    the caller cuts the socket (best effort) and returns ``timeout`` with
+    whatever arrived, whether the worker was waiting for a connect, a header
+    line or a body chunk. Inside the worker the socket timeout is still
+    re-armed to the remaining time before each phase, so the worker itself
+    ends soon after the cut. ``http.client`` is driven directly: no proxy,
+    and a redirect is a non-200 status (never followed). Returns ``(status,
+    body, complete)``; ``complete`` is False when the body hit the read limit.
+    """
+    parts = urlsplit(url)
+    if parts.hostname is None:
+        raise OSError("no host")
+    deadline = time.monotonic() + timeout_seconds
+    connection_class = HTTPSConnection if parts.scheme == "https" else HTTPConnection
+    conn = connection_class(parts.hostname, parts.port, timeout=timeout_seconds)
+    chunks: list[bytes] = []
+    outcome: dict[str, Any] = {}
+
+    def work() -> None:
+        try:
+            outcome["result"] = _perform(conn, parts, headers, deadline, chunks)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+            outcome["error"] = exc
+        finally:
+            conn.close()
+
+    worker = threading.Thread(target=work, name="opspilot-observer-http", daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        sock = conn.sock
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        raise _Timeout(b"".join(chunks))
+    error = outcome.get("error")
+    if isinstance(error, (TimeoutError, socket.timeout)):
+        raise _Timeout(b"".join(chunks)) from None
+    if error is not None:
+        raise error
+    result: tuple[int, bytes, bool] = outcome["result"]
+    return result
+
+
+def _perform(
+    conn: HTTPConnection,
+    parts: Any,
+    headers: dict[str, str],
+    deadline: float,
+    chunks: list[bytes],
+) -> tuple[int, bytes, bool]:
+    conn.connect()
+    _arm(conn, deadline)
+    path = parts.path or "/"
+    if parts.query:
+        path = f"{path}?{parts.query}"
+    conn.putrequest("GET", path, skip_accept_encoding=True)
+    for name, value in headers.items():
+        conn.putheader(name, value)
+    conn.endheaders()
+    _arm(conn, deadline)
+    response = conn.getresponse()
+    status = int(response.status)
+    limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES
+    complete = _read_until(response, deadline, limit, chunks)
+    return status, b"".join(chunks), complete
+
+
+def _arm(conn: HTTPConnection, deadline: float) -> None:
+    """Socket timeout := time left before the deadline (or fail now)."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("deadline")
+    if conn.sock is not None:
+        conn.sock.settimeout(remaining)
+
+
+def _read_until(
+    response: HTTPResponse, deadline: float, limit: int, chunks: list[bytes]
+) -> bool:
+    """Append at most ``limit`` bytes to ``chunks`` before ``deadline``
+    (monotonic seconds); True when the body ended within the limit.
 
     The socket timeout is re-armed to the remaining time before every chunk,
     so neither a slow first byte nor a slow trickle can run past the
-    deadline; running out of time raises ``TimeoutError`` with the partial
-    body dropped by the caller.
+    deadline; running out of time raises ``TimeoutError`` and the caller
+    keeps what ``chunks`` holds.
     """
-    chunks: list[bytes] = []
     received = 0
     while received < limit:
         remaining = deadline - time.monotonic()
@@ -210,10 +336,10 @@ def _read_until(response: HTTPResponse, deadline: float, limit: int) -> bytes:
         reader = getattr(response, "read1", response.read)
         chunk = reader(min(_READ_CHUNK, limit - received))
         if not chunk:
-            break
+            return True
         chunks.append(chunk)
         received += len(chunk)
-    return b"".join(chunks)
+    return False
 
 
 def _rearm(response: HTTPResponse, seconds: float) -> None:

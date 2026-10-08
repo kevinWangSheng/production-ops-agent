@@ -647,6 +647,102 @@ def test_the_request_deadline_covers_a_slow_trickling_body():
     assert elapsed < 1.6, elapsed
 
 
+def _slow_server(handler_factory):
+    from http.server import HTTPServer
+
+    server = HTTPServer(("127.0.0.1", 0), handler_factory)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _timed_instant(server, timeout_seconds=1):
+    src = PrometheusReadOnlySource(f"http://127.0.0.1:{server.server_port}")
+    started = time.monotonic()
+    try:
+        result = src.instant("up", at=NOW, timeout_seconds=timeout_seconds)
+        elapsed = time.monotonic() - started
+    finally:
+        # the single-threaded test server finishes its sleeps before
+        # shutdown returns; that wait is the server's, not the client's
+        server.shutdown()
+    return result, elapsed
+
+
+def test_the_request_deadline_covers_slow_response_headers():
+    """PR #119 recheck: a server that sends nothing (or trickles header lines)
+    for longer than the timeout is cut off at the deadline, not after each
+    socket wait resets."""
+    from http.server import BaseHTTPRequestHandler
+
+    class SlowHeaders(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            try:
+                # status line, then a header line every 0.6 s: each byte
+                # resets a plain socket timeout, only a deadline stops it
+                self.wfile.write(b"HTTP/1.1 200 OK\r\n")
+                self.wfile.flush()
+                for n in range(6):
+                    time.sleep(0.6)
+                    self.wfile.write(f"X-Slow-{n}: 1\r\n".encode())
+                    self.wfile.flush()
+                self.wfile.write(b"Content-Length: 0\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(SlowHeaders))
+    assert result.status == "timeout" and result.detail == "TIMEOUT"
+    assert elapsed < 1.6, elapsed
+
+
+def test_the_request_deadline_covers_a_slow_error_body():
+    """PR #119 recheck: a 401 whose body trickles is bounded like a 200."""
+    from http.server import BaseHTTPRequestHandler
+
+    class SlowUnauthorized(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.send_response(401)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                for piece in (b"Unauth", b"orized", b"\n", b"..."):
+                    self.wfile.write(f"{len(piece):x}\r\n".encode() + piece + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(0.6)
+                self.wfile.write(b"0\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(SlowUnauthorized))
+    assert result.status == "timeout" and not result.body_complete
+    assert elapsed < 1.6, elapsed
+
+
+def test_a_prompt_error_status_is_reported_with_its_body():
+    from http.server import BaseHTTPRequestHandler
+
+    class Unauthorized(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            body = b"Unauthorized\n"
+            self.send_response(401)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(Unauthorized), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == ("failed", 401, "HTTP")
+    assert result.body == b"Unauthorized\n" and result.body_complete
+    assert elapsed < 1
+
+
 # --- isolation (C3 §3, D3): own variables, own imports, no model
 
 

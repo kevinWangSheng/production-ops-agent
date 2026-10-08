@@ -251,11 +251,27 @@ def prometheus_accounts(path: Path = AUTH_FILE) -> dict[str, str]:
     return accounts
 
 
+HTPASSWD = ["htpasswd", "-niBC", "10", "x"]
+
+
 def bcrypt_hash(password: str) -> str:
     """bcrypt via Apache ``htpasswd`` (ships with macOS); Prometheus checks
-    the same ``$2y$`` hashes. The password travels on htpasswd's argv for
-    the duration of one local process, never in a file or a log."""
-    proc = capture(["htpasswd", "-nbBC", "10", "x", password], timeout=30)
+    the same ``$2y$`` hashes. The password goes in on stdin (``-i``), never
+    on argv, so neither ``ps`` nor a ``TimeoutExpired``/``CalledProcessError``
+    message (which quote the command line) can carry it (PR #119 recheck)."""
+    try:
+        proc = subprocess.run(
+            HTPASSWD,
+            input=password + "\n",
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        # the exception text quotes argv only; re-raise without the object
+        # so no traceback can reach the stdin payload either
+        raise SystemExit(f"htpasswd failed: {type(exc).__name__}") from None
     if proc.returncode != 0:
         raise SystemExit(
             "htpasswd -B failed; bcrypt is required for Prometheus basic auth"

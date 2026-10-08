@@ -430,3 +430,33 @@ def test_otel_demo_observe_and_collect_baseline_authenticate_as_lab(
         assert seen == [None]
     finally:
         server.shutdown()
+
+
+def test_htpasswd_never_sees_the_password_on_argv_or_in_errors(monkeypatch):
+    """PR #119 recheck: the password goes to htpasswd on stdin; a timeout or
+    failure is reported without it (TimeoutExpired quotes the command)."""
+    import subprocess
+
+    calls: list[dict] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), **kwargs})
+        raise subprocess.TimeoutExpired(cmd, 30)
+
+    monkeypatch.setattr(kind_lab.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit) as failure:
+        kind_lab.bcrypt_hash("example-only-no-real-secret")
+    assert "example-only-no-real-secret" not in str(failure.value)
+    assert failure.value.__cause__ is None and failure.value.__suppress_context__
+    assert calls and "example-only-no-real-secret" not in " ".join(calls[0]["cmd"])
+    assert calls[0]["input"] == "example-only-no-real-secret\n"
+    flags = calls[0]["cmd"][1]  # "-niBC": stdin (i), display (n), bcrypt (B)
+    assert flags.startswith("-") and "i" in flags and "b" not in flags
+
+    def failing_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(kind_lab.subprocess, "run", failing_run)
+    with pytest.raises(SystemExit) as failure:
+        kind_lab.bcrypt_hash("example-only-no-real-secret")
+    assert "example-only-no-real-secret" not in str(failure.value)
