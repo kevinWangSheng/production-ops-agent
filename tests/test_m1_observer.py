@@ -464,6 +464,78 @@ def test_a_stale_dependency_among_fresh_ones_blocks_health():
     assert sum(1 for r in readings if r.status == "ok") == 7
 
 
+def test_a_hung_source_cannot_push_the_sample_past_its_lease(monkeypatch):
+    """PR #119 codex P1: 8 signals x 3 queries x 20 s would outlive a 120 s
+    lease; the per-request timeout is bounded by the time left in the lease
+    (minus the submission margin), the rest is recorded as timeouts without a
+    request, and the sample is submitted -- as unknown -- inside the lease."""
+    from opspilot.observer import sampler
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(sampler.time, "monotonic", lambda: clock["now"])
+
+    class Hung:
+        def __init__(self):
+            self.timeouts: list[int] = []
+
+        def instant(self, expr, *, at, timeout_seconds):
+            self.timeouts.append(timeout_seconds)
+            clock["now"] += timeout_seconds  # the source hangs for the whole timeout
+            return InstantResult(
+                expr, "timeout", None, b"", None, "TIMEOUT", body_complete=False
+            )
+
+    source = Hung()
+    store = FakeStore()
+    # 25 s of lease left at the window end: budget = 25 - 5 = 20 s
+    short = lease().__class__(
+        **{**lease().__dict__, "lease_until": NOW + timedelta(seconds=25)}
+    )
+    taken = take_sample(short, PROFILE, source, store)
+
+    # 10 s (profile timeout) + 10 s (what was left) = 20 s; nothing more sent
+    assert source.timeouts == [10, 10]
+    assert taken.requests_issued == 2 and taken.budget_exhausted
+    assert clock["now"] - 1000.0 == 20.0 < 25.0
+    ((_, sample, readings),) = store.submitted
+    assert (sample.outcome, sample.required_signals_present) == ("timeout", False)
+    assert {r.status for r in readings} == {"timeout"}
+    details = [
+        json.loads(r.raw)[k]["detail"]
+        for r in readings
+        for k in ("query", "coverage", "freshness")
+    ]
+    assert details.count("TIMEOUT") == 2 and details.count("LEASE_BUDGET") == 4
+
+
+def test_a_timeout_reading_replays_as_a_timeout():
+    """PR #119 codex P2: the replay keeps the recorded transport status."""
+    answers = healthy_answers()
+    answers["e / t"] = InstantResult(
+        "", "timeout", None, b"", None, "TIMEOUT", body_complete=False
+    )
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    assert taken.evaluation is not None and taken.evaluation.outcome == "timeout"
+    ((_, sample, readings),) = store.submitted
+    rows = [
+        {
+            "signal_name": r.signal_name,
+            "query": r.query,
+            "source": r.source,
+            "window_start": r.window_start,
+            "window_end": r.window_end,
+            "raw": r.raw,
+            "raw_sha256": r.raw_sha256,
+        }
+        for r in readings
+    ]
+    replayed = replay_readings(PROFILE, rows)
+    assert (replayed.outcome, replayed.required_signals_present) == ("timeout", False)
+    errors = next(v for v in replayed.verdicts if v.signal_name == "errors")
+    assert errors.verdict == "timeout"
+
+
 # --- the Prometheus source: one instant query, bounded, GET only
 
 
@@ -995,7 +1067,7 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
             self.calls.append("sweep")
             return []
 
-        def claim_due_samples(self, owner, *, limit):
+        def claim_due_samples(self, owner, *, limit, lease_seconds=120):
             self.calls.append("claim")
             return [lease(), lease(), lease()]
 

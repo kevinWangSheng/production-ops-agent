@@ -24,7 +24,12 @@ from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
-from opspilot.observation.store import ObservationStore, SampleLease, SampleReceipt
+from opspilot.observation.store import (
+    OBSERVER_LEASE_SECONDS,
+    ObservationStore,
+    SampleLease,
+    SampleReceipt,
+)
 from opspilot.observer.health_profile import HealthProfile
 from opspilot.observer.sampler import (
     InstantSource,
@@ -50,6 +55,9 @@ class ObserverLoop:
     owner: UUID = field(default_factory=uuid4)
     poll_seconds: float = 5.0
     batch: int = 20
+    # how long each claimed job is leased; the sampler keeps every sample
+    # inside it (``sampler.SUBMIT_MARGIN_SECONDS``)
+    lease_seconds: int = OBSERVER_LEASE_SECONDS
 
     def poll_once(self) -> list[tuple[UUID, SampleReceipt]]:
         """One pass: sweep deadlines, claim due jobs, sample each. Storage
@@ -61,7 +69,9 @@ class ObserverLoop:
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
         try:
-            leases = self.store.claim_due_samples(self.owner, limit=self.batch)
+            leases = self.store.claim_due_samples(
+                self.owner, limit=self.batch, lease_seconds=self.lease_seconds
+            )
         except PersistenceError as exc:
             _log.warning("claim refused code=%s", exc)
             return []

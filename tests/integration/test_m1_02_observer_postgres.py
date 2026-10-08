@@ -16,7 +16,7 @@ import os
 import threading
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -71,6 +71,8 @@ class Telemetry:
         # per-signal override of the freshness answer (the oldest newest
         # sample among the signal's series), in seconds before ``at``
         self.age_by_signal: dict[str, float] = {}
+        # seconds every answer is delayed (a hung Prometheus); 0 = prompt
+        self.hang_seconds = 0.0
         self.requests: list[tuple[str, float]] = []
         self.lock = threading.Lock()
         self.on_request: list[object] = []
@@ -119,6 +121,10 @@ def telemetry() -> Iterator[tuple[Telemetry, str]]:
             body = json.dumps(
                 state.answer(query["query"][0], float(query["time"][0]))
             ).encode()
+            if state.hang_seconds:
+                import time
+
+                time.sleep(state.hang_seconds)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -128,7 +134,7 @@ def telemetry() -> Iterator[tuple[Telemetry, str]]:
         def log_message(self, *args: object) -> None:
             return
 
-    server = HTTPServer(("127.0.0.1", 0), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -206,6 +212,7 @@ def loop(
     state.values = dict(HEALTHY_VALUES)
     state.count, state.age_seconds = 5, 20.0
     state.age_by_signal.clear()
+    state.hang_seconds = 0.0
     state.requests.clear()
     state.on_request.clear()
     yield ObserverLoop(store=observer, source=PrometheusReadOnlySource(url)), state
@@ -472,6 +479,43 @@ def test_continued_degradation_stays_observing_without_any_actuation(
     sample = controller.session_history(session)["samples"][0]
     assert sample["outcome"] == "degraded" and sample["required_signals_present"]
     assert _lifecycle(owner, incident) == "observing_recovery"
+
+
+def test_a_hung_prometheus_still_yields_adopted_unknown_samples_inside_the_lease(
+    loop: tuple[ObserverLoop, Telemetry],
+    owner: DurableStore,
+    controller: ObservationStore,
+) -> None:
+    """PR #119 codex P1: with every query hanging, the sample is still
+    submitted inside its lease (requests bounded by the lease budget, the
+    rest recorded as timeouts), adopted as unknown -- never
+    ``lease_revoked`` -- consumes the sample budget and the session hands
+    back to ``open`` when the budget is spent."""
+    observer_loop, state = loop
+    state.hang_seconds = 30.0
+    observer_loop.lease_seconds = 12  # budget = 12 - 5 = 7 s for the whole sample
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1, max_samples=2)
+    _backdate_authorization(owner, session)
+
+    started = _now()
+    first = _only(observer_loop.poll_once(), session)
+    assert (_now() - started) < timedelta(seconds=12)
+    assert first.accepted and first.reason == "adopted"
+    assert not first.confirms_health and first.transition is None
+    sample = controller.session_history(session)["samples"][0]
+    assert (sample["outcome"], sample["required_signals_present"]) == ("timeout", False)
+    assert {row["status"] for row in sample["readings"]} == {"timeout"}
+    assert len(sample["readings"]) == len(SHIPPED.signals)
+    assert controller.session(session)["adopted_count"] == 1
+
+    _due_now(owner, session)
+    second = _only(observer_loop.poll_once(), session)
+    assert second.accepted and second.transition == "observation_ended_unconfirmed"
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("expired", "max_samples_exhausted")
+    assert _lifecycle(owner, incident) == "open"
+    assert controller.replay_session(session).consistent
 
 
 def test_a_suspension_during_a_sample_stops_further_requests_and_ends_the_session(

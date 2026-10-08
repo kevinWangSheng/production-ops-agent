@@ -9,7 +9,9 @@ job (M1-02 step 4, issue #86; C3 section 10 "采样与提交"):
    ``coverage_query``, ``freshness_query``) -- and **before each request**
    the lease's control scope is re-checked (C3 section 4); once it has moved
    no further request is issued and the partial sample is submitted, which
-   the store files as ``suspended`` and ends the session;
+   the store files as ``suspended`` and ends the session. Every request is
+   bounded by what is left of the lease (``SUBMIT_MARGIN_SECONDS``), so the
+   whole sample is submitted inside its lease even when the source hangs;
 3. ``sample_time`` is taken *after* the last query returned (the verdict
    judges freshness against it; a window from the future is stale);
 4. the readings are judged by ``evaluate_readings``; a reading the verdict
@@ -30,6 +32,7 @@ import base64
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -61,6 +64,7 @@ from opspilot.observer.prometheus import (
 )
 
 __all__ = [
+    "SUBMIT_MARGIN_SECONDS",
     "InstantSource",
     "SampleTaken",
     "replay_readings",
@@ -69,6 +73,20 @@ __all__ = [
 ]
 
 _log = logging.getLogger("opspilot.observer")
+
+#: Time kept free at the end of the lease for the two store round trips that
+#: follow the last query (``current_time`` and ``submit_sample``) plus clock
+#: skew between the Observer and PostgreSQL. The whole sample -- every
+#: request -- must finish before ``lease_until - SUBMIT_MARGIN_SECONDS``: a
+#: sample submitted after its lease is ``lease_revoked`` history, re-leased
+#: with the same sequence and never adopted, so a hung Prometheus would
+#: otherwise spin the session without consuming its budget (PR #119 codex
+#: P1). Per request the timeout is min(profile timeout, time left in the
+#: budget); once the budget is spent the remaining queries are recorded as
+#: ``timeout`` without a request and the sample is submitted as unknown.
+#: Chosen over lease renewal because it needs no extra store round trips and
+#: its bound is provable from the lease alone.
+SUBMIT_MARGIN_SECONDS = 5
 
 
 class InstantSource(Protocol):
@@ -81,10 +99,12 @@ class InstantSource(Protocol):
 class SampleTaken:
     receipt: SampleReceipt
     evaluation: SampleEvaluation | None
-    # how many instant queries were issued, and whether the scope check
-    # stopped the sample before every signal was queried
+    # how many instant queries were issued, whether the scope check stopped
+    # the sample before every signal was queried, and whether the lease
+    # budget ran out (remaining queries recorded as timeouts, not sent)
     requests_issued: int
     scope_interrupted: bool
+    budget_exhausted: bool = False
 
 
 # Verdicts the Observer writes back into the reading status so the stored
@@ -116,9 +136,18 @@ def take_sample(
     window_end = store.current_time()
     window_start = window_end - timedelta(seconds=profile.evaluation_window_seconds)
     timeout = profile.query_timeout_seconds
+    # The sample's budget: the lease's remaining lifetime (database clock,
+    # read once as ``window_end``) minus the submission margin, tracked on
+    # the monotonic clock from here on.
+    budget_end = (
+        time.monotonic()
+        + (lease.lease_until - window_end).total_seconds()
+        - SUBMIT_MARGIN_SECONDS
+    )
     gathered: list[tuple[HealthSignal, dict[str, InstantResult]]] = []
     issued = 0
     interrupted = False
+    exhausted = False
     for signal in profile.signals:
         results: dict[str, InstantResult] = {}
         for kind, expr in (
@@ -129,7 +158,24 @@ def take_sample(
             if not check(lease):
                 interrupted = True
                 break
-            results[kind] = source.instant(expr, at=window_end, timeout_seconds=timeout)
+            left = budget_end - time.monotonic()
+            if left < 1.0:
+                # no time for another bounded request inside the lease: the
+                # query is recorded as a timeout that was never sent
+                exhausted = True
+                results[kind] = InstantResult(
+                    expr,
+                    "timeout",
+                    None,
+                    b"",
+                    None,
+                    "LEASE_BUDGET",
+                    body_complete=False,
+                )
+                continue
+            results[kind] = source.instant(
+                expr, at=window_end, timeout_seconds=min(timeout, int(left))
+            )
             issued += 1
         if interrupted:
             # A signal not fully queried has no reading: the verdict reads it
@@ -180,13 +226,14 @@ def take_sample(
     ]
     receipt = store.submit_sample(lease, sample, stored)
     _log.info(
-        "sample session=%s sequence=%s outcome=%s present=%s requests=%s interrupted=%s disposition=%s reason=%s state=%s",
+        "sample session=%s sequence=%s outcome=%s present=%s requests=%s interrupted=%s budget_exhausted=%s disposition=%s reason=%s state=%s",
         lease.session_id,
         lease.sequence,
         evaluation.outcome,
         evaluation.required_signals_present,
         issued,
         interrupted,
+        exhausted,
         receipt.disposition,
         receipt.reason,
         receipt.session_state,
@@ -196,6 +243,7 @@ def take_sample(
         evaluation=evaluation,
         requests_issued=issued,
         scope_interrupted=interrupted,
+        budget_exhausted=exhausted,
     )
 
 
@@ -402,12 +450,19 @@ def _result_from_bundle(bundle: dict[str, Any] | None, kind: str) -> InstantResu
             "", "failed", None, body, None, "BODY_HASH", body_complete=False
         )
     complete = bool(part.get("body_complete", True))
-    status, value, detail = (
-        _single_value(body) if complete else ("failed", None, "INCOMPLETE")
-    )
-    if str(part.get("status")) in ("timeout", "failed") and status == "ok":
-        # the Observer recorded a transport failure for this body
-        status, value = cast(InstantStatus, str(part["status"])), None
+    recorded = str(part.get("status", ""))
+    if recorded in ("timeout", "failed"):
+        # The Observer recorded a transport outcome for this query; it is
+        # what the verdict saw, whatever the (possibly partial) body parses
+        # to, so the replay keeps it (PR #119 codex P2: a timeout must
+        # replay as a timeout, not as a failure).
+        status: InstantStatus = cast(InstantStatus, recorded)
+        value: float | None = None
+        detail = str(part.get("detail", ""))
+    elif not complete:
+        status, value, detail = "failed", None, "INCOMPLETE"
+    else:
+        status, value, detail = _single_value(body)
     return InstantResult(
         str(part.get("expr", "")),
         status,
