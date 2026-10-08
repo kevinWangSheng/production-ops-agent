@@ -1,6 +1,6 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；下一步第 5 步 #87、第 6 步 #88，第 6 步前须完成 #122 #125 #126 #115）
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；第 6 步前置修复 #122 #125 #126 已合并 #132 #130 #131；下一步第 5 步 #87 与验收夹具接线 #115，然后第 6 步 #88）
 - 更新日期：2026-10-08
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
@@ -174,8 +174,17 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；第 0–4 步已合并（#111 #113 #114 #120 #123 #119）。下一步第 5 步重放展示（#87）；第 6 步真实验收（#88）之前须完成 #122（规则查询与观察对象一致）、#125（scope 检查后重算预算）、#126（重定向不带凭据、HTTP 协议错误）与验收夹具接线 #115。其余跟踪：#124（交还自动，暂不做）、#127（接管证据脚本）、#128（控制审计按幂等键绑定）。
+- 上游核对已完成（见上表）；第 0–4 步已合并（#111 #113 #114 #120 #123 #119）；第 6 步前置修复已合并（#130 #131 #132，见下节）。下一步第 5 步重放展示（#87）与验收夹具接线（#115，由未参与实现的作者写）；第 6 步真实验收（#88）开环境后先核对 #88 评论里的未校准信号。其余跟踪：#124（交还自动，暂不做）、#127（接管证据脚本）、#128（控制审计按幂等键绑定）、#133（读数 body/状态码完整性）、#134（pod 信号按 owner 链绑定）、#135（扫描器 PromQL 兼容缺口）。
 - 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停。
+
+## 第 6 步前置修复（2026-10-08，#125 #126 #122）
+
+三项并行，各一个 worktree 与 PR；实现为 Claude Agent，独立审查一律 Codex exec（`gpt-6.1-sol`，全新上下文），GitHub `@codex review` 只作分诊；审查原文在主仓库 `tmp/m1-02-review/`（git 忽略）。
+
+- #125 → PR #130（`7bc926b`）：`take_sample` 在 scope 检查之后重算剩余预算，不足 1 s 本地填 `timeout/LEASE_BUDGET`、不发请求。Codex 独立审查未发现 P1/P2；可选「耗时断言允许 21 s」未做。
+- #126 → PR #131（`b911440`）：工程脚本共用 `kind_lab.OPENER`（无代理、不跟随重定向），lab 凭据不再随 30x 发往别的源；Observer 把 `http.client.HTTPException` 判 `failed/UNREACHABLE`，body 已开始到达时保留前缀并标 `body_complete=False`，已解析的状态码（含头部解析失败前）如实保存。注入 opener 路径（仅测试接缝）头部失败仍记 `None`。机器人第 3–5 轮的完整性/临时状态码发现转 #133。
+- #122 → PR #132（`8624fe3`，用户合并）：HealthProfile 每信号必填 `scope`，加载时位置状态机扫描三条查询的每个向量选择器，须恰好带由 `subject` 推导的匹配器（缺/错/扫不懂 → `SCOPE_SELECTOR_UNBOUND`/`MISMATCH`/`UNPARSABLE`）；`namespace_label` 必填（span 信号经 `k8s_namespace_name`）；subject 与依赖名为 DNS-1123 subdomain，依赖正则转义 `.`。用户决定方案 B：去掉 pod 名前缀匹配，pod 健康改 Deployment 级（`deployment_ready_replicas`、`deployment_available_replicas_min_in_window`），失去重启计数（owner 链 join 转 #134）；`kube_deployment_status_replicas_ready` 仓库证据无序列，标未校准，#88 开环境先取证。revision `otel-demo-checkout@0ceb325af50f` → `@b72bbe2e30be`，旧格式拒绝加载，在途会话按 profile unusable 失败计次至结束（lab 库无在途会话）。Codex 独立审查三轮：首审 3 P1（关键字同名指标、span 无 namespace、前缀不证身份）→ 复验 1 P1（修饰符标签列表后的关键字）→ 第三轮未发现 P1/P2（4480 个状态转换输入对照官方解析器）。fail-closed 方向的误拒（`atan2`、负偏移、`Inf`/`NaN`）与 `by` 宽松转 #135。
+- 过程记录：一次 Codex 复验被 OpenAI 内容过滤以「网络安全风险」拦截（提示词反复写「构造绕过」），改为正确性测试措辞后通过；本机代理偶发 TLS EOF 导致 push/Codex 断开，重试即可。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
 
