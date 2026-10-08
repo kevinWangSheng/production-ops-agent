@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import math
 import socket
 import threading
@@ -30,6 +31,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 __all__ = [
+    "IN_FLIGHT_LIMIT",
     "InstantResult",
     "InstantStatus",
     "PrometheusReadOnlySource",
@@ -167,6 +169,8 @@ class PrometheusReadOnlySource:
                 "TIMEOUT",
                 body_complete=False,
             )
+        except _Overloaded:
+            return InstantResult(expr, "failed", None, b"", None, "IN_FLIGHT_LIMIT")
         except (urllib.error.URLError, OSError):
             return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
         if http_status != 200:
@@ -226,6 +230,51 @@ class _Timeout(Exception):
         self.partial = partial
 
 
+#: Workers that may still be blocked after their request timed out: a
+#: name resolution or a TCP connect cannot be interrupted from outside, so
+#: each such worker lives until the OS gives up. One sampler issues requests
+#: one at a time (at most one in flight in steady state); four leaves room
+#: for a few consecutive timeouts against a hung resolver while keeping the
+#: process bounded. Past the limit a request fails immediately without a
+#: thread (C3 section 8: cleanup within bounded time; PR #119 recheck 2).
+IN_FLIGHT_LIMIT = 4
+
+
+class _InFlight:
+    """Count of HTTP workers started and not yet finished."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._count = 0
+        self._lock = threading.Lock()
+        self.refused = 0
+
+    @property
+    def count(self) -> int:
+        with self._lock:
+            return self._count
+
+    def acquire(self) -> bool:
+        with self._lock:
+            if self._count >= self.limit:
+                self.refused += 1
+                return False
+            self._count += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._count -= 1
+
+
+_IN_FLIGHT = _InFlight(IN_FLIGHT_LIMIT)
+_log = logging.getLogger("opspilot.observer")
+
+
+class _Overloaded(Exception):
+    """Too many timed-out workers are still blocked; no new request started."""
+
+
 def _fetch(
     url: str, headers: dict[str, str], timeout_seconds: int
 ) -> tuple[int, bytes, bool]:
@@ -235,13 +284,16 @@ def _fetch(
     The standard library has no deadline of its own and a peer that trickles
     bytes resets every per-call socket timeout, so the request runs on a
     worker thread that is joined for exactly the time left: at the deadline
-    the caller cuts the socket (best effort) and returns ``timeout`` with
-    whatever arrived, whether the worker was waiting for a connect, a header
-    line or a body chunk. Inside the worker the socket timeout is still
-    re-armed to the remaining time before each phase, so the worker itself
-    ends soon after the cut. ``http.client`` is driven directly: no proxy,
-    and a redirect is a non-200 status (never followed). Returns ``(status,
-    body, complete)``; ``complete`` is False when the body hit the read limit.
+    the caller cuts the socket -- the reference taken right after
+    ``connect()``, not ``conn.sock``, which ``getresponse()`` hands to the
+    response object and clears -- and returns ``timeout`` with whatever
+    arrived. Shutting that socket down ends the worker whether it was waiting
+    for a header line or a body chunk. Name resolution and TCP connect
+    cannot be cut this way; the number of such still-blocked workers is
+    bounded by ``IN_FLIGHT_LIMIT`` and a request beyond it fails at once.
+    ``http.client`` is driven directly: no proxy, and a redirect is a
+    non-200 status (never followed). Returns ``(status, body, complete)``;
+    ``complete`` is False when the body hit the read limit.
     """
     parts = urlsplit(url)
     if parts.hostname is None:
@@ -251,25 +303,31 @@ def _fetch(
     conn = connection_class(parts.hostname, parts.port, timeout=timeout_seconds)
     chunks: list[bytes] = []
     outcome: dict[str, Any] = {}
+    held: dict[str, socket.socket] = {}
 
     def work() -> None:
         try:
-            outcome["result"] = _perform(conn, parts, headers, deadline, chunks)
+            outcome["result"] = _perform(conn, parts, headers, deadline, chunks, held)
         except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
             outcome["error"] = exc
         finally:
             conn.close()
+            _close(held.get("sock"))
+            _IN_FLIGHT.release()
 
+    if not _IN_FLIGHT.acquire():
+        _log.warning(
+            "prometheus request refused: %s workers still blocked (limit %s), refused so far %s",
+            _IN_FLIGHT.count,
+            _IN_FLIGHT.limit,
+            _IN_FLIGHT.refused,
+        )
+        raise _Overloaded()
     worker = threading.Thread(target=work, name="opspilot-observer-http", daemon=True)
     worker.start()
     worker.join(max(0.0, deadline - time.monotonic()))
     if worker.is_alive():
-        sock = conn.sock
-        if sock is not None:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
+        _close(held.get("sock"))
         raise _Timeout(b"".join(chunks))
     error = outcome.get("error")
     if isinstance(error, (TimeoutError, socket.timeout)):
@@ -280,14 +338,33 @@ def _fetch(
     return result
 
 
+def _close(sock: socket.socket | None) -> None:
+    """Shut down and close a socket from any thread; a blocked reader on it
+    gets EOF or an error and ends."""
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
 def _perform(
     conn: HTTPConnection,
     parts: Any,
     headers: dict[str, str],
     deadline: float,
     chunks: list[bytes],
+    held: dict[str, socket.socket],
 ) -> tuple[int, bytes, bool]:
     conn.connect()
+    if conn.sock is not None:
+        # the one reference the cancel path can reach after getresponse()
+        held["sock"] = conn.sock
     _arm(conn, deadline)
     path = parts.path or "/"
     if parts.query:

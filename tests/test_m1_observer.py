@@ -743,6 +743,109 @@ def test_a_prompt_error_status_is_reported_with_its_body():
     assert elapsed < 1
 
 
+def _http_workers() -> int:
+    return sum(1 for t in threading.enumerate() if t.name == "opspilot-observer-http")
+
+
+def _settle(predicate, seconds=3.0):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return predicate()
+
+
+def test_timed_out_workers_do_not_accumulate_when_the_response_owns_the_socket():
+    """PR #119 recheck 2: HTTP/1.0 + chunked makes ``getresponse()`` hand the
+    socket to the response and clear ``conn.sock``; a server that trickles
+    the chunk-size line forever used to leave one blocked worker per timeout.
+    The cancel path now closes the socket reference taken after connect, so
+    the workers end right after each timeout."""
+    from http.server import BaseHTTPRequestHandler
+
+    stop = threading.Event()
+
+    class Trickle(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.0"
+
+        def do_GET(self):  # noqa: N802 - http.server API
+            try:
+                self.wfile.write(
+                    b"HTTP/1.0 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                )
+                self.wfile.flush()
+                while not stop.is_set():
+                    self.wfile.write(b"f")
+                    self.wfile.flush()
+                    time.sleep(0.2)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Trickle)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        src = PrometheusReadOnlySource(f"http://127.0.0.1:{server.server_port}")
+        before = _http_workers()
+        for _ in range(3):
+            result = src.instant("up", at=NOW, timeout_seconds=1)
+            assert result.status == "timeout"
+        assert _settle(lambda: _http_workers() == before, seconds=2.0), _http_workers()
+    finally:
+        stop.set()
+        server.shutdown()
+
+
+def test_blocked_resolution_is_bounded_by_the_in_flight_limit(monkeypatch):
+    """PR #119 recheck 2: a hung resolver cannot be interrupted; the number
+    of such workers is capped, further requests fail at once without a
+    thread, and the cap is released when the workers end."""
+    import socket as socket_module
+
+    from opspilot.observer import prometheus
+
+    release = threading.Event()
+    real = socket_module.getaddrinfo
+
+    def hanging(host, *args, **kwargs):
+        if host == "resolver.hang.invalid":
+            release.wait(10)
+            raise OSError("resolution gave up")
+        return real(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket_module, "getaddrinfo", hanging)
+    src = PrometheusReadOnlySource("http://resolver.hang.invalid:9090")
+    before = _http_workers()
+    limit = prometheus.IN_FLIGHT_LIMIT
+    try:
+        started = time.monotonic()
+        for _ in range(limit):
+            result = src.instant("up", at=NOW, timeout_seconds=1)
+            assert result.status == "timeout"
+        assert _http_workers() - before == limit
+        # beyond the cap: refused immediately, no new worker
+        for _ in range(3):
+            refused = src.instant("up", at=NOW, timeout_seconds=1)
+            assert (refused.status, refused.detail) == ("failed", "IN_FLIGHT_LIMIT")
+        assert _http_workers() - before == limit
+        assert time.monotonic() - started < limit * 1.0 + 1.5
+    finally:
+        release.set()
+    assert _settle(lambda: _http_workers() == before), _http_workers()
+    # the cap is free again
+    monkeypatch.setattr(socket_module, "getaddrinfo", real)
+    src = PrometheusReadOnlySource("http://127.0.0.1:9")
+    assert src.instant("up", at=NOW, timeout_seconds=1).detail in (
+        "UNREACHABLE",
+        "TIMEOUT",
+    )
+
+
 # --- isolation (C3 §3, D3): own variables, own imports, no model
 
 
