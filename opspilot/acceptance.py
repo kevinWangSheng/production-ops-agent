@@ -12,8 +12,35 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
+# The recovery observation seam (F6, issue #140) lives in a sibling module:
+# a parallel type to ``IncidentOutcome``, because the investigation Run's
+# ``final_state`` is not the incident lifecycle and the F6 fields are read
+# from different committed records (sessions, samples, endings, control
+# audit) and from the offline replay rather than from a Run snapshot.
+from opspilot.acceptance_recovery import (  # noqa: E402
+    RecoveryOutcome,
+    RecoveryRecords,
+    RecoverySample,
+    RecoverySignal,
+    permissions_from_grants,
+    recovery_outcome,
+)
 from opspilot.investigation.context import pending_conclusion
 from opspilot.investigation.loop import LoopOutcome
+
+__all__ = [
+    "IncidentOutcome",
+    "IncidentScenario",
+    "RecoveryOutcome",
+    "RecoveryRecords",
+    "RecoverySample",
+    "RecoverySignal",
+    "outcome_from_durable",
+    "outcome_from_live_record",
+    "outcome_from_loop",
+    "permissions_from_grants",
+    "recovery_outcome",
+]
 
 OutcomeState = Literal[
     "completed", "failed", "blocked", "budget_exhausted", "cancelled", "paused"
