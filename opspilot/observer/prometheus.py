@@ -184,13 +184,15 @@ class PrometheusReadOnlySource:
             # investigation client does (issue #126), never a crash out of
             # the sampler. A body that had started to arrive is kept as the
             # prefix it is and marked incomplete (PR #131 codex P2): the
-            # bundle never describes an empty body as the full response.
+            # bundle never describes an empty body as the full response, and
+            # a status line that did arrive (a cut 200 or 401) is recorded
+            # rather than filed as "no HTTP response" (codex P2, round 2).
             return InstantResult(
                 expr,
                 "failed",
                 None,
                 cut.partial[:_ERROR_BODY_BYTES],
-                None,
+                cut.http_status,
                 "UNREACHABLE",
                 body_complete=cut.body_complete,
             )
@@ -227,6 +229,7 @@ class PrometheusReadOnlySource:
         deadline = time.monotonic() + timeout_seconds
         request = urllib.request.Request(url, headers=headers, method="GET")
         chunks: list[bytes] = []
+        status: int | None = None
         try:
             response: HTTPResponse
             with self._opener.open(request, timeout=timeout_seconds) as response:
@@ -236,7 +239,13 @@ class PrometheusReadOnlySource:
                 )
                 return status, b"".join(chunks), complete
         except urllib.error.HTTPError as error:
-            return int(error.code), error.read(_ERROR_BODY_BYTES), True
+            status = int(error.code)
+            try:
+                return status, error.read(_ERROR_BODY_BYTES), True
+            except HTTPException as cut:
+                # the error body was cut mid-read: same classification as
+                # below, with the status line that did arrive
+                raise _Protocol.of(cut, chunks, status) from None
         except (TimeoutError, socket.timeout):
             raise _Timeout(b"".join(chunks)) from None
         except urllib.error.URLError as error:
@@ -244,7 +253,7 @@ class PrometheusReadOnlySource:
                 raise _Timeout(b"".join(chunks)) from None
             raise
         except HTTPException as error:
-            raise _Protocol.of(error, chunks) from None
+            raise _Protocol.of(error, chunks, status) from None
 
 
 class _Timeout(Exception):
@@ -258,22 +267,29 @@ class _Timeout(Exception):
 class _Protocol(Exception):
     """The peer broke the HTTP protocol (``http.client.HTTPException``);
     ``partial`` is what had arrived of the body and ``body_complete`` is
-    False once any of it had -- the bytes are a prefix, not the response."""
+    False once any of it had -- the bytes are a prefix, not the response.
+    ``http_status`` is the status line that had arrived before the break
+    (None when none had, e.g. ``BadStatusLine``)."""
 
-    def __init__(self, partial: bytes, body_complete: bool) -> None:
+    def __init__(
+        self, partial: bytes, body_complete: bool, http_status: int | None
+    ) -> None:
         super().__init__("protocol")
         self.partial = partial
         self.body_complete = body_complete
+        self.http_status = http_status
 
     @classmethod
-    def of(cls, error: HTTPException, chunks: list[bytes]) -> _Protocol:
+    def of(
+        cls, error: HTTPException, chunks: list[bytes], http_status: int | None
+    ) -> _Protocol:
         # ``IncompleteRead`` carries the bytes of the read it cut short; the
         # chunks before it are what the caller had already accumulated
         partial = b"".join(chunks) + (
             bytes(error.partial) if isinstance(error, IncompleteRead) else b""
         )
         started = bool(partial) or isinstance(error, IncompleteRead)
-        return cls(partial, body_complete=not started)
+        return cls(partial, body_complete=not started, http_status=http_status)
 
 
 #: Workers that may still be blocked after their request timed out: a
@@ -350,10 +366,13 @@ def _fetch(
     chunks: list[bytes] = []
     outcome: dict[str, Any] = {}
     held: dict[str, socket.socket] = {}
+    seen: dict[str, int] = {}
 
     def work() -> None:
         try:
-            outcome["result"] = _perform(conn, parts, headers, deadline, chunks, held)
+            outcome["result"] = _perform(
+                conn, parts, headers, deadline, chunks, held, seen
+            )
         except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
             outcome["error"] = exc
         finally:
@@ -390,7 +409,7 @@ def _fetch(
     if isinstance(error, (TimeoutError, socket.timeout)):
         raise _Timeout(b"".join(chunks)) from None
     if isinstance(error, HTTPException):
-        raise _Protocol.of(error, chunks) from None
+        raise _Protocol.of(error, chunks, seen.get("status")) from None
     if error is not None:
         raise error
     result: tuple[int, bytes, bool] = outcome["result"]
@@ -419,6 +438,7 @@ def _perform(
     deadline: float,
     chunks: list[bytes],
     held: dict[str, socket.socket],
+    seen: dict[str, int],
 ) -> tuple[int, bytes, bool]:
     conn.connect()
     if conn.sock is not None:
@@ -435,6 +455,8 @@ def _perform(
     _arm(conn, deadline)
     response = conn.getresponse()
     status = int(response.status)
+    # what the cancel/error paths may report once the status line is in
+    seen["status"] = status
     limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES
     complete = _read_until(response, deadline, limit, chunks)
     return status, b"".join(chunks), complete

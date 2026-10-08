@@ -976,6 +976,23 @@ def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
     result = src.instant("up", at=NOW, timeout_seconds=1)
     assert (result.status, result.detail) == ("failed", "UNREACHABLE")
     assert result.body == b"partial" and not result.body_complete
+    # no status line had arrived on either: none is recorded
+    assert result.http_status is None
+    # an error status whose body is cut mid-read keeps that status
+    # (codex P2, round 2): a truncated 401 is not "no HTTP response"
+
+    class CutBody:
+        def read(self, n=-1):
+            raise IncompleteRead(b"Unauth")
+
+    src, _ = source(error=urllib.error.HTTPError("u", 401, "no", {}, CutBody()))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        401,
+        "UNREACHABLE",
+    )
+    assert result.body == b"Unauth" and not result.body_complete
 
 
 def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
@@ -1002,7 +1019,11 @@ def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
             return
 
     result, elapsed = _timed_instant(_slow_server(CutChunked), timeout_seconds=5)
-    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        200,
+        "UNREACHABLE",
+    )
     assert result.body == prefix and not result.body_complete
     assert elapsed < 1
     # online and replay agree: the bundle keeps the prefix, says it is
@@ -1016,6 +1037,7 @@ def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
     rate = next(reading for reading in readings if reading.signal_name == "rate")
     bundle = json.loads(rate.raw)
     assert bundle["query"]["body_complete"] is False
+    assert bundle["query"]["http_status"] == 200
     assert base64.b64decode(bundle["query"]["body_b64"]) == prefix
     rows = [
         {
