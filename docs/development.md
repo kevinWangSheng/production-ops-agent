@@ -162,6 +162,27 @@ export OPSPILOT_OBSERVER_ENV_FILE="$PWD/tmp/m1-kind-lab/prometheus-observer.env"
 
 启动时同样校验 schema 在 Alembic head（角色由 0003 授予 `alembic_version` 只读）。授权会话（人工登记处置）属第 3 步 #85；在其合并前，工程侧可用 `docs/evidence/m1-02-observer/lab_run.py prepare` 以 owner DSN 调用存储原语创建会话。
 
+### 离线重放（M1-02 第 5 步，#87，F6 第 5 步）
+
+`python -m opspilot.observer.replay` 只读已存行重算恢复判定：会话行、`opspilot_health_profiles` 里冻结的 profile 内容（须能重算出会话绑定的 revision）、每条采样行及其判定条件、每条读数行的原始捆绑。三层各自重算并与已存比对：捆绑重新哈希并重建读数（`sampler.replay_sample`）→ 按 profile 阈值/新鲜度/流量门在捆绑记录的 `sample_time` 重判 outcome（`evaluate_readings`）→ 用重算 outcome 走存储层同一折叠（`observation.store.fold_history`：采纳、健康连续期、持续窗口、次数、结束记录、生命周期）。任何一层不一致（捆绑哈希不符、读数/outcome/判定重算不同、profile 不可读或 revision 不符、会话终态或结束记录不符）都报 `STORED_OBSERVATION_INTEGRITY_MISMATCH`，`recovery_verdict` 为 `unknown`，不复述已存判定；捆绑实际重算出的结论另列为 `recomputed_verdict`。不查遥测、不调模型、不看墙钟。
+
+```sh
+export OPSPILOT_OBSERVER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=<Observer 登录角色>"   # 或 --dsn；角色对所需表只读
+.venv/bin/python -m opspilot.observer.replay --session <session_id>      # 可重复；或 --incident <incident_id> 重放该事故全部会话
+```
+
+重放核对的范围：会话参数须等于冻结 profile 的 `session` 值（次数、持续窗口、间隔；期限按行创建时间与 `deadline_seconds` 核对）；采样行的判定条件（期限按会话冻结的 `deadline_at` 与采样窗尾重算，挂起按采样行记录的控制代际与授权代际重算，不信已存标志）、会话行水位（已采纳序号/窗尾/次数/健康连续期起点须等于重算值）、结束记录（恰好一条且须由重算结局支撑：次数耗尽须重算已采纳次数 ≥ 冻结 `max_samples`，无采样的期限结束须记录在冻结期限之后）、每条读数的 query / coverage / freshness 表达式与窗口须等于冻结 profile 与采样窗口。Observer 在采样时取不到或无法验证 profile 行的采样，以一条 `health_profile` 哨兵读数（哈希捆绑记录 `HEALTH_PROFILE_UNAVAILABLE` / `HEALTH_PROFILE_INVALID` 与 revision）持久记录原因，重放只在验证该记录（含其 outcome 必为 failed、窗口绑定采样与捆绑）后才豁免读数覆盖检查；没有记录的空读数即完整性不一致。**边界**：重放只能检出与已存原始数据、哈希、判定或会话状态互相不一致的篡改；拥有数据库写权限者把原始数据、哈希、判定与会话一致地改写无法被检出，这不是本步目标（业务记录权威与写权限边界见 ADR-0003 与 PRODUCT-CONSTRAINTS）。
+
+stdout 为 JSON 列表（每会话一项：`consistent`、`integrity`、`reasons`、`recovery_verdict`、`recomputed_verdict`、`healthy_window_seconds`、`expected_lifecycle`/`recorded_lifecycle`、逐采样的 stored/replayed outcome 与判定、逐读数的 stored/replayed 状态、值、点数、查询、窗口、来源、sha256；不含原始字节）。退出码：0 全部一致，1 有不一致，2 用法或存储错误。纯函数入口 `opspilot.observer.replay.replay_history(session_history)` 与 F6 验收形态的 `replay(profile, handled_at, samples, session=..., endings=..., allow_telemetry=False, allow_model=False)`（任一 allow 为 True 直接拒绝 `REPLAY_IS_OFFLINE`）供测试与验收夹具使用。事故页「Recovery verdict」区块显示同一结果与逐采样依据，与「Investigation report」分开，页面不增加写动作。
+
+### F6 验收投影（#140）
+
+`opspilot.acceptance.recovery_outcome(scenario, RecoveryRecords(...)) -> RecoveryOutcome` 是恢复观察的外部验收入口（AGENTS.md「验收入口是外部 IncidentScenario -> IncidentOutcome」），与调查 Run 的 `IncidentOutcome` 并列而非扩展：Run 的 `final_state` 不是事故生命周期，F6 字段来自另一组已提交记录。输入由调用方一次快照读出：`ObservationStore.incident_records(incident_id)`（事故行、每个会话的 `session_history`、`opspilot_controls` 审计行）和 `ObservationStore.table_privileges()`（在 Observer 自己的连接上实测）。判定、原因、交接、健康窗口全部取 `opspilot.observer.replay.replay_history` 的 `SessionReplay`（`recovery_verdict / recovery_reasons / handoff / handoff_reasons / observation_ended / ended_reason`，在线判定与重放共用同一逻辑；完整性不一致 → `unknown` + `STORED_OBSERVATION_INTEGRITY_MISMATCH`），投影只做复制与格式转换，不解析 profile、不另算原因；目标取会话绑定的不可变 `target`；读数的 `evaluated_at` / `sample_time` 取捆绑记录的时刻，`observed_at` 取捆绑里 freshness 查询答复的最新原始样本时间（捆绑或答复不验证则为 None），三者分开给出，不用窗尾冒充。`scenario.subject_id` 必须等于事故 id，事故行与每个会话的 `incident_id` 不等即 `SUBJECT_MISMATCH`；重放报完整性不一致时 `incident_lifecycle` 为 `unverified`（已存值另列 `recorded_lifecycle`），不复述已存的 `resolved`。
+
+`actions` 按事件时间合并投影（控制行 `created_at`、采样行 `submitted_at`、结束记录 `recorded_at`；无时间戳的行保持记录位置）：控制审计行 `register_remediation` → `record_handling`，再加 `advance_incident_lifecycle` 仅当生命周期确实改变（第 k 次登记对应第 k 个会话；首个会话前事故为 `open`，之后以上一个会话最后一条结束记录的 `lifecycle_after` 为准，没有记录则不声称）；`takeover` → `human_takeover`；其他 → `human_control:<action>`；每条读数捆绑里实际发出的即时查询各记一次 `read_only_query`（detail 为 `LEASE_BUDGET` 的本地填充、哨兵读数、捆绑不验证都不计）；每采样行 `persist_observation`；每结束记录：生命周期变化 → `advance_incident_lifecycle`，期限/次数结束 → `human_handoff`。
+
+`table_privileges()` 的测量范围：当前库所有非系统 schema 的普通表、分区表、视图、物化视图与外表（整表权限记 `"*"`，SELECT/INSERT/UPDATE 另按 `has_column_privilege` 逐列记录精确列集合）、序列（USAGE/SELECT/UPDATE）、schema（CREATE/USAGE）、数据库（CREATE/TEMP）、当前角色可 EXECUTE 的 volatile 非触发器 SECURITY DEFINER 函数。测量结果带 `product_schema`（本连接 search_path 解析 `opspilot_incidents` 所在的 schema），产品表身份按限定名绑定该 schema，其他 schema 的同名关系一律按 foreign 处理。`permissions_from_grants` 把测量结果与 0003 迁移授予 Observer 的精确列集合（`OBSERVER_GRANTS`，单测与迁移源逐列核对）比较：能 SELECT 重放所读每张记录表的全部必需列（`store.RECORD_COLUMNS`）→ `read_only`（否则 `unreadable:<表>(缺列)`），有控制审计行 → `human_control`，多出的能力一律列出：`record_rewrite:<表>(列…)`、`investigation_write:<表>(列…)`、`record_delete:<表>`、`foreign_write:<schema.表>(列…)`、`sequence_write:<schema.序列>`、`schema_create:<schema>`、`database_create` / `database_temp`、`security_definer_execute:<函数>`；空测量拒绝。**限制**：SECURITY DEFINER 函数的函数体是否写库无法可靠判定，凡当前角色可执行的 volatile 定义者函数都报出；PUBLIC 默认的数据库 TEMP 权限会如实出现为 `database_temp`（部署建议 `REVOKE TEMP ON DATABASE … FROM <login>`，见 0003 说明）；Observer 对实验环境的「只读」来自其进程只持有 Prometheus 只读凭据（D3），数据库测不到，投影不臆造。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。

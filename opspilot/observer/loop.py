@@ -32,6 +32,8 @@ from opspilot.observation.store import (
 )
 from opspilot.observer.health_profile import HealthProfile
 from opspilot.observer.sampler import (
+    PROFILE_INVALID,
+    PROFILE_UNAVAILABLE,
     InstantSource,
     submit_without_readings,
     take_sample,
@@ -105,7 +107,7 @@ class ObserverLoop:
         return results
 
     def sample(self, lease: SampleLease) -> SampleReceipt:
-        profile = self.profile_for(lease)
+        profile, reason, error_type = self.profile_for(lease)
         if profile is None:
             outcome = "no_data" if lease.health_profile_revision is None else "failed"
             receipt = submit_without_readings(
@@ -113,6 +115,8 @@ class ObserverLoop:
                 self.store,
                 outcome=outcome,
                 window_seconds=_NOMINAL_WINDOW_SECONDS,
+                reason=reason,
+                error_type=error_type,
             )
             _log.info(
                 "sample session=%s sequence=%s outcome=%s (no usable profile) disposition=%s state=%s",
@@ -125,24 +129,38 @@ class ObserverLoop:
             return receipt
         return take_sample(lease, profile, self.source, self.store).receipt
 
-    def profile_for(self, lease: SampleLease) -> HealthProfile | None:
-        """The stored profile behind the lease's revision, or ``None`` when
-        the session has none or the stored content is not a profile that
-        reproduces its revision (never guessed from a file on disk)."""
+    def profile_for(
+        self, lease: SampleLease
+    ) -> tuple[HealthProfile | None, str | None, str | None]:
+        """``(profile, reason, error type)``: the stored profile behind the
+        lease's revision, or ``None`` with the reason the sample is filed
+        with -- the session has no revision (no reason: the session row
+        says so), the row could not be read (``HEALTH_PROFILE_UNAVAILABLE``)
+        or its content is not a profile that reproduces the revision
+        (``HEALTH_PROFILE_INVALID``); never guessed from a file on disk."""
         revision = lease.health_profile_revision
         if revision is None:
-            return None
+            return None, None, None
         try:
             row = self.store.health_profile(revision)
+        except PersistenceError as exc:
+            _log.warning(
+                "profile unavailable session=%s revision=%s error=%s",
+                lease.session_id,
+                revision,
+                exc,
+            )
+            return None, PROFILE_UNAVAILABLE, type(exc).__name__
+        try:
             profile = HealthProfile.model_validate(json.loads(str(row["content"])))
-        except (PersistenceError, ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError) as exc:
             _log.warning(
                 "profile unusable session=%s revision=%s error=%s",
                 lease.session_id,
                 revision,
                 type(exc).__name__,
             )
-            return None
+            return None, PROFILE_INVALID, type(exc).__name__
         if profile.revision != revision:
             _log.warning(
                 "profile revision mismatch session=%s stored=%s computed=%s",
@@ -150,8 +168,8 @@ class ObserverLoop:
                 revision,
                 profile.revision,
             )
-            return None
-        return profile
+            return None, PROFILE_INVALID, "RevisionMismatch"
+        return profile, None, None
 
     def run(self) -> int:
         polls = 0

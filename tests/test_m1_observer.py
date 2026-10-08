@@ -40,7 +40,7 @@ from opspilot.observer.prometheus import (
     InstantResult,
     PrometheusReadOnlySource,
 )
-from opspilot.observer.sampler import replay_readings, take_sample
+from opspilot.observer.sampler import PROFILE_SENTINEL, replay_readings, take_sample
 from opspilot.persistence.base import PersistenceError
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -1368,8 +1368,14 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
             return NOW
 
         def submit_sample(self, lease, sample, readings):
-            # a profile that cannot be read: filed as failed, no query issued
-            assert sample.outcome == "failed" and readings == []
+            # a profile that cannot be read: filed as failed, no query issued,
+            # one sentinel reading recording the reason (PR #139 recheck P2-4)
+            assert sample.outcome == "failed"
+            assert [r.signal_name for r in readings] == [PROFILE_SENTINEL]
+            assert (
+                json.loads(readings[0].raw)["reading_error"]
+                == "HEALTH_PROFILE_UNAVAILABLE"
+            )
             self.calls.append("submit")
             # claims and submits alternate: submits are calls 3, 5 and 7
             if len(self.calls) == 5:

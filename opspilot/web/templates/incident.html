@@ -59,10 +59,70 @@
   {% endfor %}
   </tbody>
 </table>
-<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report above does not certify recovery.</p>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report below does not certify recovery.</p>
+
+<section id="recovery-verdict">
+<h3>Recovery verdict <span class="muted">(independent observation; not the investigation's conclusion)</span></h3>
+{% for r in snapshot.recovery %}
+<div class="recovery-session">
+  <p>
+    session <code>{{ r.session_id }}</code> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
+    · verdict <span class="badge">{{ r.replay.recovery_verdict }}</span>
+    {% if r.replay.recovery_confirmed %}<strong>recovery confirmed</strong>{% else %}<span class="muted">not confirmed</span>{% endif %}
+    · healthy window {{ r.replay.healthy_window_seconds }} s
+    · profile <code>{{ r.health_profile_revision or "none" }}</code>
+    · handled at {{ r.handled_at }}
+    · offline replay:
+    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% else %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
+    {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
+    {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
+  </p>
+  {% if r.samples %}
+  <table class="recovery-basis"{% if loop.first %} id="recovery-basis"{% endif %}>
+    <thead><tr><th>#</th><th>Window</th><th>Outcome stored → replayed</th><th>Decision stored</th><th>Replay</th></tr></thead>
+    <tbody>
+    {% for s in r.samples %}
+    <tr>
+      <td>{{ s.sequence }}</td>
+      <td>{{ s.window_start }} → {{ s.window_end }}{% if s.submitted_at %}<br><span class="muted">submitted {{ s.submitted_at }}</span>{% endif %}</td>
+      <td><span class="badge">{{ s.stored_outcome }}</span>{% if s.stored_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}
+        → {% if s.replayed_outcome %}<span class="badge">{{ s.replayed_outcome }}</span>{% if s.replayed_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}{% else %}<span class="muted">not recomputed ({{ s.recompute_skipped }})</span>{% endif %}
+        {% if s.replayed_reason %}<br><span class="muted">{{ s.replayed_reason }}</span>{% endif %}</td>
+      <td><code>{{ s.disposition }}</code> · {{ s.reason }} · {% if s.confirms_health %}<strong>confirms health</strong>{% else %}no health{% endif %} <span class="muted">({{ s.health_basis }})</span>{% if s.transition %}<br>transition <code>{{ s.transition }}</code>{% endif %}</td>
+      <td>{% if s.consistent %}<span class="badge">consistent</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          {% for rd in s.readings %}
+          <tr>
+            <td><code>{{ rd.signal_name }}</code></td>
+            <td>{{ rd.stored[0] }} / {{ rd.stored[1] if rd.stored[1] is not none else "–" }} / {{ rd.stored[2] if rd.stored[2] is not none else "–" }}
+              → {% if rd.replayed %}{{ rd.replayed[0] }} / {{ rd.replayed[1] if rd.replayed[1] is not none else "–" }} / {{ rd.replayed[2] if rd.replayed[2] is not none else "–" }}{% else %}<span class="muted">not recomputed</span>{% endif %}</td>
+            <td>{% if rd.verdict %}<span class="badge">{{ rd.verdict }}</span> <span class="muted">{{ rd.reason }}</span>{% endif %}</td>
+            <td><code>{{ rd.query }}</code></td>
+            <td>{{ rd.window_start }} → {{ rd.window_end }}</td>
+            <td><code>{{ rd.source }}</code></td>
+            <td><code>{{ rd.raw_sha256 or "none" }}</code>{% if rd.raw_verified is sameas true %} <span class="muted">verified</span>{% elif rd.raw_verified is sameas false %} <strong>hash mismatch</strong>{% else %} <span class="muted">no bundle</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">no samples stored yet</p>{% endif %}
+</div>
+{% endfor %}
+</section>
 {% else %}<p class="muted" id="observation-none">No recovery observation authorized.</p>{% endif %}
 
-<h2>Report</h2>
+<h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
 {% set report = snapshot.report %}
 {% if report is none %}
   <p class="muted" id="report-missing">No published conclusion yet.
