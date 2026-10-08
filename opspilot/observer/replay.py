@@ -351,7 +351,8 @@ def _bundle_time_codes(
     judges freshness at the first bundle's, so a later bundle naming
     another instant would otherwise pass with a rewritten hash. Bundles
     that carry no window (construction failure, too large) are filed
-    ``failed`` and bind only their ``sample_time``."""
+    ``failed`` and bind only their ``sample_time``: they are told apart by
+    ``reading_error``, which only those writers set."""
     codes: list[str] = []
     instants: dict[str, datetime] = {}
     for row in rows:
@@ -362,9 +363,13 @@ def _bundle_time_codes(
             bundle = json.loads(bytes(row["raw"]))
             if not isinstance(bundle, dict):
                 continue
-            if "window_end" in bundle:
+            if "reading_error" not in bundle:
+                # a query bundle always names its window: deleting the key
+                # is not a way out of the binding
                 if (
                     datetime.fromisoformat(str(bundle["evaluated_at"]))
+                    != sample_window[1]
+                    or datetime.fromisoformat(str(bundle["window_end"]))
                     != sample_window[1]
                 ):
                     codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_evaluated_at")
@@ -538,9 +543,9 @@ def _session_parameter_codes(
     The deadline is an absolute instant chosen at authorization; it is
     checked as the span from the row's creation and must equal the frozen
     ``deadline_seconds`` in both directions, within a minute: the deadline is
-    computed from the web service's clock and the row is created on the
-    database's, so the two differ by their clock skew plus the transaction's
-    latency; a minute is the margin the span check already used. A shorter
+    computed by the web service from its clock reading and the row is created
+    in a later database transaction, so the two differ by that latency and
+    any skew between the clocks involved; a minute is the margin the span check already used. A shorter
     span would endorse an early handoff, a longer one a late confirmation."""
     frozen = profile.session
     codes: list[str] = []

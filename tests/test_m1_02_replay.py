@@ -754,3 +754,24 @@ def test_the_session_deadline_allows_only_clock_skew(delta):
     history["session"]["deadline_at"] += timedelta(seconds=delta)
     result = replay_history(history)
     assert "SESSION_PARAMETER_MISMATCH:deadline_at" not in result.integrity
+
+
+def test_deleting_the_window_does_not_escape_the_evaluated_at_binding():
+    """PR #150 review P2: a query bundle without ``window_end`` and an
+    earlier ``evaluated_at`` (rehashed) must still be refused."""
+    history = healthy_history()
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    del bundle["window_end"]
+    bundle["evaluated_at"] = (
+        history["samples"][0]["window_end"] - timedelta(hours=2)
+    ).isoformat()
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False
+    assert (
+        "READING_BASIS_MISMATCH:rate:bundle_evaluated_at" in result.samples[0].integrity
+    )
