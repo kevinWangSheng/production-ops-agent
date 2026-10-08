@@ -13,8 +13,10 @@ Configuration (environment only):
 
 * ``OPSPILOT_OBSERVER_DSN``               PostgreSQL DSN of the Observer login (required).
 * ``OPSPILOT_OBSERVER_PROMETHEUS_URL``    the Observer's Prometheus base URL (required).
-* ``OPSPILOT_OBSERVER_PROMETHEUS_TOKEN``  bearer token, optional; or
-* ``OPSPILOT_OBSERVER_ENV_FILE``          a private ``KEY=value`` file holding it.
+* ``OPSPILOT_OBSERVER_PROMETHEUS_USERNAME`` / ``_PASSWORD``  the Observer's own
+  read-only basic-auth account (the lab Prometheus), or
+* ``OPSPILOT_OBSERVER_PROMETHEUS_TOKEN``  a bearer token; either may come from
+* ``OPSPILOT_OBSERVER_ENV_FILE``          a private ``KEY=value`` file.
 * ``OPSPILOT_OBSERVER_POLL_SECONDS``      idle poll interval (default 5).
 * ``OPSPILOT_OBSERVER_BATCH``             leases per poll (default 20).
 * ``OPSPILOT_OBSERVER_GRACE_SECONDS``     SIGTERM join bound (default 30).
@@ -45,6 +47,8 @@ _log = logging.getLogger("opspilot.observer")
 DSN_VAR = "OPSPILOT_OBSERVER_DSN"
 PROMETHEUS_URL_VAR = "OPSPILOT_OBSERVER_PROMETHEUS_URL"
 PROMETHEUS_TOKEN_VAR = "OPSPILOT_OBSERVER_PROMETHEUS_TOKEN"
+PROMETHEUS_USERNAME_VAR = "OPSPILOT_OBSERVER_PROMETHEUS_USERNAME"
+PROMETHEUS_PASSWORD_VAR = "OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD"
 ENV_FILE_VAR = "OPSPILOT_OBSERVER_ENV_FILE"
 
 
@@ -60,13 +64,29 @@ def _read_env_file(path: Path, name: str) -> str:
     return ""
 
 
+def _secret(env: Mapping[str, str], name: str) -> str | None:
+    """``name`` from the environment, else from the Observer's private env
+    file; only the Observer's own variable names are ever looked up."""
+    value = env.get(name, "")
+    if not value and env.get(ENV_FILE_VAR):
+        value = _read_env_file(Path(env[ENV_FILE_VAR]).expanduser(), name)
+    return value or None
+
+
 def _token(env: Mapping[str, str]) -> str | None:
-    token = env.get(PROMETHEUS_TOKEN_VAR, "")
-    if not token and env.get(ENV_FILE_VAR):
-        token = _read_env_file(
-            Path(env[ENV_FILE_VAR]).expanduser(), PROMETHEUS_TOKEN_VAR
+    return _secret(env, PROMETHEUS_TOKEN_VAR)
+
+
+def _basic_auth(env: Mapping[str, str]) -> tuple[str, str] | None:
+    username = _secret(env, PROMETHEUS_USERNAME_VAR)
+    password = _secret(env, PROMETHEUS_PASSWORD_VAR)
+    if username is None and password is None:
+        return None
+    if username is None or password is None:
+        raise SystemExit(
+            f"{PROMETHEUS_USERNAME_VAR} and {PROMETHEUS_PASSWORD_VAR} go together"
         )
-    return token or None
+    return username, password
 
 
 def _float_env(env: Mapping[str, str], name: str, default: float) -> float:
@@ -107,7 +127,9 @@ def build_loop(
     if not url:
         raise SystemExit(f"{PROMETHEUS_URL_VAR} is required")
     try:
-        source = PrometheusReadOnlySource(url, token=_token(env))
+        source = PrometheusReadOnlySource(
+            url, token=_token(env), basic_auth=_basic_auth(env)
+        )
     except ValueError:
         raise SystemExit(f"{PROMETHEUS_URL_VAR} must be an http(s) URL") from None
     store = store or ObservationStore(dsn)

@@ -98,7 +98,7 @@ worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里�
 
 ## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
 
-worker 与工作台各有一个工具 profile 开关 `OPSPILOT_TOOL_PROFILE`（`opspilot/tools/profiles.py`）：默认 `fixture`（上面的固定回放，CI 与测试用），`otel-demo` 让 worker 通过 HTTP 只读查询固定的 OTel Demo 2.0.2 实验环境的 Prometheus（`metrics_range_query`，范围查询）与 Jaeger（`traces_search`，按服务搜 trace 并投影为 M0 trace view v3 的采样记录）。**两个进程必须设同一个值**：`versions` 里的 `tool_schema_revision` 不同，Run 在 claim 时会被记为 `blocked`。观测窗是提交时刻往前 300 秒，由工作台写进 Run 的输入快照，worker 从快照读回（超时后续开的新 Run 沿用前一 Run 的历史窗口，不重新取窗）；目标固定为 `m0-otel-20260909`（提交事故时 `target_id` 必须是它）。后端地址用 `OPSPILOT_OTEL_PROMETHEUS_URL`（默认 `http://127.0.0.1:19090`）、`OPSPILOT_OTEL_JAEGER_URL`（默认 `http://127.0.0.1:16686/jaeger/ui`）；实验环境无认证，`OPSPILOT_OTEL_TOKEN` 只在有 bearer 的后端才需要，只进请求头，不进注册、证据或日志。
+worker 与工作台各有一个工具 profile 开关 `OPSPILOT_TOOL_PROFILE`（`opspilot/tools/profiles.py`）：默认 `fixture`（上面的固定回放，CI 与测试用），`otel-demo` 让 worker 通过 HTTP 只读查询固定的 OTel Demo 2.0.2 实验环境的 Prometheus（`metrics_range_query`，范围查询）与 Jaeger（`traces_search`，按服务搜 trace 并投影为 M0 trace view v3 的采样记录）。**两个进程必须设同一个值**：`versions` 里的 `tool_schema_revision` 不同，Run 在 claim 时会被记为 `blocked`。观测窗是提交时刻往前 300 秒，由工作台写进 Run 的输入快照，worker 从快照读回（超时后续开的新 Run 沿用前一 Run 的历史窗口，不重新取窗）；目标固定为 `m0-otel-20260909`（提交事故时 `target_id` 必须是它）。后端地址用 `OPSPILOT_OTEL_PROMETHEUS_URL`（默认 `http://127.0.0.1:19090`）、`OPSPILOT_OTEL_JAEGER_URL`（默认 `http://127.0.0.1:16686/jaeger/ui`）。M1-02 第 4 步起实验环境 Prometheus 开启 basic auth：调查侧用自己的只读账号 `OPSPILOT_OTEL_PROMETHEUS_USERNAME` / `OPSPILOT_OTEL_PROMETHEUS_PASSWORD`（`kind_lab.py up` 写到 `tmp/m1-kind-lab/prometheus-investigator.env`，`set -a; . <file>; set +a` 后启动 web 与 worker；只对 Prometheus 请求发送，Jaeger 仍匿名）；`OPSPILOT_OTEL_TOKEN` 是 bearer 后端用的另一种凭据。凭据只进请求头，不进注册、证据或日志；调查侧不读 Observer 的 `OPSPILOT_OBSERVER_*`，反之亦然（C3 §3、D3，`tests/test_m1_prometheus_credentials.py`）。
 
 实验环境属工程操作，不是产品或 Agent 能力：镜像与配置沿用 M0 冻结的 `compose-pinned.json`（默认在 `production-ops-agent-m0-environment/tmp/m0-environment`，可用 `OPSPILOT_OTEL_LAB` 指向别处；重建见 [环境复现](evidence/m0-real-environment/reproduce.md) 与 `scripts/m0_environment/prepare.py` / `freeze_images.py`）。
 
@@ -125,6 +125,8 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 .venv/bin/python scripts/kind_lab.py stop      # 只 colima stop；集群与 release 保留，再 up 约 90 s
 ```
 
+Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-kind-lab/prometheus-auth.json`（600，四个账号 observer / investigator / collector / lab 的口令），把 bcrypt 哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`）、把 collector 推送用的口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展），并写 `prometheus-observer.env` / `prometheus-investigator.env`（600，各只含该角色自己的变量名）；`kind_lab.py env-file <role>` 可重写。口令不进仓库、values、日志与证据。限制：Prometheus 自带 basic auth 对所有账号权限相同，合同要求的是独立凭据而非不同权限；Prometheus 探针改为 TCP、configmap-reload 侧车关闭（二者否则需要凭据或会 401）；`scripts/otel_demo_observe.py` 与 `docs/evidence/m1-02-health-profile/collect_baseline.py` 尚未带认证，直读会 401。
+
 脚本在宿主上只写 git 忽略的 `tmp/m1-kind-lab/`：故障历史（`engineer-only/<experiment-id>/`，越出该目录的 id 或符号链接被拒绝）、实验环境专用 kubeconfig（kubectl/helm/kind 都显式用它，不碰 `~/.kube/config` 的当前上下文）和 Helm 的仓库配置与 chart 缓存（`HELM_CONFIG_HOME`/`HELM_CACHE_HOME`/`HELM_DATA_HOME`）。`fault` 在 patch 后重新读取 ConfigMap 比对 SHA-256，不一致则非零退出。
 刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
 
@@ -137,7 +139,8 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 ```sh
 export OPSPILOT_OBSERVER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=<Observer 登录角色>"   # CREATE ROLE <login> LOGIN IN ROLE opspilot_observer（仓库外）
 export OPSPILOT_OBSERVER_PROMETHEUS_URL="http://127.0.0.1:19090"                                      # Observer 自己的只读端点
-# 可选：OPSPILOT_OBSERVER_PROMETHEUS_TOKEN（或 OPSPILOT_OBSERVER_ENV_FILE 私有文件里的同名键）、OPSPILOT_OBSERVER_POLL_SECONDS（5）、OPSPILOT_OBSERVER_BATCH（20）、OPSPILOT_OBSERVER_GRACE_SECONDS（30）
+export OPSPILOT_OBSERVER_ENV_FILE="$PWD/tmp/m1-kind-lab/prometheus-observer.env"                     # 含 OPSPILOT_OBSERVER_PROMETHEUS_USERNAME / _PASSWORD（Observer 自己的 basic-auth 账号）
+# 可选：OPSPILOT_OBSERVER_PROMETHEUS_TOKEN（bearer 后端）、OPSPILOT_OBSERVER_POLL_SECONDS（5）、OPSPILOT_OBSERVER_BATCH（20）、OPSPILOT_OBSERVER_GRACE_SECONDS（30）；凭据变量可直接设在环境或放在 ENV_FILE 里
 .venv/bin/python -m opspilot.observer
 ```
 

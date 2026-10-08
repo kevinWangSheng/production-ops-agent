@@ -14,6 +14,7 @@ at ``window_end`` aggregates exactly ``[window_end - range, window_end]``;
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import socket
@@ -82,6 +83,7 @@ class PrometheusReadOnlySource:
         base_url: str,
         *,
         token: str | None = None,
+        basic_auth: tuple[str, str] | None = None,
         opener: urllib.request.OpenerDirector | None = None,
     ) -> None:
         if not isinstance(base_url, str) or not base_url.startswith(
@@ -101,6 +103,7 @@ class PrometheusReadOnlySource:
             f":{parts.port}" if parts.port else ""
         )
         self._token = token or None
+        self._basic_auth = basic_auth
         self._opener = opener or urllib.request.build_opener(
             urllib.request.ProxyHandler({}), _NoRedirect()
         )
@@ -139,7 +142,10 @@ class PrometheusReadOnlySource:
             }
         )
         headers = {"Accept": "application/json"}
-        if self._token:
+        if self._basic_auth is not None:
+            raw = f"{self._basic_auth[0]}:{self._basic_auth[1]}".encode()
+            headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
+        elif self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         request = urllib.request.Request(url, headers=headers, method="GET")
         deadline = time.monotonic() + timeout_seconds

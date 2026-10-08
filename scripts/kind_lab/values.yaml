@@ -71,11 +71,27 @@ opentelemetry-collector:
   resources:
     limits:
       memory: 300Mi
+  # The collector pushes OTLP metrics into Prometheus, which authenticates
+  # (M1-02 step 4); its own account's password comes from the Secret
+  # ``kind_lab.py up`` renders, never from these values.
+  extraEnvsFrom:
+    - secretRef:
+        name: prometheus-web-auth
   config:
+    extensions:
+      basicauth/prometheus:
+        client_auth:
+          username: collector
+          password: ${env:PROMETHEUS_COLLECTOR_PASSWORD}
+    exporters:
+      otlphttp/prometheus:
+        auth:
+          authenticator: basicauth/prometheus
     # The chart's opensearch exporter stays defined (nulling it leaves an
     # endpoint-less stub the collector refuses); no pipeline uses it, so
     # logs are not shipped anywhere.
     service:
+      extensions: [health_check, basicauth/prometheus]
       pipelines:
         logs:
           exporters: [debug]
@@ -87,7 +103,28 @@ jaeger:
         memory: 400Mi
 
 prometheus:
+  # Basic auth for every HTTP endpoint (M1-02 step 4, D3): the web config
+  # with bcrypt hashes is the Secret ``prometheus-web-config`` that
+  # ``kind_lab.py up`` renders from the engineer-only auth file. Probes go
+  # over TCP (an HTTP probe would need the credential in these values) and
+  # the configmap-reload sidecar is off (it would call /-/reload without
+  # auth; lab config changes go through ``helm upgrade``, which restarts).
+  configmapReload:
+    prometheus:
+      enabled: false
   server:
+    tcpSocketProbeEnabled: true
+    # Lists replace the chart's: the demo chart's two flags are restated
+    # (the OTLP receiver is how the collector gets metrics into Prometheus).
+    extraFlags:
+      - enable-feature=exemplar-storage
+      - web.enable-otlp-receiver
+      - web.config.file=/etc/prometheus-web/web.yml
+    extraSecretMounts:
+      - name: web-config
+        mountPath: /etc/prometheus-web
+        secretName: prometheus-web-config
+        readOnly: true
     service:
       type: NodePort
       servicePort: 9090

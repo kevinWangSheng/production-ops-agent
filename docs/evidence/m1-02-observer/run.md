@@ -3,7 +3,7 @@
 - 日期：2026-10-07 18:15–18:24 UTC；issue #86；任务记录 [2026-10-03-m1-02-recovery-observation.md](../../tasks/2026-10-03-m1-02-recovery-observation.md)「第 4 步执行」。
 - 分支 `feature/m1-02-observer`（worktree `../production-ops-agent-observer`，基于 main `924068d`）。
 - 授权：本步不调用模型，费用只有实验环境资源（无供应商调用，余额不变）。实验环境写操作只有 `kind_lab.py up/stop`。
-- 两次运行：第一次（PR 初版，revision `@039b9a9a508d`）与审查处置后的第二次（revision `@0ceb325af50f`，见文末「第二次运行」）。冻结摘要：[summary.json](summary.json)（第一次会话，含其后被 sweep 的结束记录）、[summary-run2.json](summary-run2.json)（由 [lab_run.py](lab_run.py) `summarize` 从数据库读出；**不含原始返回字节**，只有每条读数的状态、值、点数、`raw_sha256`、原始捆绑字节数与从捆绑里解出的最新原始样本时间）。Observer 进程日志：[observer.log](observer.log) / [observer-run2.log](observer-run2.log)；启动时宿主内存：[host-memory.txt](host-memory.txt) / [host-memory-run2.txt](host-memory-run2.txt)。
+- 三次运行：第一次（PR 初版，revision `@039b9a9a508d`）、审查处置后的第二次（revision `@0ceb325af50f`，「第二次运行」）、Prometheus 开启 basic auth 后的第三次（「第三次运行」，含双向凭据实测）。摘要另有 [summary-run3.json](summary-run3.json)、[observer-credential-probe.json](observer-credential-probe.json)、[investigator-probe.json](investigator-probe.json)，日志 [observer-run3.log](observer-run3.log)，内存 [host-memory-run3.txt](host-memory-run3.txt)。冻结摘要：[summary.json](summary.json)（第一次会话，含其后被 sweep 的结束记录）、[summary-run2.json](summary-run2.json)（由 [lab_run.py](lab_run.py) `summarize` 从数据库读出；**不含原始返回字节**，只有每条读数的状态、值、点数、`raw_sha256`、原始捆绑字节数与从捆绑里解出的最新原始样本时间）。Observer 进程日志：[observer.log](observer.log) / [observer-run2.log](observer-run2.log)；启动时宿主内存：[host-memory.txt](host-memory.txt) / [host-memory-run2.txt](host-memory-run2.txt)。
 
 ## 环境
 
@@ -60,3 +60,12 @@
   每样本 24 条即时查询、8 条 ok 读数、`sample_count=5`；raw 捆绑 1526–1880 B（format `/2`）。`min(timestamp(...))` 下依赖信号的新鲜度取 8 个 Deployment 中最旧的最新样本，仍在 90 s 内。
 - 重放：`replay_session` 一致；另外用 `sampler.replay_readings(profile, 读数行)` 只从已存捆绑（exact bytes + sha256 + 捆绑内 `sample_time`）重判三条样本，结果 `healthy / required_signals_present=True`，与已存判定一致；捆绑 `sample_time` 早于 `submitted_at` 2–5 ms（判定时刻与提交时刻分开记录）。
 - 会话仍 `authorized`、事故 `observing_recovery`（未到 600 s 持续窗）；临时库随后销毁，不再有进程采样。
+
+## 第三次运行（2026-10-08 03:04–03:29 UTC，Prometheus basic auth，审查第 5 条）
+
+用户决定本 PR 补上 D3 的「独立 Prometheus 只读凭据」。`scripts/kind_lab.py up` 现在生成四个账号（observer、investigator、collector、lab）的口令到仓库外 600 文件 `tmp/m1-kind-lab/prometheus-auth.json`，把 bcrypt（`htpasswd -B`）哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`），collector 推送口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展 + `otlphttp/prometheus` exporter `auth`），并写 `prometheus-observer.env` / `prometheus-investigator.env`；values 改 Prometheus 探针为 TCP、关 configmap-reload。口令不在仓库、values、日志、证据中（本目录对两份口令 grep 为空）。
+
+- 环境：`up` 三次。第一次 `helm repo update` 又遇 GitHub Pages EOF（脚本现在在两份索引已缓存、版本锁定时继续）；第二次 Helm 升级成功（revision 7）但 collector 推送 404——我覆盖 `prometheus.server.extraFlags` 时丢了 demo chart 的 `web.enable-otlp-receiver`（lists replace），已改为复述 `enable-feature=exemplar-storage` + `web.enable-otlp-receiver` + `web.config.file`；第三次（revision 8）`health` 全部 ok，collector 以 collector 账号推送成功，03:20:27Z 起有 checkout span 指标。宿主 swap 9.5–9.9 / 11.3 GB。用完 `stop`（03:29Z）。
+- 凭据实测（真实 Prometheus，[observer-credential-probe.json](observer-credential-probe.json)、[investigator-probe.json](investigator-probe.json)）：匿名 → 401；observer 账号错口令 → 401；用 observer 口令冒充 investigator 账号 → 401；observer 自己的账号 → 200。调查侧 `OtelDemoTransport`（产品网关唯一的出站 seam，按 `OPSPILOT_OTEL_*` 配置）：investigator 账号 → 200、`query_range` 返回 21 个点、`data_as_of` 正常；匿名 → `source_status=401`；只给 Observer 的变量 → 配置里没有凭据、请求匿名 → 401（调查侧不读 `OPSPILOT_OBSERVER_*`）。这就是 D3 要求的调查侧只读工具在新认证下未退化的有界真实调用（未跑模型 Run）。
+- Observer（`env -i`，只带 `OPSPILOT_OBSERVER_DSN` 与 `OPSPILOT_OBSERVER_PROMETHEUS_URL`，凭据从 `OPSPILOT_OBSERVER_ENV_FILE=tmp/m1-kind-lab/prometheus-observer.env` 读）：03:26:01Z 起 150 s，首轮 sweep 把第二次运行的会话 `1c51e888…` 以 `deadline_expired` 交接回 `open`；新会话 `aa223182…`（授权 03:19:56Z）3 个样本 healthy / adopted / confirmed，24 条认证查询/样本，`sample_count=5`，最新原始样本距窗口末尾 37–52 s，PlaceOrder 率 0.025–0.033 /s，p95 92.5–95 ms；重放一致（[summary-run3.json](summary-run3.json)）。
+- 限制：Prometheus 自带 basic auth 对所有账号权限相同，这里交付的是独立凭据而非不同权限；两侧仍走同一个 NodePort；`scripts/otel_demo_observe.py`、`collect_baseline.py` 尚未带认证。

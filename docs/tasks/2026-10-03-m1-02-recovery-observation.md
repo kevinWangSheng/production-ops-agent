@@ -85,6 +85,7 @@
 - **D1 实施门槛**：SPEC 原先只为 M1-01 开放实施，M0 遗留项是「更大 M1 范围」的入口条件，和 ROADMAP 的下一步冲突。用户决定**有界开放 M1-02**：只开放本记录范围；observer 授权在本切片内交付；其余 M0 遗留项仍挡候选评测和更大范围。SPEC 已加一段，随门槛 PR 合入。
 - **D2 实验环境**：F6 第 1 步要求 deployment 状态和 pod 健康，Compose 给不出。用户决定**迁到 kind + OTel Demo Helm + kube-state-metrics**，产品仍只经只读 Prometheus 读取，不新增连接器。
 - **D3 Observer 角色隔离**（2026-10-05 用户，起因：#73 机器人 P1 引用 C3 §3「隔离必须落实到凭据、数据库权限和网络可达性」）：原计划让 Observer 与调查共用 worker 进程和网关，属未经批准的合同偏离。用户决定**只隔离 Observer**：独立进程、独立 PG 角色、独立 Prometheus 只读凭据，见计划第 2、4 项；调查侧隔离不在本切片。网络可达性在本地实验环境能做到哪一层，以第 4 项的实测证据为准，做不到的如实列为限制。
+  - 落地（2026-10-07，PR #119 审查第 5 条，用户决定「本 PR 补上」）：实验环境 Prometheus 开启自带 basic auth（`--web.config.file`，bcrypt），`kind_lab.py up` 生成并只在仓库外 600 文件保存四个账号的口令（observer、investigator、collector = 实验环境 collector 的 OTLP 推送、lab = 工程脚本健康检查），渲染成两个 Secret 并写每角色一份 env 文件。Observer 只读 `OPSPILOT_OBSERVER_PROMETHEUS_USERNAME/_PASSWORD`（或其 `_ENV_FILE`），调查侧只读 `OPSPILOT_OTEL_PROMETHEUS_USERNAME/_PASSWORD`，互不 fallback，双向负向测试在 `tests/test_m1_prometheus_credentials.py`（HTTP 桩）并在实验环境实测一次（匿名 / 错口令 → 401）。**限制**：Prometheus 自带认证不支持按账号限权，两账号权限相同——合同要求的是独立凭据，不是不同权限；网络层两侧仍是同一 NodePort。
 
 - **D4 实验环境规格**（2026-10-05 用户）：本机运行精简版——Homebrew 安装 kind、kubectl、helm（第 0 步执行时安装），colima 约 8 GiB，关闭 checkout 故障路径用不到的 OTel Demo 服务；运行期间不同时跑其他重负载。依据：本机 16 GB 内存、10 核、磁盘余 34 GB；旧 Compose VM `m0-otel` 为 6 GiB。精简后的服务清单与实测内存写进第 0 步证据；若精简后仍无法稳定运行，停在决策边界报告，不擅自改用远程环境。
 
@@ -151,6 +152,8 @@
   - P2-4 raw 上限协调：单响应上限由 128 KiB 降为 30 KiB（3 × 30 KiB × 4/3 < 128 KiB，`_bundle` 断言），捆绑永远装得下三条完整响应，`RAW_TOO_LARGE` 替代摘要路径删除；超限或被 deadline 截断的响应以 `body_complete=False` 入捆绑，读数判 `failed`、不算覆盖。测试：三条满额响应捆绑 ≤ 128 KiB 且 sha256 一致；截断体 → failed、捆绑记 `body_complete=false` 与已到字节。
   - P2-6 URL userinfo：`PrometheusReadOnlySource` 拒绝带用户名/口令的 URL（`PROMETHEUS_URL_HAS_USERINFO`，入口以 SystemExit 拒绝启动），启动日志只记 `endpoint`（scheme://host[:port]）。测试：含口令 URL 被拒；日志不含 path/query。
   - 复验数字：`tests/test_m1_observer.py` 27 + `tests/test_m1_health_profile.py` 61 = 88 passed；两个 PG 套件 68 passed（+1）；`make check` 2775 passed / 421 skipped / 2 xfailed。真实运行因采样行为变化（min 新鲜度、捆绑 v2）重跑一次 ≤150 s，见 run.md「第二次运行」。
+  - P2-5 独立 Prometheus 凭据（用户 2026-10-07 决定本 PR 补上）：实验环境 Prometheus 开启 basic auth（见上「D3 落地」），产品侧两套变量：Observer `OPSPILOT_OBSERVER_PROMETHEUS_USERNAME/_PASSWORD`（`PrometheusReadOnlySource(basic_auth=...)`，也可来自 `_ENV_FILE`），调查侧 `OPSPILOT_OTEL_PROMETHEUS_USERNAME/_PASSWORD`（`OtelDemoConfig` 新字段，`OtelDemoTransport(basic_auth=...)` 只对 Prometheus 请求发 Basic，Jaeger 仍匿名）；互不读取对方变量。测试 `tests/test_m1_prometheus_credentials.py`（10 例，HTTP 桩只认两个账号）：Observer 带 investigator 变量 → 匿名请求 → 401，带自己的 → 200；调查侧配置忽略 `OPSPILOT_OBSERVER_*`、匿名 → `source_status=401`、trace 请求不带 Prometheus 凭据；kind_lab 的 web.yml 渲染、env 文件 600 且各只含一角色、auth 文件权限松则拒绝、values 不含口令字面量。真实环境实测与第三次 Observer 运行见 run.md「第三次运行」（匿名 / 错口令 / 冒充账号 → 401；investigator 走产品 transport 200 / 21 点）。限制：Prometheus 自带认证不支持按账号限权，两账号权限相同。
+  - 第 5 条后复验数字：`tests/test_m1_prometheus_credentials.py` 10 + `tests/test_m1_observer.py` 27 + `tests/test_m1_otel_demo_contract.py` 与 `tests/test_kind_lab_fault.py` 全部通过（合计 164）；`make check` 2785 passed / 421 skipped / 2 xfailed。顺带修了一个既有测试泄漏：`tests/test_m1_otel_demo_contract.py` 两处裸 `pytest.MonkeyPatch()` 把 `urllib.request.build_opener` 换成 FakeOpener 后从不撤销，会话内其后建真实 opener 的测试全部打到假 opener（本步新测试首次暴露），改为 `MonkeyPatch.context()`。
 
 ## 待决
 

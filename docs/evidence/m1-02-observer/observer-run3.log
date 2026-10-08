@@ -1,0 +1,10 @@
+2026-10-07 20:26:01,497 opspilot.observer INFO observer owner=89ded016-fc55-4fdb-8ef0-69717d50c3b3 prometheus=http://127.0.0.1:19090
+2026-10-07 20:26:01,510 opspilot.observer INFO observer started
+2026-10-07 20:26:01,520 opspilot.observer INFO swept session=1c51e888-ac93-420c-8737-f529f4b3a5fe
+2026-10-07 20:26:01,573 opspilot.observer INFO sample session=aa223182-8ac3-429c-9b89-dd586650c247 sequence=1 outcome=healthy present=True requests=24 interrupted=False disposition=adopted reason=adopted state=authorized
+2026-10-07 20:27:01,771 opspilot.observer INFO sample session=aa223182-8ac3-429c-9b89-dd586650c247 sequence=2 outcome=healthy present=True requests=24 interrupted=False disposition=adopted reason=adopted state=authorized
+2026-10-07 20:28:01,951 opspilot.observer INFO sample session=aa223182-8ac3-429c-9b89-dd586650c247 sequence=3 outcome=healthy present=True requests=24 interrupted=False disposition=adopted reason=adopted state=authorized
+2026-10-07 20:28:31,132 opspilot.observer INFO signal=15: stop claiming, finishing the in-flight sample
+2026-10-07 20:28:31,133 opspilot.observer INFO observer stopped
+observer exit=124
+Thu Oct  8 03:28:31 UTC 2026
