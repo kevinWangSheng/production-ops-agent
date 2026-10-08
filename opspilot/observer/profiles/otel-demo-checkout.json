@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "profile_id": "otel-demo-checkout",
-  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others.",
+  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals declare namespace_label null because the lab's span metrics carry no namespace label (service_name, span_kind, span_name, status_code only).",
   "subject": {
     "service": "checkout",
     "kubernetes_namespace": "otel-demo"
@@ -32,6 +32,10 @@
       "traffic_dependent": false,
       "healthy": {
         "min": 1
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment"
       }
     },
     {
@@ -44,6 +48,10 @@
       "traffic_dependent": false,
       "healthy": {
         "min": 0
+      },
+      "scope": {
+        "namespace_label": null,
+        "workload_label": "service_name"
       }
     },
     {
@@ -57,6 +65,10 @@
       "healthy": {
         "min": 0,
         "max": 0.01
+      },
+      "scope": {
+        "namespace_label": null,
+        "workload_label": "service_name"
       }
     },
     {
@@ -70,6 +82,10 @@
       "healthy": {
         "min": 0,
         "max": 500
+      },
+      "scope": {
+        "namespace_label": null,
+        "workload_label": "service_name"
       }
     },
     {
@@ -82,6 +98,11 @@
       "traffic_dependent": false,
       "healthy": {
         "min": 1
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "pod",
+        "workload_match": "prefix"
       }
     },
     {
@@ -95,6 +116,11 @@
       "healthy": {
         "min": 0,
         "max": 0.5
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "pod",
+        "workload_match": "prefix"
       }
     },
     {
@@ -108,6 +134,21 @@
       "healthy": {
         "min": 8,
         "max": 8
+      },
+      "scope": {
+        "namespace_label": "namespace",
+        "workload_label": "deployment",
+        "workload_match": "dependencies",
+        "dependencies": [
+          "payment",
+          "cart",
+          "valkey-cart",
+          "product-catalog",
+          "currency",
+          "shipping",
+          "email",
+          "flagd"
+        ]
       }
     },
     {
@@ -121,6 +162,10 @@
       "healthy": {
         "min": 0,
         "max": 0.01
+      },
+      "scope": {
+        "namespace_label": null,
+        "workload_label": "service_name"
       }
     }
   ]

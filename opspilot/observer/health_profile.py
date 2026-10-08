@@ -19,6 +19,14 @@ Three rules this module exists to hold:
 3. The revision is a function of the file's content. Any change to a query,
    a threshold or a window produces a new revision, so a session bound to the
    old revision stops adopting samples (``evaluate_sample`` compares it).
+4. The queries select the ``subject`` and nothing else. ``subject`` is the
+   value the authorization compares with the registered target, so a file
+   whose subject says ``payment`` while its PromQL still selects
+   ``checkout`` would let checkout's health resolve a payment incident
+   (issue #122). Every vector selector in every query must carry the
+   subject's namespace and workload under the label names the signal's
+   ``scope`` declares; a selector that cannot be parsed, has no matcher on
+   those labels, or matches them any other way is refused at load.
 
 The reading DTO and the evaluation output follow the M1-02 step 1/2
 interface contract recorded in
@@ -68,6 +76,7 @@ __all__ = [
     "SessionParameters",
     "SignalBound",
     "SignalReading",
+    "SignalScope",
     "SignalVerdict",
     "TrafficGate",
     "evaluate_readings",
@@ -81,6 +90,13 @@ PROFILE_FORMAT_VERSION = 1
 PROFILE_DIRECTORY = Path(__file__).resolve().parent / "profiles"
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
+#: A Kubernetes DNS-1123 label: the shape of a namespace, a Deployment name
+#: and the OTel ``service.name`` values the lab emits. The scope check
+#: derives regular expressions from these values (``<service>-.*``,
+#: ``a|b|c``), so they may not contain regex metacharacters.
+DnsLabel = Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
+#: A Prometheus label name.
+LabelName = Annotated[str, Field(pattern=r"^[a-zA-Z_][a-zA-Z0-9_]{0,127}$")]
 ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
 #: Per-signal verdicts. ``healthy``, ``degraded``, ``below_traffic_gate`` and
 #: ``not_judged`` are the usable readings; the rest are unusable and make the
@@ -161,6 +177,50 @@ class SignalBound(DTO):
         return True
 
 
+class SignalScope(DTO):
+    """How one signal's selectors name the profile's ``subject`` (rule 4).
+
+    Metric families spell the same workload differently: kube-state-metrics
+    carries ``namespace`` and ``deployment`` (or a ``pod`` name prefixed by
+    the Deployment), the span metrics carry ``service_name`` and no
+    namespace at all. The signal therefore declares the label names; the
+    values are never declared, they are the subject's. The validator then
+    requires, in every vector selector of ``query``, ``coverage_query`` and
+    ``freshness_query``:
+
+    - ``<namespace_label>="<subject.kubernetes_namespace>"`` unless
+      ``namespace_label`` is ``null``, the explicit, reviewable statement
+      that the series have no namespace dimension;
+    - ``<workload_label>="<subject.service>"`` (``exact``),
+      ``<workload_label>=~"<subject.service>-.*"`` (``prefix``, pod names),
+      or ``<workload_label>=~"<dep1>|<dep2>|..."`` (``dependencies``, the
+      named objects a dependency signal watches).
+
+    Any other matcher on those labels (``!=``, a regex, another value) is a
+    mismatch; a selector without them is unbound. Both are refused.
+    """
+
+    namespace_label: LabelName | None
+    workload_label: LabelName
+    workload_match: Literal["exact", "prefix", "dependencies"] = "exact"
+    dependencies: tuple[DnsLabel, ...] = ()
+
+    @field_validator("dependencies", mode="before")
+    @classmethod
+    def dependencies_from_json_array(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def labels_and_dependencies_are_consistent(self) -> SignalScope:
+        if self.namespace_label == self.workload_label:
+            raise ValueError("SCOPE_LABELS_IDENTICAL")
+        if (self.workload_match == "dependencies") != bool(self.dependencies):
+            raise ValueError("SCOPE_DEPENDENCIES_INCONSISTENT")
+        if len(set(self.dependencies)) != len(self.dependencies):
+            raise ValueError("SCOPE_DEPENDENCY_DUPLICATE")
+        return self
+
+
 class HealthSignal(DTO):
     """One observable the Observer queries every sample.
 
@@ -192,6 +252,9 @@ class HealthSignal(DTO):
     They are not judged while traffic is below the gate or unknown. State
     signals such as replica counts are judged regardless of traffic: zero
     replicas is a fact whether or not requests arrive.
+
+    ``scope`` binds the three queries to the profile's subject
+    (:class:`SignalScope`); the profile validator checks every selector.
     """
 
     name: Identifier
@@ -203,6 +266,7 @@ class HealthSignal(DTO):
     minimum_samples: Positive = 1
     traffic_dependent: bool
     healthy: SignalBound
+    scope: SignalScope
 
 
 class TrafficGate(DTO):
@@ -236,10 +300,15 @@ class SessionParameters(DTO):
 
 
 class ProfileSubject(DTO):
-    """Which deployment the profile describes; informational for readers."""
+    """Which workload the profile describes.
 
-    service: Text
-    kubernetes_namespace: Text
+    Compared with the registered target at authorization (namespace and
+    workload, ``ObservationStore.authorize_session_in``) and bound to every
+    query by the scope check (rule 4), so it cannot drift from the PromQL.
+    """
+
+    service: DnsLabel
+    kubernetes_namespace: DnsLabel
 
 
 class HealthProfile(DTO):
@@ -292,6 +361,16 @@ class HealthProfile(DTO):
                 for span in _range_selector_seconds(query):
                     if span != self.evaluation_window_seconds:
                         raise ValueError("RANGE_SELECTOR_NOT_EVALUATION_WINDOW")
+        # Rule 4: every selector in every query names the subject the way the
+        # signal's scope declares (issue #122). The error carries the signal
+        # index and query field, never a value from the file.
+        for index, signal in enumerate(self.signals):
+            expected = _expected_matchers(self.subject, signal.scope)
+            for field in ("query", "coverage_query", "freshness_query"):
+                try:
+                    _check_selectors_bound(getattr(signal, field), expected)
+                except ValueError as exc:
+                    raise ValueError(f"{exc} signals/{index}/{field}") from None
         return self
 
     @property
@@ -424,7 +503,7 @@ def load_health_profile(path: Path) -> HealthProfile:
         return HealthProfile.model_validate(payload)
     except ValidationError as exc:
         errors = sanitized_errors(exc)
-        where = ", ".join(_render_location(error["loc"]) for error in errors)
+        where = ", ".join(_render_error(error) for error in errors)
         raise HealthProfileError(
             "PROFILE_INVALID", f"{path.name}: {where}", errors
         ) from None
@@ -699,10 +778,194 @@ def _range_selector_seconds(query: str) -> list[float]:
     return spans
 
 
+class _Matcher(DTO):
+    label: str
+    op: str
+    value: str
+
+
+#: What the scanner distinguishes. Strings are consumed whole so a brace or
+#: bracket inside a label value is never structure; numbers take their unit
+#: suffix (``5m``) so the ``m`` is not an identifier.
+_TOKEN = re.compile(
+    r"(?P<space>\s+)"
+    r"|(?P<string>\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')"
+    r"|(?P<number>\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[a-zA-Z]*)"
+    r"|(?P<ident>[a-zA-Z_:][a-zA-Z0-9_:]*)"
+    r"|(?P<brace>\{)"
+    r"|(?P<punct>[()\[\],+\-*/%^=!~<>@.])"
+)
+_MATCHER = re.compile(
+    r"\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(=~|!~|!=|=)\s*"
+    r"(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')\s*"
+)
+_LABEL_LIST = re.compile(
+    r"\s*(?:[a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*,?)?\s*"
+)
+#: Keywords followed by a parenthesised list of label names, not selectors.
+_LABEL_LIST_KEYWORDS = frozenset(
+    {"by", "without", "on", "ignoring", "group_left", "group_right"}
+)
+_KEYWORDS = frozenset({"and", "or", "unless", "bool", "offset"})
+_ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
+
+
+def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
+    """The matcher sets of every vector selector in ``query``, fail closed.
+
+    A bare metric name (``up``, ``x[5m]``) selects every namespace, so it is
+    ``SCOPE_SELECTOR_UNBOUND``; anything the scanner does not recognise (a
+    stray brace, a backtick string, an escape it cannot decode) is
+    ``SCOPE_SELECTOR_UNPARSABLE`` rather than skipped. An identifier is a
+    function or aggregation when ``(`` follows it, a selector when ``{``
+    does, a keyword when it is one; everything else is a bare metric.
+    """
+    selectors: list[tuple[_Matcher, ...]] = []
+    position = 0
+    pending: str | None = None  # an identifier awaiting the token after it
+    while position < len(query):
+        token = _TOKEN.match(query, position)
+        if token is None:
+            raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+        kind, text, position = token.lastgroup, token.group(), token.end()
+        if kind == "space":
+            continue
+        if kind == "brace":
+            matchers, position = _matcher_body(query, position)
+            selectors.append(matchers)
+            pending = None
+            continue
+        if pending is not None:
+            if pending in _LABEL_LIST_KEYWORDS:
+                if text != "(":
+                    raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+                position = _skip_label_list(query, position)
+                pending = None
+                continue
+            if text == "(":
+                pending = None
+                continue
+            if kind == "ident" and text in _LABEL_LIST_KEYWORDS:
+                pending = text  # ``sum by (le) (...)``
+                continue
+            raise ValueError("SCOPE_SELECTOR_UNBOUND")
+        if kind == "ident" and text not in _KEYWORDS:
+            pending = text
+    if pending is not None:
+        raise ValueError("SCOPE_SELECTOR_UNBOUND")
+    return selectors
+
+
+def _matcher_body(query: str, position: int) -> tuple[tuple[_Matcher, ...], int]:
+    """Parse ``label op "value", ...`` from after ``{`` to the closing brace;
+    returns the matchers and the position after ``}``."""
+    start = position
+    while position < len(query) and query[position] != "}":
+        if query[position] in "\"'":
+            string = _QUOTED.match(query, position)
+            if string is None:
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            position = string.end()
+        else:
+            position += 1
+    if position >= len(query):
+        raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+    body = query[start:position]
+    matchers: list[_Matcher] = []
+    cursor = 0
+    while cursor < len(body):
+        item = _MATCHER.match(body, cursor)
+        if item is None:
+            raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+        matchers.append(
+            _Matcher(
+                label=item.group(1), op=item.group(2), value=_unquote(item.group(3))
+            )
+        )
+        cursor = item.end()
+        if cursor < len(body):
+            if body[cursor] != ",":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            cursor += 1
+            if cursor >= len(body):
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")  # trailing comma
+    return tuple(matchers), position + 1
+
+
+def _skip_label_list(query: str, position: int) -> int:
+    """``position`` is after the ``(`` of ``by (a, b)``; returns after ``)``."""
+    end = query.find(")", position)
+    if end < 0 or _LABEL_LIST.fullmatch(query, position, end) is None:
+        raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+    return end + 1
+
+
+def _unquote(literal: str) -> str:
+    """The value of a double- or single-quoted PromQL string. Only the
+    escapes a label value needs are decoded; any other is refused."""
+    out: list[str] = []
+    inner = literal[1:-1]
+    index = 0
+    while index < len(inner):
+        char = inner[index]
+        if char == "\\":
+            index += 1
+            if index >= len(inner) or inner[index] not in _ESCAPES:
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            out.append(_ESCAPES[inner[index]])
+        else:
+            out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _expected_matchers(
+    subject: ProfileSubject, scope: SignalScope
+) -> dict[str, tuple[str, str]]:
+    """``{label: (op, value)}`` every selector of the signal must carry."""
+    expected: dict[str, tuple[str, str]] = {}
+    if scope.namespace_label is not None:
+        expected[scope.namespace_label] = ("=", subject.kubernetes_namespace)
+    if scope.workload_match == "exact":
+        expected[scope.workload_label] = ("=", subject.service)
+    elif scope.workload_match == "prefix":
+        expected[scope.workload_label] = ("=~", f"{subject.service}-.*")
+    else:
+        expected[scope.workload_label] = ("=~", "|".join(scope.dependencies))
+    return expected
+
+
+def _check_selectors_bound(query: str, expected: dict[str, tuple[str, str]]) -> None:
+    """Every selector carries every expected matcher exactly; a query with
+    no selector at all (``vector(0)``) observes nothing and is unbound."""
+    selectors = _vector_selectors(query)
+    if not selectors:
+        raise ValueError("SCOPE_SELECTOR_UNBOUND")
+    for matchers in selectors:
+        for label, (op, value) in expected.items():
+            found = [m for m in matchers if m.label == label]
+            if not found:
+                raise ValueError("SCOPE_SELECTOR_UNBOUND")
+            if any((m.op, m.value) != (op, value) for m in found):
+                raise ValueError("SCOPE_SELECTOR_MISMATCH")
+
+
 def _render_location(location: object) -> str:
     if isinstance(location, tuple) and location:
         return "/".join(str(part) for part in location)
     return "<root>"
+
+
+def _render_error(error: dict[str, object]) -> str:
+    """The location, plus the code when the error is one of this module's
+    validators (a ``ValueError`` whose message is a code and, for the scope
+    check, the signal index and field). Other pydantic messages are not
+    appended: they describe the expected shape and are not needed to act."""
+    rendered = _render_location(error["loc"])
+    if error["type"] == "value_error":
+        code = str(error["msg"]).removeprefix("Value error, ")
+        rendered = f"{rendered} {code}" if rendered != "<root>" else code
+    return rendered
 
 
 def _render_bound(bound: SignalBound) -> str:

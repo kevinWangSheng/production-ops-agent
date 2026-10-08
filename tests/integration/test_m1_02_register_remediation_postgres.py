@@ -17,6 +17,7 @@ its own incident and target.
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 from collections.abc import Iterator
@@ -34,6 +35,7 @@ from opspilot.domain.intake import Target
 from opspilot.observation import ObservationStore
 from opspilot.observer.health_profile import (
     PROFILE_DIRECTORY,
+    HealthProfileError,
     canonical_content,
     load_health_profile,
 )
@@ -842,3 +844,48 @@ def test_the_profile_authorizes_only_the_workload_its_subject_names(
         )
     assert _incident_row(owner, foreign)["lifecycle"] == "open"
     assert _sessions(owner, foreign) == []
+
+
+def test_a_profile_whose_queries_select_another_workload_cannot_start_observation(
+    owner: DurableStore, controller: ObservationStore, tmp_path, monkeypatch
+) -> None:
+    """Issue #122 end to end on the authorization path. A payment incident
+    in ``payments-prod`` has two candidate profiles: the shipped checkout
+    profile with only its ``subject`` edited to payment (its queries still
+    select checkout) and the shipped profile itself. The first never
+    becomes a ``HealthProfile``: the loader refuses it and the workbench
+    start-up (``OPSPILOT_HEALTH_PROFILE``) exits on it, so no registration
+    can carry it. The second is refused by the store's subject check under
+    the incident lock. Either way the incident stays ``open`` with no
+    session and no audit row: checkout's readings cannot resolve a payment
+    incident."""
+    from opspilot.web.__main__ import _health_profile
+
+    payload = json.loads((PROFILE_DIRECTORY / "otel-demo-checkout.json").read_text())
+    payload["subject"] = {"service": "payment", "kubernetes_namespace": "payments-prod"}
+    mismatched = tmp_path / "payment.json"
+    mismatched.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(HealthProfileError) as refused:
+        load_health_profile(mismatched)
+    assert refused.value.code == "PROFILE_INVALID"
+    assert "SCOPE_SELECTOR_MISMATCH signals/0/query" in refused.value.detail
+    monkeypatch.setenv("OPSPILOT_HEALTH_PROFILE", str(mismatched))
+    with pytest.raises(SystemExit, match="SCOPE_SELECTOR_MISMATCH"):
+        _health_profile()
+
+    incident, _, target_id, uid = _incident(owner)
+    payment = {**identity_of(uid, workload="payment"), "namespace": "payments-prod"}
+    with pytest.raises(PersistenceError, match="HEALTH_PROFILE_TARGET_MISMATCH"):
+        _register(controller, incident, expected=0, identity=payment)
+    row = _incident_row(owner, incident)
+    assert (row["lifecycle"], row["control_generation"]) == ("open", 0)
+    assert _sessions(owner, incident) == [] and _audit(owner, incident) == []
+    assert _registered(owner, target_id)["workload"] is None
+    # No stored profile carries the edited subject (the shipped one from the
+    # other tests of this module may be there).
+    with owner.transaction(snapshot=True) as conn:
+        stored = conn.execute(
+            "SELECT content FROM opspilot_health_profiles WHERE content LIKE %s",
+            ("%payments-prod%",),
+        ).fetchall()
+    assert stored == []

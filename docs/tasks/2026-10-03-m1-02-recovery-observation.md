@@ -1,6 +1,6 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；下一步第 5 步 #87、第 6 步 #88，第 6 步前须完成 #122 #125 #126 #115）
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；#122 profile 查询范围绑定 subject 已实现、PR 待用户合并；下一步第 5 步 #87、第 6 步 #88，第 6 步前须完成 #125 #126 #115）
 - 更新日期：2026-10-08
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
@@ -167,6 +167,17 @@
   - 复验第二轮后数字：`tests/test_m1_observer.py` 30 + `tests/test_m1_prometheus_credentials.py` 13 + `tests/test_kind_lab_fault.py` 13 = 56 passed；两个 M1-02 PG 套件 68 passed（全新临时 PG，55499）；`make check` 2791 passed / 421 skipped / 2 xfailed。
   - 第 5 条后复验数字：`tests/test_m1_prometheus_credentials.py` 10 + `tests/test_m1_observer.py` 27 + `tests/test_m1_otel_demo_contract.py` 与 `tests/test_kind_lab_fault.py` 全部通过（合计 164）；`make check` 2787 passed / 421 skipped / 2 xfailed（含 lab 账号补充）。顺带修了一个既有测试泄漏：`tests/test_m1_otel_demo_contract.py` 两处裸 `pytest.MonkeyPatch()` 把 `urllib.request.build_opener` 换成 FakeOpener 后从不撤销，会话内其后建真实 opener 的测试全部打到假 opener（本步新测试首次暴露），改为 `MonkeyPatch.context()`。
 
+## #122 执行（2026-10-08，HealthProfile 查询范围绑定 subject，分支 `feature/F6-profile-scope`，worktree `../production-ops-agent-profile-scope`）
+
+- 问题：`subject` 可独立编辑，`load_health_profile` 不校验 PromQL 实际选择范围；复制 shipped profile 只改 subject 为 `payment` / `payments-prod`，查询仍选 checkout，登记通过后 checkout 的健康读数会把 payment 事故确认为 resolved（PR #120 第三次复验 P1）。依据 PRODUCT-CONSTRAINTS「target-specific HealthProfile」、C3 §10。
+- 选择 issue 的做法 (a)（校验），不做 (b)（模板生成）：查询保持字面量，读数里存的 `query` 与 profile 一致的比较（`_judge` 的 `query_mismatch`）和重放不需要渲染层；校验是纯函数、fail-closed、对 profile 文件只加声明不改查询文本。
+- 格式变更（**用户门决策点，revision 随之变化**）：每个信号新增必填 `scope`：`namespace_label`（必须出现的键，`null` 表示该序列没有 namespace 维度——实验环境 span metrics 只有 `service_name`/`span_kind`/`span_name`/`status_code`，`docs/evidence/m1-02-health-profile/run.md` 已记录标签形状）、`workload_label`、`workload_match`（`exact` = `<label>="<subject.service>"`；`prefix` = `<label>=~"<subject.service>-.*"`，pod 名；`dependencies` = `<label>=~"<dep1>|<dep2>|..."`，依赖信号显式声明依赖对象）、`dependencies`。值一律由 subject 推导，文件里只声明标签名。`subject.service` / `kubernetes_namespace` 收紧为 DNS-1123 label（推导出的正则不含元字符）。老格式文件（无 `scope`）按缺字段拒绝，不放过。
+- 校验规则（`HealthProfile` 模型校验，`load_health_profile` → `PROFILE_INVALID`，detail 带错误码与 `signals/<i>/<field>` 位置、不带文件值）：对 `query` / `coverage_query` / `freshness_query` 各自扫描全部向量选择器——`标识符{...}` 是选择器，`标识符(` 是函数/聚合，`by/without/on/ignoring/group_left/group_right (...)` 是标签列表，`and/or/unless/bool/offset` 是关键字；其余裸标识符（`up`、`x[5m]`）视为裸指标 → `SCOPE_SELECTOR_UNBOUND`。每个选择器必须含 scope 声明的每个标签，且该标签上的所有匹配器都是推导出的 `(op, value)`：缺 → `SCOPE_SELECTOR_UNBOUND`；正则 / 否定 / 另一值 / 第二个冲突匹配器 → `SCOPE_SELECTOR_MISMATCH`；无选择器的查询（`vector(1)`）→ UNBOUND；扫不懂（未闭合、反引号串、未知转义、尾逗号、缺逗号、多余 `}`）→ `SCOPE_SELECTOR_UNPARSABLE`，拒绝而不是跳过。其它标签上的额外匹配器只收窄选择，允许。
+- 不改存储层：`ObservationStore.authorize_session[_in]` 仍只做 subject 与登记行比对（PR #120）。产品路径 `Workbench.register_remediation` 持有已校验的 `HealthProfile` 对象，错配文件根本构造不出来；第 2 步 PG 测试有意用裸 profile 文本验证存储层自身的 fail-closed（`health_profile_unreadable`），存储层做完整校验会推翻那些用例，且 `observation` → `observer` 会形成循环 import。限制：直接调用存储原语并手工传入错配的规范化文本仍能入库——这需要调查侧 owner 凭据绕过产品入口，与 #114 已记录的「Observer 凭据即权威」同一层。
+- shipped profile：8 个信号各加 `scope`（kube-state-metrics 三个 `namespace`+`deployment`/`pod` prefix；span metrics 四个 `namespace_label: null` + `service_name`；依赖可用性 `dependencies` 八个对象），查询文本未改，描述加一句；revision 由 `otel-demo-checkout@0ceb325af50f` 变为 **`otel-demo-checkout@c3bed8f3a83e`**。本机 55431 lab 库里绑定旧 revision 的会话都已结束；Observer 对旧 revision 的存储内容 `model_validate` 会因缺 `scope` 判 `profile unusable`（提交 failed 样本直到期限），没有在途会话，不做数据迁移。
+- 测试（`tests/test_m1_health_profile.py` 新增 §7，`tests/test_m1_observer.py` 夹具改为带选择器的查询，未改 `tests/acceptance/`、`tests/contracts/`）：issue 复现（三种 subject 改法都拒、错误不回显 payment/otel-demo）；shipped profile 每信号 scope 断言；无 scope 拒绝并定位 `signals/0/scope`；25 种绕过形式参数化（漏 namespace/workload、裸指标、`vector(1)`、`=~`、`!=`、`!~`、另一值、重复冲突匹配器、`\x63` 转义、6 种扫不懂）；三个查询字段都查；14 种合法 PromQL 形状通过（`sum by (le)`、`histogram_quantile`、`or vector(0)`、`count(... >= 1)`、`offset`、`@ start()`、`on/group_left`、无指标名选择器、空格）；`namespace_label: null` 语义与键必填；prefix/dependencies 推导（含顺序不同、少一个、多一个、`.*`）；scope 声明自洽（标签相同、dependencies 与 match 不一致、重复、非 DNS label、未知键）；subject 含正则元字符被拒；解析器解码转义。PG 端到端（`tests/integration/test_m1_02_register_remediation_postgres.py` 新增 1 例）：payments-prod 的 payment 事故——错配文件 `load_health_profile` 拒、工作台启动入口 `_health_profile()`（`OPSPILOT_HEALTH_PROFILE`）`SystemExit` 带 `SCOPE_SELECTOR_MISMATCH`；用 shipped profile 登记 → `HEALTH_PROFILE_TARGET_MISMATCH`；事故仍 `open`、代际 0、无会话、无审计、登记行未补齐、`opspilot_health_profiles` 没有带该 subject 的内容。
+- 验证（PostgreSQL 17.9 Homebrew 临时实例 55611，数据目录在会话临时目录，未碰 55431 lab）：`tests/test_m1_health_profile.py` + `tests/test_m1_observer.py` 160 passed；`M1_DURABLE_POSTGRES=1` 四个 M1-02 PG 套件（register_remediation 17、observer、takeover、observation_store）101 passed；ruff / ruff format / mypy 通过；`make check` 2885 passed / 457 skipped / 2 xfailed（既有 strict xfail）。
+
 ## 待决
 
 - 无。HealthProfile 的具体数值属于可逆技术细节，由实施 Agent 校准并记录来源，候选评测前冻结。
@@ -174,7 +185,7 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；第 0–4 步已合并（#111 #113 #114 #120 #123 #119）。下一步第 5 步重放展示（#87）；第 6 步真实验收（#88）之前须完成 #122（规则查询与观察对象一致）、#125（scope 检查后重算预算）、#126（重定向不带凭据、HTTP 协议错误）与验收夹具接线 #115。其余跟踪：#124（交还自动，暂不做）、#127（接管证据脚本）、#128（控制审计按幂等键绑定）。
+- 上游核对已完成（见上表）；第 0–4 步已合并（#111 #113 #114 #120 #123 #119）。下一步第 5 步重放展示（#87）；第 6 步真实验收（#88）之前须完成 #125（scope 检查后重算预算）、#126（重定向不带凭据、HTTP 协议错误）与验收夹具接线 #115。其余跟踪：#124（交还自动，暂不做）、#127（接管证据脚本）、#128（控制审计按幂等键绑定）。
 - 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
