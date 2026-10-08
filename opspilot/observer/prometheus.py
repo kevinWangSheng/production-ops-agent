@@ -240,12 +240,16 @@ class PrometheusReadOnlySource:
                 return status, b"".join(chunks), complete
         except urllib.error.HTTPError as error:
             status = int(error.code)
+            # the error body is read under the same deadline as any other, and
+            # one byte past the keep limit tells "exactly the limit" from
+            # "cut"; a timeout or a cut keeps the prefix already read
             try:
-                return status, error.read(_ERROR_BODY_BYTES), True
+                complete = _read_until(error, deadline, _ERROR_BODY_BYTES + 1, chunks)
+            except (TimeoutError, socket.timeout):
+                raise _Timeout(b"".join(chunks)[:_ERROR_BODY_BYTES]) from None
             except HTTPException as cut:
-                # the error body was cut mid-read: same classification as
-                # below, with the status line that did arrive
                 raise _Protocol.of(cut, chunks, status) from None
+            return status, b"".join(chunks)[:_ERROR_BODY_BYTES], complete
         except (TimeoutError, socket.timeout):
             raise _Timeout(b"".join(chunks)) from None
         except urllib.error.URLError as error:
@@ -459,7 +463,9 @@ def _perform(
     conn.response_class = _recording_response(seen)
     response = conn.getresponse()
     status = int(response.status)
-    limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES
+    # one byte past what is kept: an error body of exactly the keep limit is
+    # complete, a longer one is a prefix (``_read_until`` returns False)
+    limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES + 1
     complete = _read_until(response, deadline, limit, chunks)
     return status, b"".join(chunks), complete
 
@@ -491,7 +497,10 @@ def _arm(conn: HTTPConnection, deadline: float) -> None:
 
 
 def _read_until(
-    response: HTTPResponse, deadline: float, limit: int, chunks: list[bytes]
+    response: HTTPResponse | urllib.error.HTTPError,
+    deadline: float,
+    limit: int,
+    chunks: list[bytes],
 ) -> bool:
     """Append at most ``limit`` bytes to ``chunks`` before ``deadline``
     (monotonic seconds); True when the body ended within the limit.
@@ -513,13 +522,49 @@ def _read_until(
         reader = getattr(response, "read1", response.read)
         chunk = reader(min(_READ_CHUNK, limit - received))
         if not chunk:
+            # a peer that closes before the declared Content-Length is a cut
+            # body, not an ended one (issue #133); ``length`` is what the
+            # response still owes (None when chunked or undeclared, where
+            # ``http.client`` raises ``IncompleteRead`` by itself)
+            owed = _owed(response, received)
+            if owed > 0:
+                raise IncompleteRead(b"", owed)
             return True
         chunks.append(chunk)
         received += len(chunk)
     return False
 
 
-def _rearm(response: HTTPResponse, seconds: float) -> None:
+def _declared_length(headers: Any) -> int | None:
+    """The Content-Length a peer declared, or None when absent or not a
+    plain digit string. A digit string too long to be a body size is clamped
+    rather than converted: ``int()`` refuses very long ones, and a length
+    nobody can deliver is still a body that was cut."""
+    value = headers.get("Content-Length") if headers is not None else None
+    if not isinstance(value, str) or not value.strip().isascii():
+        return None
+    value = value.strip()
+    if not value.isdigit():
+        return None
+    value = value.lstrip("0") or "0"
+    return int(value) if len(value) <= 15 else 10**15
+
+
+def _owed(response: HTTPResponse | urllib.error.HTTPError, received: int) -> int:
+    """Bytes the response still owes after EOF. ``http.client`` tracks
+    ``length`` itself, but drops a Content-Length it cannot convert (and a
+    chunked body has none): the declared header fills that gap, never for a
+    chunked body, where ``IncompleteRead`` is raised by the client."""
+    length = getattr(response, "length", None)
+    if isinstance(length, int):
+        return max(0, length)
+    if getattr(response, "chunked", True):
+        return 0
+    declared = _declared_length(getattr(response, "headers", None))
+    return 0 if declared is None else max(0, declared - received)
+
+
+def _rearm(response: HTTPResponse | urllib.error.HTTPError, seconds: float) -> None:
     """Set the underlying socket's timeout to ``seconds``; a response without
     a reachable socket (a test double, an already closed stream) keeps the
     timeout the opener set."""
