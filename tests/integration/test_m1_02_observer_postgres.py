@@ -226,6 +226,15 @@ def _incident(owner: DurableStore) -> tuple[object, object, Target]:
     incident, run = uuid4(), uuid4()
     uid = f"deployment/checkout-{uuid4().hex[:8]}"
     target_id = owner.register_target(uid)
+    # Intake registers the uid alone; the identity (migration 0004) is
+    # completed when a remediation is registered (step 3). These tests drive
+    # the storage primitive, so they complete it directly, with the
+    # namespace and workload the shipped checkout profile's subject names.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload=%s WHERE target_id=%s",
+            ("prom-lab", "kind-lab", "otel-demo", "checkout", target_id),
+        )
     owner.accept(
         incident,
         run,
@@ -258,7 +267,7 @@ def _authorize(
     now, every later one is made due by ``_due_now``."""
     return controller.authorize_session(
         incident,  # type: ignore[arg-type]
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + timedelta(hours=1),
         max_samples=max_samples,

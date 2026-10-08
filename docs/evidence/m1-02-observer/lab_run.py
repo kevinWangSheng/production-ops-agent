@@ -57,6 +57,20 @@ def prepare(args: argparse.Namespace) -> int:
     incident, run = uuid4(), uuid4()
     resource_uid = f"deployment/checkout-{args.experiment_id}"
     target_id = owner.register_target(resource_uid)
+    # Intake registers the uid alone; step 3's register_remediation completes
+    # the identity (migration 0004) from the configured registry. This driver
+    # stands in for that action, so it completes the lab identity directly.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload=%s WHERE target_id=%s",
+            (
+                "m0-otel-20260909",
+                "kind-opspilot-m1",
+                "otel-demo",
+                "checkout",
+                target_id,
+            ),
+        )
     owner.accept(
         incident,
         run,
@@ -76,7 +90,7 @@ def prepare(args: argparse.Namespace) -> int:
     # The profile's own session parameters (interface contract item 5).
     session = controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor=f"engineer:{args.experiment_id}",
         deadline_at=now + timedelta(seconds=profile.session.deadline_seconds),
         max_samples=profile.session.max_samples,
