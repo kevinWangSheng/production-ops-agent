@@ -863,6 +863,7 @@ _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 #: ``1bogus``), so these two states match their operand themselves and leave
 #: whatever follows (``bogus``, ``s`` of ``1.5s``) to fail as an operand. The
 #: operand must end at a boundary: ``1or y`` is not ``1`` then ``or``.
+_EMPTY_CALL = re.compile(r"\s*\(\s*\)")
 _OFFSET_OPERAND = re.compile(
     rf"(?:{_DURATION_CORE}|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?![0-9A-Za-z_:.])"
 )
@@ -910,6 +911,12 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
     # ``by`` list may take a trailing one.
     parens: list[tuple[str, bool]] = []
     grouping_allowed = False  # the previous token closed such an aggregation
+    # What the last operand was, because ``offset``, ``@`` and ``[...]`` only
+    # follow a vector selector ("selector"), a range or subquery ("range"), or
+    # for ``[...]`` a parenthesised or called expression ("paren"), never a
+    # number or string ("scalar"); each of ``offset`` / ``@`` appears once.
+    operand_kind = ""
+    modifiers: set[str] = set()
     just_opened = False  # ``(`` was the last token: ``)`` may close an empty call
 
     def label_list(at: int) -> int:
@@ -939,7 +946,7 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
             if kind == "brace":
                 matchers, position = _matcher_body(query, position)
                 selectors.append(matchers)
-                state = "operand"
+                state, operand_kind, modifiers = "operand", "selector", set()
                 continue
             if text == "(":
                 parens.append(("call", name.lower() in _AGGREGATORS))
@@ -977,10 +984,13 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                     raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
                 position, state = operand.end(), "operand"
                 continue
-            # ``@ start()`` / ``@ end()``, keywords in any case
+            # ``@ start()`` / ``@ end()``, keywords in any case; the modifier
+            # leaves the selector (or range) it follows as the operand.
             if kind == "ident" and state == "at" and text.lower() in {"start", "end"}:
-                pending = text
-                state = "expr"
+                call = _EMPTY_CALL.match(query, position)
+                if call is None:
+                    raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+                position, state = call.end(), "operand"
                 continue
             raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
         if kind == "ident":
@@ -989,6 +999,12 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                     state, comparison = "operator", False
                     continue
                 if text == "offset":
+                    if (
+                        operand_kind not in {"selector", "range"}
+                        or "offset" in modifiers
+                    ):
+                        raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+                    modifiers.add("offset")
                     state = "offset"
                     continue
                 if text in {"by", "without"} and trailing_grouping:
@@ -1010,7 +1026,7 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 state = "expr"
                 continue
             if text.lower() in _SPECIAL_NUMBERS:
-                state = "operand"
+                state, operand_kind, modifiers = "operand", "scalar", set()
                 continue
             # every other identifier starts an expression: a metric name
             pending = text
@@ -1021,12 +1037,12 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             matchers, position = _matcher_body(query, position)
             selectors.append(matchers)
-            state = "operand"
+            state, operand_kind, modifiers = "operand", "selector", set()
             continue
         if kind in {"number", "string"}:
             if state == "operand":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-            state = "operand"
+            state, operand_kind, modifiers = "operand", "scalar", set()
             continue
         # punctuation
         if text == "(":
@@ -1039,7 +1055,7 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
             if not parens or (state != "operand" and not empty_call):
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             grouping_allowed = parens.pop()[1]
-            state = "operand"  # ``start()`` / ``end()`` take no argument
+            state, operand_kind, modifiers = "operand", "paren", set()
             continue
         if text == ",":
             if state != "operand" or not parens or parens[-1][0] != "call":
@@ -1047,16 +1063,28 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
             state = "expr"
             continue
         if text == "[":
-            if state != "operand":
+            if state != "operand" or operand_kind not in {"selector", "paren"}:
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             close = query.find("]", position)
             if close < 0:
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            # A range selector (``[5m]``) directly follows a bare selector; a
+            # subquery (``[5m:1m]``) follows any instant expression.
+            if ":" not in query[position:close] and (
+                operand_kind != "selector" or modifiers
+            ):
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             position = close + 1  # the span itself is checked separately
+            operand_kind, modifiers = "range", set()
             continue
         if text == "@":
-            if state != "operand":
+            if (
+                state != "operand"
+                or operand_kind not in {"selector", "range"}
+                or "@" in modifiers
+            ):
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            modifiers.add("@")
             state = "at"
             continue
         if text in _OPERATOR_CHARS:
