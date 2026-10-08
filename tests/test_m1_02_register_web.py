@@ -12,6 +12,10 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID, uuid4
 
+import pytest
+
+from opspilot.observer.health_profile import canonical_content
+from opspilot.persistence import PersistenceError
 from opspilot.web.store import MappingTargetRegistry, TargetIdentity
 from tests.m1_web_support import (
     basic,
@@ -319,7 +323,7 @@ def test_crash_recovery_confirms_a_registration_only_against_its_own_key():
         sample_interval_seconds=profile.session.sample_interval_seconds,
         sustained_window_seconds=profile.session.sustained_window_seconds,
         health_profile_revision=profile.revision,
-        health_profile="{}",
+        health_profile=canonical_content(profile),
         session_id=uuid4(),
         identity=TargetIdentity(
             resource_uid="checkout-prod",
@@ -418,3 +422,32 @@ def test_the_profile_must_be_the_one_declared_for_the_target():
     )
     accepted = _control(app, incident, fields)
     assert accepted.status == 200 and accepted.json()["generation"] == 1
+
+
+def test_a_profile_without_a_subject_is_unreadable_for_the_memory_store_too():
+    """The test double refuses what PostgreSQL refuses (recheck 3, item 1)."""
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
+    submit_incident(app)
+    subject = workbench.list_incidents()[0].incident_id
+    profile = workbench.health_profile
+    with pytest.raises(PersistenceError, match="HEALTH_PROFILE_UNREADABLE"):
+        workbench.incidents.register_remediation(
+            subject,
+            expected_generation=0,
+            actor="alice",
+            revision="rev-A",
+            deadline_at=workbench.incidents.now() + timedelta(hours=1),
+            max_samples=profile.session.max_samples,
+            sample_interval_seconds=profile.session.sample_interval_seconds,
+            sustained_window_seconds=profile.session.sustained_window_seconds,
+            health_profile_revision=profile.revision,
+            health_profile="{}",
+            session_id=uuid4(),
+            identity=TargetIdentity(
+                resource_uid="checkout-prod",
+                health_profile_id=PROFILE_ID,
+                workload=WORKLOAD,
+                **IDENTITY,
+            ),
+        )
+    assert workbench.incidents.sessions == [] and workbench.incidents.controls == []

@@ -569,14 +569,20 @@ class MemoryIncidentStore:
                 **registered,
                 **{field: getattr(identity, field) for field in fields},
             }
-        # Mirror the store: the profile's subject must be this target. Checked
-        # before anything is written (the store's transaction rolls back).
-        try:
-            subject = json.loads(health_profile).get("subject")
-        except (TypeError, ValueError, AttributeError):
-            subject = None
-        if health_profile_revision is not None and isinstance(subject, dict):
-            if (subject.get("kubernetes_namespace"), subject.get("service")) != (
+        # Mirror the store: a profile without a usable subject is unreadable,
+        # and the subject must be this target. Checked before anything is
+        # written (the store's transaction rolls back).
+        if health_profile_revision is not None:
+            try:
+                subject = json.loads(health_profile).get("subject")
+            except (TypeError, ValueError, AttributeError):
+                subject = None
+            if not isinstance(subject, dict) or not all(
+                isinstance(subject.get(key), str) and subject.get(key)
+                for key in ("kubernetes_namespace", "service")
+            ):
+                raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+            if (subject["kubernetes_namespace"], subject["service"]) != (
                 completed["namespace"],
                 completed["workload"],
             ):
