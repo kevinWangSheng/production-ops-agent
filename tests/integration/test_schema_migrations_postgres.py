@@ -576,3 +576,53 @@ def test_0005_adds_the_mode_column_with_automatic_default(scratch_dsn: str) -> N
         "upgraded", HEAD
     )
     assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+
+
+def test_0005_downgrade_waits_for_an_in_flight_takeover_and_then_refuses(
+    scratch_dsn: str,
+) -> None:
+    """Final recheck of PR #123: a takeover that has not committed yet must
+    not slip past the count. The downgrade locks the table before counting,
+    so it waits for the in-flight transaction and then refuses on the row
+    that transaction committed; column, row and revision stay."""
+    import threading
+
+    schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    _seed_run(scratch_dsn)
+    outcome: dict[str, object] = {}
+
+    def downgrade() -> None:
+        try:
+            schema.command.downgrade(
+                schema._config(scratch_dsn), "0004_target_identity"
+            )
+            outcome["result"] = "downgraded"
+        except schema.HumanOwnershipWouldBeLost as exc:
+            outcome["result"] = exc
+
+    with psycopg.connect(scratch_dsn) as in_flight:
+        # The takeover's write, not yet committed (row lock held).
+        in_flight.execute("UPDATE opspilot_incidents SET mode='human_owned'")
+        worker = threading.Thread(target=downgrade)
+        worker.start()
+        # The downgrade is blocked on the table lock behind the open write.
+        deadline = __import__("time").monotonic() + 10
+        waiting = False
+        while __import__("time").monotonic() < deadline and not waiting:
+            with psycopg.connect(scratch_dsn) as probe:
+                waiting = probe.execute(
+                    "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query ILIKE 'LOCK TABLE opspilot_incidents%'"
+                ).fetchone() == (1,)
+            if not waiting:
+                __import__("time").sleep(0.1)
+        assert waiting, "the downgrade did not wait for the in-flight takeover"
+        assert "result" not in outcome
+        in_flight.commit()
+    worker.join(timeout=30)
+    assert isinstance(outcome.get("result"), schema.HumanOwnershipWouldBeLost)
+    assert outcome["result"].count == 1
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == HEAD
+        assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
+            ("human_owned",)
+        ]

@@ -47,8 +47,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Fail closed: a human takeover is a control decision the schema must not
-    # erase (bot review of PR #123, P1). Count under the migration's own
-    # transaction; any human_owned row refuses the downgrade untouched.
+    # erase (bot review of PR #123, P1). Take the table lock first: a takeover
+    # in flight (uncommitted) would otherwise be invisible to the count and
+    # then be erased by the DROP that waits behind it (final recheck). With
+    # ACCESS EXCLUSIVE held, every concurrent control transaction has either
+    # committed before the count or waits until this transaction ends.
+    op.execute("LOCK TABLE opspilot_incidents IN ACCESS EXCLUSIVE MODE")
     owned: int = int(
         op.get_bind()
         .execute(
