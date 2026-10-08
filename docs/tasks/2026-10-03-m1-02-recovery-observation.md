@@ -192,7 +192,9 @@
 - #125 → #130：scope 检查之后重算采样剩余预算。
 - #126 → #131：工程脚本不跟随重定向（lab 凭据不外发）；Observer 协议错误判 failed，如实保存已读前缀与状态码。后续 #133。
 - #142（分支 `chore/fix-replay-timestamp-deadline`）：重放把捆绑 `evaluated_at` 绑定到采样窗尾、要求同一样本所有读数的 `sample_time` 一致（`SAMPLE_TIME_MISMATCH`）；会话 deadline 改为与冻结 `deadline_seconds` 双向比较，容差取 60 s（原单向检查已用的值：期限由 web 服务时钟算出、行由数据库时钟创建，容差覆盖两钟偏差与事务延迟；更小值会在合法偏差下误报）。篡改 → unknown + 完整性码，不改业务状态。
+- #133 → #147（分支 `chore/fix-observer-body-complete`）：读数 `body_complete` 在 Content-Length 短发（`_read_until` 与注入 opener 的错误体读取均转 `IncompleteRead`，判 failed/UNREACHABLE 并保存已读前缀）与非 200 体超过 `_ERROR_BODY_BYTES` 时为 False；多读 1 字节以区分「恰好等于上限」与「被截断」。重放读存档 `body_complete`，无需改动。
 - #122 → #132（用户合并）：HealthProfile 每信号必填 `scope`，加载时校验每个选择器恰好绑定 `subject`；用户决定方案 B，pod 健康改 Deployment 级、去掉重启计数（owner 链转 #134）；revision `@b72bbe2e30be`，旧格式拒绝加载；`kube_deployment_status_replicas_ready` 未校准，#88 开环境先取证。扫描器误拒类兼容项转 #135。
+- #135（`chore/fix-profile-promql-scanner`）：`_vector_selectors` 接受 `atan2`（关键字大小写不敏感）、`offset`/`@` 后的符号（含 range 之后的负偏移）与 `Inf`/`NaN` 字面量，拒绝 `offset`/`@` 后的非法操作数（`1bogus`、`1.5s`、`-start()`），拒绝 `x by (s)` 与 `rate(x) by (s)`、`@ --1`（尾随 `by`/`without` 只给无前置分组的聚合算子）、`@ Inf`。基准是 Prometheus 官方解析器（`github.com/prometheus/prometheus` v0.307.2 = 3.7.2 的 `promql/parser`，本机无 promtool/Docker 守护进程，用 Go 小程序调 `ParseExpr`）；表驱动用例 112 条（另有 464 条 offset/@ 符号与操作数（含时长单位顺序）组合的一次性差分，0 条放行差异、0 条误拒）把其接受/拒绝结果固化进 `tests/test_m1_health_profile.py`。shipped profile 未改、revision 不变。时长字面量改为单位至多一次、由大到小（`1s1h`、`1m1m` 被拒；同一 `_DURATION` 也用于 range/子查询，顺带与 Prometheus 一致）。操作数须在边界结束（`offset 1or y` 被拒），`offset`/`@` 后至多一个符号（Prometheus 允许 `offset --5m`，扫描器拒绝，fail-closed）。已知未覆盖：关键字大写的 `BY`/`WITHOUT`（fail-closed 误拒）；类型层面的语义错误（range 向量参与二元运算、`x + "s"` 等）。`offset`/`@`/`[...]` 现按操作数种类限制（只跟在选择器/range/子查询后，不跟数字、字符串、`Inf`/`NaN`，各至多一次，`[5m]` 只跟裸选择器）。自决（可逆）：一并修了 #135 评论第 4、5 条。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
 
