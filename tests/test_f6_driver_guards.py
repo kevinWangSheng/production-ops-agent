@@ -130,3 +130,76 @@ def test_driver_does_not_forward_structured_observations_and_rejects_missing_io(
     driver = GuardedRecoveryDriver(SimpleNamespace(run=bypass), boundaries)
     with pytest.raises(AssertionError):
         driver.run(SimpleNamespace(subject_id="incident-f6"), observations=supplied)
+
+
+def test_unrelated_runtime_error_is_failure_in_all_seven_xfail_scenarios(tmp_path):
+    """Run the actual marked functions with a broken transport, without PG."""
+    import os
+    import subprocess
+    import sys
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    probe = tmp_path / "test_unrelated_transport.py"
+    probe.write_text(
+        """from types import SimpleNamespace
+import pytest
+from tests.acceptance.test_f6_recovery import (
+    profile as original_profile,
+    test_f6_step1_foreign_target_sample_is_history_only_without_advancing as test_foreign_target,
+)
+from tests.contracts.test_f6_observation import (
+    test_persisted_authority_guard_keeps_late_result_only_as_history as test_persisted_authority,
+)
+
+@pytest.fixture
+def profile():
+    return original_profile.__wrapped__()
+
+@pytest.fixture
+def f6_profile(profile):
+    return profile
+
+@pytest.fixture
+def recovery_driver():
+    def broken_transport(*args, **kwargs):
+        raise RuntimeError("F6_UNRELATED_TRANSPORT_FAILURE")
+    return SimpleNamespace(run=broken_transport)
+""",
+        encoding="utf-8",
+    )
+    config = tmp_path / "pytest.ini"
+    config.write_text("[pytest]\n", encoding="utf-8")
+    report = tmp_path / "report.xml"
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(probe),
+            "-c",
+            str(config),
+            "--confcutdir",
+            str(tmp_path),
+            "-p",
+            "no:cacheprovider",
+            "--junitxml",
+            str(report),
+            "-q",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    cases = ET.parse(report).findall(".//testcase")
+    assert len(cases) == 7
+    for case in cases:
+        failure = case.find("failure")
+        assert failure is not None, ET.tostring(case).decode()
+        assert "RuntimeError: F6_UNRELATED_TRANSPORT_FAILURE" in failure.text
+        assert case.find("skipped") is None
+        assert case.find("error") is None

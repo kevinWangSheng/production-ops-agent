@@ -727,6 +727,7 @@ def test_harness_model_stub_records_calls_even_if_runtime_swallows_rejection(pha
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="产品缺口: 提交未校验结果目标（C3 §10），见 #138",
 )
 @pytest.mark.parametrize("identity_field", list(TARGET))
