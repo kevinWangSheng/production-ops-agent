@@ -779,9 +779,10 @@ def test_the_shipped_profile_declares_a_scope_for_every_signal():
     by_name = {s.name: s.scope for s in prof.signals}
     assert by_name["deployment_available_replicas"].namespace_label == "namespace"
     assert by_name["deployment_available_replicas"].workload_label == "deployment"
-    # span metrics carry no namespace label in the lab: declared, not omitted
+    # span series carry k8s_namespace_name next to service_name
+    # (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json)
     for name in ("request_rate_per_second", "error_ratio", "latency_p95_milliseconds"):
-        assert by_name[name].namespace_label is None
+        assert by_name[name].namespace_label == "k8s_namespace_name"
         assert by_name[name].workload_label == "service_name"
     assert by_name["pods_running"].workload_match == "prefix"
     deps = by_name["dependency_deployments_available"]
@@ -892,18 +893,53 @@ def test_bound_selectors_in_every_promql_shape_load(query):
     assert profile(**scoped(query)).signals[0].query == query
 
 
-def test_a_signal_without_a_namespace_dimension_declares_it():
-    """``namespace_label: null`` is the explicit statement that the series
-    carry no namespace (the lab's span metrics); the workload is still bound."""
-    ok = scoped("sum(rate(x{service='svc'}[5m]))", namespace_label=None)
-    assert profile(**ok).signals[0].scope.namespace_label is None
-    with pytest.raises(ValueError, match="SCOPE_SELECTOR_UNBOUND"):
-        profile(**scoped("sum(rate(x{namespace='ns'}[5m]))", namespace_label=None))
-    # the key itself is required: omitting it is not the same as null
+def test_every_signal_binds_a_namespace_label():
+    """There is no namespace opt-out: ``null`` and an absent key are both
+    refused, so a series family cannot be read across namespaces by
+    declaring it namespace-less (codex review of PR #132, P1-2)."""
+    for declaration in ({"namespace_label": None}, {}):
+        payload = minimal_profile()
+        payload["signals"][0]["scope"] = {"workload_label": "service", **declaration}
+        with pytest.raises(ValueError, match="namespace_label"):
+            profile(**payload)
+
+
+@pytest.mark.parametrize("keyword", ["offset", "and", "or", "unless", "bool"])
+@pytest.mark.parametrize("field", ["query", "coverage_query", "freshness_query"])
+def test_a_metric_named_like_a_keyword_is_still_a_bare_metric(keyword, field):
+    """Codex review of PR #132, P1-1: ``sum(offset) or sum(<bound>)`` is
+    legal PromQL whose left side is an unbound metric named ``offset``;
+    keywords are recognised only in the position PromQL reads them."""
     payload = minimal_profile()
-    payload["signals"][0]["scope"] = {"workload_label": "service"}
-    with pytest.raises(ValueError, match="namespace_label"):
+    payload["signals"][0][field] = f"sum({keyword}) or sum(x{SEL})"
+    with pytest.raises(ValueError, match=f"SCOPE_SELECTOR_UNBOUND signals/0/{field}"):
         profile(**payload)
+    payload["signals"][0][field] = f"sum(x{SEL}) or {keyword}"
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_UNBOUND"):
+        profile(**payload)
+    payload["signals"][0][field] = f"{keyword}[5m]"
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_UNBOUND"):
+        profile(**payload)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"x{SEL} offset 5m",
+        f"x{SEL}[5m] offset 5m",
+        f"x{SEL} and x{SEL}",
+        f"x{SEL} unless on (pod) x{SEL}",
+        f"x{SEL} > bool 1",
+        f"x{SEL} == bool x{SEL}",
+        f"vector(0) or x{SEL}",
+        f"1 or x{SEL}",
+        # a metric named like a keyword with a bound selector is a selector
+        f"offset{SEL}",
+        f"or{SEL} or and{SEL}",
+    ],
+)
+def test_keywords_in_their_syntactic_position_still_load(query):
+    assert profile(**scoped(query)).signals[0].query == query
 
 
 def test_prefix_and_dependency_scopes_are_derived_from_the_subject():

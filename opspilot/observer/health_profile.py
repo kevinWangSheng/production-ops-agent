@@ -182,15 +182,15 @@ class SignalScope(DTO):
 
     Metric families spell the same workload differently: kube-state-metrics
     carries ``namespace`` and ``deployment`` (or a ``pod`` name prefixed by
-    the Deployment), the span metrics carry ``service_name`` and no
-    namespace at all. The signal therefore declares the label names; the
+    the Deployment), the span metrics carry ``k8s_namespace_name`` and
+    ``service_name``. The signal therefore declares the label names; the
     values are never declared, they are the subject's. The validator then
     requires, in every vector selector of ``query``, ``coverage_query`` and
     ``freshness_query``:
 
-    - ``<namespace_label>="<subject.kubernetes_namespace>"`` unless
-      ``namespace_label`` is ``null``, the explicit, reviewable statement
-      that the series have no namespace dimension;
+    - ``<namespace_label>="<subject.kubernetes_namespace>"``; every series
+      the profile may read carries a namespace label, so there is no
+      opt-out (codex review of PR #132, P1-2);
     - ``<workload_label>="<subject.service>"`` (``exact``),
       ``<workload_label>=~"<subject.service>-.*"`` (``prefix``, pod names),
       or ``<workload_label>=~"<dep1>|<dep2>|..."`` (``dependencies``, the
@@ -200,7 +200,7 @@ class SignalScope(DTO):
     mismatch; a selector without them is unbound. Both are refused.
     """
 
-    namespace_label: LabelName | None
+    namespace_label: LabelName
     workload_label: LabelName
     workload_match: Literal["exact", "prefix", "dependencies"] = "exact"
     dependencies: tuple[DnsLabel, ...] = ()
@@ -806,7 +806,16 @@ _LABEL_LIST = re.compile(
 _LABEL_LIST_KEYWORDS = frozenset(
     {"by", "without", "on", "ignoring", "group_left", "group_right"}
 )
-_KEYWORDS = frozenset({"and", "or", "unless", "bool", "offset"})
+#: Set operators: keywords only between two expressions, i.e. right after a
+#: token that ends one (``)``, ``}``, ``]``, a number or a string). Anywhere
+#: else the same word is a metric name (``sum(or)`` is legal PromQL and
+#: selects every namespace; codex review of PR #132, P1-1).
+_BINARY_KEYWORDS = frozenset({"and", "or", "unless"})
+#: Tokens after which ``offset`` is the modifier and not a metric name.
+_OFFSET_AFTER = frozenset({"}", "]"})
+#: Characters a comparison operator ends with; ``bool`` after one is the
+#: modifier, elsewhere a metric name.
+_BOOL_AFTER = frozenset({"=", "!", "<", ">"})
 _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 
 
@@ -818,22 +827,27 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
     stray brace, a backtick string, an escape it cannot decode) is
     ``SCOPE_SELECTOR_UNPARSABLE`` rather than skipped. An identifier is a
     function or aggregation when ``(`` follows it, a selector when ``{``
-    does, a keyword when it is one; everything else is a bare metric.
+    does, and a keyword only in the syntactic position where PromQL reads
+    it as one (``or`` between expressions, ``offset`` after a selector,
+    ``bool`` after a comparison); everywhere else it is a bare metric, so a
+    metric that happens to be named like a keyword cannot slip past.
     """
     selectors: list[tuple[_Matcher, ...]] = []
     position = 0
     pending: str | None = None  # an identifier awaiting the token after it
+    previous: tuple[str, str] = ("start", "")  # last significant (kind, text)
     while position < len(query):
         token = _TOKEN.match(query, position)
         if token is None:
             raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-        kind, text, position = token.lastgroup, token.group(), token.end()
+        kind, text, position = token.lastgroup or "", token.group(), token.end()
         if kind == "space":
             continue
         if kind == "brace":
             matchers, position = _matcher_body(query, position)
             selectors.append(matchers)
             pending = None
+            previous = ("punct", "}")
             continue
         if pending is not None:
             if pending in _LABEL_LIST_KEYWORDS:
@@ -841,19 +855,36 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                     raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
                 position = _skip_label_list(query, position)
                 pending = None
+                previous = ("punct", ")")
                 continue
             if text == "(":
                 pending = None
+                previous = (kind, text)
                 continue
             if kind == "ident" and text in _LABEL_LIST_KEYWORDS:
                 pending = text  # ``sum by (le) (...)``
                 continue
             raise ValueError("SCOPE_SELECTOR_UNBOUND")
-        if kind == "ident" and text not in _KEYWORDS:
+        if kind == "ident" and not _is_keyword_here(text, previous):
             pending = text
+            continue
+        previous = (kind, text)
     if pending is not None:
         raise ValueError("SCOPE_SELECTOR_UNBOUND")
     return selectors
+
+
+def _is_keyword_here(text: str, previous: tuple[str, str]) -> bool:
+    """Whether ``text`` is a PromQL keyword in this position (see
+    ``_vector_selectors``); label-list keywords are resolved by the caller."""
+    kind, before = previous
+    if text in _BINARY_KEYWORDS:
+        return before in {")", "}", "]"} or kind in {"number", "string"}
+    if text == "offset":
+        return before in _OFFSET_AFTER
+    if text == "bool":
+        return before in _BOOL_AFTER
+    return False
 
 
 def _matcher_body(query: str, position: int) -> tuple[tuple[_Matcher, ...], int]:
@@ -924,8 +955,7 @@ def _expected_matchers(
 ) -> dict[str, tuple[str, str]]:
     """``{label: (op, value)}`` every selector of the signal must carry."""
     expected: dict[str, tuple[str, str]] = {}
-    if scope.namespace_label is not None:
-        expected[scope.namespace_label] = ("=", subject.kubernetes_namespace)
+    expected[scope.namespace_label] = ("=", subject.kubernetes_namespace)
     if scope.workload_match == "exact":
         expected[scope.workload_label] = ("=", subject.service)
     elif scope.workload_match == "prefix":

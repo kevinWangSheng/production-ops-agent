@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "profile_id": "otel-demo-checkout",
-  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals declare namespace_label null because the lab's span metrics carry no namespace label (service_name, span_kind, span_name, status_code only).",
+  "description": "Recovery definition for the OTel Demo 2.0.2 checkout service on the M1-02 kind lab (kube-state-metrics for deployment and pod state, OTel span metrics for traffic, errors and latency). Every signal is required: F6 step 1 asks for deployment state, request volume, errors, latency, pod health and the dependencies checkout calls before recovery is reported. Freshness is judged per signal on the oldest of its series' newest raw sample timestamps (freshness_query = min(timestamp(...)) over the selector), not on the query window, so one stale dependency among eight cannot hide behind the others. Every signal declares a scope (issue #122): the label names under which its selectors carry the subject's namespace and workload; the loader refuses a query that does not select exactly the subject. Span-metric signals bind the namespace through k8s_namespace_name, which the lab's span series carry next to service_name (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json).",
   "subject": {
     "service": "checkout",
     "kubernetes_namespace": "otel-demo"
@@ -41,25 +41,25 @@
     {
       "name": "request_rate_per_second",
       "description": "PlaceOrder server spans per second over the evaluation window; the effective-traffic gate reads this signal. Lab steady state with 2 locust users is about 3.75 orders per 5 minutes (0.0125/s).",
-      "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": false,
       "healthy": {
         "min": 0
       },
       "scope": {
-        "namespace_label": null,
+        "namespace_label": "k8s_namespace_name",
         "workload_label": "service_name"
       }
     },
     {
       "name": "error_ratio",
       "description": "Share of PlaceOrder server spans ending in STATUS_CODE_ERROR. `or vector(0)` keeps a service with no error series from reading as no data; no traffic makes the whole ratio empty, which the traffic gate also catches.",
-      "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {
@@ -67,16 +67,16 @@
         "max": 0.01
       },
       "scope": {
-        "namespace_label": null,
+        "namespace_label": "k8s_namespace_name",
         "workload_label": "service_name"
       }
     },
     {
       "name": "latency_p95_milliseconds",
       "description": "p95 PlaceOrder server latency from the span-metrics histogram.",
-      "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
-      "coverage_query": "max(count_over_time(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
-      "freshness_query": "min(timestamp(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
+      "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {
@@ -84,7 +84,7 @@
         "max": 500
       },
       "scope": {
-        "namespace_label": null,
+        "namespace_label": "k8s_namespace_name",
         "workload_label": "service_name"
       }
     },
@@ -154,9 +154,9 @@
     {
       "name": "dependency_error_ratio",
       "description": "Share of checkout's outbound (client) spans ending in STATUS_CODE_ERROR, covering every dependency checkout calls.",
-      "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
-      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
-      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}))",
+      "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+      "coverage_query": "max(count_over_time(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+      "freshness_query": "min(timestamp(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}))",
       "minimum_samples": 3,
       "traffic_dependent": true,
       "healthy": {
@@ -164,7 +164,7 @@
         "max": 0.01
       },
       "scope": {
-        "namespace_label": null,
+        "namespace_label": "k8s_namespace_name",
         "workload_label": "service_name"
       }
     }
