@@ -23,9 +23,16 @@ class _RunOps(_StoreBase):
         versions: dict[str, str],
         actor: str,
         input: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> int:
-        """Continue a cancelled incident with a fresh Run and control generation."""
+        """Continue a cancelled incident with a fresh Run and control generation.
+
+        ``payload`` goes to the audit row as in ``control()`` (the caller's
+        request key, #128); the Run takes nothing from it.
+        """
         if type(expected_generation) is not int or expected_generation < 0:
+            raise PersistenceError("INVALID_INPUT")
+        if payload is not None and not isinstance(payload, dict):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
@@ -48,7 +55,7 @@ class _RunOps(_StoreBase):
             if existing_run is not None:
                 generation = int(existing_run["control_generation"])
                 replay = conn.execute(
-                    "SELECT 1 FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
+                    "SELECT payload FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
                     (incident_id, generation),
                 ).fetchone()
                 if (
@@ -58,6 +65,16 @@ class _RunOps(_StoreBase):
                     and int(row["control_generation"]) == generation
                     and expected_generation == generation - 1
                 ):
+                    # run_id 由期望代际派生，两把不同的请求键会算出同一个 run_id
+                    # 并可能同时到达：带键的请求只能重放带同一把键的审计行，否则
+                    # 那是另一个请求的结果（独立审查 PR #152 P1）；无键的旧行证明
+                    # 不了归属，同样按冲突处理。不带键的调用沿用原重放。
+                    requested = (
+                        None if payload is None else payload.get("idempotency_key")
+                    )
+                    recorded = (replay["payload"] or {}).get("idempotency_key")
+                    if requested is not None and recorded != requested:
+                        raise PersistenceError("CONTROL_CONFLICT")
                     return generation
                 if row["current_run_id"] == run_id and row["state"] != "cancelled":
                     raise PersistenceError("ILLEGAL_TRANSITION")
@@ -96,8 +113,15 @@ class _RunOps(_StoreBase):
                 (next_state, nxt, run_id, incident_id),
             )
             conn.execute(
-                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,'new_run',%s,%s,%s)",
-                (uuid4(), incident_id, nxt - 1, nxt, actor),
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'new_run',%s,%s,%s,%s)",
+                (
+                    uuid4(),
+                    incident_id,
+                    nxt - 1,
+                    nxt,
+                    actor,
+                    Jsonb(payload) if payload is not None else None,
+                ),
             )
             return nxt
 

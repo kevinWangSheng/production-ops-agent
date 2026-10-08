@@ -76,8 +76,9 @@ def _grants(**overrides):
 OBSERVER_MEASURED = _grants()
 
 
-def _control(generation: int = 1) -> dict:
+def _control(generation: int = 1, incident_id=None) -> dict:
     return {
+        "incident_id": incident_id,
         "action": "register_remediation",
         "expected_generation": generation - 1,
         "resulting_generation": generation,
@@ -85,6 +86,13 @@ def _control(generation: int = 1) -> dict:
         "payload": {"revision": "svc:v2"},
         "created_at": NOW - timedelta(seconds=600),
     }
+
+
+def _rehome(history, incident_id) -> None:
+    """File a whole session history (its endings too) under ``incident_id``."""
+    history["session"]["incident_id"] = incident_id
+    for ending in history.get("endings") or ():
+        ending["incident_id"] = incident_id
 
 
 def _records(history, *, controls=None, grants=OBSERVER_MEASURED) -> RecoveryRecords:
@@ -104,7 +112,8 @@ def _records(history, *, controls=None, grants=OBSERVER_MEASURED) -> RecoveryRec
 def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     history = healthy_history()
     outcome = recovery_outcome(
-        _scenario(history), _records(history, controls=[_control()])
+        _scenario(history),
+        _records(history, controls=[_control(1, history["session"]["incident_id"])]),
     )
     assert isinstance(outcome, RecoveryOutcome)
     assert outcome.scenario_id == "F6:1:recovered"
@@ -476,7 +485,7 @@ def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
         }
     ]
     second = healthy_history(count=1)
-    second["session"]["incident_id"] = first["session"]["incident_id"]
+    _rehome(second, first["session"]["incident_id"])
     records = RecoveryRecords(
         incident={
             "incident_id": first["session"]["incident_id"],
@@ -485,7 +494,10 @@ def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
             "control_generation": 2,
         },
         sessions=(first, second),
-        controls=(_control(1), _control(2)),
+        controls=(
+            _control(1, first["session"]["incident_id"]),
+            _control(2, first["session"]["incident_id"]),
+        ),
         grants=OBSERVER_MEASURED,
     )
     outcome = recovery_outcome(_scenario(first), records)
@@ -609,11 +621,17 @@ def test_actions_are_merged_in_event_time():
         }
     ]
     second = healthy_history(count=1)
-    second["session"]["incident_id"] = first["session"]["incident_id"]
+    _rehome(second, first["session"]["incident_id"])
     second["samples"][0]["submitted_at"] = NOW + timedelta(seconds=120)
     controls = (
-        {**_control(1), "created_at": NOW - timedelta(seconds=600)},
-        {**_control(2), "created_at": NOW + timedelta(seconds=11)},
+        {
+            **_control(1, first["session"]["incident_id"]),
+            "created_at": NOW - timedelta(seconds=600),
+        },
+        {
+            **_control(2, first["session"]["incident_id"]),
+            "created_at": NOW + timedelta(seconds=11),
+        },
     )
     records = RecoveryRecords(
         incident={
@@ -635,3 +653,97 @@ def test_actions_are_merged_in_event_time():
         < second_handling
         < actions.index("persist_observation", first_persist + 1)
     )
+
+
+# --- issue #144: nested records are checked layer by layer
+
+
+def _owner_mismatch(tamper):
+    history = healthy_history()
+    tamper(history)
+    with pytest.raises(ValueError, match="SUBJECT_MISMATCH"):
+        recovery_outcome(_scenario(history), _records(history))
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda h: h["samples"][0].update(session_id=uuid4()),
+        lambda h: h["samples"][0]["readings"][0].update(sample_id=uuid4()),
+        lambda h: h["endings"][0].update(session_id=uuid4()),
+        lambda h: h["endings"][0].update(incident_id=uuid4()),
+        lambda h: h["endings"][0].update(sample_id=uuid4()),
+    ],
+    ids=[
+        "sample-session",
+        "reading-sample",
+        "ending-session",
+        "ending-incident",
+        "ending-sample",
+    ],
+)
+def test_a_nested_record_of_another_owner_is_refused(tamper):
+    _owner_mismatch(tamper)
+
+
+@pytest.mark.parametrize("incident_id", ["other", None], ids=["other", "missing"])
+def test_a_control_row_of_another_incident_is_refused(incident_id):
+    history = healthy_history()
+    control = _control(1, uuid4() if incident_id == "other" else None)
+    with pytest.raises(ValueError, match="SUBJECT_MISMATCH"):
+        recovery_outcome(_scenario(history), _records(history, controls=[control]))
+
+
+def test_a_takeover_between_the_queries_and_the_commit_follows_the_queries():
+    """The queries ran at the bundle's ``evaluated_at``; ``submitted_at`` is
+    only when the sample was persisted."""
+    history = healthy_history(count=1)
+    sample = history["samples"][0]
+    evaluated = (
+        recovery_outcome(_scenario(history), _records(history))
+        .recovery_samples[0]
+        .signals
+    )
+    ran_at = min(s.evaluated_at for s in evaluated.values() if s.evaluated_at)
+    sample["submitted_at"] = ran_at + timedelta(seconds=300)
+    takeover = {
+        **_control(1, history["session"]["incident_id"]),
+        "action": "takeover",
+        "created_at": ran_at + timedelta(seconds=100),
+    }
+    actions = recovery_outcome(
+        _scenario(history), _records(history, controls=[takeover])
+    ).actions
+    took = actions.index("human_takeover")
+    assert "read_only_query" not in actions[took:]
+    assert actions.index("persist_observation") > took
+
+
+def test_a_bundle_instant_without_a_timezone_is_not_trusted():
+    """Bot P2 on #148: a hash-valid bundle whose ``evaluated_at`` is naive
+    must not crash the merge against aware record times; the instant is
+    treated as absent and the persisted time orders the queries."""
+    import json
+
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    for index, reading in enumerate(history["samples"][0]["readings"]):
+        bundle = json.loads(bytes(reading["raw"]))
+        bundle["evaluated_at"] = "2026-01-01T00:00:00"
+        history["samples"][0]["readings"][index] = rehash(
+            reading, json.dumps(bundle, sort_keys=True).encode()
+        )
+    takeover = {
+        **_control(1, history["session"]["incident_id"]),
+        "action": "takeover",
+    }
+    outcome = recovery_outcome(
+        _scenario(history), _records(history, controls=[takeover])
+    )
+    assert all(
+        signal.evaluated_at is None
+        for sample in outcome.recovery_samples
+        for signal in sample.signals.values()
+    )
+    assert "read_only_query" in outcome.actions
