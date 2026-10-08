@@ -1,7 +1,7 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–2 步已合并 #111 #113 #114；F6 验收与合同测试已合并 #112；第 3 步 #85 与第 4 步 #86 并行开发中，第 4 步 PR 待审）
-- 更新日期：2026-10-07
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；下一步第 5 步 #87、第 6 步 #88，第 6 步前须完成 #122 #125 #126 #115）
+- 更新日期：2026-10-08
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
 
