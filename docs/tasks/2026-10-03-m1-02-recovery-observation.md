@@ -192,7 +192,7 @@
 - #125 → #130：scope 检查之后重算采样剩余预算。
 - #126 → #131：工程脚本不跟随重定向（lab 凭据不外发）；Observer 协议错误判 failed，如实保存已读前缀与状态码。后续 #133。
 - #122 → #132（用户合并）：HealthProfile 每信号必填 `scope`，加载时校验每个选择器恰好绑定 `subject`；用户决定方案 B，pod 健康改 Deployment 级、去掉重启计数（owner 链转 #134）；revision `@b72bbe2e30be`，旧格式拒绝加载；`kube_deployment_status_replicas_ready` 未校准，#88 开环境先取证。扫描器误拒类兼容项转 #135。
-- #135（`chore/fix-profile-promql-scanner`）：`_vector_selectors` 接受 `atan2`（关键字大小写不敏感）、`offset`/`@` 后的符号（含 range 之后的负偏移）与 `Inf`/`NaN` 字面量，拒绝 `x by (s)` 与 `rate(x) by (s)`、`@ --1`（尾随 `by`/`without` 只给无前置分组的聚合算子）、`@ Inf`。基准是 Prometheus 官方解析器（`github.com/prometheus/prometheus` v0.307.2 = 3.7.2 的 `promql/parser`，本机无 promtool/Docker 守护进程，用 Go 小程序调 `ParseExpr`）；表驱动用例 67 条把其接受/拒绝结果固化进 `tests/test_m1_health_profile.py`。shipped profile 未改、revision 不变。已知未覆盖（保持 fail-closed）：关键字大写的 `BY`/`WITHOUT`。自决（可逆）：一并修了 #135 评论第 4、5 条。
+- #135（`chore/fix-profile-promql-scanner`）：`_vector_selectors` 接受 `atan2`（关键字大小写不敏感）、`offset`/`@` 后的符号（含 range 之后的负偏移）与 `Inf`/`NaN` 字面量，拒绝 `offset`/`@` 后的非法操作数（`1bogus`、`1.5s`、`-start()`），拒绝 `x by (s)` 与 `rate(x) by (s)`、`@ --1`（尾随 `by`/`without` 只给无前置分组的聚合算子）、`@ Inf`。基准是 Prometheus 官方解析器（`github.com/prometheus/prometheus` v0.307.2 = 3.7.2 的 `promql/parser`，本机无 promtool/Docker 守护进程，用 Go 小程序调 `ParseExpr`）；表驱动用例 84 条（另有 320 条 offset/@ 符号与操作数组合的一次性差分，0 条放行差异、0 条误拒）把其接受/拒绝结果固化进 `tests/test_m1_health_profile.py`。shipped profile 未改、revision 不变。已知未覆盖（保持 fail-closed）：关键字大写的 `BY`/`WITHOUT`。自决（可逆）：一并修了 #135 评论第 4、5 条。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
 

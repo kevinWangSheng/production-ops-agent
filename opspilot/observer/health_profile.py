@@ -850,6 +850,14 @@ _COMPARISON_CHARS = frozenset("=!<>")
 _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 
 
+#: What follows ``offset`` or ``@``: a PromQL duration (``5m``, ``1h30m``) or
+#: a plain number (``5``, ``1.5e3``). The generic number token swallows any
+#: letters after a digit run (``1h`` of ``1h30m``, the ``bogus`` of
+#: ``1bogus``), so these two states match their operand themselves and leave
+#: whatever follows (``bogus``, ``s`` of ``1.5s``) to fail as an operand.
+_OFFSET_OPERAND = re.compile(r"(?:\d+(?:ms|[smhdwy]))+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
 def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
     """The matcher sets of every vector selector in ``query``, fail closed.
 
@@ -943,17 +951,21 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
             # single sign (``@ -1``, not ``@ --1``).
             if state == "at":
                 state = "at_signed"
-            elif state == "at_signed":
-                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             continue
         if state == "offset":
             if kind != "number":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-            state = "operand"
+            operand = _OFFSET_OPERAND.match(query, token.start())
+            if operand is None:
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            position, state = operand.end(), "operand"
             continue
         if state in {"at", "at_signed"}:
             if kind == "number":
-                state = "operand"
+                operand = _OFFSET_OPERAND.match(query, token.start())
+                if operand is None:
+                    raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+                position, state = operand.end(), "operand"
                 continue
             # ``@ start()`` / ``@ end()``, keywords in any case
             if kind == "ident" and state == "at" and text.lower() in {"start", "end"}:
