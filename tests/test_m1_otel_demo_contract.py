@@ -1193,7 +1193,11 @@ def test_default_opener_follows_no_redirects_and_uses_no_proxy(monkeypatch):
 def test_durable_control_maps_the_store_state_onto_a_snapshot():
     lease = _lease()
     store = FakeStore(lease, deadline=NOW)
-    executor, _, _, _ = _executor(pytest.MonkeyPatch(), FakeOpener(), store=store)
+    # a bare MonkeyPatch() is never undone and left build_opener patched for
+    # the rest of the session (seen when tests/test_m1_prometheus_credentials.py
+    # built a real opener afterwards); the context undoes it on exit
+    with pytest.MonkeyPatch.context() as mp:
+        executor, _, _, _ = _executor(mp, FakeOpener(), store=store)
     snapshot = DurableControl(store).snapshot(executor.scope)
     assert snapshot.control_generation == lease.control_generation
     assert snapshot.global_suspension_generation == lease.global_suspension_generation
@@ -1211,7 +1215,11 @@ def test_durable_control_maps_the_store_state_onto_a_snapshot():
 def test_durable_control_store_failure_is_control_unavailable():
     lease = _lease()
     store = FakeStore(lease, deadline=NOW)
-    executor, _, _, _ = _executor(pytest.MonkeyPatch(), FakeOpener(), store=store)
+    # a bare MonkeyPatch() is never undone and left build_opener patched for
+    # the rest of the session (seen when tests/test_m1_prometheus_credentials.py
+    # built a real opener afterwards); the context undoes it on exit
+    with pytest.MonkeyPatch.context() as mp:
+        executor, _, _, _ = _executor(mp, FakeOpener(), store=store)
     # The store's own failure vocabulary (a lost connection surfaces as
     # ``PersistenceError("STORAGE_UNAVAILABLE")`` out of ``transaction()``).
     for code in ("STORAGE_UNAVAILABLE", "LOCK_TIMEOUT", "UNKNOWN_IDENTITY"):
