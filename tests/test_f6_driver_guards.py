@@ -538,6 +538,7 @@ def test_mapping_rejects_sample_session_or_its_profile_mismatch(
     [
         ("observing", "spurious_handoff"),
         ("resolved", "spurious_handoff"),
+        ("handoff", "duplicate_handoff"),
         ("observing", "duplicate_lifecycle"),
         ("resolved", "duplicate_lifecycle"),
         ("handoff", "duplicate_lifecycle"),
@@ -569,6 +570,8 @@ def test_action_contract_rejects_surplus_handoff_or_inexact_lifecycle(
     if mutation == "spurious_handoff":
         assert outcome.human_interaction != "handoff"
         actions.append("human_handoff")
+    elif mutation == "duplicate_handoff":
+        actions.append("human_handoff")
     elif mutation == "duplicate_lifecycle":
         actions.append("advance_incident_lifecycle")
     else:
@@ -578,7 +581,7 @@ def test_action_contract_rejects_surplus_handoff_or_inexact_lifecycle(
         assert_readonly(altered, recovery_driver)
 
 
-def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
+def test_non_handoff_result_after_prior_handoff_keeps_the_prior_handoff_in_the_audit(
     recovery_driver, f6_profile
 ):
     from datetime import timedelta
@@ -615,15 +618,14 @@ def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
     )
     assert current.incident_lifecycle == "resolved"
     assert current.human_interaction is None
-    try:
-        assert_readonly(current, recovery_driver)
-    except AssertionError:
-        # Only the history-scoped handoff action is the open contract
-        # question (#154); every other check must still hold without it.
-        rest = deepcopy(current)
-        rest.actions = tuple(a for a in current.actions if a != "human_handoff")
-        assert_readonly(rest, recovery_driver)
-        assert current.actions.count("human_handoff") == 1
-        pytest.xfail(
-            "合同待定 #154：全历史 actions 含已发生的交接，与「非交接结果 human_handoff 为 0」冲突"
+    assert current.actions.count("human_handoff") == 1
+    assert_readonly(current, recovery_driver)
+    # The audit retains exactly the historical handoff, not an arbitrary count.
+    for count in (0, 2):
+        altered = deepcopy(current)
+        altered.actions = (
+            tuple(action for action in current.actions if action != "human_handoff")
+            + ("human_handoff",) * count
         )
+        with pytest.raises(AssertionError):
+            assert_readonly(altered, recovery_driver)

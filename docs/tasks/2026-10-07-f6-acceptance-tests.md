@@ -84,5 +84,10 @@ F6 第 6 步真实环境、持久化原子边界与角色隔离验证留在原 M
 - 本地PG：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **124 passed、2 xfailed、0 skipped**（9.66秒、退出0），日志`tmp/f6-final-p1-pg.txt`。
 - `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、492 skipped、2个既有架构债xfailed**（72.18秒、退出0），锁/Ruff/mypy全过，日志`tmp/f6-final-p1-check.txt`；默认非PG。另Ruff与git diff --check通过。无提交/push/PR，未initdb/停PG/操作其它端口。
 
-- #145 收紧（PR #155，2026-10-08）：驱动逐样本绑定持久会话，生命周期/交接动作精确计数；测试作者 Codex，独立审查另一 Codex 会话。PG 套件 134 passed、3 xfailed。
-- #154 条件 xfail：`test_non_handoff_result_after_prior_handoff_has_no_handoff_action`（先交接后恢复）全历史 actions 含 1 次真实交接，与「非交接结果 human_handoff 为 0」冲突；仅当去掉 human_handoff 后其余断言全过才 xfail，其它失败照常红。用户 2026-10-08 决定：actions 为完整审计，#145 第 2 条限定为最新会话/当前范围，该场景期望 human_handoff=1；落地另开 PR（`test/f6-154-handoff-scope`），不在 #155 改断言。
+- #145 收紧（PR #155，2026-10-08）：驱动逐样本绑定持久会话，生命周期/交接动作精确计数；测试作者 Codex，独立审查另一 Codex 会话。该轮PG套件134 passed、3 xfailed；当前口径与复验见下条 #154。
+- #154 已按用户2026-10-08裁定落地：`actions` 为完整审计，#145第2条仅约束最新会话/当前范围不新增交接；历史交接必须保留。所有结果的 human_handoff 次数精确等于同一持久范围内各会话 deadline_expired / max_samples_exhausted 结束记录数；交接结果还须至少1，单会话非交接仍为0。先交接后恢复直接检查恰为1，并拒绝缺失/多余历史交接，交接结果也拒绝重复动作。驱动仅从同一持久快照提取结束原因作为独立见证，不从 actions 或最新判定倒推。
+- 本轮工作区 `production-ops-agent-f6-154`、分支 `test/f6-154-handoff-scope`、main起点 `1004a86`。只改测试/指定文档，未改产品、ROADMAP、passes，未提交；未操作其它端口。临时PG由调用者管理，不停库。
+- 红：移除连续场景的跳过逻辑、增加交接结果重复动作检查后，PG定向 **2 failed、7 passed、33 deselected**（1.86秒）：旧断言要求历史交接1等于0，且不能拒绝重复交接。随后按持久结束记录计数修改断言，未放宽其它断言。
+- 绿：端口55633指定三文件PG命令 **136 passed、2 xfailed、0 skipped、0 failed**（11.22秒，退出0）；41外部场景、42领域合同、11原夹具、42驱动检查通过。2个既有持久任务身份缺口仍xfail；本轮无产品投影失败。完整命令与合同说明见[测试说明](../testing/f6-acceptance-tests.md)。
+- `UV_CACHE_DIR=tmp/uv-cache make check` 最终退出0：锁检查、Ruff lint/format、mypy（75源文件）通过；pytest **3386 passed、512 skipped、2个既有架构债xfailed、0 failed**（88.92秒）。首轮因新增测试格式不符退出2，定向格式化后重跑通过。默认未启用PG，不能代替上条PG证据；`git diff --check`通过。
+- 全新上下文独立审查完成：未发现正确性/合同缺口，独立抽取 `assert_readonly` 的17个合成计数案例通过，3个测试文件语法解析通过；文档旧口径已复验消除。审查者未操作PG，此项不替代作者PG运行。

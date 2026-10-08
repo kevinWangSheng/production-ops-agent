@@ -675,6 +675,13 @@ class ProductRecoveryRuntime:
                 for row in history["endings"]
             )
             result["lifecycle_events"] = tuple(sorted(events, key=lambda row: row[0]))
+            # Raw ending reasons retain the same history/replay scope as actions.
+            # They witness handoffs independently of the product's action audit.
+            result["ending_reasons"] = tuple(
+                row["ended_reason"]
+                for history in records["sessions"]
+                for row in history["endings"]
+            )
         # permissions/actions/verdict/health/handoff are copied unchanged.
         return SimpleNamespace(**result)
 
