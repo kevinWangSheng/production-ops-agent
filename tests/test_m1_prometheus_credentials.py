@@ -312,3 +312,121 @@ def test_lab_values_mount_the_web_config_and_authenticate_the_collector():
         if "password" in line.lower() and not line.strip().startswith("#"):
             assert "${env:" in line, line
     assert sys.version_info >= (3, 12)
+
+
+# --- engineer scripts use the lab account (PR #119 follow-up)
+
+
+def _engineer_stub():
+    """A Prometheus stand-in that accepts only the ``lab`` account."""
+    seen: list[str | None] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            auth = self.headers.get("Authorization")
+            seen.append(auth)
+            if auth != _basic("lab", "lab-pw"):
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b"Unauthorized\n")
+                return
+            body = json.dumps(
+                {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [{"metric": {}, "value": [1.0, "1"]}],
+                    },
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, seen
+
+
+def test_lab_authorization_prefers_the_env_then_the_auth_file(tmp_path):
+    assert kind_lab.lab_authorization({}, path=tmp_path / "missing.json") is None
+    env = {
+        "OPSPILOT_LAB_PROMETHEUS_USERNAME": "lab",
+        "OPSPILOT_LAB_PROMETHEUS_PASSWORD": "lab-pw",
+    }
+    assert kind_lab.lab_authorization(env, path=tmp_path / "missing.json") == _basic(
+        "lab", "lab-pw"
+    )
+    path = tmp_path / "prometheus-auth.json"
+    accounts = kind_lab.prometheus_accounts(path)
+    assert kind_lab.lab_authorization({}, path=path) == _basic("lab", accounts["lab"])
+    # the lab role's env file carries only the lab variables
+    env_file = kind_lab.role_env_file("lab", accounts, tmp_path / "lab.env")
+    assert env_file.read_text() == (
+        f"OPSPILOT_LAB_PROMETHEUS_USERNAME=lab\nOPSPILOT_LAB_PROMETHEUS_PASSWORD={accounts['lab']}\n"
+    )
+
+
+def test_otel_demo_observe_and_collect_baseline_authenticate_as_lab(
+    monkeypatch, tmp_path
+):
+    """Both engineer scripts read the lab account through ``kind_lab``;
+    without it the authenticated Prometheus refuses them (401 surfaces, it
+    is not hidden), with it they get their data."""
+    import importlib.util
+    import urllib.error
+
+    from scripts import otel_demo_observe
+
+    spec = importlib.util.spec_from_file_location(
+        "collect_baseline",
+        Path(kind_lab.ROOT) / "docs/evidence/m1-02-health-profile/collect_baseline.py",
+    )
+    assert spec is not None and spec.loader is not None
+    collect_baseline = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(collect_baseline)
+
+    server, seen = _engineer_stub()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}"
+        # distinct prefixes on one stub host: the script tells Prometheus
+        # from Jaeger by URL prefix
+        monkeypatch.setattr(otel_demo_observe, "PROM", url + "/prometheus")
+        monkeypatch.setattr(kind_lab, "AUTH_FILE", tmp_path / "missing.json")
+        for name in (
+            "OPSPILOT_LAB_PROMETHEUS_USERNAME",
+            "OPSPILOT_LAB_PROMETHEUS_PASSWORD",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            otel_demo_observe.prom_instant("up", NOW)
+        assert refused.value.code == 401
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            collect_baseline.get(url, "/api/v1/query", {"query": "up"})
+        assert refused.value.code == 401
+        assert seen == [None, None]
+        seen.clear()
+        monkeypatch.setenv("OPSPILOT_LAB_PROMETHEUS_USERNAME", "lab")
+        monkeypatch.setenv("OPSPILOT_LAB_PROMETHEUS_PASSWORD", "lab-pw")
+        assert otel_demo_observe.prom_instant("up", NOW) == [
+            {"metric": {}, "value": [1.0, "1"]}
+        ]
+        assert (
+            collect_baseline.get(url, "/api/v1/query", {"query": "up"})["status"]
+            == "success"
+        )
+        assert seen == [_basic("lab", "lab-pw")] * 2
+        # Jaeger requests from the observe script carry no Prometheus credential
+        seen.clear()
+        monkeypatch.setattr(otel_demo_observe, "JAEGER", url + "/jaeger")
+        try:
+            otel_demo_observe.get(url + "/jaeger/api/services")
+        except urllib.error.HTTPError:
+            pass
+        assert seen == [None]
+    finally:
+        server.shutdown()

@@ -112,6 +112,12 @@ ROLE_ENV_VARS = {
         "OPSPILOT_OTEL_PROMETHEUS_USERNAME",
         "OPSPILOT_OTEL_PROMETHEUS_PASSWORD",
     ),
+    # engineer scripts (this one, scripts/otel_demo_observe.py, the evidence
+    # collectors): not a product role, its own account all the same
+    "lab": (
+        "OPSPILOT_LAB_PROMETHEUS_USERNAME",
+        "OPSPILOT_LAB_PROMETHEUS_PASSWORD",
+    ),
 }
 
 
@@ -335,6 +341,29 @@ def basic_auth_header(accounts: dict[str, str], account: str) -> str:
     return "Basic " + base64.b64encode(raw).decode("ascii")
 
 
+def lab_authorization(
+    env: dict[str, str] | None = None, path: Path | None = None
+) -> str | None:
+    """The ``Authorization`` header engineer scripts send to the lab Prometheus.
+
+    The ``lab`` account from ``OPSPILOT_LAB_PROMETHEUS_USERNAME/_PASSWORD``
+    (``kind_lab.py env-file lab``), else from the private auth file when it
+    exists; ``None`` when neither is set (an authenticated Prometheus then
+    answers 401, which the scripts report instead of hiding).
+    """
+    env = os.environ if env is None else env
+    # resolved at call time so a test (or a relocated LAB_DIR) can point it
+    path = AUTH_FILE if path is None else path
+    user_var, password_var = ROLE_ENV_VARS["lab"]
+    username, password = env.get(user_var), env.get(password_var)
+    if username and password:
+        raw = f"{username}:{password}".encode()
+        return "Basic " + base64.b64encode(raw).decode("ascii")
+    if path.exists():
+        return basic_auth_header(prometheus_accounts(path), "lab")
+    return None
+
+
 def colima_status() -> str:
     proc = capture(["colima", "list", "--json"])
     for line in proc.stdout.splitlines():
@@ -386,13 +415,10 @@ def get_json(
 
 def prom_instant(expr: str) -> tuple[int, list[object]]:
     query = urllib.parse.urlencode({"query": expr, "time": int(time.time())})
-    # the lab account; without the auth file the request is anonymous and
-    # an authenticated Prometheus answers 401 (health then reports it)
-    authorization = (
-        basic_auth_header(prometheus_accounts(), "lab") if AUTH_FILE.exists() else None
-    )
+    # the lab account; without it the request is anonymous and an
+    # authenticated Prometheus answers 401 (health then reports it)
     status, payload = get_json(
-        f"{PROMETHEUS}/api/v1/query?{query}", authorization=authorization
+        f"{PROMETHEUS}/api/v1/query?{query}", authorization=lab_authorization()
     )
     if (
         status == 200

@@ -28,13 +28,18 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from opspilot.observer import PROFILE_DIRECTORY, load_health_profile  # noqa: E402
+from scripts.kind_lab import lab_authorization  # noqa: E402
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def get(base: str, path: str, params: dict[str, object]) -> dict:
     url = f"{base}{path}?{urllib.parse.urlencode(params)}"
-    with OPENER.open(url, timeout=20) as response:
+    # the lab Prometheus authenticates (M1-02 step 4): the ``lab`` account
+    authorization = lab_authorization()
+    headers = {} if authorization is None else {"Authorization": authorization}
+    request = urllib.request.Request(url, headers=headers)
+    with OPENER.open(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
