@@ -15,8 +15,10 @@ reasons of its own, and a record the replay cannot reproduce comes out as
 Field sources (``RecoveryOutcome``):
 
 * ``subject_id``: ``scenario.subject_id``, which must be the incident id
-  the records were read for; a record of another incident is refused
-  (``SUBJECT_MISMATCH``), never relabelled.
+  the records were read for; a record of another incident -- or a sample,
+  reading, ending record or control row filed under another session or
+  incident than the layer above it -- is refused (``SUBJECT_MISMATCH``),
+  never relabelled.
 * ``recorded_lifecycle`` / ``incident_mode``: the committed incident row.
   ``incident_lifecycle`` is the lifecycle the replay can vouch for: the
   recorded one when the stored basis reproduces, ``unverified`` when the
@@ -44,7 +46,8 @@ Field sources (``RecoveryOutcome``):
   profile row behind the session's revision; ``recovery_handled_at``: the
   session's ``authorized_at``.
 * ``actions``: the audit of what the product did, merged in event time
-  (control rows by ``created_at``, samples by ``submitted_at``, ending
+  (control rows by ``created_at``, a sample's queries by the bundle's
+  ``evaluated_at`` and its persistence by ``submitted_at``, ending
   records by ``recorded_at``; a row without a timestamp keeps its record
   position). Control rows: ``register_remediation`` -> ``record_handling``,
   plus ``advance_incident_lifecycle`` only when the lifecycle did move --
@@ -411,9 +414,12 @@ def _instant(bundle: Mapping[str, Any] | None, key: str) -> datetime | None:
     if bundle is None or not isinstance(bundle.get(key), str):
         return None
     try:
-        return datetime.fromisoformat(str(bundle[key]))
+        at = datetime.fromisoformat(str(bundle[key]))
     except ValueError:
         return None
+    # fail closed: an instant without an offset cannot be ordered against
+    # the aware record times, so it is no instant at all
+    return at if at.tzinfo is not None else None
 
 
 def _observed_at(bundle: Mapping[str, Any] | None) -> datetime | None:
@@ -567,13 +573,25 @@ def _actions(
         order += 1
     for history in sessions:
         for stored in history["samples"]:
-            done = []
+            queries: list[str] = []
+            evaluated: list[datetime] = []
             for row in stored.get("readings") or ():
                 if str(row.get("signal_name")) == PROFILE_SENTINEL:
                     continue
-                done.extend(["read_only_query"] * _queries_sent(_bundle(row)))
-            done.append("persist_observation")
-            events.append((stored.get("submitted_at"), order, done))
+                bundle = _bundle(row)
+                queries.extend(["read_only_query"] * _queries_sent(bundle))
+                at = _instant(bundle, "evaluated_at")
+                if at is not None:
+                    evaluated.append(at)
+            if queries:
+                # the queries ran when the bundle says; ``submitted_at`` is
+                # only when the sample was persisted (a takeover can fall
+                # between the two)
+                events.append(
+                    (min(evaluated, default=stored.get("submitted_at")), order, queries)
+                )
+                order += 1
+            events.append((stored.get("submitted_at"), order, ["persist_observation"]))
             order += 1
         for ending in history.get("endings") or ():
             done = []
@@ -635,6 +653,33 @@ def _sample_jobs(sessions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
     )
 
 
+def _require_owned(subject_id: str, history: Mapping[str, Any]) -> None:
+    """Every layer of one session history names the incident / session it
+    hangs under; a sample or ending filed under another one is refused
+    (``SUBJECT_MISMATCH``), never relabelled with the requested subject."""
+    session = history["session"]
+    session_id = str(session.get("session_id"))
+    if str(session.get("incident_id")) != subject_id:
+        raise ValueError("SUBJECT_MISMATCH")
+    for stored in history["samples"]:
+        if str(stored.get("session_id")) != session_id:
+            raise ValueError("SUBJECT_MISMATCH")
+        for row in stored.get("readings") or ():
+            if str(row.get("sample_id")) != str(stored.get("sample_id")):
+                raise ValueError("SUBJECT_MISMATCH")
+    own_samples = {str(stored.get("sample_id")) for stored in history["samples"]}
+    for ending in history.get("endings") or ():
+        if (
+            str(ending.get("session_id")) != session_id
+            or str(ending.get("incident_id")) != subject_id
+            or (
+                ending.get("sample_id") is not None
+                and str(ending["sample_id"]) not in own_samples
+            )
+        ):
+            raise ValueError("SUBJECT_MISMATCH")
+
+
 def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome:
     """Project one incident's committed recovery records for ``scenario``.
 
@@ -649,9 +694,11 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
         raise ValueError("SUBJECT_MISMATCH")
     sessions = tuple(records.sessions)
     for history in sessions:
-        if str(history["session"].get("incident_id")) != subject_id:
-            raise ValueError("SUBJECT_MISMATCH")
+        _require_owned(subject_id, history)
     controls = tuple(dict(row) for row in records.controls)
+    for row in controls:
+        if str(row.get("incident_id")) != subject_id:
+            raise ValueError("SUBJECT_MISMATCH")
     latest = sessions[-1] if sessions else None
     replay = None if latest is None else replay_history(latest)
     session_row = None if latest is None else latest["session"]

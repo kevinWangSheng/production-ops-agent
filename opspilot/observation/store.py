@@ -1902,7 +1902,7 @@ class ObservationStore(_StoreBase):
             ]
             sessions = [self._session_history_in(conn, sid) for sid in session_ids]
             controls = conn.execute(
-                "SELECT audit_id,action,expected_generation,resulting_generation,actor,payload,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at,audit_id",
+                "SELECT audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at,audit_id",
                 (incident_id,),
             ).fetchall()
         return {"incident": incident, "sessions": sessions, "controls": controls}
