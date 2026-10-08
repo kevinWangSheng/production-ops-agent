@@ -1075,7 +1075,7 @@ def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
     # online and replay agree: the bundle keeps the prefix, says it is
     # incomplete, and the reading fails on both sides
     answers = healthy_answers()
-    answers["sum(rate(x[5m]))"] = result
+    answers["sum(rate(x{namespace='ns',service='svc'}[5m]))"] = result
     store = FakeStore()
     taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
     assert taken.evaluation is not None and taken.evaluation.outcome == "failed"
