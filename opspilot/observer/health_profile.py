@@ -810,16 +810,11 @@ _LABEL_LIST = re.compile(
 _LABEL_LIST_KEYWORDS = frozenset(
     {"by", "without", "on", "ignoring", "group_left", "group_right"}
 )
-#: Set operators: keywords only between two expressions, i.e. right after a
-#: token that ends one (``)``, ``}``, ``]``, a number or a string). Anywhere
-#: else the same word is a metric name (``sum(or)`` is legal PromQL and
-#: selects every namespace; codex review of PR #132, P1-1).
 _BINARY_KEYWORDS = frozenset({"and", "or", "unless"})
-#: Tokens after which ``offset`` is the modifier and not a metric name.
-_OFFSET_AFTER = frozenset({"}", "]"})
-#: Characters a comparison operator ends with; ``bool`` after one is the
-#: modifier, elsewhere a metric name.
-_BOOL_AFTER = frozenset({"=", "!", "<", ">"})
+#: Characters a binary operator is made of; ``=!<>`` are the comparisons
+#: after which ``bool`` is a modifier.
+_OPERATOR_CHARS = frozenset("+-*/%^=!<>")
+_COMPARISON_CHARS = frozenset("=!<>")
 _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 
 
@@ -827,19 +822,52 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
     """The matcher sets of every vector selector in ``query``, fail closed.
 
     A bare metric name (``up``, ``x[5m]``) selects every namespace, so it is
-    ``SCOPE_SELECTOR_UNBOUND``; anything the scanner does not recognise (a
-    stray brace, a backtick string, an escape it cannot decode) is
-    ``SCOPE_SELECTOR_UNPARSABLE`` rather than skipped. An identifier is a
-    function or aggregation when ``(`` follows it, a selector when ``{``
-    does, and a keyword only in the syntactic position where PromQL reads
-    it as one (``or`` between expressions, ``offset`` after a selector,
-    ``bool`` after a comparison); everywhere else it is a bare metric, so a
-    metric that happens to be named like a keyword cannot slip past.
+    ``SCOPE_SELECTOR_UNBOUND``; anything outside the grammar the scanner
+    follows (a stray brace, a backtick string, an escape it cannot decode,
+    an operator where an operand belongs) is ``SCOPE_SELECTOR_UNPARSABLE``
+    rather than skipped.
+
+    The scanner tracks the one thing the scope check needs from PromQL's
+    grammar: whether the next token *starts an expression* or *follows an
+    operand*. A keyword is read as a keyword only in the positions where
+    PromQL does, and every identifier at an expression start is a metric
+    or function name whatever it is called (codex reviews of PR #132, P1-1
+    and the recheck: ``sum(or)``, ``x{} or on(service) or``,
+    ``group_left() offset`` are all bare metrics on the right):
+
+    - ``and`` / ``or`` / ``unless``: after an operand;
+    - ``on`` / ``ignoring``: right after a binary operator, ``group_left`` /
+      ``group_right``: right after ``on`` / ``ignoring`` lists; after any of
+      these lists the next token starts an expression;
+    - ``bool``: right after a comparison operator;
+    - ``offset``: after a selector or range, followed by a duration;
+    - ``by`` / ``without``: before an aggregation body or after one.
+
+    Parentheses are kept on a stack so that the ``)`` closing a modifier's
+    label list is never taken for the end of an expression.
     """
     selectors: list[tuple[_Matcher, ...]] = []
     position = 0
     pending: str | None = None  # an identifier awaiting the token after it
-    previous: tuple[str, str] = ("start", "")  # last significant (kind, text)
+    # ``expr``: an expression must start here; ``operand``: one just ended;
+    # ``operator``: a binary operator was read (modifiers may follow);
+    # ``modifier``: an on/ignoring list closed (group_left/right may follow);
+    # ``offset``: a duration is required; ``at``: an @ timestamp is required.
+    state = "expr"
+    comparison = False  # the pending operator is a comparison (``bool`` legal)
+    parens: list[str] = []  # "call" (function/aggregation) or "expr"
+    just_opened = False  # ``(`` was the last token: ``)`` may close an empty call
+
+    def label_list(at: int) -> int:
+        if at >= len(query) or query[at] != "(":
+            raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+        return _skip_label_list(query, at + 1)
+
+    def skip_space(at: int) -> int:
+        while at < len(query) and query[at].isspace():
+            at += 1
+        return at
+
     while position < len(query):
         token = _TOKEN.match(query, position)
         if token is None:
@@ -847,48 +875,134 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
         kind, text, position = token.lastgroup or "", token.group(), token.end()
         if kind == "space":
             continue
-        if kind == "brace":
-            matchers, position = _matcher_body(query, position)
-            selectors.append(matchers)
-            pending = None
-            previous = ("punct", "}")
-            continue
+        empty_call = just_opened and parens[-1:] == ["call"]
+        just_opened = False
         if pending is not None:
-            if pending in _LABEL_LIST_KEYWORDS:
-                if text != "(":
-                    raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
-                position = _skip_label_list(query, position)
-                pending = None
-                previous = ("punct", ")")
+            # The identifier before this token: a call, a selector, an
+            # aggregation with a prefix label list, or a bare metric.
+            pending = None
+            if kind == "brace":
+                matchers, position = _matcher_body(query, position)
+                selectors.append(matchers)
+                state = "operand"
                 continue
             if text == "(":
-                pending = None
-                previous = (kind, text)
+                parens.append("call")
+                state = "expr"
+                just_opened = True
                 continue
-            if kind == "ident" and text in _LABEL_LIST_KEYWORDS:
-                pending = text  # ``sum by (le) (...)``
+            if kind == "ident" and text in {"by", "without"}:
+                position = label_list(skip_space(position))
+                position = skip_space(position)
+                if position >= len(query) or query[position] != "(":
+                    raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+                parens.append("call")
+                position += 1
+                state = "expr"
                 continue
-            raise ValueError("SCOPE_SELECTOR_UNBOUND")
-        if kind == "ident" and not _is_keyword_here(text, previous):
-            pending = text
+            raise ValueError("SCOPE_SELECTOR_UNBOUND")  # a bare metric
+        if state == "offset":
+            if kind != "number":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            state = "operand"
             continue
-        previous = (kind, text)
+        if state == "at":
+            if kind == "number":
+                state = "operand"
+                continue
+            if kind == "ident":  # ``@ start()`` / ``@ end()``: a call
+                pending = text
+                state = "expr"
+                continue
+            raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+        if kind == "ident":
+            if state == "operand":
+                if text in _BINARY_KEYWORDS:
+                    state, comparison = "operator", False
+                    continue
+                if text == "offset":
+                    state = "offset"
+                    continue
+                if text in {"by", "without"}:  # ``sum(...) by (le)``
+                    position = label_list(skip_space(position))
+                    continue
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            if state == "operator" and text == "bool" and comparison:
+                comparison = False
+                continue
+            if state == "operator" and text in {"on", "ignoring"}:
+                position = label_list(skip_space(position))
+                state = "modifier"
+                continue
+            if state == "modifier" and text in {"group_left", "group_right"}:
+                after = skip_space(position)
+                if after < len(query) and query[after] == "(":
+                    position = _skip_label_list(query, after + 1)
+                state = "expr"
+                continue
+            # every other identifier starts an expression: a metric name
+            pending = text
+            state = "expr"
+            continue
+        if kind == "brace":
+            if state == "operand":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            matchers, position = _matcher_body(query, position)
+            selectors.append(matchers)
+            state = "operand"
+            continue
+        if kind in {"number", "string"}:
+            if state == "operand":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            state = "operand"
+            continue
+        # punctuation
+        if text == "(":
+            if state == "operand":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            parens.append("expr")
+            state = "expr"
+            continue
+        if text == ")":
+            if not parens or (state != "operand" and not empty_call):
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            parens.pop()
+            state = "operand"  # ``start()`` / ``end()`` take no argument
+            continue
+        if text == ",":
+            if state != "operand" or not parens or parens[-1] != "call":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            state = "expr"
+            continue
+        if text == "[":
+            if state != "operand":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            close = query.find("]", position)
+            if close < 0:
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            position = close + 1  # the span itself is checked separately
+            continue
+        if text == "@":
+            if state != "operand":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            state = "at"
+            continue
+        if text in _OPERATOR_CHARS:
+            if state == "operand":
+                state, comparison = "operator", text in _COMPARISON_CHARS
+                continue
+            if state == "operator" and comparison and text in _COMPARISON_CHARS:
+                continue  # second character of ``==``, ``!=``, ``>=``, ``<=``
+            if state in {"expr", "operator", "modifier"} and text in {"+", "-"}:
+                state = "expr"  # unary sign
+                continue
+            raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+        raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
     if pending is not None:
         raise ValueError("SCOPE_SELECTOR_UNBOUND")
+    if state != "operand" or parens:
+        raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
     return selectors
-
-
-def _is_keyword_here(text: str, previous: tuple[str, str]) -> bool:
-    """Whether ``text`` is a PromQL keyword in this position (see
-    ``_vector_selectors``); label-list keywords are resolved by the caller."""
-    kind, before = previous
-    if text in _BINARY_KEYWORDS:
-        return before in {")", "}", "]"} or kind in {"number", "string"}
-    if text == "offset":
-        return before in _OFFSET_AFTER
-    if text == "bool":
-        return before in _BOOL_AFTER
-    return False
 
 
 def _matcher_body(query: str, position: int) -> tuple[tuple[_Matcher, ...], int]:

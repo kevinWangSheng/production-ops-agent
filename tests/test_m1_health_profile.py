@@ -934,6 +934,47 @@ def test_a_metric_named_like_a_keyword_is_still_a_bare_metric(keyword, field):
         profile(**payload)
 
 
+#: Positions after which PromQL reads the next token as the start of an
+#: expression; a keyword there is a metric name (codex recheck of PR #132).
+EXPRESSION_START_AFTER = {
+    "on": f"x{SEL} or on(service) KW",
+    "ignoring": f"x{SEL} or ignoring(service) KW",
+    "group_left_empty": f"x{SEL} / on(service) group_left() KW",
+    "group_left_labels": f"x{SEL} / on(service) group_left(x) KW",
+    "group_right": f"x{SEL} / on(service) group_right(x) KW",
+    "bool": f"x{SEL} > bool KW",
+    "by": "sum by (service) (KW)",
+    "without": "sum without (service) (KW)",
+    "paren": f"(KW) or x{SEL}",
+    "subquery": "max_over_time(KW[5m:15s])",
+    "offset": f"x{SEL} offset 5m or KW",
+    "at": f"x{SEL} @ 0 or KW",
+    "call_argument": f"clamp_min(KW, 1) or x{SEL}",
+    "unary": f"-KW or x{SEL}",
+}
+
+
+@pytest.mark.parametrize("keyword", ["offset", "and", "or", "unless", "bool"])
+@pytest.mark.parametrize("position", sorted(EXPRESSION_START_AFTER))
+@pytest.mark.parametrize("field", ["query", "coverage_query", "freshness_query"])
+def test_a_keyword_at_an_expression_start_is_a_bare_metric(keyword, position, field):
+    """Codex recheck of PR #132: ``x{} or on(service) or`` is legal PromQL
+    whose right side is the metric ``or``. Whatever closed before it (a
+    modifier label list, ``bool``, a paren), an identifier where an
+    expression starts is a metric and is unbound."""
+    payload = minimal_profile()
+    payload["signals"][0][field] = EXPRESSION_START_AFTER[position].replace(
+        "KW", keyword
+    )
+    with pytest.raises(ValueError, match=f"SCOPE_SELECTOR_UNBOUND signals/0/{field}"):
+        profile(**payload)
+    # the same shape with a bound selector in that position loads
+    payload["signals"][0][field] = EXPRESSION_START_AFTER[position].replace(
+        "KW", f"{keyword}{SEL}"
+    )
+    assert profile(**payload)
+
+
 @pytest.mark.parametrize(
     "query",
     [
@@ -948,6 +989,14 @@ def test_a_metric_named_like_a_keyword_is_still_a_bare_metric(keyword, field):
         # a metric named like a keyword with a bound selector is a selector
         f"offset{SEL}",
         f"or{SEL} or and{SEL}",
+        f"x{SEL} >= bool 1",
+        f"x{SEL} != bool x{SEL}",
+        f"sum(x{SEL}) by (service) or sum(x{SEL}) without (pod)",
+        f"x{SEL} / ignoring(pod) group_right x{SEL}",
+        f"x{SEL} @ end() offset 5m",
+        f"-x{SEL} + +x{SEL}",
+        f'label_replace(x{SEL}, "a", "$1", "b", "(.*)")',
+        f"max_over_time((x{SEL})[5m:15s])",
     ],
 )
 def test_keywords_in_their_syntactic_position_still_load(query):
