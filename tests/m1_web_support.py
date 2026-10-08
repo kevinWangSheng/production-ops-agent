@@ -262,11 +262,13 @@ class MemoryIncidentStore:
         if row["state"] in {"cancelled", "completed"} or row["conclusion"] is not None:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # PR #31: a follow_up/correct that carries content is recorded while
-        # paused (input only; the run stays paused), a bare one is refused.
+        # paused (input only; the run stays paused), a bare one is refused;
+        # a second pause is refused whatever its payload carries (every
+        # payload now holds the request key, #128), as DurableStore.control.
         if (
             row["state"] == "paused"
             and action in {"pause", "follow_up", "correct"}
-            and payload is None
+            and (action == "pause" or payload is None)
         ):
             raise PersistenceError("ILLEGAL_TRANSITION")
         if action != "cancel" and run["state"] not in _CONTROL_OPEN:
@@ -380,6 +382,7 @@ class MemoryIncidentStore:
         versions,
         actor,
         input=None,
+        payload=None,
     ):
         row = self.incidents.get(incident_id)
         if row is None:
@@ -392,6 +395,21 @@ class MemoryIncidentStore:
                 and row["control_generation"] == generation
                 and expected_generation == generation - 1
             ):
+                # Mirror DurableStore.new_run: a keyed request replays only
+                # the audit row bound to its own key (PR #152 review, P1).
+                requested = None if payload is None else payload.get("idempotency_key")
+                recorded = next(
+                    (
+                        (a.get("payload") or {}).get("idempotency_key")
+                        for a in self.controls
+                        if a["incident_id"] == incident_id
+                        and a["action"] == "new_run"
+                        and a["resulting"] == generation
+                    ),
+                    None,
+                )
+                if requested is not None and recorded != requested:
+                    raise PersistenceError("CONTROL_CONFLICT")
                 return generation
             raise PersistenceError("IDENTITY_CONFLICT")
         if row["state"] != "cancelled":
@@ -421,6 +439,7 @@ class MemoryIncidentStore:
                 "expected": nxt - 1,
                 "resulting": nxt,
                 "actor": actor,
+                "payload": payload,
             }
         )
         return nxt

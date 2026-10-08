@@ -10,7 +10,8 @@ committed rows and the recording model client:
 
 * the Run is ``waiting_human`` with no owner / lease, the incident
   ``human_owned`` with the generation stepped and the audit row written;
-* every model HTTP request started before the takeover committed; a second
+* every model HTTP request left the process (whole request written to the
+  socket) before the takeover committed; a second
   ``resume`` of the runner after the takeover claims nothing and issues no
   model request;
 * the LangSmith trace (``OPSPILOT_TRACE=lab``) of the Run, read back.
@@ -33,8 +34,11 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from http.client import HTTPSConnection
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,23 +83,61 @@ from scripts.m1_live_runner import (  # noqa: E402
 OUT_ROOT = ROOT / "docs/evidence/m1-02-takeover/live-runs"
 
 
+def signalling_connection(
+    base: type[HTTPSConnection], on_sent: Callable[[], None]
+) -> type[HTTPSConnection]:
+    """``base`` that calls ``on_sent`` once per request, after ``request()``
+    returned, i.e. after the request line, headers and the whole body were
+    handed to the socket. This is the HTTP emit boundary: bot review of PR #123
+    (#127) showed that setting an event in ``complete()`` precedes the real
+    send by an unbounded gap if the worker thread is suspended in between, and
+    PR #151 review that the headers alone are not the whole request."""
+
+    class SignallingConnection(base):  # type: ignore[valid-type, misc]
+        def request(self, *args: Any, **kwargs: Any) -> None:
+            super().request(*args, **kwargs)
+            on_sent()
+
+    return SignallingConnection
+
+
 class TimestampedRecordingClient(RecordingClient):
-    """``RecordingClient`` plus the wall-clock start of every HTTP request, so
-    the ledger shows each request started before the takeover committed."""
+    """``RecordingClient`` plus the wall-clock time every HTTP request left the
+    process, so the ledger shows each request was sent before the takeover
+    committed. ``request_starts`` and ``first_request_sent`` are driven by the
+    wire (``watch_wire``), not by entering ``complete()``."""
 
     def __init__(self, inner: DeepSeekClient, clock: SystemClock) -> None:
         super().__init__(inner)
         self._clock = clock
-        #: Set right before the first HTTP request leaves; the main thread
-        #: applies the takeover only after this (bot review of PR #123: a
-        #: lease alone does not prove a model request is in flight).
+        #: Set once the first model request has been written to the socket;
+        #: the main thread applies the takeover only after this (a lease
+        #: alone does not prove a model request is in flight).
         self.first_request_sent = threading.Event()
         self.request_starts: list[str] = []
+        self.watch_wire(inner)
+
+    def watch_wire(self, client: DeepSeekClient) -> None:
+        handler = getattr(client, "_https", None)
+        if handler is None:
+            # A caller-supplied opener has no connection factory to observe;
+            # without the wire the evidence would be a guess.
+            raise RuntimeError("model client exposes no HTTPS connection hook")
+        connection = signalling_connection(HTTPSConnection, self._on_wire_sent)
+
+        def connect(host: str, **kwargs: Any) -> HTTPSConnection:
+            made = connection(host, **kwargs)
+            handler.current = made
+            return made
+
+        handler._connect = connect
+
+    def _on_wire_sent(self) -> None:
+        self.request_starts.append(self._clock.now().isoformat())
+        self.first_request_sent.set()
 
     def complete(self, call):  # type: ignore[no-untyped-def]
         started_at = self._clock.now().isoformat()
-        self.request_starts.append(started_at)
-        self.first_request_sent.set()
         try:
             return super().complete(call)
         finally:
@@ -105,6 +147,122 @@ class TimestampedRecordingClient(RecordingClient):
 EXPERIMENT = "m1-02-takeover"
 # How long the main thread waits for the worker thread to hold a lease.
 CLAIM_WAIT_S = 60.0
+
+
+def failed_verdicts(verdicts: dict, takeover: dict) -> list[str]:
+    """The required verdicts that do not hold; empty means the takeover
+    evidence may be frozen. ``status: "ok"`` and a frozen ``summary.json``
+    claim all of them (#127: a timed-out wait or a refused ``control`` used
+    to be recorded as ``takeover_applied: false`` and still exit 0)."""
+    failures: list[str] = []
+
+    def require(name: str, holds: bool) -> None:
+        if not holds:
+            failures.append(name)
+
+    require("takeover_applied", verdicts.get("takeover_applied") is True)
+    before = verdicts.get("model_requests_before_takeover")
+    require(
+        "model_request_sent_before_takeover", isinstance(before, int) and before >= 1
+    )
+    require(
+        "run_parked_waiting_human", verdicts.get("run_state_after") == "waiting_human"
+    )
+    require("run_owner_released", verdicts.get("run_owner_after") is None)
+    # The same two facts as read in the takeover's own aftermath, before the
+    # worker thread finished: the worker's later generation-fence handling
+    # must not be able to stand in for the takeover transaction parking the Run.
+    require(
+        "run_parked_by_takeover",
+        verdicts.get("run_state_at_takeover") == "waiting_human"
+        and verdicts.get("run_owner_at_takeover") is None,
+    )
+    require(
+        "incident_human_owned", verdicts.get("incident_mode_after") == "human_owned"
+    )
+    require(
+        "control_generation_stepped",
+        takeover.get("resulting_generation") is not None
+        and verdicts.get("control_generation_after")
+        == takeover["resulting_generation"],
+    )
+    require(
+        "no_model_request_after_takeover_returned",
+        verdicts.get("no_model_request_after_takeover_returned") is True,
+    )
+    require(
+        "not_claimable_after_takeover",
+        verdicts.get("claimable_after_takeover") is False,
+    )
+    # Independent of the two resume counters: every request ever sent was
+    # sent before the takeover, including those of the first attempt that
+    # kept running while the takeover committed.
+    # The takeover must land while a response is still pending, or the
+    # in-flight fence was not exercised.
+    require(
+        "response_in_flight_at_takeover",
+        takeover.get("model_requests_returned_before") == 0,
+    )
+    require(
+        "no_request_sent_after_takeover",
+        not (isinstance(before, int) and before >= 1)  # reported above
+        or len(verdicts.get("request_started_at") or []) == before,
+    )
+    second = verdicts.get("second_resume") or {}
+    first = verdicts.get("first_attempt") or {}
+    require(
+        "late_reply_fenced",
+        first.get("status") == "control_denied"
+        and (first.get("loop") or {}).get("steps_committed") == 0,
+    )
+    require("second_resume_handed_off", second.get("status") == "handed_off")
+    return failures
+
+
+def settle(
+    verdicts: dict,
+    takeover: dict,
+    balance_before: Any,
+    balance_after: Any,
+    freeze_summary: Callable[[], tuple[dict, Path]],
+) -> int:
+    """Exit status of the run: freeze the summary only when every required
+    verdict holds, otherwise print the failure and exit non-zero."""
+    failures = failed_verdicts(verdicts, takeover)
+    if failures:
+        # Nothing is frozen: a summary under ``docs/evidence`` is a claim that
+        # the takeover held. The verdicts are printed for diagnosis.
+        print(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "failed_verdicts": failures,
+                    "takeover": {
+                        k: v for k, v in takeover.items() if k != "rows_after"
+                    },
+                    "verdicts": verdicts,
+                    "balance_before": balance_before,
+                    "balance_after": balance_after,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return 1
+    frozen, summary_path = freeze_summary()
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "summary": str(summary_path.relative_to(ROOT)),
+                "verdicts": verdicts,
+                "trace": frozen.get("trace"),
+            },
+            indent=2,
+            default=str,
+        )
+    )
+    return 0
 
 
 def _db_now(store: DurableStore) -> datetime:
@@ -291,6 +449,8 @@ def main() -> int:
         "takeover_applied": takeover.get("applied", False),
         "run_state_after": attempts[-1]["rows_after"].get("run_state"),
         "run_owner_after": attempts[-1]["rows_after"].get("owner"),
+        "run_state_at_takeover": (takeover.get("rows_after") or {}).get("run_state"),
+        "run_owner_at_takeover": (takeover.get("rows_after") or {}).get("owner"),
         "incident_mode_after": ledger["incident_after"]["mode"],
         "control_generation_after": ledger["incident_after"]["control_generation"],
         "model_requests_before_takeover": takeover.get("model_requests_started_before"),
@@ -304,50 +464,41 @@ def main() -> int:
         "second_resume": attempts[-1]["outcome"],
         "request_started_at": request_starts,
     }
-    frozen, summary_path = freeze(
-        ledger,
-        experiment=EXPERIMENT,
-        run_id=str(run_id),
-        evidence_dir=out,
-        summary={
-            "incident_id": str(incident),
-            "driver": ledger["driver"],
-            "model": ledger["model"],
-            "started": ledger["started"],
-            "ended": ledger["ended"],
-            "takeover": {k: v for k, v in takeover.items() if k != "rows_after"},
-            "verdicts": verdicts,
-            "controls": ledger["controls"],
-            "counts": {
-                "http": ledger["http_count"],
-                "prompt_tokens": ledger["prompt_tokens"],
-                "completion_tokens": ledger["completion_tokens"],
-                "run_usage": ledger["run_usage"],
-            },
-            "known_cost_cny_upper": ledger["known_cost_cny_upper"],
-            "balance_before": balance_before,
-            "balance_after": balance_after,
-            "trace": trace_evidence(
-                trace_record,
-                run_id=str(run_id),
-                project=project,
-                client_factory=langsmith_client,
-            ),
-        },
-    )
-    print(
-        json.dumps(
-            {
-                "status": "ok",
-                "summary": str(summary_path.relative_to(ROOT)),
+
+    def freeze_summary():
+        return freeze(
+            ledger,
+            experiment=EXPERIMENT,
+            run_id=str(run_id),
+            evidence_dir=out,
+            summary={
+                "incident_id": str(incident),
+                "driver": ledger["driver"],
+                "model": ledger["model"],
+                "started": ledger["started"],
+                "ended": ledger["ended"],
+                "takeover": {k: v for k, v in takeover.items() if k != "rows_after"},
                 "verdicts": verdicts,
-                "trace": frozen.get("trace"),
+                "controls": ledger["controls"],
+                "counts": {
+                    "http": ledger["http_count"],
+                    "prompt_tokens": ledger["prompt_tokens"],
+                    "completion_tokens": ledger["completion_tokens"],
+                    "run_usage": ledger["run_usage"],
+                },
+                "known_cost_cny_upper": ledger["known_cost_cny_upper"],
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "trace": trace_evidence(
+                    trace_record,
+                    run_id=str(run_id),
+                    project=project,
+                    client_factory=langsmith_client,
+                ),
             },
-            indent=2,
-            default=str,
         )
-    )
-    return 0
+
+    return settle(verdicts, takeover, balance_before, balance_after, freeze_summary)
 
 
 if __name__ == "__main__":
