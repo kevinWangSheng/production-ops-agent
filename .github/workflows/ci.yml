@@ -112,4 +112,4 @@ jobs:
           M1_DURABLE_POSTGRES: "1"
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
         # Native local cluster restart is independently tested on macOS, not this service.
-        run: .venv/bin/python -m pytest tests/integration -q
+        run: .venv/bin/python -m pytest tests/integration tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q

@@ -21,6 +21,7 @@ from opspilot.domain.observation import (
     may_schedule_sample,
 )
 from opspilot.domain.subjects import Incident, SubjectRef, advance_incident
+from tests.f6_boundary_support import ContractInterfaceConflict
 
 END = datetime(2026, 10, 7, 12, tzinfo=UTC)
 TARGET = Target(
@@ -263,3 +264,80 @@ def test_human_close_is_closed_and_reopen_needs_a_new_stage():
         advance_incident(reopened, "start_recovery_observation").lifecycle
         == "observing_recovery"
     )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=ContractInterfaceConflict,
+    reason="合同/接口冲突: 产品 sample_jobs 缺已结束且无样本的任务身份，见 opspilot/acceptance_recovery.py:616、opspilot/observation/revocation.py:53",
+)
+@pytest.mark.parametrize("fault", ["revoke", "expire"])
+def test_persisted_authority_guard_keeps_late_result_only_as_history(
+    recovery_driver, f6_profile, fault
+):
+    from copy import deepcopy
+
+    from tests.acceptance.test_f6_recovery import (
+        HANDLED,
+        assert_readonly,
+        assert_signal_basis,
+        observations,
+        scenario,
+        with_raw_payloads,
+    )
+
+    requested = scenario(1, f"persisted-authority-{fault}")
+    started = recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=[],
+        until=HANDLED,
+    )
+    assert started.incident_lifecycle == "observing_recovery"
+    recovery_driver.prepare_submission(requested.subject_id)
+    # Finish real telemetry collection, then revoke/expire the persisted
+    # authority immediately BEFORE calling the public submit_sample API.
+    recovery_driver.fault_at_submission(fault)
+    supplied = with_raw_payloads(observations(1))
+    outcome = recovery_driver.continue_observation(
+        requested,
+        observations=deepcopy(supplied),
+        until=supplied[-1]["window_end"],
+    )
+    before, after = recovery_driver.submission_snapshots()
+    assert before["observation_authorization"]["authorized"] is False
+    for field in (
+        "target",
+        "incident_lifecycle",
+        "control_state",
+        "adopted_sequence",
+        "adopted_window_end",
+        "healthy_window_seconds",
+        "used_sample_count",
+        "observation_authorization",
+        "observation_sessions",
+        "handling_audit",
+    ):
+        assert after[field] == before[field], field
+    assert before["recovery_samples"] == ()
+    assert len(after["recovery_samples"]) == 1
+    sample = after["recovery_samples"][0]
+    assert sample["disposition"] == "history_only"
+    assert sample["session_id"] == before["observation_authorization"]["session_id"]
+    assert sample["subject_id"] == requested.subject_id
+    assert_signal_basis(sample, supplied[0], recovery_driver)
+    assert outcome.recovery_confirmed is False
+    assert_readonly(outcome, recovery_driver)
+    try:
+        assert after["sample_jobs"] == before["sample_jobs"], "sample_jobs"
+    except AssertionError as exc:
+        # The external lease witness identifies the OLD job. It is never
+        # inserted into, or described as, the persistent snapshot.
+        if before["sample_jobs"] == () and after["sample_jobs"] == (
+            recovery_driver.submitted_job_witness(),
+        ):
+            raise ContractInterfaceConflict(
+                "ended job identity absent until history is stored"
+            ) from exc
+        raise
