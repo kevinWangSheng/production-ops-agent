@@ -4,7 +4,8 @@ ADR-0006 decision 3: review verdicts of a lab Run live next to its trace as
 feedback (``review_p1``, ``review_p2``, ...), with the comment linking the
 review record (PR thread, task record). The frozen ``summary.json`` of the
 Run supplies the LangSmith run id and project; ``--record`` appends the
-feedback id to that summary so the repository keeps the pointer.
+feedback id to that summary so the repository keeps the pointer, but only when
+the read-back matches what was written.
 
     .venv/bin/python scripts/lab_review_feedback.py \\
         --summary docs/evidence/<experiment>/live-runs/<run_id>/summary.json \\
@@ -161,7 +162,17 @@ def main(
         comment=args.comment,
     )
     if args.record:
-        record_in_summary(args.summary, view)
+        # The summary is the repository's record of *verified* review
+        # feedback (#116): a read-back that differs from what was written is
+        # not recorded, so a failed check cannot be mistaken for a verified
+        # one. The feedback id stays in the printed view for a retry.
+        if view["read_back_matches"]:
+            record_in_summary(args.summary, view)
+        else:
+            print(
+                "READ_BACK_MISMATCH: feedback not recorded in the summary",
+                file=sys.stderr,
+            )
     print(json.dumps(view, ensure_ascii=False, default=str))
     return 0 if view["read_back_matches"] else 1
 
