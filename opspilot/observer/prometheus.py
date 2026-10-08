@@ -26,7 +26,13 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.client import HTTPConnection, HTTPException, HTTPResponse, HTTPSConnection
+from http.client import (
+    HTTPConnection,
+    HTTPException,
+    HTTPResponse,
+    HTTPSConnection,
+    IncompleteRead,
+)
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -171,11 +177,24 @@ class PrometheusReadOnlySource:
             )
         except _Overloaded:
             return InstantResult(expr, "failed", None, b"", None, "IN_FLIGHT_LIMIT")
-        except (urllib.error.URLError, OSError, HTTPException):
+        except _Protocol as cut:
             # ``HTTPException`` (``BadStatusLine`` on a non-HTTP answer,
-            # ``IncompleteRead``, ...) is not an ``OSError``: the same
-            # transport failure, classified like the investigation client
-            # does (issue #126), never a crash out of the sampler.
+            # ``IncompleteRead`` on a body cut mid-way, ...) is not an
+            # ``OSError``: the same transport failure, classified like the
+            # investigation client does (issue #126), never a crash out of
+            # the sampler. A body that had started to arrive is kept as the
+            # prefix it is and marked incomplete (PR #131 codex P2): the
+            # bundle never describes an empty body as the full response.
+            return InstantResult(
+                expr,
+                "failed",
+                None,
+                cut.partial[:_ERROR_BODY_BYTES],
+                None,
+                "UNREACHABLE",
+                body_complete=cut.body_complete,
+            )
+        except (urllib.error.URLError, OSError):
             return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
         if http_status != 200:
             return InstantResult(
@@ -224,6 +243,8 @@ class PrometheusReadOnlySource:
             if isinstance(error.reason, (TimeoutError, socket.timeout)):
                 raise _Timeout(b"".join(chunks)) from None
             raise
+        except HTTPException as error:
+            raise _Protocol.of(error, chunks) from None
 
 
 class _Timeout(Exception):
@@ -232,6 +253,27 @@ class _Timeout(Exception):
     def __init__(self, partial: bytes = b"") -> None:
         super().__init__("deadline")
         self.partial = partial
+
+
+class _Protocol(Exception):
+    """The peer broke the HTTP protocol (``http.client.HTTPException``);
+    ``partial`` is what had arrived of the body and ``body_complete`` is
+    False once any of it had -- the bytes are a prefix, not the response."""
+
+    def __init__(self, partial: bytes, body_complete: bool) -> None:
+        super().__init__("protocol")
+        self.partial = partial
+        self.body_complete = body_complete
+
+    @classmethod
+    def of(cls, error: HTTPException, chunks: list[bytes]) -> _Protocol:
+        # ``IncompleteRead`` carries the bytes of the read it cut short; the
+        # chunks before it are what the caller had already accumulated
+        partial = b"".join(chunks) + (
+            bytes(error.partial) if isinstance(error, IncompleteRead) else b""
+        )
+        started = bool(partial) or isinstance(error, IncompleteRead)
+        return cls(partial, body_complete=not started)
 
 
 #: Workers that may still be blocked after their request timed out: a
@@ -347,6 +389,8 @@ def _fetch(
     error = outcome.get("error")
     if isinstance(error, (TimeoutError, socket.timeout)):
         raise _Timeout(b"".join(chunks)) from None
+    if isinstance(error, HTTPException):
+        raise _Protocol.of(error, chunks) from None
     if error is not None:
         raise error
     result: tuple[int, bytes, bool] = outcome["result"]
