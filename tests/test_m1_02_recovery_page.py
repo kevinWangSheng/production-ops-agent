@@ -193,3 +193,17 @@ def test_a_session_without_samples_renders_without_a_basis():
     (recovery,) = workbench.snapshot(UUID(incident))["recovery"]
     assert recovery["samples"] == []
     assert recovery["replay"]["recovery_verdict"] == "unknown"
+
+
+def test_a_malformed_stored_reading_does_not_take_the_page_down():
+    """Codex review of PR #139, P2-4: a value the column accepts but the
+    domain rejects renders as an integrity mismatch, verdict unknown."""
+    app, workbench, incident, _ = _observing_incident()
+    session = workbench.incidents.sessions[0]
+    session["samples"][0]["readings"][0]["source"] = "BAD SOURCE"
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200
+    assert "integrity mismatch" in page.text
+    (recovery,) = workbench.snapshot(UUID(incident))["recovery"]
+    assert recovery["replay"]["recovery_verdict"] == "unknown"
+    assert recovery["replay"]["available"] is True

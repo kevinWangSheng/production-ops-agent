@@ -181,6 +181,7 @@ def test_an_unreadable_or_mismatching_profile_is_reported_not_guessed():
         row["health_basis"] = "no_health_profile"
         row["transition"] = None
     bare["session"]["state"], bare["session"]["ended_reason"] = "authorized", None
+    bare["session"]["healthy_since"] = None  # no profile: no streak
     bare["endings"] = []
     bare["incident_lifecycle"] = "observing_recovery"
     result = replay_history(bare)
@@ -293,3 +294,137 @@ def test_rehash_helper_keeps_the_hash_honest():
     reading = history["samples"][0]["readings"][0]
     row = rehash(reading, b"{}")
     assert row["raw_sha256"] == hashlib.sha256(b"{}").hexdigest()
+
+
+# --- independent review of PR #139 (Codex, 4 x P2): tampering that must not pass
+
+
+@pytest.mark.parametrize(
+    "outcome,present",
+    [("degraded", True), ("no_data", False)],
+)
+def test_deleted_readings_cannot_hide_behind_a_non_healthy_verdict(outcome, present):
+    """P2-1: reading rows deleted and the verdict rewritten as not healthy
+    was replayed as consistent and the rewritten verdict repeated. An
+    adopted sample under a readable profile must carry a reading for every
+    profile signal; nothing in the sample row says "filed without readings"
+    (that only happens without a revision or with an unreadable profile,
+    neither of which holds here)."""
+    history = healthy_history(count=1)
+    sample = history["samples"][0]
+    sample["readings"] = []
+    sample["outcome"] = outcome
+    sample["required_signals_present"] = present
+    sample["confirms_health"] = False
+    sample["health_basis"] = "outcome_not_healthy"
+    history["session"]["healthy_since"] = None
+    result = replay_history(history)
+    assert not result.consistent
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert result.recovery_verdict == "unknown"
+    assert "NO_READINGS" in result.samples[0].integrity
+    # one deleted reading among several is reported by name
+    partial = healthy_history(count=1)
+    partial["samples"][0]["readings"] = partial["samples"][0]["readings"][1:]
+    partial["samples"][0]["outcome"] = "no_data"
+    partial["samples"][0]["required_signals_present"] = False
+    partial["samples"][0]["confirms_health"] = False
+    partial["samples"][0]["health_basis"] = "outcome_not_healthy"
+    partial["session"]["healthy_since"] = None
+    result = replay_history(partial)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "READING_MISSING:rate" in result.samples[0].integrity
+
+
+def test_a_deleted_sample_or_a_tampered_watermark_is_detected():
+    """P2-2: the session row's watermarks (adopted count/sequence/window end,
+    healthy_since) are recomputed by the fold and must match."""
+    history = healthy_history()
+    del history["samples"][2]
+    result = replay_history(history)
+    assert not result.consistent
+    assert "WATERMARK_MISMATCH" in result.integrity
+    assert result.recovery_verdict == "unknown"
+    for field, value in (
+        ("adopted_count", 0),
+        ("adopted_sequence", 1),
+        ("adopted_window_end", None),
+        ("healthy_since", None),
+    ):
+        tampered = healthy_history()
+        tampered["session"][field] = value
+        result = replay_history(tampered)
+        assert "WATERMARK_MISMATCH" in result.integrity, field
+        assert result.recovery_verdict == "unknown", field
+    assert replay_history(healthy_history()).consistent
+
+
+def test_a_tampered_query_source_or_window_is_not_trusted_basis():
+    """P2-3: the reading's query, source and window must be the frozen
+    profile's and the sample's (and the bundle's), not whatever the row says."""
+    for field, value in (
+        ("query", "totally_different_query"),
+        ("source", "elsewhere"),
+        ("window_start", NOW - timedelta(seconds=3600)),
+    ):
+        history = healthy_history()
+        history["samples"][0]["readings"][0][field] = value
+        result = replay_history(history)
+        assert not result.consistent, field
+        assert result.recovery_verdict == "unknown", field
+        assert any(
+            code.startswith("READING_BASIS_MISMATCH:rate")
+            for code in result.samples[0].integrity
+        ), (field, result.samples[0].integrity)
+    # a reading for a signal the profile does not know is no basis either
+    history = healthy_history()
+    history["samples"][0]["readings"][0]["signal_name"] = "bogus"
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "UNKNOWN_SIGNAL:bogus" in result.samples[0].integrity
+
+
+def test_a_malformed_reading_row_is_an_integrity_mismatch_not_a_crash():
+    """P2-4: a value the database column accepts but the domain does not
+    (``source`` with a space) must come out as unknown + mismatch, with the
+    CLI exiting 1 instead of raising."""
+    history = healthy_history()
+    history["samples"][0]["readings"][0]["source"] = "BAD SOURCE"
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert any(
+        code.startswith("BASIS_UNPARSABLE") for code in result.samples[0].integrity
+    )
+
+    class Store:
+        def __init__(self, dsn):
+            pass
+
+        def session_history(self, requested):
+            return history
+
+        def close(self):
+            pass
+
+    out = io.StringIO()
+    code = main(
+        ["--dsn", "host=x", "--session", str(history["session"]["session_id"])],
+        store_factory=Store,
+        stdout=out,
+    )
+    assert code == 1
+    assert json.loads(out.getvalue())[0]["recovery_verdict"] == "unknown"
+    # a history the fold itself cannot parse still yields a result and 1
+    history["samples"][0]["outcome"] = "bogus"
+
+    out = io.StringIO()
+    code = main(
+        ["--dsn", "host=x", "--session", str(history["session"]["session_id"])],
+        store_factory=Store,
+        stdout=out,
+    )
+    assert code == 1
+    (document,) = json.loads(out.getvalue())
+    assert document["recovery_verdict"] == "unknown" and not document["consistent"]
+    assert any(c.startswith("REPLAY_FAILED") for c in document["integrity"])

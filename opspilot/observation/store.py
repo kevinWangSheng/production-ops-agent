@@ -271,6 +271,10 @@ class ReplayReport:
     # window end of the consecutive adopted healthy samples (None: none)
     healthy_since: datetime | None = None
     healthy_until: datetime | None = None
+    # the watermarks the fold ends with, to compare with the session row
+    adopted_sequence: int = 0
+    adopted_window_end: datetime | None = None
+    adopted_count: int = 0
 
     @property
     def healthy_window_seconds(self) -> int:
@@ -897,6 +901,9 @@ def fold_history(
         ending_sample_id=ending_sample_id,
         healthy_since=healthy_since,
         healthy_until=healthy_until,
+        adopted_sequence=adopted_sequence,
+        adopted_window_end=adopted_window_end,
+        adopted_count=adopted_count,
     )
 
 

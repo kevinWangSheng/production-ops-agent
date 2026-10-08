@@ -218,12 +218,78 @@ def _triple(row: Mapping[str, Any]) -> tuple[str, float | None, int | None]:
     )
 
 
+def _basis_codes(
+    profile: HealthProfile,
+    row: Mapping[str, Any],
+    *,
+    verified: bool | None,
+    sample_window: tuple[datetime, datetime],
+) -> list[str]:
+    """Why a reading row is not the basis it claims to be: its signal is not
+    in the frozen profile, or its query, source or window are not the
+    profile's and the sample's (and, when the bundle verifies, not the
+    bundle's). A row is trusted for what it says only when every one of
+    these is the frozen value (codex review of PR #139, P2-3)."""
+    name = str(row["signal_name"])
+    signal = profile.signal(name)
+    if signal is None:
+        return [f"UNKNOWN_SIGNAL:{name}"]
+    codes: list[str] = []
+    if row.get("query") != signal.query:
+        codes.append(f"READING_BASIS_MISMATCH:{name}:query")
+    if row.get("source") != profile.source:
+        codes.append(f"READING_BASIS_MISMATCH:{name}:source")
+    if (row.get("window_start"), row.get("window_end")) != sample_window:
+        codes.append(f"READING_BASIS_MISMATCH:{name}:window")
+    if verified:
+        try:
+            bundle = json.loads(bytes(row["raw"]))
+            expr = bundle["query"]["expr"]
+            window = (
+                datetime.fromisoformat(str(bundle["window_start"])),
+                datetime.fromisoformat(str(bundle["window_end"])),
+            )
+        except (ValueError, KeyError, TypeError):
+            # a bundle without these fields was filed as failed by the
+            # Observer (construction failure); the rebuild says so
+            return codes
+        if expr != signal.query:
+            codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_query")
+        if window != sample_window:
+            codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_window")
+    return codes
+
+
+def _basis_only(
+    rows: Sequence[Mapping[str, Any]], verified: Mapping[str, bool | None]
+) -> tuple[ReplayedReading, ...]:
+    return tuple(
+        ReplayedReading(
+            signal_name=str(row["signal_name"]),
+            query=str(row.get("query")),
+            source=str(row.get("source")),
+            window_start=row["window_start"],
+            window_end=row["window_end"],
+            raw_sha256=row.get("raw_sha256"),
+            raw_verified=verified[str(row["signal_name"])],
+            stored=_triple(row),
+            replayed=None,
+        )
+        for row in rows
+    )
+
+
 def _readings(
     profile: HealthProfile | None,
     rows: Sequence[Mapping[str, Any]],
+    *,
+    sample_window: tuple[datetime, datetime],
 ) -> tuple[tuple[ReplayedReading, ...], SampleEvaluation | None, list[str]]:
     """Rebuild one sample's readings and judge them; the codes name every
-    reading whose bundle or rebuild disagrees with its row."""
+    reading whose bundle, basis or rebuild disagrees with its row. A row
+    the domain cannot even parse (a value the column accepts but the DTO
+    does not) is reported as ``BASIS_UNPARSABLE`` instead of raising
+    (codex review of PR #139, P2-4)."""
     codes: list[str] = []
     verified: dict[str, bool | None] = {}
     for row in rows:
@@ -238,22 +304,21 @@ def _readings(
         if not ok:
             codes.append(f"RAW_HASH_MISMATCH:{name}")
     if profile is None:
-        readings = tuple(
-            ReplayedReading(
-                signal_name=str(row["signal_name"]),
-                query=str(row["query"]),
-                source=str(row["source"]),
-                window_start=row["window_start"],
-                window_end=row["window_end"],
-                raw_sha256=row.get("raw_sha256"),
-                raw_verified=verified[str(row["signal_name"])],
-                stored=_triple(row),
-                replayed=None,
+        return _basis_only(rows, verified), None, codes
+    for row in rows:
+        codes.extend(
+            _basis_codes(
+                profile,
+                row,
+                verified=verified[str(row["signal_name"])],
+                sample_window=sample_window,
             )
-            for row in rows
         )
-        return readings, None, codes
-    rebuilt, evaluation = replay_sample(profile, rows)
+    try:
+        rebuilt, evaluation = replay_sample(profile, rows)
+    except Exception as exc:  # noqa: BLE001 - a bad row is a finding, not a crash
+        codes.append(f"BASIS_UNPARSABLE:{type(exc).__name__}")
+        return _basis_only(rows, verified), None, codes
     by_name = {reading.signal_name: reading for reading in rebuilt}
     verdicts = {verdict.signal_name: verdict for verdict in evaluation.verdicts}
     compared: list[ReplayedReading] = []
@@ -303,35 +368,57 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
     for stored in stored_samples:
         rows = list(stored.get("readings") or ())
         stored_outcome = str(stored["outcome"])
+        window = (stored["window_start"], stored["window_end"])
         skipped: str | None = None
         evaluation: SampleEvaluation | None = None
         codes: list[str] = []
         if revision is None:
             skipped = "NO_HEALTH_PROFILE"
-            readings, _, _ = _readings(None, rows)
+            readings, _, _ = _readings(None, rows, sample_window=window)
         elif profile is None:
             skipped = PROFILE_UNREADABLE
-            readings, _, _ = _readings(None, rows)
-        elif not rows:
-            # nothing to recompute from; a healthy claim without readings
-            # is a tampered or truncated basis, anything else was filed
-            # without readings on purpose (no usable profile at the time)
-            skipped = "NO_READINGS"
-            readings = ()
-            if stored_outcome == "healthy":
-                codes.append("NO_READINGS")
+            readings, _, _ = _readings(None, rows, sample_window=window)
         else:
-            readings, evaluation, codes = _readings(profile, rows)
-            assert evaluation is not None
-            outcomes[stored["sample_id"]] = (
-                evaluation.outcome,
-                evaluation.required_signals_present,
-            )
-            if (evaluation.outcome, evaluation.required_signals_present) != (
-                stored_outcome,
-                bool(stored["required_signals_present"]),
-            ):
-                codes.append("OUTCOME_MISMATCH")
+            # An adopted sample under a readable profile carries a reading
+            # for every profile signal: the Observer queries them all, and
+            # the only paths that file a sample without readings are a
+            # session without a revision or a profile that did not validate
+            # -- neither holds here, and no sample column says otherwise.
+            # Missing rows are therefore a damaged basis whatever the
+            # stored verdict says (codex review of PR #139, P2-1). A sample
+            # filed as history only (e.g. interrupted by a scope change) is
+            # legitimately partial and is not held to this.
+            adopted = str(stored.get("disposition")) == "adopted"
+            present = {str(r["signal_name"]) for r in rows}
+            if adopted:
+                if not rows:
+                    codes.append("NO_READINGS")
+                else:
+                    codes.extend(
+                        f"READING_MISSING:{signal.name}"
+                        for signal in profile.signals
+                        if signal.name not in present
+                    )
+            if not rows:
+                skipped = "NO_READINGS"
+                readings = ()
+            else:
+                readings, evaluation, more = _readings(
+                    profile, rows, sample_window=window
+                )
+                codes.extend(more)
+                if evaluation is not None:
+                    outcomes[stored["sample_id"]] = (
+                        evaluation.outcome,
+                        evaluation.required_signals_present,
+                    )
+                    if (evaluation.outcome, evaluation.required_signals_present) != (
+                        stored_outcome,
+                        bool(stored["required_signals_present"]),
+                    ):
+                        codes.append("OUTCOME_MISMATCH")
+                else:
+                    skipped = "BASIS_UNPARSABLE"
         partial.append(
             {
                 "readings": readings,
@@ -385,6 +472,40 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         integrity.append("SESSION_STATE_MISMATCH")
     if not report.lifecycle_consistent:
         integrity.append("LIFECYCLE_MISMATCH")
+    # The session row's watermarks are the fold's own output: a deleted
+    # sample or a rewritten count/sequence/window end/streak start shows up
+    # here (codex review of PR #139, P2-2).
+    stored_marks = (
+        row.get("adopted_sequence"),
+        row.get("adopted_window_end"),
+        row.get("adopted_count"),
+        row.get("healthy_since"),
+    )
+    replayed_marks = (
+        report.adopted_sequence,
+        report.adopted_window_end,
+        report.adopted_count,
+        report.healthy_since,
+    )
+    if (
+        any(
+            stored is not None and stored != replayed
+            for stored, replayed in zip(stored_marks, replayed_marks, strict=True)
+        )
+        or (
+            row.get("adopted_window_end") is None
+            and "adopted_window_end" in row
+            and report.adopted_window_end is not None
+        )
+        or (
+            row.get("healthy_since") is None
+            and "healthy_since" in row
+            and report.healthy_since is not None
+        )
+    ):
+        integrity.append("WATERMARK_MISMATCH")
+        if INTEGRITY_MISMATCH not in integrity:
+            integrity.insert(0, INTEGRITY_MISMATCH)
 
     # What the recomputed fold says: confirmed when a replayed verdict
     # confirmed recovery; else the latest adopted sample's outcome.
@@ -618,14 +739,43 @@ def main(
             session_ids.extend(
                 row["session_id"] for row in store.incident_sessions(incident_id)
             )
-        results = [replay_stored_session(store, sid) for sid in session_ids]
+        documents: list[dict[str, Any]] = []
+        for sid in session_ids:
+            try:
+                documents.append(summary(replay_stored_session(store, sid)))
+            except PersistenceError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - report, never crash
+                # stored rows the replay cannot even fold (a value the
+                # column accepts but the domain does not): an explicit
+                # failure is the result, not a traceback (codex P2-4)
+                _log.warning(
+                    "replay failed session=%s error=%s", sid, type(exc).__name__
+                )
+                documents.append(_failure_document(sid, exc))
     except PersistenceError as exc:
         print(f"storage: {exc}", file=sys.stderr)
         return 2
     finally:
         store.close()
-    print(json.dumps([summary(item) for item in results], indent=2), file=out)
-    return 0 if all(item.consistent for item in results) else 1
+    print(json.dumps(documents, indent=2), file=out)
+    return 0 if all(item["consistent"] for item in documents) else 1
+
+
+def _failure_document(session_id: UUID, exc: BaseException) -> dict[str, Any]:
+    code = f"REPLAY_FAILED:{type(exc).__name__}"
+    return {
+        "session_id": str(session_id),
+        "consistent": False,
+        "integrity": [INTEGRITY_MISMATCH, code],
+        "reasons": [INTEGRITY_MISMATCH, code],
+        "recovery_verdict": "unknown",
+        "recovery_confirmed": False,
+        "recomputed_verdict": "unknown",
+        "samples": [],
+        "external_queries": [],
+        "model_requests": [],
+    }
 
 
 if __name__ == "__main__":

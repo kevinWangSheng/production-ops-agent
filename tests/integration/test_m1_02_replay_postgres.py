@@ -222,3 +222,65 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
                 "UPDATE opspilot_health_profiles SET content=%s WHERE health_profile_revision=%s",
                 (original["content"], SHIPPED.revision),
             )
+
+
+def test_deleted_rows_and_rewritten_watermarks_are_integrity_mismatches(
+    loop: tuple, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Codex review of PR #139, P2-1/P2-2/P2-3 on real rows: a reading row
+    deleted with the verdict rewritten as not healthy, a sample row deleted,
+    a session watermark rewritten, or a reading's query rewritten -- each
+    is reported, none is repeated as the verdict."""
+    observer_loop, state = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1, max_samples=3)
+    _backdate_authorization(owner, session)
+    (receipt,) = _run(loop, owner, session, 1)
+    assert receipt.transition == "recovery_confirmed"
+    assert replay_stored_session(controller, session).consistent
+    first = receipt.sample_id
+
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_signal_readings SET query='up' WHERE sample_id=%s AND signal_name='error_ratio'",
+            (first,),
+        )
+    result = replay_stored_session(controller, session)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert any(
+        c.startswith("READING_BASIS_MISMATCH:error_ratio")
+        for c in result.samples[0].integrity
+    )
+
+    # a rewritten watermark (the streak start the fold recomputes)
+    with owner.transaction() as conn:
+        kept = conn.execute(
+            "SELECT healthy_since FROM opspilot_observation_sessions WHERE session_id=%s",
+            (session,),
+        ).fetchone()
+        assert kept is not None and kept["healthy_since"] is not None
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET healthy_since=NULL WHERE session_id=%s",
+            (session,),
+        )
+    result = replay_stored_session(controller, session)
+    assert "WATERMARK_MISMATCH" in result.integrity
+    assert result.recovery_verdict == "unknown"
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET healthy_since=%s WHERE session_id=%s",
+            (kept["healthy_since"], session),
+        )
+
+    with owner.transaction() as conn:
+        conn.execute(
+            "DELETE FROM opspilot_observation_signal_readings WHERE sample_id=%s AND signal_name='error_ratio'",
+            (first,),
+        )
+        conn.execute(
+            "UPDATE opspilot_observation_samples SET outcome='no_data',required_signals_present=false,confirms_health=false,health_basis='outcome_not_healthy' WHERE sample_id=%s",
+            (first,),
+        )
+    result = replay_stored_session(controller, session)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "READING_MISSING:error_ratio" in result.samples[0].integrity

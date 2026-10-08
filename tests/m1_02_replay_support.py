@@ -207,7 +207,10 @@ def stored_history(
                 }
             )
             break
-    last_end = taken[-1][0].window.end if taken else authorized_at
+    # the session row reflects the samples actually filed (the history
+    # stops at the ending), not everything that was taken
+    filed = taken[: len(samples)]
+    last_end = filed[-1][0].window.end if filed else authorized_at
     session = {
         "session_id": session_id,
         "incident_id": incident_id,
@@ -230,8 +233,8 @@ def stored_history(
         "max_samples": max_samples,
         "sample_interval_seconds": 60,
         "sustained_window_seconds": sustained_window_seconds,
-        "adopted_sequence": taken[-1][0].sequence if taken else 0,
-        "adopted_window_end": last_end if taken else None,
+        "adopted_sequence": filed[-1][0].sequence if filed else 0,
+        "adopted_window_end": last_end if filed else None,
         "adopted_count": len(samples),
         "healthy_since": healthy_since,
         "issued_sequence": len(samples),

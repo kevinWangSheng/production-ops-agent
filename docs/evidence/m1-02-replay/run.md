@@ -25,3 +25,14 @@
   - 既有四个 M1-02 套件（store / observer / register_remediation / takeover）101 passed。
 - `make check`：3151 passed / 462 skipped / 2 xfailed（Ruff、格式、mypy 通过）。
 - 红证明：见 PR 正文 `make red-proof` 输出（页面测试在旧代码上为断言失败，重放测试为新模块 ImportError）。
+
+## 独立审查处置（2026-10-08，Codex 全新上下文，4 条 P2，全部采纳；原文存于主仓库 `tmp/m1-02-review/139-review-final.md`）
+
+每条先以审查复现写成测试（第一提交上红），再修：
+
+1. 删读数 + 把判定改成非 healthy 仍判一致：已采纳采样在可读 profile 下必须对 profile 的每个信号都有读数行（Observer 对全部信号采样；无读数提交只发生在无 revision 或 profile 不可验证两条路径，采样行没有列记录「无读数」，因此读数缺失即 `NO_READINGS` / `READING_MISSING:<signal>` 完整性不一致）；history_only 采样（如中途挂起的部分采样）不受此限。
+2. 删中间采样 / 改会话水位：`fold_history` 现回报 `adopted_sequence / adopted_window_end / adopted_count / healthy_since`，与会话行比较，不等即 `WATERMARK_MISMATCH`。
+3. 改读数 query / source / 窗口：读数行的 query 须等于冻结 profile 的 `signal.query`、source 等于 `profile.source`、窗口等于采样窗口，捆绑校验通过时其 `query.expr` 与窗口亦须一致，否则 `READING_BASIS_MISMATCH:<signal>:<field>`；信号不在 profile 内 → `UNKNOWN_SIGNAL:<signal>`。
+4. 畸形读数（如 `source="BAD SOURCE"`）：读数重建异常改为 `BASIS_UNPARSABLE:<ExcType>` 完整性不一致 + unknown；CLI 对每会话重放再兜底捕获异常输出 `REPLAY_FAILED:<ExcType>` 文档并退出 1；页面已有 `REPLAY_FAILED` 兜底。
+
+复验数字：`tests/test_m1_02_replay.py` 16 + `tests/test_m1_02_recovery_page.py` 5 passed；`tests/integration/test_m1_02_replay_postgres.py` 6 passed（新增用例在真实行上：改 query → `READING_BASIS_MISMATCH:error_ratio:query`；`healthy_since` 置 NULL → `WATERMARK_MISMATCH`；删一条读数并把 outcome 改为 no_data → `READING_MISSING:error_ratio`，三者 verdict 均 unknown）；四个既有 M1-02 PG 套件 101 passed（55641）；`make check` 3157 passed / 463 skipped / 2 xfailed。
