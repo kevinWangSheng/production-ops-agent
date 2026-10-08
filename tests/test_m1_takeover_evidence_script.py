@@ -170,6 +170,10 @@ def test_a_takeover_before_any_request_was_sent_is_not_accepted():
         ("run_parked_waiting_human", lambda v, t: v.update(run_state_after="running")),
         ("run_owner_released", lambda v, t: v.update(run_owner_after="set")),
         (
+            "response_in_flight_at_takeover",
+            lambda v, t: t.update(model_requests_returned_before=1),
+        ),
+        (
             "run_parked_by_takeover",
             lambda v, t: v.update(run_state_at_takeover="running"),
         ),

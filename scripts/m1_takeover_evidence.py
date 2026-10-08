@@ -202,6 +202,12 @@ def failed_verdicts(verdicts: dict, takeover: dict) -> list[str]:
     # Independent of the two resume counters: every request ever sent was
     # sent before the takeover, including those of the first attempt that
     # kept running while the takeover committed.
+    # The takeover must land while a response is still pending, or the
+    # in-flight fence was not exercised.
+    require(
+        "response_in_flight_at_takeover",
+        takeover.get("model_requests_returned_before") == 0,
+    )
     require(
         "no_request_sent_after_takeover",
         not (isinstance(before, int) and before >= 1)  # reported above
