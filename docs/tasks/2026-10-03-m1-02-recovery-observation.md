@@ -179,7 +179,7 @@
 
 ## 第 6 步前置修复（2026-10-08，#125 #126 #122）
 
-三项并行，各一个 worktree 与 PR；实现为 Claude Agent，独立审查一律 Codex exec（`gpt-6.1-sol`，全新上下文），GitHub `@codex review` 只作分诊；审查原文在主仓库 `tmp/m1-02-review/`（git 忽略）。
+三项并行，各一个 worktree 与 PR；实现为 Claude Agent，独立审查一律 Codex exec（`gpt-6.1-sol`，全新上下文），GitHub `@codex review` 只作分诊；审查原文存档为 PR 评论：[#130](https://github.com/kevinWangSheng/production-ops-agent/pull/130#issuecomment-6059087794)、[#131](https://github.com/kevinWangSheng/production-ops-agent/pull/131#issuecomment-6059088511)（首审 + 复验）、[#132](https://github.com/kevinWangSheng/production-ops-agent/pull/132#issuecomment-6059089422)（首审 + 两轮复验）。
 
 - #125 → PR #130（`7bc926b`）：`take_sample` 在 scope 检查之后重算剩余预算，不足 1 s 本地填 `timeout/LEASE_BUDGET`、不发请求。Codex 独立审查未发现 P1/P2；可选「耗时断言允许 21 s」未做。
 - #126 → PR #131（`b911440`）：工程脚本共用 `kind_lab.OPENER`（无代理、不跟随重定向），lab 凭据不再随 30x 发往别的源；Observer 把 `http.client.HTTPException` 判 `failed/UNREACHABLE`，body 已开始到达时保留前缀并标 `body_complete=False`，已解析的状态码（含头部解析失败前）如实保存。注入 opener 路径（仅测试接缝）头部失败仍记 `None`。机器人第 3–5 轮的完整性/临时状态码发现转 #133。
