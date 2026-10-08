@@ -34,6 +34,11 @@ NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
 RAW = "0" * 64
 
 
+#: Every unit-profile selector names the subject under these labels (rule 4).
+SCOPE = {"namespace_label": "namespace", "workload_label": "service"}
+SEL = "{namespace='ns',service='svc'}"
+
+
 def minimal_profile(**overrides) -> dict:
     base = {
         "format_version": 1,
@@ -56,40 +61,44 @@ def minimal_profile(**overrides) -> dict:
             {
                 "name": "rate",
                 "description": "traffic",
-                "query": "sum(rate(x[5m]))",
-                "coverage_query": "max(count_over_time(x[5m]))",
-                "freshness_query": "max(timestamp(x))",
+                "query": "sum(rate(x{namespace='ns',service='svc'}[5m]))",
+                "coverage_query": "max(count_over_time(x{namespace='ns',service='svc'}[5m]))",
+                "freshness_query": "max(timestamp(x{namespace='ns',service='svc'}))",
                 "traffic_dependent": False,
                 "healthy": {"min": 0},
+                "scope": SCOPE,
             },
             {
                 "name": "errors",
                 "description": "error ratio",
-                "query": "e / t",
-                "coverage_query": "max(count_over_time(t[5m]))",
-                "freshness_query": "max(timestamp(t))",
+                "query": "e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}",
+                "coverage_query": "max(count_over_time(t{namespace='ns',service='svc'}[5m]))",
+                "freshness_query": "max(timestamp(t{namespace='ns',service='svc'}))",
                 "minimum_samples": 3,
                 "traffic_dependent": True,
                 "healthy": {"min": 0, "max": 0.01},
+                "scope": SCOPE,
             },
             {
                 "name": "ready",
                 "description": "replicas",
-                "query": "min(ready)",
-                "coverage_query": "min(count_over_time(ready[5m]))",
-                "freshness_query": "max(timestamp(ready))",
+                "query": "min(ready{namespace='ns',service='svc'})",
+                "coverage_query": "min(count_over_time(ready{namespace='ns',service='svc'}[5m]))",
+                "freshness_query": "max(timestamp(ready{namespace='ns',service='svc'}))",
                 "traffic_dependent": False,
                 "healthy": {"min": 1},
+                "scope": SCOPE,
             },
             {
                 "name": "hint",
                 "description": "optional context",
                 "required": False,
-                "query": "hint",
-                "coverage_query": "count_over_time(hint[5m])",
-                "freshness_query": "max(timestamp(hint))",
+                "query": "hint{namespace='ns',service='svc'}",
+                "coverage_query": "count_over_time(hint{namespace='ns',service='svc'}[5m])",
+                "freshness_query": "max(timestamp(hint{namespace='ns',service='svc'}))",
                 "traffic_dependent": False,
                 "healthy": {"max": 10},
+                "scope": SCOPE,
             },
         ],
     }
@@ -151,8 +160,8 @@ def test_shipped_checkout_profile_loads_and_covers_f6_step_one():
         "request_rate_per_second",
         "error_ratio",
         "latency_p95_milliseconds",
-        "pods_running",
-        "pod_restarts_in_window",
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
         "dependency_deployments_available",
         "dependency_error_ratio",
     } <= names
@@ -169,8 +178,8 @@ def test_shipped_profile_kubernetes_signals_come_from_kube_state_metrics():
     prof = load_health_profile(SHIPPED)
     for name in (
         "deployment_available_replicas",
-        "pods_running",
-        "pod_restarts_in_window",
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
         "dependency_deployments_available",
     ):
         assert "kube_" in prof.signal(name).query
@@ -182,8 +191,8 @@ HEALTHY_CHECKOUT = {
     "request_rate_per_second": 0.0125,
     "error_ratio": 0.0,
     "latency_p95_milliseconds": 120.0,
-    "pods_running": 1.0,
-    "pod_restarts_in_window": 0.0,
+    "deployment_ready_replicas": 1.0,
+    "deployment_available_replicas_min_in_window": 1.0,
     "dependency_error_ratio": 0.0,
 }
 
@@ -247,7 +256,7 @@ def test_revision_changes_with_content_not_with_formatting(tmp_path):
     threshold = minimal_profile()
     threshold["signals"][1]["healthy"]["max"] = 0.02
     query = minimal_profile()
-    query["signals"][0]["query"] = "sum(rate(y[5m]))"
+    query["signals"][0]["query"] = f"sum(rate(y{SEL}[5m]))"
     window = minimal_profile()
     window["session"]["sustained_window_seconds"] = 900
     gate = minimal_profile(effective_traffic={"signal": "rate", "minimum": 0.6})
@@ -734,3 +743,375 @@ def test_range_durations_are_parsed_in_full_and_quoted_brackets_are_ignored():
         for key in ("query", "coverage_query"):
             signal[key] = signal[key].replace("[5m]", "[1m30s]")
     assert profile(**ninety).evaluation_window_seconds == 90
+
+
+# 7. Query scope is bound to the subject (issue #122; PRODUCT-CONSTRAINTS
+#    "target-specific HealthProfile", C3 section 10).
+
+
+def shipped_payload(**subject) -> dict:
+    payload = json.loads(SHIPPED.read_text(encoding="utf-8"))
+    payload["subject"].update(subject)
+    return payload
+
+
+def test_issue_122_a_subject_edited_apart_from_its_queries_is_refused(tmp_path):
+    """The reproduction: the shipped checkout profile with only ``subject``
+    changed to ``payment`` / ``payments-prod``; every query still selects
+    ``namespace="otel-demo",deployment="checkout"``. It does not load, so it
+    can never authorize a payment incident with checkout's readings."""
+    payload = shipped_payload(service="payment", kubernetes_namespace="payments-prod")
+    with pytest.raises(HealthProfileError) as excinfo:
+        load_health_profile(write(tmp_path, payload))
+    assert excinfo.value.code == "PROFILE_INVALID"
+    rendered = str(excinfo.value) + repr(excinfo.value.errors)
+    assert "SCOPE_SELECTOR_MISMATCH signals/0/query" in rendered
+    # the rejected file values stay out of the error
+    assert "payment" not in rendered and "otel-demo" not in rendered
+    # each half alone is a mismatch too
+    for change in ({"service": "payment"}, {"kubernetes_namespace": "payments-prod"}):
+        with pytest.raises(HealthProfileError, match="SCOPE_SELECTOR_MISMATCH"):
+            load_health_profile(write(tmp_path, shipped_payload(**change)))
+
+
+def test_the_shipped_profile_declares_a_scope_for_every_signal():
+    prof = load_health_profile(SHIPPED)
+    by_name = {s.name: s.scope for s in prof.signals}
+    assert by_name["deployment_available_replicas"].namespace_label == "namespace"
+    assert by_name["deployment_available_replicas"].workload_label == "deployment"
+    # span series carry k8s_namespace_name next to service_name
+    # (docs/evidence/m1-02-lab/regression/normal-1/observe-pre.json)
+    for name in ("request_rate_per_second", "error_ratio", "latency_p95_milliseconds"):
+        assert by_name[name].namespace_label == "k8s_namespace_name"
+        assert by_name[name].workload_label == "service_name"
+    # pod health is read at Deployment level: no pod-name prefix anywhere
+    assert {s.scope.workload_label for s in prof.signals} == {
+        "deployment",
+        "service_name",
+    }
+    assert {s.scope.workload_match for s in prof.signals} == {"exact", "dependencies"}
+    assert prof.signal("pods_running") is None
+    assert prof.signal("pod_restarts_in_window") is None
+    for name in (
+        "deployment_ready_replicas",
+        "deployment_available_replicas_min_in_window",
+    ):
+        assert by_name[name].workload_label == "deployment"
+    deps = by_name["dependency_deployments_available"]
+    assert deps.workload_match == "dependencies" and len(deps.dependencies) == 8
+    assert prof.subject.service not in deps.dependencies
+
+
+def test_a_profile_without_a_scope_declaration_is_refused(tmp_path):
+    """An older-format file (no ``scope``) is refused rather than loaded
+    unchecked; the error names the field."""
+    payload = shipped_payload()
+    del payload["signals"][0]["scope"]
+    with pytest.raises(HealthProfileError) as excinfo:
+        load_health_profile(write(tmp_path, payload))
+    assert "signals/0/scope" in str(excinfo.value)
+
+
+def scoped(query: str, **scope) -> dict:
+    """The unit profile with signal 0's three queries all set to ``query``
+    (the check is per selector, the field's role does not matter) under
+    ``SCOPE`` plus ``scope``; ``query`` is checked first, so an error
+    locates at ``signals/0/query``."""
+    payload = minimal_profile()
+    for field in ("query", "coverage_query", "freshness_query"):
+        payload["signals"][0][field] = query
+    payload["signals"][0]["scope"] = {**SCOPE, **scope}
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        # the namespace or workload matcher is simply left out
+        ("sum(rate(x{service='svc'}[5m]))", "SCOPE_SELECTOR_UNBOUND"),
+        ("sum(rate(x{namespace='ns'}[5m]))", "SCOPE_SELECTOR_UNBOUND"),
+        ("sum(rate(x{}[5m]))", "SCOPE_SELECTOR_UNBOUND"),
+        # a bare metric selects every namespace
+        ("sum(rate(x[5m]))", "SCOPE_SELECTOR_UNBOUND"),
+        ("up", "SCOPE_SELECTOR_UNBOUND"),
+        (f"x{SEL} / y", "SCOPE_SELECTOR_UNBOUND"),
+        (f"x{SEL} / y[5m]", "SCOPE_SELECTOR_UNBOUND"),
+        # a query with no selector observes nothing
+        ("vector(1)", "SCOPE_SELECTOR_UNBOUND"),
+        # regex, negation, another value, or a second conflicting matcher
+        ("x{namespace=~'ns',service='svc'}", "SCOPE_SELECTOR_MISMATCH"),
+        ("x{namespace=~'.*',service='svc'}", "SCOPE_SELECTOR_MISMATCH"),
+        ("x{namespace!='other',service='svc'}", "SCOPE_SELECTOR_MISMATCH"),
+        ("x{namespace!~'other',service='svc'}", "SCOPE_SELECTOR_MISMATCH"),
+        ("x{namespace='ns',service='payment'}", "SCOPE_SELECTOR_MISMATCH"),
+        ("x{namespace='ns',service=~'svc'}", "SCOPE_SELECTOR_MISMATCH"),
+        (
+            "x{namespace='ns',service='svc',namespace='other'}",
+            "SCOPE_SELECTOR_MISMATCH",
+        ),
+        ('x{namespace="ns",service="svc-canary"}', "SCOPE_SELECTOR_MISMATCH"),
+        # the escape is decoded before comparing, so it cannot smuggle a value
+        ('x{namespace="ns",service="sv\\x63"}', "SCOPE_SELECTOR_UNPARSABLE"),
+        # anything the scanner cannot read is refused, not skipped
+        ("x{namespace='ns',service='svc'", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("x{namespace='ns' service='svc'}", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("x{namespace='ns',service='svc',}", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("x{namespace=`ns`,service=`svc`}", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("x{namespace='ns',service='svc'}}", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("sum by le (x{namespace='ns',service='svc'})", "SCOPE_SELECTOR_UNPARSABLE"),
+        ("x{namespace='ns',service='svc'} # note", "SCOPE_SELECTOR_UNPARSABLE"),
+    ],
+)
+def test_unscoped_or_misscoped_selectors_are_refused(query, code):
+    with pytest.raises(ValueError, match=f"{code} signals/0/query"):
+        profile(**scoped(query))
+
+
+def test_every_query_field_is_checked():
+    for field in ("coverage_query", "freshness_query"):
+        payload = minimal_profile()
+        payload["signals"][2][field] = "max(timestamp(ready{service='svc'}))"
+        with pytest.raises(
+            ValueError, match=f"SCOPE_SELECTOR_UNBOUND signals/2/{field}"
+        ):
+            profile(**payload)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # the shipped shapes: aggregation modifiers, functions, ``or vector``
+        f"sum by (le) (rate(x{SEL}[5m]))",
+        f"sum without (pod, instance) (rate(x{SEL}[5m]))",
+        f"histogram_quantile(0.95, sum by (le) (rate(x{SEL}[5m])))",
+        f"(sum(rate(x{SEL}[5m])) or vector(0)) / sum(rate(x{SEL}[5m]))",
+        f"count(x{SEL} >= 1)",
+        f"min(timestamp(x{SEL}))",
+        f"x{SEL} offset 5m",
+        f"x{SEL} @ start()",
+        f"x{SEL} and on (pod) group_left (node) y{SEL}",
+        # extra matchers on other labels only narrow the selection
+        "x{namespace='ns',service='svc',span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*/PlaceOrder\"}",
+        'x{namespace="ns",service="svc",pod=~"c[0-9]+\\\\.z"}',
+        # an escaped quote in a value is a value character
+        'x{namespace="ns",service="svc",note="a\\"b"}',
+        # a selector without a metric name is still a selector
+        "{__name__='x',namespace='ns',service='svc'}",
+        # label matchers may be spaced
+        "x{ namespace = 'ns' , service = 'svc' }",
+    ],
+)
+def test_bound_selectors_in_every_promql_shape_load(query):
+    assert profile(**scoped(query)).signals[0].query == query
+
+
+def test_every_signal_binds_a_namespace_label():
+    """There is no namespace opt-out: ``null`` and an absent key are both
+    refused, so a series family cannot be read across namespaces by
+    declaring it namespace-less (codex review of PR #132, P1-2)."""
+    for declaration in ({"namespace_label": None}, {}):
+        payload = minimal_profile()
+        payload["signals"][0]["scope"] = {"workload_label": "service", **declaration}
+        with pytest.raises(ValueError, match="namespace_label"):
+            profile(**payload)
+
+
+@pytest.mark.parametrize("keyword", ["offset", "and", "or", "unless", "bool"])
+@pytest.mark.parametrize("field", ["query", "coverage_query", "freshness_query"])
+def test_a_metric_named_like_a_keyword_is_still_a_bare_metric(keyword, field):
+    """Codex review of PR #132, P1-1: ``sum(offset) or sum(<bound>)`` is
+    legal PromQL whose left side is an unbound metric named ``offset``;
+    keywords are recognised only in the position PromQL reads them."""
+    payload = minimal_profile()
+    payload["signals"][0][field] = f"sum({keyword}) or sum(x{SEL})"
+    with pytest.raises(ValueError, match=f"SCOPE_SELECTOR_UNBOUND signals/0/{field}"):
+        profile(**payload)
+    payload["signals"][0][field] = f"sum(x{SEL}) or {keyword}"
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_UNBOUND"):
+        profile(**payload)
+    payload["signals"][0][field] = f"{keyword}[5m]"
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_UNBOUND"):
+        profile(**payload)
+
+
+#: Positions after which PromQL reads the next token as the start of an
+#: expression; a keyword there is a metric name (codex recheck of PR #132).
+EXPRESSION_START_AFTER = {
+    "on": f"x{SEL} or on(service) KW",
+    "ignoring": f"x{SEL} or ignoring(service) KW",
+    "group_left_empty": f"x{SEL} / on(service) group_left() KW",
+    "group_left_labels": f"x{SEL} / on(service) group_left(x) KW",
+    "group_right": f"x{SEL} / on(service) group_right(x) KW",
+    "bool": f"x{SEL} > bool KW",
+    "by": "sum by (service) (KW)",
+    "without": "sum without (service) (KW)",
+    "paren": f"(KW) or x{SEL}",
+    "subquery": "max_over_time(KW[5m:15s])",
+    "offset": f"x{SEL} offset 5m or KW",
+    "at": f"x{SEL} @ 0 or KW",
+    "call_argument": f"clamp_min(KW, 1) or x{SEL}",
+    "unary": f"-KW or x{SEL}",
+}
+
+
+@pytest.mark.parametrize("keyword", ["offset", "and", "or", "unless", "bool"])
+@pytest.mark.parametrize("position", sorted(EXPRESSION_START_AFTER))
+@pytest.mark.parametrize("field", ["query", "coverage_query", "freshness_query"])
+def test_a_keyword_at_an_expression_start_is_a_bare_metric(keyword, position, field):
+    """Codex recheck of PR #132: ``x{} or on(service) or`` is legal PromQL
+    whose right side is the metric ``or``. Whatever closed before it (a
+    modifier label list, ``bool``, a paren), an identifier where an
+    expression starts is a metric and is unbound."""
+    payload = minimal_profile()
+    payload["signals"][0][field] = EXPRESSION_START_AFTER[position].replace(
+        "KW", keyword
+    )
+    with pytest.raises(ValueError, match=f"SCOPE_SELECTOR_UNBOUND signals/0/{field}"):
+        profile(**payload)
+    # the same shape with a bound selector in that position loads
+    payload["signals"][0][field] = EXPRESSION_START_AFTER[position].replace(
+        "KW", f"{keyword}{SEL}"
+    )
+    assert profile(**payload)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"x{SEL} offset 5m",
+        f"x{SEL}[5m] offset 5m",
+        f"x{SEL} and x{SEL}",
+        f"x{SEL} unless on (pod) x{SEL}",
+        f"x{SEL} > bool 1",
+        f"x{SEL} == bool x{SEL}",
+        f"vector(0) or x{SEL}",
+        f"1 or x{SEL}",
+        # a metric named like a keyword with a bound selector is a selector
+        f"offset{SEL}",
+        f"or{SEL} or and{SEL}",
+        f"x{SEL} >= bool 1",
+        f"x{SEL} != bool x{SEL}",
+        f"sum(x{SEL}) by (service) or sum(x{SEL}) without (pod)",
+        f"x{SEL} / ignoring(pod) group_right x{SEL}",
+        f"x{SEL} @ end() offset 5m",
+        f"-x{SEL} + +x{SEL}",
+        f'label_replace(x{SEL}, "a", "$1", "b", "(.*)")',
+        f"max_over_time((x{SEL})[5m:15s])",
+    ],
+)
+def test_keywords_in_their_syntactic_position_still_load(query):
+    assert profile(**scoped(query)).signals[0].query == query
+
+
+def test_dependency_scopes_are_derived_from_the_subject_and_prefixes_are_refused():
+    """A pod-name prefix (``checkout-.*``) is not a workload identity:
+    ``checkout-canary-...`` matches too (codex review of PR #132, P1-3), so
+    there is no ``prefix`` match kind and a prefix regex on the workload
+    label is a mismatch like any other regex."""
+    with pytest.raises(ValueError, match="literal_error"):
+        profile(
+            **scoped(
+                "x{namespace='ns',pod=~'svc-.*'}",
+                workload_label="pod",
+                workload_match="prefix",
+            )
+        )
+    with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
+        profile(**scoped("x{namespace='ns',service=~'svc-.*'}"))
+    deps = {
+        "workload_label": "deployment",
+        "workload_match": "dependencies",
+        "dependencies": ["payment", "cart"],
+    }
+    assert profile(**scoped("x{namespace='ns',deployment=~'payment|cart'}", **deps))
+    for bad in (
+        "x{namespace='ns',deployment=~'payment|cart|svc'}",
+        "x{namespace='ns',deployment=~'payment'}",
+        "x{namespace='ns',deployment='payment'}",
+        "x{namespace='ns',deployment=~'cart|payment'}",
+        "x{namespace='ns',deployment=~'.*'}",
+    ):
+        with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
+            profile(**scoped(bad, **deps))
+
+
+@pytest.mark.parametrize(
+    ("scope", "code"),
+    [
+        ({"namespace_label": "service"}, "SCOPE_LABELS_IDENTICAL"),
+        ({"workload_match": "dependencies"}, "SCOPE_DEPENDENCIES_INCONSISTENT"),
+        ({"dependencies": ["a"]}, "SCOPE_DEPENDENCIES_INCONSISTENT"),
+        (
+            {"workload_match": "dependencies", "dependencies": ["a", "a"]},
+            "SCOPE_DEPENDENCY_DUPLICATE",
+        ),
+        (
+            {"workload_match": "dependencies", "dependencies": ["a.*"]},
+            "string_pattern_mismatch",
+        ),
+        ({"workload_match": "any"}, "literal_error"),
+        ({"workload_label": "bad-label"}, "string_pattern_mismatch"),
+        ({"extra": 1}, "extra_forbidden"),
+    ],
+)
+def test_scope_declarations_are_validated(scope, code):
+    with pytest.raises(ValueError, match=code):
+        profile(**scoped(f"x{SEL}", **scope))
+
+
+def test_subject_values_are_dns_subdomains_so_derived_regexes_are_literal():
+    for subject in (
+        {"service": "svc.*", "kubernetes_namespace": "ns"},
+        {"service": "svc", "kubernetes_namespace": "ns|other"},
+        {"service": "", "kubernetes_namespace": "ns"},
+        {"service": "Svc", "kubernetes_namespace": "ns"},
+        {"service": "svc.", "kubernetes_namespace": "ns"},
+        {"service": "-svc", "kubernetes_namespace": "ns"},
+        {"service": "a" * 254, "kubernetes_namespace": "ns"},
+    ):
+        with pytest.raises(ValueError, match="subject"):
+            profile(subject=subject)
+
+
+def test_dotted_workload_and_dependency_names_are_legal_and_matched_literally():
+    """A Deployment name is a DNS-1123 subdomain (``checkout.prod`` is
+    legal, PR #132 bot triage); the exact match uses it verbatim and the
+    dependency regex escapes the dot so ``a.b`` cannot match ``axb``."""
+    dotted = minimal_profile(
+        subject={"service": "svc.prod", "kubernetes_namespace": "ns.east"}
+    )
+    for signal in dotted["signals"]:
+        for key in ("query", "coverage_query", "freshness_query"):
+            signal[key] = signal[key].replace(
+                SEL, "{namespace='ns.east',service='svc.prod'}"
+            )
+    assert profile(**dotted).subject.service == "svc.prod"
+    deps = {
+        "workload_label": "deployment",
+        "workload_match": "dependencies",
+        "dependencies": ["a.b", "c"],
+    }
+    assert profile(**scoped('x{namespace="ns",deployment=~"a\\\\.b|c"}', **deps))
+    for bad in (
+        'x{namespace="ns",deployment=~"a.b|c"}',
+        'x{namespace="ns",deployment=~"axb|c"}',
+    ):
+        with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
+            profile(**scoped(bad, **deps))
+
+
+def test_vector_selectors_are_extracted_with_decoded_values():
+    from opspilot.observer.health_profile import _vector_selectors
+
+    found = _vector_selectors(
+        'sum by (le) (rate(x{a="1",b=~"c[0-9]+",d!="e\\"f"}[5m])) or vector(0)'
+    )
+    assert [[(m.label, m.op, m.value) for m in sel] for sel in found] == [
+        [("a", "=", "1"), ("b", "=~", "c[0-9]+"), ("d", "!=", 'e"f')]
+    ]
+    assert _vector_selectors("vector(0) + 1e3") == []
+    nameless = _vector_selectors("{__name__='x'} - {y='z'}")
+    assert [[(m.label, m.op, m.value) for m in sel] for sel in nameless] == [
+        [("__name__", "=", "x")],
+        [("y", "=", "z")],
+    ]

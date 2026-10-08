@@ -68,22 +68,24 @@ PROFILE = HealthProfile.model_validate(
             {
                 "name": "rate",
                 "description": "traffic",
-                "query": "sum(rate(x[5m]))",
-                "coverage_query": "max(count_over_time(x[5m]))",
-                "freshness_query": "max(timestamp(x))",
+                "query": "sum(rate(x{namespace='ns',service='svc'}[5m]))",
+                "coverage_query": "max(count_over_time(x{namespace='ns',service='svc'}[5m]))",
+                "freshness_query": "max(timestamp(x{namespace='ns',service='svc'}))",
                 "minimum_samples": 3,
                 "traffic_dependent": False,
                 "healthy": {"min": 0},
+                "scope": {"namespace_label": "namespace", "workload_label": "service"},
             },
             {
                 "name": "errors",
                 "description": "error ratio",
-                "query": "e / t",
-                "coverage_query": "max(count_over_time(t[5m]))",
-                "freshness_query": "max(timestamp(t))",
+                "query": "e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}",
+                "coverage_query": "max(count_over_time(t{namespace='ns',service='svc'}[5m]))",
+                "freshness_query": "max(timestamp(t{namespace='ns',service='svc'}))",
                 "minimum_samples": 3,
                 "traffic_dependent": True,
                 "healthy": {"min": 0, "max": 0.01},
+                "scope": {"namespace_label": "namespace", "workload_label": "service"},
             },
         ],
     }
@@ -139,12 +141,12 @@ def no_data() -> InstantResult:
 def healthy_answers(latest=None):
     latest = NOW - timedelta(seconds=30) if latest is None else latest
     return {
-        "sum(rate(x[5m]))": ok(2.0),
-        "max(count_over_time(x[5m]))": ok(5),
-        "max(timestamp(x))": ok(latest.timestamp()),
-        "e / t": ok(0.0),
-        "max(count_over_time(t[5m]))": ok(5),
-        "max(timestamp(t))": ok(latest.timestamp()),
+        "sum(rate(x{namespace='ns',service='svc'}[5m]))": ok(2.0),
+        "max(count_over_time(x{namespace='ns',service='svc'}[5m]))": ok(5),
+        "max(timestamp(x{namespace='ns',service='svc'}))": ok(latest.timestamp()),
+        "e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}": ok(0.0),
+        "max(count_over_time(t{namespace='ns',service='svc'}[5m]))": ok(5),
+        "max(timestamp(t{namespace='ns',service='svc'}))": ok(latest.timestamp()),
     }
 
 
@@ -213,12 +215,12 @@ def test_a_sample_queries_every_signal_three_times_at_the_window_end_and_submits
 
     assert taken.requests_issued == 6 and not taken.scope_interrupted
     assert [expr for expr, _ in source.requests] == [
-        "sum(rate(x[5m]))",
-        "max(count_over_time(x[5m]))",
-        "max(timestamp(x))",
-        "e / t",
-        "max(count_over_time(t[5m]))",
-        "max(timestamp(t))",
+        "sum(rate(x{namespace='ns',service='svc'}[5m]))",
+        "max(count_over_time(x{namespace='ns',service='svc'}[5m]))",
+        "max(timestamp(x{namespace='ns',service='svc'}))",
+        "e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}",
+        "max(count_over_time(t{namespace='ns',service='svc'}[5m]))",
+        "max(timestamp(t{namespace='ns',service='svc'}))",
     ]
     assert {at for _, at in source.requests} == {NOW}
     # the scope is checked before every request
@@ -232,7 +234,7 @@ def test_a_sample_queries_every_signal_three_times_at_the_window_end_and_submits
     assert by_name["rate"].status == "ok" and by_name["rate"].value == 2.0
     assert by_name["rate"].sample_count == 5
     assert (
-        by_name["rate"].query == "sum(rate(x[5m]))"
+        by_name["rate"].query == "sum(rate(x{namespace='ns',service='svc'}[5m]))"
         and by_name["rate"].source == "prometheus"
     )
     # the raw bundle carries the exact response bytes and hashes to raw_sha256
@@ -241,7 +243,9 @@ def test_a_sample_queries_every_signal_three_times_at_the_window_end_and_submits
     assert hashlib.sha256(raw).hexdigest() == by_name["rate"].raw_sha256
     bundle = json.loads(raw)
     assert base64.b64decode(bundle["query"]["body_b64"]) == vector(2.0)
-    assert bundle["freshness"]["expr"] == "max(timestamp(x))"
+    assert (
+        bundle["freshness"]["expr"] == "max(timestamp(x{namespace='ns',service='svc'}))"
+    )
     assert bundle["evaluated_at"] == NOW.isoformat()
 
 
@@ -284,7 +288,7 @@ def test_stopped_scrapes_make_the_reading_stale_and_the_sample_unknown():
 
 def test_too_few_raw_points_are_stored_as_no_data():
     answers = healthy_answers()
-    answers["max(count_over_time(x[5m]))"] = ok(2)
+    answers["max(count_over_time(x{namespace='ns',service='svc'}[5m]))"] = ok(2)
     store = FakeStore()
     take_sample(lease(), PROFILE, FakeSource(answers), store)
     ((_, sample, readings),) = store.submitted
@@ -294,8 +298,10 @@ def test_too_few_raw_points_are_stored_as_no_data():
 
 def test_no_data_timeout_and_failure_keep_their_status_and_raw():
     answers = healthy_answers()
-    answers["sum(rate(x[5m]))"] = no_data()
-    answers["e / t"] = InstantResult("", "timeout", None, b"", None, "TIMEOUT")
+    answers["sum(rate(x{namespace='ns',service='svc'}[5m]))"] = no_data()
+    answers["e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}"] = (
+        InstantResult("", "timeout", None, b"", None, "TIMEOUT")
+    )
     store = FakeStore()
     taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
     ((_, sample, readings),) = store.submitted
@@ -336,7 +342,7 @@ def test_an_incomplete_body_is_filed_as_failed_and_the_bundle_says_so():
     always fits the store's raw limit, so its hash is never a substitute's."""
     answers = healthy_answers()
     prefix = b'{"status":"success","data":{"resultType":"vector","result":[{"m'
-    answers["sum(rate(x[5m]))"] = InstantResult(
+    answers["sum(rate(x{namespace='ns',service='svc'}[5m]))"] = InstantResult(
         "", "failed", None, prefix, 200, "TOO_LARGE", body_complete=False
     )
     store = FakeStore()
@@ -357,10 +363,12 @@ def test_three_full_size_bodies_always_fit_the_stored_raw_limit():
     answers = {
         expr: InstantResult("", "ok", 2.0, big, 200) for expr in healthy_answers()
     }
-    answers["max(timestamp(x))"] = InstantResult(
+    answers["max(timestamp(x{namespace='ns',service='svc'}))"] = InstantResult(
         "", "ok", (NOW - timedelta(seconds=30)).timestamp(), big, 200
     )
-    answers["max(timestamp(t))"] = answers["max(timestamp(x))"]
+    answers["max(timestamp(t{namespace='ns',service='svc'}))"] = answers[
+        "max(timestamp(x{namespace='ns',service='svc'}))"
+    ]
     store = FakeStore()
     take_sample(lease(), PROFILE, FakeSource(answers), store)
     ((_, _, readings),) = store.submitted
@@ -433,8 +441,8 @@ def test_a_stale_dependency_among_fresh_ones_blocks_health():
         "request_rate_per_second": 0.0125,
         "error_ratio": 0.0,
         "latency_p95_milliseconds": 100.0,
-        "pods_running": 1.0,
-        "pod_restarts_in_window": 0.0,
+        "deployment_ready_replicas": 1.0,
+        "deployment_available_replicas_min_in_window": 1.0,
         "dependency_deployments_available": 8.0,  # all eight still report
         "dependency_error_ratio": 0.0,
     }
@@ -513,8 +521,8 @@ def test_a_hung_source_cannot_push_the_sample_past_its_lease(monkeypatch):
 def test_a_timeout_reading_replays_as_a_timeout():
     """PR #119 codex P2: the replay keeps the recorded transport status."""
     answers = healthy_answers()
-    answers["e / t"] = InstantResult(
-        "", "timeout", None, b"", None, "TIMEOUT", body_complete=False
+    answers["e{namespace='ns',service='svc'} / t{namespace='ns',service='svc'}"] = (
+        InstantResult("", "timeout", None, b"", None, "TIMEOUT", body_complete=False)
     )
     store = FakeStore()
     taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
@@ -544,7 +552,7 @@ def test_a_freshness_query_transport_failure_is_the_readings_status(transport):
     timed out or failed -- the reading carries that status (not ok-then-stale,
     not failed for a timeout), online and on replay alike."""
     answers = healthy_answers()
-    answers["max(timestamp(x))"] = InstantResult(
+    answers["max(timestamp(x{namespace='ns',service='svc'}))"] = InstantResult(
         "", transport, None, b"", None, transport.upper(), body_complete=False
     )
     store = FakeStore()
@@ -579,7 +587,7 @@ def test_an_oversized_bundle_is_truncated_and_failed_instead_of_crashing():
     (body_complete false, truncated true), the reading fails closed and the
     sample is still submitted."""
     # three full bodies leave ~8 KiB of headroom; a 12 KiB expression exceeds it
-    long_expr = "sum(rate(x[5m]))" + " " * 12000
+    long_expr = "sum(rate(x{namespace='ns',service='svc'}[5m]))" + " " * 12000
     wide = HealthProfile.model_validate(
         {
             **json.loads(PROFILE.model_dump_json()),
@@ -597,11 +605,18 @@ def test_an_oversized_bundle_is_truncated_and_failed_instead_of_crashing():
         expr: InstantResult("", "ok", 2.0, big, 200) for expr in healthy_answers()
     }
     answers[long_expr] = InstantResult("", "ok", 2.0, big, 200)
-    for coverage in ("max(count_over_time(x[5m]))", "max(count_over_time(t[5m]))"):
+    for coverage in (
+        "max(count_over_time(x{namespace='ns',service='svc'}[5m]))",
+        "max(count_over_time(t{namespace='ns',service='svc'}[5m]))",
+    ):
         answers[coverage] = InstantResult("", "ok", 5.0, big, 200)
     fresh = (NOW - timedelta(seconds=30)).timestamp()
-    answers["max(timestamp(x))"] = InstantResult("", "ok", fresh, big, 200)
-    answers["max(timestamp(t))"] = InstantResult("", "ok", fresh, big, 200)
+    answers["max(timestamp(x{namespace='ns',service='svc'}))"] = InstantResult(
+        "", "ok", fresh, big, 200
+    )
+    answers["max(timestamp(t{namespace='ns',service='svc'}))"] = InstantResult(
+        "", "ok", fresh, big, 200
+    )
     store = FakeStore()
     taken = take_sample(lease(wide.revision), wide, FakeSource(answers), store)
     ((_, sample, readings),) = store.submitted
@@ -621,7 +636,7 @@ def test_an_out_of_range_freshness_epoch_fails_the_signal_not_the_sample():
     """Codex round 4: ``timestamp()`` returning 1e20 is finite but not an
     epoch; the signal is failed with a fixed code and the sample submitted."""
     answers = healthy_answers()
-    answers["max(timestamp(x))"] = ok(1e20)
+    answers["max(timestamp(x{namespace='ns',service='svc'}))"] = ok(1e20)
     store = FakeStore()
     taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
     ((_, sample, readings),) = store.submitted
@@ -1060,7 +1075,7 @@ def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
     # online and replay agree: the bundle keeps the prefix, says it is
     # incomplete, and the reading fails on both sides
     answers = healthy_answers()
-    answers["sum(rate(x[5m]))"] = result
+    answers["sum(rate(x{namespace='ns',service='svc'}[5m]))"] = result
     store = FakeStore()
     taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
     assert taken.evaluation is not None and taken.evaluation.outcome == "failed"
