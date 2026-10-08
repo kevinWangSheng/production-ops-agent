@@ -42,3 +42,15 @@
 4. 原因不另算：`SessionReplay` 新增 `recovery_reasons / observation_ended / ended_reason / handoff / handoff_reasons`，逐信号原因从重放已有的 `SampleEvaluation.verdicts`（含 required 标志）算出，在线与重放同一逻辑；投影删除 profile 解析与原因拼装，只复制。可选项：信号 `evaluated_at` / `sample_time` 取捆绑记录时刻，不用窗尾冒充。
 
 复验数字：单元 `tests/test_f6_recovery_outcome.py` 11 passed、`tests/test_m1_02_replay.py` 25 + 页面 5 + observer 47 通过；PG `tests/integration/test_m1_02_recovery_outcome_postgres.py` 5 passed；六个 M1-02/重放/投影 PG 套件合计 113 passed（55641）；`make check` 3177 passed / 469 skipped / 2 xfailed。红证明：审查项测试在修复前的产品代码上（`git apply -R` 对照）失败，见 PR 回报。
+
+## 最后一轮（2026-10-08，复验 2 条 P2 + 机器人线程，全部处置）
+
+1. 权限按限定名绑定产品 schema（`table_privileges()` 返回 `product_schema` = 本连接解析 `opspilot_incidents` 的 schema），其他 schema 的同名关系按 `foreign_write:<schema.关系>` 报出；PG 测试建 `lab.opspilot_observation_signal_readings` 并授 INSERT → 报出。
+2. 视图/物化视图/外表纳入测量（relkind v/m/f）；PG 测试建可更新视图 `lab_notes_view` 只授视图 UPDATE → `foreign_write:public.lab_notes_view`。
+3. `scenario.subject_id` 必须等于事故 id（事故行与每个会话 `incident_id`），不等 → `SUBJECT_MISMATCH`，不重贴标签。
+4. 重放完整性不一致时 `incident_lifecycle = "unverified"`，已存值另列 `recorded_lifecycle`（场景 test_f6_recovery.py:521-524 要求 `!= "resolved"`）。
+5. `actions` 按事件时间合并（控制行 created_at / 采样 submitted_at / 结束 recorded_at），不再分组拼接。
+6. 信号新增 `observed_at`（捆绑 freshness 答复的最新原始样本时间，经 body_sha256 校验后解析），与 `evaluated_at` / `sample_time` 分开。
+7. `read_only` 要求重放所读每张记录表的全部必需列可 SELECT（`store.RECORD_COLUMNS`），部分列 → `unreadable:<表>(缺列)`。
+
+数字：单元 `tests/test_f6_recovery_outcome.py` 16 passed；PG 新套件 5 passed、六套件合计 113 passed（55641）；`make check` 见回报。

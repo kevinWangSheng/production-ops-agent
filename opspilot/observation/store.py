@@ -97,6 +97,23 @@ _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"
     "window_end,source,raw_sha256,raw"
 )
+# The columns the replay reads per record table (``session_history``): a
+# login must be able to SELECT all of them to be a read-only observer of
+# the records (``opspilot.acceptance_recovery``).
+RECORD_COLUMNS: dict[str, tuple[str, ...]] = {
+    "opspilot_incidents": ("incident_id", "lifecycle"),
+    "opspilot_observation_sessions": tuple(_SESSION_COLUMNS.split(",")),
+    "opspilot_observation_samples": tuple(_SAMPLE_COLUMNS.split(",")),
+    "opspilot_observation_signal_readings": tuple(_READING_COLUMNS.split(",")),
+    "opspilot_observation_endings": tuple(_ENDING_COLUMNS.split(",")),
+    "opspilot_health_profiles": (
+        "health_profile_revision",
+        "profile_id",
+        "content_sha256",
+        "content",
+        "created_at",
+    ),
+}
 # One signal's raw result, kept for hash verification on replay; the same
 # bound migration 0003 enforces (M0 response limit, 128 KiB).
 READING_RAW_LIMIT = 131072
@@ -1901,8 +1918,10 @@ class ObservationStore(_StoreBase):
         "database": (privileges...),
         "functions": ("<schema>.<name>(<args>)", ...)}``
 
-        Tables (ordinary and partitioned) in every non-system schema of the
-        current database: ``SELECT`` / ``INSERT`` / ``UPDATE`` / ``DELETE`` /
+        ``product_schema`` is where this connection's search path resolves
+        ``opspilot_incidents``. Relations (tables, partitioned tables, views,
+        materialized views, foreign tables) in every non-system schema of
+        the current database: ``SELECT`` / ``INSERT`` / ``UPDATE`` / ``DELETE`` /
         ``TRUNCATE`` held on the whole table (``"*"``) or, for the three
         column-grantable ones, the exact columns (``has_column_privilege``
         per column), so a column added to a grant is visible. Sequences:
@@ -1916,7 +1935,7 @@ class ObservationStore(_StoreBase):
         column_kinds = ("SELECT", "INSERT", "UPDATE")
         with self.transaction(snapshot=True) as conn:
             relations = conn.execute(
-                "SELECT c.oid,n.nspname,c.relname,c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','S') AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND n.nspname NOT LIKE 'pg_temp%%' AND n.nspname NOT LIKE 'pg_toast_temp%%' ORDER BY n.nspname,c.relname"
+                "SELECT c.oid,n.nspname,c.relname,c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND n.nspname NOT LIKE 'pg_temp%%' AND n.nspname NOT LIKE 'pg_toast_temp%%' ORDER BY n.nspname,c.relname"
             ).fetchall()
             tables: dict[str, dict[str, Any]] = {}
             sequences: dict[str, tuple[str, ...]] = {}
@@ -1986,7 +2005,13 @@ class ObservationStore(_StoreBase):
                     "SELECT n.nspname,p.proname,pg_catalog.pg_get_function_identity_arguments(p.oid) AS args FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE p.prosecdef AND p.provolatile='v' AND p.prorettype<>'trigger'::regtype AND n.nspname NOT IN ('pg_catalog','information_schema') AND has_function_privilege(current_user,p.oid,'EXECUTE') ORDER BY n.nspname,p.proname"
                 ).fetchall()
             )
+            # the schema this connection's search path resolves the product
+            # tables in: a same-named table anywhere else is not the product's
+            product = conn.execute(
+                "SELECT n.nspname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=to_regclass('opspilot_incidents')"
+            ).fetchone()
         return {
+            "product_schema": None if product is None else str(product["nspname"]),
             "tables": tables,
             "sequences": sequences,
             "schemas": schemas,

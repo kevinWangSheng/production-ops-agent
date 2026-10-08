@@ -31,13 +31,16 @@ from tests.m1_02_replay_support import (
     take,
 )
 
-SCENARIO = IncidentScenario(
-    scenario_id="F6:1:recovered",
-    feature_id="F6",
-    acceptance_step="1",
-    kind="recovered",
-    subject_id="incident-f6",
-)
+
+def _scenario(history) -> IncidentScenario:
+    """The scenario names the incident the records were read for."""
+    return IncidentScenario(
+        scenario_id="F6:1:recovered",
+        feature_id="F6",
+        acceptance_step="1",
+        kind="recovered",
+        subject_id=str(history["session"]["incident_id"]),
+    )
 
 
 #: What ``ObservationStore.table_privileges`` reports for the migration-0003
@@ -64,6 +67,7 @@ def _grants(**overrides):
         "schemas": {"public": ("USAGE",)},
         "database": (),
         "functions": (),
+        "product_schema": "public",
     }
     grants.update(overrides)
     return grants
@@ -99,10 +103,12 @@ def _records(history, *, controls=None, grants=OBSERVER_MEASURED) -> RecoveryRec
 
 def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     history = healthy_history()
-    outcome = recovery_outcome(SCENARIO, _records(history, controls=[_control()]))
+    outcome = recovery_outcome(
+        _scenario(history), _records(history, controls=[_control()])
+    )
     assert isinstance(outcome, RecoveryOutcome)
-    assert outcome.scenario_id == SCENARIO.scenario_id
-    assert outcome.subject_id == "incident-f6"
+    assert outcome.scenario_id == "F6:1:recovered"
+    assert outcome.subject_id == str(history["session"]["incident_id"])
     assert outcome.incident_lifecycle == "resolved"
     assert outcome.recovery_confirmed is True
     assert outcome.recovery_verdict == "healthy"
@@ -122,7 +128,7 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     assert outcome.target == history["session"]["target"]
     assert len(outcome.recovery_samples) == 6
     sample = outcome.recovery_samples[-1]
-    assert sample.subject_id == "incident-f6"
+    assert sample.subject_id == outcome.subject_id
     assert sample.sequence == 6 and sample.disposition == "adopted"
     assert sample.outcome == "healthy" and sample.confirms_health is True
     assert sample.target == history["session"]["target"]
@@ -141,6 +147,8 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     # the instants are the bundle's own, not the window end dressed up
     assert errors.evaluated_at == sample.window_end
     assert errors.sample_time == sample.window_end + timedelta(seconds=1)
+    # the newest raw sample behind the signal, from the freshness answer
+    assert errors.observed_at == sample.window_end - timedelta(seconds=30)
     # actions are the audit of what the product did, in record order
     assert outcome.actions[:2] == ("record_handling", "advance_incident_lifecycle")
     assert outcome.actions.count("persist_observation") == 6
@@ -176,12 +184,14 @@ def test_a_tampered_record_yields_unknown_with_the_integrity_reason():
     history = healthy_history()
     for row in history["samples"]:
         row["outcome"] = "degraded"
-    outcome = recovery_outcome(SCENARIO, _records(history))
+    outcome = recovery_outcome(_scenario(history), _records(history))
     assert outcome.recovery_verdict == "unknown"
     assert outcome.recovery_confirmed is False
     assert "STORED_OBSERVATION_INTEGRITY_MISMATCH" in outcome.recovery_reasons
-    # the incident lifecycle is the committed row's, reported as is
-    assert outcome.incident_lifecycle == "resolved"
+    # the committed row still says resolved; the replay cannot vouch for it,
+    # so the lifecycle the outcome stands behind is not "resolved"
+    assert outcome.recorded_lifecycle == "resolved"
+    assert outcome.incident_lifecycle == "unverified"
     assert outcome.replay is not None and not outcome.replay.consistent
 
 
@@ -217,7 +227,7 @@ def test_an_unconfirmed_session_hands_off_with_reasons_from_the_replay(
         max_samples=3,
         sustained_window_seconds=60,
     )
-    outcome = recovery_outcome(SCENARIO, _records(history))
+    outcome = recovery_outcome(_scenario(history), _records(history))
     assert outcome.incident_lifecycle == "open"
     assert outcome.recovery_confirmed is False
     assert outcome.recovery_verdict == verdict
@@ -255,7 +265,7 @@ def test_a_missing_required_signal_names_it():
     sample["outcome"], sample["required_signals_present"] = "no_data", False
     sample["confirms_health"], sample["health_basis"] = False, "outcome_not_healthy"
     history["session"]["healthy_since"] = None
-    outcome = recovery_outcome(SCENARIO, _records(history))
+    outcome = recovery_outcome(_scenario(history), _records(history))
     assert outcome.recovery_verdict == "unknown"
     assert "MISSING_SIGNAL:errors" in outcome.recovery_reasons
     assert "REQUIRED_TELEMETRY_MISSING" in outcome.recovery_reasons
@@ -263,7 +273,7 @@ def test_a_missing_required_signal_names_it():
 
 def test_a_session_still_observing_is_not_ended_and_not_a_handoff():
     history = healthy_history(count=3)
-    outcome = recovery_outcome(SCENARIO, _records(history))
+    outcome = recovery_outcome(_scenario(history), _records(history))
     assert outcome.incident_lifecycle == "observing_recovery"
     assert outcome.observation_ended is False
     assert outcome.observation_ended_reason is None
@@ -277,7 +287,7 @@ def test_no_session_means_no_observation():
     history = healthy_history(count=1)
     records = RecoveryRecords(
         incident={
-            "incident_id": uuid4(),
+            "incident_id": history["session"]["incident_id"],
             "lifecycle": "open",
             "mode": "automatic",
             "control_generation": 0,
@@ -286,7 +296,7 @@ def test_no_session_means_no_observation():
         controls=(),
         grants=OBSERVER_MEASURED,
     )
-    outcome = recovery_outcome(SCENARIO, records)
+    outcome = recovery_outcome(_scenario(history), records)
     assert outcome.recovery_verdict == "unknown" and not outcome.recovery_confirmed
     assert outcome.recovery_samples == () and outcome.observation_sessions == ()
     assert outcome.observation_ended is False
@@ -359,8 +369,9 @@ def test_permissions_come_from_the_measured_grants_not_a_constant():
         tables=_tables(**{"public.opspilot_observation_samples": {"INSERT": "*"}})
     )
     assert "read_only" not in permissions_from_grants(blind, human_control=False)
-    assert "unreadable:opspilot_observation_samples" in permissions_from_grants(
-        blind, human_control=False
+    assert any(
+        p.startswith("unreadable:opspilot_observation_samples(")
+        for p in permissions_from_grants(blind, human_control=False)
     )
     with pytest.raises(ValueError, match="GRANTS_REQUIRED"):
         permissions_from_grants({}, human_control=False)
@@ -441,7 +452,7 @@ def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
     history["samples"][0]["readings"][0] = rehash(
         reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
     )
-    outcome = recovery_outcome(SCENARIO, _records(history))
+    outcome = recovery_outcome(_scenario(history), _records(history))
     # 2 readings x 3 queries, one of them never sent
     assert outcome.actions.count("read_only_query") == 5
     # a second registration while the first session was revoked without a
@@ -477,7 +488,7 @@ def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
         controls=(_control(1), _control(2)),
         grants=OBSERVER_MEASURED,
     )
-    outcome = recovery_outcome(SCENARIO, records)
+    outcome = recovery_outcome(_scenario(first), records)
     assert outcome.actions[:3] == (
         "record_handling",
         "advance_incident_lifecycle",
@@ -486,10 +497,141 @@ def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
     assert outcome.actions[3] != "advance_incident_lifecycle"
     # without an ending record the move is unknown and not claimed
     first["endings"] = []
-    outcome = recovery_outcome(SCENARIO, records)
+    outcome = recovery_outcome(_scenario(first), records)
     assert outcome.actions[:3] == (
         "record_handling",
         "advance_incident_lifecycle",
         "record_handling",
     )
     assert outcome.actions[3] != "advance_incident_lifecycle"
+
+
+# --- final round on PR #143 (recheck P2 + bot threads)
+
+
+def test_records_of_another_incident_are_refused_not_relabelled():
+    history = healthy_history()
+    other = IncidentScenario(
+        scenario_id="F6:1:recovered",
+        feature_id="F6",
+        acceptance_step="1",
+        kind="recovered",
+        subject_id=str(uuid4()),
+    )
+    with pytest.raises(ValueError, match="SUBJECT_MISMATCH"):
+        recovery_outcome(other, _records(history))
+    stray = healthy_history()
+    stray["session"]["incident_id"] = uuid4()
+    records = _records(history)
+    records = RecoveryRecords(
+        incident=records.incident,
+        sessions=(history, stray),
+        controls=(),
+        grants=OBSERVER_MEASURED,
+    )
+    with pytest.raises(ValueError, match="SUBJECT_MISMATCH"):
+        recovery_outcome(_scenario(history), records)
+
+
+def test_a_same_named_relation_outside_the_product_schema_is_foreign():
+    """Recheck P2-1: product identity is schema-bound."""
+    grants = _grants(
+        tables=_tables(
+            **{
+                "lab.opspilot_observation_signal_readings": {
+                    "SELECT": "*",
+                    "INSERT": "*",
+                },
+                "lab.opspilot_incidents": {"SELECT": "*", "UPDATE": ("lifecycle",)},
+            }
+        )
+    )
+    permissions = permissions_from_grants(grants, human_control=False)
+    assert "foreign_write:lab.opspilot_observation_signal_readings" in permissions
+    assert "foreign_write:lab.opspilot_incidents(lifecycle)" in permissions
+    # without a product schema nothing can be classified
+    with pytest.raises(ValueError, match="GRANTS_REQUIRED"):
+        permissions_from_grants(
+            {**OBSERVER_MEASURED, "product_schema": None}, human_control=False
+        )
+
+
+def test_a_writable_view_is_a_write_capability():
+    """Recheck P2-2: views, materialized views and foreign tables are
+    measured like tables; a write through one is reported."""
+    grants = _grants(
+        tables=_tables(**{"public.readings_view": {"SELECT": "*", "UPDATE": "*"}})
+    )
+    assert "foreign_write:public.readings_view" in permissions_from_grants(
+        grants, human_control=False
+    )
+
+
+def test_read_only_needs_every_column_the_replay_reads():
+    """Bot thread: a partial SELECT on a record table is not read access to
+    the records."""
+    grants = _grants(
+        tables=_tables(
+            **{
+                "public.opspilot_observation_samples": {
+                    "SELECT": ("sample_id", "session_id", "sequence"),
+                    "INSERT": OBSERVER_GRANTS["opspilot_observation_samples"]["INSERT"],
+                }
+            }
+        )
+    )
+    permissions = permissions_from_grants(grants, human_control=False)
+    assert "read_only" not in permissions
+    unreadable = next(p for p in permissions if p.startswith("unreadable:"))
+    assert unreadable.startswith("unreadable:opspilot_observation_samples(")
+    assert "outcome" in unreadable and "sample_id" not in unreadable
+
+
+def test_actions_are_merged_in_event_time():
+    """Bot thread: a registration recorded after the first session's events
+    appears after them, not in a control-rows-first block."""
+    first = healthy_history(count=1)
+    first["session"]["state"], first["session"]["ended_reason"] = (
+        "revoked",
+        "authority_revoked",
+    )
+    first["endings"] = [
+        {
+            "ending_id": uuid4(),
+            "session_id": first["session"]["session_id"],
+            "incident_id": first["session"]["incident_id"],
+            "ended_reason": "authority_revoked",
+            "transition": None,
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "observing_recovery",
+            "recorded_at": NOW + timedelta(seconds=10),
+        }
+    ]
+    second = healthy_history(count=1)
+    second["session"]["incident_id"] = first["session"]["incident_id"]
+    second["samples"][0]["submitted_at"] = NOW + timedelta(seconds=120)
+    controls = (
+        {**_control(1), "created_at": NOW - timedelta(seconds=600)},
+        {**_control(2), "created_at": NOW + timedelta(seconds=11)},
+    )
+    records = RecoveryRecords(
+        incident={
+            "incident_id": first["session"]["incident_id"],
+            "lifecycle": "observing_recovery",
+            "mode": "automatic",
+            "control_generation": 2,
+        },
+        sessions=(first, second),
+        controls=controls,
+        grants=OBSERVER_MEASURED,
+    )
+    actions = recovery_outcome(_scenario(first), records).actions
+    assert actions[:2] == ("record_handling", "advance_incident_lifecycle")
+    first_persist = actions.index("persist_observation")
+    second_handling = len(actions) - 1 - actions[::-1].index("record_handling")
+    assert (
+        first_persist
+        < second_handling
+        < actions.index("persist_observation", first_persist + 1)
+    )

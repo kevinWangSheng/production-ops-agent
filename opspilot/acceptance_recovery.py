@@ -14,7 +14,14 @@ reasons of its own, and a record the replay cannot reproduce comes out as
 
 Field sources (``RecoveryOutcome``):
 
-* ``incident_lifecycle`` / ``incident_mode``: the committed incident row.
+* ``subject_id``: ``scenario.subject_id``, which must be the incident id
+  the records were read for; a record of another incident is refused
+  (``SUBJECT_MISMATCH``), never relabelled.
+* ``recorded_lifecycle`` / ``incident_mode``: the committed incident row.
+  ``incident_lifecycle`` is the lifecycle the replay can vouch for: the
+  recorded one when the stored basis reproduces, ``unverified`` when the
+  replay reports an integrity mismatch (a recorded ``resolved`` the rows no
+  longer support is not repeated; F6 step 5 scenario contract).
 * ``target``: the session's immutable target binding (``opspilot_observation
   _sessions.target``), never telemetry content (PRODUCT-CONSTRAINTS).
 * ``recovery_verdict`` / ``recovery_confirmed`` / ``latest_sample_verdict`` /
@@ -29,26 +36,29 @@ Field sources (``RecoveryOutcome``):
   status, point count, query, source, window, the bundle's sha256, the
   sha256 of the response body inside it, and the instants the bundle
   recorded: ``evaluated_at`` the queries were evaluated at, ``sample_time``
-  the verdict judged freshness against -- ``None`` when the bundle does not
-  verify) and the replay's per-signal verdict; ``evidence_id`` is
-  ``<sample_id>:<signal_name>``.
+  the verdict judged freshness against, ``observed_at`` the newest raw
+  sample behind the signal as the freshness query answered -- ``None``
+  when the bundle does not verify or the answer carried none) and the
+  replay's per-signal verdict; ``evidence_id`` is ``<sample_id>:<signal_name>``.
 * ``recovery_profile_revision`` / ``recovery_profile_content``: the frozen
   profile row behind the session's revision; ``recovery_handled_at``: the
   session's ``authorized_at``.
-* ``actions``: the audit of what the product did, in record order. Control
-  rows: ``register_remediation`` -> ``record_handling``, plus
-  ``advance_incident_lifecycle`` only when the lifecycle did move -- the
-  k-th registration authorizes the k-th session; the incident was ``open``
-  before the first one, and before a later one it was whatever the previous
-  session's last ending record left it at (``lifecycle_after``); without
-  such a record the move is unknown and not claimed. ``takeover`` ->
-  ``human_takeover``; any other control -> ``human_control:<action>``.
-  Then per session: ``read_only_query`` once per instant query a reading's
-  bundle shows as actually sent (a part recorded with detail
-  ``LEASE_BUDGET`` was never sent; the profile sentinel sends nothing; a
-  bundle that does not verify counts nothing), ``persist_observation`` per
-  sample row, and per ending record ``advance_incident_lifecycle`` when its
-  lifecycle moved and ``human_handoff`` for a deadline or budget ending.
+* ``actions``: the audit of what the product did, merged in event time
+  (control rows by ``created_at``, samples by ``submitted_at``, ending
+  records by ``recorded_at``; a row without a timestamp keeps its record
+  position). Control rows: ``register_remediation`` -> ``record_handling``,
+  plus ``advance_incident_lifecycle`` only when the lifecycle did move --
+  the k-th registration authorizes the k-th session; the incident was
+  ``open`` before the first one, and before a later one it was whatever the
+  previous session's last ending record left it at (``lifecycle_after``);
+  without such a record the move is unknown and not claimed. ``takeover``
+  -> ``human_takeover``; any other control -> ``human_control:<action>``.
+  Per sample: ``read_only_query`` once per instant query a reading's bundle
+  shows as actually sent (a part recorded with detail ``LEASE_BUDGET`` was
+  never sent; the profile sentinel sends nothing; a bundle that does not
+  verify counts nothing), then ``persist_observation``. Per ending record:
+  ``advance_incident_lifecycle`` when its lifecycle moved and
+  ``human_handoff`` for a deadline or budget ending.
 * ``permissions``: derived from the privileges the Observer login actually
   holds (``ObservationStore.table_privileges``), see
   ``permissions_from_grants``; ``human_control`` when a control row exists.
@@ -59,6 +69,7 @@ Field sources (``RecoveryOutcome``):
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
@@ -66,6 +77,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from opspilot.observation.store import RECORD_COLUMNS
+from opspilot.observer.prometheus import _single_value, epoch_to_datetime
 from opspilot.observer.replay import (
     ReplayedReading,
     SessionReplay,
@@ -84,7 +97,7 @@ __all__ = [
 ]
 
 Columns = tuple[str, ...]
-Grant = str | Columns  # "*" for the whole table, else the granted columns
+Grant = str | Columns  # "*" for the whole relation, else the granted columns
 
 #: Exactly what migration 0003 grants the Observer role, table by table and
 #: column by column (``tests/test_f6_recovery_outcome.py`` checks this
@@ -171,20 +184,9 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
         ),
     },
 }
-#: The records the verdict is read from; a login that cannot read them is
-#: not a read-only observer of them.
-RECORDS_READ: frozenset[str] = frozenset(
-    {
-        "opspilot_incidents",
-        "opspilot_observation_sessions",
-        "opspilot_observation_samples",
-        "opspilot_observation_signal_readings",
-        "opspilot_observation_endings",
-        "opspilot_health_profiles",
-    }
-)
 _WRITES = ("INSERT", "UPDATE")
 _DELETES = ("DELETE", "TRUNCATE")
+_HANDOFF_ENDINGS = frozenset({"deadline_expired", "max_samples_exhausted"})
 _SESSION_CONTRACT_FIELDS = (
     "session_id",
     "purpose",
@@ -222,6 +224,7 @@ class RecoverySignal:
     window_end: datetime
     evaluated_at: datetime | None
     sample_time: datetime | None
+    observed_at: datetime | None
     evidence_id: str
     raw_sha256: str | None
     body_sha256: str | None
@@ -259,6 +262,7 @@ class RecoveryOutcome:
     scenario_id: str
     subject_id: str
     incident_lifecycle: str
+    recorded_lifecycle: str
     incident_mode: str | None
     target: Mapping[str, Any] | None
     recovery_confirmed: bool
@@ -304,6 +308,13 @@ def _flag(prefix: str, name: str, extra: Columns | str) -> str:
     return f"{prefix}:{name}({','.join(extra)})"
 
 
+def _missing_columns(measured: Grant | None, required: Columns) -> Columns:
+    if measured == "*":
+        return ()
+    held = () if measured is None else tuple(measured)
+    return tuple(column for column in required if column not in held)
+
+
 def permissions_from_grants(
     grants: Mapping[str, Any], *, human_control: bool
 ) -> tuple[str, ...]:
@@ -311,30 +322,42 @@ def permissions_from_grants(
     (``ObservationStore.table_privileges``) against the exact grants of
     migration 0003 (``OBSERVER_GRANTS``).
 
-    ``read_only`` when the login can read every record it judges by
-    (``unreadable:<table>`` otherwise); ``human_control`` when a human
-    control decision was recorded on the incident. Every capability beyond
-    the Observer's own-record grants is reported, column-exact:
-    ``record_rewrite:<table>(cols)`` for a further INSERT/UPDATE on a table
-    the Observer may write, ``investigation_write:<table>(cols)`` for one
-    on any other product table, ``record_delete:<table>`` for DELETE or
-    TRUNCATE on a product table, ``foreign_write:<schema.table>(cols)`` for
-    a write on any table outside the product, ``sequence_write:<schema.
-    name>``, ``schema_create:<schema>``, ``database_create`` /
-    ``database_temp`` and ``security_definer_execute:<function>``. Never a
-    constant: an empty measurement is refused.
+    A relation is the product's only in the measurement's ``product_schema``
+    (where the connection resolves ``opspilot_incidents``); a same-named
+    relation anywhere else is foreign. ``read_only`` when the login can
+    SELECT every column the replay reads of every record table
+    (``unreadable:<table>(missing columns)`` otherwise); ``human_control``
+    when a human control decision was recorded on the incident. Every
+    capability beyond the Observer's own-record grants is reported,
+    column-exact: ``record_rewrite:<table>(cols)`` for a further
+    INSERT/UPDATE on a table the Observer may write,
+    ``investigation_write:<table>(cols)`` for one on any other product
+    table, ``record_delete:<table>`` for DELETE or TRUNCATE on a product
+    table, ``foreign_write:<schema.relation>(cols)`` for a write on any
+    relation outside the product (tables, views, materialized views and
+    foreign tables alike), ``sequence_write:<schema.name>``,
+    ``schema_create:<schema>``, ``database_create`` / ``database_temp`` and
+    ``security_definer_execute:<function>``. Never a constant: an empty
+    measurement, or one without a product schema, is refused.
     """
     tables = grants.get("tables") if isinstance(grants, Mapping) else None
-    if not tables:
+    product_schema = (
+        grants.get("product_schema") if isinstance(grants, Mapping) else None
+    )
+    if not tables or not isinstance(product_schema, str):
         raise ValueError("GRANTS_REQUIRED")
     flags: list[str] = []
     for qualified in sorted(tables):
         measured = tables[qualified]
-        _, _, name = qualified.rpartition(".")
-        product = name.startswith("opspilot_") or name == "alembic_version"
-        allowed = OBSERVER_GRANTS.get(name, {})
-        if name in RECORDS_READ and "SELECT" not in measured:
-            flags.append(f"unreadable:{name}")
+        schema, _, name = qualified.rpartition(".")
+        product = schema == product_schema and (
+            name.startswith("opspilot_") or name == "alembic_version"
+        )
+        allowed = OBSERVER_GRANTS.get(name, {}) if product else {}
+        if product and name in RECORD_COLUMNS:
+            missing = _missing_columns(measured.get("SELECT"), RECORD_COLUMNS[name])
+            if missing:
+                flags.append(_flag("unreadable", name, missing))
         for kind in _WRITES:
             extra = _extra(measured.get(kind), allowed.get(kind))
             if extra is None:
@@ -393,6 +416,30 @@ def _instant(bundle: Mapping[str, Any] | None, key: str) -> datetime | None:
         return None
 
 
+def _observed_at(bundle: Mapping[str, Any] | None) -> datetime | None:
+    """The newest raw sample time behind the signal, as the bundle's
+    freshness answer (exact response bytes) says; ``None`` when there is no
+    usable answer."""
+    if bundle is None:
+        return None
+    part = bundle.get("freshness")
+    if not isinstance(part, Mapping) or not part.get("body_complete", True):
+        return None
+    try:
+        body = base64.b64decode(str(part.get("body_b64", "")), validate=True)
+    except (ValueError, TypeError):
+        return None
+    if hashlib.sha256(body).hexdigest() != part.get("body_sha256"):
+        return None
+    status, value, _ = _single_value(body)
+    if status != "ok" or value is None:
+        return None
+    try:
+        return epoch_to_datetime(value)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def _body_sha256(bundle: Mapping[str, Any] | None) -> str | None:
     if bundle is None:
         return None
@@ -437,6 +484,7 @@ def _signals(
             window_end=row["window_end"],
             evaluated_at=_instant(bundle, "evaluated_at"),
             sample_time=_instant(bundle, "sample_time"),
+            observed_at=_observed_at(bundle),
             evidence_id=f"{stored['sample_id']}:{name}",
             raw_sha256=row.get("raw_sha256"),
             body_sha256=_body_sha256(bundle),
@@ -498,36 +546,53 @@ def _lifecycle_before_registration(
 def _actions(
     controls: Sequence[Mapping[str, Any]], sessions: Sequence[Mapping[str, Any]]
 ) -> tuple[str, ...]:
-    actions: list[str] = []
+    """The product's actions merged in event time (see the module doc)."""
+    events: list[tuple[datetime | None, int, list[str]]] = []
+    order = 0
     registrations = 0
     for row in controls:
         action = str(row.get("action"))
+        done: list[str] = []
         if action == "register_remediation":
-            actions.append("record_handling")
+            done.append("record_handling")
             before = _lifecycle_before_registration(registrations, sessions)
             registrations += 1
             if before is not None and before != "observing_recovery":
-                actions.append("advance_incident_lifecycle")
+                done.append("advance_incident_lifecycle")
         elif action == "takeover":
-            actions.append("human_takeover")
+            done.append("human_takeover")
         else:
-            actions.append(f"human_control:{action}")
+            done.append(f"human_control:{action}")
+        events.append((row.get("created_at"), order, done))
+        order += 1
     for history in sessions:
         for stored in history["samples"]:
+            done = []
             for row in stored.get("readings") or ():
                 if str(row.get("signal_name")) == PROFILE_SENTINEL:
                     continue
-                actions.extend(["read_only_query"] * _queries_sent(_bundle(row)))
-            actions.append("persist_observation")
+                done.extend(["read_only_query"] * _queries_sent(_bundle(row)))
+            done.append("persist_observation")
+            events.append((stored.get("submitted_at"), order, done))
+            order += 1
         for ending in history.get("endings") or ():
+            done = []
             if ending.get("lifecycle_before") != ending.get("lifecycle_after"):
-                actions.append("advance_incident_lifecycle")
-            if ending.get("ended_reason") in (
-                "deadline_expired",
-                "max_samples_exhausted",
-            ):
-                actions.append("human_handoff")
-    return tuple(actions)
+                done.append("advance_incident_lifecycle")
+            if ending.get("ended_reason") in _HANDOFF_ENDINGS:
+                done.append("human_handoff")
+            events.append((ending.get("recorded_at"), order, done))
+            order += 1
+    # event time first; a row without one keeps its position relative to
+    # the previous timestamped row (stable sort on the record position)
+    last: datetime | None = None
+    keyed: list[tuple[datetime | None, int, list[str]]] = []
+    for at, position, done in events:
+        if at is not None:
+            last = at
+        keyed.append((last, position, done))
+    keyed.sort(key=lambda item: (item[0] is not None, item[0] or datetime.min, item[1]))
+    return tuple(action for _, _, done in keyed for action in done)
 
 
 def _session_projection(subject_id: str, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -573,14 +638,19 @@ def _sample_jobs(sessions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
 def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome:
     """Project one incident's committed recovery records for ``scenario``.
 
-    ``scenario.subject_id`` names the incident the caller read the records
-    for; every sample and session in the outcome is bound to it. The latest
+    ``scenario.subject_id`` is the incident id; the incident row and every
+    session must carry it (``SUBJECT_MISMATCH`` otherwise). The latest
     session (by creation order) carries the verdict; earlier sessions are
     history and appear in ``observation_sessions`` and ``recovery_samples``.
     """
     subject_id = str(scenario.subject_id)
     incident = records.incident
+    if str(incident.get("incident_id")) != subject_id:
+        raise ValueError("SUBJECT_MISMATCH")
     sessions = tuple(records.sessions)
+    for history in sessions:
+        if str(history["session"].get("incident_id")) != subject_id:
+            raise ValueError("SUBJECT_MISMATCH")
     controls = tuple(dict(row) for row in records.controls)
     latest = sessions[-1] if sessions else None
     replay = None if latest is None else replay_history(latest)
@@ -592,11 +662,14 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
         assert this_replay is not None
         samples.extend(_samples(subject_id, history, this_replay))
 
+    recorded_lifecycle = str(incident["lifecycle"])
+    vouched = replay is None or replay.consistent
     profile_row = None if latest is None else latest.get("health_profile")
     return RecoveryOutcome(
         scenario_id=str(scenario.scenario_id),
         subject_id=subject_id,
-        incident_lifecycle=str(incident["lifecycle"]),
+        incident_lifecycle=recorded_lifecycle if vouched else "unverified",
+        recorded_lifecycle=recorded_lifecycle,
         incident_mode=None if incident.get("mode") is None else str(incident["mode"]),
         target=None if session_row is None else dict(session_row.get("target") or {}),
         recovery_confirmed=replay is not None and replay.recovery_confirmed,

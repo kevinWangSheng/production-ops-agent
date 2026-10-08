@@ -47,13 +47,15 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
 )
 
-SCENARIO = IncidentScenario(
-    scenario_id="F6:1:recovered",
-    feature_id="F6",
-    acceptance_step="1",
-    kind="recovered",
-    subject_id="incident-f6",
-)
+
+def _scenario(incident) -> IncidentScenario:
+    return IncidentScenario(
+        scenario_id="F6:1:recovered",
+        feature_id="F6",
+        acceptance_step="1",
+        kind="recovered",
+        subject_id=str(incident),
+    )
 
 
 def _authorize(
@@ -94,7 +96,7 @@ def _authorize(
 def _outcome(controller, observer, incident):
     records = controller.incident_records(incident)
     return recovery_outcome(
-        SCENARIO,
+        _scenario(incident),
         RecoveryRecords(
             incident=records["incident"],
             sessions=tuple(records["sessions"]),
@@ -123,6 +125,7 @@ def test_the_observer_login_privileges_are_measured_not_assumed(
     assert grants["sequences"] == {}
     assert "CREATE" not in grants["schemas"].get("public", ())
     assert grants["functions"] == ()
+    assert grants["product_schema"] == "public"
     # the owner connection holds everything: the projection would say so
     assert (
         controller.table_privileges()["tables"]["public.opspilot_runs"]["DELETE"] == "*"
@@ -146,7 +149,7 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
     outcome = _outcome(controller, observer, incident)
 
     assert len(state.requests) == requests, "the projection queries nothing"
-    assert outcome.subject_id == "incident-f6"
+    assert outcome.subject_id == str(incident)
     assert outcome.incident_lifecycle == "resolved"
     assert outcome.recovery_confirmed and outcome.recovery_verdict == "healthy"
     assert outcome.latest_sample_verdict == "healthy"
@@ -287,6 +290,28 @@ def test_a_wider_login_is_reported_as_wider(
                 sql.Identifier(login)
             )
         )
+        # an updatable view over a table the login cannot write directly
+        conn.execute(
+            "CREATE OR REPLACE VIEW lab_notes_view AS SELECT id, body FROM lab_notes"
+        )
+        conn.execute(
+            sql.SQL("GRANT SELECT, UPDATE ON lab_notes_view TO {}").format(
+                sql.Identifier(login)
+            )
+        )
+        # a same-named table in another schema is not the product's
+        conn.execute("CREATE SCHEMA IF NOT EXISTS lab")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS lab.opspilot_observation_signal_readings (id int PRIMARY KEY)"
+        )
+        conn.execute(
+            sql.SQL("GRANT USAGE ON SCHEMA lab TO {}").format(sql.Identifier(login))
+        )
+        conn.execute(
+            sql.SQL(
+                "GRANT SELECT, INSERT ON lab.opspilot_observation_signal_readings TO {}"
+            ).format(sql.Identifier(login))
+        )
     wide = ObservationStore(
         make_conninfo(scratch_dsn, user=login), pool=PoolConfig(1, 2, 5.0)
     )
@@ -299,6 +324,8 @@ def test_a_wider_login_is_reported_as_wider(
             "investigation_write:opspilot_runs",
             "record_rewrite:opspilot_incidents(mode)",
             "foreign_write:public.lab_notes",
+            "foreign_write:public.lab_notes_view",
+            "foreign_write:lab.opspilot_observation_signal_readings",
         } <= set(outcome.permissions)
         assert "record_rewrite:opspilot_incidents(lifecycle)" not in outcome.permissions
     finally:
@@ -306,8 +333,10 @@ def test_a_wider_login_is_reported_as_wider(
         with psycopg.connect(scratch_dsn, autocommit=True) as conn:
             conn.execute(
                 sql.SQL(
-                    "REVOKE ALL ON opspilot_runs, opspilot_incidents, lab_notes FROM {}"
+                    "REVOKE ALL ON opspilot_runs, opspilot_incidents, lab_notes, lab_notes_view, lab.opspilot_observation_signal_readings FROM {}"
                 ).format(sql.Identifier(login))
             )
+            conn.execute("DROP VIEW IF EXISTS lab_notes_view")
             conn.execute("DROP TABLE IF EXISTS lab_notes")
+            conn.execute("DROP SCHEMA IF EXISTS lab CASCADE")
             conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(login)))
