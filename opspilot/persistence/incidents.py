@@ -106,7 +106,12 @@ class _IncidentOps(_StoreBase):
     def register_target(
         self, resource_uid: str, *, target_id: UUID | None = None
     ) -> UUID:
-        """Register an immutable target identity before it can be suspended."""
+        """Register an immutable target identity before it can be suspended.
+
+        Intake registers by ``resource_uid`` alone; the rest of the identity
+        (migration 0004, nullable) is completed where it is first needed,
+        by ``ObservationStore.register_remediation``.
+        """
         if not isinstance(resource_uid, str) or not resource_uid:
             raise PersistenceError("INVALID_INPUT")
         identity = target_id or uuid4()

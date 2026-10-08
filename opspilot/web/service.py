@@ -56,6 +56,7 @@ from opspilot.investigation.progress import (
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
@@ -65,6 +66,7 @@ from opspilot.web.store import (
     ControlAudit,
     IncidentStore,
     IncidentSummary,
+    TargetRegistry,
     WebLedger,
 )
 
@@ -88,9 +90,29 @@ LEASE_SECONDS = int(MODEL_REQUEST_TIMEOUT_SECONDS) + 60
 _MAX_TEXT = INPUT_CONTENT_FIELD_MAX_CHARS
 _EVENT_PAGE = 1000
 
-ControlAction = Literal["follow_up", "correct", "cancel", "pause", "resume", "new_run"]
+ControlAction = Literal[
+    "follow_up",
+    "correct",
+    "cancel",
+    "pause",
+    "resume",
+    "new_run",
+    "register_remediation",
+]
+#: "The incident was handled outside the system": increments the control
+#: generation, authorizes an observation session and moves the incident to
+#: ``observing_recovery`` (M1-02 step 3, C3 section 10).
+REGISTER_REMEDIATION = "register_remediation"
 CONTROL_ACTIONS: frozenset[str] = frozenset(
-    {"follow_up", "correct", "cancel", "pause", "resume", "new_run"}
+    {
+        "follow_up",
+        "correct",
+        "cancel",
+        "pause",
+        "resume",
+        "new_run",
+        REGISTER_REMEDIATION,
+    }
 )
 #: Report claim categories in page order; chart order follows it.
 CHART_CATEGORIES = (
@@ -162,6 +184,17 @@ class Workbench:
     #: input the real driver rebuilds from (``INPUT_MISSING`` otherwise);
     #: ``None`` keeps the test-only ``run_once`` path, which needs no input.
     tool_face: ToolFace | None = None
+    #: The versioned HealthProfile a "register remediation" fixes the
+    #: observation session by (deadline, sample budget, cadence, sustained
+    #: window; C3 section 10). ``None`` refuses the action: without a profile
+    #: nothing bounded can be authorized.
+    health_profile: HealthProfile | None = None
+    #: The configured identities (``OPSPILOT_TARGET_IDENTITIES``) a
+    #: remediation completes the registry row from the first time it is
+    #: registered on a target (migration 0004). ``None``, or an id the file
+    #: does not list, leaves a bare row and the registration is refused for
+    #: lack of identity -- nothing is guessed, and intake never needs it.
+    targets: TargetRegistry | None = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -193,7 +226,9 @@ class Workbench:
         # Bind the incident to the registered identity of its target so a
         # target suspension fences its Runs; without it the incident row
         # carried no target and only the global gate applied (PR #54 bot
-        # review P1). The intake string is the resource uid; the tool
+        # review P1). The intake string is the resource uid (M1-01 intake
+        # contract, kept by user decision 2026-10-07); the rest of the
+        # identity is completed when a remediation is registered. The tool
         # gateway still resolves authorization from its own registry.
         self.incidents.accept(
             incident_id,
@@ -261,7 +296,16 @@ class Workbench:
         expected_generation: int,
         idempotency_key: str,
         text: str | None = None,
+        revision: str | None = None,
     ) -> ControlResult:
+        """Apply one human decision through the ledger/audit idempotency path.
+
+        ``text`` belongs to ``follow_up``/``correct``; ``revision`` belongs to
+        ``register_remediation`` (M1-02 step 3): the target revision after the
+        handling, recorded on the audit row and the observation session (not
+        identity, user decision 2026-10-07). Each is refused on an action that
+        does not take it.
+        """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
         if type(expected_generation) is not int or expected_generation < 0:
@@ -274,12 +318,25 @@ class Workbench:
                 if not text.strip() or len(text) > _MAX_TEXT:
                     raise ValueError
                 _reject_ambiguous_text(text)
+            if revision is not None:
+                _reject_ambiguous_identifier(revision)
+                if not (1 <= len(revision) <= 256):
+                    raise ValueError
         except ValueError:
             raise WorkbenchError("INVALID_INPUT") from None
         if action in _TEXT_ACTIONS and text is None:
             raise WorkbenchError("TEXT_REQUIRED")
         if action not in _TEXT_ACTIONS and text is not None:
             raise WorkbenchError("TEXT_NOT_ALLOWED")
+        if action == REGISTER_REMEDIATION and revision is None:
+            raise WorkbenchError("REVISION_REQUIRED")
+        if action != REGISTER_REMEDIATION and revision is not None:
+            raise WorkbenchError("REVISION_NOT_ALLOWED")
+        if action == REGISTER_REMEDIATION and self.health_profile is None:
+            # The session's deadline, budget, cadence and sustained window
+            # come from a HealthProfile; without one there is nothing bounded
+            # to authorize (C3 section 10, interface contract item 5).
+            raise WorkbenchError("HEALTH_PROFILE_REQUIRED")
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             raise WorkbenchError("UNKNOWN_INCIDENT")
@@ -291,6 +348,8 @@ class Workbench:
         }
         if text is not None:
             intent["text"] = text
+        if revision is not None:
+            intent["revision"] = revision
         # Intent first: the operator's text is durable before the store
         # commits the decision, so neither a crash nor event-log retention
         # can lose what the next Run must read.
@@ -304,7 +363,7 @@ class Workbench:
             # Intent recorded, decision not confirmed: fall through and apply.
         try:
             generation, new_run_id = self._apply(
-                summary, action, expected_generation, actor_id, text
+                summary, action, expected_generation, actor_id, text, revision, key
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -364,6 +423,8 @@ class Workbench:
         expected: int,
         actor_id: str,
         text: str | None,
+        revision: str | None = None,
+        key: str | None = None,
     ) -> tuple[int, UUID | None]:
         # The run id is derived from ``expected + 1`` so a stale form either
         # conflicts on identity or replays the very run it already created;
@@ -371,6 +432,47 @@ class Workbench:
         run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{expected + 1}")
         now = self.incidents.now()
         deadline = now + timedelta(seconds=self.run_seconds)
+        if action == REGISTER_REMEDIATION:
+            # The session id is derived like the run id, so a retry of the
+            # same decision re-creates the same session or conflicts on it.
+            assert self.health_profile is not None and revision is not None
+            parameters = self.health_profile.session
+            identity = None
+            intake = self.ledger.get("intake", summary.intake_key)
+            if self.targets is not None and intake is not None:
+                identity = self.targets.resolve(
+                    _envelope_from_json(intake["envelope"]).request.target_id
+                )
+            # Without a configured identity there is nothing to observe
+            # (fail closed before any write, even for a registry row that an
+            # earlier registration completed: the profile binding below
+            # cannot be checked without the entry). The profile must be the
+            # one declared for this target (identity file
+            # ``health_profile_id``): a single loaded profile must not certify
+            # an unrelated target's recovery (bot review P1).
+            if identity is None:
+                raise PersistenceError("TARGET_IDENTITY_MISSING")
+            if identity.health_profile_id != self.health_profile.profile_id:
+                raise PersistenceError("HEALTH_PROFILE_TARGET_MISMATCH")
+            generation = self.incidents.register_remediation(
+                summary.incident_id,
+                expected_generation=expected,
+                actor=actor_id,
+                revision=revision,
+                deadline_at=now + timedelta(seconds=parameters.deadline_seconds),
+                max_samples=parameters.max_samples,
+                sample_interval_seconds=parameters.sample_interval_seconds,
+                sustained_window_seconds=parameters.sustained_window_seconds,
+                health_profile_revision=self.health_profile.revision,
+                health_profile=canonical_content(self.health_profile),
+                session_id=uuid5(
+                    _INTAKE_NAMESPACE,
+                    f"{summary.intake_key}:observation:{expected + 1}",
+                ),
+                identity=identity,
+                payload={"channel": "web", "idempotency_key": key},
+            )
+            return generation, None
         if action != "new_run":
             # The note travels with the decision: DurableStore.control (PR #31)
             # writes it to opspilot_controls.payload and opspilot_inputs, from
@@ -481,9 +583,10 @@ class Workbench:
         intent: Mapping[str, Any],
         audit: ControlAudit,
         *,
+        key: str,
         unconfirmed_peers: int,
     ) -> bool:
-        """Whether ``audit`` provably is the decision ``intent`` asked for.
+        """Whether ``audit`` provably is the decision ``intent`` (ledger ``key``) asked for.
 
         Action, expected generation and actor must match. A text action
         additionally needs the audit payload (PR #31) to carry the same
@@ -496,6 +599,17 @@ class Workbench:
             or audit.actor != intent["actor_id"]
         ):
             return False
+        payload = audit.payload or {}
+        if intent["action"] == REGISTER_REMEDIATION:
+            # The registration writes its ledger key and revision into the
+            # audit row in the same transaction, so a decision is confirmed
+            # only against the request that made it; two unconfirmed intents
+            # with different revisions can never take each other's row
+            # (independent review of PR #120, P2).
+            return bool(
+                payload.get("idempotency_key") == key
+                and payload.get("revision") == intent.get("revision")
+            )
         text = intent.get("text")
         if text is None:
             return True
@@ -555,7 +669,9 @@ class Workbench:
             matches = [
                 (key, intent)
                 for key, intent in peers
-                if self._audit_matches(intent, audit, unconfirmed_peers=len(peers))
+                if self._audit_matches(
+                    intent, audit, key=key, unconfirmed_peers=len(peers)
+                )
             ]
             if len(matches) != 1:
                 continue
@@ -587,7 +703,9 @@ class Workbench:
         for audit in self.incidents.control_audit(incident_id):
             if audit.resulting_generation in taken:
                 continue
-            if self._audit_matches(intent, audit, unconfirmed_peers=len(peers)):
+            if self._audit_matches(
+                intent, audit, key=key, unconfirmed_peers=len(peers)
+            ):
                 return self._confirm(incident_id, key, intent, audit)
         return None
 
@@ -808,6 +926,15 @@ class Workbench:
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": self._controls(incident_id),
+            # Recovery observation (M1-02): shown apart from the investigation
+            # report; the step 5 page work adds the sample basis.
+            "observation_sessions": [
+                _session_view(row)
+                for row in self.incidents.observation_sessions(incident_id)
+            ],
+            "health_profile_revision": (
+                None if self.health_profile is None else self.health_profile.revision
+            ),
             "events": [_event_view(e) for e in events[-50:]],
             "latest_sequence": events[-1].sequence
             if events
@@ -1158,6 +1285,26 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         "planned_tools": len(planned) if isinstance(planned, list) else 0,
         "tools": tools,
         "history_only": step["status"] == "late_result",
+    }
+
+
+def _session_view(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The page's projection of one observation session row."""
+    target = row.get("target") or {}
+    return {
+        "session_id": str(row["session_id"]),
+        "state": str(row["state"]),
+        "ended_reason": row.get("ended_reason"),
+        "authorized_by": str(row["authorized_by"]),
+        "authorized_at": row["authorized_at"],
+        "subject_control_generation": int(row["subject_control_generation"]),
+        "observation_generation": int(row["observation_generation"]),
+        "health_profile_revision": row.get("health_profile_revision"),
+        "target_revision": target.get("revision"),
+        "deadline_at": row["deadline_at"],
+        "max_samples": int(row["max_samples"]),
+        "adopted_count": int(row.get("adopted_count", 0)),
+        "active_sample_due_at": row.get("active_sample_due_at"),
     }
 
 

@@ -39,6 +39,7 @@ from opspilot.observation import (
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.persistence.base import _StoreBase
 from scripts.m0.postgres_lab import DSN
+from tests.target_support import IDENTITY, WORKLOAD
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -49,6 +50,7 @@ POOL = PoolConfig(min_size=1, max_size=3, timeout=5.0)
 PROFILE_CONTENT = json.dumps(
     {
         "profile_id": "checkout",
+        "subject": {"service": "checkout", "kubernetes_namespace": "otel-demo"},
         "signals": [
             {
                 "name": "error_ratio",
@@ -159,19 +161,29 @@ def _backdate_authorization(owner: _StoreBase, session: UUID) -> datetime:
 
 
 def _target(uid: str) -> Target:
-    return Target(
-        integration_id="prom-lab",
-        cluster_uid="kind-lab",
-        namespace="otel-demo",
-        resource_uid=uid,
-        revision="r1",
-    )
+    """The Target the registry (tests.target_support.IDENTITY) yields for
+    ``uid``, with the revision the tests authorize under."""
+    return Target(resource_uid=uid, revision="r1", **IDENTITY)
 
 
 def _incident(owner: DurableStore) -> tuple[UUID, UUID, Target]:
     incident, run = uuid4(), uuid4()
     uid = f"deployment/checkout-{uuid4().hex[:8]}"
     target_id = owner.register_target(uid)
+    # Intake registers the uid alone; the identity (0004) is completed when a
+    # remediation is registered. These tests drive the storage primitive, so
+    # they complete it directly.
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_targets SET integration_id=%s,cluster_uid=%s,namespace=%s,workload=%s WHERE target_id=%s",
+            (
+                IDENTITY["integration_id"],
+                IDENTITY["cluster_uid"],
+                IDENTITY["namespace"],
+                WORKLOAD,
+                target_id,
+            ),
+        )
     owner.accept(
         incident,
         run,
@@ -196,7 +208,7 @@ def _authorize(
 ) -> UUID:
     session = controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + deadline,
         max_samples=max_samples,
@@ -363,16 +375,8 @@ def test_authorize_moves_incident_to_observing_and_schedules_the_first_job(
     assert row["health_profile_revision"] == PROFILE
     with pytest.raises(PersistenceError, match="OBSERVATION_ALREADY_AUTHORIZED"):
         _authorize(controller, incident, target)
-    with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
-        controller.authorize_session(
-            incident,
-            target=_target("deployment/other"),
-            actor="tester",
-            deadline_at=_now() + timedelta(hours=1),
-            max_samples=3,
-            sample_interval_seconds=15,
-            sustained_window_seconds=60,
-        )
+    # The session carries the registry's identity plus the revision snapshot.
+    assert Target(**row["target"]) == target
     with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         _authorize(controller, uuid4(), target)
 
@@ -819,7 +823,7 @@ def test_a_revoked_session_adopts_nothing(
     # A new session can be authorized on the still-observing incident.
     assert controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + timedelta(hours=1),
         max_samples=3,
@@ -859,7 +863,12 @@ def test_target_suspension_ends_the_session_rather_than_pausing_it(
         ("scope_suspended", None)
     ]
     _assert_replay_consistent(controller, session)
-    # The incident is still observing: a new session can be authorized.
+    # The incident is still observing but its control mirror stayed paused
+    # when the suspension was lifted; a paused incident takes no new
+    # authorization (step 3, review P1) until a human resumes explicitly.
+    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        _authorize(controller, incident, target)
+    assert owner.control(incident, 0, "resume", "tester") == 1
     assert _authorize(controller, incident, target)
 
 
@@ -1158,7 +1167,7 @@ def test_data_from_before_the_authorization_never_confirms_health(
     incident, _, target = _incident(owner)
     session = controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + timedelta(hours=1),
         max_samples=20,
@@ -1201,7 +1210,7 @@ def test_a_single_pre_authorization_window_cannot_resolve(
     incident, _, target = _incident(owner)
     session = controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + timedelta(hours=1),
         max_samples=10,
@@ -1422,7 +1431,7 @@ def test_the_profile_content_is_stored_once_per_revision_and_checked(
         ):
             controller.authorize_session(
                 third,
-                target=third_target,
+                revision=third_target.revision,
                 actor="tester",
                 deadline_at=_now() + timedelta(hours=1),
                 max_samples=3,
@@ -1709,12 +1718,20 @@ def test_required_signals_follow_the_health_profile_shape() -> None:
 def test_replay_fails_closed_when_the_profile_yields_no_required_signals(
     observer: ObservationStore, owner: DurableStore, controller: ObservationStore
 ) -> None:
-    content = json.dumps({"profile_id": "bare"}, separators=(",", ":"))
+    # A subject the authorization accepts (step 3 compares it with the
+    # registry row), but no signals: the replay must fail closed on that.
+    content = json.dumps(
+        {
+            "profile_id": "bare",
+            "subject": {"service": "checkout", "kubernetes_namespace": "otel-demo"},
+        },
+        separators=(",", ":"),
+    )
     revision = profile_revision("bare", content)
     incident, _, target = _incident(owner)
     session = controller.authorize_session(
         incident,
-        target=target,
+        revision=target.revision,
         actor="tester",
         deadline_at=_now() + timedelta(hours=1),
         max_samples=5,
@@ -2005,29 +2022,55 @@ def test_an_ending_committed_by_another_connection_is_not_this_transactions_evid
 def test_authorization_requires_the_whole_immutable_target(
     owner: DurableStore, controller: ObservationStore
 ) -> None:
-    """The registry holds the resource_uid; the first session fixes the rest
-    of the Target, every later authorization must bring the same identity."""
-    incident, _, target = _incident(owner)
+    """The registry (migration 0004) holds the whole identity the incident was
+    accepted against; every later authorization must find the same identity
+    every earlier session on the target recorded (user decision 2026-10-07).
+    A registry row whose identity column was changed under the sessions is
+    refused; a new ``revision`` is not identity and is authorized."""
+    incident, target_id, target = _incident(owner)
     first = _authorize(controller, incident, target)
     assert controller.revoke_sessions(incident) == [first]
-    for field in ("integration_id", "cluster_uid", "namespace", "revision"):
-        other = target.model_copy(update={field: "other"})
-        with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
-            controller.authorize_session(
-                incident,
-                target=other,
-                actor="tester",
-                deadline_at=_now() + timedelta(hours=1),
-                max_samples=3,
-                sample_interval_seconds=15,
-                sustained_window_seconds=60,
+    for column in ("integration_id", "cluster_uid", "namespace", "resource_uid"):
+        with owner.transaction() as conn:
+            conn.execute(
+                f"UPDATE opspilot_targets SET {column}=%s WHERE target_id=%s",
+                (f"other-{column}", target_id),
             )
+        try:
+            with pytest.raises(PersistenceError, match="TARGET_MISMATCH"):
+                controller.authorize_session(
+                    incident,
+                    revision="r2",
+                    actor="tester",
+                    deadline_at=_now() + timedelta(hours=1),
+                    max_samples=3,
+                    sample_interval_seconds=15,
+                    sustained_window_seconds=60,
+                )
+        finally:
+            with owner.transaction() as conn:
+                conn.execute(
+                    f"UPDATE opspilot_targets SET {column}=%s WHERE target_id=%s",
+                    (getattr(target, column), target_id),
+                )
         with owner.transaction(snapshot=True) as conn:
             assert conn.execute(
                 "SELECT count(*) AS n FROM opspilot_observation_sessions WHERE incident_id=%s",
                 (incident,),
             ).fetchone() == {"n": 1}
-    assert _authorize(controller, incident, target)
+        assert _lifecycle(owner, incident) == "observing_recovery"
+    redeployed = controller.authorize_session(
+        incident,
+        revision="r2",
+        actor="tester",
+        deadline_at=_now() + timedelta(hours=1),
+        max_samples=3,
+        sample_interval_seconds=15,
+        sustained_window_seconds=60,
+    )
+    assert Target(**controller.session(redeployed)["target"]) == target.model_copy(
+        update={"revision": "r2"}
+    )
 
 
 def test_replay_requires_the_exact_ending_transition_and_lifecycles(

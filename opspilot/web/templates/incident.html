@@ -31,10 +31,35 @@
   <input type="hidden" name="idempotency_key" value="{{ action }}-{{ inc.control_generation }}-{{ form_nonce }}">
   {% if action in ("follow_up", "correct") %}
     <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
+  {% elif action == "register_remediation" %}
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
   {% endif %}
   <button type="submit">{{ action }}</button>
 </form>
 {% endfor %}
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation{% if snapshot.health_profile_revision %} under HealthProfile <code>{{ snapshot.health_profile_revision }}</code>{% else %} (no HealthProfile configured: refused){% endif %}. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+{% if snapshot.observation_sessions %}
+<table id="observation-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <tbody>
+  {% for s in snapshot.observation_sessions %}
+  <tr>
+    <td><code>{{ s.session_id }}</code></td>
+    <td><span class="badge">{{ s.state }}</span>{% if s.ended_reason %} <span class="muted">{{ s.ended_reason }}</span>{% endif %}</td>
+    <td>control {{ s.subject_control_generation }} · observation {{ s.observation_generation }}</td>
+    <td><code>{{ s.health_profile_revision or "none" }}</code></td>
+    <td><code>{{ s.target_revision }}</code></td>
+    <td>{{ s.authorized_at }} by <code>{{ s.authorized_by }}</code></td>
+    <td>{{ s.deadline_at }}</td>
+    <td>{{ s.adopted_count }} / {{ s.max_samples }} adopted{% if s.active_sample_due_at %}, next due {{ s.active_sample_due_at }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report above does not certify recovery.</p>
+{% else %}<p class="muted" id="observation-none">No recovery observation authorized.</p>{% endif %}
 
 <h2>Report</h2>
 {% set report = snapshot.report %}
