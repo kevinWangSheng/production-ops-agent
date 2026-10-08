@@ -90,11 +90,19 @@ PROFILE_FORMAT_VERSION = 1
 PROFILE_DIRECTORY = Path(__file__).resolve().parent / "profiles"
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
-#: A Kubernetes DNS-1123 label: the shape of a namespace, a Deployment name
-#: and the OTel ``service.name`` values the lab emits. The scope check
-#: derives a regular expression from these values (``a|b|c``), so they may
-#: not contain regex metacharacters.
-DnsLabel = Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
+#: A Kubernetes DNS-1123 subdomain (RFC 1123, at most 253 characters): the
+#: shape of a Deployment name, a namespace and the OTel ``service.name``
+#: values the lab emits; a registered workload such as ``checkout.prod`` is
+#: legal (PR #132 bot triage). The scope check derives a regular expression
+#: from dependency names (``a|b|c``), escaping the one metacharacter a
+#: subdomain may contain (``.``, see ``_regex_literal``).
+DnsSubdomain = Annotated[
+    str,
+    Field(
+        pattern=r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+        max_length=253,
+    ),
+]
 #: A Prometheus label name.
 LabelName = Annotated[str, Field(pattern=r"^[a-zA-Z_][a-zA-Z0-9_]{0,127}$")]
 ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
@@ -207,7 +215,7 @@ class SignalScope(DTO):
     namespace_label: LabelName
     workload_label: LabelName
     workload_match: Literal["exact", "dependencies"] = "exact"
-    dependencies: tuple[DnsLabel, ...] = ()
+    dependencies: tuple[DnsSubdomain, ...] = ()
 
     @field_validator("dependencies", mode="before")
     @classmethod
@@ -311,8 +319,8 @@ class ProfileSubject(DTO):
     query by the scope check (rule 4), so it cannot drift from the PromQL.
     """
 
-    service: DnsLabel
-    kubernetes_namespace: DnsLabel
+    service: DnsSubdomain
+    kubernetes_namespace: DnsSubdomain
 
 
 class HealthProfile(DTO):
@@ -1077,8 +1085,20 @@ def _expected_matchers(
     if scope.workload_match == "exact":
         expected[scope.workload_label] = ("=", subject.service)
     else:
-        expected[scope.workload_label] = ("=~", "|".join(scope.dependencies))
+        expected[scope.workload_label] = (
+            "=~",
+            "|".join(_regex_literal(name) for name in scope.dependencies),
+        )
     return expected
+
+
+def _regex_literal(name: str) -> str:
+    """``name`` as a Prometheus (RE2) regex matching exactly itself. A DNS
+    subdomain contains only ``[a-z0-9.-]``; ``.`` is the one metacharacter
+    among them (``a.b`` would also match ``axb``), ``-`` is literal outside
+    a character class, so only the dot is escaped and the shipped
+    ``valkey-cart`` keeps its spelling."""
+    return name.replace(".", "\\.")
 
 
 def _check_selectors_bound(query: str, expected: dict[str, tuple[str, str]]) -> None:

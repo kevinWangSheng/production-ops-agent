@@ -1059,15 +1059,45 @@ def test_scope_declarations_are_validated(scope, code):
         profile(**scoped(f"x{SEL}", **scope))
 
 
-def test_subject_values_are_dns_labels_so_derived_regexes_are_literal():
+def test_subject_values_are_dns_subdomains_so_derived_regexes_are_literal():
     for subject in (
         {"service": "svc.*", "kubernetes_namespace": "ns"},
         {"service": "svc", "kubernetes_namespace": "ns|other"},
         {"service": "", "kubernetes_namespace": "ns"},
         {"service": "Svc", "kubernetes_namespace": "ns"},
+        {"service": "svc.", "kubernetes_namespace": "ns"},
+        {"service": "-svc", "kubernetes_namespace": "ns"},
+        {"service": "a" * 254, "kubernetes_namespace": "ns"},
     ):
         with pytest.raises(ValueError, match="subject"):
             profile(subject=subject)
+
+
+def test_dotted_workload_and_dependency_names_are_legal_and_matched_literally():
+    """A Deployment name is a DNS-1123 subdomain (``checkout.prod`` is
+    legal, PR #132 bot triage); the exact match uses it verbatim and the
+    dependency regex escapes the dot so ``a.b`` cannot match ``axb``."""
+    dotted = minimal_profile(
+        subject={"service": "svc.prod", "kubernetes_namespace": "ns.east"}
+    )
+    for signal in dotted["signals"]:
+        for key in ("query", "coverage_query", "freshness_query"):
+            signal[key] = signal[key].replace(
+                SEL, "{namespace='ns.east',service='svc.prod'}"
+            )
+    assert profile(**dotted).subject.service == "svc.prod"
+    deps = {
+        "workload_label": "deployment",
+        "workload_match": "dependencies",
+        "dependencies": ["a.b", "c"],
+    }
+    assert profile(**scoped('x{namespace="ns",deployment=~"a\\\\.b|c"}', **deps))
+    for bad in (
+        'x{namespace="ns",deployment=~"a.b|c"}',
+        'x{namespace="ns",deployment=~"axb|c"}',
+    ):
+        with pytest.raises(ValueError, match="SCOPE_SELECTOR_MISMATCH"):
+            profile(**scoped(bad, **deps))
 
 
 def test_vector_selectors_are_extracted_with_decoded_values():
