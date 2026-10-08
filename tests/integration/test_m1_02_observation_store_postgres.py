@@ -1004,6 +1004,44 @@ def test_lease_scope_current_sees_a_suspension_after_the_claim(
         observer.lease_scope_current("not a lease")  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("action", ["pause", "cancel"])
+def test_lease_scope_current_sees_a_subject_control_after_the_claim(
+    observer: ObservationStore,
+    owner: DurableStore,
+    controller: ObservationStore,
+    action: str,
+) -> None:
+    """Codex round 5 P1 (C3 §4, human control first): a pause or cancel on
+    the incident revokes the session and clears its lease; the per-request
+    check the Observer makes must say no from then on, not only for the
+    global/target suspension layers."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    assert observer.lease_scope_current(lease) is True
+    owner.control(incident, 0, action, "operator")
+    assert observer.lease_scope_current(lease) is False
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "authority_revoked")
+    assert row["active_sample_job_id"] is None
+
+
+def test_lease_scope_current_sees_a_moved_control_generation(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Even a control step that leaves the session untouched moves the
+    incident's control generation away from the lease's binding."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=control_generation+1 WHERE incident_id=%s",
+            (incident,),
+        )
+    assert observer.lease_scope_current(lease) is False
+
+
 # --- deadline and budget exhaustion hand back to open
 
 

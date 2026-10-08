@@ -593,6 +593,37 @@ def test_a_suspension_during_a_sample_stops_further_requests_and_ends_the_sessio
     assert sample["disposition"] == "history_only"
 
 
+def test_a_pause_during_a_sample_stops_further_requests(
+    loop: tuple[ObserverLoop, Telemetry],
+    owner: DurableStore,
+    controller: ObservationStore,
+) -> None:
+    """Codex round 5 P1 (C3 §4): a human pause on the incident between two
+    requests revokes the session and clears the lease; the check before the
+    next request sees it, nothing more is sent, and the partial sample is
+    filed as history under the cleared lease."""
+    observer_loop, state = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+
+    def pause_after_four(count: int) -> None:
+        if count == 4:
+            owner.control(incident, 0, "pause", "operator")
+
+    state.on_request.append(pause_after_four)
+
+    receipt = _only(observer_loop.poll_once(), session)
+
+    assert len(state.requests) == 4, "no request after the pause was seen"
+    assert not receipt.accepted and receipt.reason == "lease_revoked"
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "authority_revoked")
+    sample = controller.session_history(session)["samples"][0]
+    assert sample["disposition"] == "history_only"
+    assert [r["signal_name"] for r in sample["readings"]] == [SHIPPED.signals[0].name]
+
+
 def test_a_session_without_a_profile_is_sampled_as_unknown_without_a_query(
     loop: tuple[ObserverLoop, Telemetry],
     owner: DurableStore,

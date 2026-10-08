@@ -1233,26 +1233,50 @@ class ObservationStore(_StoreBase):
         return leases
 
     def lease_scope_current(self, lease: SampleLease) -> bool:
-        """Is the control scope the lease was issued under still in force?
+        """Is the authorization the lease was issued under still in force?
 
         Read-only snapshot, no lock: the Observer asks this before *every*
-        Prometheus request (C3 section 4: the gateway checks the current
-        global/target control version before issuing a request; issue #86).
-        False when the global or target scope is suspended now or its
-        generation moved since the claim; the Observer then issues no further
+        Prometheus request (C3 section 4: task claim, gateway request and
+        result adoption all check the current global/target control version,
+        and human control takes precedence; issue #86, codex round 5 P1).
+        False when any of these moved since the claim: the global or target
+        scope is suspended now or its generation changed; the session is no
+        longer ``authorized``; the active job is no longer this lease (a
+        pause / takeover / cancel revokes the session and clears the lease);
+        the incident's control generation or observation generation differs
+        from the session's binding. The Observer then issues no further
         request and submits what it has, which the store files as
-        ``suspended``. A request already in flight cannot be recalled
-        (bounded cancellation).
+        ``suspended`` / ``lease_revoked`` / stale-binding history. A request
+        already in flight cannot be recalled (bounded cancellation).
         """
         if not isinstance(lease, SampleLease):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
             scope = self._lock_scope(conn, lease.incident_id, lock=False)
+            session = conn.execute(
+                "SELECT state,active_sample_job_id,active_sample_owner,active_sample_epoch,subject_control_generation,observation_generation FROM opspilot_observation_sessions WHERE session_id=%s",
+                (lease.session_id,),
+            ).fetchone()
+            incident = conn.execute(
+                "SELECT control_generation,observation_generation FROM opspilot_incidents WHERE incident_id=%s",
+                (lease.incident_id,),
+            ).fetchone()
+        if session is None or incident is None:
+            return False
         return (
             not bool(scope["global_suspended"])
             and not bool(scope["target_suspended"])
             and int(scope["global_generation"]) == lease.global_suspension_generation
             and int(scope["target_generation"]) == lease.target_suspension_generation
+            and session["state"] == "authorized"
+            and session["active_sample_job_id"] == lease.job_id
+            and session["active_sample_owner"] == lease.owner
+            and int(session["active_sample_epoch"]) == lease.epoch
+            and int(incident["control_generation"]) == lease.subject_control_generation
+            and int(incident["observation_generation"]) == lease.observation_generation
+            and int(session["subject_control_generation"])
+            == lease.subject_control_generation
+            and int(session["observation_generation"]) == lease.observation_generation
         )
 
     def current_time(self) -> datetime:
