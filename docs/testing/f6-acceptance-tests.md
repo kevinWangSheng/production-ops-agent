@@ -11,7 +11,7 @@
 
 [外部场景](../../tests/acceptance/test_f6_recovery.py) 41 个实例全部启用 PG opt-in：
 第 1 步22、第 2 步6、第 3 步6、第 4 步2、第 5 步5，**41 passed、0 xfailed、0 skipped**。
-纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查11 passed（其中权限实测1例需PG）。
+纯领域合同42 passed；持久撤销/到期2例仍 strict xfail；原边界夹具11 passed；驱动检查21 passed（权限实测1例及新增10项绑定负向检查需PG）。
 
 - 第1步：持续窗口、四个信号阈值、陈旧/时间缺口/处置前数据、同目标双事故隔离、退化重置与重新累计；目标四身份与revision共5例按下述批准合同改写。
 - 第2步：零/低流量、期限前后、先健康后撤流量；独立次数预算（4次、240秒，早于600秒期限）通过。
@@ -26,13 +26,13 @@
 
 | 产品字段/表示 | Harness 保义映射 |
 |---|---|
-| scenario/subject 的持久 UUID | fixture 预种别名与 UUID 双向表；产品先校验真实主体，返回后才转回别名 |
+| scenario/subject 的持久 UUID | fixture 别名与 UUID 双向表；转换前逐项核验顶层、采样、会话 subject.id、授权 subject.id/subject_id 等于登记的事故 UUID，且 subject.kind=incident，错绑直接 AssertionError |
 | verdict、confirmed、healthy_window、used_count、结束/交接、actions、permissions | 原样复制；不重算、不补造、不筛权限 |
 | `DEGRADED_SIGNAL:dependencies`，该信号 required | `DEPENDENCY_UNHEALTHY`；其余原因码原样保留，handoff_reasons 使用同一命名表 |
 | `incident_lifecycle="unverified"`，`recorded_lifecycle` | 两者原样保留，满足完整性场景 `!= resolved` |
 | RecoverySample.target / 顶层 target | 产品会话的不可变绑定原样复制；不读取遥测 JSON.target 决定目标 |
 | RecoverySample / RecoverySignal DTO | 转为原场景字典；序号、绝对窗、两类 generation、disposition/outcome 原样保留 |
-| native profile 内容 / 内容 hash revision | 读取冻结 calibration 元数据恢复原 synthetic profile；每个会话/样本分别按自己的 revision 映射，不混用最新规则 |
+| native profile 内容 / 内容 hash revision | 逐项核验 revision 存在、SHA-256 与持久内容一致、内容规范化 hash/revision 一致、且符合对应持久会话绑定；不回退当前 profile。顶层缺失或错绑同样直接 AssertionError，再从冻结 calibration 元数据恢复 synthetic 表示 |
 | scoped `synthetic_<name>{namespace="demo",service="checkout"}` 与 source `synthetic-lab` | 校验与所属冻结 profile 一致后，仅表示为原 query 名及 `prometheus:synthetic-lab`；真实查询仍是 scoped 表达式 |
 | Signal.value 为 None（如 stale） | 原始值从已存、双重验证的 query body 取回，保留 status/verdict 不变；正常 value 必须与该 body 一致 |
 | signal.observed_at | 产品投影的 freshness 原始样本时间原样复制，不用窗尾代替 |
@@ -47,7 +47,7 @@ Guarded驱动独立比较 query/绝对窗/类型调用集合，不冻结内部�
 
 PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自己创建的 `f6_acceptance_*` 测试库执行
 `REVOKE TEMP ON DATABASE <fixture_db> FROM PUBLIC`，之后使用受限 Observer 登录；不改 m0_budget 或其他库。
-这是 PostgreSQL17 通用SQL，CI m0-postgres 服务使用同一准备逻辑。CI 已执行 F6 验收与合同入口；驱动检查由 checks 的 make check 覆盖。
+这是 PostgreSQL17 通用SQL，CI m0-postgres 服务使用同一准备逻辑。CI m0-postgres 入口现在包含 F6 验收、合同和驱动检查；新增绑定负向检查需要 PG，不能只依赖 checks 作业的默认非PG make check。
 新增PG检查临时授 TEMP 后确认产品与适配器都报告 database_temp，且冻结只读断言拒绝，finally收回，证明没有过滤多余权限。
 
 ## 合同变更（用户 2026-10-08）
@@ -67,7 +67,7 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 ## 剩余 xfail 与验证边界
 
-仅两个持久合同（revoke/expire）strict xfail、raises=AssertionError：产品 `sample_jobs` 仍从活动槽与样本历史投影，
+仅两个持久合同（revoke/expire）strict xfail、raises=ContractInterfaceConflict：产品 `sample_jobs` 仍从活动槽与样本历史投影，
 已结束且无样本的job身份不可见，迟到历史后原job才出现，故完整集合由空变为旧job。其余状态/水位/预算/授权/会话/审计/历史证据/只读断言先执行通过。
 源为 `opspilot/acceptance_recovery.py` 的 sample_jobs 投影与 `opspilot/observation/revocation.py:53`；不是产品安排新任务的证明。
 无其他产品缺口xfail，没有skip，F6仍不能宣称全部合同或真实生产验收完成。
@@ -107,9 +107,10 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 ## 执行证据（main 280e550 改接）
 
-- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **105 passed、2 xfailed、0 skipped**（8.71秒，退出0）。其中41产品外部、42领域、11原夹具、11驱动检查通过。
-- 全新上下文独立审查者同命令复跑 **105 passed、2 xfailed**（8.27秒），未发现新增合同/正确性缺口。
-- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、473 skipped、2个既有架构债xfailed**（78.35秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
+- `137-recheck2-final.md` P2 已处置：映射先核主体 UUID、每个 revision 的存在/持久绑定及内容 SHA，一律不修正错绑。新增10类实际产品投影篡改负向检查（主体/subject_id、未知revision、已存在但属于另一会话的revision、持久digest、投影content、顶层profile缺失），全部直接AssertionError，不带xfail。独立复验驱动检查21 passed，并确认原缺失profile复现现直接报错、不会清空样本。
+- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **115 passed、2 xfailed、0 skipped**（9.10秒，退出0）。其中41产品外部、42领域、11原夹具、21驱动检查通过。
+- 改接阶段全新上下文独立审查者曾同命令复跑 **105 passed、2 xfailed**（8.27秒），未发现新增合同/正确性缺口。
+- `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、483 skipped、2个既有架构债xfailed**（73.55秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
 - #115①持久快照取回与②重放不写业务状态现已在5个产品重放场景实际验证；③遥测边界集合、④撤销/到期持久提交、⑤次数先于期限耗尽已运行，④仅完整任务身份清单仍为上述2个xfail。
 - 4条机器人线程：结果拼装改为产品投影；权限硬编码改为实际grants/TEMP准备；payload目标改为产品绑定；原5个目标xfail随批准合同改写移除。保留2个任务身份xfail的RuntimeError回归继续覆盖（实际7个身份/授权场景全为普通RuntimeError failure，不被xfail吞掉）。
 - 未改产品/迁移/profile或passes，未initdb/停PG/提交/push/PR；PG仍由lead管理，费用0。

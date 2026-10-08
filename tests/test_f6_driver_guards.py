@@ -289,3 +289,82 @@ def test_permissions_are_measured_and_extra_temp_is_not_filtered(
                     sql.Identifier(db)
                 )
             )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "session_subject",
+        "authorization_subject",
+        "authorization_subject_id",
+        "session_revision",
+        "authorization_revision",
+        "persistent_digest",
+        "projection_content",
+        "session_existing_revision",
+        "authorization_existing_revision",
+        "missing_projection_profile",
+    ],
+)
+def test_mapping_rejects_tampered_product_subject_or_profile(
+    recovery_driver, f6_profile, mutation
+):
+    from dataclasses import replace
+
+    from tests.acceptance.test_f6_recovery import scenario
+
+    requested = scenario(1, "mapping-binding-guard")
+    recovery_driver.run(
+        requested,
+        profile=f6_profile,
+        handled_at=HANDLED,
+        observations=[],
+        until=HANDLED,
+    )
+    runtime = recovery_driver.runtime
+    if mutation in {"session_existing_revision", "authorization_existing_revision"}:
+        updated = deepcopy(f6_profile)
+        updated["max_error_ratio"] = 0.005
+        recovery_driver.run(
+            requested,
+            profile=updated,
+            handled_at=HANDLED,
+            observations=[],
+            until=HANDLED,
+        )
+    records = runtime.controller.incident_records(runtime.ids[requested.subject_id])
+    projected = deepcopy(runtime._product_projection(requested.subject_id, records))
+    if mutation == "session_subject":
+        projected.observation_sessions[0]["subject"]["id"] = str(uuid4())
+    elif mutation == "authorization_subject":
+        projected.observation_authorization["subject"]["id"] = str(uuid4())
+    elif mutation == "authorization_subject_id":
+        projected.observation_authorization["subject_id"] = str(uuid4())
+    elif mutation == "session_revision":
+        projected.observation_sessions[0]["health_profile_revision"] = (
+            "unknown@revision"
+        )
+    elif mutation == "authorization_revision":
+        projected.observation_authorization["health_profile_revision"] = (
+            "unknown@revision"
+        )
+    elif mutation == "session_existing_revision":
+        projected.observation_sessions[-1]["health_profile_revision"] = records[
+            "sessions"
+        ][0]["session"]["health_profile_revision"]
+    elif mutation == "authorization_existing_revision":
+        projected.observation_authorization["health_profile_revision"] = records[
+            "sessions"
+        ][0]["session"]["health_profile_revision"]
+    elif mutation == "persistent_digest":
+        records["sessions"][0]["health_profile"]["content_sha256"] = "0" * 64
+    elif mutation == "missing_projection_profile":
+        projected = replace(
+            projected, recovery_profile_content=None, recovery_profile_revision=None
+        )
+    elif mutation == "projection_content":
+        projected = replace(
+            projected, recovery_profile_content=projected.recovery_profile_content + " "
+        )
+    with pytest.raises(AssertionError):
+        runtime._normalize(requested.subject_id, projected, records=records)

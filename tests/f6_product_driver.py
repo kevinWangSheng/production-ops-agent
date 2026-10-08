@@ -15,7 +15,7 @@ from hashlib import sha256
 from io import BytesIO
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from opspilot.acceptance import IncidentScenario, RecoveryRecords, recovery_outcome
 from opspilot.observation import ObservationStore
@@ -394,18 +394,43 @@ class ProductRecoveryRuntime:
         assert sha256(payload).hexdigest() == query["body_sha256"]
         return payload
 
+    def _assert_subject(self, subject_id, value):
+        try:
+            observed = UUID(str(value))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise AssertionError("invalid projected subject UUID") from exc
+        assert observed == self.ids[subject_id], "projected subject binding mismatch"
+
+    @staticmethod
+    def _verified_profile(content, revision, digest=None):
+        assert isinstance(content, str), "missing profile content"
+        actual_digest = sha256(content.encode()).hexdigest()
+        if digest is not None:
+            assert actual_digest == digest, "profile content SHA mismatch"
+        try:
+            native = HealthProfile.model_validate_json(content)
+        except ValueError as exc:
+            raise AssertionError("invalid profile content") from exc
+        assert native.revision == revision, "profile revision/content mismatch"
+        assert (
+            actual_digest == sha256(canonical_content(native).encode()).hexdigest()
+        ), "noncanonical profile content"
+        return native
+
     def _mapped_samples(
         self, subject_id, projected, native, *, profiles=None, reader=None
     ):
         saved = []
         for sample in projected.recovery_samples:
-            sample_profile = (profiles or {}).get(
-                sample.health_profile_revision, native
+            available = profiles if profiles is not None else {native.revision: native}
+            assert sample.health_profile_revision in available, (
+                "unknown sample profile revision"
             )
+            sample_profile = available[sample.health_profile_revision]
             assert sample_profile.revision == sample.health_profile_revision
             frozen = decode_profile(sample_profile)
             row = asdict(sample)
-            assert sample.subject_id == str(self.ids[subject_id])
+            self._assert_subject(subject_id, sample.subject_id)
             row["subject_id"] = subject_id
             row["health_profile_revision"] = frozen["revision"]
             # Target is the PRODUCT session binding, never telemetry metadata.
@@ -440,19 +465,63 @@ class ProductRecoveryRuntime:
 
     def _normalize(self, subject_id, projected, *, records=None, reader=None):
         result = asdict(projected)
-        assert projected.subject_id == str(self.ids[subject_id])
-        native = (
-            HealthProfile.model_validate_json(projected.recovery_profile_content)
-            if projected.recovery_profile_content
-            else None
-        )
-        profiles = {
-            history["session"][
-                "health_profile_revision"
-            ]: HealthProfile.model_validate_json(history["health_profile"]["content"])
+        self._assert_subject(subject_id, projected.subject_id)
+        profiles = {}
+        session_rows = {
+            str(history["session"]["session_id"]): history["session"]
             for history in (records or {}).get("sessions", ())
-            if history["health_profile"]
         }
+        for history in (records or {}).get("sessions", ()):
+            self._assert_subject(subject_id, history["session"]["incident_id"])
+            row = history["health_profile"]
+            if row is None:
+                assert history["session"]["health_profile_revision"] is None
+                continue
+            assert isinstance(row.get("health_profile_revision"), str), (
+                "missing stored profile revision"
+            )
+            assert (
+                isinstance(row.get("content_sha256"), str)
+                and len(row["content_sha256"]) == 64
+            ), "missing stored profile SHA"
+            revision = row["health_profile_revision"]
+            assert revision == history["session"]["health_profile_revision"], (
+                "stored session/profile binding mismatch"
+            )
+            native_profile = self._verified_profile(
+                row["content"], revision, row["content_sha256"]
+            )
+            if revision in profiles:
+                assert canonical_content(profiles[revision]) == row["content"]
+            profiles[revision] = native_profile
+        native = None
+        if projected.recovery_profile_content is not None:
+            revision = projected.recovery_profile_revision
+            native = self._verified_profile(
+                projected.recovery_profile_content, revision
+            )
+            if records is not None:
+                assert (
+                    revision
+                    == records["sessions"][-1]["session"]["health_profile_revision"]
+                ), "projected latest profile binding mismatch"
+                assert revision in profiles, "unknown projected profile revision"
+                assert projected.recovery_profile_content == canonical_content(
+                    profiles[revision]
+                ), "projected profile content SHA mismatch"
+            else:
+                profiles[revision] = native
+        else:
+            assert projected.recovery_profile_revision is None
+            if records is not None and records["sessions"]:
+                assert (
+                    records["sessions"][-1]["session"]["health_profile_revision"]
+                    is None
+                ), "missing projected profile binding"
+                assert records["sessions"][-1]["health_profile"] is None
+            assert not projected.recovery_samples, (
+                "cannot discard samples without a projected profile"
+            )
         result["subject_id"] = subject_id
         result["recovery_profile"] = decode_profile(native) if native else None
         result["recovery_samples"] = (
@@ -463,17 +532,42 @@ class ProductRecoveryRuntime:
             else ()
         )
         for view in result["observation_sessions"]:
+            assert view["subject"]["kind"] == "incident"
+            self._assert_subject(subject_id, view["subject"]["id"])
+            revision = view["health_profile_revision"]
+            assert revision in profiles, "unknown projected session profile revision"
+            if records is not None:
+                assert view["session_id"] in session_rows, "unknown projected session"
+                assert (
+                    revision
+                    == session_rows[view["session_id"]]["health_profile_revision"]
+                ), "projected session profile binding mismatch"
             view["subject"]["id"] = subject_id
-            view["health_profile_revision"] = decode_profile(
-                profiles.get(view["health_profile_revision"], native)
-            )["revision"]
+            view["health_profile_revision"] = decode_profile(profiles[revision])[
+                "revision"
+            ]
         if result["observation_authorization"]:
             auth = result["observation_authorization"]
+            assert auth["subject"]["kind"] == "incident"
+            self._assert_subject(subject_id, auth["subject"]["id"])
+            self._assert_subject(subject_id, auth["subject_id"])
+            revision = auth["health_profile_revision"]
+            assert revision in profiles, (
+                "unknown projected authorization profile revision"
+            )
+            if records is not None:
+                assert auth["session_id"] == str(
+                    records["sessions"][-1]["session"]["session_id"]
+                ), "projected authorization session mismatch"
+                assert (
+                    revision
+                    == session_rows[auth["session_id"]]["health_profile_revision"]
+                ), "projected authorization profile binding mismatch"
             auth["subject"]["id"] = subject_id
             auth["subject_id"] = subject_id
-            auth["health_profile_revision"] = decode_profile(
-                profiles.get(auth["health_profile_revision"], native)
-            )["revision"]
+            auth["health_profile_revision"] = decode_profile(profiles[revision])[
+                "revision"
+            ]
 
         def reason_alias(codes):
             return tuple(
