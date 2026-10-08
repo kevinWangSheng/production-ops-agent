@@ -572,3 +572,106 @@ def test_a_repeated_takeover_revokes_the_observation_registered_under_human_owne
     # And a remediation can be registered once more under the new generation.
     assert _register(controller, incident, uid, expected=3) == 4
     assert [s["state"] for s in _sessions(owner, incident)] == ["revoked", "authorized"]
+
+
+def test_takeover_during_sampling_stops_the_observer_before_its_next_request(
+    owner: DurableStore, controller: ObservationStore, observer: ObservationStore
+) -> None:
+    """After PR #119: the Observer asks ``lease_scope_current`` before every
+    Prometheus request. A takeover committed while a sampling job is leased
+    revokes the session and clears the job slot, so the check answers False
+    (no further request) and what the Observer submits is history only."""
+    incident, run, uid = _incident(owner)
+    assert _register(controller, incident, uid, expected=0) == 1
+    (session,) = _sessions(owner, incident)
+    _due_now(owner, session["session_id"])
+    lease = next(
+        item
+        for item in observer.claim_due_samples(uuid4())
+        if item.session_id == session["session_id"]
+    )
+    assert observer.lease_scope_current(lease) is True
+
+    assert owner.control(incident, 1, "takeover", "operator") == 2
+
+    assert observer.lease_scope_current(lease) is False
+    (session,) = _sessions(owner, incident)
+    assert (session["state"], session["ended_reason"]) == (
+        "revoked",
+        "authority_revoked",
+    )
+    assert session["active_sample_job_id"] is None
+    now = _now()
+    receipt = observer.submit_sample(
+        lease,
+        HealthSample(
+            sample_id=str(uuid4()),
+            session_id=str(lease.session_id),
+            sequence=lease.sequence,
+            window=QueryWindow(
+                start=now - timedelta(minutes=5), end=now - timedelta(minutes=1)
+            ),
+            outcome="healthy",
+            subject_control_generation=lease.subject_control_generation,
+            observation_generation=lease.observation_generation,
+            health_profile_revision=lease.health_profile_revision,
+            required_signals_present=True,
+        ),
+        [],
+    )
+    assert receipt.accepted is False and receipt.disposition == "history_only"
+    assert receipt.incident_lifecycle == "observing_recovery"
+    assert _incident_row(owner, incident)["lifecycle"] == "observing_recovery"
+    assert _run_row(owner, run)["state"] == "waiting_human"
+
+
+def test_a_takeover_in_the_middle_of_a_sample_stops_further_prometheus_requests(
+    owner: DurableStore, controller: ObservationStore, observer: ObservationStore
+) -> None:
+    """Through the Observer's own sampler (PR #119): the takeover lands while
+    the first instant query is in flight; ``take_sample`` asks the scope
+    check before the next request, gets False, issues nothing more and
+    submits what it has as history only."""
+    from opspilot.observer.prometheus import InstantResult
+    from opspilot.observer.sampler import take_sample
+
+    incident, run, uid = _incident(owner)
+    assert _register(controller, incident, uid, expected=0) == 1
+    (session,) = _sessions(owner, incident)
+    _due_now(owner, session["session_id"])
+    lease = next(
+        item
+        for item in observer.claim_due_samples(uuid4())
+        if item.session_id == session["session_id"]
+    )
+
+    class TakeoverDuringFirstRequest:
+        def __init__(self) -> None:
+            self.requests: list[str] = []
+
+        def instant(
+            self, expr: str, *, at: datetime, timeout_seconds: int
+        ) -> InstantResult:
+            self.requests.append(expr)
+            if len(self.requests) == 1:
+                # The human takes over while this request is in flight.
+                assert owner.control(incident, 1, "takeover", "operator") == 2
+            return InstantResult(expr, "no_data", None, b"{}", 200)
+
+    source = TakeoverDuringFirstRequest()
+    taken = take_sample(lease, PROFILE, source, observer)
+
+    assert source.requests == [PROFILE.signals[0].query], source.requests
+    assert taken.requests_issued == 1 and taken.scope_interrupted is True
+    assert taken.receipt.accepted is False
+    assert taken.receipt.disposition == "history_only"
+    (session,) = _sessions(owner, incident)
+    assert (session["state"], session["ended_reason"]) == (
+        "revoked",
+        "authority_revoked",
+    )
+    assert _incident_row(owner, incident)["lifecycle"] == "observing_recovery"
+    assert _run_row(owner, run)["state"] == "waiting_human"
+    assert [
+        i for i in observer.claim_due_samples(uuid4()) if i.incident_id == incident
+    ] == []
