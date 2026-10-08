@@ -55,7 +55,7 @@ class _RunOps(_StoreBase):
             if existing_run is not None:
                 generation = int(existing_run["control_generation"])
                 replay = conn.execute(
-                    "SELECT 1 FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
+                    "SELECT payload FROM opspilot_controls WHERE incident_id=%s AND action='new_run' AND resulting_generation=%s",
                     (incident_id, generation),
                 ).fetchone()
                 if (
@@ -65,6 +65,16 @@ class _RunOps(_StoreBase):
                     and int(row["control_generation"]) == generation
                     and expected_generation == generation - 1
                 ):
+                    # run_id 由期望代际派生，两把不同的请求键会算出同一个 run_id
+                    # 并可能同时到达：带键的请求只能重放带同一把键的审计行，否则
+                    # 那是另一个请求的结果（独立审查 PR #152 P1）；无键的旧行证明
+                    # 不了归属，同样按冲突处理。不带键的调用沿用原重放。
+                    requested = (
+                        None if payload is None else payload.get("idempotency_key")
+                    )
+                    recorded = (replay["payload"] or {}).get("idempotency_key")
+                    if requested is not None and recorded != requested:
+                        raise PersistenceError("CONTROL_CONFLICT")
                     return generation
                 if row["current_run_id"] == run_id and row["state"] != "cancelled":
                     raise PersistenceError("ILLEGAL_TRANSITION")

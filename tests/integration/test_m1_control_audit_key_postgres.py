@@ -23,6 +23,7 @@ from opspilot.web import (
     DurableIncidentStore,
     DurableWebLedger,
     Workbench,
+    WorkbenchError,
     create_app,
     hash_password,
     token_digest,
@@ -184,3 +185,74 @@ def test_a_pre_128_textless_audit_row_on_postgres_is_not_a_replay():
     assert retry.status == 409, retry.text
     assert retry.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
     assert workbench.ledger.get("control", f"{subject}:A") is None
+
+
+def test_two_keys_racing_the_same_new_run_confirm_only_the_winner():
+    """Independent review of PR #152, P1: A and B both read the summary at
+    generation 1 and derive the same run id. The store's run-id replay branch
+    must not hand the loser the winner's generation: exactly one key is
+    confirmed, the other gets CONTROL_CONFLICT, and there is one Run, one
+    audit row and one event."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, local
+
+    app, workbench, store = _build()
+    incident = _submit(app)
+    subject = workbench.list_incidents()[0].incident_id
+    workbench.control(
+        subject,
+        actor_id=UI_USER,
+        action="cancel",
+        expected_generation=0,
+        idempotency_key="pre",
+    )
+    original = workbench.incidents.find_incident
+    barrier = Barrier(2)
+    seen = local()
+
+    def synchronized_find(incident_id):
+        result = original(incident_id)
+        if not getattr(seen, "done", False):
+            seen.done = True
+            barrier.wait(timeout=10)
+        return result
+
+    workbench.incidents.find_incident = synchronized_find
+
+    def request(key):
+        try:
+            return workbench.control(
+                subject,
+                actor_id=UI_USER,
+                action="new_run",
+                expected_generation=1,
+                idempotency_key=key,
+            )
+        except WorkbenchError as exc:
+            return exc.code
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = dict(zip(("A", "B"), pool.map(request, ("A", "B"))))
+    finally:
+        workbench.incidents.find_incident = original
+    winners = [k for k, r in results.items() if not isinstance(r, str)]
+    assert len(winners) == 1, results
+    (winner,) = winners
+    loser = "B" if winner == "A" else "A"
+    assert results[loser] == "CONTROL_CONFLICT"
+    assert results[winner].generation == 2 and results[winner].replayed is False
+    rows = [r for r in _audit_rows(store, subject) if r["action"] == "new_run"]
+    assert len(rows) == 1
+    assert rows[0]["payload"]["idempotency_key"] == f"{subject}:{winner}"
+    assert workbench.ledger.get("control", f"{subject}:{loser}") is None
+    assert workbench.ledger.get("control", f"{subject}:{winner}") is not None
+    assert len(workbench.incidents.run_ids(subject)) == 2
+    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
+    assert kinds.count("control_applied") == 2  # cancel + one new_run
+    # The loser's intent is still pending; its own retry is still refused.
+    retry = _control(app, incident, "new_run", 1, loser)
+    assert retry.status == 409 and retry.json()["code"] == "CONTROL_CONFLICT"
+    # The winner's retry is the replay.
+    again = _control(app, incident, "new_run", 1, winner)
+    assert again.status == 200 and again.json()["replayed"] is True

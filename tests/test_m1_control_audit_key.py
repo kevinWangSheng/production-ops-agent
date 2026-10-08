@@ -201,3 +201,71 @@ def test_a_keyed_text_row_is_not_confirmed_for_a_different_key_with_the_same_tex
     assert retry_b.status == 409 and retry_b.json()["code"] == "CONTROL_CONFLICT"
     retry_a = _control(app, incident, _form("correct", 0, "A", {"text": text}))
     assert retry_a.status == 200 and retry_a.json()["replayed"] is True
+
+
+@pytest.mark.parametrize("action", ["follow_up", "correct"])
+def test_a_text_audit_row_without_a_key_is_ambiguous_between_same_text_intents(
+    action,
+):
+    """Independent review of PR #152, P2: two pending intents with the same
+    text and a pre-#128 row (text, no key). Neither the page reconcile nor
+    either retry may claim the row: refused with the current generation."""
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
+    incident = submit_incident(app).json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    text = "Same note twice."
+    for key in ("A", "B"):
+        workbench.ledger.put(
+            "control_intent", f"{subject}:{key}", _intent(action, 0, {"text": text})
+        )
+    assert (
+        workbench.incidents.control(
+            subject, 0, action, ACTOR, {"text": text, "channel": "web"}
+        )
+        == 1
+    )
+    workbench.reconcile(subject)
+    for key in ("B", "A"):
+        retry = _control(app, incident, _form(action, 0, key, {"text": text}))
+        assert retry.status == 409, retry.text
+        assert retry.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
+        assert workbench.ledger.get("control", f"{subject}:{key}") is None
+    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
+        "control_applied"
+    ) == 0
+
+
+def test_a_textless_new_run_retry_with_another_key_is_refused_by_the_store():
+    """The store's run-id replay branch (same derived run id, stale summary)
+    refuses a key other than the one on the audit row."""
+    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
+    incident = submit_incident(app).json()["incident_id"]
+    subject = workbench.list_incidents()[0].incident_id
+    assert _control(app, incident, _form("cancel", 0, "c", {})).status == 200
+    won = _control(app, incident, _form("new_run", 1, "A", {}))
+    assert won.status == 200 and won.json()["generation"] == 2
+    run_id = workbench.list_incidents()[0].current_run_id
+    with pytest.raises(PersistenceError, match="CONTROL_CONFLICT"):
+        workbench.incidents.new_run(
+            subject,
+            run_id,
+            expected_generation=1,
+            deadline=workbench.incidents.now(),
+            budget_limit=1,
+            versions={},
+            actor=ACTOR,
+            payload={"channel": "web", "idempotency_key": f"{subject}:B"},
+        )
+    assert (
+        workbench.incidents.new_run(
+            subject,
+            run_id,
+            expected_generation=1,
+            deadline=workbench.incidents.now(),
+            budget_limit=1,
+            versions={},
+            actor=ACTOR,
+            payload={"channel": "web", "idempotency_key": f"{subject}:A"},
+        )
+        == 2
+    )

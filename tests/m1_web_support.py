@@ -395,6 +395,21 @@ class MemoryIncidentStore:
                 and row["control_generation"] == generation
                 and expected_generation == generation - 1
             ):
+                # Mirror DurableStore.new_run: a keyed request replays only
+                # the audit row bound to its own key (PR #152 review, P1).
+                requested = None if payload is None else payload.get("idempotency_key")
+                recorded = next(
+                    (
+                        (a.get("payload") or {}).get("idempotency_key")
+                        for a in self.controls
+                        if a["incident_id"] == incident_id
+                        and a["action"] == "new_run"
+                        and a["resulting"] == generation
+                    ),
+                    None,
+                )
+                if requested is not None and recorded != requested:
+                    raise PersistenceError("CONTROL_CONFLICT")
                 return generation
             raise PersistenceError("IDENTITY_CONFLICT")
         if row["state"] != "cancelled":

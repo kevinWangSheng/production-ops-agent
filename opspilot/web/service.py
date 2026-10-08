@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol, cast
@@ -602,6 +602,7 @@ class Workbench:
         *,
         key: str,
         unconfirmed_peers: int,
+        unconfirmed_same_text: int,
     ) -> bool:
         """Whether ``audit`` provably is the decision ``intent`` (ledger ``key``) asked for.
 
@@ -611,11 +612,12 @@ class Workbench:
         #128), so a row that carries a key is the decision of that key and
         no other: two unconfirmed intents can never take each other's row.
         A row without a key predates #128 (or a store without payloads,
-        PR #31): a text action is then matched by its text -- on a store
-        without payloads only when this is the single unconfirmed intent
-        that could have produced it -- and an action without text is never
-        matched, because nothing distinguishes the request that made it
-        from a peer that never ran; the retry is refused with the current
+        PR #31): a text action is then matched by its text, and only when
+        this is the single unconfirmed intent with that text (on a store
+        without payloads: the single unconfirmed intent at all) that could
+        have produced it; an action without text is never matched, because
+        nothing distinguishes the request that made it from a peer that
+        never ran. An unmatched retry is refused with the current
         generation rather than reported as a replay.
         """
         if (
@@ -635,7 +637,9 @@ class Workbench:
         if text is None:
             return False
         if audit.payload is not None:
-            return bool(audit.payload.get("text") == text)
+            return (
+                bool(audit.payload.get("text") == text) and unconfirmed_same_text == 1
+            )
         return not self.incidents.payload_supported and unconfirmed_peers == 1
 
     def _confirm(
@@ -691,7 +695,13 @@ class Workbench:
                 (key, intent)
                 for key, intent in peers
                 if self._audit_matches(
-                    intent, audit, key=key, unconfirmed_peers=len(peers)
+                    intent,
+                    audit,
+                    key=key,
+                    unconfirmed_peers=len(peers),
+                    unconfirmed_same_text=_same_text(
+                        (other for _, other in peers), intent
+                    ),
                 )
             ]
             if len(matches) != 1:
@@ -725,7 +735,11 @@ class Workbench:
             if audit.resulting_generation in taken:
                 continue
             if self._audit_matches(
-                intent, audit, key=key, unconfirmed_peers=len(peers)
+                intent,
+                audit,
+                key=key,
+                unconfirmed_peers=len(peers),
+                unconfirmed_same_text=_same_text(peers, intent),
             ):
                 return self._confirm(incident_id, key, intent, audit)
         return None
@@ -1345,6 +1359,12 @@ def _envelope_json(envelope: IntakeEnvelope) -> dict[str, Any]:
         },
         "received_at": envelope.received_at.isoformat(),
     }
+
+
+def _same_text(peers: Iterable[Mapping[str, Any]], intent: Mapping[str, Any]) -> int:
+    """How many unconfirmed peers (``intent`` included) carry ``intent``'s text."""
+    text = intent.get("text")
+    return sum(1 for other in peers if other.get("text") == text)
 
 
 def _envelope_from_json(stored: Mapping[str, Any]) -> IntakeEnvelope:
