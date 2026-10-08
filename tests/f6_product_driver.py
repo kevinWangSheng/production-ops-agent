@@ -460,10 +460,36 @@ class ProductRecoveryRuntime:
         return native
 
     def _mapped_samples(
-        self, subject_id, projected, native, *, profiles=None, reader=None
+        self,
+        subject_id,
+        projected,
+        native,
+        *,
+        profiles=None,
+        reader=None,
+        histories=None,
     ):
+        sessions = {
+            str(history["session"]["session_id"]): history["session"]
+            for history in histories or ()
+        }
+        sample_sessions = {
+            str(row["sample_id"]): str(history["session"]["session_id"])
+            for history in histories or ()
+            for row in history["samples"]
+        }
         saved = []
         for sample in projected.recovery_samples:
+            if histories is not None:
+                assert sample.sample_id in sample_sessions, "unknown projected sample"
+                assert sample.session_id == sample_sessions[sample.sample_id], (
+                    "sample persistent session binding mismatch"
+                )
+                assert sample.session_id in sessions, "unknown sample session"
+                assert (
+                    sample.health_profile_revision
+                    == sessions[sample.session_id]["health_profile_revision"]
+                ), "sample session/profile binding mismatch"
             available = profiles if profiles is not None else {native.revision: native}
             assert sample.health_profile_revision in available, (
                 "unknown sample profile revision"
@@ -568,7 +594,12 @@ class ProductRecoveryRuntime:
         result["recovery_profile"] = decode_profile(native) if native else None
         result["recovery_samples"] = (
             self._mapped_samples(
-                subject_id, projected, native, profiles=profiles, reader=reader
+                subject_id,
+                projected,
+                native,
+                profiles=profiles,
+                reader=reader,
+                histories=records["sessions"] if records is not None else None,
             )
             if native
             else ()
@@ -629,6 +660,21 @@ class ProductRecoveryRuntime:
         result["external_queries"] = (
             projected.replay.external_queries if projected.replay else ()
         )
+        # Independent raw lifecycle witnesses from the SAME snapshot, including
+        # the historical prefix on replay. Do not derive them from product actions
+        # or the replay verdict (which may be unverified).
+        if records is not None:
+            events = [
+                (row["created_at"], None, "observing_recovery")
+                for row in records["controls"]
+                if row["action"] == "register_remediation"
+            ]
+            events.extend(
+                (row["recorded_at"], row["lifecycle_before"], row["lifecycle_after"])
+                for history in records["sessions"]
+                for row in history["endings"]
+            )
+            result["lifecycle_events"] = tuple(sorted(events, key=lambda row: row[0]))
         # permissions/actions/verdict/health/handoff are copied unchanged.
         return SimpleNamespace(**result)
 
