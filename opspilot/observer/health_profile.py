@@ -750,7 +750,14 @@ def _judge(
 _QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
 _BRACKET = re.compile(r"\[([^\]]*)\]")
 _DURATION_PART = re.compile(r"(\d+)(ms|[smhdwy])")
-_DURATION = re.compile(r"^(?:\d+(?:ms|[smhdwy]))+$")
+#: Units appear at most once, largest first (``1h30m``, never ``1s1h`` or
+#: ``1m1m``), as in Prometheus's duration literal; ``m`` is not the start of
+#: ``ms``. The lookahead keeps an all-optional pattern from matching nothing.
+_DURATION_CORE = (
+    r"(?=\d+(?:ms|[smhdwy]))"
+    r"(?:\d+y)?(?:\d+w)?(?:\d+d)?(?:\d+h)?(?:\d+m(?!s))?(?:\d+s)?(?:\d+ms)?"
+)
+_DURATION = re.compile(rf"^{_DURATION_CORE}$")
 _UNIT_SECONDS = {
     "ms": 0.001,
     "s": 1,
@@ -855,7 +862,7 @@ _ESCAPES = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r"}
 #: letters after a digit run (``1h`` of ``1h30m``, the ``bogus`` of
 #: ``1bogus``), so these two states match their operand themselves and leave
 #: whatever follows (``bogus``, ``s`` of ``1.5s``) to fail as an operand.
-_OFFSET_OPERAND = re.compile(r"(?:\d+(?:ms|[smhdwy]))+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+_OFFSET_OPERAND = re.compile(rf"{_DURATION_CORE}|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
 
 def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:

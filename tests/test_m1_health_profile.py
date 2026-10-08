@@ -1129,6 +1129,12 @@ def test_vector_selectors_are_extracted_with_decoded_values():
 PROMQL_PARSER_ORACLE = [
     ('x{a="b"} atan2 y{a="b"}', True),
     ('x{a="b"} @ START()', True),
+    ('x{a="b"} offset 1s1h', False),
+    ('x{a="b"} @ 1m1m', False),
+    ('x{a="b"} offset 1h1m1s1ms', True),
+    ('x{a="b"} offset 1y1w1d1h1m1s1ms', True),
+    ('x{a="b"} offset 1ms1s', False),
+    ('x{a="b"} offset 0s', True),
     ('x{a="b"} @ -start()', False),
     ('x{a="b"} @ +end()', False),
     ('x{a="b"} offset -1bogus', False),
@@ -1212,6 +1218,25 @@ PROMQL_PARSER_ORACLE = [
     ('x{a="b"} @ -', False),
     ('x{a="b"} offset -x', False),
 ]
+
+
+@pytest.mark.parametrize(
+    ("query", "accepted"),
+    [
+        ('rate(x{a="b"}[1h30m])', True),
+        ('rate(x{a="b"}[1s1h])', False),  # Prometheus: out-of-order units
+        ('rate(x{a="b"}[1m1m])', False),  # repeated unit
+        ('x{a="b"}[5m:1s1m]', False),  # same rule for a subquery resolution
+    ],
+)
+def test_range_selector_durations_follow_the_prometheus_unit_order(query, accepted):
+    from opspilot.observer.health_profile import _range_selector_seconds
+
+    if accepted:
+        assert _range_selector_seconds(query)
+    else:
+        with pytest.raises(ValueError, match="RANGE_SELECTOR_UNPARSABLE"):
+            _range_selector_seconds(query)
 
 
 @pytest.mark.parametrize(("query", "accepted"), PROMQL_PARSER_ORACLE)
