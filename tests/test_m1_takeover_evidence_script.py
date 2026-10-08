@@ -135,7 +135,11 @@ def _held() -> tuple[dict, dict]:
 
 
 @pytest.mark.skipif(not FROZEN, reason="no frozen takeover evidence")
-def test_the_frozen_evidence_satisfies_the_required_verdicts():
+def test_the_frozen_evidence_has_the_shape_the_required_verdicts_expect():
+    """Shape check only: ``7f1d7572…`` was recorded before the wire hook (its
+    request time is taken on entry to ``complete()``), so this does not prove
+    the socket-write invariant; the script change applies to later runs (#127)
+    and the frozen evidence is deliberately left as it is."""
     summary = json.loads(HELD.read_text())
     assert script.failed_verdicts(summary["verdicts"], summary["takeover"]) == []
 
