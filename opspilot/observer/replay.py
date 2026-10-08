@@ -340,6 +340,47 @@ def _basis_codes(
     return codes
 
 
+def _bundle_time_codes(
+    rows: Sequence[Mapping[str, Any]],
+    verified: Mapping[str, bool | None],
+    sample_window: tuple[datetime, datetime],
+) -> list[str]:
+    """The two instants a bundle carries are bound to the sample (issue
+    #142): ``evaluated_at`` is the window end the queries ran at, and every
+    reading of the sample was judged at one ``sample_time`` -- the replay
+    judges freshness at the first bundle's, so a later bundle naming
+    another instant would otherwise pass with a rewritten hash. Bundles
+    that carry no window (construction failure, too large) are filed
+    ``failed`` and bind only their ``sample_time``."""
+    codes: list[str] = []
+    instants: dict[str, datetime] = {}
+    for row in rows:
+        name = str(row["signal_name"])
+        if not verified.get(name):
+            continue
+        try:
+            bundle = json.loads(bytes(row["raw"]))
+            if not isinstance(bundle, dict):
+                continue
+            if "window_end" in bundle:
+                if (
+                    datetime.fromisoformat(str(bundle["evaluated_at"]))
+                    != sample_window[1]
+                ):
+                    codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_evaluated_at")
+            instants[name] = datetime.fromisoformat(str(bundle["sample_time"]))
+        except (ValueError, KeyError, TypeError):
+            codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_time")
+    if len(set(instants.values())) > 1:
+        first = next(iter(instants.values()))
+        codes.extend(
+            f"SAMPLE_TIME_MISMATCH:{name}"
+            for name, instant in instants.items()
+            if instant != first
+        )
+    return codes
+
+
 def _profile_unavailable_record(
     rows: Sequence[Mapping[str, Any]], revision: str
 ) -> str | None:
@@ -430,6 +471,7 @@ def _readings(
                 sample_window=sample_window,
             )
         )
+    codes.extend(_bundle_time_codes(rows, verified, sample_window))
     try:
         rebuilt, evaluation = replay_sample(profile, rows)
     except Exception as exc:  # noqa: BLE001 - a bad row is a finding, not a crash
@@ -485,14 +527,21 @@ def _sentinel_window_codes(
     return codes
 
 
+_DEADLINE_SKEW_SECONDS = 60
+
+
 def _session_parameter_codes(
     row: Mapping[str, Any], profile: HealthProfile
 ) -> list[str]:
     """The session row's parameters must be the frozen profile's session
     values (interface contract item 5): the row cannot vouch for itself.
     The deadline is an absolute instant chosen at authorization; it is
-    checked as the span from the row's creation, with a minute of skew
-    between the authorizing clock and the database's."""
+    checked as the span from the row's creation and must equal the frozen
+    ``deadline_seconds`` in both directions, within a minute: the deadline is
+    computed from the web service's clock and the row is created on the
+    database's, so the two differ by their clock skew plus the transaction's
+    latency; a minute is the margin the span check already used. A shorter
+    span would endorse an early handoff, a longer one a late confirmation."""
     frozen = profile.session
     codes: list[str] = []
     for name, expected in (
@@ -506,7 +555,7 @@ def _session_parameter_codes(
     created = row.get("created_at") or row.get("authorized_at")
     if isinstance(deadline, datetime) and isinstance(created, datetime):
         span = (deadline - created).total_seconds()
-        if span <= 0 or span > frozen.deadline_seconds + 60:
+        if abs(span - frozen.deadline_seconds) > _DEADLINE_SKEW_SECONDS:
             codes.append("SESSION_PARAMETER_MISMATCH:deadline_at")
     return codes
 

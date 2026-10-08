@@ -191,6 +191,7 @@
 
 - #125 → #130：scope 检查之后重算采样剩余预算。
 - #126 → #131：工程脚本不跟随重定向（lab 凭据不外发）；Observer 协议错误判 failed，如实保存已读前缀与状态码。后续 #133。
+- #142（分支 `chore/fix-replay-timestamp-deadline`）：重放把捆绑 `evaluated_at` 绑定到采样窗尾、要求同一样本所有读数的 `sample_time` 一致（`SAMPLE_TIME_MISMATCH`）；会话 deadline 改为与冻结 `deadline_seconds` 双向比较，容差取 60 s（原单向检查已用的值：期限由 web 服务时钟算出、行由数据库时钟创建，容差覆盖两钟偏差与事务延迟；更小值会在合法偏差下误报）。篡改 → unknown + 完整性码，不改业务状态。
 - #122 → #132（用户合并）：HealthProfile 每信号必填 `scope`，加载时校验每个选择器恰好绑定 `subject`；用户决定方案 B，pod 健康改 Deployment 级、去掉重启计数（owner 链转 #134）；revision `@b72bbe2e30be`，旧格式拒绝加载；`kube_deployment_status_replicas_ready` 未校准，#88 开环境先取证。扫描器误拒类兼容项转 #135。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
