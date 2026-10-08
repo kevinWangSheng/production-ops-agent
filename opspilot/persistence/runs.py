@@ -23,9 +23,16 @@ class _RunOps(_StoreBase):
         versions: dict[str, str],
         actor: str,
         input: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> int:
-        """Continue a cancelled incident with a fresh Run and control generation."""
+        """Continue a cancelled incident with a fresh Run and control generation.
+
+        ``payload`` goes to the audit row as in ``control()`` (the caller's
+        request key, #128); the Run takes nothing from it.
+        """
         if type(expected_generation) is not int or expected_generation < 0:
+            raise PersistenceError("INVALID_INPUT")
+        if payload is not None and not isinstance(payload, dict):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
@@ -96,8 +103,15 @@ class _RunOps(_StoreBase):
                 (next_state, nxt, run_id, incident_id),
             )
             conn.execute(
-                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor) VALUES(%s,%s,'new_run',%s,%s,%s)",
-                (uuid4(), incident_id, nxt - 1, nxt, actor),
+                "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'new_run',%s,%s,%s,%s)",
+                (
+                    uuid4(),
+                    incident_id,
+                    nxt - 1,
+                    nxt,
+                    actor,
+                    Jsonb(payload) if payload is not None else None,
+                ),
             )
             return nxt
 
