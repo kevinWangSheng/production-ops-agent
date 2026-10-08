@@ -497,7 +497,10 @@ def _arm(conn: HTTPConnection, deadline: float) -> None:
 
 
 def _read_until(
-    response: HTTPResponse, deadline: float, limit: int, chunks: list[bytes]
+    response: HTTPResponse | urllib.error.HTTPError,
+    deadline: float,
+    limit: int,
+    chunks: list[bytes],
 ) -> bool:
     """Append at most ``limit`` bytes to ``chunks`` before ``deadline``
     (monotonic seconds); True when the body ended within the limit.
@@ -547,7 +550,7 @@ def _declared_length(headers: Any) -> int | None:
     return int(value) if len(value) <= 15 else 10**15
 
 
-def _owed(response: HTTPResponse, received: int) -> int:
+def _owed(response: HTTPResponse | urllib.error.HTTPError, received: int) -> int:
     """Bytes the response still owes after EOF. ``http.client`` tracks
     ``length`` itself, but drops a Content-Length it cannot convert (and a
     chunked body has none): the declared header fills that gap, never for a
@@ -561,7 +564,7 @@ def _owed(response: HTTPResponse, received: int) -> int:
     return 0 if declared is None else max(0, declared - received)
 
 
-def _rearm(response: HTTPResponse, seconds: float) -> None:
+def _rearm(response: HTTPResponse | urllib.error.HTTPError, seconds: float) -> None:
     """Set the underlying socket's timeout to ``seconds``; a response without
     a reachable socket (a test double, an already closed stream) keeps the
     timeout the opener set."""
