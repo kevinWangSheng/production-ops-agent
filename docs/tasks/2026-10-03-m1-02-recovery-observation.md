@@ -175,7 +175,7 @@
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
 - 上游核对已完成（见上表）；第 0–6 步全部执行（第 6 步见「第 6 步执行」，PR 待用户门）。F6 外部验收为 36 场景 + 5 重放经产品投影通过、2 个撤销/到期合同 xfail（接口冲突，`sample_jobs` 投影）；真实环境四场景 + 重放在 main `510dcd3` 上通过；之后合并的 #147 #148 #150 #152 改了采样、重放、投影与控制路径，当前 main 未重跑（第 6 步的 PG 数据保留在 `../production-ops-agent-f6-live/tmp/pg55601`，可对其重新施加重放与投影）。用户 2026-10-08 决定：#157 健康窗改为从窗口末尾起算（随之在新代码上重跑全部场景）；#154 `actions` 为完整审计（#160）；Observer trace 暂不补（#159）。**`passes` 未翻转**，另受 2 个撤销/到期合同 xfail 约束。其余跟踪：#124（暂不做）、#117、#134、#156、#157、#159。
-- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停；第 6 步的临时 PG（55601/55606）随 worktree 清理。
+- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停；第 6 步的临时 PG 数据（55601/55606，已停）保留在 `../production-ops-agent-f6-live/tmp/`，该 worktree 保留到 #157 重跑完成后再清理。
 
 ## 第 6 步执行（2026-10-08，F6 真实环境验收，#88，分支 `feature/F6-live-acceptance`，worktree `../production-ops-agent-f6-live`，基于 main `510dcd3`）
 
