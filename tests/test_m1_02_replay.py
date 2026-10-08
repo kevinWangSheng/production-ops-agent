@@ -677,3 +677,118 @@ def test_a_sentinel_sample_keeps_the_outcome_and_window_the_observer_wrote():
     )
     result = replay_history(history)
     assert "SENTINEL_MISMATCH:bundle_window" in result.samples[1].integrity
+
+
+# --- issue #142: bundled timestamps and the session deadline bind both ways
+
+
+def _retime(history, index, **changes):
+    reading = history["samples"][0]["readings"][index]
+    bundle = json.loads(bytes(reading["raw"]))
+    bundle.update(changes)
+    history["samples"][0]["readings"][index] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+
+
+def test_evaluated_at_is_bound_to_the_sample_window_end():
+    """The instant the queries ran at is the window end; a rewritten
+    ``evaluated_at`` with a rehashed bundle is no basis."""
+    history = healthy_history()
+    window_end = history["samples"][0]["window_end"]
+    _retime(history, 0, evaluated_at=(window_end - timedelta(hours=2)).isoformat())
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False
+    assert (
+        "READING_BASIS_MISMATCH:rate:bundle_evaluated_at" in result.samples[0].integrity
+    )
+
+
+def test_a_bundle_without_evaluated_at_next_to_a_window_is_no_basis():
+    history = healthy_history()
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    del bundle["evaluated_at"]
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+
+
+def test_every_reading_of_a_sample_carries_the_same_sample_time():
+    """The replay judged freshness at the first bundle's ``sample_time``;
+    a later bundle with another instant (rehashed) must not pass."""
+    history = healthy_history()
+    readings = history["samples"][0]["readings"]
+    assert len(readings) > 1
+    last = len(readings) - 1
+    other = json.loads(bytes(readings[last]["raw"]))["sample_time"]
+    shifted = (
+        __import__("datetime").datetime.fromisoformat(other) + timedelta(seconds=5)
+    ).isoformat()
+    _retime(history, last, sample_time=shifted)
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False
+    assert any(
+        code.startswith("SAMPLE_TIME_MISMATCH") for code in result.samples[0].integrity
+    )
+
+
+@pytest.mark.parametrize("delta", [-2700, -61, 61, 3600])
+def test_the_session_deadline_binds_in_both_directions(delta):
+    """A 3600 s profile whose deadline is moved to 901 s (or beyond the
+    skew tolerance either way) is not the frozen span."""
+    history = healthy_history()
+    history["session"]["deadline_at"] += timedelta(seconds=delta)
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert "SESSION_PARAMETER_MISMATCH:deadline_at" in result.integrity
+
+
+@pytest.mark.parametrize("delta", [-60, -1, 0, 1, 60])
+def test_the_session_deadline_allows_only_clock_skew(delta):
+    history = healthy_history()
+    history["session"]["deadline_at"] += timedelta(seconds=delta)
+    result = replay_history(history)
+    assert "SESSION_PARAMETER_MISMATCH:deadline_at" not in result.integrity
+
+
+def test_deleting_the_window_does_not_escape_the_evaluated_at_binding():
+    """PR #150 review P2: a query bundle without ``window_end`` and an
+    earlier ``evaluated_at`` (rehashed) must still be refused."""
+    history = healthy_history()
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    del bundle["window_end"]
+    bundle["evaluated_at"] = (
+        history["samples"][0]["window_end"] - timedelta(hours=2)
+    ).isoformat()
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False
+    assert (
+        "READING_BASIS_MISMATCH:rate:bundle_evaluated_at" in result.samples[0].integrity
+    )
+
+
+def test_a_forged_reading_error_marker_does_not_exempt_a_query_bundle():
+    """PR #150 bot P1: ``reading_error`` on a bundle that still carries its
+    query sections is no construction-failure bundle."""
+    history = healthy_history()
+    _retime(
+        history,
+        0,
+        reading_error="FORGED",
+        evaluated_at=(
+            history["samples"][0]["window_end"] - timedelta(hours=2)
+        ).isoformat(),
+    )
+    result = replay_history(history)
+    assert not result.consistent and result.recovery_verdict == "unknown"
+    assert result.recovery_confirmed is False

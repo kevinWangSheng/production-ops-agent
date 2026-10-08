@@ -167,6 +167,34 @@ def executor_factory_for(evidence, clock, deadline):
     return factory
 
 
+USAGE_KEYS = ("run_usage", "current_run_id", "current_run_usage")
+
+
+def run_usages(store, incident, first_run_id) -> dict:
+    """Per-Run usage for the evidence: the first Run (``run_usage``) and the
+    Run the report and trace belong to (``current_run_*``; the same Run unless
+    ``--timeout-follow-up`` renewed it). The raw ledger is not kept, so the
+    frozen summary carries both to stay reconcilable (#116)."""
+    current = store.rebuild(incident)["run"]["run_id"]
+    return {
+        "run_usage": store.run_usage(first_run_id),
+        "current_run_id": str(current),
+        "current_run_usage": store.run_usage(current),
+    }
+
+
+def summary_counts(ledger: dict, model_requests_bound: int, first) -> dict:
+    """The ``counts`` block of the frozen summary."""
+    return {
+        "model_requests_bound": model_requests_bound,
+        "http_count": ledger["http_count"],
+        "prompt_tokens": ledger["prompt_tokens"],
+        "completion_tokens": ledger["completion_tokens"],
+        **{key: ledger[key] for key in USAGE_KEYS},
+        "evidence_ids": None if first is None else first["evidence_ids"],
+    }
+
+
 def _rows(store, incident):
     rows = store.rebuild(incident)
     return {
@@ -385,9 +413,7 @@ def main() -> int:
         "known_cost_cny_upper": round(sum(cost_cny(u) for u in usages), 6),
         "prompt_tokens": sum(int(u.get("prompt_tokens") or 0) for u in usages),
         "completion_tokens": sum(int(u.get("completion_tokens") or 0) for u in usages),
-        "run_usage": store.run_usage(run_id),
-        "current_run_id": str(store.rebuild(incident)["run"]["run_id"]),
-        "current_run_usage": store.run_usage(store.rebuild(incident)["run"]["run_id"]),
+        **run_usages(store, incident, run_id),
         "attempts": attempts,
         "control": control,
         "events": _events(log, incident),
@@ -440,14 +466,7 @@ def main() -> int:
                 else {k: v for k, v in control.items() if k != "rows_after"},
                 "event_kinds": [e["kind"] for e in ledger["events"]],
             },
-            "counts": {
-                "model_requests_bound": args.model_requests,
-                "http_count": ledger["http_count"],
-                "prompt_tokens": ledger["prompt_tokens"],
-                "completion_tokens": ledger["completion_tokens"],
-                "run_usage": ledger["run_usage"],
-                "evidence_ids": None if first is None else first["evidence_ids"],
-            },
+            "counts": summary_counts(ledger, args.model_requests, first),
             "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
             "report": parse_report(report),
             "report_content_sha256": None
