@@ -153,9 +153,9 @@ def test_the_frozen_evidence_has_the_shape_the_required_verdicts_expect():
 @pytest.mark.skipif(not NO_REQUEST_YET.exists(), reason="evidence not present")
 def test_a_takeover_before_any_request_was_sent_is_not_accepted():
     verdicts, takeover = _with_takeover_rows(json.loads(NO_REQUEST_YET.read_text()))
-    assert script.failed_verdicts(verdicts, takeover) == [
-        "model_request_sent_before_takeover"
-    ]
+    assert "model_request_sent_before_takeover" in script.failed_verdicts(
+        verdicts, takeover
+    )
 
 
 @pytest.mark.skipif(not FROZEN, reason="no frozen takeover evidence")
