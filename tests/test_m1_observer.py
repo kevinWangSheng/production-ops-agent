@@ -944,6 +944,150 @@ def test_a_prompt_error_status_is_reported_with_its_body():
     assert elapsed < 1
 
 
+def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
+    """Issue #126: a peer that answers with something other than HTTP raises
+    ``http.client.BadStatusLine`` -- an ``HTTPException``, not an ``OSError``
+    -- and must become ``failed``/``UNREACHABLE`` at the request layer, the
+    same classification the investigation client gives it."""
+    from http.client import BadStatusLine, IncompleteRead
+    from http.server import BaseHTTPRequestHandler
+
+    class NotHttp(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.wfile.write(b"SMTP 220 not an http status line\r\n\r\n")
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(NotHttp), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        None,
+        "UNREACHABLE",
+    )
+    assert elapsed < 1 and result.body == b"" and result.body_complete
+    # the injected-opener path classifies the same protocol errors alike;
+    # a body cut mid-read keeps its prefix and is marked incomplete
+    src, _ = source(error=BadStatusLine("garbage"))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert result.body == b"" and result.body_complete
+    src, _ = source(error=IncompleteRead(b"partial"))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert result.body == b"partial" and not result.body_complete
+    # no status line had arrived on either: none is recorded
+    assert result.http_status is None
+    # an error status whose body is cut mid-read keeps that status
+    # (codex P2, round 2): a truncated 401 is not "no HTTP response"
+
+    class CutBody:
+        def read(self, n=-1):
+            raise IncompleteRead(b"Unauth")
+
+        def close(self):
+            return None
+
+    src, _ = source(error=urllib.error.HTTPError("u", 401, "no", {}, CutBody()))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        401,
+        "UNREACHABLE",
+    )
+    assert result.body == b"Unauth" and not result.body_complete
+
+
+@pytest.mark.parametrize("status", [200, 401])
+def test_a_malformed_header_after_a_valid_status_line_keeps_that_status(status):
+    """Codex review of PR #131, P2: a valid status line followed by a header
+    the client refuses (``LineTooLong``) is a protocol failure, but the
+    status the peer did send is kept -- not filed as "no HTTP response"."""
+    from http.server import BaseHTTPRequestHandler
+
+    class LongHeader(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            try:
+                self.wfile.write(f"HTTP/1.1 {status} X\r\n".encode())
+                self.wfile.write(b"X: " + b"a" * 65537 + b"\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(LongHeader), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        status,
+        "UNREACHABLE",
+    )
+    assert result.body == b"" and result.body_complete
+    assert elapsed < 1
+
+
+def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
+    """PR #131 codex P2: a chunked response that ends after one chunk raises
+    ``IncompleteRead`` with part of the body already read. The reading is
+    ``failed`` with exactly that prefix and ``body_complete`` False -- the
+    stored bundle must not describe an empty body as the full response --
+    and the replay judges it the same way."""
+    from http.server import BaseHTTPRequestHandler
+
+    prefix = b'{"status":"success","data":{"resultType":"vector","result":[{"m'
+
+    class CutChunked(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.send_response(200)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(f"{len(prefix):x}\r\n".encode() + prefix + b"\r\n")
+            self.wfile.flush()
+            # no terminating chunk: the handler returns and the connection
+            # is closed under the client's next read
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(CutChunked), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        200,
+        "UNREACHABLE",
+    )
+    assert result.body == prefix and not result.body_complete
+    assert elapsed < 1
+    # online and replay agree: the bundle keeps the prefix, says it is
+    # incomplete, and the reading fails on both sides
+    answers = healthy_answers()
+    answers["sum(rate(x[5m]))"] = result
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    assert taken.evaluation is not None and taken.evaluation.outcome == "failed"
+    ((_, sample, readings),) = store.submitted
+    rate = next(reading for reading in readings if reading.signal_name == "rate")
+    bundle = json.loads(rate.raw)
+    assert bundle["query"]["body_complete"] is False
+    assert bundle["query"]["http_status"] == 200
+    assert base64.b64decode(bundle["query"]["body_b64"]) == prefix
+    rows = [
+        {
+            "signal_name": r.signal_name,
+            "query": r.query,
+            "source": r.source,
+            "window_start": r.window_start,
+            "window_end": r.window_end,
+            "raw": r.raw,
+            "raw_sha256": r.raw_sha256,
+        }
+        for r in readings
+    ]
+    replayed = replay_readings(PROFILE, rows)
+    assert replayed.outcome == "failed"
+    verdict = next(v for v in replayed.verdicts if v.signal_name == "rate")
+    assert verdict.verdict == "failed"
+
+
 def _http_workers() -> int:
     return sum(1 for t in threading.enumerate() if t.name == "opspilot-observer-http")
 

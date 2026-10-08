@@ -41,9 +41,8 @@ STATUS_KEYS = (
     "rpc.grpc.status_code",
     "error",
 )
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.kind_lab import lab_authorization  # noqa: E402
+from scripts.kind_lab import OPENER, lab_authorization  # noqa: E402
 
 
 def get(url: str, timeout: int = 30) -> dict:
