@@ -175,6 +175,10 @@ export OPSPILOT_OBSERVER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=<O
 
 stdout 为 JSON 列表（每会话一项：`consistent`、`integrity`、`reasons`、`recovery_verdict`、`recomputed_verdict`、`healthy_window_seconds`、`expected_lifecycle`/`recorded_lifecycle`、逐采样的 stored/replayed outcome 与判定、逐读数的 stored/replayed 状态、值、点数、查询、窗口、来源、sha256；不含原始字节）。退出码：0 全部一致，1 有不一致，2 用法或存储错误。纯函数入口 `opspilot.observer.replay.replay_history(session_history)` 与 F6 验收形态的 `replay(profile, handled_at, samples, session=..., endings=..., allow_telemetry=False, allow_model=False)`（任一 allow 为 True 直接拒绝 `REPLAY_IS_OFFLINE`）供测试与验收夹具使用。事故页「Recovery verdict」区块显示同一结果与逐采样依据，与「Investigation report」分开，页面不增加写动作。
 
+### F6 验收投影（#140）
+
+`opspilot.acceptance.recovery_outcome(scenario, RecoveryRecords(...)) -> RecoveryOutcome` 是恢复观察的外部验收入口（AGENTS.md「验收入口是外部 IncidentScenario -> IncidentOutcome」），与调查 Run 的 `IncidentOutcome` 并列而非扩展：Run 的 `final_state` 不是事故生命周期，F6 字段来自另一组已提交记录。输入由调用方一次快照读出：`ObservationStore.incident_records(incident_id)`（事故行、每个会话的 `session_history`、`opspilot_controls` 审计行）和 `ObservationStore.table_privileges()`（在 Observer 自己的连接上用 `has_table_privilege` / `has_any_column_privilege` 实测的表权限）。判定、原因、健康窗口来自 `opspilot.observer.replay.replay_history` 对已存行的重算（完整性不一致 → `unknown` + `STORED_OBSERVATION_INTEGRITY_MISMATCH`），不在投影里另算；目标取会话绑定的不可变 `target`；`actions` 按记录顺序投影控制审计行（`register_remediation` → `record_handling` + `advance_incident_lifecycle`，`takeover` → `human_takeover`，其他 → `human_control:<action>`）、每条发过查询的读数行（`read_only_query`）、每条采样行（`persist_observation`）、每条结束记录（生命周期变化 → `advance_incident_lifecycle`，期限/次数结束 → `human_handoff`）；`permissions` 由 `permissions_from_grants` 从实测权限推导：能读全部所依据记录 → `read_only`，有控制审计行 → `human_control`，超出 Observer 自身记录写权限的一律如实列出（`record_rewrite:<表>` / `investigation_write:<表>` / `record_delete:<表>`，读不到依据记录 → `unreadable:<表>`），空测量拒绝。字段来源表见模块文档串。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。

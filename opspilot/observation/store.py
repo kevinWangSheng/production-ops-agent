@@ -1861,38 +1861,99 @@ class ObservationStore(_StoreBase):
         if not isinstance(session_id, UUID):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
-            row = conn.execute(
-                f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
-                (session_id,),
+            return self._session_history_in(conn, session_id)
+
+    def incident_records(self, incident_id: UUID) -> dict[str, Any]:
+        """Everything the F6 projection reads (``opspilot.acceptance_recovery``),
+        one snapshot: the incident row (lifecycle, mode, generations), every
+        session's history oldest first, and the human control audit rows."""
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            incident = conn.execute(
+                "SELECT incident_id,lifecycle,mode,control_generation,observation_generation,target_id FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
             ).fetchone()
-            if row is None:
+            if incident is None:
                 raise PersistenceError("UNKNOWN_IDENTITY")
-            incident = self._require_row(
-                conn.execute(
-                    "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
-                    (row["incident_id"],),
-                )
+            session_ids = [
+                row["session_id"]
+                for row in conn.execute(
+                    "SELECT session_id FROM opspilot_observation_sessions WHERE incident_id=%s ORDER BY created_at,session_id",
+                    (incident_id,),
+                ).fetchall()
+            ]
+            sessions = [self._session_history_in(conn, sid) for sid in session_ids]
+            controls = conn.execute(
+                "SELECT audit_id,action,expected_generation,resulting_generation,actor,payload,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at,audit_id",
+                (incident_id,),
+            ).fetchall()
+        return {"incident": incident, "sessions": sessions, "controls": controls}
+
+    def table_privileges(self) -> dict[str, frozenset[str]]:
+        """The privileges this store's login actually holds on every product
+        table, as PostgreSQL answers on this connection: ``SELECT`` /
+        ``INSERT`` / ``UPDATE`` / ``DELETE`` / ``TRUNCATE`` held on the whole
+        table or on any of its columns. Measured, never configured: the F6
+        projection derives ``permissions`` from it."""
+        privileges = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+        with self.transaction(snapshot=True) as conn:
+            # pg_class, not information_schema.tables: the latter hides the
+            # tables the current user holds no privilege on, and "no
+            # privilege at all" is exactly what must be reported for them
+            tables = [
+                str(row["relname"])
+                for row in conn.execute(
+                    "SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname=current_schema() AND c.relname LIKE %s ORDER BY c.relname",
+                    ("opspilot%",),
+                ).fetchall()
+            ]
+            held: dict[str, frozenset[str]] = {}
+            for table in tables:
+                granted = set()
+                for privilege in privileges:
+                    row = conn.execute(
+                        "SELECT has_table_privilege(current_user,%s,%s) OR (%s IN ('SELECT','INSERT','UPDATE') AND has_any_column_privilege(current_user,%s,%s)) AS held",
+                        (table, privilege, privilege, table, privilege),
+                    ).fetchone()
+                    if row is not None and bool(row["held"]):
+                        granted.add(privilege)
+                held[table] = frozenset(granted)
+        return held
+
+    def _session_history_in(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
+        row = conn.execute(
+            f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        incident = self._require_row(
+            conn.execute(
+                "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
+                (row["incident_id"],),
             )
-            profile = (
-                conn.execute(
-                    "SELECT health_profile_revision,profile_id,content_sha256,content,created_at FROM opspilot_health_profiles WHERE health_profile_revision=%s",
-                    (row["health_profile_revision"],),
-                ).fetchone()
-                if row["health_profile_revision"] is not None
-                else None
-            )
-            samples = conn.execute(
-                f"SELECT {_SAMPLE_COLUMNS} FROM opspilot_observation_samples WHERE session_id=%s ORDER BY submitted_at,sample_id",
-                (session_id,),
-            ).fetchall()
-            endings = conn.execute(
-                f"SELECT {_ENDING_COLUMNS} FROM opspilot_observation_endings WHERE session_id=%s ORDER BY recorded_at,ending_id",
-                (session_id,),
-            ).fetchall()
-            readings = conn.execute(
-                f"SELECT {_READING_COLUMNS} FROM opspilot_observation_signal_readings WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples WHERE session_id=%s) ORDER BY sample_id,signal_name",
-                (session_id,),
-            ).fetchall()
+        )
+        profile = (
+            conn.execute(
+                "SELECT health_profile_revision,profile_id,content_sha256,content,created_at FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+                (row["health_profile_revision"],),
+            ).fetchone()
+            if row["health_profile_revision"] is not None
+            else None
+        )
+        samples = conn.execute(
+            f"SELECT {_SAMPLE_COLUMNS} FROM opspilot_observation_samples WHERE session_id=%s ORDER BY submitted_at,sample_id",
+            (session_id,),
+        ).fetchall()
+        endings = conn.execute(
+            f"SELECT {_ENDING_COLUMNS} FROM opspilot_observation_endings WHERE session_id=%s ORDER BY recorded_at,ending_id",
+            (session_id,),
+        ).fetchall()
+        readings = conn.execute(
+            f"SELECT {_READING_COLUMNS} FROM opspilot_observation_signal_readings WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples WHERE session_id=%s) ORDER BY sample_id,signal_name",
+            (session_id,),
+        ).fetchall()
         by_sample: dict[UUID, list[dict[str, Any]]] = {}
         for reading in readings:
             by_sample.setdefault(reading["sample_id"], []).append(reading)
