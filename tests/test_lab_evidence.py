@@ -591,3 +591,67 @@ def test_finding_r2_2_run_id_and_summary_must_agree_before_any_write(
     assert (
         json.loads(summary_path.read_text())["review_feedback"][0]["key"] == "review_p1"
     )
+
+
+# -- #116: evidence-script leftovers ------------------------------------------
+
+
+def test_usage_is_recorded_for_the_timed_out_run_and_the_renewed_one():
+    from scripts.m1_live_runner import USAGE_KEYS, run_usages
+
+    class Store:
+        usage = {"r1": {"model_requests_spent": 2}, "r2": {"model_requests_spent": 1}}
+
+        def rebuild(self, incident):
+            return {"run": {"run_id": "r2"}}  # the follow-up renewed the Run
+
+        def run_usage(self, run_id):
+            return self.usage[run_id]
+
+    usages = run_usages(Store(), "incident", "r1")
+    assert set(usages) == set(USAGE_KEYS)
+    assert usages["run_usage"] == {"model_requests_spent": 2}
+    assert usages["current_run_id"] == "r2"
+    assert usages["current_run_usage"] == {"model_requests_spent": 1}
+
+
+def _feedback_args(summary_path):
+    return [
+        "--summary",
+        str(summary_path),
+        "--key",
+        "review_p1",
+        "--verdict",
+        "pass",
+        "--review-url",
+        "https://example.test/pr/1",
+        "--record",
+    ]
+
+
+def test_a_read_back_mismatch_is_not_recorded_in_the_summary(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setenv("LANGSMITH_API_KEY", "k" * 12)
+    monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    run_id = "00000000-0000-0000-d2aa-402ad330ab4a"
+    summary_path = tmp_path / "summary.json"
+    original = json.dumps({"trace": {"langsmith_run_id": run_id}})
+    summary_path.write_text(original)
+    client = FakeClient()
+    _project_with_root(client, "opspilot-lab-r1", run_id)
+    read = client.read_feedback
+
+    def altered(feedback_id):
+        item = read(feedback_id)
+        return SimpleNamespace(**{**vars(item), "value": "fail", "score": 0})
+
+    client.read_feedback = altered  # the store returns something else
+    code = lab_review_feedback.main(
+        _feedback_args(summary_path), client_factory=lambda: client
+    )
+    captured = capsys.readouterr()
+    assert code == 1
+    assert json.loads(captured.out)["read_back_matches"] is False
+    assert "READ_BACK_MISMATCH" in captured.err
+    assert summary_path.read_text() == original  # nothing written
