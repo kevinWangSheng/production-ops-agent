@@ -11,10 +11,12 @@ import json
 from datetime import datetime, timezone
 from http.client import HTTPConnection, HTTPSConnection
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from opspilot.investigation.client import DeepSeekClient
+from opspilot.investigation.loop import ModelError
 from scripts import m1_takeover_evidence as script
 
 _RUNS = Path(__file__).resolve().parents[1] / "docs/evidence/m1-02-takeover/live-runs"
@@ -89,6 +91,37 @@ def test_the_recorder_counts_requests_at_the_connection_not_at_complete(monkeypa
     assert len(recorder.request_starts) == 1
 
 
+def test_entering_complete_does_not_count_a_request_that_was_not_sent(monkeypatch):
+    """The regression of #127: the signal was set on entry to ``complete()``,
+    before anything reached the socket."""
+    client = DeepSeekClient("test-key")
+    recorder = script.TimestampedRecordingClient(client, _Clock())  # type: ignore[arg-type]
+    seen: dict[str, object] = {}
+
+    def write(self, data):
+        seen.setdefault(
+            "during_write",
+            (recorder.first_request_sent.is_set(), len(recorder.request_starts)),
+        )
+
+    monkeypatch.setattr(HTTPSConnection, "send", write)
+
+    def complete(call):
+        seen["on_entry"] = (
+            recorder.first_request_sent.is_set(),
+            len(recorder.request_starts),
+        )
+        _post(client._https._connect("example.invalid"), b"{}")  # type: ignore[union-attr]
+        raise ModelError("MODEL_UNAVAILABLE")
+
+    client.complete = complete  # type: ignore[method-assign]
+    with pytest.raises(ModelError):
+        recorder.complete(SimpleNamespace(json_mode=False))
+    assert seen["on_entry"] == (False, 0)
+    assert seen["during_write"] == (False, 0)  # not yet: the write is in progress
+    assert recorder.first_request_sent.is_set() and len(recorder.request_starts) == 1
+
+
 def test_a_client_without_a_connection_hook_is_refused():
     client = DeepSeekClient("test-key", opener=object())  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="no HTTPS connection hook"):
@@ -134,6 +167,13 @@ def test_a_takeover_before_any_request_was_sent_is_not_accepted():
         (
             "no_model_request_after_takeover_returned",
             lambda v, t: v.update(no_model_request_after_takeover_returned=False),
+        ),
+        (
+            "no_request_sent_after_takeover",
+            lambda v, t: v.update(
+                request_started_at=v["request_started_at"]
+                + ["2026-10-08T00:00:00+00:00"]
+            ),
         ),
         (
             "not_claimable_after_takeover",

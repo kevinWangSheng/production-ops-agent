@@ -191,6 +191,14 @@ def failed_verdicts(verdicts: dict, takeover: dict) -> list[str]:
         "not_claimable_after_takeover",
         verdicts.get("claimable_after_takeover") is False,
     )
+    # Independent of the two resume counters: every request ever sent was
+    # sent before the takeover, including those of the first attempt that
+    # kept running while the takeover committed.
+    require(
+        "no_request_sent_after_takeover",
+        not (isinstance(before, int) and before >= 1)  # reported above
+        or len(verdicts.get("request_started_at") or []) == before,
+    )
     second = verdicts.get("second_resume") or {}
     require("second_resume_handed_off", second.get("status") == "handed_off")
     return failures
