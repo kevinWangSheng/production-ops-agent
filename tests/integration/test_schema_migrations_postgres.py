@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0004_target_identity"
+HEAD = "0005_incident_mode"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -291,7 +291,12 @@ def _check_constraints(dsn: str) -> set[str]:
         }
 
 
-EXPECTED_CHECKS = {"opspilot_runs_state_check", "opspilot_incidents_lifecycle_check"}
+EXPECTED_CHECKS = {
+    "opspilot_runs_state_check",
+    "opspilot_incidents_lifecycle_check",
+    # 0005 (M1-02 step 3b): the control mode, same discipline
+    "opspilot_incidents_mode_check",
+}
 
 
 def test_illegal_state_write_is_rejected_at_head(scratch_dsn: str) -> None:
@@ -526,6 +531,33 @@ def test_0004_adds_nullable_identity_columns_and_keeps_existing_rows(
         assert schema.current_revision(conn) == "0003_observation_store"
         assert conn.execute("SELECT count(*) FROM opspilot_targets").fetchone() == (2,)
     assert not set(IDENTITY_COLUMNS) & set(_target_columns(scratch_dsn))
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+
+
+# --- 0005_incident_mode (M1-02 step 3b, issue #121) ---
+
+
+def test_0005_adds_the_mode_column_with_automatic_default(scratch_dsn: str) -> None:
+    schema.upgrade_to(scratch_dsn, "0004_target_identity")
+    _seed_run(scratch_dsn)
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    head_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT DISTINCT mode FROM opspilot_incidents"
+        ).fetchall() == [("automatic",)]
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("UPDATE opspilot_incidents SET mode='robot'")
+    schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_name='opspilot_incidents' AND column_name='mode'"
+        ).fetchone() == (0,)
     assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
         "upgraded", HEAD
     )

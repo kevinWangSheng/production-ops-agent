@@ -211,15 +211,57 @@ class _ControlOps(_StoreBase):
             # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
             # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT control_generation,state,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,mode,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
             if row["control_generation"] != expected_generation:
                 raise PersistenceError("CONTROL_CONFLICT")
-            if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
+            if action not in {
+                "cancel",
+                "pause",
+                "resume",
+                "follow_up",
+                "correct",
+                "takeover",
+            }:
                 raise PersistenceError("INVALID_INPUT")
+            human_owned = row["mode"] == "human_owned"
+            if action == "takeover":
+                # C3 §10 接管：mode -> human_owned（领域 apply_control 同一条边，
+                # 已是 human_owned 再接管是非法迁移），同一事务递增代际、撤销观察
+                # 授权、停下自动调查：当前 Run 交给人（waiting_human，收回租约），
+                # 之后 claim/new_run/resume/续开都按 mode 拒绝。结论已发布或
+                # Run 已取消的事故同样可接管——接管要收回的是观察授权与自动化，
+                # 不以 Run 状态为前提；事故的控制镜像 state 不改。领域模型没有
+                # 回到 automatic 的边，这里也不提供。
+                if human_owned:
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                nxt = expected_generation + 1
+                conn.execute(
+                    "UPDATE opspilot_incidents SET control_generation=%s,mode='human_owned' WHERE incident_id=%s",
+                    (nxt, incident_id),
+                )
+                from opspilot.observation.revocation import revoke_authorized_sessions
+
+                revoke_authorized_sessions(conn, incident_id)
+                conn.execute(
+                    "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','paused','blocked')",
+                    (nxt, incident_id),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'takeover',%s,%s,%s,%s)",
+                    (
+                        uuid4(),
+                        incident_id,
+                        expected_generation,
+                        nxt,
+                        actor,
+                        Jsonb(payload) if payload is not None else None,
+                    ),
+                )
+                return nxt
             # 连 incident_id 一起查：状态判定读的是这一行，而下面的状态推进按
             # incident_id 作用于本 incident 真正的 run。两者指向不同的行时，一个
             # 外来的 running run 会把 blocked run 的保护顶开——实测 incident 停在
@@ -241,6 +283,10 @@ class _ControlOps(_StoreBase):
                 "deadline"
             ] <= self._db_now(conn)
             renew = action in {"follow_up", "correct"} and overdue
+            # human_owned（C3 §10）：不恢复 Agent 自动调查——resume 与续开（会开出
+            # 新 Run）都拒绝；带内容的追问/纠正只记录为输入，Run 留在人手里。
+            if human_owned and (action == "resume" or renew):
+                raise PersistenceError("ILLEGAL_TRANSITION")
             # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
             # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
             # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
@@ -279,6 +325,8 @@ class _ControlOps(_StoreBase):
                 or scope["target_suspended"]
                 or (row["state"] == "paused" and action in {"follow_up", "correct"})
             )
+            if human_owned and action in {"follow_up", "correct"} and payload is None:
+                raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
                 "cancelled"
@@ -287,6 +335,9 @@ class _ControlOps(_StoreBase):
             )
             if keep_paused:
                 state = "paused"
+            if human_owned and action in {"follow_up", "correct"}:
+                # A note under human ownership changes no control mirror.
+                state = row["state"]
             conn.execute(
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
@@ -345,7 +396,7 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
                     (nxt, incident_id),
                 )
-            elif action in {"follow_up", "correct"}:
+            elif action in {"follow_up", "correct"} and not human_owned:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','waiting_human')",
                     (nxt, incident_id),

@@ -30,11 +30,15 @@ class _RunOps(_StoreBase):
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
             row = conn.execute(
-                "SELECT state,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT state,mode,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
+            if row["mode"] == "human_owned":
+                # A new Run is automatic investigation; human ownership has no
+                # way back to automatic in the domain model (C3 §10, #121).
+                raise PersistenceError("ILLEGAL_TRANSITION")
             # run_id 是幂等键，但 queued + 当前 Run 也是 accept()/follow_up 之后
             # 的状态。只有已经写过 new_run 审计的接续才能当作丢失确认后的重试。
             existing_run = conn.execute(
@@ -110,7 +114,7 @@ class _RunOps(_StoreBase):
         with self.transaction() as conn:
             self._lock_scope(conn, incident_id)
             row = conn.execute(
-                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE OF i,r",
+                "SELECT i.control_generation AS incident_generation,i.state AS incident_state,i.mode AS incident_mode,r.state AS run_state,r.epoch,r.lease_until,r.deadline,r.versions,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.incident_id=i.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE i.incident_id=%s AND r.run_id=%s FOR UPDATE OF i,r",
                 (incident_id, run_id),
             ).fetchone()
             if not row:
@@ -128,6 +132,9 @@ class _RunOps(_StoreBase):
             # Human control takes precedence over version incompatibility. A
             # claim must not rewrite a paused or terminal run as blocked.
             if row["incident_state"] in {"completed", "cancelled", "paused"}:
+                raise PersistenceError("CONTROL_DENIED")
+            # human_owned: the Agent does not investigate (C3 §10, #121).
+            if row["incident_mode"] == "human_owned":
                 raise PersistenceError("CONTROL_DENIED")
             if row["run_state"] not in {"queued", "running", "blocked"}:
                 raise PersistenceError("CONTROL_DENIED")

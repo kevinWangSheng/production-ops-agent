@@ -160,6 +160,7 @@ class MemoryIncidentStore:
             "target_id": target_id,
             "state": "queued",
             "lifecycle": "open",
+            "mode": "automatic",
             "control_generation": 0,
             "current_run_id": run_id,
             "conclusion": None,
@@ -211,11 +212,51 @@ class MemoryIncidentStore:
             raise PersistenceError("UNKNOWN_IDENTITY")
         if row["control_generation"] != expected_generation:
             raise PersistenceError("CONTROL_CONFLICT")
-        if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
+        if action not in {
+            "cancel",
+            "pause",
+            "resume",
+            "follow_up",
+            "correct",
+            "takeover",
+        }:
             raise PersistenceError("INVALID_INPUT")
         run = self.runs.get(row["current_run_id"])
         if run is None or run["incident_id"] != incident_id:
             raise PersistenceError("INCONSISTENT_STATE")
+        human_owned = row["mode"] == "human_owned"
+        if action == "takeover":
+            # Mirror DurableStore.control: mode, generation, revocation, the
+            # Run handed to the human; no way back to automatic.
+            if human_owned:
+                raise PersistenceError("ILLEGAL_TRANSITION")
+            nxt = expected_generation + 1
+            row.update(control_generation=nxt, mode="human_owned")
+            self._revoke_sessions(incident_id)
+            for candidate in self.runs.values():
+                if candidate["incident_id"] == incident_id and candidate["state"] in {
+                    "queued",
+                    "running",
+                    "paused",
+                    "blocked",
+                }:
+                    candidate.update(
+                        state="waiting_human",
+                        owner=None,
+                        lease_until=None,
+                        control_generation=nxt,
+                    )
+            self.controls.append(
+                {
+                    "incident_id": incident_id,
+                    "action": "takeover",
+                    "expected": expected_generation,
+                    "resulting": nxt,
+                    "actor": actor,
+                    "payload": payload,
+                }
+            )
+            return nxt
         if row["state"] in {"cancelled", "completed"} or row["conclusion"] is not None:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # PR #31: a follow_up/correct that carries content is recorded while
@@ -236,12 +277,17 @@ class MemoryIncidentStore:
         # overdue Run with, so it is refused rather than re-queued.
         if action == "resume" and overdue:
             raise PersistenceError("ILLEGAL_TRANSITION")
+        if human_owned and (action == "resume" or renew):
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if human_owned and action in {"follow_up", "correct"} and payload is None:
+            raise PersistenceError("ILLEGAL_TRANSITION")
         if renew:
             if renew_run_id is None or renew_deadline is None:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             if renew_run_id in self.runs:
                 raise PersistenceError("IDENTITY_CONFLICT")
         nxt = expected_generation + 1
+        original_state = row["state"]
         row["control_generation"] = nxt
         # Mirror DurableStore.control (M1-02 step 3): pause, cancel and a
         # renewal withdraw the observation authorization in the same step.
@@ -270,6 +316,10 @@ class MemoryIncidentStore:
         target, allowed = transitions[action]
         if keep_paused:
             target, allowed = "paused", {"running", "waiting_human"}
+        if human_owned and action in {"follow_up", "correct"}:
+            # Recorded only: the Run stays with the human, the mirror unchanged.
+            target, allowed = None, set()
+            row["state"] = original_state
         if renew:
             target, allowed = "cancelled", transitions["cancel"][1]
         for candidate in self.runs.values():
@@ -342,6 +392,8 @@ class MemoryIncidentStore:
                 return generation
             raise PersistenceError("IDENTITY_CONFLICT")
         if row["state"] != "cancelled":
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if row["mode"] == "human_owned":
             raise PersistenceError("ILLEGAL_TRANSITION")
         # Mirror DurableStore.new_run on main: the continuation is fenced on
         # the generation the operator saw.
@@ -417,6 +469,8 @@ class MemoryIncidentStore:
             run["state"] = "blocked"
             raise PersistenceError("INCOMPATIBLE_STATE")
         if row["state"] in {"completed", "cancelled", "paused"}:
+            raise PersistenceError("CONTROL_DENIED")
+        if row["mode"] == "human_owned":
             raise PersistenceError("CONTROL_DENIED")
         if run["state"] not in {"queued", "running"}:
             raise PersistenceError("CONTROL_DENIED")
@@ -677,6 +731,7 @@ class MemoryIncidentStore:
             intake_key=row["intake_key"],
             state=row["state"],
             lifecycle=row["lifecycle"],
+            mode=row.get("mode", "automatic"),
             control_generation=row["control_generation"],
             current_run_id=row["current_run_id"],
             concluded=row["conclusion"] is not None,

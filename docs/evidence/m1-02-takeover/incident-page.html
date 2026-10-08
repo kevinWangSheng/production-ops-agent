@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident 06337259-c9a6-567d-99b3-6c0dfcf8f6af</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>06337259-c9a6-567d-99b3-6c0dfcf8f6af</code></h1>
+<p>
+  lifecycle <span class="badge">observing_recovery</span>
+  · mode <span class="badge" id="incident-mode">human_owned</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">3</strong>
+  · run <code>91139667-03f8-52dc-a96b-4f48227d92e8</code> <span class="badge" id="run-state">waiting_human</span>
+  · epoch 0
+  · budget 0 spent / 0 reserved / 0 unknown of 100
+  · deadline 2026-10-07 23:42:28.778416-07:00
+</p>
+
+<p>Target request: <code>checkout-prod</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Checkout errors; investigate.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 3. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="cancel-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="correct-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="follow_up-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="new_run-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="pause-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="register_remediation">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="register_remediation-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  
+  <button type="submit">register_remediation</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="resume-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+  <button type="submit">resume</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/control">
+  <input type="hidden" name="action" value="takeover">
+  <input type="hidden" name="expected_generation" value="3">
+  <input type="hidden" name="idempotency_key" value="takeover-3-eb46fa65de784530877c6e8b6a62c7c3">
+  
+  <button type="submit">takeover</button>
+</form>
+
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation under HealthProfile <code>otel-demo-checkout@cb52da44e49b</code>. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+
+<table id="observation-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td><code>6668feda-ed6b-550e-9bce-9ef06d200f51</code></td>
+    <td><span class="badge">revoked</span> <span class="muted">authority_revoked</span></td>
+    <td>control 1 · observation 1</td>
+    <td><code>otel-demo-checkout@cb52da44e49b</code></td>
+    <td><code>checkout:v2.0.3</code></td>
+    <td>2026-10-07 21:42:28.846861-07:00 by <code>demo</code></td>
+    <td>2026-10-07 22:42:28.841928-07:00</td>
+    <td>0 / 40 adopted</td>
+  </tr>
+  
+  <tr>
+    <td><code>67827f87-67af-58aa-82c8-f0e977c1f135</code></td>
+    <td><span class="badge">authorized</span></td>
+    <td>control 3 · observation 2</td>
+    <td><code>otel-demo-checkout@cb52da44e49b</code></td>
+    <td><code>checkout:v2.0.4</code></td>
+    <td>2026-10-07 21:42:28.947437-07:00 by <code>demo</code></td>
+    <td>2026-10-07 22:42:28.944711-07:00</td>
+    <td>0 / 40 adopted, next due 2026-10-07 21:43:28.946934-07:00</td>
+  </tr>
+  
+  </tbody>
+</table>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report above does not certify recovery.</p>
+
+
+<h2>Report</h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  Last attempt: <code>unknown</code>
+    
+  </p>
+  
+
+
+
+
+
+
+<h2>Steps</h2>
+
+<p class="muted">No committed steps.</p>
+
+
+<h2>Human decisions</h2>
+
+<table>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <tbody>
+  
+  <tr><td>2</td><td><code>register_remediation</code></td><td><code>demo</code></td>
+      <td>0 → 1</td><td></td></tr>
+  
+  <tr><td>3</td><td><code>takeover</code></td><td><code>demo</code></td>
+      <td>1 → 2</td><td></td></tr>
+  
+  <tr><td>4</td><td><code>register_remediation</code></td><td><code>demo</code></td>
+      <td>2 → 3</td><td></td></tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 5)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "Checkout errors; investigate.", "received_at": "2026-10-07T21:42:28.776502-07:00", "request_id": "f9d5f3ca-6dc0-4b3d-bde0-d7103af227a3", "run_id": "91139667-03f8-52dc-a96b-4f48227d92e8", "target_id": "checkout-prod"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>control_applied</strong> <span class="muted">{"action": "register_remediation", "actor_id": "demo", "expected_generation": 0, "generation": 1, "revision": "checkout:v2.0.3"}</span></li>
+  
+  <li data-sequence="3"><code>3</code> <strong>control_applied</strong> <span class="muted">{"action": "takeover", "actor_id": "demo", "expected_generation": 1, "generation": 2}</span></li>
+  
+  <li data-sequence="4"><code>4</code> <strong>control_applied</strong> <span class="muted">{"action": "register_remediation", "actor_id": "demo", "expected_generation": 2, "generation": 3, "revision": "checkout:v2.0.4"}</span></li>
+  
+  <li data-sequence="5"><code>5</code> <strong>run_handoff</strong> <span class="muted">{"control_generation": 3, "evidence_ids": [], "execution": "unknown", "handoff": true, "parked": true, "published": false, "reasons": [], "reconciled": true, "report_sha256": null, "run_id": "91139667-03f8-52dc-a96b-4f48227d92e8"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 5;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/06337259-c9a6-567d-99b3-6c0dfcf8f6af/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

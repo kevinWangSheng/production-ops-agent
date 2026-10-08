@@ -98,11 +98,17 @@ ControlAction = Literal[
     "resume",
     "new_run",
     "register_remediation",
+    "takeover",
 ]
 #: "The incident was handled outside the system": increments the control
 #: generation, authorizes an observation session and moves the incident to
 #: ``observing_recovery`` (M1-02 step 3, C3 section 10).
 REGISTER_REMEDIATION = "register_remediation"
+#: Human takes the incident over (C3 section 10, #121): the generation steps,
+#: the observation authorization is withdrawn and automatic investigation
+#: stops; ``register_remediation`` may still authorize an observation under
+#: ``human_owned``, which does not resume investigation.
+TAKEOVER = "takeover"
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
         "follow_up",
@@ -112,6 +118,7 @@ CONTROL_ACTIONS: frozenset[str] = frozenset(
         "resume",
         "new_run",
         REGISTER_REMEDIATION,
+        TAKEOVER,
     }
 )
 #: Report claim categories in page order; chart order follows it.

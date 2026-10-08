@@ -7,6 +7,7 @@
 <p>
   {% if inc.control %}control <span class="badge" id="incident-control">{{ inc.control }}</span>
   · {% endif %}lifecycle <span class="badge">{{ inc.lifecycle }}</span>
+  · mode <span class="badge" id="incident-mode">{{ inc.mode }}</span>
   · <span class="badge" id="concluded">{{ "concluded" if inc.concluded else "no conclusion" }}</span>
   · control generation <strong id="control-generation">{{ inc.control_generation }}</strong>
   · run <code>{{ run.run_id }}</code> <span class="badge" id="run-state">{{ run.state }}</span>
