@@ -82,8 +82,9 @@ jobs:
           OPSPILOT_DSN: host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
         run: |
+          HEAD=$(.venv/bin/python -c "from opspilot import schema; print(schema.head_revision())")
           make migrate | tee /tmp/migrate-empty.log
-          grep -q "schema upgraded: 0003_observation_store" /tmp/migrate-empty.log
+          grep -q "schema upgraded: ${HEAD}" /tmp/migrate-empty.log
           .venv/bin/python -m opspilot.schema check
       - name: Migration path 2, database built by the pre-Alembic DDL, takeover to head
         env:
@@ -93,8 +94,9 @@ jobs:
           $PSQL -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55431 -U m0_lab -d postgres -c "CREATE DATABASE legacy_takeover"
           $PSQL -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55431 -U m0_lab -d legacy_takeover -f tests/integration/legacy_schema_2026-10-05.sql
           export OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=legacy_takeover user=m0_lab"
+          HEAD=$(.venv/bin/python -c "from opspilot import schema; print(schema.head_revision())")
           make migrate | tee /tmp/migrate-legacy.log
-          grep -q "schema stamped: 0003_observation_store" /tmp/migrate-legacy.log
+          grep -q "schema stamped: ${HEAD}" /tmp/migrate-legacy.log
           .venv/bin/python -m opspilot.schema check
           .venv/bin/python - <<'PY'
           from opspilot import schema

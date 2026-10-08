@@ -13,7 +13,7 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
@@ -21,7 +21,9 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from opspilot.investigation.store import DurableStepStore, StepCommitter
+from opspilot.observation.store import ObservationStore
 from opspilot.persistence import DurableStore, Lease, PersistenceError
+from opspilot.schema import load_target_identities
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,71 @@ class ControlAudit:
     #: ``opspilot_controls.payload`` (PR #31); ``None`` when the column is
     #: absent or the row carried no content.
     payload: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class TargetIdentity:
+    """The immutable identity intake registers for an operator's target id.
+
+    The four fields of ``opspilot.domain.intake.Target`` that identify a
+    target (user decision 2026-10-07); ``revision`` is not one of them and is
+    recorded only when an observation is authorized. ``resource_uid`` is the
+    registry key, which is also the operator's ``target_id`` today. Intake
+    does not need it (it registers the uid alone); registering a remediation
+    completes the registry row from it the first time.
+    """
+
+    integration_id: str
+    cluster_uid: str
+    namespace: str
+    resource_uid: str
+    #: ``profile_id`` of the HealthProfile whose recovery definition applies
+    #: to this target; a remediation is registered only under that profile.
+    #: Not part of the identity written to the registry.
+    health_profile_id: str | None = None
+    #: The Deployment / service name that profile observes on this target;
+    #: completed on the registry row with the identity and compared with the
+    #: profile's ``subject`` at every authorization.
+    workload: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("integration_id", "cluster_uid", "namespace", "resource_uid"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"TARGET_IDENTITY_{name.upper()}_REQUIRED")
+
+
+class TargetRegistry(Protocol):
+    def resolve(self, target_id: str) -> TargetIdentity | None:
+        """The configured identity for an operator's target id, or ``None``
+        when the id is unknown (a remediation on it is then refused for
+        lack of identity; nothing is guessed)."""
+        ...
+
+
+class MappingTargetRegistry:
+    """The deployment's target registry: the ``OPSPILOT_TARGET_IDENTITIES``
+    file (``opspilot.schema.load_target_identities``) read once at start."""
+
+    def __init__(self, identities: Mapping[str, Mapping[str, str]]) -> None:
+        self._targets = {
+            uid: TargetIdentity(
+                integration_id=entry["integration_id"],
+                cluster_uid=entry["cluster_uid"],
+                namespace=entry["namespace"],
+                resource_uid=uid,
+                health_profile_id=entry.get("health_profile_id"),
+                workload=entry.get("workload"),
+            )
+            for uid, entry in identities.items()
+        }
+
+    @classmethod
+    def from_file(cls, path: str) -> MappingTargetRegistry:
+        return cls(load_target_identities(path))
+
+    def resolve(self, target_id: str) -> TargetIdentity | None:
+        return self._targets.get(target_id)
 
 
 class IncidentStore(Protocol):
@@ -163,6 +230,34 @@ class IncidentStore(Protocol):
         ...
 
     def committer(self, lease: Lease) -> StepCommitter: ...
+
+    def register_remediation(
+        self,
+        incident_id: UUID,
+        *,
+        expected_generation: int,
+        actor: str,
+        revision: str,
+        deadline_at: datetime,
+        max_samples: int,
+        sample_interval_seconds: int,
+        sustained_window_seconds: int,
+        health_profile_revision: str | None,
+        health_profile: str | None,
+        session_id: UUID,
+        identity: TargetIdentity | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        """Record the human handling and authorize a bounded observation
+        session in one transaction (``ObservationStore.register_remediation``);
+        ``identity`` completes the registry row the first time (from the
+        configured registry, never the operator); returns the new control
+        generation."""
+        ...
+
+    def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:
+        """Every observation session row of the incident, oldest first."""
+        ...
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]: ...
 
@@ -311,6 +406,7 @@ class DurableIncidentStore:
     def __init__(self, store: DurableStore) -> None:
         self._store = store
         self._clock = DurableClock(store)
+        self._observation_store: ObservationStore | None = None
         # PR #31 adds ``payload`` to DurableStore.control (opspilot_controls.payload
         # + opspilot_inputs). Detect it once so this adapter works on both bases.
         parameters = inspect.signature(store.control).parameters
@@ -460,6 +556,62 @@ class DurableIncidentStore:
 
     def committer(self, lease: Lease) -> StepCommitter:
         return DurableStepStore(self._store, lease)
+
+    @property
+    def _observation(self) -> ObservationStore:
+        # Controller-side observation authorization (M1-02 step 3) on the
+        # same DSN and pool configuration as the business store, so the two
+        # share one connection pool. Built on first use: adapters over an
+        # older base (tests) never touch it.
+        if self._observation_store is None:
+            self._observation_store = ObservationStore(
+                self._store.dsn, pool=self._store.pool_config
+            )
+        return self._observation_store
+
+    def register_remediation(
+        self,
+        incident_id: UUID,
+        *,
+        expected_generation: int,
+        actor: str,
+        revision: str,
+        deadline_at: datetime,
+        max_samples: int,
+        sample_interval_seconds: int,
+        sustained_window_seconds: int,
+        health_profile_revision: str | None,
+        health_profile: str | None,
+        session_id: UUID,
+        identity: TargetIdentity | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        return self._observation.register_remediation(
+            incident_id,
+            expected_generation=expected_generation,
+            actor=actor,
+            revision=revision,
+            deadline_at=deadline_at,
+            max_samples=max_samples,
+            sample_interval_seconds=sample_interval_seconds,
+            sustained_window_seconds=sustained_window_seconds,
+            health_profile_revision=health_profile_revision,
+            health_profile=health_profile,
+            session_id=session_id,
+            identity=(
+                None
+                if identity is None
+                else {
+                    field: value
+                    for field, value in asdict(identity).items()
+                    if field != "health_profile_id"
+                }
+            ),
+            payload=payload,
+        )
+
+    def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self._observation.incident_sessions(incident_id))
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:

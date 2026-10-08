@@ -23,6 +23,7 @@ from opspilot.investigation.loop import (
     LoopOutcome,
 )
 from opspilot.investigation.store import BudgetUsage, MemoryStepStore, StepStoreError
+from opspilot.observer.health_profile import PROFILE_DIRECTORY, load_health_profile
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools import TransportResponse
 from opspilot.tools.outcomes import Window
@@ -84,6 +85,8 @@ class MemoryIncidentStore:
         self.runs: dict[UUID, dict[str, Any]] = {}
         self.controls: list[dict[str, Any]] = []
         self.inputs: list[dict[str, Any]] = []
+        self.targets: dict[str, Any] = {}
+        self.sessions: list[dict[str, Any]] = []
         self._by_key: dict[str, UUID] = {}
 
     # -- helpers ------------------------------------------------------------
@@ -125,8 +128,11 @@ class MemoryIncidentStore:
 
     def register_target(self, resource_uid):
         # Stable identity per resource uid, like the durable store's
-        # ``opspilot_targets`` row.
-        return uuid5(NAMESPACE_URL, f"memory-target:{resource_uid}")
+        # ``opspilot_targets`` row (uid alone; the identity columns are
+        # completed by register_remediation).
+        target_id = uuid5(NAMESPACE_URL, f"memory-target:{resource_uid}")
+        self.targets.setdefault(target_id, {"resource_uid": resource_uid})
+        return target_id
 
     def accept(
         self,
@@ -237,6 +243,10 @@ class MemoryIncidentStore:
                 raise PersistenceError("IDENTITY_CONFLICT")
         nxt = expected_generation + 1
         row["control_generation"] = nxt
+        # Mirror DurableStore.control (M1-02 step 3): pause, cancel and a
+        # renewal withdraw the observation authorization in the same step.
+        if action in {"pause", "cancel"} or renew:
+            self._revoke_sessions(incident_id)
         # PR #31 keep_paused: a note recorded while paused keeps the incident
         # paused and parks a running run; it never resumes anything.
         keep_paused = row["state"] == "paused" and action in {"follow_up", "correct"}
@@ -341,6 +351,7 @@ class MemoryIncidentStore:
         self.runs[run_id] = self._run(
             run_id, incident_id, nxt, deadline, budget_limit, versions, input
         )
+        self._revoke_sessions(incident_id)
         row.update(
             state="queued",
             lifecycle="open",
@@ -503,6 +514,132 @@ class MemoryIncidentStore:
             and run["control_generation"] == lease.control_generation
         ):
             run.update(owner=None, lease_until=None)
+
+    # -- recovery observation (M1-02 step 3) ---------------------------------
+
+    def _revoke_sessions(self, incident_id):
+        for session in self.sessions:
+            if (
+                session["incident_id"] == incident_id
+                and session["state"] == "authorized"
+            ):
+                session.update(state="revoked", ended_reason="authority_revoked")
+
+    def register_remediation(
+        self,
+        incident_id,
+        *,
+        expected_generation,
+        actor,
+        revision,
+        deadline_at,
+        max_samples,
+        sample_interval_seconds,
+        sustained_window_seconds,
+        health_profile_revision,
+        health_profile,
+        session_id,
+        identity=None,
+        payload=None,
+    ):
+        """Mirror ObservationStore.register_remediation: generation step,
+        earlier authorization withdrawn, new session, observing_recovery;
+        the registry row is completed from ``identity`` the first time."""
+        row = self.incidents.get(incident_id)
+        if row is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        if row["control_generation"] != expected_generation:
+            raise PersistenceError("CONTROL_CONFLICT")
+        registered = self.targets[row["target_id"]]
+        fields = ("integration_id", "cluster_uid", "namespace", "workload")
+        if identity is not None and identity.resource_uid != registered["resource_uid"]:
+            raise PersistenceError("TARGET_MISMATCH")
+        if identity is not None and identity.workload is None:
+            raise PersistenceError("INVALID_INPUT")
+        if all(field in registered for field in fields):
+            if identity is not None and any(
+                registered[field] != getattr(identity, field) for field in fields
+            ):
+                raise PersistenceError("TARGET_MISMATCH")
+            completed = dict(registered)
+        elif identity is None:
+            raise PersistenceError("TARGET_IDENTITY_MISSING")
+        else:
+            completed = {
+                **registered,
+                **{field: getattr(identity, field) for field in fields},
+            }
+        # Mirror the store: a profile without a usable subject is unreadable,
+        # and the subject must be this target. Checked before anything is
+        # written (the store's transaction rolls back).
+        if health_profile_revision is not None:
+            try:
+                subject = json.loads(health_profile).get("subject")
+            except (TypeError, ValueError, AttributeError):
+                subject = None
+            if not isinstance(subject, dict) or not all(
+                isinstance(subject.get(key), str) and subject.get(key)
+                for key in ("kubernetes_namespace", "service")
+            ):
+                raise PersistenceError("HEALTH_PROFILE_UNREADABLE")
+            if (subject["kubernetes_namespace"], subject["service"]) != (
+                completed["namespace"],
+                completed["workload"],
+            ):
+                raise PersistenceError("HEALTH_PROFILE_TARGET_MISMATCH")
+        registered.update(completed)
+        if row["lifecycle"] not in {"open", "observing_recovery"}:
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        # Mirror ObservationStore: a paused incident takes no authorization.
+        if row["state"] == "paused":
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if deadline_at <= self.now():
+            raise PersistenceError("INVALID_INPUT")
+        nxt = expected_generation + 1
+        row["control_generation"] = nxt
+        self._revoke_sessions(incident_id)
+        row["lifecycle"] = "observing_recovery"
+        row["observation_generation"] = row.get("observation_generation", 0) + 1
+        self.sessions.append(
+            {
+                "session_id": session_id,
+                "incident_id": incident_id,
+                "state": "authorized",
+                "ended_reason": None,
+                "authorized_by": actor,
+                "authorized_at": self.now(),
+                "subject_control_generation": nxt,
+                "observation_generation": row["observation_generation"],
+                "health_profile_revision": health_profile_revision,
+                "health_profile": health_profile,
+                "target": {**registered, "revision": revision},
+                "deadline_at": deadline_at,
+                "max_samples": max_samples,
+                "sample_interval_seconds": sample_interval_seconds,
+                "sustained_window_seconds": sustained_window_seconds,
+                "adopted_count": 0,
+                "active_sample_due_at": self.now()
+                + timedelta(seconds=sample_interval_seconds),
+            }
+        )
+        self.controls.append(
+            {
+                "incident_id": incident_id,
+                "action": "register_remediation",
+                "expected": expected_generation,
+                "resulting": nxt,
+                "actor": actor,
+                "payload": dict(payload or {}, revision=revision),
+            }
+        )
+        return nxt
+
+    def observation_sessions(self, incident_id):
+        return tuple(
+            dict(session)
+            for session in self.sessions
+            if session["incident_id"] == incident_id
+        )
 
     def committer(self, lease):
         return _MemoryCommitter(self, lease)
@@ -761,8 +898,20 @@ class ScriptedInvestigator:
         return outcome
 
 
+#: The shipped checkout profile, the one ``register_remediation`` fixes an
+#: observation session by in the workbench tests.
+HEALTH_PROFILE = load_health_profile(PROFILE_DIRECTORY / "otel-demo-checkout.json")
+
+
 def build_workbench(
-    *, clock=None, sse_poll=0.01, sse_idle=0.2, sse_repair=5.0, tool_face=None
+    *,
+    clock=None,
+    sse_poll=0.01,
+    sse_idle=0.2,
+    sse_repair=5.0,
+    tool_face=None,
+    health_profile=HEALTH_PROFILE,
+    targets=None,
 ):
     clock = clock or FakeClock(start=NOW)
     incidents = MemoryIncidentStore(clock)
@@ -775,6 +924,8 @@ def build_workbench(
         evidence=evidence,
         ledger=ledger,
         run_versions={"state": "v1"},
+        targets=targets,
+        health_profile=health_profile,
         run_seconds=600,
         tool_face=tool_face,
     )

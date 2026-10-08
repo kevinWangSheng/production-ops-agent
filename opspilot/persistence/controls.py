@@ -291,6 +291,14 @@ class _ControlOps(_StoreBase):
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
             )
+            # C3 §10：暂停、取消、更换 Run（续开）在同一事务里撤销观察授权；
+            # 续开路径下面还把生命周期写回 open，撤销必须先于它（结束记录按
+            # 当前生命周期写）。其余动作不显式撤销：代际一变，会话绑定的控制
+            # 代际过期，下一次采样按 binding_stale 结束会话。
+            if action in {"pause", "cancel"} or renew:
+                from opspilot.observation.revocation import revoke_authorized_sessions
+
+                revoke_authorized_sessions(conn, incident_id)
             if action == "cancel":
                 conn.execute(
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",

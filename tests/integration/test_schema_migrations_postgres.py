@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0003_observation_store"
+HEAD = "0004_target_identity"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -469,3 +469,64 @@ def test_0003_role_is_dropped_only_when_no_database_references_it(
                     sql.Identifier(other)
                 )
             )
+
+
+# --- 0004_target_identity (M1-02 step 3, issue #85) ---
+
+
+IDENTITY_COLUMNS = ("integration_id", "cluster_uid", "namespace", "workload")
+
+
+def _target_columns(dsn: str) -> dict[str, bool]:
+    """column -> is_nullable for opspilot_targets."""
+    with psycopg.connect(dsn) as conn:
+        return {
+            row[0]: row[1] == "YES"
+            for row in conn.execute(
+                "SELECT column_name,is_nullable FROM information_schema.columns WHERE table_name='opspilot_targets'"
+            )
+        }
+
+
+def test_0004_adds_nullable_identity_columns_and_keeps_existing_rows(
+    scratch_dsn: str,
+) -> None:
+    """Intake registers a target by uid alone (M1-01 contract kept by user
+    decision 2026-10-07): rows registered before 0004 stay as they are, the
+    migration needs no input, and a present value must be non-empty."""
+    schema.upgrade_to(scratch_dsn, "0003_observation_store")
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,'checkout-a')",
+            (uuid4(),),
+        )
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    head_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    columns = _target_columns(scratch_dsn)
+    assert all(columns[column] for column in IDENTITY_COLUMNS), columns
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT integration_id,cluster_uid,namespace,workload FROM opspilot_targets WHERE resource_uid='checkout-a'"
+        ).fetchone() == (None, None, None, None)
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                "UPDATE opspilot_targets SET integration_id='' WHERE resource_uid='checkout-a'"
+            )
+    # Intake on the new schema still registers by uid alone, idempotently.
+    store = DurableStore(scratch_dsn)
+    store.install()
+    registered = store.register_target("checkout-b")
+    assert store.register_target("checkout-b") == registered
+    store.close()
+
+    schema.command.downgrade(schema._config(scratch_dsn), "0003_observation_store")
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == "0003_observation_store"
+        assert conn.execute("SELECT count(*) FROM opspilot_targets").fetchone() == (2,)
+    assert not set(IDENTITY_COLUMNS) & set(_target_columns(scratch_dsn))
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump

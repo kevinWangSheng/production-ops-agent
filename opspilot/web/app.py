@@ -94,6 +94,13 @@ _WORKBENCH_STATUS = {
     "INVALID_ACTION": 400,
     "TEXT_REQUIRED": 400,
     "TEXT_NOT_ALLOWED": 400,
+    "REVISION_REQUIRED": 400,
+    "REVISION_NOT_ALLOWED": 400,
+    "HEALTH_PROFILE_REQUIRED": 409,
+    "SCOPE_SUSPENDED": 409,
+    "TARGET_MISMATCH": 409,
+    "TARGET_IDENTITY_MISSING": 409,
+    "HEALTH_PROFILE_TARGET_MISMATCH": 409,
     "INTAKE_KEY_CONFLICT": 409,
     "CONTROL_KEY_CONFLICT": 409,
     "CONTROL_CONFLICT": 409,
@@ -349,6 +356,7 @@ def create_app(
         if not generation.isdigit():
             raise _Refusal(400, "INVALID_INPUT")
         text = fields.get("text")
+        revision = fields.get("revision")
         result = await in_thread(
             workbench.control,
             subject,
@@ -357,6 +365,7 @@ def create_app(
             expected_generation=int(generation),
             idempotency_key=fields.get("idempotency_key", ""),
             text=text if text else None,
+            revision=revision if revision else None,
         )
         if wants_html(request):
             return RedirectResponse(f"/incidents/{subject}", status_code=303)

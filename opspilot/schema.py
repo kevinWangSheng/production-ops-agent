@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import logging
 import os
 import subprocess
@@ -117,6 +118,103 @@ class IllegalStateValues(RuntimeError):
             "existing rows violate the state CHECK constraints; refusing to migrate, "
             "nothing was changed:\n" + report
         )
+
+
+#: JSON file mapping an operator target id (the registry's ``resource_uid``)
+#: to its immutable identity: ``{"<uid>": {"integration_id": ..,
+#: "cluster_uid": .., "namespace": ..}}``. Read by the workbench at intake
+#: and by migration 0004 to complete rows registered before it existed.
+TARGET_IDENTITIES_ENV = "OPSPILOT_TARGET_IDENTITIES"
+
+
+class TargetIdentityMissing(RuntimeError):
+    """Registered targets have no complete identity to migrate to; nothing was changed.
+
+    Raised inside ``0004_target_identity`` before any ``ALTER``;
+    ``transaction_per_migration`` rolls the revision back and the database
+    stays at 0003. The operator completes ``OPSPILOT_TARGET_IDENTITIES``
+    for every listed ``resource_uid`` and reruns ``make migrate``. The
+    migration never invents an identity.
+    """
+
+    def __init__(self, resource_uids: list[str], *, detail: str | None = None) -> None:
+        self.resource_uids = list(resource_uids)
+        self.detail = detail
+        report = "\n".join(f"  {uid}" for uid in self.resource_uids)
+        message = (
+            "registered targets without a complete identity in "
+            f"{TARGET_IDENTITIES_ENV}; refusing to migrate, nothing was changed"
+        )
+        if detail:
+            message += f" ({detail})"
+        super().__init__(message + (":\n" + report if report else ""))
+
+
+TARGET_IDENTITY_FIELDS = ("integration_id", "cluster_uid", "namespace")
+#: Required on every identity-file entry besides the identity columns: the
+#: workload the profile observes and the profile that applies (an optional
+#: ``resource_uid`` may repeat the key).
+TARGET_ENTRY_FIELDS = ("workload", "health_profile_id")
+
+
+def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
+    """``resource_uid -> {integration_id, cluster_uid, namespace, workload,
+    health_profile_id}`` from the ``OPSPILOT_TARGET_IDENTITIES`` file.
+
+    ``health_profile_id`` names the HealthProfile (its ``profile_id``) whose
+    recovery definition applies to this target; a remediation is registered
+    only under that profile (the workbench compares it with the loaded
+    profile, PR #120 bot review P1). ``workload`` is the Deployment /
+    service name the profile observes on this target; the store compares it
+    and the namespace with the profile's ``subject`` before authorizing.
+    Both are required: an entry without them could never register a
+    remediation, so the file is refused at load time, naming the entry,
+    rather than every registration failing later (bot review, round 3).
+
+    Shared by the workbench (intake resolves the operator's target id here)
+    and migration 0004 (completing rows registered before the columns
+    existed). Strict: an unreadable file, a non-object top level, an entry
+    missing a field, an empty value, an unknown key or a ``resource_uid`` that
+    contradicts its key raises :class:`TargetIdentityMissing`; nothing is
+    guessed.
+    """
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TargetIdentityMissing(
+            [],
+            detail=f"{TARGET_IDENTITIES_ENV} is unreadable: {exc.__class__.__name__}",
+        ) from None
+    if not isinstance(payload, dict):
+        raise TargetIdentityMissing([], detail="top level is not an object")
+    identities: dict[str, dict[str, str]] = {}
+    for uid, entry in payload.items():
+        if not isinstance(uid, str) or not uid or not isinstance(entry, dict):
+            raise TargetIdentityMissing([str(uid)], detail="malformed entry")
+        unknown = (
+            set(entry)
+            - set(TARGET_IDENTITY_FIELDS)
+            - set(TARGET_ENTRY_FIELDS)
+            - {"resource_uid"}
+        )
+        if unknown:
+            raise TargetIdentityMissing(
+                [uid], detail=f"unknown key(s) {sorted(unknown)}"
+            )
+        missing = [
+            field
+            for field in TARGET_IDENTITY_FIELDS + TARGET_ENTRY_FIELDS
+            if not isinstance(entry.get(field), str) or not entry[field]
+        ]
+        if missing:
+            raise TargetIdentityMissing([uid], detail=f"missing or empty {missing}")
+        if "resource_uid" in entry and entry["resource_uid"] != uid:
+            raise TargetIdentityMissing([uid], detail="resource_uid differs from key")
+        identities[uid] = {
+            field: entry[field]
+            for field in TARGET_IDENTITY_FIELDS + TARGET_ENTRY_FIELDS
+        }
+    return identities
 
 
 @dataclass(frozen=True)
@@ -420,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
         result = migrate(
             dsn, pg_dump=args.pg_dump, accept_column_order=args.accept_column_order
         )
-    except (TakeoverRefused, IllegalStateValues) as exc:
+    except (TakeoverRefused, IllegalStateValues, TargetIdentityMissing) as exc:
         print(exc, file=sys.stderr)
         return 1
     if result.accepted_diff:
