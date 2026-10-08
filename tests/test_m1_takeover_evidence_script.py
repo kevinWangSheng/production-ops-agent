@@ -33,9 +33,7 @@ class _Clock:
 
 
 def _post(connection: HTTPConnection, body: bytes) -> None:
-    connection.putrequest("POST", "/v1/chat/completions")
-    connection.putheader("Content-Length", str(len(body)))
-    connection.endheaders(body)
+    connection.request("POST", "/v1/chat/completions", body=body)
 
 
 def test_the_signal_fires_only_after_the_bytes_are_written(monkeypatch):
@@ -49,8 +47,8 @@ def test_the_signal_fires_only_after_the_bytes_are_written(monkeypatch):
         HTTPConnection, lambda: log.append("signal")
     )("example.invalid")
     _post(connection, b"{}")
-    # headers and body are two writes; the signal follows the first, once
-    assert log == ["write", "signal", "write"]
+    # headers and body are two writes; the signal follows the last, once
+    assert log == ["write", "write", "signal"]
     again = script.signalling_connection(HTTPConnection, lambda: log.append("signal"))(
         "example.invalid"
     )
@@ -169,6 +167,19 @@ def test_a_takeover_before_any_request_was_sent_is_not_accepted():
         ),
         ("run_parked_waiting_human", lambda v, t: v.update(run_state_after="running")),
         ("run_owner_released", lambda v, t: v.update(run_owner_after="set")),
+        (
+            "late_reply_fenced",
+            lambda v, t: v.update(first_attempt={"status": "completed"}),
+        ),
+        (
+            "late_reply_fenced",
+            lambda v, t: v.update(
+                first_attempt={
+                    "status": "control_denied",
+                    "loop": {"steps_committed": 1},
+                }
+            ),
+        ),
         (
             "response_in_flight_at_takeover",
             lambda v, t: t.update(model_requests_returned_before=1),

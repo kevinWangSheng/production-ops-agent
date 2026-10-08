@@ -10,7 +10,7 @@ committed rows and the recording model client:
 
 * the Run is ``waiting_human`` with no owner / lease, the incident
   ``human_owned`` with the generation stepped and the audit row written;
-* every model HTTP request left the process (first bytes written to the
+* every model HTTP request left the process (whole request written to the
   socket) before the takeover committed; a second
   ``resume`` of the runner after the takeover claims nothing and issues no
   model request;
@@ -86,22 +86,17 @@ OUT_ROOT = ROOT / "docs/evidence/m1-02-takeover/live-runs"
 def signalling_connection(
     base: type[HTTPSConnection], on_sent: Callable[[], None]
 ) -> type[HTTPSConnection]:
-    """``base`` that calls ``on_sent`` once per request, right after the first
-    ``send`` (request line and headers) returned, i.e. after those bytes were
+    """``base`` that calls ``on_sent`` once per request, after ``request()``
+    returned, i.e. after the request line, headers and the whole body were
     handed to the socket. This is the HTTP emit boundary: bot review of PR #123
     (#127) showed that setting an event in ``complete()`` precedes the real
-    send by an unbounded gap if the worker thread is suspended in between."""
+    send by an unbounded gap if the worker thread is suspended in between, and
+    PR #151 review that the headers alone are not the whole request."""
 
     class SignallingConnection(base):  # type: ignore[valid-type, misc]
-        def putrequest(self, *args: Any, **kwargs: Any) -> None:
-            self._signalled = False
-            super().putrequest(*args, **kwargs)
-
-        def send(self, data: Any) -> None:
-            super().send(data)
-            if not getattr(self, "_signalled", True):
-                self._signalled = True
-                on_sent()
+        def request(self, *args: Any, **kwargs: Any) -> None:
+            super().request(*args, **kwargs)
+            on_sent()
 
     return SignallingConnection
 
@@ -214,6 +209,12 @@ def failed_verdicts(verdicts: dict, takeover: dict) -> list[str]:
         or len(verdicts.get("request_started_at") or []) == before,
     )
     second = verdicts.get("second_resume") or {}
+    first = verdicts.get("first_attempt") or {}
+    require(
+        "late_reply_fenced",
+        first.get("status") == "control_denied"
+        and (first.get("loop") or {}).get("steps_committed") == 0,
+    )
     require("second_resume_handed_off", second.get("status") == "handed_off")
     return failures
 
