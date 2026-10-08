@@ -27,6 +27,7 @@ import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 
 PROM = os.environ.get("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090")
 JAEGER = os.environ.get("OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui")
@@ -41,10 +42,21 @@ STATUS_KEYS = (
     "error",
 )
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.kind_lab import lab_authorization  # noqa: E402
 
 
 def get(url: str, timeout: int = 30) -> dict:
-    with OPENER.open(url, timeout=timeout) as r:
+    """GET JSON. Prometheus (M1-02 step 4: basic auth) gets the lab account's
+    header from ``kind_lab.lab_authorization``; Jaeger stays anonymous. The
+    header value is never printed."""
+    headers = {}
+    if url.startswith(PROM):
+        authorization = lab_authorization()
+        if authorization is not None:
+            headers["Authorization"] = authorization
+    request = urllib.request.Request(url, headers=headers)
+    with OPENER.open(request, timeout=timeout) as r:
         return json.loads(r.read())
 
 

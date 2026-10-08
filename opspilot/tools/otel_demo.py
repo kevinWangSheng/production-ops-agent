@@ -60,6 +60,7 @@ Jaeger is what the M0 environment already read (``read_proxy.py``,
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import socket
@@ -664,23 +665,33 @@ def _clean_url(value: str, name: str) -> str:
 
 @dataclass(frozen=True)
 class OtelDemoConfig:
-    """Where the lab backends are, and the one credential slot.
+    """Where the lab backends are, and the investigation side's credential.
 
-    ``token`` is the value behind ``CREDENTIAL_REF``; ``None`` means the
-    backend is anonymous (the lab). It is held here only to hand to the
-    transport and is never rendered.
+    ``token`` (bearer) or ``prometheus_username`` / ``prometheus_password``
+    (HTTP basic auth, the lab Prometheus since M1-02 step 4) are the values
+    behind ``CREDENTIAL_REF``; all ``None`` means the backend is anonymous.
+    They are held here only to hand to the transport and are never
+    rendered. The variables are the investigation side's own
+    (``OPSPILOT_OTEL_*``); the Observer's ``OPSPILOT_OBSERVER_*`` are never
+    read here, and vice versa (C3 section 3, decision D3: separate read-only
+    credentials, no fallback between the two roles).
     """
 
     prometheus_url: str = "http://127.0.0.1:19090"
     jaeger_url: str = "http://127.0.0.1:16686/jaeger/ui"
     token: str | None = field(default=None, repr=False)
+    prometheus_username: str | None = field(default=None, repr=False)
+    prometheus_password: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "prometheus_url", _clean_url(self.prometheus_url, "PROMETHEUS")
         )
         object.__setattr__(self, "jaeger_url", _clean_url(self.jaeger_url, "JAEGER"))
-        if self.token is not None and not isinstance(self.token, str):
+        for value in (self.token, self.prometheus_username, self.prometheus_password):
+            if value is not None and not isinstance(value, str):
+                raise ToolContractError("INVALID_CREDENTIAL")
+        if (self.prometheus_username is None) != (self.prometheus_password is None):
             raise ToolContractError("INVALID_CREDENTIAL")
 
     @classmethod
@@ -690,7 +701,15 @@ class OtelDemoConfig:
             or cls.prometheus_url,
             jaeger_url=env.get("OPSPILOT_OTEL_JAEGER_URL") or cls.jaeger_url,
             token=env.get("OPSPILOT_OTEL_TOKEN") or None,
+            prometheus_username=env.get("OPSPILOT_OTEL_PROMETHEUS_USERNAME") or None,
+            prometheus_password=env.get("OPSPILOT_OTEL_PROMETHEUS_PASSWORD") or None,
         )
+
+    @property
+    def prometheus_basic_auth(self) -> tuple[str, str] | None:
+        if self.prometheus_username is None or self.prometheus_password is None:
+            return None
+        return self.prometheus_username, self.prometheus_password
 
 
 def _target(config: OtelDemoConfig) -> RegisteredTarget:
@@ -910,6 +929,9 @@ class OtelDemoTransport:
 
     ``credentials`` maps ``credential_ref`` to a bearer token or ``None``;
     an unknown ref is refused (``TransportError``), never sent anonymously.
+    ``basic_auth`` maps ``credential_ref`` to a ``(username, password)`` pair
+    sent as HTTP basic auth on *metrics* (Prometheus) requests only -- the
+    lab Prometheus authenticates since M1-02 step 4, Jaeger stays anonymous.
     """
 
     def __init__(
@@ -917,8 +939,10 @@ class OtelDemoTransport:
         *,
         credentials: Mapping[str, str | None],
         opener: urllib.request.OpenerDirector | None = None,
+        basic_auth: Mapping[str, tuple[str, str]] | None = None,
     ) -> None:
         self._credentials = dict(credentials)
+        self._basic_auth = dict(basic_auth or {})
         self._opener = opener or urllib.request.build_opener(
             urllib.request.ProxyHandler({}), _NoRedirect()
         )
@@ -937,7 +961,15 @@ class OtelDemoTransport:
     def _get(self, url: str, request: TransportRequest, *, max_bytes: int) -> _Fetched:
         headers = {"Accept": "application/json"}
         token = self._credentials[request.credential_ref]
-        if token:
+        pair = (
+            self._basic_auth.get(request.credential_ref)
+            if request.tool == METRICS_TOOL
+            else None
+        )
+        if pair is not None:
+            raw = f"{pair[0]}:{pair[1]}".encode()
+            headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
+        elif token:
             headers["Authorization"] = f"Bearer {token}"
         http_request = urllib.request.Request(url, headers=headers, method="GET")
         try:
@@ -1509,7 +1541,11 @@ def otel_demo_executor_factory(
     counter = token_counter if token_counter is not None else default_counter()
     tools = ToolRegistry(_registrations())
     targets = TargetRegistry([_target(config)])
-    transport = OtelDemoTransport(credentials={CREDENTIAL_REF: config.token})
+    pair = config.prometheus_basic_auth
+    transport = OtelDemoTransport(
+        credentials={CREDENTIAL_REF: config.token},
+        basic_auth={} if pair is None else {CREDENTIAL_REF: pair},
+    )
     control = DurableControl(store)
 
     def factory(lease: Lease, input: InvestigationInput) -> ReadOnlyToolExecutor:

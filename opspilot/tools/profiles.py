@@ -11,7 +11,10 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
 * ``otel-demo``: real read-only Prometheus and Jaeger queries against the
   pinned OTel Demo lab (``opspilot.tools.otel_demo``), configured by
   ``OPSPILOT_OTEL_PROMETHEUS_URL``, ``OPSPILOT_OTEL_JAEGER_URL`` and the
-  optional ``OPSPILOT_OTEL_TOKEN``.
+  investigation side's own credential: ``OPSPILOT_OTEL_PROMETHEUS_USERNAME``
+  / ``OPSPILOT_OTEL_PROMETHEUS_PASSWORD`` (basic auth, the lab) or
+  ``OPSPILOT_OTEL_TOKEN`` (bearer). The Observer's ``OPSPILOT_OBSERVER_*``
+  variables are never read here (C3 §3, D3).
 
 Both processes must be started with the same value.
 """

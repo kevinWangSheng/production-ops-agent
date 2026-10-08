@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -174,6 +175,18 @@ class HealthSignal(DTO):
     the reading's ``query`` only; ``coverage_query`` is recovered from the
     profile revision on replay.
 
+    ``freshness_query`` gives the time of the newest *raw* sample behind the
+    signal, taken over every series the selector matches as the *oldest* of
+    their newest samples (``min(timestamp(<selector>))``): a signal over
+    eight dependencies is only as fresh as its stalest dependency, ``max``
+    would let one fresh series hide seven stale ones (PR #119 review P2-1).
+    Freshness is judged on that timestamp, not on the query window: after
+    scrapes stop, ``query`` keeps answering through the lookback delta and
+    ``coverage_query`` keeps counting the points already inside the range
+    for minutes, while this timestamp stops moving at once. The Observer
+    stores it on the reading (``latest_sample_at``); a reading without it is
+    stale.
+
     ``traffic_dependent`` marks ratios and quantiles whose value means nothing
     without traffic (an error ratio over two requests, a p95 over one span).
     They are not judged while traffic is below the gate or unknown. State
@@ -186,6 +199,7 @@ class HealthSignal(DTO):
     required: bool = True
     query: Text
     coverage_query: Text
+    freshness_query: Text
     minimum_samples: Positive = 1
     traffic_dependent: bool
     healthy: SignalBound
@@ -269,6 +283,15 @@ class HealthProfile(DTO):
             raise ValueError("TRAFFIC_SIGNAL_NOT_REQUIRED")
         if self.query_timeout_seconds > self.session.sample_interval_seconds:
             raise ValueError("QUERY_TIMEOUT_EXCEEDS_SAMPLE_INTERVAL")
+        # Every range selector written into a query must be the evaluation
+        # window: ``evaluate_readings`` judges the reading's window against
+        # ``evaluation_window_seconds`` and would otherwise accept a profile
+        # whose PromQL aggregates over another span (PR #113 review).
+        for signal in self.signals:
+            for query in (signal.query, signal.coverage_query, signal.freshness_query):
+                for span in _range_selector_seconds(query):
+                    if span != self.evaluation_window_seconds:
+                        raise ValueError("RANGE_SELECTOR_NOT_EVALUATION_WINDOW")
         return self
 
     @property
@@ -291,6 +314,9 @@ class SignalReading(DTO):
     window_end: AwareDatetime
     source: Identifier
     raw_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    #: Time of the newest raw sample behind the signal (``freshness_query``);
+    #: ``None`` when the source returned none. Stale without it (issue #86).
+    latest_sample_at: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def value_matches_status(self) -> SignalReading:
@@ -379,8 +405,10 @@ def load_health_profile(path: Path) -> HealthProfile:
             "PROFILE_INVALID", f"{path.name}: top level is not an object"
         )
     # The declared value is a file value and stays out of the error, like
-    # every other rejected input.
-    if payload.get("format_version") != PROFILE_FORMAT_VERSION:
+    # every other rejected input. Exact int: ``True == 1`` in Python, a
+    # boolean is not a format version (PR #113 review P2).
+    declared = payload.get("format_version")
+    if type(declared) is not int or declared != PROFILE_FORMAT_VERSION:
         raise HealthProfileError(
             "PROFILE_INVALID",
             f"{path.name}: format_version is not {PROFILE_FORMAT_VERSION}",
@@ -415,11 +443,15 @@ def evaluate_readings(
     replays from the stored sample row.
 
     ``sample_time`` is when the Observer took the sample (database clock,
-    stored with the sample). A reading whose window ended more than
-    ``freshness_seconds`` before it, or whose window does not span
-    ``evaluation_window_seconds`` (within ``WINDOW_TOLERANCE_SHARE``), is
-    judged ``stale`` whatever its status says: old data never confirms
-    recovery (C3 section 10).
+    stored with the sample). A reading is judged ``stale`` whatever its
+    status says when its newest raw sample (``latest_sample_at``, from the
+    signal's ``freshness_query``) is missing or older than
+    ``freshness_seconds`` before ``sample_time``, when its window ended more
+    than ``freshness_seconds`` before ``sample_time`` or after it, or when
+    its window does not span ``evaluation_window_seconds`` (within
+    ``WINDOW_TOLERANCE_SHARE``): old data never confirms recovery (C3
+    section 10), and a query that still answers after scrapes stopped is
+    old data.
 
     Outcome rules, in order:
 
@@ -594,6 +626,22 @@ def _judge(
             unusable="stale",
             reason=f"window spans {span:.0f}s; profile evaluates {expected}s",
         )
+    if reading.latest_sample_at is None:
+        return _Judged(
+            usable=False,
+            unusable="stale",
+            reason="no raw sample timestamp behind the reading",
+        )
+    sample_age = (sample_time - reading.latest_sample_at).total_seconds()
+    if sample_age < 0 or sample_age > profile.freshness_seconds:
+        return _Judged(
+            usable=False,
+            unusable="stale",
+            reason=(
+                f"newest raw sample is {sample_age:.0f}s old at the sample; "
+                f"profile allows {profile.freshness_seconds}s"
+            ),
+        )
     # ``value`` and ``sample_count`` are guaranteed by the reading validator.
     value = reading.value
     count = reading.sample_count
@@ -606,6 +654,49 @@ def _judge(
             reason=f"{count} points, profile needs {signal.minimum_samples}",
         )
     return _Judged(usable=True, value=value)
+
+
+_QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+_BRACKET = re.compile(r"\[([^\]]*)\]")
+_DURATION_PART = re.compile(r"(\d+)(ms|[smhdwy])")
+_DURATION = re.compile(r"^(?:\d+(?:ms|[smhdwy]))+$")
+_UNIT_SECONDS = {
+    "ms": 0.001,
+    "s": 1,
+    "m": 60,
+    "h": 3600,
+    "d": 86400,
+    "w": 604800,
+    "y": 31536000,
+}
+
+
+def _duration_seconds(text: str) -> float:
+    """A full PromQL duration (``5m``, ``1m30s``, ``1h5m10s500ms``)."""
+    if not _DURATION.match(text):
+        raise ValueError("RANGE_SELECTOR_UNPARSABLE")
+    return sum(
+        int(amount) * _UNIT_SECONDS[unit]
+        for amount, unit in _DURATION_PART.findall(text)
+    )
+
+
+def _range_selector_seconds(query: str) -> list[float]:
+    """Spans of every range or subquery selector in ``query``.
+
+    Quoted label values are skipped (a regex matcher may contain brackets);
+    every remaining ``[...]`` must be a complete PromQL duration, optionally
+    followed by ``:`` and a resolution, or the profile is rejected rather
+    than silently left unchecked (codex round 3, P2: ``[1m30s]`` used to
+    slip past a single-unit pattern).
+    """
+    spans: list[float] = []
+    for content in _BRACKET.findall(_QUOTED.sub('""', query)):
+        duration, separator, resolution = content.partition(":")
+        spans.append(_duration_seconds(duration))
+        if separator and resolution:
+            _duration_seconds(resolution)
+    return spans
 
 
 def _render_location(location: object) -> str:

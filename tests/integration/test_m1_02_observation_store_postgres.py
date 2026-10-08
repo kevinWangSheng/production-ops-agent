@@ -945,6 +945,103 @@ def test_claim_limit_is_not_used_up_by_suspended_sessions(
         assert controller.session(session)["state"] == "authorized"
 
 
+def test_claim_limit_is_not_used_up_by_sessions_whose_incident_is_locked(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Issue #86 (PR #114 review, store.py:986): ``limit`` due sessions whose
+    incident rows another writer holds come first; the free one behind them
+    is still leased in the same claim, and the claim does not wait."""
+    locked = []
+    for _ in range(2):
+        incident, _, target = _incident(owner)
+        locked.append((incident, _authorize(controller, incident, target)))
+    incident, _, target = _incident(owner)
+    wanted = _authorize(controller, incident, target)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET active_sample_due_at=clock_timestamp()-interval '1 hour' WHERE session_id = ANY(%s)",
+            ([session for _, session in locked],),
+        )
+    with psycopg.connect(controller.dsn) as holder:
+        holder.execute(
+            "SELECT incident_id FROM opspilot_incidents WHERE incident_id = ANY(%s) FOR UPDATE",
+            ([incident for incident, _ in locked],),
+        )
+        started = _now()
+        leases = observer.claim_due_samples(uuid4(), limit=2)
+        assert (_now() - started) < timedelta(seconds=3), "claim must not wait"
+    assert wanted in {lease.session_id for lease in leases}
+    assert {lease.session_id for lease in leases} & {s for _, s in locked} == set()
+    for _, session in locked:
+        row = controller.session(session)
+        assert row["state"] == "authorized" and row["active_sample_owner"] is None
+
+
+def test_lease_scope_current_sees_a_suspension_after_the_claim(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """The Observer asks before every Prometheus request (C3 section 4, issue
+    #86): a target or global suspension committed after the claim -- and a
+    suspension lifted again, which moved the generation -- both say no."""
+    incident, target_id, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    assert observer.lease_scope_current(lease) is True
+    generation = owner.set_target_suspension(
+        target_id, True, expected_generation=0, actor="tester"
+    )
+    assert observer.lease_scope_current(lease) is False
+    owner.set_target_suspension(
+        target_id, False, expected_generation=generation, actor="tester"
+    )
+    assert observer.lease_scope_current(lease) is False
+    # a fresh lease after the lift carries the new generation
+    _release_lease(owner, session)
+    _due_now(owner, session)
+    assert _claimable(observer, session) == []
+    assert controller.session(session)["ended_reason"] == "scope_suspended"
+    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
+        observer.lease_scope_current("not a lease")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("action", ["pause", "cancel"])
+def test_lease_scope_current_sees_a_subject_control_after_the_claim(
+    observer: ObservationStore,
+    owner: DurableStore,
+    controller: ObservationStore,
+    action: str,
+) -> None:
+    """Codex round 5 P1 (C3 §4, human control first): a pause or cancel on
+    the incident revokes the session and clears its lease; the per-request
+    check the Observer makes must say no from then on, not only for the
+    global/target suspension layers."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    assert observer.lease_scope_current(lease) is True
+    owner.control(incident, 0, action, "operator")
+    assert observer.lease_scope_current(lease) is False
+    row = controller.session(session)
+    assert (row["state"], row["ended_reason"]) == ("revoked", "authority_revoked")
+    assert row["active_sample_job_id"] is None
+
+
+def test_lease_scope_current_sees_a_moved_control_generation(
+    observer: ObservationStore, owner: DurableStore, controller: ObservationStore
+) -> None:
+    """Even a control step that leaves the session untouched moves the
+    incident's control generation away from the lease's binding."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target)
+    lease = _claim(observer, session)
+    with owner.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=control_generation+1 WHERE incident_id=%s",
+            (incident,),
+        )
+    assert observer.lease_scope_current(lease) is False
+
+
 # --- deadline and budget exhaustion hand back to open
 
 
