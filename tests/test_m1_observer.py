@@ -1472,7 +1472,7 @@ def test_a_scope_check_that_spends_the_budget_sends_no_request(monkeypatch):
     assert set(details) == {"LEASE_BUDGET"}
 
 
-def _raw_server(payload: bytes):
+def _raw_server(payload: bytes, *, stall: float = 0.0):
     """A TCP server that writes ``payload`` verbatim to the first client and
     closes: what a peer that declares a length it does not deliver, or an
     oversized error body, looks like on the wire."""
@@ -1482,14 +1482,18 @@ def _raw_server(payload: bytes):
         def handle(self):
             self.request.recv(65536)
             self.request.sendall(payload)
+            time.sleep(stall)
 
     server = socketserver.TCPServer(("127.0.0.1", 0), Raw)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
 
-def _wire_instant(payload: bytes, *, via_opener: bool):
-    server = _raw_server(payload)
+_WIRE_ELAPSED = [0.0]
+
+
+def _wire_instant(payload: bytes, *, via_opener: bool, stall: float = 0.0, timeout=5):
+    server = _raw_server(payload, stall=stall)
     try:
         opener = (
             urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -1499,7 +1503,10 @@ def _wire_instant(payload: bytes, *, via_opener: bool):
         src = PrometheusReadOnlySource(
             f"http://127.0.0.1:{server.server_address[1]}", opener=opener
         )
-        return src.instant("up", at=NOW, timeout_seconds=5)
+        started = time.monotonic()
+        result = src.instant("up", at=NOW, timeout_seconds=timeout)
+        _WIRE_ELAPSED[0] = time.monotonic() - started
+        return result
     finally:
         server.shutdown()
         server.server_close()
@@ -1559,3 +1566,32 @@ def test_an_unconvertible_content_length_still_marks_a_short_read_incomplete(
     )
     assert (result.status, result.http_status) == ("failed", 401)
     assert result.body == b"abc" and not result.body_complete
+
+
+def test_a_padded_content_length_is_read_by_value():
+    """PR #147 bot P2: ``0000000000000003`` declares 3 bytes; the opener
+    path must agree with ``_fetch`` that ``abc`` is the whole body."""
+    for via_opener in (False, True):
+        result = _wire_instant(
+            b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0000000000000003\r\n\r\nabc",
+            via_opener=via_opener,
+        )
+        assert result.detail == "HTTP" and result.http_status == 401
+        assert result.body == b"abc" and result.body_complete
+
+
+def test_an_error_body_stalling_at_the_keep_limit_times_out_with_its_prefix():
+    """PR #147 bot P2: 2048 delivered of a longer declared body, then silence.
+    The extra byte probed under the deadline must not lose the prefix."""
+    from opspilot.observer.prometheus import _ERROR_BODY_BYTES
+
+    body = b"z" * _ERROR_BODY_BYTES
+    result = _wire_instant(
+        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 5000\r\n\r\n" + body,
+        via_opener=True,
+        stall=3,
+        timeout=1,
+    )
+    assert _WIRE_ELAPSED[0] < 2.5
+    assert result.status == "timeout" and result.body == body
+    assert not result.body_complete

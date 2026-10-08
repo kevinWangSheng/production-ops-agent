@@ -240,13 +240,16 @@ class PrometheusReadOnlySource:
                 return status, b"".join(chunks), complete
         except urllib.error.HTTPError as error:
             status = int(error.code)
+            # the error body is read under the same deadline as any other, and
+            # one byte past the keep limit tells "exactly the limit" from
+            # "cut"; a timeout or a cut keeps the prefix already read
             try:
-                kept = error.read(_ERROR_BODY_BYTES + 1)
-                return status, kept[:_ERROR_BODY_BYTES], _error_body_ended(error, kept)
+                complete = _read_until(error, deadline, _ERROR_BODY_BYTES + 1, chunks)
+            except (TimeoutError, socket.timeout):
+                raise _Timeout(b"".join(chunks)[:_ERROR_BODY_BYTES]) from None
             except HTTPException as cut:
-                # the error body was cut mid-read: same classification as
-                # below, with the status line that did arrive
                 raise _Protocol.of(cut, chunks, status) from None
+            return status, b"".join(chunks)[:_ERROR_BODY_BYTES], complete
         except (TimeoutError, socket.timeout):
             raise _Timeout(b"".join(chunks)) from None
         except urllib.error.URLError as error:
@@ -529,18 +532,6 @@ def _read_until(
     return False
 
 
-def _error_body_ended(error: urllib.error.HTTPError, kept: bytes) -> bool:
-    """True when an error body read through the opener is the whole body:
-    it fit the keep limit and covers the declared Content-Length. A short
-    body raises ``IncompleteRead`` like the ``_fetch`` path does."""
-    if len(kept) > _ERROR_BODY_BYTES:
-        return False
-    declared = _declared_length(error.headers)
-    if declared is not None and declared > len(kept):
-        raise IncompleteRead(kept, declared - len(kept))
-    return True
-
-
 def _declared_length(headers: Any) -> int | None:
     """The Content-Length a peer declared, or None when absent or not a
     plain digit string. A digit string too long to be a body size is clamped
@@ -552,6 +543,7 @@ def _declared_length(headers: Any) -> int | None:
     value = value.strip()
     if not value.isdigit():
         return None
+    value = value.lstrip("0") or "0"
     return int(value) if len(value) <= 15 else 10**15
 
 
