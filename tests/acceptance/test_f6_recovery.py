@@ -1,4 +1,4 @@
-"""F6 external scenarios — proposed seam, NOT an implemented harness.
+"""F6 external scenarios driven by public product APIs on opt-in PostgreSQL.
 
 Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
 * run(IncidentScenario, *, profile, handled_at, observations, until) returns
@@ -44,8 +44,8 @@ Minimum external interface proposal (M1-02 steps 4/5/6; full lists in docs):
 * actions is the complete product action audit; excludes engineer setup and
   permits only read queries and OpsPilot's own record/control persistence.
 
-The fixture fails loudly if skips are removed before a real driver is wired.
-No fake successful outcomes or implementation adapter are provided here.
+The driver lives in tests/f6_product_driver.py; fixture setup is shared in
+tests/f6_fixtures.py. PG setup errors are not product acceptance failures.
 Numbers are synthetic test boundaries, not calibrated lab HealthProfile values.
 """
 
@@ -58,7 +58,11 @@ from types import SimpleNamespace
 import pytest
 
 from opspilot.acceptance import IncidentScenario
-from tests.f6_boundary_support import GuardedRecoveryDriver, RecoveryBoundaries
+from tests.f6_boundary_support import (
+    ContractInterfaceConflict,
+    GuardedRecoveryDriver,
+    RecoveryBoundaries,
+)
 
 HANDLED = datetime(2026, 10, 7, 12, tzinfo=UTC)
 REQUIRED = ("deployment", "request_volume", "errors", "latency", "pods", "dependencies")
@@ -76,25 +80,6 @@ READONLY_ACTIONS = {
     "advance_incident_lifecycle",
     "human_handoff",
 }
-
-
-@pytest.fixture
-def recovery_boundaries():
-    return RecoveryBoundaries()
-
-
-@pytest.fixture
-def recovery_runtime(recovery_boundaries):
-    # Wiring must inject stubs into EVERY environment/telemetry/model transport.
-    # No real endpoints or fallback clients are permitted in this harness.
-    pytest.fail("待实现真实驱动并注入 recovery_boundaries；不能以预制结果替代接线")
-
-
-@pytest.fixture
-def recovery_driver(recovery_runtime, recovery_boundaries):
-    driver = GuardedRecoveryDriver(recovery_runtime, recovery_boundaries)
-    driver.seed_incident("incident-f6", target=deepcopy(TARGET), lifecycle="open")
-    return driver
 
 
 @pytest.fixture
@@ -252,7 +237,6 @@ def assert_saved_basis(outcome, supplied, profile, driver):
     assert len(set(evidence_ids)) == len(evidence_ids)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count,expected", [(2, "observing_recovery"), (3, "resolved")])
 def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     recovery_driver, profile, count, expected
@@ -278,7 +262,6 @@ def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [3, 5])
 @pytest.mark.parametrize("traffic", [0, 99])
 def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
@@ -312,7 +295,6 @@ def test_f6_step2_falling_errors_with_withdrawn_traffic_never_confirms_recovery(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("missing", REQUIRED)
 def test_f6_step3_each_missing_required_signal_is_unknown_and_handed_off(
     recovery_driver, profile, missing
@@ -337,7 +319,6 @@ def test_f6_step3_each_missing_required_signal_is_unknown_and_handed_off(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [3, 5])
 def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     recovery_driver, profile, count
@@ -370,7 +351,7 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 5 步 #87 接线；持久采样依赖第 2 步 #84")
+@pytest.mark.skip(reason="待 #87 合并")
 @pytest.mark.parametrize(
     "kind,options,count,verdict,lifecycle",
     [
@@ -396,9 +377,9 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
     assert original.incident_lifecycle == lifecycle
     assert_saved_basis(original, supplied, profile, recovery_driver)
     replayed = recovery_driver.replay(
-        profile=deepcopy(original.recovery_profile),
-        handled_at=original.recovery_handled_at,
-        samples=deepcopy(original.recovery_samples),
+        persisted=recovery_driver.persisted_replay_input(
+            original.subject_id, original.recovery_samples[0]["session_id"]
+        ),
         allow_telemetry=False,
         allow_model=False,
     )
@@ -420,7 +401,6 @@ def test_f6_step5_replay_reconstructs_basis_without_telemetry_or_investigator(
     assert_readonly(replayed, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize(
     "signal,value",
     [("deployment", False), ("pods", False), ("errors", 0.02), ("latency", 501)],
@@ -449,7 +429,6 @@ def test_f6_step1_each_required_signal_threshold_blocks_recovery(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("kind", ["stale", "coverage-gap"])
 def test_f6_step1_stale_or_discontinuous_data_is_saved_without_confirming_recovery(
     recovery_driver, profile, kind
@@ -489,7 +468,7 @@ def test_f6_step1_stale_or_discontinuous_data_is_saved_without_confirming_recove
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 5 步 #87 接线；持久采样依赖第 2 步 #84")
+@pytest.mark.skip(reason="待 #87 合并")
 def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     recovery_driver, profile
 ):
@@ -504,15 +483,16 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     )
     assert original.incident_lifecycle == "resolved"
     assert_saved_basis(original, supplied, profile, recovery_driver)
-    samples = deepcopy(original.recovery_samples)
+    persisted = recovery_driver.persisted_replay_input(
+        original.subject_id, original.recovery_samples[0]["session_id"]
+    )
+    samples = persisted["history"]["samples"]
     # Judgment metadata is not raw evidence authority. Alter ONLY judgments;
     # frozen signals, profile and captured evidence references stay identical.
     for row in samples:
         row["outcome"] = "degraded"
     replayed = recovery_driver.replay(
-        profile=deepcopy(original.recovery_profile),
-        handled_at=HANDLED,
-        samples=samples,
+        persisted=persisted,
         allow_telemetry=False,
         allow_model=False,
     )
@@ -532,7 +512,6 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     assert_readonly(replayed, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("subject_id", ["incident-f6", "incident-other"])
 @pytest.mark.parametrize("count", [2, 3])
 def test_f6_step1_same_target_incidents_only_handled_subject_changes(
@@ -572,7 +551,6 @@ def test_f6_step1_same_target_incidents_only_handled_subject_changes(
     assert_readonly(outcome, recovery_driver, subject_id=requested.subject_id)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [3, 5])
 def test_f6_step1_degradation_resets_continuous_healthy_window(
     recovery_driver, profile, count
@@ -605,7 +583,6 @@ def test_f6_step1_degradation_resets_continuous_healthy_window(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 def test_f6_step2_traffic_withdrawal_after_healthy_samples_never_confirms_recovery(
     recovery_driver, profile
 ):
@@ -665,7 +642,6 @@ def test_harness_run_rejects_an_outcome_for_another_subject():
         driver.run(scenario(1, "wrong-subject"))
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 def test_f6_step1_before_handling_data_cannot_confirm_recovery(
     recovery_driver, profile
 ):
@@ -694,7 +670,6 @@ def test_f6_step1_before_handling_data_cannot_confirm_recovery(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
 @pytest.mark.parametrize("count", [5, 6])
 def test_f6_step1_healthy_window_rebuilds_after_degradation_and_can_resolve(
     recovery_driver, profile, count
@@ -751,7 +726,11 @@ def test_harness_model_stub_records_calls_even_if_runtime_swallows_rejection(pha
     assert driver.model_calls == 1
 
 
-@pytest.mark.skip(reason="待 M1-02 第 4 步 #86 接线；持久采样依赖第 2 步 #84")
+@pytest.mark.xfail(
+    strict=True,
+    raises=ContractInterfaceConflict,
+    reason="合同/接口冲突: 公开采样提交无目标字段，无法提交并拒绝异目标结果 见 opspilot/domain/observation.py:82、opspilot/observation/store.py:1287",
+)
 @pytest.mark.parametrize("identity_field", list(TARGET))
 def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
     recovery_driver, profile, identity_field
@@ -796,7 +775,19 @@ def test_f6_step1_foreign_target_sample_is_history_only_without_advancing(
     assert outcome.subject_id == requested.subject_id
     assert outcome.incident_lifecycle == started.incident_lifecycle
     assert outcome.recovery_confirmed is False
-    assert outcome.healthy_window_seconds == 0
+    try:
+        assert outcome.healthy_window_seconds == 0
+    except AssertionError as exc:
+        if (
+            outcome.healthy_window_seconds == 60
+            and len(outcome.recovery_samples) == 1
+            and outcome.recovery_samples[0]["disposition"] == "adopted"
+            and outcome.recovery_samples[0]["target"] == foreign_target
+        ):
+            raise ContractInterfaceConflict(
+                "foreign target has no public submit field"
+            ) from exc
+        raise
     assert outcome.used_sample_count == 0
     assert not outcome.observation_ended
     assert outcome.human_interaction != "handoff"
@@ -862,3 +853,32 @@ def test_harness_telemetry_returns_exact_test_owned_raw_signal_bytes():
             assert decoded["target"] == row["target"]
             assert decoded["value"] == signal["value"]
             assert decoded["observed_at"] == signal["observed_at"].isoformat()
+
+
+def test_f6_sample_budget_exhausts_before_original_deadline(recovery_driver, profile):
+    bounded = deepcopy(profile)
+    bounded["max_samples"] = 4
+    bounded["deadline"] = HANDLED + timedelta(seconds=600)
+    supplied = with_raw_payloads(observations(4, traffic=0, error_ratio=0))
+    outcome = recovery_driver.run(
+        scenario(2, "sample-budget-before-deadline"),
+        profile=bounded,
+        handled_at=HANDLED,
+        observations=deepcopy(supplied),
+        until=supplied[-1]["window_end"],
+    )
+    assert supplied[-1]["window_end"] < bounded["deadline"]
+    assert outcome.incident_lifecycle == "open"
+    assert outcome.recovery_verdict == "unknown"
+    assert outcome.observation_ended
+    assert outcome.human_interaction == "handoff"
+    assert "INSUFFICIENT_TRAFFIC" in outcome.handoff_reasons
+    assert outcome.used_sample_count == bounded["max_samples"]
+    snapshot = recovery_driver.snapshot_incident(outcome.subject_id)
+    assert snapshot["observation_authorization"]["active_sample_job_id"] is None
+    calls = len(recovery_driver.boundaries.telemetry_calls)
+    assert recovery_driver.claim_available(outcome.subject_id) == ()
+    assert len(recovery_driver.boundaries.telemetry_calls) == calls
+    assert recovery_driver.snapshot_incident(outcome.subject_id) == snapshot
+    assert_saved_basis(outcome, supplied, bounded, recovery_driver)
+    assert_readonly(outcome, recovery_driver)

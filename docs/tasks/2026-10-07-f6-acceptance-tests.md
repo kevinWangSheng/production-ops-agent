@@ -63,3 +63,19 @@
 
 检查和独立审查完成，提交本分支 PR，等待接线；不合并。解除 skip 时提供真实外部驱动；原断言只按合同或验收变更处理。
 F6 第 6 步真实环境、持久化原子边界与角色隔离验证留在原 M1-02 任务范围。
+
+
+## 接线（2026-10-08）
+
+- 状态：真实 PG 接线与运行完成，31 个第 1–4 步外部场景通过；7 个合同/接口冲突 strict xfail，5 个第 5 步重放 skip，F6 尚未完成。worktree `/Users/shenghuikevin/dev/AI/production-ops-agent-f6-wiring`，分支 `test/f6-acceptance-wiring`，起点 `main 8aae433`。未改 ROADMAP、原 M1-02 任务、产品、迁移、profile 文件或 passes。
+- 公开接线：真实 `register_remediation` → 受限 Observer login 领取 → `ObserverLoop.sample` 经测试-owned InstantSource 查询 value/coverage/freshness → `submit_sample` 原子采纳 → `incident_sessions/session_history` 与主体/控制快照。只传调度元数据；输入 bytes 不直接进入采样/提交。source/查询/profile revision 做校验后的逆映射，原始 evidence 从 PG bundle 解码并双重核摘要；未知动作不得从审计投影中消失。
+- 时间选择：合成窗尾注入 Observer 的公共时钟；owner SQL 只做授权日期、任务 due、到期 fault 设置，数据库租约仍用真实 DB clock；不修改次数、水位、判定或生命周期。属于测试调度设施，不能替代真实时钟/生产观察证明。session.authorized 是原始授权记录，当前有效授权由 authorized 与 state=authorized 共同投影；原始行完整留在 authority_history。
+- #115：① 全新 ObservationStore 按主体/会话取 `session_history`，② Guarded replay 比较完整原始持久 history、主体及控制快照（抛错时也检查）；①②随第 5 步 skip「待 #87 合并」；③ query/绝对窗/查询类型由桩独立记录并按集合比较，在真实外部场景执行；④ 撤销/到期两例在采样完成、提交前使持久授权失效，状态/水位/控制/历史及证据检查通过，完整任务清单缺接口；⑤ max_samples=4、deadline=600 秒，240 秒次数耗尽后交接且无可领取任务，真实 PG 通过。
+- 31 个通过场景：持续健康确认/窗未满、四种单信号异常、陈旧/时间缺口/处置前数据、同目标双事故隔离、退化重置与重新累计、无/低流量与撤流量、六种缺必要信号、持续依赖异常，以及独立次数耗尽。按第 1/2/3/4 步分别 **17/6/6/2 passed**。
+- 冲突 1：integration_id、cluster_uid、namespace、resource_uid、revision 五个参数分别要求错误目标只作历史且健康窗 0；实际健康窗 60 秒。公开 `HealthSample/SignalReading` 和 `submit_sample` 没有目标输入，无法保义表达异目标提交。位置 `opspilot/domain/observation.py:82`、`opspilot/observation/store.py:1287`；五例保留全部断言并标 strict xfail「合同/接口冲突」。
+- 冲突 2：revoke/expire 两例要求迟到结果只作历史且完整旧任务集合不变；状态、权限、水位、预算、历史和原始证据断言通过，最后集合断言实际从空集变为同一个旧 job。结束会话清除活动 job，结束记录不保存无样本 job 身份。复核 ObservationStore `incident_sessions/session/session_history`、工作台 `observation_sessions` 与 Observer `sample/submit_sample`，无其它公开已发放任务清单；位置 `opspilot/observation/revocation.py:53`、`opspilot/observation/store.py:1569`。两例 strict xfail「合同/接口冲突」，不以内存领取账本冒充持久状态，不据此认定产品新安排任务。
+- 独立审查：全新上下文 Agent 查出信号与完整动作投影问题，已修复并静态复验；本轮复核公开接口，并由独立审查者真实 PG 复跑得到 92 passed、5 skipped、7 xfailed（3.48 秒、退出 0）；审查指出整用例 xfail 可能吞掉其他失败，已加 `raises=ContractInterfaceConflict`，只允许两类确证形态触发；其他权限/状态/证据/fixture 失败正常失败。旧 lease witness 单独作为外部证据，绝不补入持久快照。产品缺口类 xfail **0**，合同/接口冲突 **7**，无断言删除或放宽；任务集合断言仅移到末尾以先执行其余历史与状态检查。
+- 环境：默认 `make setup` 因 uv cache 权限失败，`UV_CACHE_DIR=tmp/uv-cache make setup` 退出 0。沙箱 initdb 曾失败；lead 随后在沙箱外启动指定 55651 PG17，本轮直接使用，没有再 initdb，也没有停止该实例。未碰其他端口、未启动 kind、模型或真实遥测；费用 0。
+- PG 定向原始首轮：92 passed、7 failed、5 skipped（跨目标 5、授权标记映射 2）；修正有效授权投影后两例明确失败于任务集合。加 strict xfail 后命令：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **92 passed、5 skipped、7 xfailed**，退出 0，3.52 秒。passed=31 产品外部 + 42 领域 + 11 原夹具 + 8 适配器检查；原始日志 `tmp/f6-pg-live.txt`、`tmp/f6-authority-live.txt`。
+- `UV_CACHE_DIR=tmp/uv-cache make check` 退出 0：锁/Ruff/mypy 全过，3144 passed、460 skipped、2 个既有架构债 xfailed（68.45 秒）；原始日志 `tmp/f6-make-check.txt`；覆盖、门控与冲突详见 [测试映射](../testing/f6-acceptance-tests.md)。
+- 交接：lead 负责 Git 提交、push/PR 和停 PG；本会话只改工作区。接口冲突须合同/接口决策，第 5 步待 #87 合并。本轮没有再尝试提交；历史 git 写权限失败已记录，提交列表为空。
