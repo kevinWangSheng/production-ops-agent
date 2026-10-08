@@ -1,15 +1,15 @@
 # M1-02 第 6 步：F6 真实环境验收（kind 实验环境，#88）
 
-- 日期：2026-10-08 17:13–18:10 UTC；issue #88；任务记录 [2026-10-03-m1-02-recovery-observation.md](../../tasks/2026-10-03-m1-02-recovery-observation.md)「第 6 步执行」。
+- 日期：2026-10-08 17:13–18:10 UTC（四场景）与 18:18–19:03 UTC（Codex 审查后重跑第 2 步，见「场景 2（重跑）」）；issue #88；任务记录 [2026-10-03-m1-02-recovery-observation.md](../../tasks/2026-10-03-m1-02-recovery-observation.md)「第 6 步执行」。
 - 分支 `feature/F6-live-acceptance`（worktree `../production-ops-agent-f6-live`，基于 main `510dcd3`）。
-- 费用：本步按任务记录计划第 6 项**不调用模型**（Observer 进程无模型客户端，`tests/test_m1_observer.py` 的子进程 import 校验；调查 Run 保持 `queued`，未起 worker），供应商余额不变；费用只有实验环境资源。没有 LangSmith trace：观察路径按 D3 不经调查 worker，也没有 OTel 埋点（ADR-0006 的 trace 要求针对调查 loop）。
+- 费用：本步按任务记录计划第 6 项**不调用模型**（Observer 进程无模型客户端，`tests/test_m1_observer.py` 的子进程 import 校验；调查 Run 保持 `queued`，未起 worker），供应商余额不变；费用只有实验环境资源。没有 LangSmith trace：本 PR 不改调查 loop、报告校验或恢复路径的代码（只加证据），观察路径按 D3 不经调查 worker、没有模型调用，也没有 OTel 埋点，因此没有可附的 trace——这是如实披露的缺口，不是豁免。
 - 实验环境写操作只有工程侧：`kind_lab.py up/stop`、`kind_lab.py fault inject/restore`（flagd ConfigMap）、`kubectl scale`（load-generator、kube-state-metrics，用实验环境专用 kubeconfig）。产品进程（工作台、Observer）只持有 PG 登录与 Prometheus 只读账号。
 
 ## 环境
 
 | 层 | 实际 |
 |---|---|
-| 实验环境 | 主仓库 `scripts/kind_lab.py up`（17:13Z 恢复，`health` 全部 ok；集群与 release 保留自第 0 步，chart 0.37.8 / kube-state-metrics 8.6.0）；用完 `stop` |
+| 实验环境 | 主仓库 `scripts/kind_lab.py up`（17:13Z 恢复，`health` 全部 ok；集群与 release 保留自第 0 步，chart 0.37.8 / kube-state-metrics 8.6.0）；18:10Z `stop`；18:18Z 为重跑第 2 步再次 `up`（`health` ok，但 load-generator 在 VM 重启后不发请求、span 指标计数器自 18:25Z 起不再增长，18:33Z `rollout restart deployment load-generator` 无效，18:44Z `rollout restart deployment otel-collector` 后计数器恢复——两者都是工程侧 kubectl 动作，记在 `s2b-…/summary.json` 的 `lab_actions`）；19:03Z `stop` |
 | 宿主 | 16 GB；`up` 前可回收约 3.1 GiB；运行期间 swap 10.6–11.2 / 12.3 GB（另有 4 条并行线在跑 PG/pytest）；Observer 进程 RSS 24 MB |
 | PostgreSQL | 17.9 临时实例 127.0.0.1:55601，数据目录 worktree `tmp/pg55601`（**未碰** 55431 lab）；空库 `opspilot.schema migrate` → `0005_incident_mode`；Observer 登录 `obs_lab_login LOGIN IN ROLE opspilot_observer`，`REVOKE TEMP ON DATABASE m0_budget FROM PUBLIC` |
 | 工作台 | `python -m opspilot.web serve`（`env -i`，127.0.0.1:8086，UI 用户 `demo` 的 pbkdf2 哈希；`OPSPILOT_TARGET_IDENTITIES` 只列 `checkout-lab` → `m0-otel-20260909 / kind-opspilot-m1 / otel-demo / checkout / otel-demo-checkout`）；无 worker、无模型 |
@@ -29,7 +29,7 @@
 
 ## 场景
 
-四个场景顺序执行（同一目标 `checkout-lab`，每个场景一个新事故），一个 Observer 进程服务全部会话。场景 2–4 用**有界变体** profile `otel-demo-checkout@8f91519db7fa`（`tmp/f6-live/otel-demo-checkout-bounded.json`，不入库；与 shipped profile 逐字段相同，只有 `session.max_samples` 由 40 改为 11——加载器允许的最小值 `(max_samples-1)×60 ≥ 600`，让「未确认 → 次数耗尽交接」在 11 分钟内真实发生；`deadline_seconds` 等其余会话参数不变）。场景 1 用 **shipped profile** `otel-demo-checkout@b72bbe2e30be`。每个场景目录：`summary.json`（冻结摘要：intake/register 响应、工程侧实验环境动作、会话、逐采样逐读数、`replay_session`、`recovery_outcome` 投影）、`replay.json`（`python -m opspilot.observer.replay --incident <id>` 以 Observer 登录离线重放，退出码 0）、`incident-page.html`（事故页）。所有采样 8 信号 × 3 条即时查询 = 24 请求，每信号 `sample_count=5`（60 s 抓取）或缺测，原始捆绑 1.3–2.0 KiB 带 sha256（原始字节留在库里，不入库）。
+四个场景顺序执行（同一目标 `checkout-lab`，每个场景一个新事故），一个 Observer 进程服务全部会话。场景 2–4 用**有界变体** profile `otel-demo-checkout@8f91519db7fa`（`tmp/f6-live/otel-demo-checkout-bounded.json`，不入库；与 shipped profile 逐字段相同，只有 `session.max_samples` 由 40 改为 11——加载器允许的最小值 `(max_samples-1)×60 ≥ 600`，让「未确认 → 次数耗尽交接」在 11 分钟内真实发生——以及 `description` 前缀一句说明；信号、阈值、流量门、新鲜度、`deadline_seconds` 等其余字段逐字相同）。场景 1 用 **shipped profile** `otel-demo-checkout@b72bbe2e30be`。每个场景目录：`summary.json`（冻结摘要：intake/register 响应、工程侧实验环境动作、会话、逐采样逐读数、`replay_session`、`recovery_outcome` 投影）、`replay.json`（`python -m opspilot.observer.replay --incident <id>` 以 Observer 登录离线重放，退出码 0）、`incident-page.html`（事故页）。所有采样 8 信号 × 3 条即时查询 = 24 请求；稳态下每信号 `sample_count=5`（60 s 抓取），遥测刚恢复的窗口为 2–4 点、缺测为空；原始捆绑 1.3–2.0 KiB 带 sha256（原始字节留在库里，不入库）。驱动脚本只做刺激、等待与冻结，退出码不是验收断言；场景结论来自冻结记录里的产品判定、`recovery_outcome` 投影与重放 CLI 的一致性校验，本记录逐项对照 F6 原文写出。
 
 ### 场景 4：持续异常（F6 第 4 步）— `s4-continued-degradation/`
 
@@ -40,12 +40,30 @@
 - 重放：`replay_session` 11/11 `matches`，CLI `consistent=true`、`recovery_verdict=degraded`、`recomputed_verdict=degraded`、`expected_lifecycle=open`、`external_queries=[]`、`model_requests=[]`。
 - 观察：第 1 个采样的窗口（17:15:00–17:20:00Z）起点早于登记时刻 17:19:00Z——产品按「窗口末尾 = 采样时刻、跨度 = 300 s」取窗，首个窗口必然含处置前数据；对本场景无影响（持续异常），对场景 1 的意义见下。
 
-### 场景 2：撤流量时错误率下降（F6 第 2 步）— `s2-traffic-removed/`
+### 场景 2（首次尝试，部分覆盖）：撤流量 — `s2-traffic-removed/`
+
+Codex 独立审查（PR #158 评论）指出：本次 restore 与撤流量同时发生，比率在前 3 个采样恒为 1.0、之后空向量，**没有出现「错误率下降」的读数**，只证明了「撤流量后不确认」。保留为首次尝试，完整刺激见下一节「场景 2（重跑）」。
 
 - 17:30:36Z `fault restore`（paymentFailure 恢复）+ 17:30:38Z `kubectl scale deployment load-generator --replicas=0`（撤流量）；17:30:39Z intake（事故 `1a83ff1b…`）；**17:30:55Z `register_remediation`**（会话 `2e9f6315…`）。
 - 采样 1–3（窗口末尾 17:31:57–17:33:58Z）：窗内只剩故障期的 PlaceOrder span，`error_ratio=1.0`、率 0.033 → 0.017 /s（绝对错误率在下降、比率不降）→ `degraded`。采样 4–11（17:34:58–17:41:59Z）：窗口不再含任何新订单，`request_rate_per_second=0.0`（序列仍在，5 个点，计数不增）< 门槛 0.008 → 流量门生效，`error_ratio` / `latency_p95` / `dependency_error_ratio` 读数 `no_data`（空向量），样本 `no_data`、`required_signals_present=false`、`adopted`，**不确认恢复**；deployment 四信号与依赖 8/8 全程正常。
 - 第 11 个采样 `max_samples_exhausted` → 事故回 `open`（17:41:59Z）。投影：`recovery_verdict=unknown`、`recovery_confirmed=false`、`latest_sample_verdict=no_data`、`healthy_window_seconds=0`、原因 `[INSUFFICIENT_TRAFFIC, REQUIRED_TELEMETRY_MISSING, MISSING_SIGNAL:error_ratio, MISSING_SIGNAL:latency_p95_milliseconds, MISSING_SIGNAL:dependency_error_ratio, OBSERVATION_UNCONFIRMED]`、`handoff`、`permissions=[read_only, human_control]`、actions 279、`model_requests=[]`。
 - 重放：11/11 一致，CLI `consistent=true`、`unknown/unknown`、`expected_lifecycle=open`、无外部查询。
+
+### 场景 2（重跑）：错误率下降时撤流量（F6 第 2 步）— `s2b-traffic-removed-while-errors-fall/`
+
+- 18:21:31Z `fault inject`；18:21:32Z intake（事故 `adbad000…`）。VM 重启后实验环境自身的问题（见「环境」行）使 span 指标直到 18:44Z 才恢复增长，期间没有登记、没有采样。18:47:51Z 错误比率 1.0 可见（率 0.032 /s）→ **18:48:07Z `fault restore`（处置）**，流量保持 → 工程探针看到比率下降 1.0 → **0.44**（18:50:38Z，率 0.019 /s）→ **18:50:49Z `kubectl scale deployment load-generator --replicas=0`（撤流量）→ 18:50:51Z `register_remediation`**（会话 `2fc502f3…`，有界变体，期限 19:50:51Z）。
+- 11 个采样（窗口末尾 18:51:52–19:01:54Z）：
+
+| 序号 | 窗口末尾 | outcome / basis | 率 /s | 错误率 | p95 ms | 说明 |
+|---|---|---|---|---|---|---|
+| 1 | 18:51:52 | degraded / outcome_not_healthy | 0.0156 | **0.266** | 159.6 | 比率仍在下降途中但 > 0.01 |
+| 2 | 18:52:52 | healthy / **window_before_authorization** | 0.0110 | 0 | 162.0 | 窗内已无错误、流量尚在门槛之上，但窗口起点（18:47:52）早于登记 18:50:51 → 产品**不计入**健康窗（F6 第 1 步「处置前数据」规则） |
+| 3 | 18:53:52 | healthy / window_before_authorization | 0.0108 | 0 | 164.0 | 同上 |
+| 4–11 | 18:54:53–19:01:54 | no_data / outcome_not_healthy | 0 | no_data | no_data | 流量门：率 0 < 0.008，错误/延迟/依赖错误率空向量；`required_signals_present=false`；deployment 四信号与依赖 8/8 正常 |
+
+- 第 11 个采样 `max_samples_exhausted` → `observation_ended_unconfirmed`，事故回 `open`（19:01:54Z）；`healthy_since` 始终为空（健康采样因 `window_before_authorization` 不计），`healthy_window_seconds=0`。投影：`recovery_verdict=unknown`、`recovery_confirmed=false`、原因 `[INSUFFICIENT_TRAFFIC, REQUIRED_TELEMETRY_MISSING, MISSING_SIGNAL:error_ratio, MISSING_SIGNAL:latency_p95_milliseconds, MISSING_SIGNAL:dependency_error_ratio, OBSERVATION_UNCONFIRMED]`、`human_interaction=handoff`、`permissions=[read_only, human_control]`、actions 279、`model_requests=[]`。
+- 重放：11/11 一致，CLI `consistent=true`、`unknown/unknown`、`expected_lifecycle=open`、`external_queries=[]`。
+- 覆盖判断：错误率从 1.0 经 0.44（探针）、0.27（采样 1）降到 0（采样 2–3）的同时流量被撤走并跌破门槛；全程没有确认恢复。本次比第一次尝试多出的证据是「比率下降」与「健康但处置前窗口不计入」两段。
 
 ### 场景 3：去掉必要遥测（F6 第 3 步）— `s3-telemetry-removed/`
 
@@ -78,7 +96,8 @@
 
 - 模型与 trace：按任务记录计划第 6 项不调用模型，没有调查 Run 执行（Run 行保持 queued）、没有 LangSmith trace；Observer 路径没有 OTel 埋点。费用 0（无供应商调用；未另抓余额快照）。
 - 场景 2–4 用有界变体 profile（`max_samples=11`，其余与 shipped 相同）而不是 shipped 的 40 次；真实「次数耗尽交接」三次，真实 `deadline_expired`（1 小时）本次未等到（第 4 步 run.md 第二/三次运行已有两例真实到期交接）。
-- 场景 2「撤流量时错误率下降」的实际轨迹：前 3 个采样比率仍为 1.0（窗内只剩故障期 span）判 degraded，之后率为 0 才进流量门；没有出现「率在 0 与门槛之间」的 `INSUFFICIENT_TRAFFIC` 单独判定（流量薄，2 locust 用户，与第 1 步限制一致）。
+- 场景 2 第一次尝试只证明「撤流量后不确认」（比率恒 1.0 → 空向量）；重跑补上了「比率下降」。两次都没有出现「率在 0 与门槛之间」的单独 `INSUFFICIENT_TRAFFIC` 采样（撤流量后率直接到 0；流量薄，2 locust 用户，与第 1 步限制一致）。
+- 第二次实验环境会话里 load-generator 与 otel-collector 的异常（VM 重启后无请求 / 计数器不增长）是实验环境自身问题，由工程侧重启解决，未影响产品进程；原因未深究（未确认）。
 - 场景 3 只去掉了 kube-state-metrics 这一类遥测（四个 deployment 信号）；缺 span 信号（请求量/错误/延迟/依赖错误率）的真实场景没有另做（在场景 2 后段以空向量形态出现）。
 - `deployment_available_replicas_min_in_window` 窗内下探到 0 的形态没有制造（没有重启 checkout pod）；pod 更换导致的 stale 判定未出现。
 - 首个采样的窗口含处置前数据（窗口末尾 = 采样时刻），产品不裁剪；场景 1 的首个采样因此判 degraded，不影响结论。

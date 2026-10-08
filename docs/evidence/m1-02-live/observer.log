@@ -45,3 +45,18 @@
 2026-10-08 11:07:49,844 opspilot.observer INFO sample session=28a4b4c6-e4dc-5b15-9e36-d440bc3b84ff sequence=10 outcome=healthy present=True requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=completed
 2026-10-08 11:09:29,438 opspilot.observer INFO signal=15: stop claiming, finishing the in-flight sample
 2026-10-08 11:09:29,440 opspilot.observer INFO observer stopped
+2026-10-08 11:18:07,651 opspilot.observer INFO observer owner=3d1baf6e-731d-4e80-b2d0-073a885167d9 prometheus=http://127.0.0.1:19090
+2026-10-08 11:18:07,661 opspilot.observer INFO observer started
+2026-10-08 11:51:52,467 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=1 outcome=degraded present=True requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:52:52,761 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=2 outcome=healthy present=True requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:53:52,987 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=3 outcome=healthy present=True requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:54:53,219 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=4 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:55:53,421 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=5 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:56:53,624 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=6 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:57:53,830 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=7 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:58:54,089 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=8 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 11:59:54,290 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=9 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 12:00:54,521 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=10 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=authorized
+2026-10-08 12:01:54,887 opspilot.observer INFO sample session=2fc502f3-8199-5ac3-9324-e037fd4e8530 sequence=11 outcome=no_data present=False requests=24 interrupted=False budget_exhausted=False disposition=adopted reason=adopted state=expired
+2026-10-08 12:02:44,217 opspilot.observer INFO signal=15: stop claiming, finishing the in-flight sample
+2026-10-08 12:02:44,223 opspilot.observer INFO observer stopped
