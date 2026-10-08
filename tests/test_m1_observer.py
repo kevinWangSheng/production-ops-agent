@@ -959,6 +959,150 @@ def test_a_prompt_error_status_is_reported_with_its_body():
     assert elapsed < 1
 
 
+def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
+    """Issue #126: a peer that answers with something other than HTTP raises
+    ``http.client.BadStatusLine`` -- an ``HTTPException``, not an ``OSError``
+    -- and must become ``failed``/``UNREACHABLE`` at the request layer, the
+    same classification the investigation client gives it."""
+    from http.client import BadStatusLine, IncompleteRead
+    from http.server import BaseHTTPRequestHandler
+
+    class NotHttp(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.wfile.write(b"SMTP 220 not an http status line\r\n\r\n")
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(NotHttp), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        None,
+        "UNREACHABLE",
+    )
+    assert elapsed < 1 and result.body == b"" and result.body_complete
+    # the injected-opener path classifies the same protocol errors alike;
+    # a body cut mid-read keeps its prefix and is marked incomplete
+    src, _ = source(error=BadStatusLine("garbage"))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert result.body == b"" and result.body_complete
+    src, _ = source(error=IncompleteRead(b"partial"))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert result.body == b"partial" and not result.body_complete
+    # no status line had arrived on either: none is recorded
+    assert result.http_status is None
+    # an error status whose body is cut mid-read keeps that status
+    # (codex P2, round 2): a truncated 401 is not "no HTTP response"
+
+    class CutBody:
+        def read(self, n=-1):
+            raise IncompleteRead(b"Unauth")
+
+        def close(self):
+            return None
+
+    src, _ = source(error=urllib.error.HTTPError("u", 401, "no", {}, CutBody()))
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        401,
+        "UNREACHABLE",
+    )
+    assert result.body == b"Unauth" and not result.body_complete
+
+
+@pytest.mark.parametrize("status", [200, 401])
+def test_a_malformed_header_after_a_valid_status_line_keeps_that_status(status):
+    """Codex review of PR #131, P2: a valid status line followed by a header
+    the client refuses (``LineTooLong``) is a protocol failure, but the
+    status the peer did send is kept -- not filed as "no HTTP response"."""
+    from http.server import BaseHTTPRequestHandler
+
+    class LongHeader(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            try:
+                self.wfile.write(f"HTTP/1.1 {status} X\r\n".encode())
+                self.wfile.write(b"X: " + b"a" * 65537 + b"\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(LongHeader), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        status,
+        "UNREACHABLE",
+    )
+    assert result.body == b"" and result.body_complete
+    assert elapsed < 1
+
+
+def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
+    """PR #131 codex P2: a chunked response that ends after one chunk raises
+    ``IncompleteRead`` with part of the body already read. The reading is
+    ``failed`` with exactly that prefix and ``body_complete`` False -- the
+    stored bundle must not describe an empty body as the full response --
+    and the replay judges it the same way."""
+    from http.server import BaseHTTPRequestHandler
+
+    prefix = b'{"status":"success","data":{"resultType":"vector","result":[{"m'
+
+    class CutChunked(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            self.send_response(200)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(f"{len(prefix):x}\r\n".encode() + prefix + b"\r\n")
+            self.wfile.flush()
+            # no terminating chunk: the handler returns and the connection
+            # is closed under the client's next read
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(CutChunked), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        200,
+        "UNREACHABLE",
+    )
+    assert result.body == prefix and not result.body_complete
+    assert elapsed < 1
+    # online and replay agree: the bundle keeps the prefix, says it is
+    # incomplete, and the reading fails on both sides
+    answers = healthy_answers()
+    answers["sum(rate(x[5m]))"] = result
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    assert taken.evaluation is not None and taken.evaluation.outcome == "failed"
+    ((_, sample, readings),) = store.submitted
+    rate = next(reading for reading in readings if reading.signal_name == "rate")
+    bundle = json.loads(rate.raw)
+    assert bundle["query"]["body_complete"] is False
+    assert bundle["query"]["http_status"] == 200
+    assert base64.b64decode(bundle["query"]["body_b64"]) == prefix
+    rows = [
+        {
+            "signal_name": r.signal_name,
+            "query": r.query,
+            "source": r.source,
+            "window_start": r.window_start,
+            "window_end": r.window_end,
+            "raw": r.raw,
+            "raw_sha256": r.raw_sha256,
+        }
+        for r in readings
+    ]
+    replayed = replay_readings(PROFILE, rows)
+    assert replayed.outcome == "failed"
+    verdict = next(v for v in replayed.verdicts if v.signal_name == "rate")
+    assert verdict.verdict == "failed"
+
+
 def _http_workers() -> int:
     return sum(1 for t in threading.enumerate() if t.name == "opspilot-observer-http")
 
@@ -1259,3 +1403,64 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
         "submit",
         "claim",
     ]
+
+
+def _slow_scope_setup(monkeypatch, scope_cost):
+    """A controllable monotonic clock; ``scope_cost(calls_so_far)`` s per scope check."""
+    from opspilot.observer import sampler
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(sampler.time, "monotonic", lambda: clock["now"])
+
+    class Store(FakeStore):
+        def lease_scope_current(self, lease):
+            clock["now"] += scope_cost(self.scope_calls)
+            return super().lease_scope_current(lease)
+
+    class Source:
+        def __init__(self):
+            self.timeouts: list[int] = []
+
+        def instant(self, expr, *, at, timeout_seconds):
+            self.timeouts.append(timeout_seconds)
+            clock["now"] += 1.0
+            return ok(1.0)
+
+    short = lease().__class__(
+        **{**lease().__dict__, "lease_until": NOW + timedelta(seconds=25)}
+    )
+    return clock, Store(), Source(), short
+
+
+def test_the_request_timeout_is_computed_after_the_scope_check(monkeypatch):
+    """Issue #125 (PR #119 P2): a slow scope check must not leave the request
+    a timeout sized before the check -- it could run past the budget end and
+    eat the submission margin."""
+    # budget = 25 - 5 = 20 s; the first scope check takes 17 s -> 3 s left
+    clock, store, source, short = _slow_scope_setup(
+        monkeypatch, lambda n: 17.0 if n == 0 else 0.0
+    )
+    take_sample(short, PROFILE, source, store)
+
+    assert source.timeouts[0] == 3  # not min(10, 20)
+    assert clock["now"] - 1000.0 <= 20.0 + 1.0  # never past the budget end
+
+
+def test_a_scope_check_that_spends_the_budget_sends_no_request(monkeypatch):
+    clock, store, source, short = _slow_scope_setup(
+        monkeypatch, lambda n: 19.5 if n == 0 else 0.0
+    )
+    taken = take_sample(short, PROFILE, source, store)
+
+    assert source.timeouts == [] and taken.requests_issued == 0
+    assert taken.budget_exhausted and not taken.scope_interrupted
+    # the one check that spent the budget is the only one: no more store trips
+    assert store.scope_calls == 1
+    ((_, sample, readings),) = store.submitted
+    assert (sample.outcome, sample.required_signals_present) == ("timeout", False)
+    details = [
+        json.loads(r.raw)[k]["detail"]
+        for r in readings
+        for k in ("query", "coverage", "freshness")
+    ]
+    assert set(details) == {"LEASE_BUDGET"}
