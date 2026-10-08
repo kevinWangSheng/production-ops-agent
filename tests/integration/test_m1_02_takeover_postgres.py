@@ -478,3 +478,59 @@ def test_notes_under_human_ownership_are_recorded_after_the_run_deadline(
     # A note without content is still refused (nothing to record).
     with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
         owner.control(incident, 3, "follow_up", "operator")
+
+
+@pytest.mark.parametrize("scope", ["global", "target"])
+def test_resume_under_human_ownership_does_not_outrank_a_scope_suspension(
+    owner: DurableStore, scope: str
+) -> None:
+    """Recheck of PR #123: takeover, then a global or target suspension, then
+    resume -- the control mirror must stay ``paused`` while the scope is
+    suspended (C3 section 4: scope suspension outranks a subject resume);
+    only a resume after the release lifts it."""
+    incident, run, _ = _incident(owner)
+    with owner.transaction(snapshot=True) as conn:
+        target_id = conn.execute(
+            "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s", (incident,)
+        ).fetchone()["target_id"]
+    assert owner.control(incident, 0, "takeover", "operator") == 1
+    if scope == "global":
+        with owner.transaction(snapshot=True) as conn:
+            generation = conn.execute(
+                "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+            ).fetchone()["global_generation"]
+        suspended = owner.set_global_suspension(
+            True, expected_generation=generation, actor="op"
+        )
+    else:
+        suspended = owner.set_target_suspension(
+            target_id, True, expected_generation=0, actor="op"
+        )
+    try:
+        assert _incident_row(owner, incident)["state"] == "paused"
+        assert owner.control(incident, 1, "resume", "operator") == 2
+        row = _incident_row(owner, incident)
+        assert (row["state"], row["mode"]) == ("paused", "human_owned")
+        # The suspension path itself parks every open Run as paused (main
+        # behaviour); resume under human ownership never re-queues it.
+        assert _run_row(owner, run)["state"] in {"paused", "waiting_human"}
+        with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+            owner.claim(incident, run, uuid4(), VERSIONS)
+    finally:
+        if scope == "global":
+            owner.set_global_suspension(
+                False, expected_generation=suspended, actor="op"
+            )
+        else:
+            owner.set_target_suspension(
+                target_id, False, expected_generation=suspended, actor="op"
+            )
+    # Released: the mirror is still paused until an explicit resume.
+    assert _incident_row(owner, incident)["state"] == "paused"
+    assert owner.control(incident, 2, "resume", "operator") == 3
+    row = _incident_row(owner, incident)
+    assert (row["state"], row["mode"]) == ("running", "human_owned")
+    assert _run_row(owner, run)["state"] not in {"queued", "running"}
+    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
+        owner.claim(incident, run, uuid4(), VERSIONS)
+    assert owner.claimable_incidents(limit=100).count(incident) == 0

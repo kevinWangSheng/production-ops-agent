@@ -339,10 +339,9 @@ class _ControlOps(_StoreBase):
             if human_owned and action in {"follow_up", "correct"}:
                 # A note under human ownership changes no control mirror.
                 state = row["state"]
-            if human_owned and action == "resume":
-                # Lifts the pause only (C3 §4 "显式恢复"); the Run stays with
-                # the human and the mode stays human_owned.
-                state = "running"
+            # human_owned 下的 resume 只解除主体暂停：镜像走上面的默认值
+            # （running），但 keep_paused 仍优先——全局/目标挂起期间 resume 不能
+            # 把镜像写成 running（C3 §4 范围暂停优先于主体 resume；复验 PR #123）。
             conn.execute(
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),

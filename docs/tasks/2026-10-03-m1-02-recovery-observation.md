@@ -208,3 +208,4 @@
   - 可选项：run.md 把含 `...` 的输出改称「摘录」。
   - 「human_owned → automatic 交还动作」用户决定先不加，拆到 #124。
   - 复验数字：`make check` 2766 passed / 433 skipped / 2 xfailed；临时 PG 55497 全套 `tests/integration` 367 passed / 10 skipped + 迁移 16 passed；定向 6 模块 113 passed。
+  - 复验新增 P2（human_owned 下 resume 无条件把镜像写成 running，覆盖范围挂起）——已修：删掉该覆盖，沿用 `keep_paused` 判定（全局/目标挂起期间 resume 后镜像仍 `paused`，解除后再 resume 才 `running`；Run 始终不被重新排队、claim 仍拒）。PG 复现 `test_resume_under_human_ownership_does_not_outrank_a_scope_suspension[global|target]`。可选项：run.md 说明 `takeover.at` 是调用前的数据库时钟（提交时刻以审计行 `created_at` 为准）、`model_requests_started_before` 与 `no_model_request_after_takeover_returned` 的口径；冻结的 summary.json 未改。数字：`make check` 2766 passed / 433 skipped / 2 xfailed（同一 shell 带 PG 环境变量再跑一次为 3151 passed / 50 skipped，含集成测试）；临时 PG 55497 全套 `tests/integration` 369 passed / 10 skipped + 迁移 16 passed；定向 6 模块 115 passed。
