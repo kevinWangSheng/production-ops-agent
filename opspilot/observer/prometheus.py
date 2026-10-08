@@ -453,13 +453,32 @@ def _perform(
         conn.putheader(name, value)
     conn.endheaders()
     _arm(conn, deadline)
+    # the status line is parsed before the headers: record it the moment it
+    # is in, so a header that then breaks the protocol (``LineTooLong``,
+    # ...) still reports the status the peer sent (codex review P2)
+    conn.response_class = _recording_response(seen)
     response = conn.getresponse()
     status = int(response.status)
-    # what the cancel/error paths may report once the status line is in
-    seen["status"] = status
     limit = RESPONSE_LIMIT_BYTES + 1 if status == 200 else _ERROR_BODY_BYTES
     complete = _read_until(response, deadline, limit, chunks)
     return status, b"".join(chunks), complete
+
+
+def _recording_response(seen: dict[str, int]) -> type[HTTPResponse]:
+    """An ``HTTPResponse`` that writes the status code into ``seen`` as soon
+    as the status line is parsed, before the headers are. ``_read_status``
+    is ``http.client`` internal (same reach as the investigation client's
+    socket handling); should a Python upgrade rename it the only effect is
+    ``http_status`` None again on a header failure, which the real-socket
+    tests would show."""
+
+    class Recording(HTTPResponse):
+        def _read_status(self) -> tuple[str, int, str]:
+            version, status, reason = super()._read_status()  # type: ignore[misc]
+            seen["status"] = int(status)
+            return version, status, reason
+
+    return Recording
 
 
 def _arm(conn: HTTPConnection, deadline: float) -> None:

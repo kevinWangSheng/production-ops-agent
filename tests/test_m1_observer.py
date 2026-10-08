@@ -985,6 +985,9 @@ def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
         def read(self, n=-1):
             raise IncompleteRead(b"Unauth")
 
+        def close(self):
+            return None
+
     src, _ = source(error=urllib.error.HTTPError("u", 401, "no", {}, CutBody()))
     result = src.instant("up", at=NOW, timeout_seconds=1)
     assert (result.status, result.http_status, result.detail) == (
@@ -993,6 +996,34 @@ def test_a_malformed_status_line_is_a_failed_reading_not_a_crash():
         "UNREACHABLE",
     )
     assert result.body == b"Unauth" and not result.body_complete
+
+
+@pytest.mark.parametrize("status", [200, 401])
+def test_a_malformed_header_after_a_valid_status_line_keeps_that_status(status):
+    """Codex review of PR #131, P2: a valid status line followed by a header
+    the client refuses (``LineTooLong``) is a protocol failure, but the
+    status the peer did send is kept -- not filed as "no HTTP response"."""
+    from http.server import BaseHTTPRequestHandler
+
+    class LongHeader(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            try:
+                self.wfile.write(f"HTTP/1.1 {status} X\r\n".encode())
+                self.wfile.write(b"X: " + b"a" * 65537 + b"\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
+        def log_message(self, *args):
+            return
+
+    result, elapsed = _timed_instant(_slow_server(LongHeader), timeout_seconds=5)
+    assert (result.status, result.http_status, result.detail) == (
+        "failed",
+        status,
+        "UNREACHABLE",
+    )
+    assert result.body == b"" and result.body_complete
+    assert elapsed < 1
 
 
 def test_a_chunked_body_cut_mid_way_keeps_its_prefix_and_is_marked_incomplete():
