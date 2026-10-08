@@ -1,7 +1,7 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–2 步已合并 #111 #113 #114；F6 验收与合同测试已合并 #112；第 3 步 #85 与第 4 步 #86 并行开发中，第 4 步 PR 待审）
-- 更新日期：2026-10-07
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；下一步第 5 步 #87、第 6 步 #88，第 6 步前须完成 #122 #125 #126 #115）
+- 更新日期：2026-10-08
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
 
@@ -174,8 +174,8 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；第 0–2 步已合并。第 3 步（#85）与第 4 步（#86）互不依赖，可并行，各自基于 main；第 5 步（#87）、第 6 步（#88）在其后。第 4 步合并前须完成 #86 中转入的要求（新鲜度基于底层样本时间戳等）。
-- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复）；回归用一次性 PG 55481 已停并位于会话临时目录。
+- 上游核对已完成（见上表）；第 0–4 步已合并（#111 #113 #114 #120 #123 #119）。下一步第 5 步重放展示（#87）；第 6 步真实验收（#88）之前须完成 #122（规则查询与观察对象一致）、#125（scope 检查后重算预算）、#126（重定向不带凭据、HTTP 协议错误）与验收夹具接线 #115。其余跟踪：#124（交还自动，暂不做）、#127（接管证据脚本）、#128（控制审计按幂等键绑定）。
+- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停。
 
 ## 第 2 步执行（2026-10-07，观察会话与原子采纳，#84）
 
@@ -214,7 +214,7 @@
 - 验证：`make check` 2747 passed / 425 skipped / 2 xfailed（既有 strict xfail）；ruff、ruff format、mypy 全过。临时 PG 17.9（55491，会话临时目录，未碰 55431）`M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 M0_STEP_POSTGRES=1 pytest tests/integration`：358 passed / 10 skipped（既有 opt-in）+ 迁移文件 17 passed。新 PG 测试 `tests/integration/test_m1_02_register_remediation_postgres.py`（12 例）：登记后生命周期/两种代际/会话参数/Target/审计行；过期代际冲突不写；二次登记取代旧会话（结束记录 before=after=observing_recovery）；挂起拒绝不写、解除后同代际通过；resolved/closed 拒绝；登记行被改 `TARGET_MISMATCH` 不推进代际；pause/cancel/续开/new_run 同事务撤销；登记 vs cancel 同代际并发 8 轮，恰一个应用、另一个 `CONTROL_CONFLICT`，终态按胜者一致；工作台端到端：同键重放一个会话、过期表单 409、缺 revision 400、页面显示会话。迁移测试新增 3 例：有行无文件/部分覆盖/畸形条目均 fail-closed 停在 0003 且无新列；有文件回填、NOT NULL 与非空 CHECK 生效、`register_target` 幂等与冲突、downgrade 删列后再升级须再回填、dump 与 head 一致；空登记表无需文件。`tests/test_m1_02_register_web.py`（5 例，内存存储）：动作词汇、`revision` 归属、无 profile 拒绝、pause/cancel 撤销、登记表解析与 `UNKNOWN_TARGET` 不污染幂等键。第 2 步 PG 测试按新签名改 `_authorize`/`_target`，目标身份用例改为篡改登记行；断言语义不弱化。F6 验收/合同测试未改。
 - 真实运行：[docs/evidence/m1-02-register/run.md](../evidence/m1-02-register/run.md)（空库 `migrate` 到 0004 → 起工作台 → 提交事故 → 未登记目标 `UNKNOWN_TARGET` → 登记处置 generation 1 → 同键重放 `replayed:true` → 过期表单 `CONTROL_CONFLICT` → 页面 `observing_recovery` / 会话 `authorized` / revision / profile revision → pause 后会话 `revoked`、结束记录 before=after=observing_recovery；页面 HTML 同目录）。临时 55491 库的 30 个已登记目标用生成的身份文件走了一次真实回填升级。
 - 自行决定（可逆）：① `revision` 由操作者在登记时填写（Target.revision 非空必填、不属于身份，F6 夹具也以 `handled-revision` 表达「处置后的版本」）；② 登记表配置是 JSON 文件 `OPSPILOT_TARGET_IDENTITIES`，迁移回填与运行时解析共用同一文件与同一加载函数，不加依赖；③ 再次登记取代旧会话而不是拒绝（C3 §10「如仍获授权则创建新版本观察会话」，审计行记被撤销会话）；④ 挂起期间拒绝登记而非先记后撤（避免产生一个注定被结束的授权）；⑤ 撤销逻辑独立成 `observation/revocation.py`，`persistence` 在函数内延迟 import 避免包级循环（`test_architecture` 的两个 xfail 保持）；⑥ 工作台每次只加载一份 HealthProfile（M1-02 只有 checkout 一个），按目标选 profile 留给 #87/#88。
-- 限制与未执行：接管（takeover）与同事务撤销拆到 #121；profile 的 `subject` 只是声明，授权只比对它与登记行，`subject` 与 profile 实际查询范围（PromQL 选择器）的一致性由 #122 在 profile 校验中保证（第 6 步前）；身份文件是静态文件而非注册服务；`resource_uid` 仍唯一（同 uid 跨集群未支持）；`register_remediation` 后 `state` 镜像不变、调查 Run 不动，运行中的尝试会在下一次提交被代际栅栏交接（与其他人工动作一致）；页面只显示会话行，采样依据展示属第 5 步；本机 55431 lab 库**未升级**（合并后按开发指南 `make migrate`，不再需要身份文件）；未做 Playwright 截图，以命令输出与保存的页面 HTML 为证。
+- 限制与未执行：接管（takeover）与同事务撤销拆到 #121；profile 的 `subject` 只是声明，授权只比对它与登记行，`subject` 与 profile 实际查询范围（PromQL 选择器）的一致性由 #122 在 profile 校验中保证（第 6 步前）；身份文件是静态文件而非注册服务；`resource_uid` 仍唯一（同 uid 跨集群未支持）；`register_remediation` 后 `state` 镜像不变、调查 Run 不动，运行中的尝试会在下一次提交被代际栅栏交接（与其他人工动作一致）；页面只显示会话行，采样依据展示属第 5 步；本机 55431 lab 库已于 2026-10-08 在 #120 合并后升级到 0004（`make migrate`，未用身份文件；`schema check` 通过）；未做 Playwright 截图，以命令输出与保存的页面 HTML 为证。
 - 独立审查处置（2026-10-07，PR #120，Codex 全新上下文，结论「修复后可合并」，1 P1 + 3 P2；全文在 lead 的 `tmp/m1-02-review/pr120-review-final.md`）：
   - P1 登记绕过事故暂停（已修）：`authorize_session_in` 在事故行锁下另读 `state`（不扩 `_lock_incident` 的列，Observer 角色没有 `state` 的 SELECT 授权），`paused` 一律 `ILLEGAL_TRANSITION`，`register_remediation` 与存储原语同受此限；登记不隐式解除暂停，恢复须显式 `resume`。目标/全局挂起解除后控制镜像仍是 `paused`（既有语义），因此也要先 `resume` 再登记——第 2 步 PG 测试「解除挂起后可再授权」与本步两个用例据此改为「先拒绝、resume 后通过」。领取/采纳侧（claim/submit 段，#119 在改）未改：pause 在同一事务撤销会话、登记在 paused 下被拒且两者都锁事故行，不存在「授权会话 + 事故 paused」的组合可供领取；审查复现的输入（pause → register → claim/submit）现在在 register 一步即被拒。PG 复现测试 `test_a_paused_incident_takes_no_registration`、web 测试 `test_a_paused_incident_takes_no_registration_until_resumed`。
   - P2 崩溃恢复把不同 revision 的登记误认成同一次（已修）：登记事务的审计 payload 带本请求的 ledger 幂等键与 revision；`_audit_matches()` 对 `register_remediation` 只在 payload 的键与 revision 都等于本 intent 时才确认，不再用 `unconfirmed_peers==1` 兜底。审查的 A/B 两键复现 `test_crash_recovery_confirms_a_registration_only_against_its_own_key`：只提交 A 的事务后重试 B → `CONTROL_CONFLICT`、无确认行；重试 A → `replayed:true`、会话 revision 为 rev-A。
@@ -234,7 +234,7 @@
 - 自行决定（可逆）并理由：① 结论已发布或 Run 已取消的事故也可接管——接管收回的是观察授权与自动化，不以 Run 状态为前提；② 接管把 Run 置为 `waiting_human` 而非 `paused`/`cancelled`，因为 `waiting_human` 已是「交给人」的既有停车态，页面与清扫语义现成；③ `mode` 单列而不复用 `state` 镜像，因为 `state` 表达的是暂停/取消，和所有权正交，且 `IncidentSummary.control` 的页面语义不变；④ human_owned 下的追问/纠正按「只记录」处理，对齐 C3「不禁止记录人工操作」与「不恢复自动调查」。
 - 验证：`make check` 2765 passed / 431 skipped / 2 xfailed；临时 PG 17.9（55497，会话临时目录，按数据目录停）全套 `tests/integration` 365 passed / 10 skipped + 迁移 16 passed（含 0005 升降级往返与 CHECK）；定向 6 模块（接管、迁移、登记、观察存储、web、事故控制）111 passed。新 PG 测试 `tests/integration/test_m1_02_takeover_postgres.py`（3 例）：接管同事务递增代际/撤销会话/Run 停车/审计，之后 Observer 领不到、先前租约提交只作历史、worker `CONTROL_DENIED`、resume 与二次接管拒绝；human_owned 下登记处置授权新会话、Run 集合不变、Observer 可领取、追问只记录、cancel 后 `new_run` 仍拒；接管 vs 登记同代际并发 6 轮恰一个应用。web `tests/test_m1_02_takeover_web.py`（2 例）：动作/重放/二次接管拒绝、页面 `human_owned`、`run_once` 不投放、resume/new_run 拒绝；human_owned 下登记无新 Run、追问只记录。既有 `test_m1_web_workbench` 把「未知动作」示例从 takeover 换成 `reboot`。F6 验收/合同测试未改。
 - 真实运行：[docs/evidence/m1-02-takeover/run.md](../evidence/m1-02-takeover/run.md)（intake → 登记 gen 1 → 接管 gen 2 → 同键重放 → resume `ILLEGAL_TRANSITION` → human_owned 下登记 gen 3；页面 `human_owned` / `waiting_human` / 旧会话 revoked / 新会话 authorized；库行：mode human_owned、Run waiting_human 无 owner、两条会话、三条审计）。
-- 限制与未执行：`human_owned → automatic` 的交还动作用户决定先不加，拆到 #124（领域模型目前没有这条边；在此之前 human_owned 下 `cancel` 后无法 `new_run`，继续自动调查需等 #124）；页面只多了 mode 徽标，没有专门的接管说明；本机 55431 lab 库未升级 0005（合并后 `make migrate`）。
+- 限制与未执行：`human_owned → automatic` 的交还动作用户决定先不加，拆到 #124（领域模型目前没有这条边；在此之前 human_owned 下 `cancel` 后无法 `new_run`，继续自动调查需等 #124）；页面只多了 mode 徽标，没有专门的接管说明；本机 55431 lab 库已于 2026-10-08 在 #123 合并后升级到 0005（`make migrate` 输出 `schema upgraded: 0005_incident_mode`，`schema check` 为 `schema at head 0005_incident_mode`）。
 - 独立审查处置（2026-10-07，PR #123，Codex 全新上下文，结论「修复后可合并」，无 P1、3 P2）：
   - P2-1 暂停 + 接管后卡死——已修：human_owned 下 `resume` 只解除主体暂停（镜像 → `running`），不改 mode、不碰 Run（仍 waiting_human，claim 仍拒），之后可登记处置授权观察；human_owned 下 `pause` 同样只改镜像。复现测试 PG `test_resume_under_human_ownership_lifts_the_pause_only`、web `test_pause_then_takeover_is_lifted_by_resume_and_notes_outlive_the_deadline`。
   - P2-2 旧 Run 过期后 human_owned 下追问/纠正被整笔拒绝——已修：human_owned 下不推导自动续开（`renew` 恒 False），带内容的 follow_up/correct 照常落 `opspilot_inputs`、审计、推进代际，不建/不领 Run；不带内容仍拒绝。复现测试 PG `test_notes_under_human_ownership_are_recorded_after_the_run_deadline`。
