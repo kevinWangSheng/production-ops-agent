@@ -146,7 +146,7 @@ def register(args: argparse.Namespace) -> int:
             {
                 "action": "register_remediation",
                 "expected_generation": str(generation),
-                "idempotency_key": f"rem-{record['scenario_id']}-{args.experiment_id}",
+                "idempotency_key": f"rem-{record['scenario_id']}-{record['experiment_id']}",
                 "revision": args.revision,
             },
             args.user_file,
