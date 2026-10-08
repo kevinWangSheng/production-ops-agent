@@ -846,6 +846,30 @@ def test_blocked_resolution_is_bounded_by_the_in_flight_limit(monkeypatch):
     )
 
 
+def test_a_failed_worker_start_releases_its_slot(monkeypatch):
+    """PR #119 recheck 3: ``RuntimeError: can't start new thread`` after the
+    slot was taken must not leak the slot; four such failures used to pin the
+    process at IN_FLIGHT_LIMIT for good."""
+    from opspilot.observer import prometheus
+
+    def cannot_start(self):
+        raise RuntimeError("can't start new thread")
+
+    before = prometheus._IN_FLIGHT.count
+    monkeypatch.setattr(threading.Thread, "start", cannot_start)
+    src = PrometheusReadOnlySource("http://127.0.0.1:9")
+    for _ in range(prometheus.IN_FLIGHT_LIMIT + 2):
+        result = src.instant("up", at=NOW, timeout_seconds=1)
+        assert (result.status, result.detail) == ("failed", "UNREACHABLE")
+    assert prometheus._IN_FLIGHT.count == before
+    monkeypatch.undo()
+    # threads start again and the slots are all available: a normal request
+    # goes through (refused by the closed port, not by the limit)
+    result = src.instant("up", at=NOW, timeout_seconds=1)
+    assert result.detail in ("UNREACHABLE", "TIMEOUT")
+    assert prometheus._IN_FLIGHT.count == before
+
+
 # --- isolation (C3 §3, D3): own variables, own imports, no model
 
 

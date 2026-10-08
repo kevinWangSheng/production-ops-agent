@@ -323,8 +323,19 @@ def _fetch(
             _IN_FLIGHT.refused,
         )
         raise _Overloaded()
-    worker = threading.Thread(target=work, name="opspilot-observer-http", daemon=True)
-    worker.start()
+    try:
+        worker = threading.Thread(
+            target=work, name="opspilot-observer-http", daemon=True
+        )
+        worker.start()
+    except BaseException as exc:  # noqa: BLE001 - e.g. RuntimeError: can't start new thread
+        # The slot was taken but no worker will ever release it: give it back
+        # here, close the (unconnected) connection and report a failure, so a
+        # transient thread shortage cannot pin the process at the limit
+        # (PR #119 recheck 3). Each acquired slot is released exactly once.
+        _IN_FLIGHT.release()
+        conn.close()
+        raise OSError(f"worker start failed: {type(exc).__name__}") from None
     worker.join(max(0.0, deadline - time.monotonic()))
     if worker.is_alive():
         _close(held.get("sock"))
