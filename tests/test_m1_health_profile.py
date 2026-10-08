@@ -1128,6 +1128,11 @@ def test_vector_selectors_are_extracted_with_decoded_values():
 #: (``SUM(...) BY (s)``) is not covered here.
 PROMQL_PARSER_ORACLE = [
     ('x{a="b"} atan2 y{a="b"}', True),
+    ('x{a="b"} @ START()', True),
+    ('x{a="b"} @ End()', True),
+    ('x{a="b"} @ --1', False),
+    ('x{a="b"} @ -+1', False),
+    ('x{a="b"} offset -+5m', True),
     ('x{a="b"} atan2 on(s) y{a="b"}', True),
     ('x{a="b"} atan2 bool y{a="b"}', False),
     ('x{a="b"} ATAN2 y{a="b"}', True),

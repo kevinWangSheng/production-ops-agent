@@ -939,17 +939,24 @@ def _vector_selectors(query: str) -> list[tuple[_Matcher, ...]]:
                 continue
             raise ValueError("SCOPE_SELECTOR_UNBOUND")  # a bare metric
         if state in {"offset", "at"} and text in {"+", "-"}:
-            continue  # a signed duration or timestamp: ``offset -5m``, ``@ -1``
+            # ``offset`` takes a unary expression (``offset --5m``); ``@`` a
+            # single sign (``@ -1``, not ``@ --1``).
+            if state == "at":
+                state = "at_signed"
+            elif state == "at_signed":
+                raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
+            continue
         if state == "offset":
             if kind != "number":
                 raise ValueError("SCOPE_SELECTOR_UNPARSABLE")
             state = "operand"
             continue
-        if state == "at":
+        if state in {"at", "at_signed"}:
             if kind == "number":
                 state = "operand"
                 continue
-            if kind == "ident" and text in {"start", "end"}:  # ``@ start()``
+            # ``@ start()`` / ``@ end()``, keywords in any case
+            if kind == "ident" and state == "at" and text.lower() in {"start", "end"}:
                 pending = text
                 state = "expr"
                 continue
