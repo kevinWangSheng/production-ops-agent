@@ -68,17 +68,27 @@ class ObserverLoop:
                 _log.info("swept session=%s", session_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
-        try:
-            leases = self.store.claim_due_samples(
-                self.owner, limit=self.batch, lease_seconds=self.lease_seconds
-            )
-        except PersistenceError as exc:
-            _log.warning("claim refused code=%s", exc)
-            return []
+        # One lease at a time (codex round 3, P1): a lease is issued with its
+        # clock running, and a sample may legitimately use most of it (hung
+        # source, lease budget). Leasing a batch up front would let the later
+        # leases age -- or expire -- while the earlier samples run, and their
+        # submissions would be filed as lease_revoked. Claiming the next job
+        # only after the previous sample is submitted keeps every sample at
+        # the start of its own lease; ``batch`` bounds one pass.
         results: list[tuple[UUID, SampleReceipt]] = []
-        for lease in leases:
+        for _ in range(self.batch):
             if self.stop.is_set():
                 break
+            try:
+                leases = self.store.claim_due_samples(
+                    self.owner, limit=1, lease_seconds=self.lease_seconds
+                )
+            except PersistenceError as exc:
+                _log.warning("claim refused code=%s", exc)
+                break
+            if not leases:
+                break
+            lease = leases[0]
             try:
                 receipt = self.sample(lease)
             except PersistenceError as exc:

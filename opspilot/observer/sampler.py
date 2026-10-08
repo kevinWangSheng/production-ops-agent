@@ -155,13 +155,12 @@ def take_sample(
             ("coverage", signal.coverage_query),
             ("freshness", signal.freshness_query),
         ):
-            if not check(lease):
-                interrupted = True
-                break
             left = budget_end - time.monotonic()
-            if left < 1.0:
+            if exhausted or left < 1.0:
                 # no time for another bounded request inside the lease: the
-                # query is recorded as a timeout that was never sent
+                # query is recorded as a timeout that was never sent, and no
+                # scope check is made for a request that is not sent (codex
+                # round 3, P2: the checks would eat the submission margin)
                 exhausted = True
                 results[kind] = InstantResult(
                     expr,
@@ -173,6 +172,9 @@ def take_sample(
                     body_complete=False,
                 )
                 continue
+            if not check(lease):
+                interrupted = True
+                break
             results[kind] = source.instant(
                 expr, at=window_end, timeout_seconds=min(timeout, int(left))
             )
@@ -303,6 +305,12 @@ def _reading(
         # the value came back but the point count did not: the coverage
         # query failed or timed out, the reading cannot count
         status = coverage.status if coverage.status != "no_data" else "failed"
+    if status == "ok" and freshness.status in ("timeout", "failed"):
+        # the freshness query's transport outcome is the reading's: a
+        # timeout stays a timeout, a failure a failure (codex round 3, P2);
+        # an empty freshness answer leaves the reading ok and the verdict
+        # judges it stale for want of a raw sample timestamp
+        status = freshness.status
     if status == "ok" and count == 0:
         status = "no_data"
     if status == "ok" and not all(item.body_complete for item in results.values()):

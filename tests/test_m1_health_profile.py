@@ -336,6 +336,12 @@ def evaluation_window():
         lambda p: p["signals"][0].update(query="sum(rate(x[10m]))"),
         lambda p: p["signals"][0].update(coverage_query="max(count_over_time(x[1h:]))"),
         lambda p: p.update(evaluation_window_seconds=600),
+        # compound durations are parsed in full, not skipped (codex round 3)
+        lambda p: p["signals"][0].update(query="sum(rate(x[1m30s]))"),
+        lambda p: p["signals"][0].update(query="sum(rate(x[4m59s]))"),
+        # a bracket that is not a duration is refused rather than unchecked
+        lambda p: p["signals"][0].update(query="sum(rate(x[abc]))"),
+        lambda p: p["signals"][0].update(query="sum(rate(x[5m:abc]))"),
     ],
 )
 def test_profile_validation_rejects_missing_fields_and_illegal_values(tmp_path, mutate):
@@ -709,3 +715,22 @@ def test_duplicate_readings_and_foreign_inputs_are_rejected():
         evaluate(profile(), [{"signal_name": "rate"}])  # type: ignore[list-item]
     with pytest.raises(DomainError, match="INVALID_INPUT"):
         evaluate(minimal_profile(), [])  # type: ignore[arg-type]
+
+
+def test_range_durations_are_parsed_in_full_and_quoted_brackets_are_ignored():
+    """``[1m30s]`` is 90 s, not an unparsable bracket to skip; a regex label
+    value may contain brackets without being a range selector."""
+    from opspilot.observer.health_profile import _range_selector_seconds
+
+    assert _range_selector_seconds("sum(rate(x[5m]))") == [300]
+    assert _range_selector_seconds("max_over_time(x[1m30s:15s])") == [90]
+    assert _range_selector_seconds('rate(x{pod=~"c[0-9]+"}[1h5m10s500ms])') == [
+        3600 + 300 + 10 + 0.5
+    ]
+    with pytest.raises(ValueError, match="RANGE_SELECTOR_UNPARSABLE"):
+        _range_selector_seconds("rate(x[1m 30s])")
+    ninety = minimal_profile(evaluation_window_seconds=90)
+    for signal in ninety["signals"]:
+        for key in ("query", "coverage_query"):
+            signal[key] = signal[key].replace("[5m]", "[1m30s]")
+    assert profile(**ninety).evaluation_window_seconds == 90

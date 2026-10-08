@@ -656,7 +656,10 @@ def _judge(
     return _Judged(usable=True, value=value)
 
 
-_RANGE_SELECTOR = re.compile(r"\[(\d+)(ms|[smhdwy])(?::[^\]]*)?\]")
+_QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+_BRACKET = re.compile(r"\[([^\]]*)\]")
+_DURATION_PART = re.compile(r"(\d+)(ms|[smhdwy])")
+_DURATION = re.compile(r"^(?:\d+(?:ms|[smhdwy]))+$")
 _UNIT_SECONDS = {
     "ms": 0.001,
     "s": 1,
@@ -668,12 +671,32 @@ _UNIT_SECONDS = {
 }
 
 
-def _range_selector_seconds(query: str) -> list[float]:
-    """Spans of every ``[5m]`` / ``[5m:]`` range or subquery selector."""
-    return [
+def _duration_seconds(text: str) -> float:
+    """A full PromQL duration (``5m``, ``1m30s``, ``1h5m10s500ms``)."""
+    if not _DURATION.match(text):
+        raise ValueError("RANGE_SELECTOR_UNPARSABLE")
+    return sum(
         int(amount) * _UNIT_SECONDS[unit]
-        for amount, unit in _RANGE_SELECTOR.findall(query)
-    ]
+        for amount, unit in _DURATION_PART.findall(text)
+    )
+
+
+def _range_selector_seconds(query: str) -> list[float]:
+    """Spans of every range or subquery selector in ``query``.
+
+    Quoted label values are skipped (a regex matcher may contain brackets);
+    every remaining ``[...]`` must be a complete PromQL duration, optionally
+    followed by ``:`` and a resolution, or the profile is rejected rather
+    than silently left unchecked (codex round 3, P2: ``[1m30s]`` used to
+    slip past a single-unit pattern).
+    """
+    spans: list[float] = []
+    for content in _BRACKET.findall(_QUOTED.sub('""', query)):
+        duration, separator, resolution = content.partition(":")
+        spans.append(_duration_seconds(duration))
+        if separator and resolution:
+            _duration_seconds(resolution)
+    return spans
 
 
 def _render_location(location: object) -> str:

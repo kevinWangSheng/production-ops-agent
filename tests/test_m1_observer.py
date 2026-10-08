@@ -496,6 +496,8 @@ def test_a_hung_source_cannot_push_the_sample_past_its_lease(monkeypatch):
     # 10 s (profile timeout) + 10 s (what was left) = 20 s; nothing more sent
     assert source.timeouts == [10, 10]
     assert taken.requests_issued == 2 and taken.budget_exhausted
+    # no scope check (store round trip) for a query that is not sent
+    assert store.scope_calls == 2
     assert clock["now"] - 1000.0 == 20.0 < 25.0
     ((_, sample, readings),) = store.submitted
     assert (sample.outcome, sample.required_signals_present) == ("timeout", False)
@@ -534,6 +536,41 @@ def test_a_timeout_reading_replays_as_a_timeout():
     assert (replayed.outcome, replayed.required_signals_present) == ("timeout", False)
     errors = next(v for v in replayed.verdicts if v.signal_name == "errors")
     assert errors.verdict == "timeout"
+
+
+@pytest.mark.parametrize("transport", ["timeout", "failed"])
+def test_a_freshness_query_transport_failure_is_the_readings_status(transport):
+    """Codex round 3 P2: value and coverage answered, the freshness query
+    timed out or failed -- the reading carries that status (not ok-then-stale,
+    not failed for a timeout), online and on replay alike."""
+    answers = healthy_answers()
+    answers["max(timestamp(x))"] = InstantResult(
+        "", transport, None, b"", None, transport.upper(), body_complete=False
+    )
+    store = FakeStore()
+    taken = take_sample(lease(), PROFILE, FakeSource(answers), store)
+    assert taken.evaluation is not None and taken.evaluation.outcome == transport
+    ((_, sample, readings),) = store.submitted
+    rate = next(r for r in readings if r.signal_name == "rate")
+    assert rate.status == transport and rate.value is None
+    rows = [
+        {
+            "signal_name": r.signal_name,
+            "query": r.query,
+            "source": r.source,
+            "window_start": r.window_start,
+            "window_end": r.window_end,
+            "raw": r.raw,
+            "raw_sha256": r.raw_sha256,
+        }
+        for r in readings
+    ]
+    replayed = replay_readings(PROFILE, rows)
+    assert replayed.outcome == transport
+    assert (
+        next(v for v in replayed.verdicts if v.signal_name == "rate").verdict
+        == transport
+    )
 
 
 # --- the Prometheus source: one instant query, bounded, GET only
@@ -1069,7 +1106,9 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
 
         def claim_due_samples(self, owner, *, limit, lease_seconds=120):
             self.calls.append("claim")
-            return [lease(), lease(), lease()]
+            assert limit == 1, "one lease at a time"
+            self.pending = getattr(self, "pending", [lease(), lease(), lease()])
+            return [self.pending.pop(0)] if self.pending else []
 
         def health_profile(self, revision):
             raise PersistenceError("UNKNOWN_IDENTITY")
@@ -1081,9 +1120,10 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
             # a profile that cannot be read: filed as failed, no query issued
             assert sample.outcome == "failed" and readings == []
             self.calls.append("submit")
-            if len(self.calls) == 4:
-                raise PersistenceError("TIMEOUT")
+            # claims and submits alternate: submits are calls 3, 5 and 7
             if len(self.calls) == 5:
+                raise PersistenceError("TIMEOUT")
+            if len(self.calls) == 7:
                 raise RuntimeError("boom")
             return SampleReceipt(
                 sample_id=uuid4(),
@@ -1102,4 +1142,13 @@ def test_the_loop_handles_a_refused_or_crashed_sample_and_keeps_going():
     loop = ObserverLoop(store=store, source=FakeSource({}))
     results = loop.poll_once()
     assert [receipt.disposition for _, receipt in results] == ["adopted"]
-    assert store.calls == ["sweep", "claim", "submit", "submit", "submit"]
+    assert store.calls == [
+        "sweep",
+        "claim",
+        "submit",
+        "claim",
+        "submit",
+        "claim",
+        "submit",
+        "claim",
+    ]

@@ -490,6 +490,36 @@ def test_continued_degradation_stays_observing_without_any_actuation(
     assert _lifecycle(owner, incident) == "observing_recovery"
 
 
+def test_each_sample_starts_at_the_beginning_of_its_own_lease(
+    loop: tuple[ObserverLoop, Telemetry],
+    owner: DurableStore,
+    controller: ObservationStore,
+) -> None:
+    """Codex round 3 P1: two due sessions, the first sample uses up its
+    whole lease budget against a hung Prometheus; the second is leased only
+    afterwards, so it is still inside its own lease and adopted (not
+    ``lease_revoked``)."""
+    observer_loop, state = loop
+    state.hang_seconds = 30.0
+    observer_loop.lease_seconds = 12
+    sessions = []
+    for _ in range(2):
+        incident, _, target = _incident(owner)
+        session = _authorize(controller, incident, target, sustained=1)
+        _backdate_authorization(owner, session)
+        sessions.append(session)
+
+    results = observer_loop.poll_once()
+
+    receipts = {sid: receipt for sid, receipt in results if sid in sessions}
+    assert set(receipts) == set(sessions)
+    for session in sessions:
+        assert receipts[session].accepted and receipts[session].reason == "adopted"
+        sample = controller.session_history(session)["samples"][0]
+        assert sample["outcome"] == "timeout" and sample["lease_valid"]
+        assert sample["disposition"] == "adopted"
+
+
 def test_a_hung_prometheus_still_yields_adopted_unknown_samples_inside_the_lease(
     loop: tuple[ObserverLoop, Telemetry],
     owner: DurableStore,
