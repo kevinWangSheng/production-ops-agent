@@ -21,6 +21,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 from opspilot.acceptance import IncidentScenario, RecoveryRecords, recovery_outcome
+from opspilot.acceptance_recovery import OBSERVER_GRANTS
 from opspilot.domain.intake import Target
 from opspilot.observation import ObservationStore
 from opspilot.observer.health_profile import SessionParameters, canonical_content
@@ -107,18 +108,25 @@ def test_the_observer_login_privileges_are_measured_not_assumed(
     observer: ObservationStore, controller: ObservationStore
 ) -> None:
     grants = observer.table_privileges()
-    assert grants["opspilot_observation_samples"] == {"SELECT", "INSERT"}
-    assert grants["opspilot_observation_signal_readings"] == {"SELECT", "INSERT"}
-    assert grants["opspilot_observation_endings"] == {"SELECT", "INSERT"}
-    assert grants["opspilot_observation_sessions"] == {"SELECT", "UPDATE"}
-    assert grants["opspilot_incidents"] == {"SELECT", "UPDATE"}
-    assert grants["opspilot_health_profiles"] == {"SELECT"}
-    assert grants["opspilot_runs"] == frozenset()
-    assert grants["opspilot_controls"] == frozenset()
+    tables = grants["tables"]
+    # column-exact, as migration 0003 grants them
+    for name, expected in OBSERVER_GRANTS.items():
+        measured = tables[f"public.{name}"]
+        assert set(measured) == set(expected), name
+        for kind, grant in expected.items():
+            if grant == "*":
+                assert measured[kind] == "*", (name, kind)
+            else:
+                assert set(measured[kind]) == set(grant), (name, kind)
+    assert tables["public.opspilot_runs"] == {}
+    assert tables["public.opspilot_controls"] == {}
+    assert grants["sequences"] == {}
+    assert "CREATE" not in grants["schemas"].get("public", ())
+    assert grants["functions"] == ()
     # the owner connection holds everything: the projection would say so
-    assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= controller.table_privileges()[
-        "opspilot_runs"
-    ]
+    assert (
+        controller.table_privileges()["tables"]["public.opspilot_runs"]["DELETE"] == "*"
+    )
 
 
 def test_a_confirmed_recovery_projects_the_committed_rows(
@@ -161,12 +169,14 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
     assert all(
         sig.status == "ok" and sig.body_sha256 for sig in sample.signals.values()
     )
-    assert outcome.actions.count("read_only_query") == len(SHIPPED.signals)
+    # three instant queries per signal, every one actually sent
+    assert outcome.actions.count("read_only_query") == 3 * len(SHIPPED.signals)
     assert outcome.actions.count("persist_observation") == 1
     assert outcome.actions[-1] == "advance_incident_lifecycle"
     # no human control row on this incident: the authority exercised is the
-    # Observer login's, measured on this connection
-    assert outcome.permissions == ("read_only",)
+    # Observer login's, measured on this connection (PUBLIC's default TEMP
+    # on the scratch database is reported as it is, see development.md)
+    assert set(outcome.permissions) - {"database_temp"} == {"read_only"}
     assert outcome.handling_audit == ()
     (projected,) = outcome.observation_sessions
     assert projected["state"] == "completed" and projected["authorized"] is False
@@ -235,7 +245,10 @@ def test_a_registered_remediation_is_human_control_in_the_audit(
     outcome = _outcome(controller, observer, incident)
 
     assert outcome.incident_lifecycle == "observing_recovery"
-    assert outcome.permissions == ("read_only", "human_control")
+    assert set(outcome.permissions) - {"database_temp"} == {
+        "read_only",
+        "human_control",
+    }
     assert outcome.actions[:2] == ("record_handling", "advance_incident_lifecycle")
     assert outcome.handling_audit[0]["action"] == "register_remediation"
     assert outcome.handling_audit[0]["resulting_generation"] == 1
@@ -261,6 +274,19 @@ def test_a_wider_login_is_reported_as_wider(
         conn.execute(
             sql.SQL("GRANT UPDATE ON opspilot_runs TO {}").format(sql.Identifier(login))
         )
+        conn.execute(
+            sql.SQL("GRANT UPDATE (mode) ON opspilot_incidents TO {}").format(
+                sql.Identifier(login)
+            )
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS lab_notes (id int PRIMARY KEY, body text)"
+        )
+        conn.execute(
+            sql.SQL("GRANT SELECT, UPDATE ON lab_notes TO {}").format(
+                sql.Identifier(login)
+            )
+        )
     wide = ObservationStore(
         make_conninfo(scratch_dsn, user=login), pool=PoolConfig(1, 2, 5.0)
     )
@@ -268,13 +294,20 @@ def test_a_wider_login_is_reported_as_wider(
         incident, _, target = _incident(owner)
         _authorize(controller, incident, target, sustained=1)
         outcome = _outcome(controller, wide, incident)
-        assert outcome.permissions == ("read_only", "investigation_write:opspilot_runs")
+        assert {
+            "read_only",
+            "investigation_write:opspilot_runs",
+            "record_rewrite:opspilot_incidents(mode)",
+            "foreign_write:public.lab_notes",
+        } <= set(outcome.permissions)
+        assert "record_rewrite:opspilot_incidents(lifecycle)" not in outcome.permissions
     finally:
         wide.close()
         with psycopg.connect(scratch_dsn, autocommit=True) as conn:
             conn.execute(
-                sql.SQL("REVOKE ALL ON opspilot_runs FROM {}").format(
-                    sql.Identifier(login)
-                )
+                sql.SQL(
+                    "REVOKE ALL ON opspilot_runs, opspilot_incidents, lab_notes FROM {}"
+                ).format(sql.Identifier(login))
             )
+            conn.execute("DROP TABLE IF EXISTS lab_notes")
             conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(login)))

@@ -173,6 +173,26 @@ class SessionReplay:
     recorded_lifecycle: str | None
     integrity: tuple[str, ...] = ()
     reasons: tuple[str, ...] = ()
+    # The product's recovery reason codes (F6, #140), computed here once for
+    # the online verdict and the replay alike -- the acceptance projection
+    # only copies them: the integrity codes, then the per-signal verdicts
+    # of the latest adopted sample (``INSUFFICIENT_TRAFFIC``,
+    # ``REQUIRED_TELEMETRY_MISSING`` + ``MISSING_SIGNAL:<name>``,
+    # ``STALE_TELEMETRY:<name>``, ``DEGRADED_SIGNAL:<name>``, the sentinel's
+    # ``HEALTH_PROFILE_UNAVAILABLE`` / ``HEALTH_PROFILE_INVALID``),
+    # ``CONTINUED_DEGRADATION`` when the verdict is degraded,
+    # ``OBSERVATION_UNCONFIRMED`` when the session ended without confirming
+    # and ``NO_HEALTH_PROFILE`` for a session without a revision.
+    recovery_reasons: tuple[str, ...] = ()
+    # the session's end as committed: state not ``authorized``, its
+    # ``ended_reason``, and whether that end is a handoff to a human
+    # (deadline or budget: C3 section 10 bounded continuation, then handoff)
+    observation_ended: bool = False
+    ended_reason: str | None = None
+    handoff: bool = False
+    # the ending code (upper case) followed by the recovery reasons; empty
+    # when the session did not hand off
+    handoff_reasons: tuple[str, ...] = ()
     # audits the harness reads: this replay issues neither
     external_queries: tuple[Any, ...] = field(default=())
     model_requests: tuple[Any, ...] = field(default=())
@@ -180,6 +200,48 @@ class SessionReplay:
     @property
     def consistent(self) -> bool:
         return not self.integrity
+
+
+_HANDOFF_ENDINGS = frozenset({"deadline_expired", "max_samples_exhausted"})
+_UNUSABLE_VERDICTS = frozenset(
+    {
+        "missing",
+        "no_data",
+        "timeout",
+        "failed",
+        "query_mismatch",
+        "insufficient_samples",
+    }
+)
+
+
+def _signal_reasons(
+    evaluation: SampleEvaluation | None, skipped: str | None
+) -> list[str]:
+    """Reason codes from one sample's recomputed per-signal verdicts (the
+    required flag is the evaluation's own, from the frozen profile)."""
+    if skipped in (PROFILE_UNAVAILABLE, PROFILE_INVALID):
+        return ["REQUIRED_TELEMETRY_MISSING", str(skipped)]
+    if evaluation is None:
+        return []
+    reasons: list[str] = []
+    missing: list[str] = []
+    for verdict in evaluation.verdicts:
+        if not verdict.required:
+            continue
+        if verdict.verdict == "below_traffic_gate":
+            reasons.append("INSUFFICIENT_TRAFFIC")
+        elif verdict.verdict == "degraded":
+            reasons.append(f"DEGRADED_SIGNAL:{verdict.signal_name}")
+        elif verdict.verdict == "stale":
+            missing.append(verdict.signal_name)
+            reasons.append(f"STALE_TELEMETRY:{verdict.signal_name}")
+        elif verdict.verdict in _UNUSABLE_VERDICTS:
+            missing.append(verdict.signal_name)
+    if missing:
+        reasons.append("REQUIRED_TELEMETRY_MISSING")
+        reasons.extend(f"MISSING_SIGNAL:{name}" for name in dict.fromkeys(missing))
+    return reasons
 
 
 def _load_profile(
@@ -636,10 +698,12 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
     confirmed = any(item.replayed[4] == "recovery_confirmed" for item in report.samples)
     latest: str | None = None
     latest_reason: str | None = None
-    for sample, decision in zip(samples, report.samples, strict=True):
+    latest_signal_reasons: list[str] = []
+    for sample, item, decision in zip(samples, partial, report.samples, strict=True):
         if decision.replayed[0] == "adopted":
             latest = sample.replayed_outcome or sample.stored_outcome
             latest_reason = sample.replayed_reason
+            latest_signal_reasons = _signal_reasons(item["evaluation"], item["skipped"])
     if revision is None:
         # no HealthProfile: recovery can never be judged, in either
         # direction (PRODUCT-CONSTRAINTS "Recovery observations")
@@ -660,6 +724,17 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
             reasons.append(str(row["ended_reason"]))
         if latest_reason:
             reasons.append(latest_reason)
+    ended = str(row.get("state")) != "authorized"
+    ended_reason = None if row.get("ended_reason") is None else str(row["ended_reason"])
+    recovery_reasons: list[str] = list(integrity)
+    recovery_reasons.extend(latest_signal_reasons)
+    if verdict == "degraded":
+        recovery_reasons.append("CONTINUED_DEGRADATION")
+    if ended and verdict != "healthy":
+        recovery_reasons.append("OBSERVATION_UNCONFIRMED")
+    if revision is None:
+        recovery_reasons.append("NO_HEALTH_PROFILE")
+    handoff = ended and ended_reason in _HANDOFF_ENDINGS
     return SessionReplay(
         session_id=row["session_id"],
         incident_id=row["incident_id"],
@@ -681,6 +756,15 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay:
         recorded_lifecycle=report.recorded_lifecycle,
         integrity=tuple(integrity),
         reasons=tuple(dict.fromkeys(reasons)),
+        recovery_reasons=tuple(dict.fromkeys(recovery_reasons)),
+        observation_ended=ended,
+        ended_reason=ended_reason,
+        handoff=handoff,
+        handoff_reasons=(
+            tuple(dict.fromkeys((str(ended_reason).upper(), *recovery_reasons)))
+            if handoff
+            else ()
+        ),
     )
 
 

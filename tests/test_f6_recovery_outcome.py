@@ -22,6 +22,7 @@ from opspilot.acceptance import (
     permissions_from_grants,
     recovery_outcome,
 )
+from opspilot.acceptance_recovery import OBSERVER_GRANTS
 from tests.m1_02_replay_support import (
     NOW,
     PROFILE,
@@ -38,21 +39,37 @@ SCENARIO = IncidentScenario(
     subject_id="incident-f6",
 )
 
-#: What ``observer_grants`` reports for the migration-0003 Observer role.
-OBSERVER_GRANTS = {
-    "opspilot_incidents": frozenset({"SELECT", "UPDATE"}),
-    "opspilot_observation_sessions": frozenset({"SELECT", "UPDATE"}),
-    "opspilot_observation_samples": frozenset({"SELECT", "INSERT"}),
-    "opspilot_observation_signal_readings": frozenset({"SELECT", "INSERT"}),
-    "opspilot_observation_endings": frozenset({"SELECT", "INSERT"}),
-    "opspilot_health_profiles": frozenset({"SELECT"}),
-    "opspilot_targets": frozenset({"SELECT"}),
-    "opspilot_scope_controls": frozenset({"SELECT"}),
-    "opspilot_target_suspensions": frozenset({"SELECT"}),
-    "opspilot_runs": frozenset(),
-    "opspilot_steps": frozenset(),
-    "opspilot_controls": frozenset(),
-}
+
+#: What ``ObservationStore.table_privileges`` reports for the migration-0003
+#: Observer role on a database whose PUBLIC defaults were revoked.
+def _tables(**overrides):
+    tables = {
+        f"public.{name}": dict(grants) for name, grants in OBSERVER_GRANTS.items()
+    }
+    for name in (
+        "opspilot_runs",
+        "opspilot_steps",
+        "opspilot_controls",
+        "opspilot_evidence",
+    ):
+        tables[f"public.{name}"] = {}
+    tables.update(overrides)
+    return tables
+
+
+def _grants(**overrides):
+    grants = {
+        "tables": _tables(),
+        "sequences": {},
+        "schemas": {"public": ("USAGE",)},
+        "database": (),
+        "functions": (),
+    }
+    grants.update(overrides)
+    return grants
+
+
+OBSERVER_MEASURED = _grants()
 
 
 def _control(generation: int = 1) -> dict:
@@ -66,7 +83,7 @@ def _control(generation: int = 1) -> dict:
     }
 
 
-def _records(history, *, controls=None, grants=OBSERVER_GRANTS) -> RecoveryRecords:
+def _records(history, *, controls=None, grants=OBSERVER_MEASURED) -> RecoveryRecords:
     return RecoveryRecords(
         incident={
             "incident_id": history["session"]["incident_id"],
@@ -121,11 +138,14 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     )
     assert errors.window_end == sample.window_end
     assert len(errors.raw_sha256) == 64 and len(errors.body_sha256) == 64
+    # the instants are the bundle's own, not the window end dressed up
     assert errors.evaluated_at == sample.window_end
+    assert errors.sample_time == sample.window_end + timedelta(seconds=1)
     # actions are the audit of what the product did, in record order
     assert outcome.actions[:2] == ("record_handling", "advance_incident_lifecycle")
     assert outcome.actions.count("persist_observation") == 6
-    assert outcome.actions.count("read_only_query") == 12
+    # three instant queries per reading, each actually sent
+    assert outcome.actions.count("read_only_query") == 36
     assert outcome.actions[-1] == "advance_incident_lifecycle"
     assert "human_handoff" not in outcome.actions
     assert outcome.permissions == ("read_only", "human_control")
@@ -212,6 +232,9 @@ def test_an_unconfirmed_session_hands_off_with_reasons_from_the_replay(
     assert "MAX_SAMPLES_EXHAUSTED" in outcome.handoff_reasons
     assert reasons <= set(outcome.recovery_reasons)
     assert set(outcome.handoff_reasons) >= reasons
+    # copied from the replay, not assembled here
+    assert outcome.recovery_reasons == outcome.replay.recovery_reasons
+    assert outcome.handoff_reasons == outcome.replay.handoff_reasons
     assert outcome.actions[-1] == "human_handoff"
     assert "advance_incident_lifecycle" in outcome.actions
     assert outcome.permissions == ("read_only",)
@@ -261,7 +284,7 @@ def test_no_session_means_no_observation():
         },
         sessions=(),
         controls=(),
-        grants=OBSERVER_GRANTS,
+        grants=OBSERVER_MEASURED,
     )
     outcome = recovery_outcome(SCENARIO, records)
     assert outcome.recovery_verdict == "unknown" and not outcome.recovery_confirmed
@@ -275,30 +298,198 @@ def test_no_session_means_no_observation():
 
 
 def test_permissions_come_from_the_measured_grants_not_a_constant():
-    assert permissions_from_grants(OBSERVER_GRANTS, human_control=False) == (
+    assert permissions_from_grants(OBSERVER_MEASURED, human_control=False) == (
         "read_only",
     )
-    assert permissions_from_grants(OBSERVER_GRANTS, human_control=True) == (
+    assert permissions_from_grants(OBSERVER_MEASURED, human_control=True) == (
         "read_only",
         "human_control",
     )
-    wider = {**OBSERVER_GRANTS, "opspilot_runs": frozenset({"SELECT", "UPDATE"})}
+    # a whole-table write on an investigation table
+    wider = _grants(
+        tables=_tables(**{"public.opspilot_runs": {"SELECT": "*", "UPDATE": "*"}})
+    )
     assert permissions_from_grants(wider, human_control=False) == (
         "read_only",
         "investigation_write:opspilot_runs",
     )
-    deleting = {
-        **OBSERVER_GRANTS,
-        "opspilot_observation_samples": frozenset({"SELECT", "INSERT", "DELETE"}),
-    }
+    # one column more than the migration grants (codex review P2-1)
+    columns = _grants(
+        tables=_tables(
+            **{
+                "public.opspilot_incidents": {
+                    **OBSERVER_GRANTS["opspilot_incidents"],
+                    "UPDATE": ("lifecycle", "mode"),
+                }
+            }
+        )
+    )
+    assert "record_rewrite:opspilot_incidents(mode)" in permissions_from_grants(
+        columns, human_control=False
+    )
+    whole = _grants(
+        tables=_tables(
+            **{
+                "public.opspilot_incidents": {
+                    **OBSERVER_GRANTS["opspilot_incidents"],
+                    "UPDATE": "*",
+                }
+            }
+        )
+    )
+    assert "record_rewrite:opspilot_incidents" in permissions_from_grants(
+        whole, human_control=False
+    )
+    deleting = _grants(
+        tables=_tables(
+            **{
+                "public.opspilot_observation_samples": {
+                    "SELECT": "*",
+                    "INSERT": "*",
+                    "DELETE": "*",
+                }
+            }
+        )
+    )
     assert "record_delete:opspilot_observation_samples" in permissions_from_grants(
         deleting, human_control=False
     )
     # a role that cannot even read the records it judges by is not read_only
-    blind = {**OBSERVER_GRANTS, "opspilot_observation_samples": frozenset({"INSERT"})}
+    blind = _grants(
+        tables=_tables(**{"public.opspilot_observation_samples": {"INSERT": "*"}})
+    )
     assert "read_only" not in permissions_from_grants(blind, human_control=False)
     assert "unreadable:opspilot_observation_samples" in permissions_from_grants(
         blind, human_control=False
     )
     with pytest.raises(ValueError, match="GRANTS_REQUIRED"):
         permissions_from_grants({}, human_control=False)
+
+
+def test_capabilities_outside_the_product_tables_are_reported():
+    """Codex review P2-2: a write on a foreign table, a sequence, schema
+    CREATE, database CREATE/TEMP and an executable SECURITY DEFINER function
+    are all capabilities a read-only observer must not have."""
+    grants = _grants(
+        tables=_tables(
+            **{
+                "lab.notes": {"SELECT": "*", "UPDATE": ("body",)},
+                "public.scratch": {"DELETE": "*"},
+            }
+        ),
+        sequences={"public.opspilot_seq": ("USAGE", "UPDATE")},
+        schemas={"public": ("USAGE", "CREATE")},
+        database=("CREATE", "TEMP"),
+        functions=("public.rewrite_rows(uuid)",),
+    )
+    permissions = permissions_from_grants(grants, human_control=False)
+    assert permissions[0] == "read_only"
+    assert {
+        "foreign_write:lab.notes(body)",
+        "foreign_write:public.scratch",
+        "sequence_write:public.opspilot_seq",
+        "schema_create:public",
+        "database_create",
+        "database_temp",
+        "security_definer_execute:public.rewrite_rows(uuid)",
+    } <= set(permissions)
+
+
+def test_the_expected_observer_grants_are_the_migrations():
+    """``OBSERVER_GRANTS`` mirrors migration 0003 column for column."""
+    import importlib.util
+    import pathlib
+    import re
+
+    path = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "opspilot/migrations/versions/0003_observation_store.py"
+    )
+    spec = importlib.util.spec_from_file_location("m0003", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert OBSERVER_GRANTS["opspilot_incidents"]["SELECT"] == tuple(
+        module.OBSERVER_INCIDENT_COLUMNS
+    )
+    assert OBSERVER_GRANTS["opspilot_observation_sessions"]["UPDATE"] == tuple(
+        module.OBSERVER_SESSION_COLUMNS
+    )
+    source = path.read_text()
+    samples = re.search(r"GRANT INSERT \(([^)]*)\) ON \{samples\}", source).group(1)
+    endings = re.search(r"GRANT INSERT \(([^)]*)\) ON \{endings\}", source).group(1)
+    assert OBSERVER_GRANTS["opspilot_observation_samples"]["INSERT"] == tuple(
+        samples.split(",")
+    )
+    assert OBSERVER_GRANTS["opspilot_observation_endings"]["INSERT"] == tuple(
+        endings.split(",")
+    )
+    assert "GRANT UPDATE (lifecycle) ON opspilot_incidents" in source
+
+
+def test_actions_count_only_requests_that_were_sent_and_moves_that_happened():
+    """Codex review P2-3: an unsent query (lease budget spent) is not a
+    read-only query; a registration on an incident already observing does
+    not advance the lifecycle."""
+    import json
+
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    bundle["freshness"]["detail"] = "LEASE_BUDGET"
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    outcome = recovery_outcome(SCENARIO, _records(history))
+    # 2 readings x 3 queries, one of them never sent
+    assert outcome.actions.count("read_only_query") == 5
+    # a second registration while the first session was revoked without a
+    # lifecycle move: the incident stayed observing_recovery
+    first = healthy_history(count=1)
+    first["session"]["state"], first["session"]["ended_reason"] = (
+        "revoked",
+        "authority_revoked",
+    )
+    first["endings"] = [
+        {
+            "ending_id": uuid4(),
+            "session_id": first["session"]["session_id"],
+            "incident_id": first["session"]["incident_id"],
+            "ended_reason": "authority_revoked",
+            "transition": None,
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "observing_recovery",
+            "recorded_at": NOW,
+        }
+    ]
+    second = healthy_history(count=1)
+    second["session"]["incident_id"] = first["session"]["incident_id"]
+    records = RecoveryRecords(
+        incident={
+            "incident_id": first["session"]["incident_id"],
+            "lifecycle": "observing_recovery",
+            "mode": "automatic",
+            "control_generation": 2,
+        },
+        sessions=(first, second),
+        controls=(_control(1), _control(2)),
+        grants=OBSERVER_MEASURED,
+    )
+    outcome = recovery_outcome(SCENARIO, records)
+    assert outcome.actions[:3] == (
+        "record_handling",
+        "advance_incident_lifecycle",
+        "record_handling",
+    )
+    assert outcome.actions[3] != "advance_incident_lifecycle"
+    # without an ending record the move is unknown and not claimed
+    first["endings"] = []
+    outcome = recovery_outcome(SCENARIO, records)
+    assert outcome.actions[:3] == (
+        "record_handling",
+        "advance_incident_lifecycle",
+        "record_handling",
+    )
+    assert outcome.actions[3] != "advance_incident_lifecycle"

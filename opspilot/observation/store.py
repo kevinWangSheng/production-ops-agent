@@ -1890,36 +1890,114 @@ class ObservationStore(_StoreBase):
             ).fetchall()
         return {"incident": incident, "sessions": sessions, "controls": controls}
 
-    def table_privileges(self) -> dict[str, frozenset[str]]:
-        """The privileges this store's login actually holds on every product
-        table, as PostgreSQL answers on this connection: ``SELECT`` /
-        ``INSERT`` / ``UPDATE`` / ``DELETE`` / ``TRUNCATE`` held on the whole
-        table or on any of its columns. Measured, never configured: the F6
-        projection derives ``permissions`` from it."""
-        privileges = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+    def table_privileges(self) -> dict[str, Any]:
+        """The privileges this store's login actually holds, as PostgreSQL
+        answers on this connection -- measured, never configured; the F6
+        projection derives ``permissions`` from it (issue #140).
+
+        ``{"tables": {"<schema>.<table>": {<privilege>: "*" | (columns...)}},
+        "sequences": {"<schema>.<name>": (privileges...)},
+        "schemas": {"<schema>": (privileges...)},
+        "database": (privileges...),
+        "functions": ("<schema>.<name>(<args>)", ...)}``
+
+        Tables (ordinary and partitioned) in every non-system schema of the
+        current database: ``SELECT`` / ``INSERT`` / ``UPDATE`` / ``DELETE`` /
+        ``TRUNCATE`` held on the whole table (``"*"``) or, for the three
+        column-grantable ones, the exact columns (``has_column_privilege``
+        per column), so a column added to a grant is visible. Sequences:
+        ``USAGE`` / ``UPDATE`` / ``SELECT``. Schemas: ``CREATE`` / ``USAGE``.
+        The database: ``CREATE`` / ``TEMP``. Functions: the SECURITY DEFINER,
+        volatile, non-trigger functions this login may EXECUTE -- the only
+        ones that could write on its behalf; whether a body actually writes
+        is not decidable here, so every such function is listed.
+        """
+        kinds = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+        column_kinds = ("SELECT", "INSERT", "UPDATE")
         with self.transaction(snapshot=True) as conn:
-            # pg_class, not information_schema.tables: the latter hides the
-            # tables the current user holds no privilege on, and "no
-            # privilege at all" is exactly what must be reported for them
-            tables = [
-                str(row["relname"])
+            relations = conn.execute(
+                "SELECT c.oid,n.nspname,c.relname,c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','S') AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND n.nspname NOT LIKE 'pg_temp%%' AND n.nspname NOT LIKE 'pg_toast_temp%%' ORDER BY n.nspname,c.relname"
+            ).fetchall()
+            tables: dict[str, dict[str, Any]] = {}
+            sequences: dict[str, tuple[str, ...]] = {}
+            for relation in relations:
+                qualified = f"{relation['nspname']}.{relation['relname']}"
+                if relation["relkind"] == "S":
+                    held = tuple(
+                        kind
+                        for kind in ("USAGE", "SELECT", "UPDATE")
+                        if self._held(
+                            conn,
+                            "SELECT has_sequence_privilege(current_user,%s::oid,%s) AS held",
+                            (relation["oid"], kind),
+                        )
+                    )
+                    if held:
+                        sequences[qualified] = held
+                    continue
+                granted: dict[str, Any] = {}
+                for kind in kinds:
+                    if self._held(
+                        conn,
+                        "SELECT has_table_privilege(current_user,%s::oid,%s) AS held",
+                        (relation["oid"], kind),
+                    ):
+                        granted[kind] = "*"
+                        continue
+                    if kind not in column_kinds:
+                        continue
+                    columns = tuple(
+                        str(row["attname"])
+                        for row in conn.execute(
+                            "SELECT a.attname FROM pg_catalog.pg_attribute a WHERE a.attrelid=%s::oid AND a.attnum>0 AND NOT a.attisdropped AND has_column_privilege(current_user,a.attrelid,a.attnum,%s) ORDER BY a.attnum",
+                            (relation["oid"], kind),
+                        ).fetchall()
+                    )
+                    if columns:
+                        granted[kind] = columns
+                tables[qualified] = granted
+            schemas: dict[str, tuple[str, ...]] = {}
+            for row in conn.execute(
+                "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND nspname NOT LIKE 'pg_temp%%' AND nspname NOT LIKE 'pg_toast_temp%%' ORDER BY nspname"
+            ).fetchall():
+                held = tuple(
+                    kind
+                    for kind in ("CREATE", "USAGE")
+                    if self._held(
+                        conn,
+                        "SELECT has_schema_privilege(current_user,%s,%s) AS held",
+                        (row["nspname"], kind),
+                    )
+                )
+                if held:
+                    schemas[str(row["nspname"])] = held
+            database = tuple(
+                kind
+                for kind in ("CREATE", "TEMP")
+                if self._held(
+                    conn,
+                    "SELECT has_database_privilege(current_user,current_database(),%s) AS held",
+                    (kind,),
+                )
+            )
+            functions = tuple(
+                f"{row['nspname']}.{row['proname']}({row['args']})"
                 for row in conn.execute(
-                    "SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname=current_schema() AND c.relname LIKE %s ORDER BY c.relname",
-                    ("opspilot%",),
+                    "SELECT n.nspname,p.proname,pg_catalog.pg_get_function_identity_arguments(p.oid) AS args FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE p.prosecdef AND p.provolatile='v' AND p.prorettype<>'trigger'::regtype AND n.nspname NOT IN ('pg_catalog','information_schema') AND has_function_privilege(current_user,p.oid,'EXECUTE') ORDER BY n.nspname,p.proname"
                 ).fetchall()
-            ]
-            held: dict[str, frozenset[str]] = {}
-            for table in tables:
-                granted = set()
-                for privilege in privileges:
-                    row = conn.execute(
-                        "SELECT has_table_privilege(current_user,%s,%s) OR (%s IN ('SELECT','INSERT','UPDATE') AND has_any_column_privilege(current_user,%s,%s)) AS held",
-                        (table, privilege, privilege, table, privilege),
-                    ).fetchone()
-                    if row is not None and bool(row["held"]):
-                        granted.add(privilege)
-                held[table] = frozenset(granted)
-        return held
+            )
+        return {
+            "tables": tables,
+            "sequences": sequences,
+            "schemas": schemas,
+            "database": database,
+            "functions": functions,
+        }
+
+    @staticmethod
+    def _held(conn: Connection, query: str, params: tuple[Any, ...]) -> bool:
+        row = conn.execute(query, params).fetchone()
+        return row is not None and bool(row["held"])
 
     def _session_history_in(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         row = conn.execute(
