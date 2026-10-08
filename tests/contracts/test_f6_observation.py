@@ -268,7 +268,7 @@ def test_human_close_is_closed_and_reopen_needs_a_new_stage():
 
 @pytest.mark.xfail(
     strict=True,
-    raises=AssertionError,
+    raises=ContractInterfaceConflict,
     reason="合同/接口冲突: 结束会话丢失无样本任务身份，公开存储缺全部已发放任务清单 见 opspilot/observation/revocation.py:53、opspilot/observation/store.py:1569",
 )
 @pytest.mark.parametrize("fault", ["revoke", "expire"])
