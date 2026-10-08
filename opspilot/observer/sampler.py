@@ -68,6 +68,7 @@ __all__ = [
     "InstantSource",
     "SampleTaken",
     "replay_readings",
+    "replay_sample",
     "submit_without_readings",
     "take_sample",
 ]
@@ -511,6 +512,15 @@ def replay_readings(
     bundle, or whose bundle no longer hashes to ``raw_sha256``, is rebuilt
     as ``failed`` and so never counts.
     """
+    return replay_sample(profile, stored)[1]
+
+
+def replay_sample(
+    profile: HealthProfile, stored: Sequence[Mapping[str, Any]]
+) -> tuple[list[SignalReading], SampleEvaluation]:
+    """``replay_readings`` plus the rebuilt readings as the Observer would
+    have stored them (status written back from the verdict, see
+    ``_finalized``), so a replay can compare them with the stored rows."""
     readings: list[SignalReading] = []
     sample_time: datetime | None = None
     for row in stored:
@@ -557,7 +567,9 @@ def replay_readings(
         sample_time = max(
             (row["window_end"] for row in stored), default=None
         ) or datetime.fromtimestamp(0, tz=timezone.utc)
-    return evaluate_readings(profile, readings, sample_time=sample_time)
+    first = evaluate_readings(profile, readings, sample_time=sample_time)
+    finalized = [_finalized(reading, first) for reading in readings]
+    return finalized, evaluate_readings(profile, finalized, sample_time=sample_time)
 
 
 def _result_from_bundle(bundle: dict[str, Any] | None, kind: str) -> InstantResult:

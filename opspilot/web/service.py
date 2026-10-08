@@ -20,7 +20,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4, uuid5
 
 from markupsafe import Markup
@@ -57,6 +57,7 @@ from opspilot.investigation.progress import (
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.observer.health_profile import HealthProfile, canonical_content
+from opspilot.observer.replay import replay_history
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
@@ -908,6 +909,7 @@ class Workbench:
             events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
+        observation_sessions = self.incidents.observation_sessions(incident_id)
         handoff_report = None
         if report is None and outcome is not None and outcome.kind == "run_handoff":
             handoff_report = _report_view(_last_live_response(rebuilt["steps"]))
@@ -934,10 +936,14 @@ class Workbench:
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": self._controls(incident_id),
             # Recovery observation (M1-02): shown apart from the investigation
-            # report; the step 5 page work adds the sample basis.
+            # report, with the sampling basis behind each verdict and the
+            # offline replay's agreement with it (step 5, #87).
             "observation_sessions": [
-                _session_view(row)
-                for row in self.incidents.observation_sessions(incident_id)
+                _session_view(row) for row in observation_sessions
+            ],
+            "recovery": [
+                self._recovery_view(cast(UUID, row["session_id"]))
+                for row in observation_sessions
             ],
             "health_profile_revision": (
                 None if self.health_profile is None else self.health_profile.revision
@@ -946,6 +952,89 @@ class Workbench:
             "latest_sequence": events[-1].sequence
             if events
             else self.events.latest(incident_id),
+        }
+
+    def _recovery_view(self, session_id: UUID) -> dict[str, Any]:
+        """One session's recovery verdict with its basis: every stored sample
+        and reading (query, window, source, value, hash) and the offline
+        replay recomputed from the stored rows (``opspilot.observer.replay``).
+        Read-only and deterministic; nothing here queries telemetry or a
+        model. A replay that cannot run leaves the basis on the page and says
+        so instead of taking the page down."""
+        history = self.incidents.observation_history(session_id)
+        try:
+            result = replay_history(history)
+        except Exception:  # noqa: BLE001 - the page must still render the rows
+            logging.getLogger(__name__).exception(
+                "replay failed for session %s", session_id
+            )
+            return _recovery_basis_only(history)
+        samples = [
+            {
+                "sample_id": str(sample.sample_id),
+                "sequence": sample.sequence,
+                "window_start": sample.window_start.isoformat(),
+                "window_end": sample.window_end.isoformat(),
+                "submitted_at": (
+                    None
+                    if sample.submitted_at is None
+                    else sample.submitted_at.isoformat()
+                ),
+                "stored_outcome": sample.stored_outcome,
+                "stored_required_signals_present": sample.stored_required_signals_present,
+                "replayed_outcome": sample.replayed_outcome,
+                "replayed_required_signals_present": sample.replayed_required_signals_present,
+                "replayed_reason": sample.replayed_reason,
+                "recompute_skipped": sample.recompute_skipped,
+                "disposition": sample.decision.stored[0],
+                "reason": sample.decision.stored[1],
+                "confirms_health": sample.decision.stored[2],
+                "health_basis": sample.decision.stored[3],
+                "transition": sample.decision.stored[4],
+                "replayed_decision": sample.decision.replayed,
+                "integrity": sample.integrity,
+                "consistent": sample.consistent,
+                "readings": [
+                    {
+                        "signal_name": reading.signal_name,
+                        "query": reading.query,
+                        "source": reading.source,
+                        "window_start": reading.window_start.isoformat(),
+                        "window_end": reading.window_end.isoformat(),
+                        "raw_sha256": reading.raw_sha256,
+                        "raw_verified": reading.raw_verified,
+                        "stored": reading.stored,
+                        "replayed": reading.replayed,
+                        "verdict": reading.verdict,
+                        "reason": reading.reason,
+                    }
+                    for reading in sample.readings
+                ],
+            }
+            for sample in result.samples
+        ]
+        return {
+            "session_id": str(result.session_id),
+            "state": result.stored_session_state,
+            "ended_reason": history["session"].get("ended_reason"),
+            "health_profile_revision": result.health_profile_revision,
+            "handled_at": result.handled_at.isoformat(),
+            "replay": {
+                "available": True,
+                "consistent": result.consistent,
+                "integrity": result.integrity,
+                "reasons": result.reasons,
+                "recovery_verdict": result.recovery_verdict,
+                "recovery_confirmed": result.recovery_confirmed,
+                "recomputed_verdict": result.recomputed_verdict,
+                "latest_sample_verdict": result.latest_sample_verdict,
+                "healthy_window_seconds": result.healthy_window_seconds,
+                "expected_lifecycle": result.expected_lifecycle,
+                "recorded_lifecycle": result.recorded_lifecycle,
+                "stored_session_state": result.stored_session_state,
+                "replayed_session_state": result.replayed_session_state,
+            },
+            "samples": samples,
         }
 
     def _charts(
@@ -1292,6 +1381,85 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         "planned_tools": len(planned) if isinstance(planned, list) else 0,
         "tools": tools,
         "history_only": step["status"] == "late_result",
+    }
+
+
+def _recovery_basis_only(history: Mapping[str, Any]) -> dict[str, Any]:
+    """The stored rows without a replay: verdict unknown, nothing claimed."""
+    row = history["session"]
+    samples = []
+    for stored in history["samples"]:
+        samples.append(
+            {
+                "sample_id": str(stored["sample_id"]),
+                "sequence": int(stored["sequence"]),
+                "window_start": stored["window_start"].isoformat(),
+                "window_end": stored["window_end"].isoformat(),
+                "submitted_at": (
+                    None
+                    if stored.get("submitted_at") is None
+                    else stored["submitted_at"].isoformat()
+                ),
+                "stored_outcome": str(stored["outcome"]),
+                "stored_required_signals_present": bool(
+                    stored["required_signals_present"]
+                ),
+                "replayed_outcome": None,
+                "replayed_required_signals_present": None,
+                "replayed_reason": None,
+                "recompute_skipped": "REPLAY_FAILED",
+                "disposition": str(stored["disposition"]),
+                "reason": str(stored["reason"]),
+                "confirms_health": bool(stored["confirms_health"]),
+                "health_basis": str(stored["health_basis"]),
+                "transition": stored.get("transition"),
+                "replayed_decision": None,
+                "integrity": ("REPLAY_FAILED",),
+                "consistent": False,
+                "readings": [
+                    {
+                        "signal_name": str(r["signal_name"]),
+                        "query": str(r["query"]),
+                        "source": str(r["source"]),
+                        "window_start": r["window_start"].isoformat(),
+                        "window_end": r["window_end"].isoformat(),
+                        "raw_sha256": r.get("raw_sha256"),
+                        "raw_verified": None,
+                        "stored": (
+                            str(r["status"]),
+                            r.get("value"),
+                            r.get("sample_count"),
+                        ),
+                        "replayed": None,
+                        "verdict": None,
+                        "reason": None,
+                    }
+                    for r in stored.get("readings", ())
+                ],
+            }
+        )
+    return {
+        "session_id": str(row["session_id"]),
+        "state": str(row["state"]),
+        "ended_reason": row.get("ended_reason"),
+        "health_profile_revision": row.get("health_profile_revision"),
+        "handled_at": row["authorized_at"].isoformat(),
+        "replay": {
+            "available": False,
+            "consistent": False,
+            "integrity": ("REPLAY_FAILED",),
+            "reasons": ("REPLAY_FAILED",),
+            "recovery_verdict": "unknown",
+            "recovery_confirmed": False,
+            "recomputed_verdict": "unknown",
+            "latest_sample_verdict": None,
+            "healthy_window_seconds": 0,
+            "expected_lifecycle": None,
+            "recorded_lifecycle": None,
+            "stored_session_state": str(row["state"]),
+            "replayed_session_state": None,
+        },
+        "samples": samples,
     }
 
 

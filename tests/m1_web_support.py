@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 from datetime import timedelta
 from typing import Any
@@ -674,6 +675,7 @@ class MemoryIncidentStore:
                 "sample_interval_seconds": sample_interval_seconds,
                 "sustained_window_seconds": sustained_window_seconds,
                 "adopted_count": 0,
+                "purpose": "incident_recovery",
                 "active_sample_due_at": self.now()
                 + timedelta(seconds=sample_interval_seconds),
             }
@@ -692,10 +694,61 @@ class MemoryIncidentStore:
 
     def observation_sessions(self, incident_id):
         return tuple(
-            dict(session)
+            self._session_row(session)
             for session in self.sessions
             if session["incident_id"] == incident_id
         )
+
+    @staticmethod
+    def _session_row(session):
+        # the stored samples/endings/profile text live on the session dict
+        # here; the durable store keeps them in their own tables
+        row = {
+            k: v
+            for k, v in session.items()
+            if k not in ("samples", "endings", "health_profile")
+        }
+        # the durable row keeps the domain Target only (no workload column)
+        row["target"] = {
+            k: v
+            for k, v in session["target"].items()
+            if k
+            in (
+                "integration_id",
+                "cluster_uid",
+                "namespace",
+                "resource_uid",
+                "revision",
+            )
+        }
+        return row
+
+    def observation_history(self, session_id):
+        """Mirror ``ObservationStore.session_history``: the session row, the
+        profile row behind its revision, every sample with its readings
+        (tests append them to ``session["samples"]``) and the endings."""
+        session = next(
+            (s for s in self.sessions if s["session_id"] == session_id), None
+        )
+        if session is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        content = session.get("health_profile")
+        profile = None
+        if content is not None and session.get("health_profile_revision"):
+            profile = {
+                "health_profile_revision": session["health_profile_revision"],
+                "profile_id": json.loads(content).get("profile_id"),
+                "content_sha256": hashlib.sha256(content.encode()).hexdigest(),
+                "content": content,
+                "created_at": session["authorized_at"],
+            }
+        return {
+            "session": self._session_row(session),
+            "incident_lifecycle": self.incidents[session["incident_id"]]["lifecycle"],
+            "health_profile": profile,
+            "samples": [dict(sample) for sample in session.get("samples", [])],
+            "endings": [dict(ending) for ending in session.get("endings", [])],
+        }
 
     def committer(self, lease):
         return _MemoryCommitter(self, lease)

@@ -162,6 +162,17 @@ export OPSPILOT_OBSERVER_ENV_FILE="$PWD/tmp/m1-kind-lab/prometheus-observer.env"
 
 启动时同样校验 schema 在 Alembic head（角色由 0003 授予 `alembic_version` 只读）。授权会话（人工登记处置）属第 3 步 #85；在其合并前，工程侧可用 `docs/evidence/m1-02-observer/lab_run.py prepare` 以 owner DSN 调用存储原语创建会话。
 
+### 离线重放（M1-02 第 5 步，#87，F6 第 5 步）
+
+`python -m opspilot.observer.replay` 只读已存行重算恢复判定：会话行、`opspilot_health_profiles` 里冻结的 profile 内容（须能重算出会话绑定的 revision）、每条采样行及其判定条件、每条读数行的原始捆绑。三层各自重算并与已存比对：捆绑重新哈希并重建读数（`sampler.replay_sample`）→ 按 profile 阈值/新鲜度/流量门在捆绑记录的 `sample_time` 重判 outcome（`evaluate_readings`）→ 用重算 outcome 走存储层同一折叠（`observation.store.fold_history`：采纳、健康连续期、持续窗口、次数、结束记录、生命周期）。任何一层不一致（捆绑哈希不符、读数/outcome/判定重算不同、profile 不可读或 revision 不符、会话终态或结束记录不符）都报 `STORED_OBSERVATION_INTEGRITY_MISMATCH`，`recovery_verdict` 为 `unknown`，不复述已存判定；捆绑实际重算出的结论另列为 `recomputed_verdict`。不查遥测、不调模型、不看墙钟。
+
+```sh
+export OPSPILOT_OBSERVER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=<Observer 登录角色>"   # 或 --dsn；角色对所需表只读
+.venv/bin/python -m opspilot.observer.replay --session <session_id>      # 可重复；或 --incident <incident_id> 重放该事故全部会话
+```
+
+stdout 为 JSON 列表（每会话一项：`consistent`、`integrity`、`reasons`、`recovery_verdict`、`recomputed_verdict`、`healthy_window_seconds`、`expected_lifecycle`/`recorded_lifecycle`、逐采样的 stored/replayed outcome 与判定、逐读数的 stored/replayed 状态、值、点数、查询、窗口、来源、sha256；不含原始字节）。退出码：0 全部一致，1 有不一致，2 用法或存储错误。纯函数入口 `opspilot.observer.replay.replay_history(session_history)` 与 F6 验收形态的 `replay(profile, handled_at, samples, session=..., endings=..., allow_telemetry=False, allow_model=False)`（任一 allow 为 True 直接拒绝 `REPLAY_IS_OFFLINE`）供测试与验收夹具使用。事故页「Recovery verdict」区块显示同一结果与逐采样依据，与「Investigation report」分开，页面不增加写动作。
+
 ## M0-01 离线协议入口
 
 `make setup` 现在同时同步 `dev` 和 `m0` 依赖组；`m0` 固定 OpenAI 3.10.0、LangSmith 0.12.2、HTTPX2 2.12.0，传递依赖及发行物哈希见 uv.lock。产品 dependencies 仍为空。pytest明确禁用LangSmith自动插件；CI做开发检查与合成PostgreSQL集成，不执行付费模型/trace。
