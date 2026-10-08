@@ -578,11 +578,6 @@ def test_action_contract_rejects_surplus_handoff_or_inexact_lifecycle(
         assert_readonly(altered, recovery_driver)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="合同待定 #154：全历史 actions 含已发生的交接，与「非交接结果 human_handoff 为 0」冲突",
-)
 def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
     recovery_driver, f6_profile
 ):
@@ -620,4 +615,15 @@ def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
     )
     assert current.incident_lifecycle == "resolved"
     assert current.human_interaction is None
-    assert_readonly(current, recovery_driver)
+    try:
+        assert_readonly(current, recovery_driver)
+    except AssertionError:
+        # Only the history-scoped handoff action is the open contract
+        # question (#154); every other check must still hold without it.
+        rest = deepcopy(current)
+        rest.actions = tuple(a for a in current.actions if a != "human_handoff")
+        assert_readonly(rest, recovery_driver)
+        assert current.actions.count("human_handoff") == 1
+        pytest.xfail(
+            "合同待定 #154：全历史 actions 含已发生的交接，与「非交接结果 human_handoff 为 0」冲突"
+        )

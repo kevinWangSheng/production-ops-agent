@@ -72,7 +72,7 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 ## 剩余 xfail 与验证边界
 
-另有一个 strict xfail（合同待定，issue #154；原为普通 failure，xfail 仅为使 CI 可读，断言未放宽）：`test_non_handoff_result_after_prior_handoff_has_no_handoff_action`。
+另有一个运行期 xfail（合同待定，issue #154；仅当去掉 human_handoff 后其余全部断言通过、且该动作恰为历史上那 1 次时才 xfail，其它任何失败照常报红）：`test_non_handoff_result_after_prior_handoff_has_no_handoff_action`。
 同事故第一会话零流量5次采样后交接回 open，再登记新会话，3次健康采样后 resolved。
 最新 `human_interaction=None`，但产品全历史 `actions` 中 `human_handoff` 实际1、期望0。
 公开 seam 的最新会话交接字段与全历史动作范围不同，导致不满足 #145 冻结的非交接零动作要求；断言不变，不修改产品；归属待 #154 决定。
