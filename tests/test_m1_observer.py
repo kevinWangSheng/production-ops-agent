@@ -1545,3 +1545,17 @@ def test_an_error_body_of_exactly_the_keep_limit_is_complete(via_opener):
         via_opener=via_opener,
     )
     assert result.body == body and result.body_complete
+
+
+@pytest.mark.parametrize("via_opener", [False, True])
+def test_an_unconvertible_content_length_still_marks_a_short_read_incomplete(
+    via_opener,
+):
+    """PR #147 review P2: a 5000-digit Content-Length makes ``int()`` raise;
+    the reading is still a recorded failure with the prefix kept."""
+    result = _wire_instant(
+        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: " + b"9" * 5000 + b"\r\n\r\nabc",
+        via_opener=via_opener,
+    )
+    assert (result.status, result.http_status) == ("failed", 401)
+    assert result.body == b"abc" and not result.body_complete

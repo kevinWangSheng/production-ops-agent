@@ -520,8 +520,8 @@ def _read_until(
             # body, not an ended one (issue #133); ``length`` is what the
             # response still owes (None when chunked or undeclared, where
             # ``http.client`` raises ``IncompleteRead`` by itself)
-            owed = getattr(response, "length", None)
-            if isinstance(owed, int) and owed > 0:
+            owed = _owed(response, received)
+            if owed > 0:
                 raise IncompleteRead(b"", owed)
             return True
         chunks.append(chunk)
@@ -535,12 +535,38 @@ def _error_body_ended(error: urllib.error.HTTPError, kept: bytes) -> bool:
     body raises ``IncompleteRead`` like the ``_fetch`` path does."""
     if len(kept) > _ERROR_BODY_BYTES:
         return False
-    declared = error.headers.get("Content-Length") if error.headers else None
-    if declared is not None and declared.strip().isdigit():
-        owed = int(declared) - len(kept)
-        if owed > 0:
-            raise IncompleteRead(kept, owed)
+    declared = _declared_length(error.headers)
+    if declared is not None and declared > len(kept):
+        raise IncompleteRead(kept, declared - len(kept))
     return True
+
+
+def _declared_length(headers: Any) -> int | None:
+    """The Content-Length a peer declared, or None when absent or not a
+    plain digit string. A digit string too long to be a body size is clamped
+    rather than converted: ``int()`` refuses very long ones, and a length
+    nobody can deliver is still a body that was cut."""
+    value = headers.get("Content-Length") if headers is not None else None
+    if not isinstance(value, str) or not value.strip().isascii():
+        return None
+    value = value.strip()
+    if not value.isdigit():
+        return None
+    return int(value) if len(value) <= 15 else 10**15
+
+
+def _owed(response: HTTPResponse, received: int) -> int:
+    """Bytes the response still owes after EOF. ``http.client`` tracks
+    ``length`` itself, but drops a Content-Length it cannot convert (and a
+    chunked body has none): the declared header fills that gap, never for a
+    chunked body, where ``IncompleteRead`` is raised by the client."""
+    length = getattr(response, "length", None)
+    if isinstance(length, int):
+        return max(0, length)
+    if getattr(response, "chunked", True):
+        return 0
+    declared = _declared_length(getattr(response, "headers", None))
+    return 0 if declared is None else max(0, declared - received)
 
 
 def _rearm(response: HTTPResponse, seconds: float) -> None:
