@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident cac14659-5ac6-5080-a657-e85067c9bf3a</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>alice</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>cac14659-5ac6-5080-a657-e85067c9bf3a</code></h1>
+<p>
+  lifecycle <span class="badge">observing_recovery</span>
+  · mode <span class="badge" id="incident-mode">automatic</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">1</strong>
+  · run <code>2197785d-cf09-5657-88f4-f73c3fbf4cee</code> <span class="badge" id="run-state">queued</span>
+  · epoch 0
+  · budget 0 spent / 0 reserved / 0 unknown of 100
+  · deadline 2026-09-14 01:15:00+00:00
+</p>
+
+<p>Target request: <code>checkout-prod</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Why is checkout erroring?</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 1. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="cancel-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="correct-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="follow_up-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="new_run-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="pause-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="register_remediation">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="register_remediation-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  
+  <button type="submit">register_remediation</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="resume-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+  <button type="submit">resume</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/control">
+  <input type="hidden" name="action" value="takeover">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="takeover-1-0bb3ccfad0904114941b7cd3401583b2">
+  
+  <button type="submit">takeover</button>
+</form>
+
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation under HealthProfile <code>unit@8abd52e3048d</code>. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+
+<table id="observation-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td><code>888c8368-fb21-5ae3-b585-59b61ec3a730</code></td>
+    <td><span class="badge">authorized</span></td>
+    <td>control 1 · observation 1</td>
+    <td><code>unit@8abd52e3048d</code></td>
+    <td><code>svc:v2</code></td>
+    <td>2026-09-14 01:05:00+00:00 by <code>alice</code></td>
+    <td>2026-09-14 02:05:00+00:00</td>
+    <td>3 / 20 adopted, next due 2026-09-14 01:06:00+00:00</td>
+  </tr>
+  
+  </tbody>
+</table>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report below does not certify recovery.</p>
+
+<section id="recovery-verdict">
+<h3>Recovery verdict <span class="muted">(independent observation; not the investigation's conclusion)</span></h3>
+
+<div class="recovery-session">
+  <p>
+    session <code>888c8368-fb21-5ae3-b585-59b61ec3a730</code> · <span class="badge">authorized</span>
+    · verdict <span class="badge">degraded</span>
+    <span class="muted">not confirmed</span>
+    · healthy window 0 s
+    · profile <code>unit@8abd52e3048d</code>
+    · handled at 2026-09-14T01:05:00+00:00
+    · offline replay:
+    <span class="badge">replay consistent</span>
+    <br><span class="muted">reasons:</span> required signals outside their healthy bound: errors
+    <br><span class="muted">lifecycle implied by replay:</span> <code>no claim</code> <span class="muted">· recorded with the samples:</span> <code>observing_recovery</code>
+  </p>
+  
+  <table class="recovery-basis" id="recovery-basis">
+    <thead><tr><th>#</th><th>Window</th><th>Outcome stored → replayed</th><th>Decision stored</th><th>Replay</th></tr></thead>
+    <tbody>
+    
+    <tr>
+      <td>1</td>
+      <td>2026-09-14T01:05:00+00:00 → 2026-09-14T01:10:00+00:00<br><span class="muted">submitted 2026-09-14T01:10:02+00:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: errors</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>rate</code></td>
+            <td>ok / 2.0 / 5
+              → ok / 2.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">2.0 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(x{namespace=&#39;ns&#39;,service=&#39;svc&#39;}[5m]))</code></td>
+            <td>2026-09-14T01:05:00+00:00 → 2026-09-14T01:10:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>171258d88fee546caf6837d1c4386dd740c7bd80a6a95c25e4db176d539f656a</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>errors</code></td>
+            <td>ok / 0.5 / 5
+              → ok / 0.5 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">0.5 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>e{namespace=&#39;ns&#39;,service=&#39;svc&#39;} / t{namespace=&#39;ns&#39;,service=&#39;svc&#39;}</code></td>
+            <td>2026-09-14T01:05:00+00:00 → 2026-09-14T01:10:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>24f07fd1133f43c036b1f790ef3bd172c9cdb21f70dd321eabeead78074e7f0b</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>2</td>
+      <td>2026-09-14T01:06:00+00:00 → 2026-09-14T01:11:00+00:00<br><span class="muted">submitted 2026-09-14T01:11:02+00:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: errors</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>rate</code></td>
+            <td>ok / 2.0 / 5
+              → ok / 2.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">2.0 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(x{namespace=&#39;ns&#39;,service=&#39;svc&#39;}[5m]))</code></td>
+            <td>2026-09-14T01:06:00+00:00 → 2026-09-14T01:11:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>3c5d0230e48e694999c6f16a859977db07e1624848332d533c1ced99ee1fd040</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>errors</code></td>
+            <td>ok / 0.5 / 5
+              → ok / 0.5 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">0.5 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>e{namespace=&#39;ns&#39;,service=&#39;svc&#39;} / t{namespace=&#39;ns&#39;,service=&#39;svc&#39;}</code></td>
+            <td>2026-09-14T01:06:00+00:00 → 2026-09-14T01:11:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>a61fead9fdecfa21a8b9020e8d5ea463cce84673680280287a45d84bbe69ce10</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>3</td>
+      <td>2026-09-14T01:07:00+00:00 → 2026-09-14T01:12:00+00:00<br><span class="muted">submitted 2026-09-14T01:12:02+00:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: errors</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>rate</code></td>
+            <td>ok / 2.0 / 5
+              → ok / 2.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">2.0 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(x{namespace=&#39;ns&#39;,service=&#39;svc&#39;}[5m]))</code></td>
+            <td>2026-09-14T01:07:00+00:00 → 2026-09-14T01:12:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>ec84511293bf30406f3497fe1d040b3109f4498b5e68e0dc3bae1adbabe9b3dd</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>errors</code></td>
+            <td>ok / 0.5 / 5
+              → ok / 0.5 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">0.5 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>e{namespace=&#39;ns&#39;,service=&#39;svc&#39;} / t{namespace=&#39;ns&#39;,service=&#39;svc&#39;}</code></td>
+            <td>2026-09-14T01:07:00+00:00 → 2026-09-14T01:12:00+00:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>2258bf53eb6ade05614094cfdcd3140fc9a75b0ce43285b8818582d859bae7dc</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    </tbody>
+  </table>
+  
+</div>
+
+</section>
+
+
+<h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  </p>
+  
+
+
+
+
+
+
+<h2>Steps</h2>
+
+<p class="muted">No committed steps.</p>
+
+
+<h2>Human decisions</h2>
+
+<table>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <tbody>
+  
+  <tr><td>2</td><td><code>register_remediation</code></td><td><code>alice</code></td>
+      <td>0 → 1</td><td></td></tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 2)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "alice", "channel": "ui_basic", "question": "Why is checkout erroring?", "received_at": "2026-09-14T01:05:00+00:00", "request_id": "7c67b167-8bae-4702-bf1d-346da316fba6", "run_id": "2197785d-cf09-5657-88f4-f73c3fbf4cee", "target_id": "checkout-prod"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>control_applied</strong> <span class="muted">{"action": "register_remediation", "actor_id": "alice", "expected_generation": 0, "generation": 1, "revision": "svc:v2"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 2;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/cac14659-5ac6-5080-a657-e85067c9bf3a/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

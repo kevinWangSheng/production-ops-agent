@@ -225,6 +225,17 @@ class ReplayedSample:
     # a healthy sample, or "required_signals_present" when that flag
     # contradicts the reading rows
     signal_mismatches: tuple[str, ...] = ()
+    # (outcome, required_signals_present) as stored vs. as recomputed from
+    # the raw bundles against the profile's thresholds (step 5, #87); both
+    # ``None`` when the fold ran on the stored outcome alone
+    stored_outcome: tuple[str, bool] | None = None
+    replayed_outcome: tuple[str, bool] | None = None
+    # the row says the sample was within the deadline but its window ends
+    # at or after the session's frozen ``deadline_at``
+    deadline_mismatch: bool = False
+    # the row's ``scope_suspended`` flag contradicts the scope generations it
+    # recorded against the session's authorization
+    scope_mismatch: bool = False
 
     @property
     def matches(self) -> bool:
@@ -233,6 +244,9 @@ class ReplayedSample:
         # explains it rather than contradicting it.
         return (
             self.stored == self.replayed
+            and self.stored_outcome == self.replayed_outcome
+            and not self.deadline_mismatch
+            and not self.scope_mismatch
             and not self.raw_mismatches
             and (
                 not self.signal_mismatches or self.stored[1] == "readings_inconsistent"
@@ -261,6 +275,29 @@ class ReplayReport:
     recorded_ending: tuple[str, str | None, UUID | None, str, str] | None = None
     # the sample whose replayed verdict ended the session, if any
     ending_sample_id: UUID | None = None
+    # the healthy streak the fold ends with: first window start and latest
+    # window end of the consecutive adopted healthy samples (None: none)
+    healthy_since: datetime | None = None
+    healthy_until: datetime | None = None
+    # the watermarks the fold ends with, to compare with the session row
+    adopted_sequence: int = 0
+    adopted_window_end: datetime | None = None
+    adopted_count: int = 0
+    # how many ending records the session has (a session ends once), the
+    # reason the replayed fold ended it with (None: the fold did not end
+    # it), the frozen budget and deadline, and when the last record was
+    # written -- every ending must be backed by the fold or by the deadline
+    recorded_endings_count: int = 0
+    replayed_ended_reason: str | None = None
+    max_samples: int | None = None
+    deadline_at: datetime | None = None
+    recorded_ending_at: datetime | None = None
+
+    @property
+    def healthy_window_seconds(self) -> int:
+        if self.healthy_since is None or self.healthy_until is None:
+            return 0
+        return max(0, int((self.healthy_until - self.healthy_since).total_seconds()))
 
     @property
     def ending_consistent(self) -> bool:
@@ -278,11 +315,39 @@ class ReplayReport:
         session -- which points at exactly that sample.
         """
         if self.stored_session_state == "authorized":
-            return self.stored_ended_reason is None and self.recorded_ending is None
+            return (
+                self.stored_ended_reason is None
+                and self.recorded_ending is None
+                and self.recorded_endings_count == 0
+            )
         if self.recorded_ending is None or self.stored_ended_reason is None:
+            return False
+        if self.recorded_endings_count != 1:
+            # a session ends exactly once; a second record (e.g. a
+            # revocation slipped in before the confirmation) is forged
             return False
         reason, transition, sample_id, before, after = self.recorded_ending
         if reason != self.stored_ended_reason:
+            return False
+        if (
+            self.replayed_ended_reason is not None
+            and reason != self.replayed_ended_reason
+        ):
+            return False
+        if reason == "max_samples_exhausted" and (
+            self.max_samples is None or self.adopted_count < self.max_samples
+        ):
+            # a budget ending is backed only by the replayed adopted count
+            return False
+        if (
+            reason == "deadline_expired"
+            and self.replayed_ended_reason is None
+            and self.deadline_at is not None
+            and self.recorded_ending_at is not None
+            and self.recorded_ending_at < self.deadline_at
+        ):
+            # a deadline ending without a sample (the sweep) is written
+            # after the frozen deadline, never before it
             return False
         implied_state = {
             "recovery_confirmed": "completed",
@@ -696,6 +761,231 @@ def _domain_session(
         adopted_sequence=adopted_sequence,
         adopted_window_end=adopted_window_end,
         active_sample_job_id=None if active_job is None else str(active_job),
+    )
+
+
+def fold_history(
+    history: Mapping[str, Any],
+    *,
+    outcomes: Mapping[UUID, tuple[str, bool]] | None = None,
+) -> ReplayReport:
+    """Recompute every stored decision of one session from its history alone.
+
+    ``history`` is what ``ObservationStore.session_history`` returns; the
+    conditions each decision was taken under travel with the sample row, so
+    no database, telemetry or model is needed. Stored raw payloads are
+    re-hashed against ``raw_sha256``; the fold's final session state and the
+    lifecycle the verdicts imply are compared with what is stored.
+
+    ``outcomes`` maps a sample id to the ``(outcome, required_signals_present)``
+    recomputed from its raw bundles against the profile's thresholds
+    (``opspilot.observer.replay``, F6 step 5); the fold then runs on that
+    instead of the stored outcome and each ``ReplayedSample`` carries both.
+    Without it the fold trusts the stored outcome and checks the decision
+    structurally (the store's own ``replay_session``).
+    """
+    row = history["session"]
+    session_id = cast(UUID, row["session_id"])
+    state = "authorized"
+    adopted_sequence, adopted_window_end = 0, None
+    adopted_count, healthy_since = 0, None
+    healthy_until: datetime | None = None
+    expected_lifecycle: str | None = None
+    ending_sample_id: UUID | None = None
+    replayed_ended_reason: str | None = None
+    deadline = cast(datetime | None, row.get("deadline_at"))
+    # No profile revision: nothing to check (such a session never confirms
+    # health). A revision whose stored content cannot yield the required
+    # signals fails every sample of the replay.
+    required, unreadable = _parse_required(history["health_profile"])
+    replayed: list[ReplayedSample] = []
+    for stored in history["samples"]:
+        stored_outcome = (
+            str(stored["outcome"]),
+            bool(stored["required_signals_present"]),
+        )
+        recomputed = None if outcomes is None else outcomes.get(stored["sample_id"])
+        outcome, present = recomputed or stored_outcome
+        session = _domain_session(
+            row,
+            control_generation=int(stored["incident_control_generation"]),
+            observation_generation=int(stored["incident_observation_generation"]),
+            state=state,
+            adopted_sequence=adopted_sequence,
+            adopted_window_end=adopted_window_end,
+            active_job=stored["job_id"],
+        )
+        sample = HealthSample(
+            sample_id=str(stored["sample_id"]),
+            session_id=str(session_id),
+            sequence=int(stored["sequence"]),
+            window=QueryWindow(start=stored["window_start"], end=stored["window_end"]),
+            outcome=cast(Any, outcome),
+            subject_control_generation=int(stored["subject_control_generation"]),
+            observation_generation=int(stored["observation_generation"]),
+            health_profile_revision=stored["health_profile_revision"],
+            required_signals_present=present,
+        )
+        ok_signals = {
+            str(reading["signal_name"])
+            for reading in stored["readings"]
+            if _covers(
+                reading["status"],
+                reading["value"],
+                reading["sample_count"],
+                reading_window=(reading["window_start"], reading["window_end"]),
+                sample_window=(stored["window_start"], stored["window_end"]),
+            )
+        }
+        # Recomputed from the stored rows: a deleted reading changes the
+        # replayed decision (readings_inconsistent) as well as this list.
+        signal_mismatches = _missing_required_signals(
+            required,
+            unreadable=unreadable,
+            outcome=outcome,
+            required_signals_present=present,
+            ok_signals=ok_signals,
+        )
+        # The deadline is recomputed from the frozen ``deadline_at`` and the
+        # window end rather than trusted from the row: a window ending at
+        # or after the deadline cannot have been within it (the row's flag
+        # was taken at submission, later still). The reverse -- a window
+        # before the deadline submitted after it -- is a legitimate
+        # ``deadline_expired`` and is kept.
+        within = bool(stored["within_deadline"])
+        deadline_mismatch = (
+            within and deadline is not None and stored["window_end"] >= deadline
+        )
+        # The control scope is recomputed from the generations the row
+        # recorded against the ones the session was authorized under
+        # (``_scope_blocks``): a moved generation blocks adoption whatever
+        # the stored flag says, and a flag that contradicts the generations
+        # is reported (C3 section 4, human control first).
+        moved = (
+            int(stored["global_generation"]),
+            int(stored["target_generation"]),
+        ) != (
+            int(row["authorized_global_generation"]),
+            int(row["authorized_target_generation"]),
+        )
+        flagged = bool(stored["scope_suspended"])
+        scope_mismatch = moved != flagged
+        verdict = _judge(
+            session,
+            sample,
+            subject_state=str(stored["subject_lifecycle"]),
+            within_deadline=within and not deadline_mismatch,
+            suspension_blocks=flagged or moved,
+            lease_valid=bool(stored["lease_valid"]),
+            stamps_match=bool(stored["lease_stamps_match"]),
+            readings_consistent=not signal_mismatches,
+            authorized_at=row["authorized_at"],
+            adopted_count=adopted_count,
+            healthy_since=healthy_since,
+            max_samples=int(row["max_samples"]),
+            sustained_window_seconds=int(row["sustained_window_seconds"]),
+        )
+        state = verdict.session_state
+        adopted_sequence = verdict.adopted_sequence
+        adopted_window_end = verdict.adopted_window_end
+        adopted_count = verdict.adopted_count
+        healthy_since = verdict.healthy_since
+        if verdict.decision.accepted:
+            healthy_until = None if healthy_since is None else sample.window.end
+        if verdict.transition == "recovery_confirmed":
+            expected_lifecycle = "resolved"
+        elif verdict.transition == "observation_ended_unconfirmed":
+            expected_lifecycle = "open"
+        if (
+            verdict.ended_reason is not None
+            and verdict.decision.accepted
+            and ending_sample_id is None
+        ):
+            # The adopted sample whose verdict ended the session; a
+            # rejected sample ending it (deadline, stale binding, scope)
+            # leaves the record pointing at no sample.
+            ending_sample_id = cast(UUID, stored["sample_id"])
+        raw_mismatches = tuple(
+            str(reading["signal_name"])
+            for reading in stored["readings"]
+            if reading["raw"] is not None
+            and hashlib.sha256(bytes(reading["raw"])).hexdigest()
+            != reading["raw_sha256"]
+        )
+        replayed.append(
+            ReplayedSample(
+                sample_id=stored["sample_id"],
+                sequence=int(stored["sequence"]),
+                signal_mismatches=signal_mismatches,
+                stored=(
+                    str(stored["disposition"]),
+                    str(stored["reason"]),
+                    bool(stored["confirms_health"]),
+                    str(stored["health_basis"]),
+                    stored["transition"],
+                ),
+                replayed=(
+                    verdict.decision.disposition,
+                    verdict.decision.reason,
+                    verdict.healthy,
+                    verdict.health_basis,
+                    verdict.transition,
+                ),
+                raw_mismatches=raw_mismatches,
+                stored_outcome=None if recomputed is None else stored_outcome,
+                replayed_outcome=recomputed,
+                deadline_mismatch=deadline_mismatch,
+                scope_mismatch=scope_mismatch,
+            )
+        )
+        if verdict.ended_reason is not None and replayed_ended_reason is None:
+            replayed_ended_reason = verdict.ended_reason
+    # The record to compare with: the sample that ended the session (a
+    # late duplicate filed as history afterwards says nothing new), else
+    # the last sample.
+    recorded_lifecycle: str | None = None
+    ending = [item for item in history["samples"] if item["transition"] is not None]
+    if ending or history["samples"]:
+        last = ending[-1] if ending else history["samples"][-1]
+        recorded_lifecycle = str(last["subject_lifecycle"])
+        trigger = last["transition"]
+        if trigger is not None and trigger in INCIDENT_LIFECYCLE.triggers(
+            recorded_lifecycle
+        ):
+            recorded_lifecycle = INCIDENT_LIFECYCLE.fire(recorded_lifecycle, trigger)
+    endings = history["endings"]
+    recorded_ending = None
+    recorded_ending_at: datetime | None = None
+    if endings:
+        last_ending = endings[-1]
+        recorded_ending = (
+            str(last_ending["ended_reason"]),
+            last_ending["transition"],
+            last_ending["sample_id"],
+            str(last_ending["lifecycle_before"]),
+            str(last_ending["lifecycle_after"]),
+        )
+        recorded_ending_at = cast(datetime | None, last_ending.get("recorded_at"))
+    return ReplayReport(
+        session_id=session_id,
+        samples=tuple(replayed),
+        replayed_session_state=state,
+        stored_session_state=str(row["state"]),
+        expected_lifecycle=expected_lifecycle,
+        recorded_lifecycle=recorded_lifecycle,
+        stored_ended_reason=row["ended_reason"],
+        recorded_ending=recorded_ending,
+        ending_sample_id=ending_sample_id,
+        healthy_since=healthy_since,
+        healthy_until=healthy_until,
+        adopted_sequence=adopted_sequence,
+        adopted_window_end=adopted_window_end,
+        adopted_count=adopted_count,
+        recorded_endings_count=len(endings),
+        replayed_ended_reason=replayed_ended_reason,
+        max_samples=int(row["max_samples"]) if row.get("max_samples") else None,
+        deadline_at=deadline,
+        recorded_ending_at=recorded_ending_at,
     )
 
 
@@ -1626,160 +1916,7 @@ class ObservationStore(_StoreBase):
         with what is stored. A mismatch means the stored basis no longer
         reproduces the stored verdict.
         """
-        history = self.session_history(session_id)
-        row = history["session"]
-        state = "authorized"
-        adopted_sequence, adopted_window_end = 0, None
-        adopted_count, healthy_since = 0, None
-        expected_lifecycle: str | None = None
-        ending_sample_id: UUID | None = None
-        # No profile revision: nothing to check (such a session never confirms
-        # health). A revision whose stored content cannot yield the required
-        # signals fails every sample of the replay.
-        required, unreadable = _parse_required(history["health_profile"])
-        replayed: list[ReplayedSample] = []
-        for stored in history["samples"]:
-            session = _domain_session(
-                row,
-                control_generation=int(stored["incident_control_generation"]),
-                observation_generation=int(stored["incident_observation_generation"]),
-                state=state,
-                adopted_sequence=adopted_sequence,
-                adopted_window_end=adopted_window_end,
-                active_job=stored["job_id"],
-            )
-            sample = HealthSample(
-                sample_id=str(stored["sample_id"]),
-                session_id=str(session_id),
-                sequence=int(stored["sequence"]),
-                window=QueryWindow(
-                    start=stored["window_start"], end=stored["window_end"]
-                ),
-                outcome=stored["outcome"],
-                subject_control_generation=int(stored["subject_control_generation"]),
-                observation_generation=int(stored["observation_generation"]),
-                health_profile_revision=stored["health_profile_revision"],
-                required_signals_present=bool(stored["required_signals_present"]),
-            )
-            ok_signals = {
-                str(reading["signal_name"])
-                for reading in stored["readings"]
-                if _covers(
-                    reading["status"],
-                    reading["value"],
-                    reading["sample_count"],
-                    reading_window=(reading["window_start"], reading["window_end"]),
-                    sample_window=(stored["window_start"], stored["window_end"]),
-                )
-            }
-            # Recomputed from the stored rows: a deleted reading changes the
-            # replayed decision (readings_inconsistent) as well as this list.
-            signal_mismatches = _missing_required_signals(
-                required,
-                unreadable=unreadable,
-                outcome=str(stored["outcome"]),
-                required_signals_present=bool(stored["required_signals_present"]),
-                ok_signals=ok_signals,
-            )
-            verdict = _judge(
-                session,
-                sample,
-                subject_state=str(stored["subject_lifecycle"]),
-                within_deadline=bool(stored["within_deadline"]),
-                suspension_blocks=bool(stored["scope_suspended"]),
-                lease_valid=bool(stored["lease_valid"]),
-                stamps_match=bool(stored["lease_stamps_match"]),
-                readings_consistent=not signal_mismatches,
-                authorized_at=row["authorized_at"],
-                adopted_count=adopted_count,
-                healthy_since=healthy_since,
-                max_samples=int(row["max_samples"]),
-                sustained_window_seconds=int(row["sustained_window_seconds"]),
-            )
-            state = verdict.session_state
-            adopted_sequence = verdict.adopted_sequence
-            adopted_window_end = verdict.adopted_window_end
-            adopted_count = verdict.adopted_count
-            healthy_since = verdict.healthy_since
-            if verdict.transition == "recovery_confirmed":
-                expected_lifecycle = "resolved"
-            elif verdict.transition == "observation_ended_unconfirmed":
-                expected_lifecycle = "open"
-            if (
-                verdict.ended_reason is not None
-                and verdict.decision.accepted
-                and ending_sample_id is None
-            ):
-                # The adopted sample whose verdict ended the session; a
-                # rejected sample ending it (deadline, stale binding, scope)
-                # leaves the record pointing at no sample.
-                ending_sample_id = cast(UUID, stored["sample_id"])
-            raw_mismatches = tuple(
-                str(reading["signal_name"])
-                for reading in stored["readings"]
-                if reading["raw"] is not None
-                and hashlib.sha256(bytes(reading["raw"])).hexdigest()
-                != reading["raw_sha256"]
-            )
-            replayed.append(
-                ReplayedSample(
-                    sample_id=stored["sample_id"],
-                    sequence=int(stored["sequence"]),
-                    signal_mismatches=signal_mismatches,
-                    stored=(
-                        str(stored["disposition"]),
-                        str(stored["reason"]),
-                        bool(stored["confirms_health"]),
-                        str(stored["health_basis"]),
-                        stored["transition"],
-                    ),
-                    replayed=(
-                        verdict.decision.disposition,
-                        verdict.decision.reason,
-                        verdict.healthy,
-                        verdict.health_basis,
-                        verdict.transition,
-                    ),
-                    raw_mismatches=raw_mismatches,
-                )
-            )
-        # The record to compare with: the sample that ended the session (a
-        # late duplicate filed as history afterwards says nothing new), else
-        # the last sample.
-        recorded_lifecycle: str | None = None
-        ending = [item for item in history["samples"] if item["transition"] is not None]
-        if ending or history["samples"]:
-            last = ending[-1] if ending else history["samples"][-1]
-            recorded_lifecycle = str(last["subject_lifecycle"])
-            trigger = last["transition"]
-            if trigger is not None and trigger in INCIDENT_LIFECYCLE.triggers(
-                recorded_lifecycle
-            ):
-                recorded_lifecycle = INCIDENT_LIFECYCLE.fire(
-                    recorded_lifecycle, trigger
-                )
-        endings = history["endings"]
-        recorded_ending = None
-        if endings:
-            last_ending = endings[-1]
-            recorded_ending = (
-                str(last_ending["ended_reason"]),
-                last_ending["transition"],
-                last_ending["sample_id"],
-                str(last_ending["lifecycle_before"]),
-                str(last_ending["lifecycle_after"]),
-            )
-        return ReplayReport(
-            session_id=session_id,
-            samples=tuple(replayed),
-            replayed_session_state=state,
-            stored_session_state=str(row["state"]),
-            expected_lifecycle=expected_lifecycle,
-            recorded_lifecycle=recorded_lifecycle,
-            stored_ended_reason=row["ended_reason"],
-            recorded_ending=recorded_ending,
-            ending_sample_id=ending_sample_id,
-        )
+        return fold_history(self.session_history(session_id))
 
     # --- helpers
 

@@ -261,6 +261,12 @@ class IncidentStore(Protocol):
         """Every observation session row of the incident, oldest first."""
         ...
 
+    def observation_history(self, session_id: UUID) -> Mapping[str, Any]:
+        """One session with its profile content, samples (each with its
+        readings and raw bundles) and ending records, one snapshot
+        (``ObservationStore.session_history``); the page's recovery basis."""
+        ...
+
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]: ...
 
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None: ...
@@ -614,6 +620,9 @@ class DurableIncidentStore:
 
     def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:
         return tuple(self._observation.incident_sessions(incident_id))
+
+    def observation_history(self, session_id: UUID) -> Mapping[str, Any]:
+        return self._observation.session_history(session_id)
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
