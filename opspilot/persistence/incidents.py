@@ -154,7 +154,7 @@ class _IncidentOps(_StoreBase):
         with self.transaction(snapshot=True) as conn:
             rows = conn.execute(
                 "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
-                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.conclusion IS NULL "
+                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' AND i.conclusion IS NULL "
                 "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
                 "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp()) "
                 "ORDER BY r.deadline, i.incident_id LIMIT %s",

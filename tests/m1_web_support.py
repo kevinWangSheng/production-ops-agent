@@ -160,6 +160,7 @@ class MemoryIncidentStore:
             "target_id": target_id,
             "state": "queued",
             "lifecycle": "open",
+            "mode": "automatic",
             "control_generation": 0,
             "current_run_id": run_id,
             "conclusion": None,
@@ -211,11 +212,52 @@ class MemoryIncidentStore:
             raise PersistenceError("UNKNOWN_IDENTITY")
         if row["control_generation"] != expected_generation:
             raise PersistenceError("CONTROL_CONFLICT")
-        if action not in {"cancel", "pause", "resume", "follow_up", "correct"}:
+        if action not in {
+            "cancel",
+            "pause",
+            "resume",
+            "follow_up",
+            "correct",
+            "takeover",
+        }:
             raise PersistenceError("INVALID_INPUT")
         run = self.runs.get(row["current_run_id"])
         if run is None or run["incident_id"] != incident_id:
             raise PersistenceError("INCONSISTENT_STATE")
+        human_owned = row["mode"] == "human_owned"
+        if action == "takeover":
+            # Mirror DurableStore.control: mode, generation, revocation, the
+            # Run handed to the human; a repeated takeover revokes again and
+            # leaves the Run alone; no way back to automatic (#124).
+            nxt = expected_generation + 1
+            row.update(control_generation=nxt, mode="human_owned")
+            self._revoke_sessions(incident_id)
+            for candidate in self.runs.values():
+                if human_owned:
+                    break
+                if candidate["incident_id"] == incident_id and candidate["state"] in {
+                    "queued",
+                    "running",
+                    "paused",
+                    "blocked",
+                }:
+                    candidate.update(
+                        state="waiting_human",
+                        owner=None,
+                        lease_until=None,
+                        control_generation=nxt,
+                    )
+            self.controls.append(
+                {
+                    "incident_id": incident_id,
+                    "action": "takeover",
+                    "expected": expected_generation,
+                    "resulting": nxt,
+                    "actor": actor,
+                    "payload": payload,
+                }
+            )
+            return nxt
         if row["state"] in {"cancelled", "completed"} or row["conclusion"] is not None:
             raise PersistenceError("ILLEGAL_TRANSITION")
         # PR #31: a follow_up/correct that carries content is recorded while
@@ -231,10 +273,13 @@ class MemoryIncidentStore:
         # Mirror DurableStore.control: a note on an overdue Run starts a
         # fresh Run (user decision 2026-09-25) instead of re-queueing it.
         overdue = run["state"] in _CONTROL_OPEN and run["deadline"] <= self.now()
-        renew = action in {"follow_up", "correct"} and overdue
+        renew = action in {"follow_up", "correct"} and overdue and not human_owned
         # Mirror DurableStore.control: resume carries no input to continue an
-        # overdue Run with, so it is refused rather than re-queued.
-        if action == "resume" and overdue:
+        # overdue Run with, so it is refused rather than re-queued; under human
+        # ownership resume lifts the pause only and touches no Run.
+        if action == "resume" and overdue and not human_owned:
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if human_owned and action in {"follow_up", "correct"} and payload is None:
             raise PersistenceError("ILLEGAL_TRANSITION")
         if renew:
             if renew_run_id is None or renew_deadline is None:
@@ -242,6 +287,7 @@ class MemoryIncidentStore:
             if renew_run_id in self.runs:
                 raise PersistenceError("IDENTITY_CONFLICT")
         nxt = expected_generation + 1
+        original_state = row["state"]
         row["control_generation"] = nxt
         # Mirror DurableStore.control (M1-02 step 3): pause, cancel and a
         # renewal withdraw the observation authorization in the same step.
@@ -270,6 +316,12 @@ class MemoryIncidentStore:
         target, allowed = transitions[action]
         if keep_paused:
             target, allowed = "paused", {"running", "waiting_human"}
+        if human_owned and action in {"follow_up", "correct", "pause", "resume"}:
+            # The Run stays with the human; notes change no mirror, pause and
+            # resume change only the mirror.
+            target, allowed = None, set()
+            if action in {"follow_up", "correct"}:
+                row["state"] = original_state
         if renew:
             target, allowed = "cancelled", transitions["cancel"][1]
         for candidate in self.runs.values():
@@ -342,6 +394,8 @@ class MemoryIncidentStore:
                 return generation
             raise PersistenceError("IDENTITY_CONFLICT")
         if row["state"] != "cancelled":
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if row["mode"] == "human_owned":
             raise PersistenceError("ILLEGAL_TRANSITION")
         # Mirror DurableStore.new_run on main: the continuation is fenced on
         # the generation the operator saw.
@@ -417,6 +471,8 @@ class MemoryIncidentStore:
             run["state"] = "blocked"
             raise PersistenceError("INCOMPATIBLE_STATE")
         if row["state"] in {"completed", "cancelled", "paused"}:
+            raise PersistenceError("CONTROL_DENIED")
+        if row["mode"] == "human_owned":
             raise PersistenceError("CONTROL_DENIED")
         if run["state"] not in {"queued", "running"}:
             raise PersistenceError("CONTROL_DENIED")
@@ -677,6 +733,7 @@ class MemoryIncidentStore:
             intake_key=row["intake_key"],
             state=row["state"],
             lifecycle=row["lifecycle"],
+            mode=row.get("mode", "automatic"),
             control_generation=row["control_generation"],
             current_run_id=row["current_run_id"],
             concluded=row["conclusion"] is not None,

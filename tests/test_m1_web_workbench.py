@@ -430,7 +430,8 @@ def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
         _control(
             app,
             incident,
-            {"action": "takeover", "expected_generation": "5", "idempotency_key": "t3"},
+            # An action the workbench does not know (takeover is one since #121).
+            {"action": "reboot", "expected_generation": "5", "idempotency_key": "t3"},
         ).status
         == 400
     )

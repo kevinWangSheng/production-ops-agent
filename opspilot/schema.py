@@ -99,6 +99,26 @@ class TakeoverRefused(RuntimeError):
         )
 
 
+class HumanOwnershipWouldBeLost(RuntimeError):
+    """A downgrade would drop ``opspilot_incidents.mode`` while incidents are
+    ``human_owned``; nothing was changed.
+
+    Raised inside ``0005_incident_mode.downgrade()`` before the ``ALTER``:
+    dropping the column and upgrading again would turn those incidents back
+    into ``automatic``, and a later follow-up could re-queue automatic
+    investigation the human had taken over (PRODUCT-CONSTRAINTS: human
+    control decisions outrank automation; C3 section 10). The operator
+    resolves those incidents first (or keeps the revision) and reruns.
+    """
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+        super().__init__(
+            f"{count} incident(s) are human_owned; downgrading 0005_incident_mode would "
+            "erase that human control decision, refusing, nothing was changed"
+        )
+
+
 class IllegalStateValues(RuntimeError):
     """Rows hold values a new CHECK constraint would reject; nothing was changed.
 

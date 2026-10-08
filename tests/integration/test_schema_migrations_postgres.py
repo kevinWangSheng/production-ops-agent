@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0004_target_identity"
+HEAD = "0005_incident_mode"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -291,7 +291,12 @@ def _check_constraints(dsn: str) -> set[str]:
         }
 
 
-EXPECTED_CHECKS = {"opspilot_runs_state_check", "opspilot_incidents_lifecycle_check"}
+EXPECTED_CHECKS = {
+    "opspilot_runs_state_check",
+    "opspilot_incidents_lifecycle_check",
+    # 0005 (M1-02 step 3b): the control mode, same discipline
+    "opspilot_incidents_mode_check",
+}
 
 
 def test_illegal_state_write_is_rejected_at_head(scratch_dsn: str) -> None:
@@ -530,3 +535,94 @@ def test_0004_adds_nullable_identity_columns_and_keeps_existing_rows(
         "upgraded", HEAD
     )
     assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+
+
+# --- 0005_incident_mode (M1-02 step 3b, issue #121) ---
+
+
+def test_0005_adds_the_mode_column_with_automatic_default(scratch_dsn: str) -> None:
+    schema.upgrade_to(scratch_dsn, "0004_target_identity")
+    _seed_run(scratch_dsn)
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    head_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT DISTINCT mode FROM opspilot_incidents"
+        ).fetchall() == [("automatic",)]
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("UPDATE opspilot_incidents SET mode='robot'")
+    # A human_owned incident refuses the downgrade (bot review of PR #123,
+    # P1): the column, the row and the revision are untouched.
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute("UPDATE opspilot_incidents SET mode='human_owned'")
+    with pytest.raises(schema.HumanOwnershipWouldBeLost) as refused:
+        schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
+    assert refused.value.count == 1
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == HEAD
+        assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
+            ("human_owned",)
+        ]
+        conn.execute("UPDATE opspilot_incidents SET mode='automatic'")
+    # Without a human_owned row the downgrade proceeds.
+    schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_name='opspilot_incidents' AND column_name='mode'"
+        ).fetchone() == (0,)
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
+
+
+def test_0005_downgrade_waits_for_an_in_flight_takeover_and_then_refuses(
+    scratch_dsn: str,
+) -> None:
+    """Final recheck of PR #123: a takeover that has not committed yet must
+    not slip past the count. The downgrade locks the table before counting,
+    so it waits for the in-flight transaction and then refuses on the row
+    that transaction committed; column, row and revision stay."""
+    import threading
+
+    schema.migrate(scratch_dsn, pg_dump=PG_DUMP)
+    _seed_run(scratch_dsn)
+    outcome: dict[str, object] = {}
+
+    def downgrade() -> None:
+        try:
+            schema.command.downgrade(
+                schema._config(scratch_dsn), "0004_target_identity"
+            )
+            outcome["result"] = "downgraded"
+        except schema.HumanOwnershipWouldBeLost as exc:
+            outcome["result"] = exc
+
+    with psycopg.connect(scratch_dsn) as in_flight:
+        # The takeover's write, not yet committed (row lock held).
+        in_flight.execute("UPDATE opspilot_incidents SET mode='human_owned'")
+        worker = threading.Thread(target=downgrade)
+        worker.start()
+        # The downgrade is blocked on the table lock behind the open write.
+        deadline = __import__("time").monotonic() + 10
+        waiting = False
+        while __import__("time").monotonic() < deadline and not waiting:
+            with psycopg.connect(scratch_dsn) as probe:
+                waiting = probe.execute(
+                    "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query ILIKE 'LOCK TABLE opspilot_incidents%'"
+                ).fetchone() == (1,)
+            if not waiting:
+                __import__("time").sleep(0.1)
+        assert waiting, "the downgrade did not wait for the in-flight takeover"
+        assert "result" not in outcome
+        in_flight.commit()
+    worker.join(timeout=30)
+    assert isinstance(outcome.get("result"), schema.HumanOwnershipWouldBeLost)
+    assert outcome["result"].count == 1
+    with psycopg.connect(scratch_dsn) as conn:
+        assert schema.current_revision(conn) == HEAD
+        assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
+            ("human_owned",)
+        ]
