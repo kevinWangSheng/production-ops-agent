@@ -414,9 +414,12 @@ def _instant(bundle: Mapping[str, Any] | None, key: str) -> datetime | None:
     if bundle is None or not isinstance(bundle.get(key), str):
         return None
     try:
-        return datetime.fromisoformat(str(bundle[key]))
+        at = datetime.fromisoformat(str(bundle[key]))
     except ValueError:
         return None
+    # fail closed: an instant without an offset cannot be ordered against
+    # the aware record times, so it is no instant at all
+    return at if at.tzinfo is not None else None
 
 
 def _observed_at(bundle: Mapping[str, Any] | None) -> datetime | None:

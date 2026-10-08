@@ -717,3 +717,33 @@ def test_a_takeover_between_the_queries_and_the_commit_follows_the_queries():
     took = actions.index("human_takeover")
     assert "read_only_query" not in actions[took:]
     assert actions.index("persist_observation") > took
+
+
+def test_a_bundle_instant_without_a_timezone_is_not_trusted():
+    """Bot P2 on #148: a hash-valid bundle whose ``evaluated_at`` is naive
+    must not crash the merge against aware record times; the instant is
+    treated as absent and the persisted time orders the queries."""
+    import json
+
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    for index, reading in enumerate(history["samples"][0]["readings"]):
+        bundle = json.loads(bytes(reading["raw"]))
+        bundle["evaluated_at"] = "2026-01-01T00:00:00"
+        history["samples"][0]["readings"][index] = rehash(
+            reading, json.dumps(bundle, sort_keys=True).encode()
+        )
+    takeover = {
+        **_control(1, history["session"]["incident_id"]),
+        "action": "takeover",
+    }
+    outcome = recovery_outcome(
+        _scenario(history), _records(history, controls=[takeover])
+    )
+    assert all(
+        signal.evaluated_at is None
+        for sample in outcome.recovery_samples
+        for signal in sample.signals.values()
+    )
+    assert "read_only_query" in outcome.actions
