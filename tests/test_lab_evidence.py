@@ -615,6 +615,24 @@ def test_usage_is_recorded_for_the_timed_out_run_and_the_renewed_one():
     assert usages["current_run_usage"] == {"model_requests_spent": 1}
 
 
+def test_the_frozen_summary_counts_carry_both_runs_usage():
+    from scripts.m1_live_runner import summary_counts
+
+    base = {"http_count": 3, "prompt_tokens": 10, "completion_tokens": 4}
+    for current_run_id, current in (("r1", {"spent": 2}), ("r2", {"spent": 1})):
+        ledger = {
+            **base,
+            "run_usage": {"spent": 2},
+            "current_run_id": current_run_id,
+            "current_run_usage": current,
+        }
+        counts = summary_counts(ledger, 3, {"evidence_ids": ["e1"]})
+        assert counts["run_usage"] == {"spent": 2}  # the first Run
+        assert counts["current_run_id"] == current_run_id
+        assert counts["current_run_usage"] == current
+        assert counts["evidence_ids"] == ["e1"] and counts["http_count"] == 3
+
+
 def _feedback_args(summary_path):
     return [
         "--summary",

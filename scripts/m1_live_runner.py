@@ -183,6 +183,18 @@ def run_usages(store, incident, first_run_id) -> dict:
     }
 
 
+def summary_counts(ledger: dict, model_requests_bound: int, first) -> dict:
+    """The ``counts`` block of the frozen summary."""
+    return {
+        "model_requests_bound": model_requests_bound,
+        "http_count": ledger["http_count"],
+        "prompt_tokens": ledger["prompt_tokens"],
+        "completion_tokens": ledger["completion_tokens"],
+        **{key: ledger[key] for key in USAGE_KEYS},
+        "evidence_ids": None if first is None else first["evidence_ids"],
+    }
+
+
 def _rows(store, incident):
     rows = store.rebuild(incident)
     return {
@@ -454,14 +466,7 @@ def main() -> int:
                 else {k: v for k, v in control.items() if k != "rows_after"},
                 "event_kinds": [e["kind"] for e in ledger["events"]],
             },
-            "counts": {
-                "model_requests_bound": args.model_requests,
-                "http_count": ledger["http_count"],
-                "prompt_tokens": ledger["prompt_tokens"],
-                "completion_tokens": ledger["completion_tokens"],
-                **{key: ledger[key] for key in USAGE_KEYS},
-                "evidence_ids": None if first is None else first["evidence_ids"],
-            },
+            "counts": summary_counts(ledger, args.model_requests, first),
             "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
             "report": parse_report(report),
             "report_content_sha256": None
