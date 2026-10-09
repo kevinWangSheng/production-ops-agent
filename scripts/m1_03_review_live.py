@@ -42,7 +42,6 @@ import argparse
 import base64
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -85,6 +84,8 @@ from scripts.m1_live_flash_loop import (  # noqa: E402
     read_key,
     resolve_env_file,
 )
+from tests.acceptance.test_f13_postmortem import assert_pages  # noqa: E402
+from tests.f13_acceptance_support import Page  # noqa: E402
 
 OUT_ROOT = ROOT / "docs/evidence/m1-03-review-acceptance/live-runs"
 EXPERIMENT = "m1-03-review-acceptance"
@@ -211,38 +212,19 @@ def _brief(outcome: PostmortemOutcome) -> dict[str, Any]:
     }
 
 
-def _text(html: str) -> str:
-    return " ".join(re.sub(r"<[^>]+>", " ", html).split())
+class _Pages:
+    """The independent F13 suite's page reader over the live workbench, so
+    the live run applies the suite's own field-by-field comparison
+    (``tests/acceptance/test_f13_postmortem.assert_pages``, D34/R14)."""
 
+    def __init__(self, web: Web, knowledge: KnowledgeStore) -> None:
+        self.web = web
+        self.knowledge = knowledge
 
-def _page_agrees(web: Web, outcome: PostmortemOutcome) -> dict[str, Any]:
-    """D34/R14, coarse: the pages show the projection's states. The full
-    field-by-field comparison is the acceptance suite's; this records that
-    the live pages carried the same status, version states and revision
-    states at a stable generation."""
-    checks: dict[str, Any] = {}
-    status, html = web.page(f"/incidents/{outcome.subject_id}")
-    text = _text(html)
-    checks["incident_page"] = status
-    checks["incident_status_shown"] = (
-        f"generation {outcome.postmortem_generation}" in text
-        if outcome.postmortem_generation is not None
-        else True
-    )
-    for v in outcome.versions:
-        status, html = web.page(
-            f"/postmortems/{outcome.postmortem_id}/versions/{v.version}"
-        )
-        checks[f"version_{v.version}"] = [status, v.state in _text(html)]
-    for k in outcome.knowledge:
-        status, html = web.page(f"/knowledge/{k.entry_id}")
-        text = _text(html)
-        checks[f"knowledge_{k.entry_id}_{k.revision}"] = [
-            status,
-            k.state in text,
-            k.approved_by in text,
-        ]
-    return checks
+    def page(self, path: str) -> Page:
+        status, html = self.web.page(path)
+        assert status == 200, f"{path}: HTTP {status}"
+        return Page(html)
 
 
 def main() -> int:
@@ -287,15 +269,77 @@ def main() -> int:
 
     steps: list[dict[str, Any]] = []
     generations: list[dict[str, Any]] = []
+    failures: list[str] = []
 
     def project_now() -> PostmortemOutcome:
         return postmortem_outcome(
             scenario, postmortem_records(knowledge, args.incident)
         )
 
-    def record(name: str, **extra: Any) -> PostmortemOutcome:
-        outcome = project_now()
-        steps.append({"step": name, **extra, "projection": _brief(outcome)})
+    pages = _Pages(web, knowledge)
+
+    def stable_generations() -> tuple[Any, ...]:
+        view = knowledge.incident_postmortem(args.incident)["postmortem"]
+        if view is None:
+            return (None,)
+        return (
+            view["generation"],
+            *(
+                (
+                    r["entry_id"],
+                    knowledge.knowledge_history(r["entry_id"])["generation"],
+                )
+                for r in knowledge.knowledge_from_postmortem(view["postmortem_id"])
+            ),
+        )
+
+    def record(
+        name: str,
+        *,
+        http_status: int | None = None,
+        expect_status: int | None = None,
+        expect_state: str | None = None,
+        **extra: Any,
+    ) -> PostmortemOutcome:
+        """Project, compare the live pages with the projection inside a
+        stable-generation boundary (D34), and record every mismatch with the
+        expected HTTP status or resulting version state as a failure."""
+        page_error: str | None = "UNSTABLE"
+        outcome: PostmortemOutcome | None = None
+        for _ in range(3):
+            try:
+                before = stable_generations()
+                read = project_now()
+                outcome = read
+                assert_pages(pages, args.incident, read)
+                page_error = None
+                if stable_generations() == before:
+                    break
+                page_error = "UNSTABLE"
+            except Exception as exc:  # noqa: BLE001 - every mismatch is a recorded failure
+                page_error = f"{type(exc).__name__}: {str(exc)[:500]}"
+        if outcome is None:
+            # the projection itself never read a stable boundary: recorded,
+            # then the last read is taken as is (it raises if it still fails)
+            failures.append(f"{name}:PROJECTION_FAILED")
+            outcome = project_now()
+        if page_error is not None:
+            failures.append(f"{name}:PAGE_MISMATCH")
+        if expect_status is not None and http_status != expect_status:
+            failures.append(f"{name}:HTTP_{http_status}")
+        state = outcome.versions[-1].state if outcome.versions else None
+        if expect_state is not None and state != expect_state:
+            failures.append(f"{name}:STATE_{state}")
+        steps.append(
+            {
+                "step": name,
+                "http_status": http_status,
+                **extra,
+                "page_matches_projection": page_error is None,
+                "page_error": page_error,
+                "projection": _brief(outcome),
+            }
+        )
         return outcome
 
     def generate(name: str) -> PostmortemOutcome:
@@ -346,7 +390,15 @@ def main() -> int:
     def latest(outcome: PostmortemOutcome):
         return outcome.versions[-1] if outcome.versions else None
 
-    def review(name: str, outcome: PostmortemOutcome, action: str, **fields: str):
+    def review(
+        name: str,
+        outcome: PostmortemOutcome,
+        action: str,
+        *,
+        expect_status: int = 200,
+        expect_state: str | None = None,
+        **fields: str,
+    ) -> PostmortemOutcome:
         version = latest(outcome)
         assert version is not None
         status, body = web.post(
@@ -358,7 +410,14 @@ def main() -> int:
                 **fields,
             },
         )
-        return record(name, http_status=status, http_body=body, version=version.version)
+        return record(
+            name,
+            http_status=status,
+            expect_status=expect_status,
+            expect_state=expect_state,
+            http_body=body,
+            version=version.version,
+        )
 
     def follow_up(name: str, text: str) -> PostmortemOutcome:
         status, body = web.post(
@@ -372,11 +431,10 @@ def main() -> int:
                 "text": text,
             },
         )
-        return record(name, http_status=status, http_body=body)
+        return record(name, http_status=status, expect_status=200, http_body=body)
 
     balance_before = _balance(key)
     started = datetime.now(timezone.utc)
-    failures: list[str] = []
 
     before = record("before")
     if before.generation_status != "not_generated":
@@ -395,13 +453,20 @@ def main() -> int:
                 return current
             if not disputed(version):
                 return current
-            refused = review(f"{name}_approve_disputed_{round_}", current, "approve")
+            refused = review(
+                f"{name}_approve_disputed_{round_}",
+                current,
+                "approve",
+                expect_status=422,
+                expect_state="under_review",
+            )
             if refused.postmortem_generation != current.postmortem_generation:
                 failures.append("DISPUTED_APPROVAL_CHANGED_GENERATION")
             current = review(
                 f"{name}_return_disputed_{round_}",
                 refused,
                 "return",
+                expect_state="returned",
                 reason="Lab review: a statement is disputed; re-check it "
                 "against the cited evidence.",
             )
@@ -416,9 +481,7 @@ def main() -> int:
     else:
         if any(p["supersedes_entry_id"] for p in v1.proposals):
             failures.append("V1_PROPOSES_SUPERSEDE")
-        current = review("approve_v1", current, "approve")
-        if latest(current).state != "approved":
-            failures.append("V1_NOT_APPROVED")
+        current = review("approve_v1", current, "approve", expect_state="approved")
         if not any(k.retrievable for k in current.knowledge):
             failures.append("APPROVAL_PUBLISHED_NOTHING_RETRIEVABLE")
 
@@ -437,7 +500,11 @@ def main() -> int:
         failures.append("V2_NOT_REVIEWABLE")
     else:
         current = review(
-            "return_v2", current, "return", reason="Lab review: tighten the timeline."
+            "return_v2",
+            current,
+            "return",
+            expect_state="returned",
+            reason="Lab review: tighten the timeline.",
         )
         current = generate("generate_v3")
         v3 = latest(current)
@@ -448,6 +515,7 @@ def main() -> int:
                 "reject_v3",
                 current,
                 "reject",
+                expect_state="rejected",
                 reason="Lab review: rejected to exercise the rejection path.",
             )
 
@@ -479,7 +547,21 @@ def main() -> int:
             )
             for entry_id in supersedes
         }
-        current = review("supersede_v4", current, "supersede", **entry_fields)
+        current = review(
+            "supersede_v4",
+            current,
+            "supersede",
+            expect_state="approved",
+            **entry_fields,
+        )
+        for entry_id in supersedes:
+            states = sorted(
+                (k.revision, k.state)
+                for k in current.knowledge
+                if k.entry_id == entry_id
+            )
+            if [state for _, state in states][-2:] != ["superseded", "active"]:
+                failures.append(f"SUPERSEDE_STATES:{states}")
 
     # 4. revoke the active revision
     active = [k for k in current.knowledge if k.state == "active"]
@@ -498,13 +580,25 @@ def main() -> int:
                 "reason": "Lab review: revoked to exercise reversibility.",
             },
         )
-        current = record("revoke", http_status=status, http_body=body)
+        current = record(
+            "revoke", http_status=status, expect_status=200, http_body=body
+        )
         if knowledge.active_revision(target.entry_id) is not None:
             failures.append("REVOKED_STILL_RETRIEVABLE")
+        revoked = [
+            k
+            for k in current.knowledge
+            if (k.entry_id, k.revision) == (target.entry_id, target.revision)
+        ]
+        if (
+            not revoked
+            or revoked[0].state != "revoked"
+            or not revoked[0].revoked_reason
+        ):
+            failures.append("REVOKE_TOMBSTONE_MISSING")
 
     ended = datetime.now(timezone.utc)
-    final = project_now()
-    pages = _page_agrees(web, final)
+    final = record("final")
     tracing.shutdown()
     balance_after = _balance(key)
     del key
@@ -523,7 +617,6 @@ def main() -> int:
         "steps": steps,
         "generations": generations,
         "http": recorder.attempts,
-        "pages": pages,
         "balance_before": balance_before,
         "balance_after": balance_after,
     }
@@ -541,7 +634,6 @@ def main() -> int:
             "failures": failures,
             "steps": [{k: v for k, v in s.items() if k != "http_body"} for s in steps],
             "generations": generations,
-            "pages": pages,
             "final": _brief(final),
             "counts": {
                 "model_requests_counted": counted,

@@ -33,12 +33,15 @@ Field sources (``PostmortemOutcome``):
   copied as stored (R8).
 * ``review_actions``: the postmortem's audit trail (``audit_trail
   ("postmortem", id)``), in generation order.
-* ``knowledge``: every revision of every knowledge entry an approval of this
-  postmortem published (``knowledge_from_postmortem`` navigates,
-  ``knowledge_history`` supplies provenance, approver, hash and tombstone);
+* ``knowledge``: every knowledge revision an approval of this postmortem
+  published, with its current state (``knowledge_from_postmortem`` names
+  them, ``knowledge_history`` supplies provenance, approver, hash and
+  tombstone); a revision another postmortem published on the same entry is
+  not this postmortem's and is left out, though it shows in the state of the
+  one it superseded;
   ``retrievable`` is whether the knowledge read (``active_revision``)
   returns that very revision (D3), with its ``freshness``.
-* ``knowledge_actions``: each such entry's audit trail.
+* ``knowledge_actions``: the full audit trail of each such entry.
 * ``model_requests``: empty -- this projection makes no model call.
 
 Consistency (D34): ``postmortem_records`` reads inside a stable-generation
@@ -408,12 +411,15 @@ def _revisions(
             for r in history.get("revisions") or ()
         ):
             raise _Mismatch
+    ours = {(str(r["entry_id"]), r["revision"]) for r in records.published}
     for entry_id, history in records.entries.items():
         active = records.active.get(entry_id)
         if active is not None:
             _same(active.get("entry_id"), entry_id)
         for row in history.get("revisions") or ():
             _same(row.get("entry_id"), entry_id)
+            if (str(entry_id), row["revision"]) not in ours:
+                continue
             retrievable = (
                 active is not None and active.get("revision") == row["revision"]
             )

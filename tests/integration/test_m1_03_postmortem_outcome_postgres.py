@@ -125,11 +125,12 @@ def test_publish_supersede_and_revoke_through_the_projection(store, dsn) -> None
         actor=REVIEWER,
     )
     outcome = _outcome(store, second_incident)
+    # only the revision this postmortem published; the entry's whole audit
+    # trail still shows how it got there
     assert [(k.revision, k.state, k.retrievable) for k in outcome.knowledge] == [
-        (1, "superseded", False),
         (2, "revoked", False),
     ]
-    revoked = outcome.knowledge[1]
+    revoked = outcome.knowledge[0]
     assert (revoked.revoked_reason, revoked.revoked_by) == (
         "root cause was the cache",
         REVIEWER.actor_id,
@@ -140,10 +141,11 @@ def test_publish_supersede_and_revoke_through_the_projection(store, dsn) -> None
         "supersede",
         "revoke",
     ]
-    # the first postmortem's projection sees its revision superseded
-    assert [(k.revision, k.state) for k in _outcome(store, first_incident).knowledge][
-        0
-    ] == (1, "superseded")
+    # the first postmortem's projection keeps only its own revision, superseded
+    assert [
+        (k.revision, k.state, k.source_postmortem_id)
+        for k in _outcome(store, first_incident).knowledge
+    ] == [(1, "superseded", first.object_id)]
 
 
 def test_records_of_another_incident_are_unknown(store, dsn) -> None:
