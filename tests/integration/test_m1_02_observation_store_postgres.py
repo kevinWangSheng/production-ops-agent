@@ -551,6 +551,12 @@ def test_sustained_healthy_window_confirms_recovery(
     samples = controller.session_history(session)["samples"]
     assert [s["transition"] for s in samples] == [None, "recovery_confirmed"]
     assert all(s["subject_lifecycle"] == "observing_recovery" for s in samples)
+    # the confirming ending names the same logical job as its sample (#164)
+    (ending,) = controller.session_history(session)["endings"]
+    assert (ending["job_id"], ending["job_sequence"]) == (
+        samples[-1]["job_id"],
+        samples[-1]["sequence"],
+    )
     _assert_replay_consistent(controller, session)
 
 
