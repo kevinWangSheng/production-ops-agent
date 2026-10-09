@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% set v = page.version %}
+{% set sm = page.summary %}
+{% block title %}Postmortem version {{ v.version }}{% endblock %}
+{% block body %}
+<h1>Postmortem <code>{{ page.postmortem_id }}</code> version {{ v.version }}</h1>
+<p>
+  <a href="/incidents/{{ page.incident_id }}">incident <code>{{ page.incident_id }}</code></a>
+  · state <span class="badge" id="version-state">{{ v.state }}</span>
+  {% if v.stale_reason %}· stale: <code id="stale-reason">{{ v.stale_reason }}</code>{% endif %}
+  · postmortem generation <strong id="postmortem-generation">{{ page.generation }}</strong>
+  · latest version {{ page.latest_version }}
+  {% if v.revises_version %}· revises <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.revises_version }}">version {{ v.revises_version }}</a>{% endif %}
+  · generated {{ v.created_at }} by <code>{{ v.generated_by }}</code> ({{ v.generated_by_kind }})
+  · content sha256 <code>{{ v.content_sha256 }}</code>
+</p>
+<p class="muted">Watermark: control generation {{ v.incident_control_generation }} · observation generation {{ v.observation_generation }}
+  · runs {{ v.run_count }} · input {{ v.input_watermark }} · evidence snapshot <code>{{ v.evidence_snapshot_sha256 }}</code></p>
+
+{% if error %}
+<div id="review-error" class="unknown">
+  <p><strong>Refused: <code>{{ error.code }}</code></strong> ({{ error.error_class }})
+  {% if error.error_class == "conflict" %}— the page is out of date{% if error.current_generation is not none %} (current generation {{ error.current_generation }}){% endif %}. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a> and review again.
+  {% elif error.error_class == "refused" %}— this version cannot take that action in its current state.
+  {% elif error.error_class == "invalid" %}— check {{ error.fields | join(", ") if error.fields else "the form" }}.
+  {% elif error.error_class == "unavailable" %}— storage is unavailable; nothing was changed by this page, retry the same form.
+  {% endif %}</p>
+</div>
+{% endif %}
+
+{% if sm.disputes %}
+<section id="disputes" class="counter">
+  <h2>Disputed ({{ sm.disputes | length }}) <span class="muted">— a disputed version cannot be approved; return or reject it</span></h2>
+  <ul>{% for d in sm.disputes %}<li><code>{{ d.conclusion_key }}</code>: {{ d.reason }} <span class="muted">raised by <code>{{ d.raised_by }}</code> ({{ d.raised_by_kind }}) at {{ d.raised_at }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% if page.citation_errors %}
+<section id="citation-errors" class="unknown">
+  <h2>Citation check failed <span class="muted">— this draft cannot be reviewed</span></h2>
+  <ul>{% for key, codes in page.citation_errors.items() %}<li><code>{{ key }}</code>: {% for c in codes %}<code>{{ c }}</code> {% endfor %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<h2>Review</h2>
+{% if sm.actions %}
+<p class="muted">Every action is a conditional update against postmortem generation {{ page.generation }}; a stale form is refused, never applied. Your identity comes from your sign-in.</p>
+{% if sm.approve_action == "supersede" %}
+<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-supersede">
+  <input type="hidden" name="action" value="supersede">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="supersede-{{ page.generation }}-{{ form_nonce }}">
+  {% for t in page.targets %}<input type="hidden" name="entry_generation:{{ t.entry_id }}" value="{{ t.generation }}">{% endfor %}
+  <button type="submit">supersede (approve and replace {{ page.targets | length }} existing entr{{ "y" if page.targets | length == 1 else "ies" }})</button>
+</form>
+{% elif sm.approve_action == "approve" %}
+<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-approve">
+  <input type="hidden" name="action" value="approve">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="approve-{{ page.generation }}-{{ form_nonce }}">
+  <button type="submit">approve</button>
+</form>
+{% endif %}
+{% for action in ("return", "reject") %}{% if action in sm.actions %}
+<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-{{ action }}">
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ page.generation }}-{{ form_nonce }}">
+  <input name="reason" placeholder="{{ 'what to revise' if action == 'return' else 'why reject' }}" required maxlength="8192">
+  <button type="submit">{{ "return for revision" if action == "return" else "reject" }}</button>
+</form>
+{% endif %}{% endfor %}
+{% if not sm.approve_action %}<p class="muted" id="no-approval">Approval is not offered: {% if sm.disputes %}disputed{% else %}citation check failed{% endif %}.</p>{% endif %}
+{% else %}
+<p class="muted" id="no-review">No review action: version is <code>{{ v.state }}</code>{% if v.state == "draft" %} (citation check failed, never reviewable){% endif %}.</p>
+{% endif %}
+
+{% if page.targets %}
+<h3>Existing knowledge this version replaces</h3>
+<ul id="supersede-targets">
+  {% for t in page.targets %}
+  <li><a href="/knowledge/{{ t.entry_id }}"><code>{{ t.entry_id }}</code></a> (proposal <code>{{ t.proposal_key }}</code>) · entry generation {{ t.generation }} · latest revision {{ t.latest_revision }}
+    {% if t.active %}· active: {{ t.active.name }} (revision {{ t.active.revision }}){% else %}· <span class="muted">no active revision</span>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% for s in page.sections %}
+<section class="{{ 'facts' if s.section in ('incident', 'timeline', 'runs', 'human_actions', 'recovery') else 'hypotheses' }}">
+  <h2>{{ s.section }}</h2>
+  <ul>
+  {% for c in s.conclusions %}
+    <li id="conclusion-{{ c.conclusion_key }}"><pre>{{ c.body }}</pre>
+      <span class="badge">{{ c.author }}</span> <span class="badge">{{ c.certainty }}</span>
+      {% if not c.citations_valid %}<strong>citations invalid</strong>{% endif %}
+      {% if c.dispute_state == "disputed" %}<strong>disputed</strong>{% endif %}
+      {% if c.evidence_refs %}<br><span class="muted">evidence:</span>
+        {% for ref in c.evidence_refs %}
+          <a href="/incidents/{{ page.incident_id }}/evidence/{{ ref.evidence_id }}"><code>{{ ref.evidence_id }}</code></a>
+          <span class="muted">{{ ref.scope }} {{ ref.window_start }} → {{ ref.window_end }}{% if not ref.citable_as_fact %} (not citable as fact){% endif %}</span>
+        {% endfor %}
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+<h2>Proposed knowledge ({{ v.proposals | length }})</h2>
+{% if v.proposals %}
+<table id="proposals">
+  <thead><tr><th>Key</th><th>Name</th><th>Tags</th><th>Replaces</th><th>Content</th></tr></thead>
+  <tbody>
+  {% for p in v.proposals %}
+  <tr><td><code>{{ p.proposal_key }}</code></td><td>{{ p.name }}</td><td>{% for t in p.tags %}<code>{{ t }}</code> {% endfor %}</td>
+      <td>{% if p.supersedes_entry_id %}<a href="/knowledge/{{ p.supersedes_entry_id }}"><code>{{ p.supersedes_entry_id }}</code></a>{% else %}<span class="muted">new entry</span>{% endif %}</td>
+      <td><pre>{{ p.content }}</pre></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="muted">none</p>{% endif %}
+
+{% if page.published %}
+<h3>Published from this version</h3>
+<ul id="published">
+  {% for k in page.published %}<li><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span></li>{% endfor %}
+</ul>
+{% endif %}
+
+{% set g = page.generation_record %}
+{% if g %}
+<h2>Generation</h2>
+<p class="muted" id="generation-record">model <code>{{ g.model }}</code>{% if g.response_model %} (response <code>{{ g.response_model }}</code>){% endif %}
+  · profile <code>{{ g.model_profile }}</code> · prompt <code>{{ g.prompt_version }}</code> · output schema <code>{{ g.output_schema_version }}</code>
+  · input policy <code>{{ g.input_policy_version }}</code> · model requests {{ g.model_requests }} / {{ g.max_model_requests }}
+  {% if g.repaired %}· repaired once{% endif %}
+  {% if g.return_reason %}<br>returned with: {{ g.return_reason }}{% endif %}</p>
+{% endif %}
+
+<h2>Review history</h2>
+{% if page.audit %}
+<table id="review-history">
+  <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Generation</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for a in page.audit %}
+  <tr><td>{{ a.recorded_at }}</td><td><code>{{ a.action }}</code></td><td><code>{{ a.actor_id }}</code> ({{ a.principal_kind }})</td>
+      <td>{{ a.expected_generation }} → {{ a.resulting_generation }}</td><td>{{ a.reason or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="muted">none</p>{% endif %}
+
+<script>
+(function () {
+  var kinds = {{ postmortem_kinds | list | tojson }};
+  var source = new EventSource("/incidents/{{ page.incident_id }}/events?cursor={{ page.latest_sequence }}");
+  kinds.concat(["reload"]).forEach(function (kind) {
+    source.addEventListener(kind, function () { source.close(); window.location.reload(); });
+  });
+})();
+</script>
+{% endblock %}
