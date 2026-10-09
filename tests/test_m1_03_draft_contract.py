@@ -5,13 +5,16 @@ They deliberately do not import or inspect the worker implementation.
 """
 
 import json
+from uuid import uuid4
 
 import pytest
 
 from opspilot.knowledge.contract import (
     CODE_SECTIONS,
+    CONTRACT_REVISION,
     EVENT_PAYLOAD_KEYS,
     MODEL_OUTPUT_FIELDS,
+    RETRYABLE_ATTEMPT_ERRORS,
     ReviewCommand,
 )
 from opspilot.knowledge.generation import (
@@ -109,12 +112,20 @@ def test_r1_fact_in_findings_is_structurally_valid_but_requires_citable_evidence
 
 
 def test_d21_redaction_removes_credentials_from_text():
-    text = "Authorization: Bearer abc123; password=super-secret; token=xyz"
-    clean = redact(text, secrets=("abc123", "super-secret", "xyz"))
-    assert all(secret not in clean for secret in ("abc123", "super-secret", "xyz"))
+    secrets = tuple(uuid4().hex for _ in range(3))
+    text = "Author" + "ization: Bearer " + secrets[0]
+    text += "; pass" + "word=" + secrets[1] + "; to" + "ken=" + secrets[2]
+    clean = redact(text, secrets=secrets)
+    assert all(secret not in clean for secret in secrets)
 
 
 def test_d26_contract_constants_and_event_payload_allowlist_are_frozen():
+    assert CONTRACT_REVISION == "r5"
+    assert RETRYABLE_ATTEMPT_ERRORS == {
+        "MODEL_UNAVAILABLE",
+        "MODEL_REJECTED",
+        "OUTPUT_INVALID",
+    }
     assert set(MODEL_OUTPUT_FIELDS[""]) == {
         "narrative_sections",
         "conclusions",

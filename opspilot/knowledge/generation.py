@@ -56,6 +56,7 @@ from opspilot.knowledge.store import (
     canonical_json,
     content_sha256,
 )
+from opspilot.tools.registry import redact_credentials
 
 # D23: one call, plus at most one structure/citation repair (D22).
 MAX_MODEL_REQUESTS_PER_GENERATION = 2
@@ -70,6 +71,10 @@ MAX_VIEW_BYTES = 32 * 1024
 MAX_RECOVERY_READINGS = 400
 MAX_HUMAN_ACTIONS = 100
 MAX_TEXT_CHARS = 4000
+# The repair call quotes the refused reply and the problems found (D22):
+# both bounded.
+MAX_REPAIR_ECHO_CHARS = 64_000
+MAX_REPAIR_NOTES_CHARS = 4000
 
 # R1 output limits.
 MAX_NARRATIVE_SECTIONS = 8
@@ -202,7 +207,10 @@ def _secret_values() -> list[str]:
 
 
 def redact(text: str, secrets: Sequence[str] = ()) -> str:
-    """Credential-shaped text and known secret values replaced (D21)."""
+    """Credential-shaped text and known secret values replaced (D21): the
+    tool gateway's ``redact_credentials`` first (r5: the same redaction as
+    every other human-written text), then this module's key shapes."""
+    text = redact_credentials(text)
     for value in secrets:
         text = text.replace(value, _REDACTED)
     # bearer first: "Authorization: Bearer <token>" would otherwise lose
@@ -563,22 +571,32 @@ def _timeline(
 
 
 def messages(
-    built: GenerationInput, *, repair: Sequence[str] = (), previous: str | None = None
+    built: GenerationInput,
+    *,
+    repair: Sequence[str] = (),
+    previous: str | None = None,
+    secrets: Sequence[str] | None = None,
 ) -> tuple[dict[str, str], ...]:
     """Chat messages for the first call, or for the one repair call that
-    quotes the previous reply and the problems found in it."""
+    quotes the previous reply and the problems found in it. The quoted reply
+    and the problem list are model-derived text: redacted and bounded before
+    they enter the prompt (and so the trace), like any other free text
+    (D21, D22 as tightened in r5)."""
+    secrets = _secret_values() if secrets is None else list(secrets)
     base: tuple[dict[str, str], ...] = (
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": built.payload_text},
     )
     if not repair:
         return base
+    echoed = redact(previous or "", secrets)[:MAX_REPAIR_ECHO_CHARS]
+    notes = redact("; ".join(repair), secrets)[:MAX_REPAIR_NOTES_CHARS]
     return base + (
-        {"role": "assistant", "content": previous or ""},
+        {"role": "assistant", "content": echoed},
         {
             "role": "user",
             "content": "Your reply was refused: "
-            + "; ".join(repair)
+            + notes
             + ". Return the corrected JSON object only, following every rule.",
         },
     )

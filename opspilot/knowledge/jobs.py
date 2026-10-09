@@ -10,12 +10,13 @@ shipped are candidates like any other, oldest ending first).
 A candidate is an incident whose current recovery observation has ended
 (its session for the incident's observation generation is no longer
 ``authorized`` and has an ending record; no other session is authorized)
-and that has no postmortem version at its current watermark other than a
-stale one -- one generation per watermark: a citation-failed draft, a
-rejection or an approval at the same watermark are not retried -- or whose
-returned version waits for regeneration (D19). Not while a version is under
-review, a lease is held, the backoff has not elapsed, or the retry cap at
-this watermark is reached. The watermark here is the control/observation
+and that has no reviewable postmortem version at its current watermark --
+at most one reviewable version per watermark (D29): a version in review,
+approved or rejected blocks; a stale one, a citation-failed draft (a failed
+attempt, D31) and a returned one do not -- or whose returned version waits
+for regeneration (D19). Not while a version is under review, a lease is
+held, the backoff of this watermark has not elapsed, or R7's cap of three
+attempts at this watermark (or returned version) is reached. The watermark here is the control/observation
 generation, Run count and current Run, and the input watermark; evidence
 alone is compared when the version is written (``record_draft``) and by the
 compensation scan.
@@ -39,21 +40,30 @@ from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 # D17: one generation per worker at a time; the lease covers two model
 # calls at the frozen 360 s request timeout plus the writes around them.
 GENERATION_LEASE_SECONDS = 900
-# D22: retries at one watermark (provider unavailable, output invalid),
-# with exponential backoff; MODEL_REJECTED / INPUT_TOO_LARGE do not retry.
-MAX_ATTEMPTS_PER_WATERMARK = 5
+# R7 (D22, D29-D31): at most 3 generation attempts per watermark (or per
+# returned version), exponential backoff in between; provider failures,
+# OUTPUT_INVALID and citation-failed drafts all count. When the cap is
+# reached ``next_attempt_at`` is cleared and generation stops, visibly,
+# until the watermark moves or a new return arrives. INPUT_TOO_LARGE is
+# deterministic and exhausts the cap at once (D21: not generated).
+MAX_ATTEMPTS_PER_WATERMARK = 3
+# Errors that count one attempt; a crashed attempt (LEASE_LOST) counts too,
+# so a crash loop is bounded by the same cap.
+_COUNTED_ERRORS = RETRYABLE_ATTEMPT_ERRORS | {"LEASE_LOST"}
 BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
 
-# The watermark key compared with ``failure_watermark`` (SQL and Python
-# must agree): control generation, observation generation, Run count,
-# current Run, input watermark.
+# The failure key compared with ``failure_watermark`` (SQL and Python must
+# agree): control generation, observation generation, Run count, current
+# Run, input watermark, and the returned version awaiting regeneration (R7:
+# a new return starts a new count).
 _KEY_SQL = (
     "concat_ws(':', i.control_generation, i.observation_generation, "
     "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id), "
     "COALESCE(i.current_run_id::text, ''), "
     "(SELECT COALESCE(max(n.sequence), 0) FROM opspilot_inputs n "
-    "WHERE n.incident_id = i.incident_id))"
+    "WHERE n.incident_id = i.incident_id)) "
+    "|| '#r' || COALESCE(j.pending_regeneration_version::text, '')"
 )
 
 _CANDIDATE_SQL = f"""
@@ -70,7 +80,8 @@ WHERE NOT EXISTS (
     SELECT 1 FROM opspilot_observation_sessions a
     WHERE a.incident_id = i.incident_id AND a.state = 'authorized')
   AND (j.lease_until IS NULL OR j.lease_until <= clock_timestamp())
-  AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= clock_timestamp())
+  AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= clock_timestamp()
+       OR j.failure_watermark IS DISTINCT FROM {_KEY_SQL})
   AND NOT (COALESCE(j.consecutive_failures, 0) >= %(max_attempts)s
            AND j.failure_watermark IS NOT DISTINCT FROM {_KEY_SQL})
   AND NOT EXISTS (
@@ -80,7 +91,11 @@ WHERE NOT EXISTS (
     j.pending_regeneration_version IS NOT NULL
     OR NOT EXISTS (
       SELECT 1 FROM opspilot_postmortem_versions v
-      WHERE v.postmortem_id = p.postmortem_id AND v.state <> 'stale'
+      WHERE v.postmortem_id = p.postmortem_id
+        -- D29/D31: only a reviewable outcome counts as produced; a
+        -- citation-failed draft is a failed attempt, a returned version is
+        -- driven by its regeneration marker (D19)
+        AND v.state NOT IN ('stale', 'draft', 'returned')
         AND v.incident_control_generation = i.control_generation
         AND v.observation_generation = i.observation_generation
         AND v.last_run_id IS NOT DISTINCT FROM i.current_run_id
@@ -102,17 +117,24 @@ _JOB_COLUMNS = (
 )
 
 
-def watermark_key(watermark: Watermark) -> str:
-    return ":".join(
-        str(part)
-        for part in (
+def watermark_key(watermark: Watermark, revises_version: int | None = None) -> str:
+    """R7 failure key: the watermark plus the returned version being
+    regenerated (equal to ``_KEY_SQL``)."""
+    return _failure_key(
+        (
             watermark.incident_control_generation,
             watermark.observation_generation,
             watermark.run_count,
             "" if watermark.last_run_id is None else watermark.last_run_id,
             watermark.input_watermark,
-        )
+        ),
+        revises_version,
     )
+
+
+def _failure_key(parts: tuple[object, ...], revises_version: int | None) -> str:
+    revised = "" if revises_version is None else str(revises_version)
+    return ":".join(str(part) for part in parts) + "#r" + revised
 
 
 @dataclass(frozen=True)
@@ -184,7 +206,8 @@ class GenerationStore(_StoreBase):
             if job["lease_until"] is not None and job["lease_until"] > now:
                 return None
             for stale in conn.execute(
-                "SELECT attempt_id, watermark FROM opspilot_postmortem_generation_attempts "
+                "SELECT attempt_id, watermark, revises_version "
+                "FROM opspilot_postmortem_generation_attempts "
                 "WHERE incident_id=%s AND status='running'",
                 (incident_id,),
             ).fetchall():
@@ -195,7 +218,11 @@ class GenerationStore(_StoreBase):
                     (stale["attempt_id"],),
                 )
                 self._count_failure(
-                    conn, job, _key_of(stale["watermark"]), "LEASE_LOST", now
+                    conn,
+                    job,
+                    _key_of(stale["watermark"], stale["revises_version"]),
+                    "LEASE_LOST",
+                    now,
                 )
                 job = self._require_row(
                     conn.execute(
@@ -287,12 +314,17 @@ class GenerationStore(_StoreBase):
         input_bytes: int | None = None,
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
+        citations_failed: bool = False,
     ) -> None:
-        """Close the attempt and release the lease (D22). A retryable
-        failure schedules the next attempt with exponential backoff; a
-        non-retryable one stops retries at this watermark; success clears
-        the failure count. A lease that is no longer ours changes nothing
-        but the attempt row (``LEASE_LOST`` is raised after it is closed)."""
+        """Close the attempt and release the lease, in one transaction with
+        the failure count and ``next_attempt_at`` (R7; the workbench reads
+        "stopped" from an empty ``next_attempt_at`` without a lease). A
+        failed attempt, or one that wrote a citation-failed draft
+        (``citations_failed``, D31), counts against the cap and either
+        schedules the next attempt with exponential backoff or, at the cap,
+        clears ``next_attempt_at``; a reviewable version clears the count.
+        A lease that is no longer ours changes nothing but the attempt row
+        (``LEASE_LOST`` is raised after it is closed)."""
         with self.transaction() as conn:
             job = self._require_row(
                 conn.execute(
@@ -305,7 +337,7 @@ class GenerationStore(_StoreBase):
                 "error_code=%s, version=%s, response_model=%s, input_sha256=%s, "
                 "input_bytes=%s, prompt_tokens=%s, completion_tokens=%s, "
                 "finished_at=clock_timestamp() WHERE attempt_id=%s AND status='running' "
-                "RETURNING watermark",
+                "RETURNING watermark, revises_version",
                 (
                     status,
                     error_code,
@@ -324,13 +356,12 @@ class GenerationStore(_StoreBase):
             if closed is None or not ours:
                 raise PersistenceError("LEASE_LOST")
             key = (
-                watermark_key(watermark)
+                watermark_key(watermark, closed["revises_version"])
                 if watermark is not None
-                else _key_of(closed["watermark"])
+                else _key_of(closed["watermark"], closed["revises_version"])
             )
             now = self._db_now(conn)
-            if status == "failed":
-                assert error_code is not None
+            if status == "failed" or (status == "succeeded" and citations_failed):
                 self._count_failure(conn, job, key, error_code, now)
             elif status == "succeeded":
                 conn.execute(
@@ -353,25 +384,38 @@ class GenerationStore(_StoreBase):
 
     @staticmethod
     def _count_failure(
-        conn: Connection, job: dict[str, Any], key: str, error_code: str, now: Any
+        conn: Connection,
+        job: dict[str, Any],
+        key: str,
+        error_code: str | None,
+        now: Any,
     ) -> None:
+        """R7: one more failed attempt at ``key`` (``error_code`` None: a
+        citation-failed draft, D31). Below the cap the next attempt is due
+        after exponential backoff; at the cap ``next_attempt_at`` is
+        cleared and the candidate scan skips this key."""
         failures = (
             job["consecutive_failures"] + 1 if job["failure_watermark"] == key else 1
         )
-        if error_code not in RETRYABLE_ATTEMPT_ERRORS and error_code != "LEASE_LOST":
+        if error_code is not None and error_code not in _COUNTED_ERRORS:
+            # INPUT_TOO_LARGE: the same input fails the same way (D21)
             failures = MAX_ATTEMPTS_PER_WATERMARK
-        delay = min(BACKOFF_BASE_SECONDS * 2 ** (failures - 1), BACKOFF_MAX_SECONDS)
+        failures = min(failures, MAX_ATTEMPTS_PER_WATERMARK)
+        due = (
+            None
+            if failures >= MAX_ATTEMPTS_PER_WATERMARK
+            else now
+            + timedelta(
+                seconds=min(
+                    BACKOFF_BASE_SECONDS * 2 ** (failures - 1), BACKOFF_MAX_SECONDS
+                )
+            )
+        )
         conn.execute(
             "UPDATE opspilot_postmortem_generation_jobs SET consecutive_failures=%s, "
             "failure_watermark=%s, last_error_code=%s, next_attempt_at=%s, "
             "updated_at=clock_timestamp() WHERE incident_id=%s",
-            (
-                failures,
-                key,
-                error_code,
-                now + timedelta(seconds=delay),
-                job["incident_id"],
-            ),
+            (failures, key, error_code, due, job["incident_id"]),
         )
 
     # --- reads
@@ -562,16 +606,16 @@ def _watermark_json(watermark: Watermark) -> dict[str, Any]:
     }
 
 
-def _key_of(stored: dict[str, Any]) -> str:
-    return ":".join(
-        str(part)
-        for part in (
+def _key_of(stored: dict[str, Any], revises_version: int | None) -> str:
+    return _failure_key(
+        (
             stored["incident_control_generation"],
             stored["observation_generation"],
             stored["run_count"],
             stored["last_run_id"] or "",
             stored["input_watermark"],
-        )
+        ),
+        revises_version,
     )
 
 

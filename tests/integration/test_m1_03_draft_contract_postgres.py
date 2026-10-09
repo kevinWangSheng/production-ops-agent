@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -11,8 +12,9 @@ import psycopg
 import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
+from psycopg.types.json import Jsonb
 
-from opspilot import schema
+from opspilot import schema, tracing
 from opspilot.investigation.loop import ModelError, ModelReply
 from opspilot.knowledge import Actor, DisputeDraft, KnowledgeStore
 from opspilot.knowledge.contract import EVENT_PAYLOAD_KEYS
@@ -87,6 +89,9 @@ def _ended_incident(dsn: str, *, ended_at: datetime | None = None) -> UUID:
             (target, f"uid-{target}"),
         )
         conn.execute(
+            "INSERT INTO opspilot_target_suspensions(target_id) VALUES (%s)", (target,)
+        )
+        conn.execute(
             "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,target_id,observation_generation) VALUES (%s,%s,'investigating','resolved',%s,1)",
             (incident, f"intake-{incident}", target),
         )
@@ -116,30 +121,83 @@ class ScriptedModel:
 
     def complete(self, call):
         self.calls.append(call)
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return reply
+        with tracing.tracer().run(
+            incident_id="fixture-incident", run_id="fixture-run", versions={}
+        ):
+            with tracing.tracer().model_call(call) as span:
+                reply = self.replies.pop(0)
+                if isinstance(reply, Exception):
+                    raise reply
+                span.reply(reply)
+                return reply
 
 
 def _reply(payload):
     return ModelReply(json.dumps(payload), None, (), "stop", "deepseek-flash", {}, {})
 
 
-def _valid_model_output():
+def _valid_model_output(evidence_id="missing"):
     return {
         "narrative_sections": [
             {
                 "key": "impact",
                 "section": "impact_summary",
                 "body": "impact",
-                "evidence_ids": ["missing"],
+                "evidence_ids": [evidence_id],
             }
         ],
         "conclusions": [],
         "proposals": [],
         "disputes": [],
     }
+
+
+def _allow_retry(dsn, incident):
+    """Advance only the scheduling clock, never the failure count or budget."""
+    with psycopg.connect(dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_postmortem_generation_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE incident_id=%s",
+            (incident,),
+        )
+
+
+def _citable_evidence(dsn, incident):
+    evidence_id = f"ev-{uuid4()}"
+    raw = b"synthetic fixture evidence"
+    view = {
+        "evidence_id": evidence_id,
+        "status": "ok",
+        "adopted": True,
+        "citable_as_fact": True,
+        "scope": "checkout",
+        "target_id": "checkout",
+        "window": {"start": "2026-10-09T12:00:00Z", "end": "2026-10-09T12:05:00Z"},
+        "window_start": "2026-10-09T12:00:00Z",
+        "window_end": "2026-10-09T12:05:00Z",
+        "observed_at": "2026-10-09T12:05:00+00:00",
+        "query": "fixture query",
+    }
+    from opspilot.tools.registry import canonical_hash
+
+    with psycopg.connect(dsn) as conn:
+        run = conn.execute(
+            "SELECT current_run_id FROM opspilot_incidents WHERE incident_id=%s",
+            (incident,),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,committed) "
+            "VALUES(%s,%s,%s,'ok',true,%s,%s,%s,%s,'fixture',clock_timestamp(),true)",
+            (
+                evidence_id,
+                str(run),
+                str(incident),
+                raw,
+                hashlib.sha256(raw).hexdigest(),
+                Jsonb(view),
+                canonical_hash(view),
+            ),
+        )
+    return evidence_id
 
 
 def test_d17_candidates_are_oldest_first_and_claim_is_single_lease(stores, dsn):
@@ -246,16 +304,19 @@ def test_d22_citation_failure_is_distinct_draft_and_never_under_review(stores, d
     assert document["generation"]["model_requests"] <= 2
     assert document["generation"]["prompt_version"]
     assert document["validation"]["citations_valid"] is False
+    assert view["attempts"][0]["status"] == "succeeded"
+    assert view["schedule"]["consecutive_failures"] == 1
+    assert view["schedule"]["next_attempt_at"] is not None
 
 
 def test_d21_credentials_never_reach_model_call(stores, dsn):
     knowledge, jobs = stores
     incident = _ended_incident(dsn)
-    secret = "db-password-should-never-leak"
+    secret = uuid4().hex
     durable = DurableStore(dsn, pool=POOL)
     try:
         durable.append_input(
-            incident, uuid4(), {"text": f"operator pasted password={secret}"}
+            incident, uuid4(), {"text": "operator pasted pass" + "word=" + secret}
         )
         model = ScriptedModel(
             [_reply(_valid_model_output()), _reply(_valid_model_output())]
@@ -263,7 +324,7 @@ def test_d21_credentials_never_reach_model_call(stores, dsn):
         outcome = PostmortemWorker(
             knowledge=knowledge, jobs=jobs, model=model, owner=uuid4()
         ).generate(incident)
-        assert outcome.status == "succeeded"
+        assert outcome.status == "succeeded" and outcome.state == "draft"
         assert model.calls
         wire = "\n".join(
             str(message) for call in model.calls for message in call.messages
@@ -276,7 +337,7 @@ def test_d21_credentials_never_reach_model_call(stores, dsn):
 def test_d21_read_input_shape_and_limits_are_checked_at_call_time(
     stores, dsn, monkeypatch
 ):
-    _knowledge, jobs = stores
+    knowledge, jobs = stores
     incident = _ended_incident(dsn)
     raw = jobs.read_input(incident)
     import opspilot.knowledge.generation as generation
@@ -285,6 +346,17 @@ def test_d21_read_input_shape_and_limits_are_checked_at_call_time(
     with pytest.raises(generation.InputTooLarge) as exc:
         generation.build_input(raw)
     assert exc.value.limit == "MAX_INPUT_BYTES"
+    model = ScriptedModel([])
+    outcome = PostmortemWorker(knowledge=knowledge, jobs=jobs, model=model).generate(
+        incident
+    )
+    assert outcome.status == "failed" and outcome.error_code == "INPUT_TOO_LARGE"
+    view = knowledge.incident_postmortem(incident)
+    assert model.calls == [] and view["postmortem"] is None
+    assert view["schedule"]["consecutive_failures"] == MAX_ATTEMPTS_PER_WATERMARK
+    assert view["schedule"]["next_attempt_at"] is None
+    assert view["schedule"]["lease_active"] is False
+    assert incident not in jobs.candidates(limit=100)
 
 
 def test_d1_authorized_observation_is_not_a_candidate(stores, dsn):
@@ -452,6 +524,8 @@ def test_d18_control_takeover_marks_draft_stale(dsn):
 
 def test_d19_return_regenerates_with_reason_and_revises_version(stores, dsn):
     knowledge, jobs = stores
+    from dataclasses import replace
+
     from tests.integration.test_m1_03_knowledge_store_postgres import (
         _draft,
         _key,
@@ -459,6 +533,10 @@ def test_d19_return_regenerates_with_reason_and_revises_version(stores, dsn):
     )
 
     incident, watermark = _seed_incident(dsn)
+    evidence_id = _citable_evidence(dsn, incident)
+    watermark = replace(
+        watermark, evidence_snapshot_sha256=knowledge.evidence_snapshot_sha256(incident)
+    )
     draft = _draft(knowledge, incident, watermark)
     returned = knowledge.return_for_revision(
         draft.object_id,
@@ -471,9 +549,7 @@ def test_d19_return_regenerates_with_reason_and_revises_version(stores, dsn):
     assert returned.state == "returned"
     before = knowledge.incident_postmortem(incident)["schedule"]
     assert before["pending_regeneration_version"] == 1
-    model = ScriptedModel(
-        [_reply(_valid_model_output()), _reply(_valid_model_output())]
-    )
+    model = ScriptedModel([_reply(_valid_model_output(evidence_id))])
     outcome = PostmortemWorker(
         knowledge=knowledge, jobs=jobs, model=model, owner=uuid4()
     ).generate(incident)
@@ -640,10 +716,10 @@ def test_d18_compensation_scan_exposes_fixed_contract_limits(stores):
         MAX_ATTEMPTS_PER_WATERMARK,
         BACKOFF_BASE_SECONDS,
         BACKOFF_MAX_SECONDS,
-    ) == (900, 5, 60, 3600)
+    ) == (900, 3, 60, 3600)
 
 
-def test_pending_q1_sync_stale_audit_uses_system_worker_principal(stores, dsn):
+def test_d28_sync_stale_audit_uses_system_worker_principal(stores, dsn):
     knowledge, _jobs = stores
     from tests.integration.test_m1_03_knowledge_store_postgres import (
         _draft,
@@ -668,21 +744,35 @@ def test_pending_q1_sync_stale_audit_uses_system_worker_principal(stores, dsn):
         durable.close()
 
 
-def test_pending_q2_one_generation_per_watermark(stores, dsn):
+def test_d29_one_reviewable_version_per_watermark_and_rejection_not_retried(
+    stores, dsn
+):
     knowledge, jobs = stores
     incident = _ended_incident(dsn)
-    model = ScriptedModel(
-        [_reply(_valid_model_output()), _reply(_valid_model_output())]
-    )
+    evidence_id = _citable_evidence(dsn, incident)
+    model = ScriptedModel([_reply(_valid_model_output(evidence_id))])
     worker = PostmortemWorker(
         knowledge=knowledge, jobs=jobs, model=model, owner=uuid4()
     )
     first = worker.generate(incident)
-    assert first.status == "succeeded"
+    assert first.status == "succeeded" and first.state == "under_review"
     assert incident not in jobs.candidates(limit=20)
+    snapshot = knowledge.postmortem_for_incident(incident)
+    knowledge.reject(
+        first.postmortem_id,
+        first.version,
+        reason="rejected finding",
+        expected_generation=snapshot["generation"],
+        idempotency_key=uuid4().hex,
+        actor=Actor("alice", "basic_auth"),
+    )
+    assert knowledge.incident_postmortem(incident)["status"] == "rejected"
+    assert incident not in jobs.candidates(limit=100)
+    assert worker.generate(incident) is None
+    assert len(model.calls) == 1
 
 
-def test_pending_q3_invalid_and_citation_failures_are_distinct(stores, dsn):
+def test_d30_invalid_and_citation_failures_are_distinct(stores, dsn):
     knowledge, jobs = stores
     incident = _ended_incident(dsn)
     model = ScriptedModel([_reply({"bad": []}), _reply({"still_bad": []})])
@@ -696,3 +786,206 @@ def test_pending_q3_invalid_and_citation_failures_are_distinct(stores, dsn):
         knowledge=knowledge, jobs=jobs, model=model, owner=uuid4()
     ).generate(incident2)
     assert cited.status == "succeeded" and cited.state == "draft"
+    assert knowledge.incident_postmortem(incident)["postmortem"] is None
+    assert knowledge.incident_postmortem(incident2)["status"] == "citations_failed"
+
+
+@pytest.mark.parametrize(
+    "kinds",
+    [
+        ("MODEL_UNAVAILABLE", "MODEL_REJECTED", "citations"),
+        ("OUTPUT_INVALID", "citations", "MODEL_UNAVAILABLE"),
+        ("MODEL_REJECTED", "citations", "OUTPUT_INVALID"),
+    ],
+)
+def test_r7_mixed_failures_share_cap_and_backoff_transaction(stores, dsn, kinds):
+    knowledge, jobs = stores
+    incident = _ended_incident(dsn)
+    model = ScriptedModel([])
+    worker = PostmortemWorker(knowledge=knowledge, jobs=jobs, model=model)
+    for count, kind in enumerate(kinds, 1):
+        if count > 1:
+            _allow_retry(dsn, incident)
+        model.replies = (
+            [ModelError(kind)]
+            if kind.startswith("MODEL_")
+            else [_reply({"bad": []}), _reply({"bad": []})]
+            if kind == "OUTPUT_INVALID"
+            else [_reply(_valid_model_output()), _reply(_valid_model_output())]
+        )
+        before = len(model.calls)
+        outcome = worker.generate(incident)
+        assert outcome is not None
+        if kind != "citations":
+            assert outcome.error_code == kind
+        else:
+            assert outcome.state == "draft"
+        expected_calls = 1 if kind.startswith("MODEL_") else 2
+        assert len(model.calls) - before == expected_calls
+        # One public read must contain both the finished failure and its
+        # schedule: neither is permitted to lag until the next worker poll.
+        view = knowledge.incident_postmortem(incident)
+        attempt = view["attempts"][0]
+        schedule = view["schedule"]
+        if kind == "citations":
+            assert outcome.status == "succeeded" and attempt["status"] == "succeeded"
+        else:
+            assert outcome.status == "failed" and attempt["status"] == "failed"
+        assert attempt["finished_at"] is not None
+        assert attempt["model_requests"] == expected_calls
+        assert len(view["attempts"]) == count
+        assert schedule["consecutive_failures"] == count
+        assert schedule["lease_active"] is False
+        if count < 3:
+            assert schedule["next_attempt_at"] is not None
+            delay = (
+                schedule["next_attempt_at"] - attempt["finished_at"]
+            ).total_seconds()
+            assert delay == pytest.approx(
+                min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (count - 1)), abs=1
+            )
+        else:
+            assert schedule["next_attempt_at"] is None
+            assert view["status"] in {"generation_failed", "citations_failed"}
+        assert incident not in jobs.candidates(limit=100)
+        assert worker.generate(incident) is None
+    before = len(model.calls)
+    _allow_retry(dsn, incident)
+    assert worker.generate(incident) is None  # clock move cannot bypass the cap
+    assert len(model.calls) == before
+    durable = DurableStore(dsn, pool=POOL)
+    try:
+        durable.append_input(incident, uuid4(), {"text": "watermark moved"})
+        model.replies = [ModelError("MODEL_UNAVAILABLE")]
+        assert worker.generate(incident).error_code == "MODEL_UNAVAILABLE"
+        schedule = knowledge.incident_postmortem(incident)["schedule"]
+        assert schedule["consecutive_failures"] == 1
+        assert schedule["next_attempt_at"] is not None
+    finally:
+        durable.close()
+
+
+def test_d31_citation_failed_draft_retries_after_backoff_at_same_watermark(stores, dsn):
+    knowledge, jobs = stores
+    incident = _ended_incident(dsn)
+    evidence_id = _citable_evidence(dsn, incident)
+    model = ScriptedModel(
+        [_reply(_valid_model_output()), _reply(_valid_model_output())]
+    )
+    worker = PostmortemWorker(knowledge=knowledge, jobs=jobs, model=model)
+    first = worker.generate(incident)
+    assert first.status == "succeeded" and first.state == "draft"
+    assert worker.generate(incident) is None
+    assert len(model.calls) == 2
+    _allow_retry(dsn, incident)
+    assert incident in jobs.candidates(limit=100)
+    model.replies = [_reply(_valid_model_output(evidence_id))]
+    second = worker.generate(incident)
+    assert second.status == "succeeded" and second.state == "under_review"
+    snapshot = knowledge.incident_postmortem(incident)
+    old, new = snapshot["postmortem"]["versions"]
+    assert old["state"] == "draft" and new["state"] == "under_review"
+    assert new["version"] == old["version"] + 1
+    for field in (
+        "incident_control_generation",
+        "observation_generation",
+        "run_count",
+        "last_run_id",
+        "input_watermark",
+        "evidence_snapshot_sha256",
+    ):
+        assert old[field] == new[field]
+    assert snapshot["schedule"]["next_attempt_at"] is None
+    assert snapshot["schedule"]["lease_active"] is False
+    assert [a["model_requests"] for a in snapshot["attempts"]] == [1, 2]
+    assert incident not in jobs.candidates(limit=100)
+
+
+@pytest.fixture
+def trace_exporter():
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    exporter = InMemorySpanExporter()
+    tracing.configure(
+        {
+            "OPSPILOT_TRACE": "lab",
+            "LANGSMITH_API_KEY": uuid4().hex,
+            "LANGSMITH_PROJECT": "opspilot-lab-test",
+            "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+            "OPSPILOT_TOOL_PROFILE": "fixture",
+        },
+        exporter=exporter,
+    )
+    try:
+        yield exporter
+    finally:
+        tracing.reset()
+
+
+@pytest.mark.parametrize("source", ["input", "control", "return", "first_reply"])
+def test_d21_d22_human_and_repair_credentials_absent_from_all_calls_and_trace(
+    stores, dsn, trace_exporter, source
+):
+    knowledge, jobs = stores
+    incident = _ended_incident(dsn)
+    secret = uuid4().hex
+    credential = "pass" + "word=" + secret
+    human_text = "synthetic operator note " + credential
+    durable = DurableStore(dsn, pool=POOL)
+    try:
+        if source == "input":
+            durable.append_input(incident, uuid4(), {"text": human_text})
+        elif source == "control":
+            durable.control(incident, 0, "takeover", "operator", {"text": human_text})
+        elif source == "return":
+            from tests.integration.test_m1_03_knowledge_store_postgres import (
+                _draft,
+                _seed_incident,
+            )
+
+            incident, watermark = _seed_incident(dsn)
+            draft = _draft(knowledge, incident, watermark)
+            knowledge.return_for_revision(
+                draft.object_id,
+                1,
+                reason=human_text,
+                expected_generation=draft.generation,
+                idempotency_key=uuid4().hex,
+                actor=Actor("alice", "basic_auth"),
+            )
+        first = _valid_model_output()
+        if source == "first_reply":
+            # Structurally valid, citation-invalid reply forces the repair path;
+            # its quoted text must be sanitized before the second call.
+            first["narrative_sections"][0]["body"] = (
+                "synthetic first reply " + credential
+            )
+        model = ScriptedModel([_reply(first), _reply(_valid_model_output())])
+        outcome = PostmortemWorker(
+            knowledge=knowledge, jobs=jobs, model=model
+        ).generate(incident)
+        assert outcome.status == "succeeded" and outcome.state == "draft"
+        assert len(model.calls) == 2
+        for call in model.calls:
+            assert secret not in json.dumps(
+                [dict(message) for message in call.messages]
+            )
+        if source != "first_reply":
+            assert any(
+                "synthetic operator note" in str(message)
+                for message in model.calls[0].messages
+            )
+        else:
+            assert any(
+                "synthetic first reply" in str(message)
+                for message in model.calls[1].messages
+            )
+        tracing.reset()  # flush before inspecting, including both model spans
+        spans = trace_exporter.get_finished_spans()
+        model_spans = [s for s in spans if s.name == "deepseek.chat.completions"]
+        assert len(model_spans) == 2
+        assert all(secret not in str(getattr(span, "attributes", {})) for span in spans)
+    finally:
+        durable.close()

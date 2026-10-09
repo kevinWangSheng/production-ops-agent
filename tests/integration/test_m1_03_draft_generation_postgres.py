@@ -77,12 +77,13 @@ def stores(dsn: str) -> Iterator[tuple[KnowledgeStore, GenerationStore, DurableS
 @pytest.fixture(autouse=True)
 def _isolated(dsn: str) -> None:
     """Every test sees only its own incidents as candidates: earlier tests'
-    candidates are parked behind a far backoff."""
+    incidents are parked behind a lease held for a day."""
     with psycopg.connect(dsn) as conn:
         conn.execute(
-            "INSERT INTO opspilot_postmortem_generation_jobs(incident_id, next_attempt_at) "
-            "SELECT incident_id, clock_timestamp() + interval '1 day' FROM opspilot_incidents "
-            "ON CONFLICT (incident_id) DO UPDATE SET next_attempt_at=EXCLUDED.next_attempt_at"
+            "INSERT INTO opspilot_postmortem_generation_jobs(incident_id, lease_owner, "
+            "lease_until) SELECT incident_id, gen_random_uuid(), clock_timestamp() "
+            "+ interval '1 day' FROM opspilot_incidents ON CONFLICT (incident_id) DO UPDATE "
+            "SET lease_owner=EXCLUDED.lease_owner, lease_until=EXCLUDED.lease_until"
         )
 
 
@@ -386,8 +387,14 @@ def test_one_repair_then_a_citation_failure_stays_a_draft(stores, dsn) -> None:
     }
     impact = next(c for c in version["conclusions"] if c["conclusion_key"] == "impact")
     assert impact["certainty"] == "uncertain" and not impact["citations_valid"]
-    # D22: no automatic retry of a citation failure at the same watermark
+    # D31: a citation-failed draft is one failed attempt (R7): backoff,
+    # then regenerated at the same watermark
+    schedule = view["schedule"]
+    assert schedule["consecutive_failures"] == 1
+    assert schedule["next_attempt_at"] is not None
     assert incident_id not in jobs.candidates(limit=50)
+    _ready(dsn, incident_id)
+    assert incident_id in jobs.candidates(limit=50)
 
 
 def test_a_repair_that_fixes_the_reply_enters_review(stores, dsn) -> None:
@@ -423,11 +430,12 @@ def test_provider_failures_are_attempts_without_versions(stores, dsn) -> None:
     for incident_id in (unavailable, rejected):
         _ready(dsn, incident_id)
     found = jobs.candidates(limit=50)
-    assert unavailable in found  # retryable, backoff elapsed
-    assert rejected not in found  # not retried at this watermark
-    assert knowledge.incident_postmortem(rejected)["schedule"][
-        "consecutive_failures"
-    ] == (MAX_ATTEMPTS_PER_WATERMARK)
+    # R7: both provider failures retry at the same watermark after backoff
+    assert unavailable in found and rejected in found
+    for incident_id in (unavailable, rejected):
+        view = knowledge.incident_postmortem(incident_id)
+        assert view["status"] == "generation_failed" and view["postmortem"] is None
+        assert view["schedule"]["consecutive_failures"] == 1
 
 
 def test_input_over_a_limit_generates_nothing(stores, dsn, monkeypatch) -> None:
@@ -706,3 +714,148 @@ def test_recovery_fields_reaching_the_model_are_scrubbed(stores, dsn) -> None:
     assert {e["evidence_id"] for e in built.catalog} == {
         r["evidence_id"] for r in built.payload["recovery_readings"]
     } | {e["evidence_id"] for e in built.catalog if e["kind"] == "investigation"}
+
+
+def test_r7_three_failed_attempts_stop_generation_visibly(stores, dsn) -> None:
+    """D29-D31, R7: provider failure, OUTPUT_INVALID and a citation-failed
+    draft count together; below the cap the next attempt is scheduled in the
+    same transaction, at the cap ``next_attempt_at`` is cleared; a moved
+    watermark starts a new count."""
+    knowledge, jobs, durable = stores
+    incident_id = _seed(dsn)
+    worker = _worker(stores, ScriptedModel(ModelError("MODEL_UNAVAILABLE")))
+    steps = [
+        (ModelError("MODEL_UNAVAILABLE"),),
+        ("not json", "still not json"),
+        (_reply(incident_id, cite="ev-ghost"), _reply(incident_id, cite="ev-ghost")),
+    ]
+    for count, replies in enumerate(steps, start=1):
+        worker.model = ScriptedModel(*replies)
+        assert worker.generate(incident_id) is not None
+        schedule = knowledge.incident_postmortem(incident_id)["schedule"]
+        assert schedule["lease_active"] is False
+        assert schedule["consecutive_failures"] == count
+        if count < MAX_ATTEMPTS_PER_WATERMARK:
+            assert schedule["next_attempt_at"] is not None
+            _ready(dsn, incident_id)
+        else:
+            assert schedule["next_attempt_at"] is None
+    view = knowledge.incident_postmortem(incident_id)
+    assert view["status"] == "citations_failed"
+    assert incident_id not in jobs.candidates(limit=50)
+    # the watermark moves: generation starts again, counting from zero
+    durable.append_input(incident_id, uuid4(), {"text": "new alert"})
+    assert incident_id in jobs.candidates(limit=50)
+    worker.model = ScriptedModel(ModelError("MODEL_UNAVAILABLE"))
+    worker.generate(incident_id)
+    assert (
+        knowledge.incident_postmortem(incident_id)["schedule"]["consecutive_failures"]
+        == 1
+    )
+
+
+def test_a_reviewable_version_is_not_regenerated_at_its_watermark(stores, dsn) -> None:
+    """D29: approved, rejected or in-review versions block the watermark."""
+    knowledge, jobs, _ = stores
+    incident_id, version = _generated(stores, dsn)
+    snapshot = knowledge.incident_postmortem(incident_id)["postmortem"]
+    assert incident_id not in jobs.candidates(limit=50)
+    knowledge.reject(
+        snapshot["postmortem_id"],
+        version,
+        reason="not useful",
+        expected_generation=snapshot["generation"],
+        idempotency_key=f"rej-{uuid4()}",
+        actor=REVIEWER,
+    )
+    assert incident_id not in jobs.candidates(limit=50)
+
+
+class TracedModel(ScriptedModel):
+    """Opens the model span the real client opens, so the export sees the
+    exact messages."""
+
+    def complete(self, call: ModelCall) -> ModelReply:
+        from opspilot import tracing
+
+        with tracing.tracer().model_call(call) as span:
+            reply = super().complete(call)
+            span.reply(reply)
+            return reply
+
+
+def _lab_tracer():
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from opspilot import tracing
+
+    exporter = InMemorySpanExporter()
+    env = {
+        "OPSPILOT_TRACE": "lab",
+        "LANGSMITH_API_KEY": "lsv2_" + "x" * 8 + "fake",
+        "LANGSMITH_PROJECT": "opspilot-lab-test",
+        "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+        "OPSPILOT_TOOL_PROFILE": "fixture",
+    }
+    return tracing.configure(env, exporter=exporter), exporter
+
+
+def _exported_text(tracer, exporter) -> str:
+    tracer.shutdown()
+    return json.dumps(
+        [dict(span.attributes or {}) for span in exporter.get_finished_spans()],
+        default=str,
+    )
+
+
+def test_human_text_credentials_reach_neither_model_nor_trace(stores, dsn) -> None:
+    """D21 (r5): human free text is redacted (``redact_credentials``) before
+    it enters the model input and the exported trace."""
+    from opspilot import tracing
+
+    _, _, durable = stores
+    incident_id = _seed(dsn)
+    secret_value = "fake" + "-human-value-" + uuid4().hex[:8]
+    durable.append_input(
+        incident_id, uuid4(), {"text": "pass" + "word=" + secret_value + " please"}
+    )
+    tracer, exporter = _lab_tracer()
+    try:
+        model = TracedModel(_reply(incident_id))
+        outcome = _worker(stores, model).generate(incident_id)
+        assert outcome is not None and outcome.status == "succeeded"
+        sent = json.dumps([list(call.messages) for call in model.calls])
+        assert secret_value not in sent
+        exported = _exported_text(tracer, exporter)
+        assert secret_value not in exported
+        assert "gen_ai.prompt.1.content" in exported
+    finally:
+        tracing.reset()
+
+
+def test_the_repair_call_does_not_echo_credentials(stores, dsn) -> None:
+    """D22 (r5): the refused first reply quoted back in the repair call is
+    redacted and bounded before it enters the prompt and the trace."""
+    from opspilot import tracing
+
+    incident_id = _seed(dsn)
+    secret_value = "fake" + "-reply-value-" + uuid4().hex[:8]
+    first = (
+        json.dumps(_reply(incident_id))[:-1]
+        + ', "note": "to'
+        + "ken="
+        + secret_value
+        + '"}'
+    )
+    tracer, exporter = _lab_tracer()
+    try:
+        model = TracedModel(first, _reply(incident_id))
+        outcome = _worker(stores, model).generate(incident_id)
+        assert outcome is not None and outcome.model_requests == 2
+        repair = model.calls[1].messages
+        assert secret_value not in json.dumps(list(repair))
+        assert secret_value not in _exported_text(tracer, exporter)
+    finally:
+        tracing.reset()

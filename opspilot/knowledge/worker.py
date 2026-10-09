@@ -365,6 +365,7 @@ class PostmortemWorker:
             state=result.state,
             generation=result.generation,
             postmortem_id=result.object_id,
+            citations_failed=not draft.citations_valid,
             used=used,
             usage=usage,
             response_model=response_model,
@@ -382,6 +383,7 @@ class PostmortemWorker:
         state: str | None = None,
         generation: int | None = None,
         postmortem_id: UUID | None = None,
+        citations_failed: bool = False,
         used: int = 0,
         usage: dict[str, int] | None = None,
         response_model: str | None = None,
@@ -401,6 +403,7 @@ class PostmortemWorker:
                 input_bytes=input_bytes,
                 prompt_tokens=usage.get("prompt_tokens", 0),
                 completion_tokens=usage.get("completion_tokens", 0),
+                citations_failed=citations_failed,
             )
         except PersistenceError as exc:
             if str(exc) != "LEASE_LOST":
