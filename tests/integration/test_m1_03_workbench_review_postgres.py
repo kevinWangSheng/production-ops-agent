@@ -68,40 +68,6 @@ UI = {**basic(), **same_origin()}
 HTML = {**UI, "accept": "text/html"}
 
 
-class _Knowledge(KnowledgeStore):
-    """Until step 2 lands ``incident_postmortem`` (D26), derive the view's
-    status from the latest version only (no attempts; ``schedule`` from
-    ``schedules`` when a test sets one)."""
-
-    schedules: dict[UUID, dict[str, Any]] = {}
-
-    def incident_postmortem(self, incident_id: UUID) -> dict[str, Any]:  # type: ignore[override]
-        base = getattr(super(), "incident_postmortem", None)
-        if base is not None:
-            return base(incident_id)
-        snapshot = self.postmortem_for_incident(incident_id)
-        status = "not_generated"
-        if snapshot is not None:
-            state = snapshot["versions"][-1]["state"]
-            status = "citations_failed" if state == "draft" else state
-        return {
-            "incident_id": incident_id,
-            "status": status,
-            "postmortem": snapshot,
-            "schedule": self.schedules.get(
-                incident_id,
-                {
-                    "pending_regeneration_version": None,
-                    "lease_active": False,
-                    "consecutive_failures": 0,
-                    "next_attempt_at": None,
-                    "last_error_code": None,
-                },
-            ),
-            "attempts": [],
-        }
-
-
 @pytest.fixture(scope="module")
 def dsn() -> Iterator[str]:
     name = f"opspilot_f13w_{uuid4().hex[:12]}"
@@ -129,7 +95,7 @@ def env(dsn: str) -> Iterator[dict[str, Any]]:
     store = DurableStore(dsn, pool=POOL)
     store.install()
     events = DurableEventLog(store)
-    knowledge = _Knowledge(dsn, pool=POOL)
+    knowledge = KnowledgeStore(dsn, pool=POOL)
     workbench = Workbench(
         incidents=DurableIncidentStore(store),
         events=events,
@@ -286,6 +252,19 @@ def _review(env, draft, action, *, headers=None, **fields):
         form,
         headers=headers or UI,
     )
+
+
+def _schedule(env, incident_id, *, failures: int, next_attempt: str) -> None:
+    with psycopg.connect(env["dsn"]) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_postmortem_generation_jobs(incident_id, "
+            "consecutive_failures, next_attempt_at) VALUES (%s, %s, "
+            + next_attempt
+            + ") ON CONFLICT (incident_id) DO UPDATE SET "
+            "consecutive_failures=EXCLUDED.consecutive_failures, "
+            "next_attempt_at=EXCLUDED.next_attempt_at",
+            (incident_id, failures),
+        )
 
 
 def _events(env, incident_id, kind):
@@ -660,28 +639,24 @@ def test_several_citation_failed_drafts_then_a_reviewable_version(env) -> None:
         env, incident_id, watermark, generation=first.generation, conclusions=failed
     )
     assert (first.state, second.state, second.version) == ("draft", "draft", 2)
-    retrying = {
-        "pending_regeneration_version": None,
-        "lease_active": False,
-        "consecutive_failures": 2,
-        "next_attempt_at": "2026-10-09T12:10:00+00:00",
-        "last_error_code": None,
-    }
-    env["knowledge"].schedules[incident_id] = retrying
+    # the worker's schedule as step 2 writes it (R7): failures and the next
+    # attempt in one row, ``next_attempt_at`` cleared when exhausted
+    _schedule(
+        env,
+        incident_id,
+        failures=2,
+        next_attempt="clock_timestamp() + interval '2 minutes'",
+    )
     page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
     assert 'id="postmortem-status">citations_failed<' in page.text
     assert 'id="postmortem-retry"' in page.text and "2 failed attempts" in page.text
     assert page.text.count("citations failed</strong>") == 2
 
-    env["knowledge"].schedules[incident_id] = {
-        **retrying,
-        "consecutive_failures": 3,
-        "next_attempt_at": None,
-    }
+    _schedule(env, incident_id, failures=3, next_attempt="NULL")
     page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
     assert 'id="postmortem-exhausted"' in page.text and "3 failed attempts" in page.text
 
-    env["knowledge"].schedules.pop(incident_id)
+    _schedule(env, incident_id, failures=0, next_attempt="NULL")
     third = _draft(env, incident_id, watermark, generation=second.generation)
     assert (third.version, third.state) == (3, "under_review")
     page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())

@@ -34,7 +34,6 @@ import getpass
 import os
 import sys
 from pathlib import Path
-from typing import cast
 
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
@@ -51,7 +50,7 @@ from opspilot.web.app import create_app
 from opspilot.web.auth import AuthConfig, Authenticator, hash_password, token_digest
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
-from opspilot.web.review import KnowledgeReview, PostmortemReview
+from opspilot.web.review import PostmortemReview
 from opspilot.web.service import Workbench
 from opspilot.web.store import (
     DurableClock,
@@ -155,11 +154,7 @@ def _serve() -> int:
         workbench,
         Authenticator(config),
         clock,
-        # TODO(M1-03 step 2 merge): drop the cast once ``incident_postmortem``
-        # (D26) is on main; this branch is merged after step 2.
-        review=PostmortemReview(
-            knowledge=cast(KnowledgeReview, knowledge), events=events
-        ),
+        review=PostmortemReview(knowledge=knowledge, events=events),
     )
     host, _, port = bind.rpartition(":")
     try:
