@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import Any, Literal, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r3"
+CONTRACT_REVISION = "r5"
 
 # --- versions recorded with every generation (D20) -------------------------
 
@@ -127,9 +127,12 @@ AttemptErrorCode = Literal[
     "GENERATION_CONFLICT",
     "LEASE_LOST",
 ]
-# Failures retried with backoff at the same watermark (D22); the others wait
-# for the watermark to move.
-RETRYABLE_ATTEMPT_ERRORS = frozenset({"MODEL_UNAVAILABLE", "OUTPUT_INVALID"})
+# Failures retried with backoff at the same watermark, at most three
+# attempts together with citation-failed drafts (D22, D30, D31, R7); the
+# others wait for the watermark to move (r5).
+RETRYABLE_ATTEMPT_ERRORS = frozenset(
+    {"MODEL_UNAVAILABLE", "MODEL_REJECTED", "OUTPUT_INVALID"}
+)
 
 # Page-level review actions (D5, D25). ``supersede`` is presented on its own
 # and executed as an approval of a version whose proposals name existing

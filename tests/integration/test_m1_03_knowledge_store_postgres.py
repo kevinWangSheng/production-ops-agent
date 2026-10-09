@@ -930,8 +930,7 @@ def test_0007_to_0008_round_trip_keeps_business_rows() -> None:
         before = schema.schema_dump(scratch, pg_dump=PG_DUMP)
 
         assert (
-            schema.migrate(scratch, pg_dump=PG_DUMP).revision
-            == "0008_postmortem_knowledge"
+            schema.migrate(scratch, pg_dump=PG_DUMP).revision == schema.head_revision()
         )
         head_dump = schema.schema_dump(scratch, pg_dump=PG_DUMP)
         assert head_dump == schema.fresh_head_dump(scratch, pg_dump=PG_DUMP)
