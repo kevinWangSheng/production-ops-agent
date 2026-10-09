@@ -645,13 +645,13 @@ def _sample_jobs(sessions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
         trusted: set[tuple[str, str]] = set()
         for stored in history["samples"]:
             key = (str(stored["job_id"]), session_id)
-            # a sample whose stamps match the lease carries the lease's
-            # sequence; an earlier mismatched submission must not win
-            if key not in jobs or (
-                key not in trusted and stored.get("lease_stamps_match")
-            ):
+            # only a submission under a valid lease whose stamps matched
+            # carries the lease's sequence; an earlier history-only one
+            # (expired lease, mismatched stamps) must not win
+            good = bool(stored.get("lease_valid") and stored.get("lease_stamps_match"))
+            if key not in jobs or (key not in trusted and good):
                 jobs[key] = int(stored["sequence"])
-            if stored.get("lease_stamps_match"):
+            if good:
                 trusted.add(key)
         if row.get("active_sample_job_id") is not None:
             jobs[(str(row["active_sample_job_id"]), session_id)] = int(
