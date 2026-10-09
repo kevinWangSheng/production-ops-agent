@@ -12,6 +12,20 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
+# The postmortem and reviewed-knowledge seam (F13, M1-03 step 4, R13): its
+# own type again, because the postmortem's state machine and records are
+# neither the investigation Run's nor the recovery observation's.
+from opspilot.acceptance_postmortem import (  # noqa: E402
+    KnowledgeRevisionOutcome,
+    PostmortemConclusion,
+    PostmortemOutcome,
+    PostmortemRecords,
+    PostmortemVersionOutcome,
+    ReviewRecord,
+    postmortem_outcome,
+    postmortem_records,
+)
+
 # The recovery observation seam (F6, issue #140) lives in a sibling module:
 # a parallel type to ``IncidentOutcome``, because the investigation Run's
 # ``final_state`` is not the incident lifecycle and the F6 fields are read
@@ -32,15 +46,23 @@ from opspilot.investigation.loop import LoopOutcome
 __all__ = [
     "IncidentOutcome",
     "IncidentScenario",
+    "KnowledgeRevisionOutcome",
+    "PostmortemConclusion",
+    "PostmortemOutcome",
+    "PostmortemRecords",
+    "PostmortemVersionOutcome",
     "RecoveryAction",
     "RecoveryOutcome",
     "RecoveryRecords",
     "RecoverySample",
     "RecoverySignal",
+    "ReviewRecord",
     "outcome_from_durable",
     "outcome_from_live_record",
     "outcome_from_loop",
     "permissions_from_grants",
+    "postmortem_outcome",
+    "postmortem_records",
     "recovery_outcome",
 ]
 
