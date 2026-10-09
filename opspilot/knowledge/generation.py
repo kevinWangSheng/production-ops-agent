@@ -454,13 +454,23 @@ def build_input(
     }
     timeline = _timeline(incident_facts, human_actions, recovery)
     report = _report(incident["conclusion"], secrets)
-    facts = {
-        "incident": incident_facts,
-        "timeline": timeline,
-        "runs": runs,
-        "human_actions": human_actions,
-        "recovery": recovery,
-    }
+    # One scrub over everything assembled from rows (D21; PR #174 bot
+    # review): recovery signal names, sources and profile revisions are
+    # configuration, not credentials, but nothing row-derived reaches the
+    # model unscrubbed. Idempotent, so already-scrubbed parts are unchanged;
+    # the catalog is scrubbed with the payload so cited ids still match.
+    facts = _scrub(
+        {
+            "incident": incident_facts,
+            "timeline": timeline,
+            "runs": runs,
+            "human_actions": human_actions,
+            "recovery": recovery,
+        },
+        secrets,
+    )
+    catalog = _scrub(catalog, secrets)
+    readings = _scrub(readings, secrets)
     return_reason = raw["return_reason"]
     payload = {
         **facts,

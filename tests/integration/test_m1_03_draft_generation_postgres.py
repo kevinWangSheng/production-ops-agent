@@ -688,3 +688,21 @@ def test_catalog_metadata_reaching_the_model_is_scrubbed(stores, dsn) -> None:
     built = build_input(jobs.read_input(incident_id), secrets=[])
     assert "fake-tool-value" not in built.payload_text
     assert "fake-window-value" not in built.payload_text
+
+
+def test_recovery_fields_reaching_the_model_are_scrubbed(stores, dsn) -> None:
+    _, jobs, _ = stores
+    incident_id = _seed(dsn)
+    source_value = "api" + "_key=" + "fake-source-value"
+    _set(
+        dsn,
+        "UPDATE opspilot_observation_signal_readings SET source=%s WHERE sample_id IN "
+        "(SELECT s.sample_id FROM opspilot_observation_samples s "
+        "JOIN opspilot_observation_sessions o USING (session_id) WHERE o.incident_id=%s)",
+        (source_value, incident_id),
+    )
+    built = build_input(jobs.read_input(incident_id), secrets=[])
+    assert "fake-source-value" not in built.payload_text
+    assert {e["evidence_id"] for e in built.catalog} == {
+        r["evidence_id"] for r in built.payload["recovery_readings"]
+    } | {e["evidence_id"] for e in built.catalog if e["kind"] == "investigation"}
