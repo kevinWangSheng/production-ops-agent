@@ -592,3 +592,49 @@ def test_a_stale_version_shows_its_reason_and_offers_no_review(env) -> None:
     assert "run_added" in incident_page.text
     late = _review(env, draft, "approve", expected_generation=draft.generation + 1)
     assert late.status == 422 and late.json()["code"] == "ILLEGAL_TRANSITION"
+
+
+def test_a_moved_watermark_refuses_approval_with_an_explanation(env) -> None:
+    incident_id, watermark = _incident(env)
+    draft = _draft(env, incident_id, watermark)
+    # a Run added without the synchronous stale marking (D18's crash window)
+    run_id = uuid4()
+    with psycopg.connect(env["dsn"]) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_runs(run_id, incident_id, state, control_generation, "
+            "budget_limit, deadline, versions) "
+            "VALUES (%s, %s, 'queued', 0, 1, clock_timestamp(), '{}')",
+            (run_id, incident_id),
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (run_id, incident_id),
+        )
+    response = _review(env, draft, "approve", headers=HTML)
+    assert response.status == 409
+    assert "WATERMARK_MOVED" in response.text and "watermark" in response.text
+    assert env["knowledge"].postmortem(draft.object_id)["versions"][0]["state"] == (
+        "under_review"
+    )
+
+
+def test_superseded_knowledge_is_shown_as_not_retrievable(env) -> None:
+    first_incident, first_watermark = _incident(env)
+    first = _draft(env, first_incident, first_watermark)
+    published = next(iter(_review(env, first, "approve").json()["published"].values()))
+    incident_id, watermark = _incident(env)
+    draft = _draft(
+        env,
+        incident_id,
+        watermark,
+        proposals=[_proposal("kb-2", supersedes=UUID(published["entry_id"]))],
+    )
+    done = _review(
+        env,
+        draft,
+        "supersede",
+        **{f"entry_generation:{published['entry_id']}": str(published["generation"])},
+    )
+    assert done.status == 200
+    page = call(env["app"], "GET", f"/incidents/{first_incident}", headers=basic())
+    assert "superseded</span> not retrievable" in page.text

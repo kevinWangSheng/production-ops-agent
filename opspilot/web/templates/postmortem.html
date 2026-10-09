@@ -20,7 +20,8 @@
 {% if error %}
 <div id="review-error" class="unknown">
   <p><strong>Refused: <code>{{ error.code }}</code></strong> ({{ error.error_class }})
-  {% if error.error_class == "conflict" %}— the page is out of date{% if error.current_generation is not none %} (current generation {{ error.current_generation }}){% endif %}. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a> and review again.
+  {% if error.code == "WATERMARK_MOVED" %}— the incident moved past this version's watermark (reopen, new Run, input or evidence, or a changed recovery verdict): it can no longer be approved and will be regenerated. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a>.
+  {% elif error.error_class == "conflict" %}— the page is out of date{% if error.current_generation is not none %} (current generation {{ error.current_generation }}){% endif %}. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a> and review again.
   {% elif error.error_class == "refused" %}— this version cannot take that action in its current state.
   {% elif error.error_class == "invalid" %}— check {{ error.fields | join(", ") if error.fields else "the form" }}.
   {% elif error.error_class == "unavailable" %}— storage is unavailable; nothing was changed by this page, retry the same form.
@@ -120,9 +121,9 @@
 {% else %}<p class="muted">none</p>{% endif %}
 
 {% if page.published %}
-<h3>Published from this version</h3>
+<h3>Published from this version <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
 <ul id="published">
-  {% for k in page.published %}<li><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span></li>{% endfor %}
+  {% for k in page.published %}<li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %}</li>{% endfor %}
 </ul>
 {% endif %}
 

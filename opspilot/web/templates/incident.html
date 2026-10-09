@@ -184,10 +184,10 @@
 </table>
 {% endif %}
 {% if postmortem.knowledge %}
-<h3>Knowledge published from this postmortem</h3>
+<h3>Knowledge revisions published from this postmortem <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
 <ul id="postmortem-knowledge">
   {% for k in postmortem.knowledge %}
-  <li><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span> <span class="muted">from version {{ k.source_version }}</span></li>
+  <li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %} <span class="muted">from version {{ k.source_version }}</span></li>
   {% endfor %}
 </ul>
 {% endif %}
