@@ -1,7 +1,7 @@
 """F13 第 1–3 步独立外部验收（合同 r6）；不验收 M2，也不改 passes。
 
 确定性模型和测试驱动模拟审核不代表真实模型或真人审阅。
-基线投影是 NotImplementedError 接口桩：保留失败，不 xfail、不弱化断言。
+编写时投影是 NotImplementedError 接口桩（测试作者未见实现）；失败保留，不 xfail、不弱化断言。
 """
 
 import copy
