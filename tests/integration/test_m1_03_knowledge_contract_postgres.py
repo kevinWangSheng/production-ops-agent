@@ -141,6 +141,7 @@ def _conclusion(key: str = "c1", valid: bool = True) -> ConclusionDraft:
                 "scope": "run",
                 "window_start": "2026-10-09T00:00:00Z",
                 "window_end": "2026-10-09T01:00:00Z",
+                "citable_as_fact": valid,
             }
         ],
     )
@@ -269,6 +270,39 @@ def test_invalid_citations_stay_draft_and_cannot_be_approved(
         )
 
 
+def test_evidence_refs_require_d2_shape_and_fact_citability(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    """D2: model evidence bindings must be complete and fact-capable."""
+    missing_field = [
+        {
+            "evidence_id": "e1",
+            "scope": "run",
+            "window_start": "2026-10-09T00:00:00Z",
+            "window_end": "2026-10-09T01:00:00Z",
+        }
+    ]
+    non_fact = [
+        {
+            "evidence_id": "e1",
+            "scope": "run",
+            "window_start": "2026-10-09T00:00:00Z",
+            "window_end": "2026-10-09T01:00:00Z",
+            "citable_as_fact": False,
+        }
+    ]
+    for key, refs in (
+        ("missing-ref-field", missing_field),
+        ("supported-non-fact", non_fact),
+        ("model-without-binding", []),
+    ):
+        conclusion = ConclusionDraft(
+            "c1", "findings", "observed", "model", "supported", True, refs
+        )
+        with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
+            _draft(store, incident, key=key, conclusions=(conclusion,))
+
+
 def test_dispute_is_written_with_draft_cannot_be_cleared_and_only_return_is_allowed(
     store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
 ) -> None:
@@ -357,6 +391,22 @@ def test_basic_auth_review_records_actor_and_approved_revision_is_immutable(
         and active["approved_by"] == "alice"
         and active["approved_by_kind"] == "basic_auth"
     )
+    assert active["state"] == "active"
+    assert active["source_postmortem_id"] == draft.object_id
+    assert active["source_version"] == 1
+    assert active["source_proposal_key"] == "p1"
+    assert set(active["freshness"]) == {
+        "approved_at",
+        "generated_at",
+        "observation_ended_at",
+        "evidence_snapshot_sha256",
+    }
+    assert active["freshness"]["approved_at"] is not None
+    assert active["freshness"]["generated_at"] is not None
+    assert active["freshness"]["observation_ended_at"] is not None
+    assert active["freshness"][
+        "evidence_snapshot_sha256"
+    ] == store.evidence_snapshot_sha256(incident[0])
     with psycopg.connect(store.dsn) as conn:
         with pytest.raises(psycopg.Error), conn.transaction():
             conn.execute(

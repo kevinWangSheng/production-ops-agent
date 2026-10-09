@@ -285,7 +285,13 @@ def upgrade() -> None:
           {_check(conclusions, "certainty", CERTAINTIES)},
           CONSTRAINT {conclusions}_author_certainty_check CHECK ((author = 'code') = (certainty = 'deterministic')),
           -- a failed citation check makes the conclusion uncertain (D2)
-          CONSTRAINT {conclusions}_citations_check CHECK (citations_valid OR certainty = 'uncertain')
+          CONSTRAINT {conclusions}_citations_check CHECK (citations_valid OR certainty = 'uncertain'),
+          -- model narrative binds evidence; a supported conclusion binds at
+          -- least one piece citable as fact (D2)
+          CONSTRAINT {conclusions}_binding_check CHECK (
+            (author = 'code' OR jsonb_array_length(evidence_refs) > 0)
+            AND (certainty <> 'supported' OR evidence_refs @> '[{{"citable_as_fact": true}}]')
+          )
         );
         CREATE TABLE {disputes} (
           dispute_id uuid PRIMARY KEY,

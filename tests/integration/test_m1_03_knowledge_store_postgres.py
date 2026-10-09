@@ -167,6 +167,7 @@ def _conclusions(*, citations_valid: bool = True) -> list[ConclusionDraft]:
                     "scope": "checkout",
                     "window_start": "2026-10-09T12:00:00Z",
                     "window_end": "2026-10-09T12:05:00Z",
+                    "citable_as_fact": True,
                 }
             ],
         ),
@@ -613,6 +614,30 @@ def test_invalid_input_is_reported_as_such_not_as_an_outage(store, dsn) -> None:
             incident_id,
             Watermark(**{**watermark.__dict__, "evidence_snapshot_sha256": "x"}),
         )
+    # D2: model narrative binds complete evidence references, and a
+    # supported conclusion needs evidence citable as fact
+    ref = {
+        "evidence_id": "ev-1",
+        "scope": "checkout",
+        "window_start": "2026-10-09T12:00:00Z",
+        "window_end": "2026-10-09T12:05:00Z",
+    }
+    for refs in (
+        [],
+        [ref],  # no citable_as_fact
+        [{**ref, "citable_as_fact": "yes"}],
+        [{**ref, "scope": "", "citable_as_fact": True}],
+        [{**ref, "citable_as_fact": False}],  # supported on non-citable evidence
+    ):
+        with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
+            _draft(
+                store,
+                incident_id,
+                watermark,
+                conclusions=[
+                    ConclusionDraft("k", "s", "b", "model", "supported", True, refs)
+                ],
+            )
     # malformed containers are refused as input, never escape as TypeError
     for kwargs in (
         {"proposals": [ProposalDraft("p", "n", None, {})]},  # type: ignore[arg-type]
@@ -701,7 +726,18 @@ def test_supersede_and_revoke_keep_every_revision_with_a_tombstone(store, dsn) -
     ]
     assert revisions[1]["revoked_reason"] == "root cause was the cache, not the deploy"
     assert revisions[1]["revoked_by"] == "alice"
-    assert store.active_revision(entry_id)["revision"] == 3
+    latest = store.active_revision(entry_id)
+    assert latest["revision"] == 3
+    # D4: origin, review state and freshness travel with the knowledge read
+    assert latest["state"] == "active" and latest["source_version"] == 1
+    assert set(latest["freshness"]) == {
+        "approved_at",
+        "generated_at",
+        "observation_ended_at",
+        "evidence_snapshot_sha256",
+    }
+    assert latest["freshness"]["evidence_snapshot_sha256"] == EVIDENCE_HASH
+    assert latest["freshness"]["generated_at"] <= latest["freshness"]["approved_at"]
 
 
 # --- database layer (owner role): append-only, approved content frozen

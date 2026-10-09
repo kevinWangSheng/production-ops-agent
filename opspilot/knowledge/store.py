@@ -118,7 +118,10 @@ class ConclusionDraft:
     ``author="code"`` is assembled deterministically from PostgreSQL and
     has ``certainty="deterministic"``; model narrative is ``supported`` only
     when ``citations_valid``, otherwise ``uncertain``. ``evidence_refs``
-    are objects naming ``evidence_id``, ``scope`` and the time window.
+    are objects with ``evidence_id``, ``scope``, ``window_start``,
+    ``window_end`` (non-empty strings) and ``citable_as_fact`` (bool); a
+    model conclusion binds at least one, and a ``supported`` one at least one
+    citable as fact -- only such evidence supports a factual statement (D2).
     """
 
     key: str
@@ -285,10 +288,28 @@ def _validate_conclusion(conclusion: object) -> ConclusionDraft:
     if not conclusion.citations_valid and conclusion.certainty != "uncertain":
         raise PersistenceError("INVALID_INPUT")
     if not isinstance(conclusion.evidence_refs, (list, tuple)) or not all(
-        isinstance(ref, Mapping) for ref in conclusion.evidence_refs
+        _valid_ref(ref) for ref in conclusion.evidence_refs
+    ):
+        raise PersistenceError("INVALID_INPUT")
+    if conclusion.author == "model" and not conclusion.evidence_refs:
+        raise PersistenceError("INVALID_INPUT")
+    if conclusion.certainty == "supported" and not any(
+        ref["citable_as_fact"] for ref in conclusion.evidence_refs
     ):
         raise PersistenceError("INVALID_INPUT")
     return conclusion
+
+
+_REF_TEXT_KEYS = ("evidence_id", "scope", "window_start", "window_end")
+
+
+def _valid_ref(ref: object) -> bool:
+    """One evidence binding of a conclusion (D2)."""
+    return (
+        isinstance(ref, Mapping)
+        and all(isinstance(ref.get(k), str) and ref.get(k) for k in _REF_TEXT_KEYS)
+        and isinstance(ref.get("citable_as_fact"), bool)
+    )
 
 
 def _validate_proposal(proposal: object) -> ProposalDraft:
@@ -762,14 +783,33 @@ class KnowledgeStore(_StoreBase):
 
     def active_revision(self, entry_id: UUID) -> dict[str, Any] | None:
         """The knowledge read (D3): the entry's ``active`` revision, or
-        ``None`` when it has none (every revision superseded or revoked)."""
+        ``None`` when it has none (every revision superseded or revoked).
+
+        Carries origin (source postmortem version), review state and
+        ``freshness`` (D4, PRODUCT-CONSTRAINTS line 30): when it was
+        approved, when its source was generated, when the observation it
+        rests on ended, and the evidence snapshot it was assembled from."""
         with self.transaction(snapshot=True) as conn:
-            return conn.execute(
-                "SELECT r.*, s.state FROM opspilot_knowledge_revisions r "
+            row = conn.execute(
+                "SELECT r.*, s.state, v.created_at AS generated_at, "
+                "v.evidence_snapshot_sha256, e.recorded_at AS observation_ended_at "
+                "FROM opspilot_knowledge_revisions r "
                 "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
+                "JOIN opspilot_postmortem_versions v ON v.postmortem_id = r.source_postmortem_id "
+                "AND v.version = r.source_version "
+                "JOIN opspilot_observation_endings e ON e.ending_id = v.observation_ending_id "
                 "WHERE r.entry_id=%s AND s.state='active'",
                 (entry_id,),
             ).fetchone()
+            if row is None:
+                return None
+            row["freshness"] = {
+                "approved_at": row["approved_at"],
+                "generated_at": row.pop("generated_at"),
+                "observation_ended_at": row.pop("observation_ended_at"),
+                "evidence_snapshot_sha256": row.pop("evidence_snapshot_sha256"),
+            }
+            return row
 
     def knowledge_history(self, entry_id: UUID) -> dict[str, Any]:
         """Review/audit history of an entry, not a knowledge read: every
