@@ -37,7 +37,7 @@ class _RunOps(_StoreBase):
         with self.transaction() as conn:
             scope = self._lock_scope(conn, incident_id)
             row = conn.execute(
-                "SELECT state,mode,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT state,mode,lifecycle,control_generation,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
@@ -123,11 +123,18 @@ class _RunOps(_StoreBase):
                     Jsonb(payload) if payload is not None else None,
                 ),
             )
-            # M1-03 D18: a postmortem draft of the run that ended is stale now.
+            # M1-03 D18: a draft assembled before this Run is stale now. A
+            # resolved/closed incident is reopened by it; otherwise it is a
+            # Run added to an open incident (PR #175 bot review).
             from opspilot.knowledge.store import mark_stale_in
 
             mark_stale_in(
-                conn, incident_id, reason="incident_reopened", source="new_run"
+                conn,
+                incident_id,
+                reason="incident_reopened"
+                if row["lifecycle"] in ("resolved", "closed")
+                else "run_added",
+                source="new_run",
             )
             return nxt
 

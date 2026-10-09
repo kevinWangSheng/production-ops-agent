@@ -897,3 +897,32 @@ def test_a_citation_failed_regeneration_keeps_the_return_and_its_cap(
             assert schedule["next_attempt_at"] is None
     versions = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
     assert [v["revises_version"] for v in versions[1:]] == [version] * 3
+
+
+@pytest.mark.parametrize(
+    ("lifecycle", "reason"),
+    [("resolved", "incident_reopened"), ("open", "run_added")],
+)
+def test_a_new_run_marks_the_draft_stale_by_what_it_did(
+    stores, dsn, lifecycle, reason
+) -> None:
+    """D18: ``new_run`` reopens a resolved incident; on an open one (the
+    observation ended unconfirmed) it only adds a Run."""
+    knowledge, _, durable = stores
+    incident_id, _ = _generated(stores, dsn)
+    _set(
+        dsn,
+        "UPDATE opspilot_incidents SET state='cancelled', lifecycle=%s WHERE incident_id=%s",
+        (lifecycle, incident_id),
+    )
+    durable.new_run(
+        incident_id,
+        uuid4(),
+        expected_generation=0,
+        deadline=T0 + timedelta(days=1),
+        budget_limit=1,
+        versions={},
+        actor="alice",
+    )
+    version = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][0]
+    assert (version["state"], version["stale_reason"]) == ("stale", reason)
