@@ -496,7 +496,13 @@ def _project(
         _same(attempt.get("incident_id"), subject_id)
     snapshot = view.get("postmortem")
     if snapshot is None:
-        if records.published or records.entries or records.postmortem_audit:
+        if (
+            records.published
+            or records.entries
+            or records.active
+            or records.postmortem_audit
+            or records.entry_audit
+        ):
             raise _Mismatch
         return PostmortemOutcome(
             scenario_id=scenario_id,
@@ -519,7 +525,10 @@ def _project(
         _review_record(row, "postmortem", postmortem_id)
         for row in records.postmortem_audit
     )
-    if set(records.entries) != {row["entry_id"] for row in records.published}:
+    published = {row["entry_id"] for row in records.published}
+    if set(records.entries) != published or not (
+        set(records.active) <= published and set(records.entry_audit) <= published
+    ):
         raise _Mismatch
     knowledge_actions = tuple(
         _review_record(row, "knowledge_entry", entry_id)

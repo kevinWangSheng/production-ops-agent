@@ -236,6 +236,32 @@ def test_nothing_written_is_not_generated() -> None:
     )
 
 
+@pytest.mark.parametrize("stray", ["active", "entry_audit"])
+def test_knowledge_records_without_a_postmortem_are_unknown(stray: str) -> None:
+    """Codex review #180: an empty postmortem with knowledge records left over
+    is another subject's, not ``not_generated``."""
+    view = {
+        "incident_id": INCIDENT,
+        "status": "not_generated",
+        "postmortem": None,
+        "schedule": {"consecutive_failures": 0},
+        "attempts": [],
+    }
+    active = {ENTRY: None} if stray == "active" else {}
+    audit = (
+        {ENTRY: (_audit("knowledge_entry", ENTRY, "publish", 1, revision=1),)}
+        if stray == "entry_audit"
+        else {}
+    )
+    outcome = postmortem_outcome(
+        SCENARIO, PostmortemRecords(INCIDENT, view, (), {}, active, (), audit)
+    )
+    assert (outcome.generation_status, outcome.unknown_reasons) == (
+        "unknown",
+        ("SUBJECT_MISMATCH",),
+    )
+
+
 def _corrupt(path: str):
     """A records copy with one field moved to another subject."""
     records = _records()
@@ -316,6 +342,31 @@ def _corrupt(path: str):
             records.postmortem_audit,
             records.entry_audit,
         )
+    elif path == "stray_active":
+        active = {**records.active, other: None}
+        return PostmortemRecords(
+            INCIDENT,
+            view,
+            records.published,
+            records.entries,
+            active,
+            records.postmortem_audit,
+            records.entry_audit,
+        )
+    elif path == "stray_entry_audit":
+        audit = {
+            **records.entry_audit,
+            other: (_audit("knowledge_entry", other, "publish", 1, revision=1),),
+        }
+        return PostmortemRecords(
+            INCIDENT,
+            view,
+            records.published,
+            records.entries,
+            records.active,
+            records.postmortem_audit,
+            audit,
+        )
     elif path == "extra_entry":
         entries = {
             **records.entries,
@@ -357,6 +408,8 @@ def _corrupt(path: str):
         "entry_audit",
         "active",
         "extra_entry",
+        "stray_active",
+        "stray_entry_audit",
     ],
 )
 def test_records_of_another_subject_project_unknown(path: str) -> None:
