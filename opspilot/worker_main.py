@@ -32,6 +32,12 @@ Configuration (environment only):
   must match the workbench (``opspilot.tools.profiles``).
 * ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
   export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
+* ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
+* ``OPSPILOT_POSTMORTEM_BATCH``     candidates per scan (default 5).
+
+A second thread runs the postmortem pass (M1-03 D17): its own scan,
+generation lease and model client, one generation at a time, never an
+investigation Run lease (``opspilot.knowledge.worker``).
 
 Like ``python -m opspilot.web serve`` it installs schema on start and is a
 development entry point, not a deployment artifact. Under the default
@@ -56,6 +62,9 @@ from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.progress import ExpirySweeper, ProgressLog, sweep_expired
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
+from opspilot.knowledge import KnowledgeStore
+from opspilot.knowledge.jobs import GenerationStore
+from opspilot.knowledge.worker import PostmortemWorker
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.tools.profiles import ToolProfile, select_profile
 from opspilot.web.events import DurableEventLog
@@ -234,6 +243,24 @@ def build_loop(
     )
 
 
+def build_postmortem_worker(
+    dsn: str, api_key: str, *, stop: threading.Event, events: ProgressLog | None
+) -> PostmortemWorker:
+    """The postmortem pass (M1-03 step 2) with its own stores and client."""
+    knowledge = KnowledgeStore(dsn)
+    knowledge.install()
+    jobs = GenerationStore(dsn)
+    jobs.install()
+    return PostmortemWorker(
+        knowledge=knowledge,
+        jobs=jobs,
+        model=DeepSeekClient(api_key),
+        events=events,
+        stop=stop,
+        batch=_int_env("OPSPILOT_POSTMORTEM_BATCH", 5),
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -246,7 +273,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     store.install()
     stop = threading.Event()
     _configure_tracing()
-    loop = build_loop(store, _credential(), stop=stop)
+    credential = _credential()
+    loop = build_loop(store, credential, stop=stop)
+    postmortems = build_postmortem_worker(
+        dsn, credential, stop=stop, events=loop.events
+    )
 
     def request_stop(signum: int, _frame: Any) -> None:
         _log.info("signal=%s: stop claiming, finishing the in-flight attempt", signum)
@@ -256,16 +287,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     signal.signal(signal.SIGINT, request_stop)
     thread = threading.Thread(target=loop.run, name="opspilot-worker", daemon=True)
     thread.start()
+    postmortem_thread = threading.Thread(
+        target=postmortems.run,
+        args=(_float_env("OPSPILOT_POSTMORTEM_POLL_SECONDS", 30.0),),
+        name="opspilot-postmortem",
+        daemon=True,
+    )
+    postmortem_thread.start()
     _log.info("worker started")
     # Wait in short slices so the signal handlers get to run on this thread.
     # A loop thread that died (anything but the refusals ``poll_once``
     # handles) must not leave a live process that never polls.
     while not stop.wait(0.5):
-        if not thread.is_alive():
+        if not thread.is_alive() or not postmortem_thread.is_alive():
             _log.error("worker loop died; exiting")
             return 1
     thread.join(grace)
-    if thread.is_alive():
+    postmortem_thread.join(grace)
+    if thread.is_alive() or postmortem_thread.is_alive():
         _log.warning(
             "attempt still in flight after grace=%ss: exiting; its lease lapses "
             "within %ss and the next claim resumes from the committed rows",
@@ -275,6 +314,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         tracing.shutdown()
         return 1
     store.close()
+    postmortems.knowledge.close()
+    postmortems.jobs.close()
     tracing.shutdown()
     _log.info("worker stopped")
     return 0

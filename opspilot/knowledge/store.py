@@ -55,6 +55,7 @@ from psycopg import errors
 
 from opspilot.domain.base import DomainError
 from opspilot.domain.knowledge import POSTMORTEM
+from opspilot.knowledge.contract import ATTEMPTS_SHOWN
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 PrincipalKind = Literal["basic_auth", "worker"]
@@ -328,6 +329,164 @@ def _validate_proposal(proposal: object) -> ProposalDraft:
     return proposal
 
 
+# A watermark component that moved -> the stale reason it records, checked
+# in this order (the first that moved names the reason).
+_MOVED_REASONS: tuple[tuple[str, StaleReason], ...] = (
+    ("observation_generation", "observation_changed"),
+    ("run", "run_added"),
+    ("control_generation", "control_generation_changed"),
+    ("input_watermark", "input_added"),
+    ("evidence", "evidence_changed"),
+)
+
+
+def moved_components(
+    conn: Connection, incident_id: UUID, watermark: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Which parts of ``watermark`` the incident has moved past (D1):
+    ``observation_generation``, ``run``, ``control_generation``,
+    ``input_watermark``, ``evidence``; empty when none. Share-locks the
+    incident row like ``KnowledgeStore._watermark_moved``."""
+    current = conn.execute(
+        "SELECT i.control_generation, i.observation_generation, i.current_run_id, "
+        "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id) AS run_count, "
+        "(SELECT COALESCE(max(n.sequence), 0) FROM opspilot_inputs n "
+        "WHERE n.incident_id = i.incident_id) AS input_watermark "
+        "FROM opspilot_incidents i WHERE i.incident_id=%s FOR SHARE OF i",
+        (incident_id,),
+    ).fetchone()
+    if current is None:
+        raise PersistenceError("NOT_FOUND")
+    moved: list[str] = []
+    if current["observation_generation"] != watermark["observation_generation"]:
+        moved.append("observation_generation")
+    if (
+        current["run_count"] != watermark["run_count"]
+        or current["current_run_id"] != watermark["last_run_id"]
+    ):
+        moved.append("run")
+    if current["control_generation"] != watermark["incident_control_generation"]:
+        moved.append("control_generation")
+    if current["input_watermark"] != watermark["input_watermark"]:
+        moved.append("input_watermark")
+    if (
+        KnowledgeStore._evidence_snapshot(conn, incident_id)
+        != watermark["evidence_snapshot_sha256"]
+    ):
+        moved.append("evidence")
+    return tuple(moved)
+
+
+def stale_reason_for(moved: Sequence[str]) -> StaleReason | None:
+    """The recorded reason for a set of moved components (worker scan)."""
+    for component, reason in _MOVED_REASONS:
+        if component in moved:
+            return reason
+    return None
+
+
+def mark_stale_in(
+    conn: Connection, incident_id: UUID, *, reason: StaleReason, source: str
+) -> list[ActionResult]:
+    """D18: inside a business transaction that moved the incident's
+    watermark, mark every draft/under_review version that is now behind it
+    stale, before that transaction commits.
+
+    Called by the transactions that reopen the incident, add a Run or an
+    input, commit evidence or change the recovery observation -- never by
+    the Observer, which has no privilege on the F13 tables (D8). They hold
+    the incident row (or nothing) first; this takes the incident row FOR
+    SHARE, then the postmortem row FOR UPDATE, the order ``record_draft``
+    and every review action take, so it cannot deadlock with them.
+
+    The audit row records the automatic consequence, not the human decision
+    behind it (that one is in ``opspilot_controls``): principal ``worker``,
+    actor ``system:<source>`` -- 0008 binds ``mark_stale`` to the worker
+    principal. A version whose watermark did not actually move is left
+    alone; the worker's compensation scan repairs anything this missed
+    (a version committed concurrently after the quick check below).
+    """
+    if reason not in get_args(StaleReason):
+        raise PersistenceError("INVALID_INPUT")
+    _require_text(source)
+    head = conn.execute(
+        "SELECT postmortem_id FROM opspilot_postmortems WHERE incident_id=%s",
+        (incident_id,),
+    ).fetchone()
+    if head is None:
+        return []
+    if (
+        conn.execute(
+            "SELECT 1 FROM opspilot_postmortem_versions WHERE postmortem_id=%s "
+            "AND state IN ('draft', 'under_review') LIMIT 1",
+            (head["postmortem_id"],),
+        ).fetchone()
+        is None
+    ):
+        return []
+    conn.execute(
+        "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR SHARE",
+        (incident_id,),
+    )
+    locked = KnowledgeStore._require_row(
+        conn.execute(
+            "SELECT postmortem_id, generation FROM opspilot_postmortems "
+            "WHERE postmortem_id=%s FOR UPDATE",
+            (head["postmortem_id"],),
+        )
+    )
+    postmortem_id, generation = locked["postmortem_id"], locked["generation"]
+    actor = Actor(f"system:{source}", "worker")
+    results: list[ActionResult] = []
+    for row in conn.execute(
+        "SELECT version, incident_control_generation, observation_generation, "
+        "run_count, last_run_id, input_watermark, evidence_snapshot_sha256 "
+        "FROM opspilot_postmortem_versions WHERE postmortem_id=%s "
+        "AND state IN ('draft', 'under_review') ORDER BY version",
+        (postmortem_id,),
+    ).fetchall():
+        if not moved_components(conn, incident_id, row):
+            continue
+        key = f"stale:{source}:{uuid4()}"
+        request = {
+            "action": "mark_stale",
+            "postmortem_id": str(postmortem_id),
+            "version": row["version"],
+            "reason": reason,
+            "expected_generation": generation,
+            "actor": [actor.actor_id, actor.principal_kind],
+        }
+        KnowledgeStore._audit(
+            conn,
+            key,
+            "postmortem",
+            postmortem_id,
+            "mark_stale",
+            actor,
+            generation,
+            version=row["version"],
+            reason=reason,
+        )
+        KnowledgeStore._bump_postmortem(conn, postmortem_id, generation)
+        conn.execute(
+            "UPDATE opspilot_postmortem_versions SET state='stale', stale_reason=%s "
+            "WHERE postmortem_id=%s AND version=%s",
+            (reason, postmortem_id, row["version"]),
+        )
+        generation += 1
+        result = ActionResult(
+            action="mark_stale",
+            object_kind="postmortem",
+            object_id=postmortem_id,
+            generation=generation,
+            version=row["version"],
+            state="stale",
+        )
+        KnowledgeStore._record_request(conn, key, "mark_stale", request, result)
+        results.append(result)
+    return results
+
+
 class KnowledgeStore(_StoreBase):
     """Postmortem drafts, review actions and knowledge revisions."""
 
@@ -426,8 +585,11 @@ class KnowledgeStore(_StoreBase):
             "revises_version": revises_version,
         }
         with self.transaction() as conn:
+            # Incident row before postmortem row, the order every business
+            # transaction that marks drafts stale takes (``mark_stale_in``).
             known = conn.execute(
-                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s", (incident_id,)
+                "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR SHARE",
+                (incident_id,),
             ).fetchone()
             if known is None:
                 raise PersistenceError("NOT_FOUND")
@@ -467,6 +629,17 @@ class KnowledgeStore(_StoreBase):
                     raise PersistenceError("ILLEGAL_TRANSITION")
             postmortem_id = head["postmortem_id"]
             version = head["latest_version"] + 1
+            if revises_version is not None and reviewable:
+                # D19: the regeneration the return asked for is done once a
+                # reviewable version exists; a citation-failed draft is a
+                # failed attempt (D31) and leaves the marker, so the retry
+                # still regenerates the returned version under R7's count
+                conn.execute(
+                    "UPDATE opspilot_postmortem_generation_jobs SET "
+                    "pending_regeneration_version=NULL, updated_at=clock_timestamp() "
+                    "WHERE incident_id=%s AND pending_regeneration_version=%s",
+                    (incident_id, revises_version),
+                )
             event_id = self._audit(
                 conn,
                 idempotency_key,
@@ -845,6 +1018,80 @@ class KnowledgeStore(_StoreBase):
                 return None
             return self._postmortem_snapshot(conn, head)
 
+    def incident_postmortem(self, incident_id: UUID) -> dict[str, Any]:
+        """``IncidentPostmortemView`` (D26, ``opspilot.knowledge.contract``):
+        the generation status, the postmortem snapshot (``None`` when no
+        version was ever written), the worker's schedule and the latest
+        generation attempts, in one snapshot. Status rules: a held lease with
+        a running attempt is ``generating``; a failed attempt newer than the
+        latest version is ``generation_failed``; otherwise the latest
+        version's state (``draft`` reads ``citations_failed``: a draft is
+        written only when citations failed); nothing at all is
+        ``not_generated``."""
+        _require_uuid(incident_id)
+        with self.transaction(snapshot=True) as conn:
+            if (
+                conn.execute(
+                    "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s",
+                    (incident_id,),
+                ).fetchone()
+                is None
+            ):
+                raise PersistenceError("NOT_FOUND")
+            now = self._db_now(conn)
+            head = conn.execute(
+                "SELECT * FROM opspilot_postmortems WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            snapshot = None if head is None else self._postmortem_snapshot(conn, head)
+            job = conn.execute(
+                "SELECT * FROM opspilot_postmortem_generation_jobs WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+            attempts = conn.execute(
+                "SELECT attempt_id, incident_id, status, error_code, revises_version, "
+                "version, model_requests, max_model_requests, started_at, finished_at "
+                "FROM opspilot_postmortem_generation_attempts WHERE incident_id=%s "
+                "ORDER BY started_at DESC, attempt_id LIMIT %s",
+                (incident_id, ATTEMPTS_SHOWN),
+            ).fetchall()
+        lease_active = bool(
+            job is not None
+            and job["lease_until"] is not None
+            and job["lease_until"] > now
+        )
+        latest = snapshot["versions"][-1] if snapshot and snapshot["versions"] else None
+        status: str = "not_generated"
+        if lease_active and attempts and attempts[0]["status"] == "running":
+            status = "generating"
+        elif (
+            attempts
+            and attempts[0]["status"] == "failed"
+            and (latest is None or attempts[0]["started_at"] > latest["created_at"])
+        ):
+            status = "generation_failed"
+        elif latest is not None:
+            status = (
+                "citations_failed" if latest["state"] == "draft" else latest["state"]
+            )
+        return {
+            "incident_id": incident_id,
+            "status": status,
+            "postmortem": snapshot,
+            "schedule": {
+                "pending_regeneration_version": None
+                if job is None
+                else job["pending_regeneration_version"],
+                "lease_active": lease_active,
+                "consecutive_failures": 0
+                if job is None
+                else job["consecutive_failures"],
+                "next_attempt_at": None if job is None else job["next_attempt_at"],
+                "last_error_code": None if job is None else job["last_error_code"],
+            },
+            "attempts": attempts,
+        }
+
     def postmortem(self, postmortem_id: UUID) -> dict[str, Any]:
         with self.transaction(snapshot=True) as conn:
             head = conn.execute(
@@ -908,6 +1155,7 @@ class KnowledgeStore(_StoreBase):
                 str(k): v for k, v in sorted(entry_generations.items(), key=str)
             }
         with self.transaction() as conn:
+            self._lock_incident_of(conn, postmortem_id)
             head = self._lock_postmortem(conn, postmortem_id)
             replay = self._replay(conn, idempotency_key, action, request)
             if replay is not None:
@@ -956,6 +1204,17 @@ class KnowledgeStore(_StoreBase):
                     version,
                 ),
             )
+            if action == "return":
+                # D19: the worker's next scan regenerates this version
+                conn.execute(
+                    "INSERT INTO opspilot_postmortem_generation_jobs(incident_id, "
+                    "pending_regeneration_version) VALUES (%s, %s) "
+                    "ON CONFLICT (incident_id) DO UPDATE SET "
+                    "pending_regeneration_version=EXCLUDED.pending_regeneration_version, "
+                    "consecutive_failures=0, next_attempt_at=NULL, last_error_code=NULL, "
+                    "failure_watermark=NULL, updated_at=clock_timestamp()",
+                    (head["incident_id"], version),
+                )
             published: dict[str, dict[str, Any]] = {}
             if action == "approve":
                 published = self._publish(
@@ -1082,6 +1341,17 @@ class KnowledgeStore(_StoreBase):
             }
         return published
 
+    @staticmethod
+    def _lock_incident_of(conn: Connection, postmortem_id: UUID) -> None:
+        """Share-lock the postmortem's incident row first (lock order:
+        incident, then postmortem; see ``mark_stale_in``)."""
+        conn.execute(
+            "SELECT 1 FROM opspilot_incidents WHERE incident_id = "
+            "(SELECT incident_id FROM opspilot_postmortems WHERE postmortem_id=%s) "
+            "FOR SHARE",
+            (postmortem_id,),
+        )
+
     def _lock_postmortem(self, conn: Connection, postmortem_id: UUID) -> dict[str, Any]:
         head = conn.execute(
             "SELECT incident_id, generation, latest_version FROM opspilot_postmortems "
@@ -1153,25 +1423,7 @@ class KnowledgeStore(_StoreBase):
         evidence snapshot are compared under a share lock on the incident
         row, so a concurrent control action or Run is ordered after this
         transaction."""
-        current = conn.execute(
-            "SELECT i.control_generation, i.observation_generation, i.current_run_id, "
-            "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id) AS run_count, "
-            "(SELECT COALESCE(max(n.sequence), 0) FROM opspilot_inputs n "
-            "WHERE n.incident_id = i.incident_id) AS input_watermark "
-            "FROM opspilot_incidents i WHERE i.incident_id=%s FOR SHARE OF i",
-            (incident_id,),
-        ).fetchone()
-        if current is None:
-            raise PersistenceError("NOT_FOUND")
-        return bool(
-            current["control_generation"] != watermark["incident_control_generation"]
-            or current["observation_generation"] != watermark["observation_generation"]
-            or current["run_count"] != watermark["run_count"]
-            or current["current_run_id"] != watermark["last_run_id"]
-            or current["input_watermark"] != watermark["input_watermark"]
-            or KnowledgeStore._evidence_snapshot(conn, incident_id)
-            != watermark["evidence_snapshot_sha256"]
-        )
+        return bool(moved_components(conn, incident_id, watermark))
 
     @staticmethod
     def _evidence_snapshot(conn: Connection, incident_id: UUID) -> str:

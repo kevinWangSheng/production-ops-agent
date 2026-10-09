@@ -32,12 +32,12 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0008_postmortem_knowledge"
+HEAD = "0009_postmortem_generation"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
-# requests, audit).
-TABLES_AT_HEAD = 30
+# requests, audit) + 2 of 0009 (generation jobs, attempts).
+TABLES_AT_HEAD = 32
 
 
 @pytest.fixture

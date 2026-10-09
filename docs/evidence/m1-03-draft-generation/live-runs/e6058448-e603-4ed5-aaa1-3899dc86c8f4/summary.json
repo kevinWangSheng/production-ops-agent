@@ -1,0 +1,267 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-03-draft-generation",
+  "run_id": "e6058448-e603-4ed5-aaa1-3899dc86c8f4",
+  "frozen_at": "2026-10-09T14:25:36.641671+00:00",
+  "incident_id": "0834af7e-0951-5850-a409-b1550255ee0a",
+  "environment": "lab: F6 archive database copy (synthetic OTel Demo lab data), not production",
+  "started": "2026-10-09T14:24:59.435715+00:00",
+  "ended": "2026-10-09T14:25:25.570728+00:00",
+  "verdicts": {
+    "attempt_status": "succeeded",
+    "error_code": null,
+    "generation_status": "under_review",
+    "version": 1,
+    "version_state": "under_review",
+    "event_kinds": [
+      "postmortem_generated"
+    ]
+  },
+  "counts": {
+    "model_requests": 1,
+    "max_model_requests": 2,
+    "http_count": 1,
+    "prompt_tokens": 29483,
+    "completion_tokens": 6708,
+    "evidence_catalog": 120
+  },
+  "generation": {
+    "attempt_id": "e6058448-e603-4ed5-aaa1-3899dc86c8f4",
+    "input_bytes": 75135,
+    "input_policy_version": "f13-postmortem-input-v1",
+    "input_sha256": "6a01a2367cc14cdd4c6f80688ba78a30f9ce88255abd37bd908d8dc4b7e25472",
+    "max_model_requests": 2,
+    "model": "deepseek-flash",
+    "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+    "model_requests": 1,
+    "output_schema_version": "f13-postmortem-output-v1",
+    "prompt_version": "f13-postmortem-prompt-v1",
+    "repaired": false,
+    "response_model": "deepseek-flash",
+    "return_reason": null,
+    "revises_version": null,
+    "usage": {
+      "completion_tokens": 6708,
+      "prompt_tokens": 29483
+    }
+  },
+  "validation": {
+    "citations_valid": true,
+    "errors": {}
+  },
+  "conclusions": [
+    {
+      "key": "incident",
+      "section": "incident",
+      "author": "code",
+      "certainty": "deterministic",
+      "citations_valid": true,
+      "evidence_ids": [],
+      "dispute_state": "undisputed",
+      "body": null
+    },
+    {
+      "key": "timeline",
+      "section": "timeline",
+      "author": "code",
+      "certainty": "deterministic",
+      "citations_valid": true,
+      "evidence_ids": [],
+      "dispute_state": "undisputed",
+      "body": null
+    },
+    {
+      "key": "runs",
+      "section": "runs",
+      "author": "code",
+      "certainty": "deterministic",
+      "citations_valid": true,
+      "evidence_ids": [],
+      "dispute_state": "undisputed",
+      "body": null
+    },
+    {
+      "key": "human_actions",
+      "section": "human_actions",
+      "author": "code",
+      "certainty": "deterministic",
+      "citations_valid": true,
+      "evidence_ids": [],
+      "dispute_state": "undisputed",
+      "body": null
+    },
+    {
+      "key": "recovery",
+      "section": "recovery",
+      "author": "code",
+      "certainty": "deterministic",
+      "citations_valid": true,
+      "evidence_ids": [],
+      "dispute_state": "undisputed",
+      "body": null
+    },
+    {
+      "key": "impact_summary",
+      "section": "impact_summary",
+      "author": "model",
+      "certainty": "supported",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:error_ratio",
+        "e025f9e9-c9ef-4e2b-8537-bc483b857a48:error_ratio",
+        "c09a16ba-8846-47de-97fa-121d2451af71:error_ratio",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:error_ratio",
+        "e9013e36-526a-4755-9267-d67112f14794:latency_p95_milliseconds",
+        "e9013e36-526a-4755-9267-d67112f14794:request_rate_per_second",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:request_rate_per_second",
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_available_replicas",
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_available_replicas_min_in_window",
+        "fc67e842-7ab5-4ec3-a9b0-865836f22216:error_ratio",
+        "c15e1f24-1185-4257-a0ef-160d90bdc1b8:error_ratio"
+      ],
+      "dispute_state": "undisputed",
+      "body": "Target checkout-lab (incident 0834af7e-0951-5850-a409-b1550255ee0a) showed an elevated checkout error ratio across the degraded recovery windows: error_ratio was 0.8181818181818182 in the window ending 2026-10-08T18:34:25.071453-07:00, 1.0 in the window ending 2026-10-08T18:35:25.303346-07:00, 0.875 in the window ending 2026-10-08T18:36:25.557284-07:00 and 0.6666666666666666 in the window ending 2026-10-08T18:37:25.750901-07:00 — i.e. most to all observed requests in those one-minute windows failed. This was an error-rate degradation, not a latency or capacity event: latency p95 stayed between 48.0 and 72.49999999999997 ms and deployment available/ready replicas stayed at 1.0 (min_in_window 1.0) throughout. Each window carries sample_count 5 and request_rate_per_second between 0.008333333333333333 and 0.04583333333333333, so absolute affected request volume was small and each ratio rests on few samples. Health returned from the window ending 2026-10-08T18:38:25.903664-07:00, where error_ratio was 0.0, and stayed at 0.0 through the final window ending 2026-10-08T18:48:27.867197-07:00. Recovery was confirmed at 2026-10-08T18:48:27.867197 after a sustained_window_seconds of 600, and observation ended at 2026-10-08T18:48:27.975626 (ended_reason recovery_confirmed). Observed degradation thus spanned roughly 8 minutes, from the window starting 2026-10-08T18:29:25.071453-07:00 to the window ending 2026-10-08T18:37:25.750901-07:00; the incident itself ran from creation at 2026-10-08T18:30:06.388345-07:00 until that resolution."
+    },
+    {
+      "key": "recommendations",
+      "section": "recommendations",
+      "author": "model",
+      "certainty": "uncertain",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:error_ratio",
+        "e9013e36-526a-4755-9267-d67112f14794:request_rate_per_second",
+        "e9013e36-526a-4755-9267-d67112f14794:dependency_error_ratio",
+        "c09a16ba-8846-47de-97fa-121d2451af71:dependency_error_ratio",
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_available_replicas",
+        "e025f9e9-c9ef-4e2b-8537-bc483b857a48:deployment_available_replicas",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:deployment_ready_replicas",
+        "c15e1f24-1185-4257-a0ef-160d90bdc1b8:error_ratio"
+      ],
+      "dispute_state": "undisputed",
+      "body": "1) Alert on checkout error_ratio together with request volume, so that low-traffic windows (request_rate_per_second of 0.008333333333333333 to 0.04583333333333333 with sample_count 5) are not read as broad outages; require a minimum request count before paging. 2) Record service-level and dependency-level error ratios side by side during recovery sampling, because here the service error_ratio reached 1.0 while dependency_error_ratio stayed between 0.08333333333333333 and 0.13793103448275862, which is the discrimination a responder needs first. 3) Keep replica signals (deployment_available_replicas, deployment_available_replicas_min_in_window, deployment_ready_replicas) in the health profile, since all stayed at 1.0 and quickly rule out capacity or rollout causes. 4) Capture an investigation report or event/log evidence during the degraded windows; without it the causal chain for this incident remains open even though recovery was confirmed."
+    },
+    {
+      "key": "checkout_error_ratio_elevated",
+      "section": "findings",
+      "author": "model",
+      "certainty": "supported",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:error_ratio",
+        "e025f9e9-c9ef-4e2b-8537-bc483b857a48:error_ratio",
+        "c09a16ba-8846-47de-97fa-121d2451af71:error_ratio",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:error_ratio"
+      ],
+      "dispute_state": "undisputed",
+      "body": "The checkout-lab target served mostly-failing requests for four consecutive one-minute windows: error_ratio 0.8181818181818182 (window ending 2026-10-08T18:34:25.071453-07:00), 1.0 (ending 2026-10-08T18:35:25.303346-07:00), 0.875 (ending 2026-10-08T18:36:25.557284-07:00) and 0.6666666666666666 (ending 2026-10-08T18:37:25.750901-07:00)."
+    },
+    {
+      "key": "replicas_stayed_available",
+      "section": "findings",
+      "author": "model",
+      "certainty": "supported",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_available_replicas",
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_available_replicas_min_in_window",
+        "e9013e36-526a-4755-9267-d67112f14794:deployment_ready_replicas",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:deployment_available_replicas",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:deployment_ready_replicas"
+      ],
+      "dispute_state": "undisputed",
+      "body": "Deployment capacity signals did not degrade during the error-rate windows: deployment_available_replicas, deployment_available_replicas_min_in_window and deployment_ready_replicas were all 1.0 for the windows ending 2026-10-08T18:34:25.071453-07:00 through 2026-10-08T18:37:25.750901-07:00, so the elevated errors are not explained by missing or unready replicas."
+    },
+    {
+      "key": "recovery_confirmed_sustained",
+      "section": "findings",
+      "author": "model",
+      "certainty": "supported",
+      "citations_valid": true,
+      "evidence_ids": [
+        "fc67e842-7ab5-4ec3-a9b0-865836f22216:error_ratio",
+        "01c91c66-68a3-4e5c-970a-284164d09005:error_ratio",
+        "c15e1f24-1185-4257-a0ef-160d90bdc1b8:error_ratio",
+        "c15e1f24-1185-4257-a0ef-160d90bdc1b8:latency_p95_milliseconds"
+      ],
+      "dispute_state": "undisputed",
+      "body": "Health was confirmed and sustained: error_ratio was 0.0 from the window ending 2026-10-08T18:38:25.903664-07:00 onward, the healthy_since timestamp is 2026-10-08T18:38:25.903664-07:00, and the recovery transition recovery_confirmed occurred at 2026-10-08T18:48:27.867197 after sustained_window_seconds of 600, with observation ending at 2026-10-08T18:48:27.975626."
+    },
+    {
+      "key": "dependency_error_ratio_low",
+      "section": "hypotheses",
+      "author": "model",
+      "certainty": "uncertain",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:dependency_error_ratio",
+        "e025f9e9-c9ef-4e2b-8537-bc483b857a48:dependency_error_ratio",
+        "c09a16ba-8846-47de-97fa-121d2451af71:dependency_error_ratio",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:dependency_error_ratio",
+        "e9013e36-526a-4755-9267-d67112f14794:dependency_deployments_available",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:dependency_deployments_available"
+      ],
+      "dispute_state": "undisputed",
+      "body": "Evidence against treating a failing downstream dependency as the whole explanation: during the degraded windows the dependency_error_ratio was only 0.09782608695652174, 0.13793103448275862, 0.11864406779661017 and 0.08333333333333333, far below the service error_ratio of 0.8181818181818182 to 1.0, while dependency_deployments_available stayed at 8.0. A dependency outage at the observed rate does not by itself account for near-total checkout request failures."
+    },
+    {
+      "key": "root_cause_not_determined",
+      "section": "hypotheses",
+      "author": "model",
+      "certainty": "uncertain",
+      "citations_valid": true,
+      "evidence_ids": [
+        "e9013e36-526a-4755-9267-d67112f14794:error_ratio",
+        "c5833b71-ba50-4772-84c0-8593ba3ea6b7:error_ratio",
+        "fc67e842-7ab5-4ec3-a9b0-865836f22216:error_ratio",
+        "c15e1f24-1185-4257-a0ef-160d90bdc1b8:error_ratio",
+        "e9013e36-526a-4755-9267-d67112f14794:request_rate_per_second"
+      ],
+      "dispute_state": "undisputed",
+      "body": "The trigger for the elevated checkout error_ratio is not established by the available telemetry: investigation_report is null and the recorded human action is only control:register_remediation by demo at 2026-10-08T18:33:23.358882-07:00, so the recovery coincidence with that action cannot be separated from spontaneous recovery, and no error, log or configuration-change evidence covering 2026-10-08T18:29:25.071453-07:00 to 2026-10-08T18:37:25.750901-07:00 is present in this dataset."
+    }
+  ],
+  "content_sha256": "a9358d03fd7646617a5616cd6948c9c8bad29352adf42042da38e84bb20b6319",
+  "cost": {
+    "known_cost_cny_upper": 0.12333,
+    "balance_before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "5.59",
+          "granted_balance": "0.00",
+          "topped_up_balance": "5.59"
+        }
+      ]
+    },
+    "balance_after": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "5.59",
+          "granted_balance": "0.00",
+          "topped_up_balance": "5.59"
+        }
+      ]
+    }
+  },
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "109ddbaa0d7cd44ce2e2937eb8d27602",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-m1-03-draft-20261009",
+    "project_id": "9d0538c8-490a-4e7b-b16d-6d0896540bea",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-79cb-679769717fc6",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/9d0538c8-490a-4e7b-b16d-6d0896540bea/r/00000000-0000-0000-79cb-679769717fc6?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "ea2432efc0700ad5db7b8f5b6fb1d1e95d4c63895e56f8ddfdc481f7e25e269d",
+    "bytes": 85364,
+    "path": "tmp/lab-ledgers/m1-03-draft-generation/e6058448-e603-4ed5-aaa1-3899dc86c8f4/ledger.json",
+    "in_repository": false
+  }
+}

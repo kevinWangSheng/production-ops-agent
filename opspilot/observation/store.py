@@ -1184,6 +1184,16 @@ class ObservationStore(_StoreBase):
             "UPDATE opspilot_incidents SET lifecycle=%s,observation_generation=%s WHERE incident_id=%s",
             (lifecycle, generation, incident_id),
         )
+        # M1-03 D18: a new recovery observation changes the recovery verdict
+        # a postmortem draft was assembled from.
+        from opspilot.knowledge.store import mark_stale_in
+
+        mark_stale_in(
+            conn,
+            incident_id,
+            reason="observation_changed",
+            source="observation.authorize",
+        )
         identity = session_id or uuid4()
         due = first_sample_due_at or now + timedelta(seconds=sample_interval_seconds)
         conn.execute(
