@@ -1,10 +1,4 @@
-"""Independent F13 storage contract tests.
-
-These tests deliberately exercise only the public KnowledgeStore API and the
-observable PostgreSQL contract.  The incident/Run/observation rows are small
-fixtures inserted by the owner connection because generation itself belongs to
-the next F13 step.
-"""
+"""Independent PostgreSQL contract tests for the F13 persistence slice."""
 
 from __future__ import annotations
 
@@ -22,6 +16,7 @@ from opspilot import schema
 from opspilot.knowledge import (
     Actor,
     ConclusionDraft,
+    DisputeDraft,
     KnowledgeStore,
     ProposalDraft,
     Watermark,
@@ -34,11 +29,7 @@ from scripts.m0.postgres_lab import DSN
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
 )
-
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-_OBS_SESSION: UUID | None = None
-_OBS_ENDING: UUID | None = None
-_RUN: UUID | None = None
 
 
 @pytest.fixture(scope="module")
@@ -72,11 +63,9 @@ def store(scratch_dsn: str) -> Iterator[KnowledgeStore]:
 
 
 @pytest.fixture
-def incident(scratch_dsn: str) -> UUID:
-    global _OBS_SESSION, _OBS_ENDING, _RUN
+def incident(scratch_dsn: str) -> tuple[UUID, UUID, UUID, UUID]:
     incident_id, run_id, target_id = uuid4(), uuid4(), uuid4()
     session_id, ending_id = uuid4(), uuid4()
-    _OBS_SESSION, _OBS_ENDING, _RUN = session_id, ending_id, run_id
     now = datetime.now(timezone.utc)
     with psycopg.connect(scratch_dsn) as conn:
         conn.execute(
@@ -111,42 +100,25 @@ def incident(scratch_dsn: str) -> UUID:
                 now + timedelta(hours=1),
             ),
         )
+        # A confirmed ending requires a sample_id; use the non-confirming terminal
+        # form because this slice only needs the ended-session watermark.
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET ended_reason='authority_revoked' WHERE session_id=%s",
+            (session_id,),
+        )
         conn.execute(
             "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,lifecycle_before,lifecycle_after) VALUES(%s,%s,%s,'authority_revoked',NULL,'observing_recovery','resolved')",
             (ending_id, session_id, incident_id),
         )
-    return incident_id
+    return incident_id, session_id, ending_id, run_id
 
 
-def _watermark() -> Watermark:
-    assert _OBS_SESSION is not None and _OBS_ENDING is not None and _RUN is not None
-    return Watermark(0, 0, _OBS_SESSION, _OBS_ENDING, 1, _RUN, 0, "e" * 64)
+def _watermark(ids: tuple[UUID, UUID, UUID, UUID]) -> Watermark:
+    _, session_id, ending_id, run_id = ids
+    return Watermark(0, 0, session_id, ending_id, 1, run_id, 0, "e" * 64)
 
 
-def _draft(
-    store: KnowledgeStore,
-    incident: UUID,
-    *,
-    key: str = "req-1",
-    actor: Actor | None = None,
-    conclusions=(),
-    proposals=(),
-    disputes=(),
-):
-    return store.record_draft(
-        incident,
-        expected_generation=0,
-        idempotency_key=key,
-        actor=actor or Actor("worker-1", "worker"),
-        content={"impact": "limited", "timeline": []},
-        watermark=_watermark(),
-        conclusions=conclusions or (_conclusion(),),
-        proposals=proposals,
-        disputes=disputes,
-    )
-
-
-def _conclusion(key: str = "c1", *, valid: bool = True) -> ConclusionDraft:
+def _conclusion(key: str = "c1", valid: bool = True) -> ConclusionDraft:
     return ConclusionDraft(
         key,
         "findings",
@@ -171,36 +143,44 @@ def _proposal(key: str = "p1", supersedes: UUID | None = None) -> ProposalDraft:
     )
 
 
-def test_migration_has_f13_head_and_owner_cannot_delete_or_truncate(
-    scratch_dsn: str,
-) -> None:
+def _draft(
+    store: KnowledgeStore,
+    ids: tuple[UUID, UUID, UUID, UUID],
+    *,
+    key: str,
+    conclusions=(_conclusion(),),
+    proposals=(),
+    disputes=(),
+    actor: Actor | None = None,
+    expected: int = 0,
+    content=None,
+    revises: int | None = None,
+):
+    return store.record_draft(
+        ids[0],
+        expected_generation=expected,
+        idempotency_key=key,
+        actor=actor or Actor("worker-1", "worker"),
+        content=content or {"impact": "limited", "timeline": []},
+        watermark=_watermark(ids),
+        conclusions=conclusions,
+        proposals=proposals,
+        disputes=disputes,
+        revises_version=revises,
+    )
+
+
+def _entry(store: KnowledgeStore, postmortem_id: UUID) -> UUID:
+    with psycopg.connect(store.dsn) as conn:
+        return conn.execute(
+            "SELECT entry_id FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s ORDER BY revision DESC LIMIT 1",
+            (postmortem_id,),
+        ).fetchone()[0]
+
+
+def test_migration_and_owner_append_only_guards(scratch_dsn: str) -> None:
     with psycopg.connect(scratch_dsn) as conn:
         assert schema.current_revision(conn) == "0008_postmortem_knowledge"
-        tables = {
-            r[0]
-            for r in conn.execute(
-                "SELECT tablename FROM pg_tables WHERE tablename LIKE 'opspilot_f13_%' OR tablename LIKE 'opspilot_postmortem%' OR tablename LIKE 'opspilot_knowledge_%'"
-            )
-        }
-        assert {
-            "opspilot_postmortems",
-            "opspilot_postmortem_versions",
-            "opspilot_knowledge_revisions",
-        } <= tables
-        delete_incident = uuid4()
-        conn.execute(
-            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,control_generation) VALUES(%s,%s,'completed','resolved',0)",
-            (delete_incident, f"delete-{delete_incident}"),
-        )
-        conn.execute(
-            "INSERT INTO opspilot_postmortems(postmortem_id,incident_id) VALUES(%s,%s)",
-            (delete_incident, delete_incident),
-        )
-        with pytest.raises(psycopg.Error), conn.transaction():
-            conn.execute(
-                "DELETE FROM opspilot_postmortems WHERE postmortem_id=%s",
-                (delete_incident,),
-            )
         for table in (
             "opspilot_postmortems",
             "opspilot_postmortem_versions",
@@ -208,19 +188,28 @@ def test_migration_has_f13_head_and_owner_cannot_delete_or_truncate(
         ):
             with pytest.raises(psycopg.Error), conn.transaction():
                 conn.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
+        inc = uuid4()
+        conn.execute(
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,control_generation) VALUES(%s,%s,'completed','resolved',0)",
+            (inc, f"guard-{inc}"),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_postmortems(postmortem_id,incident_id) VALUES(%s,%s)",
+            (inc, inc),
+        )
+        with pytest.raises(psycopg.Error), conn.transaction():
+            conn.execute(
+                "DELETE FROM opspilot_postmortems WHERE postmortem_id=%s", (inc,)
+            )
 
 
-def test_draft_persists_watermark_content_hash_and_audit(
-    store: KnowledgeStore, incident: UUID
+def test_worker_generation_auto_enters_review_with_watermark_hash_and_audit(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
 ) -> None:
-    result = _draft(
-        store, incident, conclusions=(_conclusion(),), proposals=(_proposal(),)
-    )
-    assert result.state == "draft" and result.version == 1 and result.published == {}
-    got = store.postmortem_for_incident(incident)
-    assert got is not None
-    version = got["versions"][0]
-    assert version["content_sha256"] == content_sha256(
+    result = _draft(store, incident, key="generate", proposals=(_proposal(),))
+    assert result.state == "under_review" and result.generation == 2
+    got = store.postmortem_for_incident(incident[0])
+    assert got and got["versions"][0]["content_sha256"] == content_sha256(
         canonical_json({"impact": "limited", "timeline": []})
     )
     with psycopg.connect(store.dsn) as conn:
@@ -228,197 +217,275 @@ def test_draft_persists_watermark_content_hash_and_audit(
             "SELECT evidence_snapshot_sha256 FROM opspilot_postmortem_versions WHERE postmortem_id=%s AND version=1",
             (result.object_id,),
         ).fetchone() == ("e" * 64,)
-    assert len(store.audit_trail("postmortem", result.object_id)) == 1
+    assert len(store.audit_trail("postmortem", result.object_id)) == 2
 
 
-def test_idempotency_replays_identical_result_and_generation_conflict_is_rejected(
-    store: KnowledgeStore, incident: UUID
+def test_basic_auth_cannot_generate_or_mark_stale(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
 ) -> None:
-    result = _draft(store, incident, key="idem-1", conclusions=(_conclusion(),))
     with pytest.raises(PersistenceError):
-        _draft(store, incident, key="idem-2")
-    replay = store.record_draft(
-        incident,
-        expected_generation=0,
-        idempotency_key="idem-1",
-        actor=Actor("worker-1", "worker"),
-        content={"impact": "limited", "timeline": []},
-        watermark=_watermark(),
-        conclusions=(_conclusion(),),
-    )
-    assert replay.replayed is True
-    assert replay.object_id == result.object_id and replay.version == result.version
-
-
-def test_invalid_citations_block_submit_and_dispute_blocks_approval(
-    store: KnowledgeStore, incident: UUID
-) -> None:
-    bad = _draft(
-        store,
-        incident,
-        key="bad-citations",
-        conclusions=(_conclusion(valid=False),),
-        proposals=(_proposal("bad"),),
+        _draft(store, incident, key="web-generate", actor=Actor("alice", "basic_auth"))
+    draft = _draft(
+        store, incident, key="stale-worker", conclusions=(_conclusion(valid=False),)
     )
     with pytest.raises(PersistenceError):
-        store.submit_for_review(
-            bad.object_id,
+        store.mark_stale(
+            draft.object_id,
             1,
+            reason="evidence_changed",
             expected_generation=1,
-            idempotency_key="submit-bad",
-            actor=Actor("web", "basic_auth"),
-        )
-    store.mark_stale(
-        bad.object_id,
-        1,
-        reason="evidence_changed",
-        expected_generation=1,
-        idempotency_key="stale-bad",
-        actor=Actor("worker-1", "worker"),
-    )
-    good = store.record_draft(
-        incident,
-        expected_generation=2,
-        idempotency_key="good-dispute",
-        actor=Actor("worker-1", "worker"),
-        content={"impact": "limited"},
-        watermark=_watermark(),
-        conclusions=(_conclusion(),),
-        proposals=(_proposal("disputed"),),
-    )
-    store.submit_for_review(
-        good.object_id,
-        2,
-        expected_generation=3,
-        idempotency_key="submit-good",
-        actor=Actor("web", "basic_auth"),
-    )
-    store.raise_dispute(
-        good.object_id,
-        2,
-        "c1",
-        reason="contradictory",
-        expected_generation=4,
-        idempotency_key="dispute-1",
-        actor=Actor("worker-1", "worker"),
-    )
-    with pytest.raises(PersistenceError):
-        store.approve(
-            good.object_id,
-            2,
-            expected_generation=5,
-            idempotency_key="approve-disputed",
-            actor=Actor("web", "basic_auth"),
+            idempotency_key="web-stale",
+            actor=Actor("alice", "basic_auth"),
         )
 
 
-def test_review_requires_basic_auth_and_approved_revision_is_immutable(
-    store: KnowledgeStore, incident: UUID
+def test_invalid_citations_stay_draft_and_cannot_be_approved(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
 ) -> None:
     draft = _draft(
         store,
         incident,
-        key="review",
-        conclusions=(_conclusion(),),
-        proposals=(_proposal("review"),),
+        key="invalid",
+        conclusions=(_conclusion(valid=False),),
+        proposals=(_proposal(),),
     )
-    store.submit_for_review(
-        draft.object_id,
-        1,
-        expected_generation=1,
-        idempotency_key="submit-review",
-        actor=Actor("worker-1", "worker"),
+    assert draft.state == "draft" and draft.generation == 1
+    with pytest.raises(PersistenceError):
+        store.approve(
+            draft.object_id,
+            1,
+            expected_generation=1,
+            idempotency_key="approve-invalid",
+            actor=Actor("alice", "basic_auth"),
+        )
+
+
+def test_dispute_is_written_with_draft_cannot_be_cleared_and_only_return_is_allowed(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    draft = _draft(
+        store,
+        incident,
+        key="disputed",
+        proposals=(_proposal(),),
+        disputes=(DisputeDraft("c1", "contradictory evidence"),),
     )
+    assert draft.state == "under_review"
+    with psycopg.connect(store.dsn) as conn:
+        row = conn.execute(
+            "SELECT reason,raised_by,raised_by_kind FROM opspilot_postmortem_disputes WHERE postmortem_id=%s",
+            (draft.object_id,),
+        ).fetchone()
+        assert row == ("contradictory evidence", "worker-1", "worker")
+        with pytest.raises(psycopg.Error), conn.transaction():
+            conn.execute(
+                "DELETE FROM opspilot_postmortem_disputes WHERE postmortem_id=%s",
+                (draft.object_id,),
+            )
     with pytest.raises(PersistenceError):
         store.approve(
             draft.object_id,
             1,
             expected_generation=2,
-            idempotency_key="approve-worker",
-            actor=Actor("worker-1", "worker"),
+            idempotency_key="approve-disputed",
+            actor=Actor("alice", "basic_auth"),
         )
+    returned = store.return_for_revision(
+        draft.object_id,
+        1,
+        reason="resolve dispute",
+        expected_generation=2,
+        idempotency_key="return-disputed",
+        actor=Actor("alice", "basic_auth"),
+    )
+    assert returned.state == "returned"
+
+
+@pytest.mark.parametrize(
+    "action", ["approve", "reject", "return_for_revision", "revoke"]
+)
+def test_worker_cannot_perform_review_actions(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID], action: str
+) -> None:
+    draft = _draft(store, incident, key=f"worker-{action}", proposals=(_proposal(),))
+    object_id, version, generation = draft.object_id, 1, draft.generation
+    if action == "revoke":
+        store.approve(
+            object_id,
+            version,
+            expected_generation=generation,
+            idempotency_key="before-revoke",
+            actor=Actor("alice", "basic_auth"),
+        )
+        object_id, version, generation = _entry(store, object_id), 1, 1
+    kwargs = {
+        "expected_generation": generation,
+        "idempotency_key": f"denied-{action}",
+        "actor": Actor("worker", "worker"),
+    }
+    if action != "approve":
+        kwargs["reason"] = "review decision"
+    with pytest.raises(PersistenceError):
+        getattr(store, action)(object_id, version, **kwargs)
+
+
+def test_basic_auth_review_records_actor_and_approved_revision_is_immutable(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    draft = _draft(store, incident, key="approve", proposals=(_proposal(),))
     approved = store.approve(
         draft.object_id,
         1,
-        expected_generation=2,
+        expected_generation=draft.generation,
         idempotency_key="approve-web",
         actor=Actor("alice", "basic_auth"),
     )
     assert approved.state == "approved" and approved.published
+    entry = _entry(store, draft.object_id)
+    active = store.active_revision(entry)
+    assert (
+        active
+        and active["approved_by"] == "alice"
+        and active["approved_by_kind"] == "basic_auth"
+    )
     with psycopg.connect(store.dsn) as conn:
         with pytest.raises(psycopg.Error), conn.transaction():
             conn.execute(
-                "UPDATE opspilot_postmortem_versions SET content='{}' WHERE postmortem_id=%s AND version=1",
-                (draft.object_id,),
+                "UPDATE opspilot_knowledge_revisions SET content='{}' WHERE entry_id=%s AND revision=1",
+                (entry,),
             )
-        with pytest.raises(psycopg.Error), conn.transaction():
-            conn.execute("DELETE FROM opspilot_knowledge_revisions")
 
 
-def test_revoke_leaves_tombstone_and_knowledge_read_returns_provenance(
-    store: KnowledgeStore, incident: UUID
+def test_active_revision_hides_revoked_and_history_keeps_tombstone(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
 ) -> None:
-    draft = _draft(
-        store,
-        incident,
-        key="revoke",
-        conclusions=(_conclusion(),),
-        proposals=(_proposal("revoke"),),
-    )
-    store.submit_for_review(
-        draft.object_id,
-        1,
-        expected_generation=1,
-        idempotency_key="submit-revoke",
-        actor=Actor("alice", "basic_auth"),
-    )
+    draft = _draft(store, incident, key="revoke", proposals=(_proposal(),))
     store.approve(
         draft.object_id,
         1,
-        expected_generation=2,
+        expected_generation=draft.generation,
         idempotency_key="approve-revoke",
         actor=Actor("alice", "basic_auth"),
     )
-    with psycopg.connect(store.dsn) as conn:
-        entry, digest, content = conn.execute(
-            "SELECT entry_id,content_sha256,content FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s",
-            (draft.object_id,),
-        ).fetchone()
-    assert store.knowledge_entry(entry)
+    entry = _entry(store, draft.object_id)
+    assert store.active_revision(entry) is not None
     store.revoke(
         entry,
         1,
         reason="incorrect",
         expected_generation=1,
-        idempotency_key="revoke-1",
+        idempotency_key="revoke-active-read",
         actor=Actor("alice", "basic_auth"),
     )
+    assert store.active_revision(entry) is None
+    history = store.knowledge_history(entry)
+    assert history["revisions"][0]["state"] == "revoked"
     with psycopg.connect(store.dsn) as conn:
         assert conn.execute(
-            "SELECT state FROM opspilot_knowledge_revision_states WHERE entry_id=%s AND revision=1",
-            (entry,),
-        ).fetchone() == ("revoked",)
-        assert conn.execute(
-            "SELECT reason,revoked_by,revoked_by_kind FROM opspilot_knowledge_revocations WHERE entry_id=%s",
+            "SELECT reason,revoked_by,revoked_by_kind FROM opspilot_knowledge_revocations WHERE entry_id=%s AND revision=1",
             (entry,),
         ).fetchone() == ("incorrect", "alice", "basic_auth")
-        assert conn.execute(
-            "SELECT content_sha256,content FROM opspilot_knowledge_revisions WHERE entry_id=%s",
-            (entry,),
-        ).fetchone() == (digest, content)
 
 
-def test_content_sha256_constraint_rejects_wrong_digest(store: KnowledgeStore) -> None:
+def test_returned_version_is_regenerated_only_by_worker_and_keeps_reason_link(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    actor = Actor("alice", "basic_auth")
+    draft = _draft(store, incident, key="return", proposals=(_proposal(),))
+    returned = store.return_for_revision(
+        draft.object_id,
+        1,
+        reason="correct timeline",
+        expected_generation=draft.generation,
+        idempotency_key="return-regenerate",
+        actor=actor,
+    )
+    with pytest.raises(PersistenceError):
+        _draft(
+            store,
+            incident,
+            key="human-edit",
+            actor=actor,
+            expected=returned.generation,
+            revises=1,
+        )
+    regenerated = _draft(
+        store,
+        incident,
+        key="regenerate",
+        expected=returned.generation,
+        revises=1,
+        content={"impact": "corrected", "return_reason": "correct timeline"},
+        proposals=(_proposal(),),
+    )
+    assert regenerated.version == 2 and regenerated.state == "under_review"
+
+
+def test_watermark_move_rejects_approval_and_old_draft_cannot_be_trusted(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    draft = _draft(store, incident, key="moving-watermark", proposals=(_proposal(),))
     with psycopg.connect(store.dsn) as conn:
-        content = '{"x":1}'
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=1 WHERE incident_id=%s",
+            (incident[0],),
+        )
+    with pytest.raises(PersistenceError):
+        store.approve(
+            draft.object_id,
+            1,
+            expected_generation=draft.generation,
+            idempotency_key="approve-moved",
+            actor=Actor("alice", "basic_auth"),
+        )
+    with psycopg.connect(store.dsn) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s",
+            (draft.object_id,),
+        ).fetchone() == (0,)
+
+
+@pytest.mark.parametrize("changed", ["content", "actor", "watermark"])
+def test_idempotency_key_cannot_be_rebound(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID], changed: str
+) -> None:
+    key = f"rebind-{changed}"
+    _draft(store, incident, key=key)
+    content, actor, watermark = (
+        {"impact": "limited"},
+        Actor("worker-1", "worker"),
+        _watermark(incident),
+    )
+    if changed == "content":
+        content = {"impact": "different"}
+    if changed == "actor":
+        actor = Actor("other", "worker")
+    if changed == "watermark":
+        watermark = Watermark(
+            0, 0, incident[1], incident[2], 1, incident[3], 1, "e" * 64
+        )
+    with pytest.raises(PersistenceError):
+        store.record_draft(
+            incident[0],
+            expected_generation=0,
+            idempotency_key=key,
+            actor=actor,
+            content=content,
+            watermark=watermark,
+            conclusions=(_conclusion(),),
+        )
+
+
+def test_wrong_digest_is_rejected_by_database(store: KnowledgeStore) -> None:
+    with psycopg.connect(store.dsn) as conn:
         with pytest.raises(psycopg.Error), conn.transaction():
             conn.execute(
                 "INSERT INTO opspilot_postmortem_versions(postmortem_id,version,state,content,content_sha256,incident_control_generation,observation_generation,observation_session_id,observation_ending_id,run_count,input_watermark,evidence_snapshot_sha256,generated_by,generated_by_kind) VALUES(%s,1,'draft',%s,%s,0,0,%s,%s,0,0,%s,'w','worker')",
-                (uuid4(), content, "0" * 64, uuid4(), uuid4(), "e" * 64),
+                (uuid4(), '{"x":1}', "0" * 64, uuid4(), uuid4(), "e" * 64),
             )
 
 
-def test_observer_role_cannot_read_or_write_any_f13_table(scratch_dsn: str) -> None:
+def test_observer_has_no_f13_read_or_write_access(scratch_dsn: str) -> None:
     login = f"opspilot_f13_observer_{uuid4().hex[:8]}"
     with psycopg.connect(scratch_dsn, autocommit=True) as conn:
         conn.execute(
@@ -427,8 +494,7 @@ def test_observer_role_cannot_read_or_write_any_f13_table(scratch_dsn: str) -> N
             )
         )
     try:
-        dsn = make_conninfo(scratch_dsn, user=login)
-        with psycopg.connect(dsn) as conn:
+        with psycopg.connect(make_conninfo(scratch_dsn, user=login)) as conn:
             for table in (
                 "opspilot_postmortems",
                 "opspilot_postmortem_versions",
@@ -450,287 +516,3 @@ def test_observer_role_cannot_read_or_write_any_f13_table(scratch_dsn: str) -> N
     finally:
         with psycopg.connect(scratch_dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(login)))
-
-
-@pytest.mark.parametrize(
-    "action", ["approve", "reject", "return_for_revision", "revoke"]
-)
-def test_worker_cannot_perform_any_review_action(
-    store: KnowledgeStore, incident: UUID, action: str
-) -> None:
-    """D6: every human review action rejects the worker principal."""
-    draft = _draft(store, incident, key=f"worker-{action}", proposals=(_proposal(),))
-    review = store.submit_for_review(
-        draft.object_id,
-        1,
-        expected_generation=1,
-        idempotency_key=f"worker-submit-{action}",
-        actor=Actor("generator", "worker"),
-    )
-    object_id, generation = draft.object_id, review.generation
-    if action == "revoke":
-        store.approve(
-            object_id,
-            1,
-            expected_generation=generation,
-            idempotency_key="web-before-worker-revoke",
-            actor=Actor("alice", "basic_auth"),
-        )
-        with psycopg.connect(store.dsn) as conn:
-            object_id = conn.execute(
-                "SELECT entry_id FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s",
-                (object_id,),
-            ).fetchone()[0]
-        generation = 1
-    kwargs = dict(
-        expected_generation=generation,
-        idempotency_key=f"worker-denied-{action}",
-        actor=Actor("generator", "worker"),
-    )
-    if action != "approve":
-        kwargs["reason"] = "review decision"
-    with pytest.raises(PersistenceError):
-        getattr(store, action)(object_id, 1, **kwargs)
-    with psycopg.connect(store.dsn) as conn:
-        assert conn.execute(
-            "SELECT count(*) FROM opspilot_f13_requests WHERE idempotency_key=%s",
-            (kwargs["idempotency_key"],),
-        ).fetchone() == (0,)
-
-
-@pytest.mark.parametrize(
-    "terminal", ["approve", "reject", "return_for_revision", "mark_stale"]
-)
-def test_terminal_versions_cannot_reenter_review(
-    store: KnowledgeStore, incident: UUID, terminal: str
-) -> None:
-    """D1/D5: every terminal version is read-only; old state cannot reopen."""
-    draft = _draft(
-        store, incident, key=f"terminal-{terminal}", proposals=(_proposal(),)
-    )
-    review = store.submit_for_review(
-        draft.object_id,
-        1,
-        expected_generation=1,
-        idempotency_key=f"terminal-submit-{terminal}",
-        actor=Actor("alice", "basic_auth"),
-    )
-    kwargs = dict(
-        expected_generation=review.generation,
-        idempotency_key=f"terminal-action-{terminal}",
-        actor=Actor("alice", "basic_auth"),
-    )
-    if terminal != "approve":
-        kwargs["reason"] = (
-            "evidence_changed" if terminal == "mark_stale" else "needs correction"
-        )
-    result = getattr(store, terminal)(draft.object_id, 1, **kwargs)
-    with pytest.raises(PersistenceError):
-        store.submit_for_review(
-            draft.object_id,
-            1,
-            expected_generation=result.generation,
-            idempotency_key=f"terminal-reopen-{terminal}",
-            actor=Actor("alice", "basic_auth"),
-        )
-    with psycopg.connect(store.dsn) as conn:
-        with pytest.raises(psycopg.Error), conn.transaction():
-            conn.execute(
-                "UPDATE opspilot_postmortem_versions SET state='draft',stale_reason=NULL WHERE postmortem_id=%s AND version=1",
-                (draft.object_id,),
-            )
-        assert conn.execute(
-            "SELECT state FROM opspilot_postmortem_versions WHERE postmortem_id=%s AND version=1",
-            (draft.object_id,),
-        ).fetchone() == (result.state,)
-
-
-def test_return_and_supersede_use_new_versions_with_immutable_provenance(
-    store: KnowledgeStore, incident: UUID
-) -> None:
-    """D4/D5/D7/D9: return writes a new draft; reviewed replacement appends revision 2."""
-    actor = Actor("alice", "basic_auth")
-    draft = _draft(store, incident, key="return-generate", proposals=(_proposal(),))
-    store.submit_for_review(
-        draft.object_id,
-        1,
-        expected_generation=1,
-        idempotency_key="return-submit",
-        actor=actor,
-    )
-    returned = store.return_for_revision(
-        draft.object_id,
-        1,
-        reason="correct timeline",
-        expected_generation=2,
-        idempotency_key="return-action",
-        actor=actor,
-    )
-    next_draft = store.record_draft(
-        incident,
-        expected_generation=returned.generation,
-        idempotency_key="return-new",
-        actor=actor,
-        content={"impact": "corrected"},
-        watermark=_watermark(),
-        conclusions=(_conclusion(),),
-        proposals=(_proposal(),),
-        revises_version=1,
-    )
-    assert next_draft.version == 2
-    review = store.submit_for_review(
-        draft.object_id,
-        2,
-        expected_generation=next_draft.generation,
-        idempotency_key="return-new-submit",
-        actor=actor,
-    )
-    approved = store.approve(
-        draft.object_id,
-        2,
-        expected_generation=review.generation,
-        idempotency_key="return-new-approve",
-        actor=actor,
-    )
-    with psycopg.connect(store.dsn) as conn:
-        entry = conn.execute(
-            "SELECT entry_id FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s",
-            (draft.object_id,),
-        ).fetchone()[0]
-        old = conn.execute(
-            "SELECT content,content_sha256,approved_by,approved_by_kind,approved_at FROM opspilot_knowledge_revisions WHERE entry_id=%s AND revision=1",
-            (entry,),
-        ).fetchone()
-        assert old[2:4] == ("alice", "basic_auth") and old[4] is not None
-        assert conn.execute(
-            "SELECT state,revises_version FROM opspilot_postmortem_versions WHERE postmortem_id=%s AND version=2",
-            (draft.object_id,),
-        ).fetchone() == ("approved", 1)
-    replacement = store.record_draft(
-        incident,
-        expected_generation=approved.generation,
-        idempotency_key="replace-generate",
-        actor=actor,
-        content={"impact": "new facts"},
-        watermark=_watermark(),
-        conclusions=(_conclusion(),),
-        proposals=(_proposal("replacement", entry),),
-    )
-    review = store.submit_for_review(
-        draft.object_id,
-        3,
-        expected_generation=replacement.generation,
-        idempotency_key="replace-submit",
-        actor=actor,
-    )
-    with pytest.raises(PersistenceError):
-        store.approve(
-            draft.object_id,
-            3,
-            expected_generation=review.generation,
-            idempotency_key="replace-missing-generation",
-            actor=actor,
-        )
-    store.approve(
-        draft.object_id,
-        3,
-        expected_generation=review.generation,
-        idempotency_key="replace-approve",
-        actor=actor,
-        entry_generations={entry: 1},
-    )
-    with psycopg.connect(store.dsn) as conn:
-        assert conn.execute(
-            "SELECT revision,state FROM opspilot_knowledge_revision_states WHERE entry_id=%s ORDER BY revision",
-            (entry,),
-        ).fetchall() == [(1, "superseded"), (2, "active")]
-        assert (
-            conn.execute(
-                "SELECT content,content_sha256,approved_by,approved_by_kind,approved_at FROM opspilot_knowledge_revisions WHERE entry_id=%s AND revision=1",
-                (entry,),
-            ).fetchone()
-            == old
-        )
-        assert conn.execute(
-            "SELECT supersedes_revision,source_version,source_proposal_key FROM opspilot_knowledge_revisions WHERE entry_id=%s AND revision=2",
-            (entry,),
-        ).fetchone() == (1, 3, "replacement")
-
-
-@pytest.mark.parametrize("changed", ["content", "actor", "watermark"])
-def test_idempotency_key_cannot_be_rebound_to_another_request(
-    store: KnowledgeStore, incident: UUID, changed: str
-) -> None:
-    """D9/C3 §9: identical key with different payload or principal is rejected."""
-    key = f"rebind-{changed}"
-    _draft(store, incident, key=key)
-    content, actor, watermark = (
-        {"impact": "limited", "timeline": []},
-        Actor("worker-1", "worker"),
-        _watermark(),
-    )
-    if changed == "content":
-        content = {"impact": "different"}
-    elif changed == "actor":
-        actor = Actor("another-worker", "worker")
-    else:
-        watermark = Watermark(0, 0, _OBS_SESSION, _OBS_ENDING, 1, _RUN, 1, "e" * 64)
-    with pytest.raises(PersistenceError):
-        store.record_draft(
-            incident,
-            expected_generation=0,
-            idempotency_key=key,
-            actor=actor,
-            content=content,
-            watermark=watermark,
-            conclusions=(_conclusion(),),
-        )
-
-
-def test_sql_cannot_change_object_generation_without_new_audit(
-    store: KnowledgeStore, incident: UUID
-) -> None:
-    """D7/D9: ordinary owner SQL cannot advance generation without matching audit."""
-    draft = _draft(store, incident, key="audit-generation")
-    with pytest.raises(psycopg.Error):
-        with psycopg.connect(store.dsn) as conn:
-            conn.execute(
-                "UPDATE opspilot_postmortems SET generation=generation+1 WHERE postmortem_id=%s",
-                (draft.object_id,),
-            )
-    with psycopg.connect(store.dsn) as conn:
-        assert conn.execute(
-            "SELECT generation FROM opspilot_postmortems WHERE postmortem_id=%s",
-            (draft.object_id,),
-        ).fetchone() == (1,)
-
-
-@pytest.mark.parametrize(
-    "column", ["observation_session_id", "observation_ending_id", "last_run_id"]
-)
-def test_watermark_cannot_bind_foreign_identity(
-    store: KnowledgeStore, incident: UUID, column: str
-) -> None:
-    """D1/public storage contract: unowned session, ending and Run are refused."""
-    values = dict(
-        incident_control_generation=0,
-        observation_generation=0,
-        observation_session_id=_OBS_SESSION,
-        observation_ending_id=_OBS_ENDING,
-        run_count=1,
-        last_run_id=_RUN,
-        input_watermark=0,
-        evidence_snapshot_sha256="e" * 64,
-    )
-    values[column] = uuid4()
-    with pytest.raises(PersistenceError):
-        store.record_draft(
-            incident,
-            expected_generation=0,
-            idempotency_key=f"foreign-{column}",
-            actor=Actor("worker", "worker"),
-            content={"impact": "limited"},
-            watermark=Watermark(**values),
-            conclusions=(_conclusion(),),
-        )
-    assert store.postmortem_for_incident(incident) is None

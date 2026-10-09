@@ -1,8 +1,17 @@
 """Postmortem versions, review actions and knowledge revisions on PostgreSQL.
 
-M1-03 step 1 (F13; decisions D1-D9 in the M1-03 task record). Storage
+M1-03 step 1 (F13; decisions D1-D16 in the M1-03 task record). Storage
 primitives for step 2 (draft generation on the worker side) and step 3
 (review in the workbench); no generation logic, no page, no retrieval.
+
+Who may do what (D6, D14, D15): the worker generates a draft -- which
+enters review in the same transaction when every citation validated -- and
+marks a version stale; a Basic Auth principal approves, rejects, returns
+for revision, supersedes (by approving a version whose proposal names the
+entry) and revokes. Disputes are written with the draft and never removed
+(D16). Web and worker share one database role (D8 as revised), so the
+split is kept in code: the review primitives are called only from the web
+layer (``tests/test_knowledge_store_callers.py``).
 
 Every mutation is one transaction that
 
@@ -12,22 +21,25 @@ Every mutation is one transaction that
    used for a different one -- before any generation check, so a retry
    after a lost response replays instead of conflicting;
 3. checks the caller's expected generation of that object (D9, independent
-   of the incident control generation) and the transition against the
-   domain ``POSTMORTEM`` machine;
+   of the incident control generation), the transition against the domain
+   ``POSTMORTEM`` machine and, for a draft or an approval, that the
+   incident's control/observation generations, Run count and input
+   watermark still equal the version's watermark (D1);
 4. writes the audit row(s) -- actor id, authenticated principal kind,
    action, reason, expected/resulting generation -- the state change, and
    last the request row with the result.
 
 Migration 0008 enforces the same invariants at the database layer (append
 only, approved content frozen, every change bound to an audit row of the
-same transaction, review actions only for ``basic_auth`` principals); the
-checks here exist to give callers a precise error code instead of a raw
-trigger exception.
+same transaction, worker and review actions bound to their principal kind);
+the checks here exist to give callers a precise error code instead of a raw
+trigger exception, which surfaces as ``INTEGRITY_REFUSED``.
 
 Error codes (``PersistenceError``): ``INVALID_INPUT``, ``NOT_FOUND``,
 ``PRINCIPAL_NOT_ALLOWED``, ``IDEMPOTENCY_CONFLICT``, ``GENERATION_CONFLICT``,
-``ILLEGAL_TRANSITION``, ``OPEN_VERSION_EXISTS``, ``CITATIONS_INVALID``,
-``DISPUTED``, ``ENTRY_GENERATION_CONFLICT``.
+``ILLEGAL_TRANSITION``, ``OPEN_VERSION_EXISTS``, ``WATERMARK_MOVED``,
+``CITATIONS_INVALID``, ``DISPUTED``, ``ENTRY_GENERATION_CONFLICT``,
+``INTEGRITY_REFUSED``, plus the transient codes of ``_StoreBase``.
 """
 
 from __future__ import annotations
@@ -36,8 +48,10 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 from uuid import UUID, uuid4
+
+from psycopg import errors
 
 from opspilot.domain.base import DomainError
 from opspilot.domain.knowledge import POSTMORTEM
@@ -54,12 +68,15 @@ StaleReason = Literal[
 ]
 Certainty = Literal["deterministic", "supported", "uncertain"]
 
-# Actions a worker principal may take (D8: drafts and generation events);
-# everything else is a human review action of a Basic Auth principal (D6).
-WORKER_ACTIONS = frozenset({"generate", "submit", "mark_stale", "dispute"})
-# Postmortem action -> domain POSTMORTEM trigger.
+# Worker actions (D14, D15); every other action is one of the five review
+# actions of a Basic Auth principal (D5, D6). Exclusive both ways.
+WORKER_ACTIONS = frozenset({"generate", "submit", "mark_stale"})
+REVIEW_ACTIONS = frozenset({"approve", "reject", "return", "revoke"})
+_AUTHORS = ("code", "model")
+_SHA256_HEX = frozenset("0123456789abcdef")
+# Postmortem action -> domain POSTMORTEM trigger (``submit`` happens only
+# inside ``record_draft``).
 _TRIGGERS = {
-    "submit": "submit_for_review",
     "mark_stale": "mark_stale",
     "approve": "human_approve",
     "reject": "human_reject",
@@ -130,7 +147,8 @@ class ProposalDraft:
 
 @dataclass(frozen=True)
 class DisputeDraft:
-    """A dispute raised with the draft itself (e.g. contradicting evidence)."""
+    """A dispute the generation raises on one of its conclusions (e.g.
+    contradicting evidence); written with the draft, never removed (D16)."""
 
     conclusion_key: str
     reason: str
@@ -203,21 +221,112 @@ def _require_actor(actor: object, action: str) -> Actor:
     ):
         raise PersistenceError("INVALID_INPUT")
     _require_text(actor.actor_id)
-    if actor.principal_kind != "basic_auth" and action not in WORKER_ACTIONS:
+    if (actor.principal_kind == "worker") != (action in WORKER_ACTIONS):
         raise PersistenceError("PRINCIPAL_NOT_ALLOWED")
     return actor
 
 
-def _require_generation(value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+def _require_int(value: object, *, minimum: int = 0) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
         raise PersistenceError("INVALID_INPUT")
     return value
+
+
+def _require_generation(value: object) -> int:
+    return _require_int(value)
+
+
+def _require_uuid(value: object) -> UUID:
+    if not isinstance(value, UUID):
+        raise PersistenceError("INVALID_INPUT")
+    return value
+
+
+def _require_sha256(value: object) -> str:
+    if not isinstance(value, str) or len(value) != 64 or set(value) - _SHA256_HEX:
+        raise PersistenceError("INVALID_INPUT")
+    return value
+
+
+def _validate_watermark(watermark: object) -> Watermark:
+    if not isinstance(watermark, Watermark):
+        raise PersistenceError("INVALID_INPUT")
+    _require_int(watermark.incident_control_generation)
+    _require_int(watermark.observation_generation)
+    _require_uuid(watermark.observation_session_id)
+    _require_uuid(watermark.observation_ending_id)
+    _require_int(watermark.run_count)
+    _require_int(watermark.input_watermark)
+    if (watermark.run_count == 0) != (watermark.last_run_id is None):
+        raise PersistenceError("INVALID_INPUT")
+    if watermark.last_run_id is not None:
+        _require_uuid(watermark.last_run_id)
+    _require_sha256(watermark.evidence_snapshot_sha256)
+    return watermark
+
+
+def _validate_conclusion(conclusion: object) -> ConclusionDraft:
+    if not isinstance(conclusion, ConclusionDraft):
+        raise PersistenceError("INVALID_INPUT")
+    _require_text(conclusion.key)
+    _require_text(conclusion.section)
+    if not isinstance(conclusion.body, str):
+        raise PersistenceError("INVALID_INPUT")
+    if conclusion.author not in _AUTHORS or conclusion.certainty not in get_args(
+        Certainty
+    ):
+        raise PersistenceError("INVALID_INPUT")
+    if not isinstance(conclusion.citations_valid, bool):
+        raise PersistenceError("INVALID_INPUT")
+    # code-assembled facts are deterministic; a failed citation check makes
+    # a conclusion uncertain (D2)
+    if (conclusion.author == "code") != (conclusion.certainty == "deterministic"):
+        raise PersistenceError("INVALID_INPUT")
+    if not conclusion.citations_valid and conclusion.certainty != "uncertain":
+        raise PersistenceError("INVALID_INPUT")
+    if isinstance(conclusion.evidence_refs, (str, bytes, Mapping)) or not all(
+        isinstance(ref, Mapping) for ref in conclusion.evidence_refs
+    ):
+        raise PersistenceError("INVALID_INPUT")
+    return conclusion
+
+
+def _validate_proposal(proposal: object) -> ProposalDraft:
+    if not isinstance(proposal, ProposalDraft):
+        raise PersistenceError("INVALID_INPUT")
+    _require_text(proposal.key)
+    _require_text(proposal.name)
+    if isinstance(proposal.tags, (str, bytes)) or not all(
+        isinstance(tag, str) and tag for tag in proposal.tags
+    ):
+        raise PersistenceError("INVALID_INPUT")
+    if not isinstance(proposal.content, Mapping):
+        raise PersistenceError("INVALID_INPUT")
+    if proposal.supersedes_entry_id is not None:
+        _require_uuid(proposal.supersedes_entry_id)
+    return proposal
 
 
 class KnowledgeStore(_StoreBase):
     """Postmortem drafts, review actions and knowledge revisions."""
 
-    # --- postmortem mutations
+    @staticmethod
+    def _error_code(exc: Exception) -> str:
+        """A refused write is a deterministic caller or state error, not a
+        storage outage: constraint and guard-trigger refusals map to
+        ``INTEGRITY_REFUSED``; a key raced in by another request for a
+        different object to ``IDEMPOTENCY_CONFLICT``."""
+        if isinstance(exc, errors.UniqueViolation):
+            if exc.diag.constraint_name == "opspilot_f13_requests_pkey":
+                return "IDEMPOTENCY_CONFLICT"
+            return "INTEGRITY_REFUSED"
+        if isinstance(
+            exc, (errors.IntegrityConstraintViolation, errors.InsufficientPrivilege)
+        ):
+            return "INTEGRITY_REFUSED"
+        return _StoreBase._error_code(exc)  # type: ignore[arg-type]
+
+    # --- worker side (D1, D14, D15)
 
     def record_draft(
         self,
@@ -233,20 +342,33 @@ class KnowledgeStore(_StoreBase):
         disputes: Sequence[DisputeDraft] = (),
         revises_version: int | None = None,
     ) -> ActionResult:
-        """Write the next draft version of the incident's postmortem.
+        """Write the next version of the incident's postmortem (worker only).
 
-        ``expected_generation`` 0 means "no postmortem yet". Refused with
-        ``OPEN_VERSION_EXISTS`` while another version is draft or under
-        review (mark it stale or finish its review first). ``revises_version``
-        names the returned version this draft revises. The observation
-        session and ending must belong to the incident (D1 gate data; the
-        gate decision itself is step 2's).
+        ``expected_generation`` 0 means "no postmortem yet". The watermark
+        must equal the incident's current state: control and observation
+        generations, Run count, input watermark (``WATERMARK_MOVED``
+        otherwise), and name an ended observation session of this incident
+        with its ending record (``INVALID_INPUT``). When every conclusion's
+        citations validated the version enters review in this transaction
+        (``state="under_review"``, two audit rows, generation + 2); otherwise
+        it stays a draft that can never be reviewed (D2, D15). Refused with
+        ``OPEN_VERSION_EXISTS`` while a version is under review.
+        ``revises_version`` names the returned version this one regenerates
+        (D14).
         """
         actor = _require_actor(actor, "generate")
         _require_text(idempotency_key)
+        _require_uuid(incident_id)
         expected = _require_generation(expected_generation)
-        if not isinstance(watermark, Watermark) or not conclusions:
+        _validate_watermark(watermark)
+        if not isinstance(content, Mapping) or not conclusions:
             raise PersistenceError("INVALID_INPUT")
+        for conclusion in conclusions:
+            _validate_conclusion(conclusion)
+        for proposal in proposals:
+            _validate_proposal(proposal)
+        if revises_version is not None:
+            _require_int(revises_version, minimum=1)
         conclusion_keys = [c.key for c in conclusions]
         if len(set(conclusion_keys)) != len(conclusion_keys) or len(
             {p.key for p in proposals}
@@ -255,11 +377,14 @@ class KnowledgeStore(_StoreBase):
         superseded = [p.supersedes_entry_id for p in proposals if p.supersedes_entry_id]
         if len(set(superseded)) != len(superseded):
             raise PersistenceError("INVALID_INPUT")
-        if any(d.conclusion_key not in conclusion_keys for d in disputes):
-            raise PersistenceError("INVALID_INPUT")
         for dispute in disputes:
+            if not isinstance(dispute, DisputeDraft):
+                raise PersistenceError("INVALID_INPUT")
             _require_text(dispute.reason)
+            if dispute.conclusion_key not in conclusion_keys:
+                raise PersistenceError("INVALID_INPUT")
         text = canonical_json(dict(content))
+        reviewable = all(c.citations_valid for c in conclusions)
         request = {
             "action": "generate",
             "incident_id": str(incident_id),
@@ -294,10 +419,12 @@ class KnowledgeStore(_StoreBase):
             if replay is not None:
                 return replay
             self._check_generation(head["generation"], expected)
-            self._check_watermark(conn, incident_id, watermark)
+            self._check_observation(conn, incident_id, watermark)
+            if self._watermark_moved(conn, incident_id, asdict(watermark)):
+                raise PersistenceError("WATERMARK_MOVED")
             open_row = conn.execute(
                 "SELECT version FROM opspilot_postmortem_versions "
-                "WHERE postmortem_id=%s AND state IN ('draft','under_review')",
+                "WHERE postmortem_id=%s AND state='under_review'",
                 (head["postmortem_id"],),
             ).fetchone()
             if open_row is not None:
@@ -312,7 +439,6 @@ class KnowledgeStore(_StoreBase):
                     raise PersistenceError("ILLEGAL_TRANSITION")
             postmortem_id = head["postmortem_id"]
             version = head["latest_version"] + 1
-            generation = expected + 1
             event_id = self._audit(
                 conn,
                 idempotency_key,
@@ -326,7 +452,7 @@ class KnowledgeStore(_StoreBase):
             conn.execute(
                 "UPDATE opspilot_postmortems SET generation=%s, latest_version=%s, "
                 "updated_at=clock_timestamp() WHERE postmortem_id=%s",
-                (generation, version, postmortem_id),
+                (expected + 1, version, postmortem_id),
             )
             conn.execute(
                 "INSERT INTO opspilot_postmortem_versions(postmortem_id, version, revises_version, "
@@ -388,39 +514,56 @@ class KnowledgeStore(_StoreBase):
                     ),
                 )
             for dispute in disputes:
-                self._insert_dispute(
-                    conn, postmortem_id, version, dispute, actor, event_id
+                conn.execute(
+                    "INSERT INTO opspilot_postmortem_disputes(dispute_id, postmortem_id, version, "
+                    "conclusion_key, reason, raised_by, raised_by_kind, event_id) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        uuid4(),
+                        postmortem_id,
+                        version,
+                        dispute.conclusion_key,
+                        dispute.reason,
+                        actor.actor_id,
+                        actor.principal_kind,
+                        event_id,
+                    ),
                 )
+            generation, state = expected + 1, "draft"
+            if reviewable:
+                # D15: a draft whose citations all validated enters review
+                # automatically, in the transaction that generated it
+                self._audit(
+                    conn,
+                    idempotency_key,
+                    "postmortem",
+                    postmortem_id,
+                    "submit",
+                    actor,
+                    generation,
+                    version=version,
+                )
+                self._bump_postmortem(conn, postmortem_id, generation)
+                conn.execute(
+                    "UPDATE opspilot_postmortem_versions SET state=%s "
+                    "WHERE postmortem_id=%s AND version=%s",
+                    (
+                        POSTMORTEM.fire("draft", "submit_for_review"),
+                        postmortem_id,
+                        version,
+                    ),
+                )
+                generation, state = generation + 1, "under_review"
             result = ActionResult(
                 action="generate",
                 object_kind="postmortem",
                 object_id=postmortem_id,
                 generation=generation,
                 version=version,
-                state="draft",
+                state=state,
             )
             self._record_request(conn, idempotency_key, "generate", request, result)
             return result
-
-    def submit_for_review(
-        self,
-        postmortem_id: UUID,
-        version: int,
-        *,
-        expected_generation: int,
-        idempotency_key: str,
-        actor: Actor,
-    ) -> ActionResult:
-        """draft -> under_review; refused (``CITATIONS_INVALID``) while any
-        conclusion failed its citation check (D2)."""
-        return self._transition(
-            "submit",
-            postmortem_id,
-            version,
-            expected_generation=expected_generation,
-            idempotency_key=idempotency_key,
-            actor=actor,
-        )
 
     def mark_stale(
         self,
@@ -432,7 +575,10 @@ class KnowledgeStore(_StoreBase):
         idempotency_key: str,
         actor: Actor,
     ) -> ActionResult:
-        """draft/under_review -> stale with the watermark that moved (D1)."""
+        """draft/under_review -> stale with the watermark that moved (D1;
+        worker only)."""
+        if reason not in get_args(StaleReason):
+            raise PersistenceError("INVALID_INPUT")
         return self._transition(
             "mark_stale",
             postmortem_id,
@@ -442,6 +588,8 @@ class KnowledgeStore(_StoreBase):
             actor=actor,
             reason=reason,
         )
+
+    # --- review side (D5, D6: Basic Auth principals only)
 
     def approve(
         self,
@@ -459,8 +607,10 @@ class KnowledgeStore(_StoreBase):
         at revision 1; one naming an entry appends its next revision, which
         supersedes the active one (or follows a revoked one). Each named
         entry's expected generation is required in ``entry_generations``.
-        Refused while any conclusion is disputed (``DISPUTED``, D3) or failed
-        its citation check.
+        Refused while any conclusion is disputed (``DISPUTED``, D3, D16) or
+        failed its citation check, and when the incident moved past the
+        version's watermark (``WATERMARK_MOVED``, D1: such a draft is stale
+        and only a new version can be reviewed).
         """
         return self._transition(
             "approve",
@@ -503,8 +653,9 @@ class KnowledgeStore(_StoreBase):
         idempotency_key: str,
         actor: Actor,
     ) -> ActionResult:
-        """under_review -> returned; the version stays read-only and a new
-        draft names it as ``revises_version`` (D5)."""
+        """under_review -> returned; the version stays read-only and the
+        worker regenerates a version naming it as ``revises_version``, with
+        the reason as input (D5, D14)."""
         return self._transition(
             "return",
             postmortem_id,
@@ -514,82 +665,6 @@ class KnowledgeStore(_StoreBase):
             actor=actor,
             reason=reason,
         )
-
-    def raise_dispute(
-        self,
-        postmortem_id: UUID,
-        version: int,
-        conclusion_key: str,
-        *,
-        reason: str,
-        expected_generation: int,
-        idempotency_key: str,
-        actor: Actor,
-    ) -> ActionResult:
-        """Append a dispute to a conclusion of a draft or a version under
-        review. Nothing removes a dispute; the version can no longer be
-        approved (D3)."""
-        actor = _require_actor(actor, "dispute")
-        _require_text(idempotency_key)
-        _require_text(reason)
-        expected = _require_generation(expected_generation)
-        request = {
-            "action": "dispute",
-            "postmortem_id": str(postmortem_id),
-            "version": version,
-            "conclusion_key": conclusion_key,
-            "reason": reason,
-            "expected_generation": expected,
-            "actor": [actor.actor_id, actor.principal_kind],
-        }
-        with self.transaction() as conn:
-            head = self._lock_postmortem(conn, postmortem_id)
-            replay = self._replay(conn, idempotency_key, "dispute", request)
-            if replay is not None:
-                return replay
-            self._check_generation(head["generation"], expected)
-            row = self._version_row(conn, postmortem_id, version)
-            if row["state"] not in ("draft", "under_review"):
-                raise PersistenceError("ILLEGAL_TRANSITION")
-            known = conn.execute(
-                "SELECT 1 FROM opspilot_postmortem_conclusions "
-                "WHERE postmortem_id=%s AND version=%s AND conclusion_key=%s",
-                (postmortem_id, version, conclusion_key),
-            ).fetchone()
-            if known is None:
-                raise PersistenceError("NOT_FOUND")
-            event_id = self._audit(
-                conn,
-                idempotency_key,
-                "postmortem",
-                postmortem_id,
-                "dispute",
-                actor,
-                expected,
-                version=version,
-                reason=reason,
-            )
-            self._bump_postmortem(conn, postmortem_id, expected)
-            self._insert_dispute(
-                conn,
-                postmortem_id,
-                version,
-                DisputeDraft(conclusion_key=conclusion_key, reason=reason),
-                actor,
-                event_id,
-            )
-            result = ActionResult(
-                action="dispute",
-                object_kind="postmortem",
-                object_id=postmortem_id,
-                generation=expected + 1,
-                version=version,
-                state=row["state"],
-            )
-            self._record_request(conn, idempotency_key, "dispute", request, result)
-            return result
-
-    # --- knowledge mutations
 
     def revoke(
         self,
@@ -606,6 +681,8 @@ class KnowledgeStore(_StoreBase):
         actor = _require_actor(actor, "revoke")
         _require_text(idempotency_key)
         _require_text(reason)
+        _require_uuid(entry_id)
+        _require_int(revision, minimum=1)
         expected = _require_generation(expected_generation)
         request = {
             "action": "revoke",
@@ -676,6 +753,37 @@ class KnowledgeStore(_StoreBase):
 
     # --- reads
 
+    def active_revision(self, entry_id: UUID) -> dict[str, Any] | None:
+        """The knowledge read (D3): the entry's ``active`` revision, or
+        ``None`` when it has none (every revision superseded or revoked)."""
+        with self.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT r.*, s.state FROM opspilot_knowledge_revisions r "
+                "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
+                "WHERE r.entry_id=%s AND s.state='active'",
+                (entry_id,),
+            ).fetchone()
+
+    def knowledge_history(self, entry_id: UUID) -> dict[str, Any]:
+        """Review/audit history of an entry, not a knowledge read: every
+        revision with its derived state and tombstone (D5, D7)."""
+        with self.transaction(snapshot=True) as conn:
+            head = conn.execute(
+                "SELECT * FROM opspilot_knowledge_entries WHERE entry_id=%s",
+                (entry_id,),
+            ).fetchone()
+            if head is None:
+                raise PersistenceError("NOT_FOUND")
+            revisions = conn.execute(
+                "SELECT r.*, s.state, x.reason AS revoked_reason, x.revoked_by, "
+                "x.revoked_by_kind, x.revoked_at FROM opspilot_knowledge_revisions r "
+                "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
+                "LEFT JOIN opspilot_knowledge_revocations x USING (entry_id, revision) "
+                "WHERE r.entry_id=%s ORDER BY r.revision",
+                (entry_id,),
+            ).fetchall()
+            return {**head, "revisions": revisions}
+
     def postmortem_for_incident(self, incident_id: UUID) -> dict[str, Any] | None:
         """The postmortem object with every version, conclusion, dispute and
         proposal, read in one snapshot; ``None`` when none was generated."""
@@ -697,25 +805,6 @@ class KnowledgeStore(_StoreBase):
             if head is None:
                 raise PersistenceError("NOT_FOUND")
             return self._postmortem_snapshot(conn, head)
-
-    def knowledge_entry(self, entry_id: UUID) -> dict[str, Any]:
-        """An entry with every revision, its derived state and tombstone."""
-        with self.transaction(snapshot=True) as conn:
-            head = conn.execute(
-                "SELECT * FROM opspilot_knowledge_entries WHERE entry_id=%s",
-                (entry_id,),
-            ).fetchone()
-            if head is None:
-                raise PersistenceError("NOT_FOUND")
-            revisions = conn.execute(
-                "SELECT r.*, s.state, x.reason AS revoked_reason, x.revoked_by, "
-                "x.revoked_by_kind, x.revoked_at FROM opspilot_knowledge_revisions r "
-                "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
-                "LEFT JOIN opspilot_knowledge_revocations x USING (entry_id, revision) "
-                "WHERE r.entry_id=%s ORDER BY r.revision",
-                (entry_id,),
-            ).fetchall()
-            return {**head, "revisions": revisions}
 
     def audit_trail(
         self, object_kind: Literal["postmortem", "knowledge_entry"], object_id: UUID
@@ -743,10 +832,13 @@ class KnowledgeStore(_StoreBase):
     ) -> ActionResult:
         actor = _require_actor(actor, action)
         _require_text(idempotency_key)
+        _require_uuid(postmortem_id)
+        _require_int(version, minimum=1)
         expected = _require_generation(expected_generation)
         if action in ("reject", "return", "mark_stale"):
             _require_text(reason)
-        for value in (entry_generations or {}).values():
+        for entry_id, value in (entry_generations or {}).items():
+            _require_uuid(entry_id)
             _require_generation(value)
         request: dict[str, Any] = {
             "action": action,
@@ -771,7 +863,7 @@ class KnowledgeStore(_StoreBase):
                 target = POSTMORTEM.fire(row["state"], _TRIGGERS[action])
             except DomainError as exc:
                 raise PersistenceError("ILLEGAL_TRANSITION") from exc
-            if action in ("submit", "approve"):
+            if action == "approve":
                 invalid = conn.execute(
                     "SELECT 1 FROM opspilot_postmortem_conclusions "
                     "WHERE postmortem_id=%s AND version=%s AND NOT citations_valid",
@@ -779,13 +871,14 @@ class KnowledgeStore(_StoreBase):
                 ).fetchone()
                 if invalid is not None:
                     raise PersistenceError("CITATIONS_INVALID")
-            if action == "approve":
                 disputed = conn.execute(
                     "SELECT 1 FROM opspilot_postmortem_disputes WHERE postmortem_id=%s AND version=%s",
                     (postmortem_id, version),
                 ).fetchone()
                 if disputed is not None:
                     raise PersistenceError("DISPUTED")
+                if self._watermark_moved(conn, head["incident_id"], row):
+                    raise PersistenceError("WATERMARK_MOVED")
             self._audit(
                 conn,
                 idempotency_key,
@@ -936,7 +1029,7 @@ class KnowledgeStore(_StoreBase):
 
     def _lock_postmortem(self, conn: Connection, postmortem_id: UUID) -> dict[str, Any]:
         head = conn.execute(
-            "SELECT generation, latest_version FROM opspilot_postmortems "
+            "SELECT incident_id, generation, latest_version FROM opspilot_postmortems "
             "WHERE postmortem_id=%s FOR UPDATE",
             (postmortem_id,),
         ).fetchone()
@@ -949,7 +1042,9 @@ class KnowledgeStore(_StoreBase):
         conn: Connection, postmortem_id: UUID, version: int
     ) -> dict[str, Any]:
         row = conn.execute(
-            "SELECT state FROM opspilot_postmortem_versions WHERE postmortem_id=%s AND version=%s",
+            "SELECT state, incident_control_generation, observation_generation, run_count, "
+            "input_watermark FROM opspilot_postmortem_versions "
+            "WHERE postmortem_id=%s AND version=%s",
             (postmortem_id, version),
         ).fetchone()
         if row is None:
@@ -962,20 +1057,24 @@ class KnowledgeStore(_StoreBase):
             raise PersistenceError("GENERATION_CONFLICT")
 
     @staticmethod
-    def _check_watermark(
+    def _check_observation(
         conn: Connection, incident_id: UUID, watermark: Watermark
     ) -> None:
-        """The observation session and ending named by the watermark belong
-        to this incident; the last Run too."""
+        """D1 gate data: the named observation session belongs to this
+        incident, has ended, carries the watermark's observation generation,
+        and the ending record is that session's; the last Run is this
+        incident's."""
         row = conn.execute(
             "SELECT 1 FROM opspilot_observation_endings e "
             "JOIN opspilot_observation_sessions s ON s.session_id = e.session_id "
-            "WHERE e.ending_id=%s AND e.session_id=%s AND s.incident_id=%s AND e.incident_id=%s",
+            "WHERE e.ending_id=%s AND e.session_id=%s AND s.incident_id=%s "
+            "AND e.incident_id=%s AND s.state <> 'authorized' AND s.observation_generation=%s",
             (
                 watermark.observation_ending_id,
                 watermark.observation_session_id,
                 incident_id,
                 incident_id,
+                watermark.observation_generation,
             ),
         ).fetchone()
         if row is None:
@@ -987,6 +1086,32 @@ class KnowledgeStore(_StoreBase):
             ).fetchone()
             if run is None:
                 raise PersistenceError("INVALID_INPUT")
+
+    @staticmethod
+    def _watermark_moved(
+        conn: Connection, incident_id: UUID, watermark: Mapping[str, Any]
+    ) -> bool:
+        """Has the incident moved past ``watermark`` (D1)? Control and
+        observation generations, Run count and input watermark are compared
+        under a share lock on the incident row, so a concurrent control
+        action or Run is ordered after this transaction. The evidence
+        snapshot hash is the generator's (step 2) to recompute."""
+        current = conn.execute(
+            "SELECT i.control_generation, i.observation_generation, "
+            "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id) AS run_count, "
+            "(SELECT COALESCE(max(n.sequence), 0) FROM opspilot_inputs n "
+            "WHERE n.incident_id = i.incident_id) AS input_watermark "
+            "FROM opspilot_incidents i WHERE i.incident_id=%s FOR SHARE OF i",
+            (incident_id,),
+        ).fetchone()
+        if current is None:
+            raise PersistenceError("NOT_FOUND")
+        return bool(
+            current["control_generation"] != watermark["incident_control_generation"]
+            or current["observation_generation"] != watermark["observation_generation"]
+            or current["run_count"] != watermark["run_count"]
+            or current["input_watermark"] != watermark["input_watermark"]
+        )
 
     @staticmethod
     def _bump_postmortem(conn: Connection, postmortem_id: UUID, expected: int) -> None:
@@ -1031,31 +1156,6 @@ class KnowledgeStore(_StoreBase):
             ),
         )
         return event_id
-
-    @staticmethod
-    def _insert_dispute(
-        conn: Connection,
-        postmortem_id: UUID,
-        version: int,
-        dispute: DisputeDraft,
-        actor: Actor,
-        event_id: UUID,
-    ) -> None:
-        conn.execute(
-            "INSERT INTO opspilot_postmortem_disputes(dispute_id, postmortem_id, version, "
-            "conclusion_key, reason, raised_by, raised_by_kind, event_id) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (
-                uuid4(),
-                postmortem_id,
-                version,
-                dispute.conclusion_key,
-                dispute.reason,
-                actor.actor_id,
-                actor.principal_kind,
-                event_id,
-            ),
-        )
 
     @staticmethod
     def _replay(

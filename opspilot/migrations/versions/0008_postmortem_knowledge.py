@@ -22,10 +22,10 @@ section 10 "复盘与知识"). Tables:
 * ``opspilot_postmortem_conclusions`` -- the sections/claims of a version,
   each with ``certainty``, whether its citations validated, its evidence
   references, and whether code or the model wrote it (D2, D3).
-* ``opspilot_postmortem_disputes`` -- append-only disputes on a conclusion
-  with reason and who raised it (D3). A conclusion is disputed while any
-  row exists; nothing removes one, so a disputed version can never be
-  approved -- a new version is the only way forward.
+* ``opspilot_postmortem_disputes`` -- disputes on a conclusion with reason
+  and who raised it (D3, D16), written by the generation with its draft. A
+  conclusion is disputed while any row exists; nothing removes one, so a
+  disputed version can only be returned or replaced, never approved.
 * ``opspilot_postmortem_proposals`` -- the structured knowledge entries a
   version proposes (D4: name, tags, symptoms/checks/evidence references in
   the content), optionally naming the entry it would supersede.
@@ -48,10 +48,17 @@ Every table refuses DELETE and TRUNCATE for every role, the owner included,
 and every table but the two object rows refuses UPDATE (state/stale_reason
 of a non-terminal version excepted). Every state change, version, revision,
 dispute and tombstone must be written in the same transaction as its audit
-row (``xmin`` = the current transaction), and review actions require the
-``basic_auth`` principal kind. Like the Observer triggers of 0003, these
+row (``xmin`` = the current transaction). Generation, submission and
+staleness are worker actions, the five review actions are Basic Auth
+actions, never the other way round (D6, D15); a draft enters review only in
+the transaction that generated it. Like the Observer triggers of 0003, these
 guard against code and SQL errors, not against a compromised owner
 credential (an owner can disable triggers).
+
+Roles (D8 as revised 2026-10-09): web and worker share the owner role, so no
+role is created and nothing is granted; the Observer role gets no privilege
+on any of these tables. The worker/web split is kept in code (an AST test
+keeps the review primitives out of every module but the web layer).
 """
 
 import re
@@ -95,7 +102,6 @@ ACTIONS = (
     "generate",
     "submit",
     "mark_stale",
-    "dispute",
     "approve",
     "reject",
     "return",
@@ -103,9 +109,11 @@ ACTIONS = (
     "supersede",
     "revoke",
 )
-# What a worker principal may write (D8: drafts and generation events);
-# every other action is a human review action through the web (D6).
-WORKER_ACTIONS = ("generate", "submit", "mark_stale", "dispute")
+# The worker generates, submits (automatically, in the generating
+# transaction) and marks stale (D14, D15); every other action is one of the
+# five human review actions of a Basic Auth principal (D5, D6). Exclusive
+# both ways.
+WORKER_ACTIONS = ("generate", "submit", "mark_stale")
 OBJECT_KINDS = ("postmortem", "knowledge_entry")
 
 TABLES = (
@@ -201,14 +209,15 @@ def upgrade() -> None:
           {_check(audit, "action", ACTIONS)},
           {_check(audit, "principal_kind", PRINCIPAL_KINDS)},
           CONSTRAINT {audit}_principal_action_check CHECK (
-            principal_kind = 'basic_auth' OR action IN ({_in_list(WORKER_ACTIONS)})
+            (principal_kind = 'worker') = (action IN ({_in_list(WORKER_ACTIONS)}))
           ),
           CONSTRAINT {audit}_generation_check CHECK (resulting_generation = expected_generation + 1),
           CONSTRAINT {audit}_reason_check CHECK (
-            action NOT IN ('reject', 'return', 'mark_stale', 'dispute', 'revoke')
+            action NOT IN ('reject', 'return', 'mark_stale', 'revoke')
             OR (reason IS NOT NULL AND reason <> '')
           ),
-          UNIQUE (idempotency_key, object_kind, object_id),
+          -- one request writes generate + submit on the same object
+          UNIQUE (idempotency_key, object_kind, object_id, action),
           UNIQUE (object_kind, object_id, resulting_generation)
         );
         CREATE INDEX {audit}_object_idx ON {audit}(object_kind, object_id, recorded_at);
@@ -252,9 +261,11 @@ def upgrade() -> None:
           CONSTRAINT {versions}_run_check CHECK ((run_count = 0) = (last_run_id IS NULL)),
           {_hash_check(versions)}
         );
-        -- at most one version open for review work per postmortem
-        CREATE UNIQUE INDEX {versions}_one_open_idx ON {versions}(postmortem_id)
-          WHERE state IN ('draft', 'under_review');
+        -- at most one version under review per postmortem; a draft whose
+        -- citations failed never enters review (D15) and does not block the
+        -- next generation
+        CREATE UNIQUE INDEX {versions}_one_in_review_idx ON {versions}(postmortem_id)
+          WHERE state = 'under_review';
         CREATE TABLE {conclusions} (
           postmortem_id uuid NOT NULL,
           version integer NOT NULL,
@@ -287,7 +298,7 @@ def upgrade() -> None:
           event_id uuid NOT NULL REFERENCES {audit},
           raised_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           FOREIGN KEY (postmortem_id, version, conclusion_key) REFERENCES {conclusions},
-          {_check(disputes, "raised_by_kind", PRINCIPAL_KINDS)}
+          CONSTRAINT {disputes}_raised_by_kind_check CHECK (raised_by_kind = 'worker')
         );
         CREATE INDEX {disputes}_version_idx ON {disputes}(postmortem_id, version);
         CREATE TABLE opspilot_knowledge_entries (
@@ -487,6 +498,11 @@ def _install_guards() -> None:
             RAISE insufficient_privilege USING MESSAGE =
               pg_catalog.format('postmortem version %s -> %s without a %s audit row', OLD.state, NEW.state, action);
           END IF;
+          -- D15: a draft enters review only in the transaction that generated it
+          IF action = 'submit' AND NOT public.opspilot_f13_audited(
+               'postmortem', NEW.postmortem_id, ARRAY['generate'], NEW.version, NULL, false) THEN
+            RAISE insufficient_privilege USING MESSAGE = 'a draft is submitted only by the transaction that generated it';
+          END IF;
           IF action IN ('submit', 'approve') AND EXISTS (
             SELECT 1 FROM public.opspilot_postmortem_conclusions c
             WHERE c.postmortem_id = NEW.postmortem_id AND c.version = NEW.version AND NOT c.citations_valid
@@ -503,42 +519,15 @@ def _install_guards() -> None:
         END
         $$;
 
-        -- Conclusions and proposals are part of the draft: written only in
-        -- the transaction that wrote their version.
+        -- Conclusions, proposals and disputes are part of the draft: written
+        -- only by the transaction that generated their version (its generate
+        -- audit row, which is never updated, carries that transaction id).
         CREATE FUNCTION opspilot_postmortem_part_guard() RETURNS trigger
         LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
         BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM public.opspilot_postmortem_versions v
-            WHERE v.postmortem_id = NEW.postmortem_id AND v.version = NEW.version
-              AND v.state = 'draft' AND v.xmin = pg_catalog.pg_current_xact_id()::xid
-          ) THEN
+          IF NOT public.opspilot_f13_audited('postmortem', NEW.postmortem_id, ARRAY['generate'], NEW.version, NULL, false) THEN
             RAISE insufficient_privilege USING MESSAGE =
               pg_catalog.format('%s rows are written with their draft version only', TG_TABLE_NAME);
-          END IF;
-          RETURN NEW;
-        END
-        $$;
-
-        CREATE FUNCTION opspilot_postmortem_dispute_guard() RETURNS trigger
-        LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM public.opspilot_postmortem_versions v
-            WHERE v.postmortem_id = NEW.postmortem_id AND v.version = NEW.version
-              AND v.state IN ('draft', 'under_review')
-          ) THEN
-            RAISE check_violation USING MESSAGE = 'disputes are raised on a draft or a version under review';
-          END IF;
-          IF NOT EXISTS (
-            SELECT 1 FROM public.opspilot_f13_audit a
-            WHERE a.event_id = NEW.event_id AND a.object_kind = 'postmortem'
-              AND a.object_id = NEW.postmortem_id AND a.version = NEW.version
-              AND a.action IN ('generate', 'dispute')
-              AND a.actor_id = NEW.raised_by AND a.principal_kind = NEW.raised_by_kind
-              AND a.xmin = pg_catalog.pg_current_xact_id()::xid
-          ) THEN
-            RAISE insufficient_privilege USING MESSAGE = 'a dispute needs its audit row in this transaction';
           END IF;
           RETURN NEW;
         END
@@ -631,7 +620,7 @@ def _install_guards() -> None:
         CREATE TRIGGER opspilot_postmortem_proposals_guard BEFORE INSERT ON opspilot_postmortem_proposals
           FOR EACH ROW EXECUTE FUNCTION opspilot_postmortem_part_guard();
         CREATE TRIGGER opspilot_postmortem_disputes_guard BEFORE INSERT ON opspilot_postmortem_disputes
-          FOR EACH ROW EXECUTE FUNCTION opspilot_postmortem_dispute_guard();
+          FOR EACH ROW EXECUTE FUNCTION opspilot_postmortem_part_guard();
         CREATE TRIGGER opspilot_knowledge_revisions_guard BEFORE INSERT ON opspilot_knowledge_revisions
           FOR EACH ROW EXECUTE FUNCTION opspilot_knowledge_revision_guard();
         CREATE TRIGGER opspilot_knowledge_revocations_guard BEFORE INSERT ON opspilot_knowledge_revocations
@@ -642,7 +631,7 @@ def _install_guards() -> None:
         op.execute(
             f"""
             CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table}
-              FOR EACH ROW EXECUTE FUNCTION opspilot_f13_refuse();
+              FOR EACH STATEMENT EXECUTE FUNCTION opspilot_f13_refuse();
             CREATE TRIGGER {table}_no_truncate BEFORE TRUNCATE ON {table}
               FOR EACH STATEMENT EXECUTE FUNCTION opspilot_f13_refuse();
             """
@@ -651,7 +640,7 @@ def _install_guards() -> None:
         op.execute(
             f"""
             CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table}
-              FOR EACH ROW EXECUTE FUNCTION opspilot_f13_refuse();
+              FOR EACH STATEMENT EXECUTE FUNCTION opspilot_f13_refuse();
             """
         )
 
@@ -672,7 +661,6 @@ def downgrade() -> None:
         DROP TABLE opspilot_f13_requests;
         DROP FUNCTION opspilot_knowledge_revocation_guard();
         DROP FUNCTION opspilot_knowledge_revision_guard();
-        DROP FUNCTION opspilot_postmortem_dispute_guard();
         DROP FUNCTION opspilot_postmortem_part_guard();
         DROP FUNCTION opspilot_postmortem_version_guard();
         DROP FUNCTION opspilot_f13_object_guard();
