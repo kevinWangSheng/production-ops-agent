@@ -70,7 +70,10 @@ HTML = {**UI, "accept": "text/html"}
 
 class _Knowledge(KnowledgeStore):
     """Until step 2 lands ``incident_postmortem`` (D26), derive the view's
-    status from the latest version only (no attempts, no schedule)."""
+    status from the latest version only (no attempts; ``schedule`` from
+    ``schedules`` when a test sets one)."""
+
+    schedules: dict[UUID, dict[str, Any]] = {}
 
     def incident_postmortem(self, incident_id: UUID) -> dict[str, Any]:  # type: ignore[override]
         base = getattr(super(), "incident_postmortem", None)
@@ -85,13 +88,16 @@ class _Knowledge(KnowledgeStore):
             "incident_id": incident_id,
             "status": status,
             "postmortem": snapshot,
-            "schedule": {
-                "pending_regeneration_version": None,
-                "lease_active": False,
-                "consecutive_failures": 0,
-                "next_attempt_at": None,
-                "last_error_code": None,
-            },
+            "schedule": self.schedules.get(
+                incident_id,
+                {
+                    "pending_regeneration_version": None,
+                    "lease_active": False,
+                    "consecutive_failures": 0,
+                    "next_attempt_at": None,
+                    "last_error_code": None,
+                },
+            ),
             "attempts": [],
         }
 
@@ -642,3 +648,51 @@ def test_superseded_knowledge_is_shown_as_not_retrievable(env) -> None:
     (row,) = env["knowledge"].knowledge_from_postmortem(first.object_id)
     assert set(row) == set(PublishedRevisionView.__annotations__)
     assert row["state"] == "superseded"
+
+
+def test_several_citation_failed_drafts_then_a_reviewable_version(env) -> None:
+    """D31: citation-failed drafts at one watermark are failed attempts; the
+    worker retries within R7's limit, then stops with a visible state."""
+    incident_id, watermark = _incident(env)
+    failed = _conclusions(citations_valid=False)
+    first = _draft(env, incident_id, watermark, conclusions=failed)
+    second = _draft(
+        env, incident_id, watermark, generation=first.generation, conclusions=failed
+    )
+    assert (first.state, second.state, second.version) == ("draft", "draft", 2)
+    retrying = {
+        "pending_regeneration_version": None,
+        "lease_active": False,
+        "consecutive_failures": 2,
+        "next_attempt_at": "2026-10-09T12:10:00+00:00",
+        "last_error_code": None,
+    }
+    env["knowledge"].schedules[incident_id] = retrying
+    page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
+    assert 'id="postmortem-status">citations_failed<' in page.text
+    assert 'id="postmortem-retry"' in page.text and "2 failed attempts" in page.text
+    assert page.text.count("citations failed</strong>") == 2
+
+    env["knowledge"].schedules[incident_id] = {
+        **retrying,
+        "consecutive_failures": 3,
+        "next_attempt_at": None,
+    }
+    page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
+    assert 'id="postmortem-exhausted"' in page.text and "3 failed attempts" in page.text
+
+    env["knowledge"].schedules.pop(incident_id)
+    third = _draft(env, incident_id, watermark, generation=second.generation)
+    assert (third.version, third.state) == (3, "under_review")
+    page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
+    assert 'id="postmortem-status">under_review<' in page.text
+    assert page.text.count("citations failed</strong>") == 2
+    for draft in (first, second):
+        version = call(
+            env["app"],
+            "GET",
+            f"/postmortems/{draft.object_id}/versions/{draft.version}",
+            headers=basic(),
+        )
+        assert 'id="no-review"' in version.text and "<form" not in version.text
+    assert _review(env, third, "approve").status == 200
