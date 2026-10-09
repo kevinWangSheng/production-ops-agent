@@ -113,9 +113,18 @@ def incident(scratch_dsn: str) -> tuple[UUID, UUID, UUID, UUID]:
     return incident_id, session_id, ending_id, run_id
 
 
-def _watermark(ids: tuple[UUID, UUID, UUID, UUID]) -> Watermark:
+def _watermark(store: KnowledgeStore, ids: tuple[UUID, UUID, UUID, UUID]) -> Watermark:
     _, session_id, ending_id, run_id = ids
-    return Watermark(0, 0, session_id, ending_id, 1, run_id, 0, "e" * 64)
+    return Watermark(
+        0,
+        0,
+        session_id,
+        ending_id,
+        1,
+        run_id,
+        0,
+        store.evidence_snapshot_sha256(ids[0]),
+    )
 
 
 def _conclusion(key: str = "c1", valid: bool = True) -> ConclusionDraft:
@@ -162,7 +171,7 @@ def _draft(
         idempotency_key=key,
         actor=actor or Actor("worker-1", "worker"),
         content=content or {"impact": "limited", "timeline": []},
-        watermark=_watermark(ids),
+        watermark=_watermark(store, ids),
         conclusions=conclusions,
         proposals=proposals,
         disputes=disputes,
@@ -216,7 +225,7 @@ def test_worker_generation_auto_enters_review_with_watermark_hash_and_audit(
         assert conn.execute(
             "SELECT evidence_snapshot_sha256 FROM opspilot_postmortem_versions WHERE postmortem_id=%s AND version=1",
             (result.object_id,),
-        ).fetchone() == ("e" * 64,)
+        ).fetchone() == (store.evidence_snapshot_sha256(incident[0]),)
     assert len(store.audit_trail("postmortem", result.object_id)) == 2
 
 
@@ -445,6 +454,43 @@ def test_watermark_move_rejects_approval_and_old_draft_cannot_be_trusted(
         ).fetchone() == (0,)
 
 
+def test_new_committed_evidence_makes_existing_draft_unapprovable(
+    store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID]
+) -> None:
+    """D1: evidence added after generation moves the evidence watermark."""
+    draft = _draft(store, incident, key="evidence-watermark", proposals=(_proposal(),))
+    before = store.evidence_snapshot_sha256(incident[0])
+    with psycopg.connect(store.dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,committed) VALUES(%s,%s,%s,'ok',true,%s,%s,%s,%s,%s,%s,true)",
+            (
+                f"ev-{uuid4()}",
+                str(incident[3]),
+                str(incident[0]),
+                b"evidence",
+                "a" * 64,
+                "{}",
+                "b" * 64,
+                "projection-1",
+                datetime.now(timezone.utc),
+            ),
+        )
+    assert store.evidence_snapshot_sha256(incident[0]) != before
+    with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
+        store.approve(
+            draft.object_id,
+            1,
+            expected_generation=draft.generation,
+            idempotency_key="approve-after-evidence",
+            actor=Actor("alice", "basic_auth"),
+        )
+    with psycopg.connect(store.dsn) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_knowledge_revisions WHERE source_postmortem_id=%s",
+            (draft.object_id,),
+        ).fetchone() == (0,)
+
+
 @pytest.mark.parametrize("changed", ["content", "actor", "watermark"])
 def test_idempotency_key_cannot_be_rebound(
     store: KnowledgeStore, incident: tuple[UUID, UUID, UUID, UUID], changed: str
@@ -454,7 +500,7 @@ def test_idempotency_key_cannot_be_rebound(
     content, actor, watermark = (
         {"impact": "limited"},
         Actor("worker-1", "worker"),
-        _watermark(incident),
+        _watermark(store, incident),
     )
     if changed == "content":
         content = {"impact": "different"}
@@ -462,7 +508,14 @@ def test_idempotency_key_cannot_be_rebound(
         actor = Actor("other", "worker")
     if changed == "watermark":
         watermark = Watermark(
-            0, 0, incident[1], incident[2], 1, incident[3], 1, "e" * 64
+            0,
+            0,
+            incident[1],
+            incident[2],
+            1,
+            incident[3],
+            1,
+            store.evidence_snapshot_sha256(incident[0]),
         )
     with pytest.raises(PersistenceError):
         store.record_draft(

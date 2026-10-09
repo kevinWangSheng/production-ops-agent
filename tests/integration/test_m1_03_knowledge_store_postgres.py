@@ -52,7 +52,8 @@ F13_TABLES = (
 )
 REVIEWER = Actor("alice", "basic_auth")
 WORKER = Actor("worker-1", "worker")
-EVIDENCE_HASH = "a" * 64
+# the evidence snapshot of an incident with no committed evidence
+EVIDENCE_HASH = content_sha256(canonical_json([]))
 
 
 def _new_database() -> str:
@@ -887,3 +888,32 @@ def test_0007_to_0008_round_trip_keeps_business_rows() -> None:
         assert schema.schema_dump(scratch, pg_dump=PG_DUMP) == head_dump
     finally:
         _drop_database(name)
+
+
+def test_new_committed_evidence_moves_the_watermark(store, dsn) -> None:
+    incident_id, watermark = _seed_incident(dsn)
+    assert store.evidence_snapshot_sha256(incident_id) == EVIDENCE_HASH
+    draft = _draft(store, incident_id, watermark)
+    with psycopg.connect(dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_evidence(evidence_id, run_id, subject_id, status, adopted, "
+            "raw, raw_sha256, view, view_sha256, projection_revision, observed_at, committed) "
+            "VALUES (%s, %s, %s, 'ok', true, '\\x00', %s, '{}', %s, 'p1', clock_timestamp(), true)",
+            (
+                f"ev-{uuid4().hex}",
+                str(watermark.last_run_id),
+                str(incident_id),
+                "b" * 64,
+                "c" * 64,
+            ),
+        )
+    moved = store.evidence_snapshot_sha256(incident_id)
+    assert moved != EVIDENCE_HASH
+    with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
+        store.approve(
+            draft.object_id,
+            1,
+            expected_generation=2,
+            idempotency_key=_key(),
+            actor=REVIEWER,
+        )

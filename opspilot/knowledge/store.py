@@ -23,8 +23,8 @@ Every mutation is one transaction that
 3. checks the caller's expected generation of that object (D9, independent
    of the incident control generation), the transition against the domain
    ``POSTMORTEM`` machine and, for a draft or an approval, that the
-   incident's control/observation generations, Run count and input
-   watermark still equal the version's watermark (D1);
+   incident's control/observation generations, Run count, input watermark
+   and evidence snapshot still equal the version's watermark (D1);
 4. writes the audit row(s) -- actor id, authenticated principal kind,
    action, reason, expected/resulting generation -- the state change, and
    last the request row with the result.
@@ -284,7 +284,7 @@ def _validate_conclusion(conclusion: object) -> ConclusionDraft:
         raise PersistenceError("INVALID_INPUT")
     if not conclusion.citations_valid and conclusion.certainty != "uncertain":
         raise PersistenceError("INVALID_INPUT")
-    if isinstance(conclusion.evidence_refs, (str, bytes, Mapping)) or not all(
+    if not isinstance(conclusion.evidence_refs, (list, tuple)) or not all(
         isinstance(ref, Mapping) for ref in conclusion.evidence_refs
     ):
         raise PersistenceError("INVALID_INPUT")
@@ -346,7 +346,8 @@ class KnowledgeStore(_StoreBase):
 
         ``expected_generation`` 0 means "no postmortem yet". The watermark
         must equal the incident's current state: control and observation
-        generations, Run count, input watermark (``WATERMARK_MOVED``
+        generations, Run count, input watermark and
+        :meth:`evidence_snapshot_sha256` (``WATERMARK_MOVED``
         otherwise), and name an ended observation session of this incident
         with its ending record (``INVALID_INPUT``). When every conclusion's
         citations validated the version enters review in this transaction
@@ -816,6 +817,12 @@ class KnowledgeStore(_StoreBase):
                 (object_kind, object_id),
             ).fetchall()
 
+    def evidence_snapshot_sha256(self, incident_id: UUID) -> str:
+        """The evidence snapshot hash a draft's watermark must carry: what
+        ``record_draft`` and ``approve`` recompute and compare (D1)."""
+        with self.transaction(snapshot=True) as conn:
+            return self._evidence_snapshot(conn, incident_id)
+
     # --- internals
 
     def _transition(
@@ -1043,7 +1050,7 @@ class KnowledgeStore(_StoreBase):
     ) -> dict[str, Any]:
         row = conn.execute(
             "SELECT state, incident_control_generation, observation_generation, run_count, "
-            "input_watermark FROM opspilot_postmortem_versions "
+            "input_watermark, evidence_snapshot_sha256 FROM opspilot_postmortem_versions "
             "WHERE postmortem_id=%s AND version=%s",
             (postmortem_id, version),
         ).fetchone()
@@ -1092,10 +1099,9 @@ class KnowledgeStore(_StoreBase):
         conn: Connection, incident_id: UUID, watermark: Mapping[str, Any]
     ) -> bool:
         """Has the incident moved past ``watermark`` (D1)? Control and
-        observation generations, Run count and input watermark are compared
-        under a share lock on the incident row, so a concurrent control
-        action or Run is ordered after this transaction. The evidence
-        snapshot hash is the generator's (step 2) to recompute."""
+        observation generations, Run count, input watermark and the evidence
+        snapshot are compared under a share lock on the incident row, so a
+        concurrent control action or Run is ordered after this transaction."""
         current = conn.execute(
             "SELECT i.control_generation, i.observation_generation, "
             "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id) AS run_count, "
@@ -1111,6 +1117,29 @@ class KnowledgeStore(_StoreBase):
             or current["observation_generation"] != watermark["observation_generation"]
             or current["run_count"] != watermark["run_count"]
             or current["input_watermark"] != watermark["input_watermark"]
+            or KnowledgeStore._evidence_snapshot(conn, incident_id)
+            != watermark["evidence_snapshot_sha256"]
+        )
+
+    @staticmethod
+    def _evidence_snapshot(conn: Connection, incident_id: UUID) -> str:
+        """sha256 of the canonical list ``[evidence_id, raw_sha256,
+        view_sha256, adopted]`` of the incident's committed evidence (the
+        evidence of its Runs that a tool result has cited), ordered by id."""
+        rows = conn.execute(
+            "SELECT e.evidence_id, e.raw_sha256, e.view_sha256, e.adopted "
+            "FROM opspilot_evidence e WHERE e.committed AND e.run_id IN "
+            "(SELECT r.run_id::text FROM opspilot_runs r WHERE r.incident_id=%s) "
+            "ORDER BY e.evidence_id",
+            (incident_id,),
+        ).fetchall()
+        return content_sha256(
+            canonical_json(
+                [
+                    [r["evidence_id"], r["raw_sha256"], r["view_sha256"], r["adopted"]]
+                    for r in rows
+                ]
+            )
         )
 
     @staticmethod
