@@ -585,7 +585,9 @@ def test_a_stale_version_shows_its_reason_and_offers_no_review(env) -> None:
     )
     assert 'id="stale-reason">run_added<' in page.text
     assert 'id="no-review"' in page.text and "<form" not in page.text
-    incident_page = call(env["app"], "GET", f"/incidents/{incident_id}", headers=basic())
+    incident_page = call(
+        env["app"], "GET", f"/incidents/{incident_id}", headers=basic()
+    )
     assert 'id="postmortem-status">stale<' in incident_page.text
     assert "run_added" in incident_page.text
     late = _review(env, draft, "approve", expected_generation=draft.generation + 1)
