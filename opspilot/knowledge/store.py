@@ -320,9 +320,9 @@ class KnowledgeStore(_StoreBase):
             if exc.diag.constraint_name == "opspilot_f13_requests_pkey":
                 return "IDEMPOTENCY_CONFLICT"
             return "INTEGRITY_REFUSED"
-        if isinstance(
-            exc, (errors.IntegrityConstraintViolation, errors.InsufficientPrivilege)
-        ):
+        # CheckViolation, ForeignKeyViolation, NotNullViolation... derive from
+        # IntegrityError (SQLSTATE class 23), not IntegrityConstraintViolation
+        if isinstance(exc, (errors.IntegrityError, errors.InsufficientPrivilege)):
             return "INTEGRITY_REFUSED"
         return _StoreBase._error_code(exc)  # type: ignore[arg-type]
 

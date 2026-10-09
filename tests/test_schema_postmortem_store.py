@@ -48,3 +48,21 @@ def test_every_review_action_maps_to_a_domain_edge() -> None:
 def test_terminal_states_are_exactly_the_reviewed_or_superseded_ones() -> None:
     terminal = {s for s in POSTMORTEM.states if POSTMORTEM.terminal(s)}
     assert terminal == {"approved", "rejected", "returned", "stale"}
+
+
+def test_refusals_map_to_integrity_refused_and_transients_keep_their_codes() -> None:
+    from psycopg import errors
+
+    code = store.KnowledgeStore._error_code
+    for refused in (
+        errors.CheckViolation,
+        errors.ForeignKeyViolation,
+        errors.NotNullViolation,
+        errors.InsufficientPrivilege,
+        errors.UniqueViolation,
+    ):
+        assert code(refused()) == "INTEGRITY_REFUSED", refused
+    assert code(errors.SerializationFailure()) == "RETRY"
+    assert code(errors.DeadlockDetected()) == "RETRY"
+    assert code(errors.QueryCanceled()) == "TIMEOUT"
+    assert code(errors.LockNotAvailable()) == "TIMEOUT"
