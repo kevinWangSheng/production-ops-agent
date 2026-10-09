@@ -1,7 +1,7 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；第 6 步前置修复已合并 #132 #130 #131；第 5 步重放展示 #139、验收投影 #143、F6 验收接线 #137 已合并；下一步第 6 步 #88）
-- 更新日期：2026-10-08
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；第 6 步前置修复已合并 #132 #130 #131；第 5 步重放展示 #139、验收投影 #143、F6 验收接线 #137 已合并；第 6 步真实验收 #88 已执行，PR 待用户门）
+- 更新日期：2026-10-08（第 6 步）
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
 
@@ -174,8 +174,25 @@
 ## 下一步与交接
 
 - 门槛 PR 已合并（#73）；子项 issue 见 #82–#88。
-- 上游核对已完成（见上表）；第 0–4 步、第 6 步前置修复、第 5 步与验收接线均已合并（见下两节）。**下一步第 6 步真实验收（#88）**：起 kind 实验环境后先核对 #88 评论里的未校准信号（`kube_deployment_status_replicas_ready`、窗内最小可用副本），再跑四个场景 + 重放，按 ADR-0006 附 trace 与 `summary.json`。F6 外部验收现为 36 场景 + 5 重放全部经产品投影通过、2 个撤销/到期合同 xfail（接口冲突）；`passes` 未翻转，待 #88。其余跟踪：#124（暂不做）、#127、#128、#133、#134、#135、#142、#144、#145。
-- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停。
+- 上游核对已完成（见上表）；第 0–6 步全部执行（第 6 步见「第 6 步执行」，PR 待用户门）。F6 外部验收为 36 场景 + 5 重放经产品投影通过、2 个撤销/到期合同 xfail（接口冲突，`sample_jobs` 投影）；真实环境四场景 + 重放在 main `510dcd3` 上通过；之后合并的 #147 #148 #150 #152 改了采样、重放、投影与控制路径，当前 main 未重跑（第 6 步的 PG 数据保留在 `../production-ops-agent-f6-live/tmp/pg55601`，可对其重新施加重放与投影）。用户 2026-10-08 决定：#157 健康窗改为从窗口末尾起算（随之在新代码上重跑全部场景）；#154 `actions` 为完整审计（#160）；Observer trace 暂不补（#159）。**`passes` 未翻转**，另受 2 个撤销/到期合同 xfail 约束。其余跟踪：#124（暂不做）、#117、#134、#156、#157、#159。
+- 当前没有运行中的服务或进程：colima `m1-kind` 已停（集群与 release 保留，`kind_lab.py up` 即可恢复；Prometheus 已开认证，口令在主仓库 `tmp/m1-kind-lab/`）；本机 55431 lab 库在 0005，已停；第 6 步的临时 PG 数据（55601/55606，已停）保留在 `../production-ops-agent-f6-live/tmp/`，该 worktree 保留到 #157 重跑完成后再清理。
+
+## 第 6 步执行（2026-10-08，F6 真实环境验收，#88，分支 `feature/F6-live-acceptance`，worktree `../production-ops-agent-f6-live`，基于 main `510dcd3`）
+
+证据：[docs/evidence/m1-02-live/run.md](../evidence/m1-02-live/run.md)（环境、校准、四场景 + 重放、限制）；每场景 `summary.json`（冻结摘要含 `recovery_outcome` 投影）、`replay.json`（离线重放 CLI）、`incident-page.html`。产品代码、迁移、shipped profile **零改动**；`passes` 未翻转。
+
+- 环境：kind 实验环境 17:13–18:10Z 与 18:18–19:03Z（`kind_lab.py up/stop`；第二次 VM 重启后 load-generator 不发请求、span 计数器不增长，工程侧 `rollout restart` 后恢复，记在证据）；临时 PG 55601（空库 migrate 到 0005，Observer 登录 `obs_lab_login`）；工作台 `env -i` 两实例（有界变体 / shipped profile，身份文件只列 `checkout-lab` → otel-demo/checkout/otel-demo-checkout）；Observer 进程 `env -i` 只带自己的 DSN、Prometheus URL 与 observer 账号文件：第一个 17:16–18:09Z 服务四场景，第二个 18:18–19:02Z 服务第 2 步重跑。事故提交与登记处置全部经工作台 HTTP（`/intake/ui`、`/incidents/<id>/control register_remediation`），不直调存储原语。无模型调用（调查 Run 保持 queued）、无 trace（观察路径无埋点，按计划第 6 项），费用 0。
+- 校准（#88 评论）：`kube_deployment_status_replicas_ready{namespace,deployment}` 与 `min_over_time(kube_deployment_status_replicas_available[5m])` 在实验环境各恰好 1 条序列、`namespace`/`deployment` 为直接标签、300 s 窗 3（VM 刚恢复）→ 5 个原始点（60 s 抓取）、值 1 = `spec.replicas`、新鲜度 ≤ 60 s；阈值 `min 1` 与 `minimum_samples=3` 成立，**profile 不改**（revision 仍 `otel-demo-checkout@b72bbe2e30be`）。故障下 `error_ratio` 0.586、`dependency_error_ratio` 0.057 越过 0.01 上限，其余不变。
+- 四场景（每采样 8 信号 × 3 查询，稳态 `sample_count=5`、遥测刚恢复的窗口 2–4 点；重放 CLI 全部 `consistent=true`、`external_queries=[]`、`model_requests=[]`；投影 `permissions=[read_only, human_control]`）：
+  - 第 4 步持续异常（有界变体 `max_samples=11`，paymentFailure 保持注入）：11 个 `degraded`（错误率 0.83–1.0、依赖错误率 0.09–0.15）→ `max_samples_exhausted` → 事故回 `open`；投影 `degraded` / `CONTINUED_DEGRADATION` / handoff；无部署、回滚、发布门动作。
+  - 第 2 步撤流量：首次尝试（restore 与撤流量同时）3 个 `degraded`（比率恒 1.0）+ 8 个 `no_data` → 不确认 → 回 `open`，Codex 审查指出没有覆盖「错误率下降」；**重跑**（18:48–19:02Z，第二次起实验环境）：restore 后等比率降到 0.44 再撤流量并登记 → 采样 1 `degraded`（0.27）、2–3 `healthy` 但 `window_before_authorization` 不计入、4–11 `no_data`（率 0）→ 不确认 → 次数耗尽回 `open`；投影 `unknown` / `INSUFFICIENT_TRAFFIC` + `REQUIRED_TELEMETRY_MISSING`。
+  - 第 3 步去遥测（kube-state-metrics 0）：3 个 `stale`（`min_over_time` 还能从旧点算值但新鲜度 > 90 s；即时查询因 staleness marker 空）+ 8 个 `no_data` → `unknown`、`MISSING_SIGNAL:<四个 deployment 信号>` → 次数耗尽交接回 `open`。
+  - 第 1 步处置后恢复（**shipped profile**，inject → restore 即登记）：4 个 `degraded`（窗内尚含故障）→ 6 个 `healthy`，第 10 个采样健康窗 601 s ≥ 600 → `recovery_confirmed`，事故 `resolved`；投影 `healthy`、`recovery_confirmed=true`、`healthy_window_seconds=601`、无交接。
+- 自行决定并记录理由：场景 2–4 用只改 `session.max_samples=11`（加载器下限）与 description 前缀的有界变体 profile（文件随证据入库），让「未确认 → 次数耗尽交接」在 11 分钟内真实发生，信号与阈值与 shipped 逐字段相同；场景 1 用 shipped profile 以证明真实 `resolved`。驱动脚本放 `docs/evidence/m1-02-live/`（工程脚本，与第 4 步同模式），不进 `scripts/`。
+- 发现 → issue：**#157** `healthy_since` 取首个健康采样的窗口起点，与上一个 degraded 采样的窗口重叠 240 s（确认距最后异常窗口末尾 361 s）——第 2 步折叠规则的既定语义，合同层取舍，本步不改。
+- 未执行 / 限制（详见 run.md）：真实 `deadline_expired` 未等（第 4 步已有两例）；缺 span 信号的单独场景、pod 重启形态、Playwright 截图未做；流量薄（2 locust 用户）。
+- 验证：`make check` 见 PR；证据目录对 UI 口令、pbkdf2 哈希、四个 Prometheus 口令、`Basic` 头 grep 为空。
+- 独立审查：Codex exec（全新上下文）审查证据真实性与验收判断，处置见 PR。
 
 ## 第 5 步与验收接线（2026-10-08，#87 #140 #115）
 
