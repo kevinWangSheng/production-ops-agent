@@ -20,7 +20,10 @@ job (M1-02 step 4, issue #86; C3 section 10 "采样与提交"):
 5. the raw bodies of the three responses travel with the reading (a bounded
    JSON bundle with its sha256 and the ``sample_time`` used, kept by the
    store; ``replay_readings`` re-judges from it alone) and the sample is
-   submitted in one transaction.
+   submitted in one transaction. Each request that actually went out also
+   carries its own ``sent_at`` (issue #156): the Observer wall clock right
+   after the request bytes reached the socket. It orders the audit's
+   ``read_only_query`` actions and never enters a verdict.
 
 No model is called anywhere on this path, and nothing here imports the
 investigation worker, the tool gateway or their credentials.
@@ -427,8 +430,10 @@ def _bundle(
 ) -> tuple[bytes, bool]:
     """The three responses as one JSON document: exact body bytes (base64)
     with their own sha256 each, whether each body is complete, the
-    expression, HTTP status, the instant the queries were evaluated at and
-    the ``sample_time`` the verdict used. Deterministic for the same inputs.
+    expression, HTTP status, when each request was sent (``sent_at``, only
+    on a request that went out), the instant the queries were evaluated at
+    and the ``sample_time`` the verdict used. Deterministic for the same
+    inputs.
 
     Bounded as a whole by ``READING_RAW_LIMIT`` (the store's CHECK): three
     complete bodies at ``RESPONSE_LIMIT_BYTES`` fit with room to spare, but
@@ -463,6 +468,8 @@ def _bundle(
                 "body_sha256": hashlib.sha256(bodies[kind]).hexdigest(),
                 "body_b64": base64.b64encode(bodies[kind]).decode("ascii"),
             }
+            if item.sent_at is not None:
+                document[kind]["sent_at"] = item.sent_at.isoformat()
         raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
         excess = len(raw) - READING_RAW_LIMIT
         if excess <= 0:

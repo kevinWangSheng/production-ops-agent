@@ -18,6 +18,7 @@ from typing import Literal, cast
 # from different committed records (sessions, samples, endings, control
 # audit) and from the offline replay rather than from a Run snapshot.
 from opspilot.acceptance_recovery import (  # noqa: E402
+    RecoveryAction,
     RecoveryOutcome,
     RecoveryRecords,
     RecoverySample,
@@ -31,6 +32,7 @@ from opspilot.investigation.loop import LoopOutcome
 __all__ = [
     "IncidentOutcome",
     "IncidentScenario",
+    "RecoveryAction",
     "RecoveryOutcome",
     "RecoveryRecords",
     "RecoverySample",

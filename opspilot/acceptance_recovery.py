@@ -40,16 +40,34 @@ Field sources (``RecoveryOutcome``):
   recorded: ``evaluated_at`` the queries were evaluated at, ``sample_time``
   the verdict judged freshness against, ``observed_at`` the newest raw
   sample behind the signal as the freshness query answered -- ``None``
-  when the bundle does not verify or the answer carried none) and the
-  replay's per-signal verdict; ``evidence_id`` is ``<sample_id>:<signal_name>``.
+  when the bundle does not verify or the answer carried none; ``sent_at``
+  the Observer wall-clock send time of each request that recorded one, by
+  query kind) and the replay's per-signal verdict; ``evidence_id`` is
+  ``<sample_id>:<signal_name>``.
 * ``recovery_profile_revision`` / ``recovery_profile_content``: the frozen
   profile row behind the session's revision; ``recovery_handled_at``: the
   session's ``authorized_at``.
-* ``actions``: the audit of what the product did, merged in event time
-  (control rows by ``created_at``, a sample's queries by the bundle's
-  ``evaluated_at`` and its persistence by ``submitted_at``, ending
-  records by ``recorded_at``; a row without a timestamp keeps its record
-  position). Control rows: ``register_remediation`` -> ``record_handling``,
+* ``actions``: the audit of what the product did, merged in event time;
+  ``action_events`` is the same sequence with the time each action is
+  ordered by and how far that order can be trusted (#156). Control rows
+  by ``created_at``, a sample's persistence by ``submitted_at`` and ending
+  records by ``recorded_at`` -- all database clock; a row without a
+  timestamp keeps its record position. Each query by its own ``sent_at``
+  (Observer wall clock, recorded right after the request reached the
+  socket); a query without one (a bundle written before #156, or a
+  request that never reached the socket) falls back to the bundle's
+  ``evaluated_at``, then the sample's ``submitted_at``, and is marked
+  ``approximate``. The two clocks are compared with ``ORDER_SKEW`` (60 s,
+  the replay's skew): a query is placed after every database-clock event
+  more than that before it and before every one more than that after it;
+  inside the band the record position decides (control rows come first,
+  then each session's samples in order and its ending records) and a
+  control row or ending record found there is marked ``order_uncertain``
+  together with the query -- the records cannot say which came first, and
+  the projection does not pretend they can. A sample's own persistence and
+  the next sample's queries are ordered by record position without that
+  mark: one session runs one sampling job at a time, so they are causal.
+  Control rows: ``register_remediation`` -> ``record_handling``,
   plus ``advance_incident_lifecycle`` only when the lifecycle did move --
   the k-th registration authorizes the k-th session; the incident was
   ``open`` before the first one, and before a later one it was whatever the
@@ -77,7 +95,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from opspilot.observation.store import RECORD_COLUMNS
@@ -91,6 +109,8 @@ from opspilot.observer.sampler import PROFILE_SENTINEL
 
 __all__ = [
     "OBSERVER_GRANTS",
+    "ORDER_SKEW",
+    "RecoveryAction",
     "RecoveryOutcome",
     "RecoveryRecords",
     "RecoverySample",
@@ -189,6 +209,10 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
         ),
     },
 }
+#: Clock tolerance between the Observer's wall clock (``sent_at``) and the
+#: database clock of every other record time (issue #156 decision 2): the
+#: replay's own minute (``replay.SENT_AT_SKEW``).
+ORDER_SKEW = timedelta(seconds=60)
 _WRITES = ("INSERT", "UPDATE")
 _DELETES = ("DELETE", "TRUNCATE")
 _HANDOFF_ENDINGS = frozenset({"deadline_expired", "max_samples_exhausted"})
@@ -235,6 +259,27 @@ class RecoverySignal:
     body_sha256: str | None
     verdict: str | None
     reason: str | None
+    # query kind -> the request's recorded send time (Observer wall clock);
+    # a kind is absent when its request recorded none
+    sent_at: Mapping[str, datetime] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RecoveryAction:
+    """One audited action and the time the audit orders it by (#156)."""
+
+    action: str
+    at: datetime | None
+    # the record time ``at`` is: ``created_at`` (control row), ``sent_at``
+    # (a query, Observer clock), ``evaluated_at`` / ``submitted_at`` (a query
+    # without a recorded send time), ``submitted_at`` (persistence),
+    # ``recorded_at`` (ending record); None when the row carried no time
+    time_source: str | None
+    # a query ordered by a fallback time, not its own send time
+    approximate: bool = False
+    # the order against a database-clock control or ending record within
+    # ``ORDER_SKEW`` is the record position, not a measured precedence
+    order_uncertain: bool = False
 
 
 @dataclass(frozen=True)
@@ -292,6 +337,7 @@ class RecoveryOutcome:
     permissions: tuple[str, ...]
     replay: SessionReplay | None
     model_requests: tuple[Any, ...] = field(default=())
+    action_events: tuple[RecoveryAction, ...] = field(default=())
 
 
 def _extra(measured: Grant | None, allowed: Grant | None) -> Columns | str | None:
@@ -456,17 +502,30 @@ def _body_sha256(bundle: Mapping[str, Any] | None) -> str | None:
     return digest if isinstance(digest, str) else None
 
 
-def _queries_sent(bundle: Mapping[str, Any] | None) -> int:
-    """How many of the reading's three instant queries were actually sent:
-    a part the sampler filled in locally because the lease budget was spent
-    carries detail ``LEASE_BUDGET`` and was never a request."""
+def _queries_sent(bundle: Mapping[str, Any] | None) -> list[Mapping[str, Any]]:
+    """The parts of the reading's three instant queries that were actually
+    requests, in request order: a part the sampler filled in locally because
+    the lease budget was spent carries detail ``LEASE_BUDGET`` and was never
+    a request."""
     if bundle is None:
-        return 0
-    sent = 0
+        return []
+    parts: list[Mapping[str, Any]] = []
     for kind in ("query", "coverage", "freshness"):
         part = bundle.get(kind)
         if isinstance(part, Mapping) and part.get("detail") != "LEASE_BUDGET":
-            sent += 1
+            parts.append(part)
+    return parts
+
+
+def _sent_at(bundle: Mapping[str, Any] | None) -> dict[str, datetime]:
+    sent: dict[str, datetime] = {}
+    if bundle is None:
+        return sent
+    for kind in ("query", "coverage", "freshness"):
+        part = bundle.get(kind)
+        at = _instant(part, "sent_at") if isinstance(part, Mapping) else None
+        if at is not None:
+            sent[kind] = at
     return sent
 
 
@@ -498,6 +557,7 @@ def _signals(
             body_sha256=_body_sha256(bundle),
             verdict=None if item is None else item.verdict,
             reason=None if item is None else item.reason,
+            sent_at=_sent_at(bundle),
         )
     return signals
 
@@ -551,11 +611,62 @@ def _lifecycle_before_registration(
     return None if after is None else str(after)
 
 
+@dataclass
+class _Event:
+    at: datetime | None
+    position: int
+    actions: list[str]
+    source: str | None
+    # "control" | "query" | "persist" | "ending"
+    kind: str
+    # ``at`` is the Observer's wall clock (a query's own ``sent_at``)
+    observer: bool = False
+    approximate: bool = False
+    uncertain: bool = False
+
+
+def _query_events(stored: Mapping[str, Any], position: int) -> tuple[list[_Event], int]:
+    """One ``read_only_query`` event per request a sample's bundles show as
+    sent, at its own ``sent_at`` or, without one, at the fallback time."""
+    events: list[_Event] = []
+    submitted = stored.get("submitted_at")
+    for row in stored.get("readings") or ():
+        if str(row.get("signal_name")) == PROFILE_SENTINEL:
+            continue
+        bundle = _bundle(row)
+        evaluated = _instant(bundle, "evaluated_at")
+        for part in _queries_sent(bundle):
+            sent = _instant(part, "sent_at")
+            if sent is not None:
+                event = _Event(sent, position, ["read_only_query"], "sent_at", "query")
+                event.observer = True
+            elif evaluated is not None:
+                # the queries were evaluated at the window end; when the
+                # request left is not recorded (a takeover can still fall
+                # between this and ``submitted_at``)
+                event = _Event(
+                    evaluated, position, ["read_only_query"], "evaluated_at", "query"
+                )
+                event.approximate = True
+            else:
+                event = _Event(
+                    submitted,
+                    position,
+                    ["read_only_query"],
+                    None if submitted is None else "submitted_at",
+                    "query",
+                )
+                event.approximate = True
+            events.append(event)
+            position += 1
+    return events, position
+
+
 def _actions(
     controls: Sequence[Mapping[str, Any]], sessions: Sequence[Mapping[str, Any]]
-) -> tuple[str, ...]:
+) -> tuple[RecoveryAction, ...]:
     """The product's actions merged in event time (see the module doc)."""
-    events: list[tuple[datetime | None, int, list[str]]] = []
+    events: list[_Event] = []
     order = 0
     registrations = 0
     for row in controls:
@@ -571,29 +682,25 @@ def _actions(
             done.append("human_takeover")
         else:
             done.append(f"human_control:{action}")
-        events.append((row.get("created_at"), order, done))
+        at = row.get("created_at")
+        events.append(
+            _Event(at, order, done, None if at is None else "created_at", "control")
+        )
         order += 1
     for history in sessions:
         for stored in history["samples"]:
-            queries: list[str] = []
-            evaluated: list[datetime] = []
-            for row in stored.get("readings") or ():
-                if str(row.get("signal_name")) == PROFILE_SENTINEL:
-                    continue
-                bundle = _bundle(row)
-                queries.extend(["read_only_query"] * _queries_sent(bundle))
-                at = _instant(bundle, "evaluated_at")
-                if at is not None:
-                    evaluated.append(at)
-            if queries:
-                # the queries ran when the bundle says; ``submitted_at`` is
-                # only when the sample was persisted (a takeover can fall
-                # between the two)
-                events.append(
-                    (min(evaluated, default=stored.get("submitted_at")), order, queries)
+            queries, order = _query_events(stored, order)
+            events.extend(queries)
+            at = stored.get("submitted_at")
+            events.append(
+                _Event(
+                    at,
+                    order,
+                    ["persist_observation"],
+                    None if at is None else "submitted_at",
+                    "persist",
                 )
-                order += 1
-            events.append((stored.get("submitted_at"), order, ["persist_observation"]))
+            )
             order += 1
         for ending in history.get("endings") or ():
             done = []
@@ -601,18 +708,66 @@ def _actions(
                 done.append("advance_incident_lifecycle")
             if ending.get("ended_reason") in _HANDOFF_ENDINGS:
                 done.append("human_handoff")
-            events.append((ending.get("recorded_at"), order, done))
+            at = ending.get("recorded_at")
+            events.append(
+                _Event(at, order, done, None if at is None else "recorded_at", "ending")
+            )
             order += 1
+    return tuple(
+        RecoveryAction(
+            action=action,
+            at=event.at,
+            time_source=event.source,
+            approximate=event.approximate,
+            order_uncertain=event.uncertain,
+        )
+        for event in _merged(events)
+        for action in event.actions
+    )
+
+
+def _merged(events: Sequence[_Event]) -> list[_Event]:
+    """Database-clock events in their own time; each Observer-clock query
+    inserted where ``ORDER_SKEW`` and the record position put it."""
     # event time first; a row without one keeps its position relative to
     # the previous timestamped row (stable sort on the record position)
     last: datetime | None = None
-    keyed: list[tuple[datetime | None, int, list[str]]] = []
-    for at, position, done in events:
-        if at is not None:
-            last = at
-        keyed.append((last, position, done))
-    keyed.sort(key=lambda item: (item[0] is not None, item[0] or datetime.min, item[1]))
-    return tuple(action for _, _, done in keyed for action in done)
+    keyed: list[tuple[datetime | None, _Event]] = []
+    for event in events:
+        if event.observer:
+            continue
+        if event.at is not None:
+            last = event.at
+        keyed.append((last, event))
+    keyed.sort(
+        key=lambda item: (
+            item[0] is not None,
+            item[0] or datetime.min,
+            item[1].position,
+        )
+    )
+    placed: dict[int, list[_Event]] = {}
+    for query in (event for event in events if event.observer):
+        assert query.at is not None
+        after = -1
+        for index, (at, event) in enumerate(keyed):
+            if at is None or at < query.at - ORDER_SKEW:
+                precedes = at is not None or event.position < query.position
+            elif at > query.at + ORDER_SKEW:
+                precedes = False
+            else:
+                precedes = event.position < query.position
+                if event.kind in ("control", "ending") and event.at is not None:
+                    event.uncertain = query.uncertain = True
+            if precedes:
+                after = index
+        placed.setdefault(after, []).append(query)
+    merged: list[_Event] = []
+    for index in range(-1, len(keyed)):
+        if index >= 0:
+            merged.append(keyed[index][1])
+        merged.extend(sorted(placed.get(index, ()), key=lambda q: (q.at, q.position)))
+    return merged
 
 
 def _session_projection(subject_id: str, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -727,6 +882,7 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
     recorded_lifecycle = str(incident["lifecycle"])
     vouched = replay is None or replay.consistent
     profile_row = None if latest is None else latest.get("health_profile")
+    action_events = _actions(controls, sessions)
     return RecoveryOutcome(
         scenario_id=str(scenario.scenario_id),
         subject_id=subject_id,
@@ -769,9 +925,10 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
         ),
         sample_jobs=_sample_jobs(sessions),
         handling_audit=controls,
-        actions=_actions(controls, sessions),
+        actions=tuple(event.action for event in action_events),
         permissions=permissions_from_grants(
             records.grants, human_control=bool(controls)
         ),
         replay=replay,
+        action_events=action_events,
     )

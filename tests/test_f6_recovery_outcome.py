@@ -708,29 +708,72 @@ def test_a_control_row_of_another_incident_is_refused(incident_id):
         recovery_outcome(_scenario(history), _records(history, controls=[control]))
 
 
-def test_a_takeover_between_the_queries_and_the_commit_follows_the_queries():
-    """The queries ran at the bundle's ``evaluated_at``; ``submitted_at`` is
-    only when the sample was persisted."""
+def test_a_takeover_between_the_queries_and_the_commit_uses_each_sent_at():
+    """Query actions use their own wire-send instant, before persistence."""
+    import json
+
+    from tests.m1_02_replay_support import rehash
+
     history = healthy_history(count=1)
     sample = history["samples"][0]
-    evaluated = (
-        recovery_outcome(_scenario(history), _records(history))
-        .recovery_samples[0]
-        .signals
-    )
-    ran_at = min(s.evaluated_at for s in evaluated.values() if s.evaluated_at)
-    sample["submitted_at"] = ran_at + timedelta(seconds=300)
+    sent_before = NOW + timedelta(seconds=1)
+    sent_after = NOW + timedelta(seconds=101)
+    sent_values = (sent_before, sent_after)
+    for index, (reading, sent_at) in enumerate(
+        zip(sample["readings"], sent_values, strict=False)
+    ):
+        bundle = json.loads(bytes(reading["raw"]))
+        for kind in ("query", "coverage", "freshness"):
+            if bundle[kind].get("detail") != "LEASE_BUDGET":
+                bundle[kind]["sent_at"] = sent_at.isoformat()
+        sample["readings"][index] = rehash(
+            reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+        )
+    sample["submitted_at"] = NOW + timedelta(seconds=300)
     takeover = {
         **_control(1, history["session"]["incident_id"]),
         "action": "takeover",
-        "created_at": ran_at + timedelta(seconds=100),
+        "created_at": NOW + timedelta(seconds=100),
     }
-    actions = recovery_outcome(
+    outcome = recovery_outcome(
         _scenario(history), _records(history, controls=[takeover])
-    ).actions
-    took = actions.index("human_takeover")
-    assert "read_only_query" not in actions[took:]
-    assert actions.index("persist_observation") > took
+    )
+    events = outcome.action_events
+    takeover_index = next(
+        i for i, e in enumerate(events) if e.action == "human_takeover"
+    )
+    query_indices = [i for i, e in enumerate(events) if e.action == "read_only_query"]
+    assert query_indices
+    query_events = [events[i] for i in query_indices]
+    assert all(event.time_source == "sent_at" for event in query_events)
+    assert any(event.at == sent_before for event in query_events)
+    assert any(event.at == sent_after for event in query_events)
+    assert any(i < takeover_index for i in query_indices)
+    assert any(i > takeover_index for i in query_indices)
+    assert outcome.actions == tuple(e.action for e in events)
+
+
+def test_sent_at_within_database_skew_is_order_uncertain():
+    """A query inside the 60-second skew keeps stable order and is marked."""
+    import json
+
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    for index, reading in enumerate(history["samples"][0]["readings"]):
+        bundle = json.loads(bytes(reading["raw"]))
+        for kind in ("query", "coverage", "freshness"):
+            bundle[kind]["sent_at"] = (NOW + timedelta(seconds=30)).isoformat()
+        history["samples"][0]["readings"][index] = rehash(
+            reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+        )
+    control = {**_control(1, history["session"]["incident_id"]), "created_at": NOW}
+    outcome = recovery_outcome(
+        _scenario(history), _records(history, controls=[control])
+    )
+    query_events = [e for e in outcome.action_events if e.action == "read_only_query"]
+    assert query_events
+    assert all(e.order_uncertain for e in query_events)
 
 
 def test_a_bundle_instant_without_a_timezone_is_not_trusted():
@@ -761,6 +804,86 @@ def test_a_bundle_instant_without_a_timezone_is_not_trusted():
         for signal in sample.signals.values()
     )
     assert "read_only_query" in outcome.actions
+    assert all(
+        event.approximate
+        for event in outcome.action_events
+        if event.action == "read_only_query"
+    )
+    legacy = healthy_history(count=1)
+    legacy_outcome = recovery_outcome(_scenario(legacy), _records(legacy))
+    assert all(
+        event.approximate
+        for event in legacy_outcome.action_events
+        if event.action == "read_only_query"
+    )
+
+
+@pytest.mark.parametrize(
+    "violation,expected",
+    [
+        ("invalid", "SENT_AT_INVALID"),
+        ("unsent", "SENT_AT_UNSENT"),
+        ("order", "SENT_AT_ORDER"),
+        ("after_sample", "SENT_AT_AFTER_SAMPLE_TIME"),
+    ],
+)
+def test_sent_at_bundle_violations_make_replay_unknown(violation, expected):
+    import json
+
+    from opspilot.observer.replay import replay_history
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    reading = history["samples"][0]["readings"][0]
+    bundle = json.loads(bytes(reading["raw"]))
+    if violation == "invalid":
+        bundle["query"]["sent_at"] = "2026-10-07T12:00:00"
+    elif violation == "unsent":
+        bundle["query"]["detail"] = "LEASE_BUDGET"
+        bundle["query"]["sent_at"] = "2026-10-07T12:00:00+00:00"
+    elif violation == "order":
+        bundle["query"]["sent_at"] = "2026-10-07T12:00:30+00:00"
+        bundle["coverage"]["sent_at"] = "2026-10-07T12:00:20+00:00"
+        bundle["freshness"]["sent_at"] = "2026-10-07T12:00:40+00:00"
+    else:
+        bundle["query"]["sent_at"] = "2026-10-07T12:02:01+00:00"
+    history["samples"][0]["readings"][0] = rehash(
+        reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    )
+    replayed = replay_history(history)
+    assert replayed.recovery_verdict == "unknown"
+    assert replayed.recorded_lifecycle != "resolved"
+    assert "STORED_OBSERVATION_INTEGRITY_MISMATCH" in replayed.integrity
+    assert any(expected in code for code in replayed.samples[0].integrity)
+
+
+def test_valid_sent_at_replay_preserves_verdict_and_old_bundle_is_approximate():
+    import json
+
+    from opspilot.observer.replay import replay_history
+    from tests.m1_02_replay_support import rehash
+
+    history = healthy_history(count=1)
+    for index, reading in enumerate(history["samples"][0]["readings"]):
+        bundle = json.loads(bytes(reading["raw"]))
+        for offset, kind in enumerate(("query", "coverage", "freshness")):
+            bundle[kind]["sent_at"] = (NOW + timedelta(seconds=offset)).isoformat()
+        history["samples"][0]["readings"][index] = rehash(
+            reading, json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+        )
+    valid = replay_history(history)
+    assert valid.integrity == ()
+    assert (
+        valid.recovery_verdict
+        == replay_history(healthy_history(count=1)).recovery_verdict
+    )
+    outcome = recovery_outcome(_scenario(history), _records(history))
+    assert outcome.actions == tuple(event.action for event in outcome.action_events)
+    assert all(
+        not event.approximate
+        for event in outcome.action_events
+        if event.action == "read_only_query"
+    )
 
 
 def test_a_job_closed_by_an_ending_keeps_its_identity_in_sample_jobs():
