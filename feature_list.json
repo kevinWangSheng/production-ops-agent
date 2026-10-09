@@ -58,7 +58,7 @@
       "Cause continued degradation and verify the incident remains open or is reopened according to the reviewed policy, without deployment, rollback or release-gate changes",
       "Replay stored observations and reconstruct the basis for the recovery result independently of the investigator narrative"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F7",

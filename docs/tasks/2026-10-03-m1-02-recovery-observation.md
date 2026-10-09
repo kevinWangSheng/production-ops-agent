@@ -1,6 +1,6 @@
 # M1-02 独立恢复观察（F6）
 
-- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；第 6 步前置修复已合并 #132 #130 #131；第 5 步重放展示 #139、验收投影 #143、F6 验收接线 #137 已合并；第 6 步真实验收 #88 已执行，PR 待用户门）
+- 状态：进行中（D1–D4 已决；门槛已合并 #73；第 0–4 步已合并 #111 #113 #114 #120 #123 #119；F6 验收与合同测试已合并 #112；第 6 步前置修复已合并 #132 #130 #131；第 5 步重放展示 #139、验收投影 #143、F6 验收接线 #137 已合并；第 6 步真实验收 #88 已执行并合并 #158；#157 规则变更与重跑 #161、#163、#165 已合并；F6 `passes` 翻转 PR 待用户门）
 - 更新日期：2026-10-08（第 6 步）
 - 依据：[feature_list.json](../../feature_list.json) F6；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)「Recovery observations」；[C3](../design/technical-proposal-2026-09-07.md) §4「事故与发布观察分开建模」、§10「健康规则 / 观察主体与授权 / 采样与提交」、§13 观察预算；[ADR-0003](../adr/0003-business-state-recovery-authority.md)；ROADMAP「M1-01 剩余工作」行的下一步
 - 工作区：门槛文档 `../production-ops-agent-m1-02-gate`，分支 `chore/m1-02-gate`；实施按子项另建 `feature/m1-02-*` worktree
@@ -188,6 +188,7 @@
 - `lab_run.py` ①–④（#157 评论，PR #158 机器人遗留）：intake 幂等键取已保存 `experiment_id`、失败不留旧 incident_id 不覆盖元数据；`_post`/`page` 用 `scripts.kind_lab.OPENER`（不跟随重定向，30x 视为失败）；register 先持久化 `register_pending.expected_generation` 再 POST，重试复用。
 - 真实环境重跑（2026-10-09 00:18–01:49Z，kind 实验环境，临时 PG 55661 库 `f6live`，工作台两实例 + 一个 Observer 进程 `env -i`，事故提交与登记经工作台 HTTP）：第 4 步持续异常 2×stale（VM 恢复后残留序列，fail-closed）+ 9×degraded → 次数耗尽回 `open`；第 2 步首次尝试（restore 与撤流量同秒，部分覆盖）3×degraded + 8×no_data（含率 0.0042 < 门槛的 `INSUFFICIENT_TRAFFIC` 采样）→ 回 `open`，重做：restore 后等比率 1.0 → 0.67 再撤流量，采样 0.67 → 0.5 → 0（率 0.0125 → 0.0083 → 0.0042 → 0）全程不确认 → 回 `open`；第 3 步去 kube-state-metrics 3×stale + 8×no_data → unknown 交接回 `open`；**第 1 步 shipped profile：4×degraded → 11×healthy，`healthy_since` 取第 5 个采样的窗口末尾 01:38:25Z（最后非健康窗口末尾 01:37:25Z 之后），第 15 个采样健康窗 601 s → `recovery_confirmed` → `resolved`，距最后异常窗口末尾 662 s**（旧规则下第 10 个采样即确认）。五个事故重放 CLI 全部 `consistent=true`、无外部查询、无模型请求；投影 `permissions=[read_only, human_control]`。实验环境再次出现 span 计数器停滞，工程侧重启 collector 恢复（记在证据）。
 - 证据：[docs/evidence/m1-02-live-2/run.md](../evidence/m1-02-live-2/run.md)；旧目录 `m1-02-live/` 标注被替代。
+- **F6 `passes` 翻转（2026-10-09，用户决定「先补真实数据投影再翻」）**：main `0336c04`（含 #161/#163/#165）空库全套 PG 套件 564 passed / 10 skipped / 0 xfailed；归档的真实运行 PG 数据复制后按部署合同在停服状态 `make migrate` 0005 → 0007（0006 无在途会话、空操作；0007 对旧结束记录 job 身份为 NULL），用新代码对五个事故重新投影与重放——判定、生命周期、健康窗、actions、sample_jobs 逐项与冻结摘要相同，仅 0007 新列两处差异（[reprojection-0336c04/run.md](../evidence/m1-02-live-2/reprojection-0336c04/run.md)）。独立审查（Codex 全新上下文，session `01a11f18…`，原文存 PR 评论）逐步对照 F6 原文：五步均有真实环境证据 + 测试通过，代码版本归属为「`3bbad40` 真实运行，经 `0336c04` 重新投影确认兼容」，遗留限制（deadline_expired 本轮未等、pod 重启形态、计数器停滞、无 trace #159）不阻塞；`passes: true`，ROADMAP feature passes 1/11。证据证明指定 kind 实验条件下的行为，不是生产或 soak 证明。
 
 ## 第 6 步执行（2026-10-08，F6 真实环境验收，#88，分支 `feature/F6-live-acceptance`，worktree `../production-ops-agent-f6-live`，基于 main `510dcd3`）
 

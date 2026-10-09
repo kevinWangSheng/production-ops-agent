@@ -37,7 +37,7 @@
 
 其余全部相等：`incident_lifecycle`、`recovery_verdict`、`recovery_confirmed`、`healthy_window_seconds`、`used_sample_count`、`recovery_reasons`、`handoff_reasons`、`observation_ended_reason`、`actions`（逐条）、`permissions`、`recovery_samples`（逐读数状态/值/哈希/判定）、`observation_sessions`、`sample_jobs`（五个事故的任务集合逐项相同——所有任务都有采样，没有「已结束且无样本」的任务，因此 #165 的呈现变化在这批数据上不出现）、`handling_audit`、`replay_session`（逐采样 `matches`）、`recovery_profile_content_sha256`。`replay.json` 与原件逐字段一致（`consistent`、`recovery_verdict`、`healthy_window_seconds`、`expected_lifecycle`、逐采样 stored/replayed）。
 
-结论：main `0336c04` 上的在线折叠规则（#161）、重放与投影对这批真实数据给出与冻结时相同的判定、生命周期与健康窗；差异只来自 0007 的新列。
+结论：main `0336c04` 上的在线折叠规则（#161）、重放与投影对这批真实数据给出与冻结时相同的判定、生命周期与健康窗；差异只来自 0007 的新列。归属的准确表述（独立审查措辞）：**`3bbad40` 的真实实验环境运行证据，经 `0336c04` 对同批数据重新投影与重放确认兼容**；不是 `0336c04` 新跑了一次真实环境。
 
 ## 限制
 
