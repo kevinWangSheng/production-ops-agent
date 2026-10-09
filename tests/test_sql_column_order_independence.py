@@ -62,4 +62,6 @@ def test_select_star_only_behind_the_dict_row_connection() -> None:
         "persistence/controls.py",
         "persistence/incidents.py",
         "persistence/steps.py",
+        # F13 read snapshots return whole rows as dicts (_StoreBase pool)
+        "knowledge/store.py",
     }, files_with_star

@@ -2,7 +2,9 @@
 
 A postmortem starts as a draft. Only a human review produces an immutable
 knowledge revision, which can later be superseded or revoked with its audit
-intact. The approver type is ``human`` by construction, so a platform score or a
+intact. Every state but ``draft`` and ``under_review`` is terminal for that
+version (M1-03 D1, D5): returning for revision or regenerating a stale draft
+writes a new version, the old one stays read-only. The approver type is ``human`` by construction, so a platform score or a
 model self-assessment cannot publish knowledge.
 """
 
@@ -13,20 +15,25 @@ from pydantic import AwareDatetime
 from .base import DTO, DomainError, StateMachine, Text
 from .subjects import SubjectRef
 
-PostmortemState = Literal["draft", "under_review", "approved", "rejected"]
+PostmortemState = Literal[
+    "draft", "under_review", "approved", "rejected", "returned", "stale"
+]
 KnowledgeState = Literal["active", "superseded", "revoked"]
 
 POSTMORTEM = StateMachine(
     "postmortem",
     {
-        "draft": {"submit_for_review": "under_review"},
+        "draft": {"submit_for_review": "under_review", "mark_stale": "stale"},
         "under_review": {
             "human_approve": "approved",
             "human_reject": "rejected",
-            "human_return_to_draft": "draft",
+            "human_return_for_revision": "returned",
+            "mark_stale": "stale",
         },
         "approved": {},
         "rejected": {},
+        "returned": {},
+        "stale": {},
     },
 )
 
