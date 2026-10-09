@@ -381,7 +381,7 @@ def create_app(
         fields = await form_of(request)
         action = fields.get("action", "")
         if action not in ("approve", "supersede", "reject", "return"):
-            raise _Refusal(400, "INVALID_INPUT", fields=["action"])
+            raise _invalid("action")
         try:
             entries = {
                 UUID(name[len(_ENTRY_GENERATION_FIELD) :]): _generation(value)
@@ -389,7 +389,7 @@ def create_app(
                 if name.startswith(_ENTRY_GENERATION_FIELD)
             }
         except ValueError:
-            raise _Refusal(400, "INVALID_INPUT", fields=["entry_generations"]) from None
+            raise _invalid("entry_generations") from None
         reason = fields.get("reason")
         command = ReviewCommand(
             action=action,  # type: ignore[arg-type]
@@ -620,6 +620,11 @@ def _review_extra(exc: ReviewError) -> dict[str, Any]:
     return extra
 
 
+def _invalid(name: str) -> _Refusal:
+    """A malformed review form field, in the shape of ``ReviewError`` (R3)."""
+    return _Refusal(400, "INVALID_INPUT", error_class="invalid", fields=[name])
+
+
 def _uuid_path(raw: str) -> UUID:
     try:
         return UUID(raw)
@@ -642,7 +647,7 @@ def _generation(value: str) -> int:
 def _expected(fields: Mapping[str, str]) -> int:
     raw = fields.get("expected_generation", "")
     if not raw.isdigit():
-        raise _Refusal(400, "INVALID_INPUT", fields=["expected_generation"])
+        raise _invalid("expected_generation")
     return int(raw)
 
 

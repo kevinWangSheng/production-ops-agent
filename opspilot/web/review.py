@@ -299,9 +299,18 @@ class PostmortemReview:
         snapshot = self._read(self.knowledge.postmortem, command.postmortem_id)
         row = _find_version(snapshot, command.version)
         if command.action in ("approve", "supersede"):
-            replaces = any(p["supersedes_entry_id"] for p in row["proposals"])
-            if replaces != (command.action == "supersede"):
+            named = {
+                p["supersedes_entry_id"]
+                for p in row["proposals"]
+                if p["supersedes_entry_id"] is not None
+            }
+            if bool(named) != (command.action == "supersede"):
                 raise ReviewError("INVALID_INPUT", fields=("action",))
+            # D25: exactly the entries the version names. Proposals never
+            # change, so a missing or extra entry is a malformed form, not a
+            # concurrent change; only an outdated generation is a conflict.
+            if set(command.entry_generations) != named:
+                raise ReviewError("INVALID_INPUT", fields=("entry_generations",))
         try:
             if command.action in ("approve", "supersede"):
                 result = self.knowledge.approve(
@@ -355,7 +364,9 @@ class PostmortemReview:
                 item["revision"],
                 "active",
                 item["generation"],
-                item["action"],
+                # publication has no reason; the reason of a change is the
+                # reviewer's (reject/return/revoke)
+                None,
             )
         return {
             "action": command.action,
