@@ -312,6 +312,33 @@ def _submit(
     return observer.submit_sample(lease, sample, _readings_for(sample))
 
 
+def _confirm_healthy_pair(observer, owner, lease, window, readings=None):
+    """#157: two healthy window ends 30 s apart satisfy a 30 s contract.
+
+    Preserve the caller's ending sample and its reading checks; the earlier
+    sample alone must leave the incident observing with zero elapsed health.
+    """
+    earlier = tuple(at - timedelta(seconds=30) for at in window)
+    first = observer.submit_sample(
+        lease,
+        _sample(lease, earlier),
+        _readings_for(_sample(lease, earlier))
+        if readings is None
+        else _readings(earlier),
+    )
+    assert first.accepted and first.confirms_health and first.transition is None
+    assert first.incident_lifecycle == "observing_recovery"
+    assert observer.session(lease.session_id)["healthy_since"] == earlier[1]
+    _due_now(owner, lease.session_id)
+    ending_lease = _claim(observer, lease.session_id)
+    receipt = observer.submit_sample(
+        ending_lease,
+        _sample(ending_lease, window),
+        _readings_for(_sample(ending_lease, window)) if readings is None else readings,
+    )
+    return ending_lease, receipt
+
+
 def _window(start: datetime, seconds: int) -> tuple[datetime, datetime]:
     return start, start + timedelta(seconds=seconds)
 
@@ -454,8 +481,9 @@ def test_observer_role_runs_the_whole_sampling_path(
     start = _t0()
 
     lease = _claim(observer, session)
-    receipt = observer.submit_sample(
-        lease, _sample(lease, _window(start, 60)), _readings(_window(start, 60))
+    # #157: the Observer role must also commit a second healthy sample.
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(start, 60), _readings(_window(start, 60))
     )
 
     assert receipt.accepted and receipt.transition == "recovery_confirmed"
@@ -488,7 +516,7 @@ def test_sustained_healthy_window_confirms_recovery(
     assert r1.next_sample_due_at is not None
     row = controller.session(session)
     assert (row["adopted_sequence"], row["adopted_count"]) == (1, 1)
-    assert row["healthy_since"] == t0
+    assert row["healthy_since"] == t0 + timedelta(seconds=30)  # #157: window end
     assert (
         row["active_sample_sequence"] == 2
         and row["active_sample_job_id"] != first.job_id
@@ -507,7 +535,10 @@ def test_sustained_healthy_window_confirms_recovery(
         2,
         t0 + timedelta(seconds=30),
     )
-    window = (t0 + timedelta(seconds=30), t0 + timedelta(seconds=70))
+    window = (
+        t0 + timedelta(seconds=30),
+        t0 + timedelta(seconds=90),
+    )  # #157: 60 s end to end
     r2 = observer.submit_sample(second, _sample(second, window), _readings(window))
 
     assert r2.transition == "recovery_confirmed"
@@ -541,7 +572,9 @@ def test_unknown_or_incomplete_samples_are_adopted_but_never_confirm(
     session = _authorize(controller, incident, target, sustained=30)
     t0 = _t0()
     lease = _claim(observer, session)
-    receipt = _submit(observer, lease, _sample(lease, _window(t0, 60)))
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(t0, 60)
+    )  # #157
     assert (
         receipt.accepted
         and receipt.confirms_health
@@ -573,10 +606,11 @@ def test_a_non_healthy_sample_resets_the_streak(
     session = _authorize(controller, incident, target, sustained=50)
     t0 = _t0()
     plan = [
-        ("healthy", 0, 30, None, t0),
+        ("healthy", 0, 30, None, t0 + timedelta(seconds=30)),  # #157
         ("degraded", 30, 60, None, None),
-        ("healthy", 60, 90, None, t0 + timedelta(seconds=60)),
-        ("healthy", 90, 120, "recovery_confirmed", t0 + timedelta(seconds=60)),
+        ("healthy", 60, 90, None, t0 + timedelta(seconds=90)),  # #157
+        ("healthy", 90, 120, None, t0 + timedelta(seconds=90)),  # #157: only 30 s
+        ("healthy", 120, 150, "recovery_confirmed", t0 + timedelta(seconds=90)),
     ]
     for outcome, a, b, transition, since in plan:
         with owner.transaction() as conn:
@@ -1219,7 +1253,9 @@ def test_a_lease_claimed_before_a_pause_is_history_after_the_resume(
         and _lifecycle(owner, incident) == "observing_recovery"
     )
     row = controller.session(session)
-    assert row["adopted_sequence"] == 1 and row["healthy_since"] == t0
+    assert row["adopted_sequence"] == 1 and row["healthy_since"] == t0 + timedelta(
+        seconds=30
+    )  # #157
     assert (row["state"], row["ended_reason"]) == ("revoked", "scope_suspended")
     assert _claimable(observer, session) == []
     _assert_replay_consistent(controller, session)
@@ -1235,18 +1271,18 @@ def test_a_gap_between_adopted_windows_restarts_the_healthy_streak(
     assert _submit(observer, lease, _sample(lease, _window(t0, 30))).confirms_health
     _due_now(owner, session)
     lease = _claim(observer, session)
-    # 30 s healthy, 40 minutes unobserved, 30 s healthy: 60 s of healthy
-    # data do not make a 60 s sustained window.
+    # #157: the gap resets the streak at the new window end; neither
+    # isolated healthy sample contributes elapsed duration.
     gap = _window(t0 + timedelta(minutes=40), 30)
 
     receipt = _submit(observer, lease, _sample(lease, gap))
 
     assert receipt.accepted and receipt.confirms_health and receipt.transition is None
-    assert controller.session(session)["healthy_since"] == gap[0]
+    assert controller.session(session)["healthy_since"] == gap[1]  # #157
     assert _lifecycle(owner, incident) == "observing_recovery"
     _due_now(owner, session)
     lease = _claim(observer, session)
-    more = (gap[1], gap[1] + timedelta(seconds=30))
+    more = (gap[1], gap[1] + timedelta(seconds=60))  # #157: 60 s after reset
     receipt = _submit(observer, lease, _sample(lease, more))
     assert receipt.transition == "recovery_confirmed"
     _assert_replay_consistent(controller, session)
@@ -1258,9 +1294,9 @@ def test_data_from_before_the_authorization_never_confirms_health(
     """Profile-shaped parameters (window 300 s, sustained 600 s, interval
     60 s): the Observer samples every 60 s with a 300 s look-back. Windows
     that start before the authorization are adopted but never healthy; the
-    streak starts with the first window inside the authorization and the
-    confirmation comes when 600 s after it are covered (the sample taken
-    600 s after authorization), never earlier."""
+    streak starts at that first eligible window's end (#157), 300 s after
+    authorization. Confirmation requires another 600 s, at authorization
+    +900 s (eleven eligible healthy samples), never earlier."""
     incident, _, target = _incident(owner)
     session = controller.authorize_session(
         incident,
@@ -1276,7 +1312,7 @@ def test_data_from_before_the_authorization_never_confirms_health(
     )
     authorized_at = _backdate_authorization(owner, session)
     outcomes = []
-    for k in range(1, 11):
+    for k in range(1, 16):  # #157: four ineligible plus eleven eligible
         _due_now(owner, session)
         lease = _claim(observer, session)
         taken = authorized_at + timedelta(seconds=60 * k)
@@ -1288,14 +1324,15 @@ def test_data_from_before_the_authorization_never_confirms_health(
             (receipt.confirms_health, receipt.health_basis, receipt.transition)
         )
         assert receipt.accepted, k
-        if k < 10:
+        if k < 15:  # #157: +900 s is the first confirmation
             assert receipt.transition is None, k
             assert _lifecycle(owner, incident) == "observing_recovery", k
     assert outcomes[:4] == [(False, "window_before_authorization", None)] * 4
-    assert outcomes[4:9] == [(True, "confirmed", None)] * 5
-    assert outcomes[9] == (True, "confirmed", "recovery_confirmed")
+    assert outcomes[4:14] == [(True, "confirmed", None)] * 10  # #157
+    assert outcomes[14] == (True, "confirmed", "recovery_confirmed")
     row = controller.session(session)
-    assert row["healthy_since"] == authorized_at and row["adopted_count"] == 10
+    assert row["healthy_since"] == authorized_at + timedelta(seconds=300)  # #157
+    assert row["adopted_count"] == 15
     assert _lifecycle(owner, incident) == "resolved"
     _assert_replay_consistent(controller, session)
 
@@ -1452,7 +1489,9 @@ def test_replay_compares_the_final_session_state_and_the_lifecycle(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=30)
     lease = _claim(observer, session)
-    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 60)))
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(_t0(), 60)
+    )  # #157
     assert receipt.transition == "recovery_confirmed"
     with owner.transaction() as conn:
         conn.execute(
@@ -1558,7 +1597,10 @@ def test_an_old_session_replays_consistently_after_a_new_authorization(
 
     new = _authorize(controller, incident, target, sustained=30)
     lease = _claim(observer, new)
-    assert _submit(observer, lease, _sample(lease, _window(_t0(), 60))).transition
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(_t0(), 60)
+    )  # #157
+    assert receipt.transition == "recovery_confirmed"
     assert _lifecycle(owner, incident) == "resolved"
 
     assert controller.replay_session(old).consistent
@@ -1675,7 +1717,9 @@ def test_observer_lifecycle_change_without_a_recorded_ending_fails_at_commit(
         ] == [("deadline_expired", "observation_ended_unconfirmed", None)]
         session = _authorize(controller, incident, target, sustained=30)
         lease = _claim(observer_store, session)
-        receipt = _submit(observer_store, lease, _sample(lease, _window(_t0(), 60)))
+        lease, receipt = _confirm_healthy_pair(
+            observer_store, owner, lease, _window(_t0(), 60)
+        )  # #157
         assert receipt.transition == "recovery_confirmed"
         assert _lifecycle(owner, incident) == "resolved"
         endings = controller.session_history(session)["endings"]
@@ -1692,7 +1736,9 @@ def test_replay_uses_the_ending_sample_not_a_late_duplicate(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=30)
     lease = _claim(observer, session)
-    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 60)))
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(_t0(), 60)
+    )  # #157
     assert receipt.transition == "recovery_confirmed"
     # The same lease delivered again after the session completed: filed as
     # history, it is the last sample row but not the one that ended things.
@@ -1880,8 +1926,10 @@ def test_a_healthy_claim_without_the_required_readings_is_history_only(
     history = controller.session_history(session)
     assert [s["readings_consistent"] for s in history["samples"]] == [False] * 4
     assert controller.session(session)["adopted_count"] == 0
-    # Consistent readings: adopted and, with a 60 s window, confirmed.
-    receipt = _submit(observer, lease, _sample(lease, _window(_t0(), 60)))
+    # #157: consistent readings need a second healthy sample to confirm.
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, _window(_t0(), 60)
+    )  # #157
     assert receipt.transition == "recovery_confirmed"
     _assert_replay_consistent(controller, session)
 
@@ -2050,9 +2098,12 @@ def test_an_ok_reading_without_data_behind_it_is_no_coverage(
             )
     _assert_replay_consistent(controller, session)
     lease = _claim(observer, session)
-    receipt = observer.submit_sample(
+    # #157: coverage alone cannot give one sample a sustained window.
+    lease, receipt = _confirm_healthy_pair(
+        observer,
+        owner,
         lease,
-        _sample(lease, window),
+        window,
         [SignalReading(**base, value=0.0, sample_count=1)],  # type: ignore[arg-type]
     )
     assert receipt.transition == "recovery_confirmed"
@@ -2079,9 +2130,11 @@ def test_readings_from_another_window_do_not_cover_this_sample(
     assert _lifecycle(owner, incident) == "observing_recovery"
     _due_now(owner, session)
     lease = _claim(observer, session)
-    # Within tolerance (2 s of a 60 s window): covered and confirmed.
+    # #157: within tolerance (2 s of 60 s), covered; a second sample confirms.
     snapped = (window[0] + timedelta(seconds=2), window[1] - timedelta(seconds=2))
-    receipt = observer.submit_sample(lease, _sample(lease, window), _readings(snapped))
+    lease, receipt = _confirm_healthy_pair(
+        observer, owner, lease, window, _readings(snapped)
+    )
     assert receipt.transition == "recovery_confirmed"
     _assert_replay_consistent(controller, session)
     # Moving the stored reading rows to another window changes the replay.

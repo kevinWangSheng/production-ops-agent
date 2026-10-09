@@ -58,7 +58,7 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 | 原断言/刺激 | 新断言（对应删除理由） |
 |---|---|
 | integration_id / cluster_uid / namespace / resource_uid 随采样payload改变，必须history_only | 四例分别改变登记身份，再登记同一目标必须TARGET_MISMATCH拒绝；拒绝前后整个持久快照相等。身份在登记与查询授权处校验，不构造不存在的目标提交参数 |
-| 错误payload目标采样不得耗预算、推进健康窗或任务 | 拒绝登记时预算/水位/任务/生命周期/授权/会话/审计都不变；随后旧有效会话正常采样可adopted、用1次预算并有60秒健康窗，其目标仍是登记目标，遥测元数据不能改变绑定 |
+| 错误payload目标采样不得耗预算、推进健康窗或任务 | 拒绝登记时预算/水位/任务/生命周期/授权/会话/审计都不变；随后旧有效会话正常采样可adopted、用1次预算并有0秒健康窗（#157：首个健康采样从窗口末尾起算），其目标仍是登记目标，遥测元数据不能改变绑定 |
 | 保存history.target等于payload的foreign target | 现有会话样本的产品target恒等于原登记目标；原始payload仍逐字节留存及核hash，JSON.target无授权权威 |
 | 错误payload提交后全部授权/会话/任务集合不变 | 拒绝再次登记时完整集合不变；正常旧会话采样后授权身份/版本、原目标、处置审计不变，允许合法水位与下一任务推进 |
 | revision当作其他身份字段拒绝/旧采样不改变目标 | 新revision再次登记形成新会话，控制/观察generation推进，旧会话撤销、原target不变；已领取旧结果仅history_only，新会话生命周期/水位/预算/授权/审计不变 |
@@ -67,13 +67,13 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 ## 最后两条 P1（PR #137）
 
-- **PRRT_kwDOUSm_486qdOfc：选择按时间边界裁剪的事故级重放。** 新存储快照选中会话后，仅保留截至该会话的 sessions 前缀（保持每次登记与对应会话的产品关联），控制行截止该会话最后结束记录的 recorded_at；尚未结束则截止最后采样 submitted_at，没有采样则截止授权审计 created_at。排除之后的新登记/控制行。事故生命周期复制所选会话结束记录 lifecycle_after；无结束记录按登记授权的 observing_recovery 合同值；代际/目标引用取范围内记录，历史 mode 无持久值则为None，不沿用当前模式。再交给产品 recovery_outcome，驱动不重新判定。新增真实PG检查：第一会话2样本仍观察，第二会话3样本resolved后重放第一会话，必须仍为observing_recovery，仅1次登记、2次持久化、36次查询，不携带第二次登记或当前resolved。重放前后当前业务快照仍相等。
+- **PRRT_kwDOUSm_486qdOfc：选择按时间边界裁剪的事故级重放。** 新存储快照选中会话后，仅保留截至该会话的 sessions 前缀（保持每次登记与对应会话的产品关联），控制行截止该会话最后结束记录的 recorded_at；尚未结束则截止最后采样 submitted_at，没有采样则截止授权审计 created_at。排除之后的新登记/控制行。事故生命周期复制所选会话结束记录 lifecycle_after；无结束记录按登记授权的 observing_recovery 合同值；代际/目标引用取范围内记录，历史 mode 无持久值则为None，不沿用当前模式。再交给产品 recovery_outcome，驱动不重新判定。新增真实PG检查：第一会话2样本仍观察，第二会话4样本resolved（#157：180秒需3个健康间隔）后重放第一会话，必须仍为observing_recovery，仅1次登记、2次持久化、36次查询，不携带第二次登记或当前resolved。重放前后当前业务快照仍相等。
 - **PRRT_kwDOUSm_486qdOfm：冻结动作合同仅收紧。** 保留 actions ⊆ READONLY_ACTIONS，同时要求 record_handling 次数等于范围内登记审计且大于0，persist_observation 次数等于已提交样本数，read_only_query 次数等于测试桩独立见证的实际发出查询数；有采样必须有查询，交接必须有 human_handoff。#145 第2条按用户2026-10-08裁定限定为最新会话/当前范围：最新会话非交接不新增 human_handoff，但 actions 是完整审计，历史真实交接必须保留。所有结果的 human_handoff 次数精确等于同一持久快照范围内各会话 deadline_expired / max_samples_exhausted 结束记录数，不从最新 human_interaction 或产品动作自报推出；单会话非交接仍为0，交接结果还须至少1。较早会话重放按裁剪快照计数；所有结果的 advance_incident_lifecycle 次数精确等于范围内持久登记和结束记录所见的生命周期变化数。夹具初始 open，登记进入 observing_recovery；按事件时间核对结束记录 before/after，重复授权及生命周期未改变的结束记录不多计。完整性重放按持久变化计数，不能把 unverified 当作一次持久转态；较早会话重放仅用裁剪快照。查询见证由真实采样调用前后桩差量关联到实际receipt.sample_id，不从产品动作自报计数。原8类空/缺/截断动作审计负向检查保留，新增7类虚假交接/重复或缺少生命周期动作检查。
 
 ## 剩余 xfail 与验证边界
 
 #154 已按用户2026-10-08裁定落地。同事故第一会话零流量5次采样后交接回 open，
-再登记新会话，3次健康采样后 resolved。最新 `human_interaction=None`，
+再登记新会话，4次健康采样后 resolved（#157：180秒需3个健康间隔）。最新 `human_interaction=None`，
 全历史 `actions` 中 `human_handoff` 必须恰为1，直接通过 `assert_readonly`。
 该场景另验证移除历史交接或多加一次均被拒绝；交接结果重复交接动作同样被拒绝。
 
@@ -91,7 +91,7 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 
 以下是作者维护的测试规范；实现者不能改断言来迁就实现：
 
-- `incident_lifecycle` 正常沿用 subjects.py 的 open/observing_recovery/resolved/closed；完整性不一致时产品投影为 unverified，已存生命周期另列 recorded_lifecycle，不改写业务状态；到期未确认回 open。合法 unknown 采样的预算消耗必须持久记录（`used_sample_count`），不能丢采样而凭空交接。恢复确认与当前采样分开；窗未满、异常、缺测或无流量均不能确认恢复，H,H,D 重置窗口，不能跨 D 累计。
+- `incident_lifecycle` 正常沿用 subjects.py 的 open/observing_recovery/resolved/closed；完整性不一致时产品投影为 unverified，已存生命周期另列 recorded_lifecycle，不改写业务状态；到期未确认回 open。合法 unknown 采样的预算消耗必须持久记录（`used_sample_count`），不能丢采样而凭空交接。恢复确认与当前采样分开；窗未满、异常、缺测或无流量均不能确认恢复，H,H,D 重置窗口，不能跨 D 累计。持续健康窗从连续健康采样中第一个采样的评估窗口**末尾**起算（2026-10-08 用户决定，#157；C3 §10 同步）：确认时距最后一次非健康采样至少一个完整持续窗，不与其评估窗口重叠；单个健康采样的健康窗为 0。
 - 当前场景的终态恢复 verdict、交接语义与原因码：`INSUFFICIENT_TRAFFIC`、`REQUIRED_TELEMETRY_MISSING`、`MISSING_SIGNAL:<name>`、`DEPENDENCY_UNHEALTHY`、`CONTINUED_DEGRADATION`；篡改拒绝分支 `STORED_OBSERVATION_INTEGRITY_MISMATCH`。这些是 harness 规范化码，产品原始码可不同，由适配器做保义映射。
 - 所有 outcome 的 `subject_id` 等于请求主体，已存采样绑定同一主体及所属会话不可变目标；目标合同按用户2026-10-08批准变更：异身份再次登记被拒前后完整快照不变，旧有效会话采样目标不受遥测元数据影响，revision新登记使旧结果仅历史。具体替换见上表；同目标另一事故的持久状态、会话、采样不变。
 - 合法样本 `disposition == "adopted"`；无效身份/授权/水位只作历史。每个信号 value/source/query/observed_at 原样保存；样本与逐信号 evidence_id 唯一；每个信号的原始 bytes 由测试在修改刺激后冻结，遥测桩按 query/绝对窗口返回。每个 evidence_id 必须能取回与测试刺激逐字节相同的 bytes，实际 SHA-256 必须与记录一致，取不回或字节不同即失败。历史采样同样校验证据绑定。

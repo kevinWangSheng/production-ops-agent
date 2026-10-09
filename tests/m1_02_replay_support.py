@@ -95,7 +95,7 @@ def stored_history(
     sustained_window_seconds: int = 600,
 ) -> dict[str, Any]:
     """File the samples as the store would have: every one adopted, the
-    healthy streak measured from the first healthy window start, the
+    healthy streak measured from the first healthy window end (#157), the
     session completed on confirmation or expired on the last budgeted
     sample, with the matching ending record."""
     incident_id = incident_id or uuid4()
@@ -127,7 +127,7 @@ def stored_history(
             basis = "window_before_authorization"
         else:
             basis = "confirmed"
-        healthy_since = None if not healthy else (healthy_since or sample.window.start)
+        healthy_since = None if not healthy else (healthy_since or sample.window.end)
         transition = None
         before = lifecycle
         if (
@@ -281,8 +281,9 @@ def healthy_history(
     sustained_window_seconds: int = 600,
 ) -> dict[str, Any]:
     """Up to ``count`` contiguous healthy samples a minute apart; the unit
-    profile's 300 s window makes the sixth one span 600 s since the first
-    window start (NOW-300 .. NOW+300) and confirm recovery, where the
+    profile's 300 s window contributes no duration on its own (#157); the
+    eleventh sample spans 600 s between window ends (NOW .. NOW+600)
+    and confirms recovery, where the
     history ends as the store's would."""
     session_id = session_id or uuid4()
     taken = [

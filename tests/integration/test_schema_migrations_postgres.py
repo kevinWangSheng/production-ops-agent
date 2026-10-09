@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0005_incident_mode"
+HEAD = "0006_healthy_streak_window_end"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -561,7 +561,9 @@ def test_0005_adds_the_mode_column_with_automatic_default(scratch_dsn: str) -> N
         schema.command.downgrade(schema._config(scratch_dsn), "0004_target_identity")
     assert refused.value.count == 1
     with psycopg.connect(scratch_dsn) as conn:
-        assert schema.current_revision(conn) == HEAD
+        # 0006 (a data step) downgrades first; the refusal is 0005's, which
+        # keeps the column, the row and its own revision
+        assert schema.current_revision(conn) == "0005_incident_mode"
         assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
             ("human_owned",)
         ]
@@ -622,7 +624,9 @@ def test_0005_downgrade_waits_for_an_in_flight_takeover_and_then_refuses(
     assert isinstance(outcome.get("result"), schema.HumanOwnershipWouldBeLost)
     assert outcome["result"].count == 1
     with psycopg.connect(scratch_dsn) as conn:
-        assert schema.current_revision(conn) == HEAD
+        # 0006 (a data step) downgrades first; the refusal is 0005's, which
+        # keeps the column, the row and its own revision
+        assert schema.current_revision(conn) == "0005_incident_mode"
         assert conn.execute("SELECT mode FROM opspilot_incidents").fetchall() == [
             ("human_owned",)
         ]

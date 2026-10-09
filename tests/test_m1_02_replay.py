@@ -54,7 +54,7 @@ def test_a_healthy_session_replays_consistently_and_confirms_recovery():
     assert result.expected_lifecycle == "resolved"
     assert result.recorded_lifecycle == "resolved"
     assert result.replayed_session_state == result.stored_session_state == "completed"
-    assert len(result.samples) == len(history["samples"]) == 6
+    assert len(result.samples) == len(history["samples"]) == 11  # #157: ten intervals
     last = result.samples[-1]
     assert last.decision.replayed[4] == "recovery_confirmed"
     assert (last.replayed_outcome, last.replayed_required_signals_present) == (
@@ -539,7 +539,7 @@ def test_a_sample_filed_while_the_profile_was_unavailable_is_a_recorded_reason()
             window_end=NOW + timedelta(seconds=120 + 60 * i),
             session_id=session_id,
         )
-        for i in range(6)
+        for i in range(11)  # #157: rebuild 600 s after the failed sample
     ]
     history = stored_history(
         [first, unavailable, *later],

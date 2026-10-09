@@ -292,7 +292,7 @@ class ReplayReport:
     recorded_ending: tuple[str, str | None, UUID | None, str, str] | None = None
     # the sample whose replayed verdict ended the session, if any
     ending_sample_id: UUID | None = None
-    # the healthy streak the fold ends with: first window start and latest
+    # the healthy streak the fold ends with: first window end and latest
     # window end of the consecutive adopted healthy samples (None: none)
     healthy_since: datetime | None = None
     healthy_until: datetime | None = None
@@ -490,10 +490,14 @@ def _judge(
     binding ends it as ``binding_stale``.
 
     The healthy streak is the span of consecutive adopted healthy samples,
-    measured from the first one's ``window.start`` to the latest ``window.end``.
-    It restarts when a sample is adopted after a gap (its window starts after
-    the previous adopted window ended: unobserved time never counts) and it
-    is cleared by any adopted sample that does not confirm health. A
+    measured from the first one's ``window.end`` to the latest ``window.end``
+    (issue #157, user decision 2026-10-08): a healthy window can still overlap
+    the window of the degraded sample before it, so the span that confirms
+    recovery starts only where the first healthy window ends and never
+    overlaps an earlier adopted window. It restarts when a sample is adopted
+    after a gap (its window starts after the previous adopted window ended:
+    unobserved time never counts) and it is cleared by any adopted sample
+    that does not confirm health. A
     suspension cannot reach the streak: any change of the control scope
     since the authorization ends the session (``scope_suspended``), a lifted
     suspension never resumes an old authorization (C3 section 4).
@@ -545,7 +549,7 @@ def _judge(
         if not healthy:
             healthy_since = None
         elif healthy_since is None or gap:
-            healthy_since = sample.window.start
+            healthy_since = sample.window.end
         if (
             healthy
             and healthy_since is not None

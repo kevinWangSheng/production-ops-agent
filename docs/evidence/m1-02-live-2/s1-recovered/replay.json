@@ -1,0 +1,3075 @@
+[
+  {
+    "session_id": "cfb90629-bd91-540a-b05a-2a525ade3019",
+    "incident_id": "0834af7e-0951-5850-a409-b1550255ee0a",
+    "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+    "handled_at": "2026-10-08T18:33:23.358618-07:00",
+    "deadline_at": "2026-10-08T19:33:23.349471-07:00",
+    "max_samples": 40,
+    "sustained_window_seconds": 600,
+    "consistent": true,
+    "integrity": [],
+    "reasons": [
+      "recovery_confirmed",
+      "every required signal is present, fresh and within bounds"
+    ],
+    "recovery_verdict": "healthy",
+    "recovery_confirmed": true,
+    "recomputed_verdict": "healthy",
+    "latest_sample_verdict": "healthy",
+    "healthy_window_seconds": 601,
+    "expected_lifecycle": "resolved",
+    "recorded_lifecycle": "resolved",
+    "stored_session_state": "completed",
+    "replayed_session_state": "completed",
+    "external_queries": [],
+    "model_requests": [],
+    "samples": [
+      {
+        "sample_id": "e9013e36-526a-4755-9267-d67112f14794",
+        "sequence": 1,
+        "window_start": "2026-10-08T18:29:25.071453-07:00",
+        "window_end": "2026-10-08T18:34:25.071453-07:00",
+        "submitted_at": "2026-10-08T18:34:25.146622-07:00",
+        "stored_outcome": "degraded",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "degraded",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "required signals outside their healthy bound: dependency_error_ratio, error_ratio",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "69258cf786dee75035cf1b931d4057077c96e4ae5798839ae788d452e2b76cd6",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "2f359007b73de3a91456b7eb8ab9f83cf64be6a25c757a9addbbd6f7e25d2804",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.09782608695652174,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.09782608695652174,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.09782608695652174 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "6cf1a53fa048477aa8b0f7a5e340b81fa383ec6b124d1d05f6c7e6924b3b348f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "9e2ed5184fe6d36b283e3ce8b28ad4de68a9ad835971cb3d1332de7c14bc89e0",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "3c098b30369d29d189537edf83bad0afcdd59d90197f54db7afd4c854750fed5",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "0cb1114fdf6032ba143499771022a06e3f4991af014caa1f508d46481367f874",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.8181818181818182,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.8181818181818182,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.8181818181818182 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "000200947d29cfd0e634515cece7f13d4dace3ab30de1673ac671e9b1da005de",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              72.49999999999997,
+              5
+            ],
+            "replayed": [
+              "ok",
+              72.49999999999997,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "72.49999999999997 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:29:25.071453-07:00",
+            "window_end": "2026-10-08T18:34:25.071453-07:00",
+            "raw_sha256": "8c9c3209edbd94344c2e07fd16d44bfac9c7ac1e2c915d257e45a0e85f08277f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.04583333333333333,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.04583333333333333,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.04583333333333333 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "e025f9e9-c9ef-4e2b-8537-bc483b857a48",
+        "sequence": 2,
+        "window_start": "2026-10-08T18:30:25.303346-07:00",
+        "window_end": "2026-10-08T18:35:25.303346-07:00",
+        "submitted_at": "2026-10-08T18:35:25.369326-07:00",
+        "stored_outcome": "degraded",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "degraded",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "required signals outside their healthy bound: dependency_error_ratio, error_ratio",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "c7926aac303d65f363f6f88090097a4c4e6eea3a0c15008c7978ba81660309ce",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "e9f1a4cc1842876e262fb1065ca9ddd0d2bdfe58c8dcd9bbc6d9290229755ab4",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.13793103448275862,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.13793103448275862,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.13793103448275862 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "a189d5ead95742a8c96497da211108ebc7d7dd8d4e6159683bab6b35954dba93",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "cf140b809203cfb97933ccd620384e7b0e9bd11826cb0689b87f5c3c43d9515c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "329cdbe2cd015a0e2b9dd1931e1a262c717e5f6d642fd088a88137d87e0eb344",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "719b4f1bd16dd72adcbb196cc2d1e5552a78cd26fba91c9450421594a5eb3763",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "1.0 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "8c37795d577bae9089300b7196413164435ed2fc47c65d8305a68174d5fccb56",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              48.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              48.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "48.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:30:25.303346-07:00",
+            "window_end": "2026-10-08T18:35:25.303346-07:00",
+            "raw_sha256": "0b92f402e3b23155e4265aa8198c61a4d3cd085d9d0d8517c822441922bcdd36",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.03333319444502315,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.03333319444502315,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.03333319444502315 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "c09a16ba-8846-47de-97fa-121d2451af71",
+        "sequence": 3,
+        "window_start": "2026-10-08T18:31:25.557284-07:00",
+        "window_end": "2026-10-08T18:36:25.557284-07:00",
+        "submitted_at": "2026-10-08T18:36:25.636862-07:00",
+        "stored_outcome": "degraded",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "degraded",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "required signals outside their healthy bound: dependency_error_ratio, error_ratio",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "ca22c349be19c8a15bcabd653d63baea9ff2361fdc7ba41da0d547cbef324435",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "405c8066b121519ea5719f12206818092c4623326de3542187c45e9a28ded42c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.11864406779661017,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.11864406779661017,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.11864406779661017 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "d9a737f732a9b6e803fd0e00cb131e1cbc08b59d12b89969ba965c5855ddcd24",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "b73ad197c880bb8fcaab6ec1974f9228c70b90df332fd53faef812ad4d1ab05b",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "15b0c55816699fce5ee89a79f1b386d14db08c4746a204a289a3b61a58c5e022",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "c56917509aaf35b64b7fc6103e7b1cfcd1f353ddbf59fbb1a6d7f94a094d5410",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.875,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.875,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.875 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "9153873070eeecae24814fc15e4fc16fd11b19fc1e0ae693b1b5b18e8435a47c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "replayed": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "47.99999999999999 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:31:25.557284-07:00",
+            "window_end": "2026-10-08T18:36:25.557284-07:00",
+            "raw_sha256": "4a1ec85c805919996cff2e8a3187b5883da327874f45a798a699b1cbfb904a89",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.03333291667187493,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.03333291667187493,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.03333291667187493 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "c5833b71-ba50-4772-84c0-8593ba3ea6b7",
+        "sequence": 4,
+        "window_start": "2026-10-08T18:32:25.750901-07:00",
+        "window_end": "2026-10-08T18:37:25.750901-07:00",
+        "submitted_at": "2026-10-08T18:37:25.797243-07:00",
+        "stored_outcome": "degraded",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "degraded",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "required signals outside their healthy bound: dependency_error_ratio, error_ratio",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            false,
+            "outcome_not_healthy",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "19337eed0558630a20aec084f485508a9768bedd6cb2302694ec58cf3f6a62ce",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "06a5a2c3ef7a82cfb57fd749fb3ead9dbd10f2afde6dda72daa8c86e4c6fddf5",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.08333333333333333,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.08333333333333333,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.08333333333333333 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "5b7772188b742e47642ffbb9d170eabed2bee83b4f116d98a81734d04452e6ab",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "6ba6c84ab8b2233b43a0f39e8dce19b51fac02428b1b77056585ab880e9a0e17",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "51f9e1401e98aee19e7830ee7404d759576d58fbb4e4b31e6820fdbe1aa7d5f2",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "17446fda7fe4bc89b249d3f43a415d466287493d12b3dd20e19408862bd61421",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.6666666666666666,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.6666666666666666,
+              5
+            ],
+            "verdict": "degraded",
+            "reason": "0.6666666666666666 outside healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "c911b44278067518e6a8c62443211f048537818ceb830d6e839eef50c540fa81",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              48.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              48.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "48.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:32:25.750901-07:00",
+            "window_end": "2026-10-08T18:37:25.750901-07:00",
+            "raw_sha256": "9ee31d445d4c6a4d18cb6e43290fa6bac7505b3c847c60af8253d30356dd712a",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.025,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.025,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.025 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "fc67e842-7ab5-4ec3-a9b0-865836f22216",
+        "sequence": 5,
+        "window_start": "2026-10-08T18:33:25.903664-07:00",
+        "window_end": "2026-10-08T18:38:25.903664-07:00",
+        "submitted_at": "2026-10-08T18:38:25.955114-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "e3be3df8b10bafeab3741de317989faeab7233ca80b5fb618c3c5b24a6fcf588",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "3271e32800b8701c0e1530e06dcb351649740f806b72864331d3841216e9aad2",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "27f0894b63b6b410535e16ee914829b90c175732bf6fe8ae34d4623fc6bbed6e",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "5974fa276ca3da2ed7109007fe554e5e5294345ee6cc475baa04d6cd6c09de50",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "2fbbf0364ff6168388e57a72c8eb9dcd5fe69c75d41e81e22210faa597620a8d",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "ea2d05d17ff1d13008bfb3fd450084955b2c632ff4cc334202fd3d725731ed1b",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "b5b8d0c0ac6f241540fd0ddde6dd9f747a7f2ac0135431dd10e6d92e6e2345d4",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "replayed": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "47.99999999999999 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:33:25.903664-07:00",
+            "window_end": "2026-10-08T18:38:25.903664-07:00",
+            "raw_sha256": "4d7cc0a8ce810cf436da547ff4b19f7d9b574df2a49be9cf2e3236b92d75b2c6",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.008333333333333333,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.008333333333333333,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.008333333333333333 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "01c91c66-68a3-4e5c-970a-284164d09005",
+        "sequence": 6,
+        "window_start": "2026-10-08T18:34:26.093832-07:00",
+        "window_end": "2026-10-08T18:39:26.093832-07:00",
+        "submitted_at": "2026-10-08T18:39:26.159579-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "9efb6f1c92b33816b263a7247e2567e8b407f1556d07e243d97aad9ee0c7afb8",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "80f05300c668f3c26c04f8ff1d545a42618161498c2ab79c3650ca4035833e94",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "d3750be6e929b826c2cfa8d8ff98f1541248119c0fe892c16380beaf6decbe1b",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "ca455f9975439ae4c3097429699e67d502c66feea1240a79cde0d92bd690859f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "4d91940f956778f8b94c9ce98849aecdface128184e41be7f6a91bb4aaac6822",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "8c275108bd6eea418976bf452776c357a13d47bc72713839cf4481461024f775",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "5623aca72501a93995798c450f5349f59c293fec10dec320fd622b3541e7ed93",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              48.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              48.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "48.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:34:26.093832-07:00",
+            "window_end": "2026-10-08T18:39:26.093832-07:00",
+            "raw_sha256": "277c0b04c6c2ffb2a8475b3129e3bc80f83125dae63cfa217196c901da7fe8cd",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.029166545139395254,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.029166545139395254,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.029166545139395254 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "1156d597-dc46-4638-b747-02e6e79c37bf",
+        "sequence": 7,
+        "window_start": "2026-10-08T18:35:26.267995-07:00",
+        "window_end": "2026-10-08T18:40:26.267995-07:00",
+        "submitted_at": "2026-10-08T18:40:26.349665-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "8b79f52eeb60fc26b443885bb1aba5a23f33c70a6dcf7c2d0164469a52022f30",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "25eb4c30cf1ea92bbc90342f9e241559d8a1e56289ade3f75eeec309d93b3f58",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "50c1e772ee049d118ea8091767e9149f5d59521da46a3097841a7302581adae9",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "13cb96049600540670808b4a652c0fb3ac420cb0d5274bd8cff5d5904b4efc78",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "1a4d24bd989dbc038001dfe1502602f249d3be24dc8406c7a8aa96a07b7b75a1",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "faa37da8ca26137639155ca35ee1575f6a3f0e2d8a9819af443a76a76f43e987",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "b9f43a6d14addfd1ad7c4c2df713ff4bb8e0a5bfbe5b5f7e11d27294e0242109",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              48.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              48.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "48.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:35:26.267995-07:00",
+            "window_end": "2026-10-08T18:40:26.267995-07:00",
+            "raw_sha256": "934330085a07b89de9256ba8ddeb69f6f3091bff88f23ae18fab2ee88aa5f081",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.02916703125455735,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.02916703125455735,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.02916703125455735 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "d967a3d2-748a-447a-b8d2-f8240f2c49ac",
+        "sequence": 8,
+        "window_start": "2026-10-08T18:36:26.473989-07:00",
+        "window_end": "2026-10-08T18:41:26.473989-07:00",
+        "submitted_at": "2026-10-08T18:41:26.542175-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "3453e7d13ce558e99e3a07c749cb1345f4bc88e287b132da1345a9da14ff64ee",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "37d62a4a6874c5c63a023384e887ee2e76372a6e54b8d1d9c871860ac153e4e0",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "7abb7006a67967832b824b7e601aa60c166bd1c3113c61c9939d4b9d7e5a720e",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "3ffed5051d3aa40e13c0eb08357c877210a12c790a4ca6d755118d787e28b3bd",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "4d7d88925a8a6001c1c2893895891600b52c3a4129c8bba06afe80f5cbb2f7d3",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "04c3cc7e84a31646bae8066ee2568b7a74e081651f0ba2bc25cf78c0724d5867",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "e5178a7dbcb1dae834758cadf3eba9b89bd9f551fa7fb8b69db02c882a0ed91b",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              48.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              48.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "48.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:36:26.473989-07:00",
+            "window_end": "2026-10-08T18:41:26.473989-07:00",
+            "raw_sha256": "fe24b42c25c8680592f271417bd798b1058a3042bdad6a33f061a0a52cecd196",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.033333472222800926,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.033333472222800926,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.033333472222800926 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "0f5306fa-8b10-4323-940a-30d789d00182",
+        "sequence": 9,
+        "window_start": "2026-10-08T18:37:26.662833-07:00",
+        "window_end": "2026-10-08T18:42:26.662833-07:00",
+        "submitted_at": "2026-10-08T18:42:26.714245-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "67f08193681f000efe559678fa81d0beee7d88c1bb360112a1d770a3a74da078",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "63582ced1294eaa9808f124910f9d5260ea66e454fb4ff36e6276f591c12942a",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "c66183bbb504c57daaaa05bd69b785912b89cd3072f6e9c01ea48787a819afeb",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "5b0fb58c29b4b8d87485fdd75e71f198a5c01f6daf09174dbde197266f42ff94",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "65ae557134a0b5e7bfb08c763993bc255b12d2e4df2784ee563b18d64a6163b9",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "3195787d42a36876c088464ecb413e139c1ba45cfae4e4776b59a17945551854",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "31aad23df2afcadffcfedd34529b88b999801ceed5f30507f7786e61bb064a8f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              74.99999999999997,
+              5
+            ],
+            "replayed": [
+              "ok",
+              74.99999999999997,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "74.99999999999997 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:37:26.662833-07:00",
+            "window_end": "2026-10-08T18:42:26.662833-07:00",
+            "raw_sha256": "f8fa7d2f86b2c1dc3eaf95f8c043a231bb897d3c4573557ad94f18df93a0522f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.041666840278501156,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.041666840278501156,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.041666840278501156 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "4306d9d9-b32e-4eba-aacf-1edb25f78adc",
+        "sequence": 10,
+        "window_start": "2026-10-08T18:38:26.976115-07:00",
+        "window_end": "2026-10-08T18:43:26.976115-07:00",
+        "submitted_at": "2026-10-08T18:43:27.064877-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "3d630bb61b2b94e69be61cac4241805f9a6f39adf6e67fb090db34d5ed90821c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "b677aea125ca1f589361d928680015d6ce7a8708f9fb955e8903f59ebbc1fb7c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "957213004361493588e0be15d1c5ca40238c2fce5f3bfbd15479e1c11bcde402",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "ee50c058b34b4c6fa5af46841f02c57f9f4acb4e707f9c55fc7947a7f2e26397",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "0680fde55dac4a70dbf779e275622bb06ee12269ba2e43117ff57280096cc983",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "3ba578ff2d4c3036b7dc05480bc094dd4feacd93b5e76aab4f6d8d5865641981",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "b3dafb50f38087f292afdb6487250e780c866ab9c1b08d9e9b48cc5c62239101",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              87.49999999999999,
+              5
+            ],
+            "replayed": [
+              "ok",
+              87.49999999999999,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "87.49999999999999 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:38:26.976115-07:00",
+            "window_end": "2026-10-08T18:43:26.976115-07:00",
+            "raw_sha256": "9305ba91135a1b166b28b4d63f15ab9e6d5ba9ced84a0617a798a6596cef552a",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.020833420139250578,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.020833420139250578,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.020833420139250578 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "2e578f23-2bbd-46d9-9dd6-e2cbe22c3cbb",
+        "sequence": 11,
+        "window_start": "2026-10-08T18:39:27.186998-07:00",
+        "window_end": "2026-10-08T18:44:27.186998-07:00",
+        "submitted_at": "2026-10-08T18:44:27.259053-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "0cd39d0f0d4b3b87775ac4013d7891b3d9bc53eaf9fc328dbb6ea470ea938b9d",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "bc991b82e8a9fb9519b99806be321118c8d9213b1b630482773c5c606249dd43",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "8ee66fc950fec56665538965607e321fbb2e57d3c8737599ff0e09be9fa38a02",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "12ec04edcce94bfcb0f9d4a0f66b04fe59d01759047307fcb87dd5609bc9f909",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "777dda72dc4b3e7b2684c6cc48d034e97022d99797a8066398fa5886704d0f24",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "989078bb3089d32899ddb551bc06c8c0ece1ed4b6e038433d4c8035f1b0bc13b",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "86801b7b7eaf29595a1e5969f60b61df4216fb011085f4f4819aab0a44dd467e",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              91.24999999999999,
+              5
+            ],
+            "replayed": [
+              "ok",
+              91.24999999999999,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "91.24999999999999 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:39:27.186998-07:00",
+            "window_end": "2026-10-08T18:44:27.186998-07:00",
+            "raw_sha256": "e038348ecc15bb2e2ac0b8c5827a8af3f8621f9a5c67ea8172e03fbe5392a527",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.029166666666666667,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.029166666666666667,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.029166666666666667 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "aa54b749-dacb-4942-be73-55e4c5085fbd",
+        "sequence": 12,
+        "window_start": "2026-10-08T18:40:27.380840-07:00",
+        "window_end": "2026-10-08T18:45:27.380840-07:00",
+        "submitted_at": "2026-10-08T18:45:27.428922-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "3b5aaddd615a98e48901274d49b472be84ed8a16e4d35c712c838b217e12367e",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "880ee7bc7d9a8c481058c36ffe6097f65eb51c18e3975b023ab4fc0d4ef11589",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "a936bdf644bf3d7cbf9ff5f428c925427819b91ba0c07d10f7d48d9f1f49f05c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "d2cbc7bbf2f0cb4c29c669304bb1177ce18f08ee7bdce0187f9add405d3a3fc8",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "a2222350ee47cb6aa6b683fafd377dc6548b49d6edce6f9f4e01573e75bf965c",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "78f7c64d80343da406716fef6c06d94d8df2632d82f4621ea00511e0273db8fd",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "457f45759c47f2985276852a2c57ccb6a7b0e74f818c0e71325006e680fe8598",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              95.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              95.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "95.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:40:27.380840-07:00",
+            "window_end": "2026-10-08T18:45:27.380840-07:00",
+            "raw_sha256": "7f5df1111e1a0bed27e144ad840f4e4c64c17ea41f8c04395302f13163375e32",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.025,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.025,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.025 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "71cf46e9-857d-4a34-a087-da3e4c83d323",
+        "sequence": 13,
+        "window_start": "2026-10-08T18:41:27.539447-07:00",
+        "window_end": "2026-10-08T18:46:27.539447-07:00",
+        "submitted_at": "2026-10-08T18:46:27.588597-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "2ffc84f323a7019c087b358c611c2f95e77e38184bdb7c2e1446c0d7b4f85de7",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "10fe6483c200d37603c8694289bdbe670765cbe1df5722536d991754aa6f4383",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "585ffd85d12e737ed6a49df96c1ecc4cad22994049e4a626bfbaa51ac93c26ce",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "c596d2349fca4a7c988a84356b64595044425683a51b77d1e0b4207af11af4ae",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "a1d4333002d005887edb162a919be57ff630a3a4eba9f7631c3523a8b6418aa5",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "48f531b49b9d4db8b568ab00913d7a53aa54d88ddca2feb4b6254c952c33fcef",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "4d1a1d9e9bf684771daabacfcae25c199a3b0cc32752562d48b4431f54e3f24e",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              93.75,
+              5
+            ],
+            "replayed": [
+              "ok",
+              93.75,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "93.75 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:41:27.539447-07:00",
+            "window_end": "2026-10-08T18:46:27.539447-07:00",
+            "raw_sha256": "f3564ff4f2c35451b4a17cef5750eca30b71f627b54c20e706ea41619505aca6",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.020833246528139466,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.020833246528139466,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.020833246528139466 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "2471967a-548f-4a61-81c6-b449b4d9b17f",
+        "sequence": 14,
+        "window_start": "2026-10-08T18:42:27.709098-07:00",
+        "window_end": "2026-10-08T18:47:27.709098-07:00",
+        "submitted_at": "2026-10-08T18:47:27.756236-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            null
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "9da0d76765c6607ab0596f0e516b0c982a3a41239a7df467a2a27e9bab932a96",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "4689b43f25daf5649b8e90e755e485a7dce9eae9452e5733135720f2d9c525a3",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "3ef5878b5587acdedecad316fae2fd5349ec4c1b2c130a720a2212d1e230aa06",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "38a5eb20e8827111ec69de769613cd27025565e7a4c10adedab066c884f81ae1",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "44653340472557b099242b2911012d5e57d2c2b0384eac82bf36d1f92aa4866f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "566fd3e92b80fab09d9b793edc15ddf0383565ba27826c872a3f1028c330f139",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "bc9e712de7b5b63f4766b22ead170132b72c155f2e02e363e5a95aca718bb016",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              95.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              95.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "95.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:42:27.709098-07:00",
+            "window_end": "2026-10-08T18:47:27.709098-07:00",
+            "raw_sha256": "4d21408fbdb85f3001813a50e02072c1722fc1c27bc3479c92a69573a944686f",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.033333472222800926,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.033333472222800926,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.033333472222800926 within healthy bound [0.0, +inf]"
+          }
+        ]
+      },
+      {
+        "sample_id": "c15e1f24-1185-4257-a0ef-160d90bdc1b8",
+        "sequence": 15,
+        "window_start": "2026-10-08T18:43:27.867197-07:00",
+        "window_end": "2026-10-08T18:48:27.867197-07:00",
+        "submitted_at": "2026-10-08T18:48:27.973158-07:00",
+        "stored_outcome": "healthy",
+        "stored_required_signals_present": true,
+        "replayed_outcome": "healthy",
+        "replayed_required_signals_present": true,
+        "replayed_reason": "every required signal is present, fresh and within bounds",
+        "recompute_skipped": null,
+        "consistent": true,
+        "integrity": [],
+        "decision": {
+          "stored": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            "recovery_confirmed"
+          ],
+          "replayed": [
+            "adopted",
+            "adopted",
+            true,
+            "confirmed",
+            "recovery_confirmed"
+          ],
+          "raw_mismatches": [],
+          "signal_mismatches": []
+        },
+        "readings": [
+          {
+            "signal_name": "dependency_deployments_available",
+            "query": "count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1)",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "b24325ea47109f157e0f40d5f1a34708e18a2cdf32445ae701ecc0678c9a8cf1",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              8.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              8.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "8.0 within healthy bound [8.0, 8.0]"
+          },
+          {
+            "signal_name": "dependency_error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "b741e7568dbdaf1c8c729582657c2306c5a486d76f22330b9c2b5d80d54b52de",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "deployment_available_replicas",
+            "query": "min(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "d653e5c3bc0eb0f66b1efca8acdc691e3da143ea099c184ee6ae896c7359aafc",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_available_replicas_min_in_window",
+            "query": "min(min_over_time(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=\"checkout\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "aedcb5d26a6432d4bc17e4a55b2ca15d4fa4c72ddf395ef88eb160e8174667eb",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "deployment_ready_replicas",
+            "query": "min(kube_deployment_status_replicas_ready{namespace=\"otel-demo\",deployment=\"checkout\"})",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "292b2006067756b7a0297d6a68aae6918869f2266bca29327ffdf5e67f9de9b9",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              1.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              1.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "1.0 within healthy bound [1.0, +inf]"
+          },
+          {
+            "signal_name": "error_ratio",
+            "query": "(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "66863e09fa7496ad15230e59989bb9401a19fb72da4b5d6fe81588574fd96856",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.0 within healthy bound [0.0, 0.01]"
+          },
+          {
+            "signal_name": "latency_p95_milliseconds",
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m])))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "7fbc3d5828a1962d10d0d3e147066da18347c7b344dcd6fa136cea49e391a127",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              96.0,
+              5
+            ],
+            "replayed": [
+              "ok",
+              96.0,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "96.0 within healthy bound [0.0, 500.0]"
+          },
+          {
+            "signal_name": "request_rate_per_second",
+            "query": "sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "source": "prometheus",
+            "window_start": "2026-10-08T18:43:27.867197-07:00",
+            "window_end": "2026-10-08T18:48:27.867197-07:00",
+            "raw_sha256": "f1d1d9edd43c2e2a24a0e74d8b9b3ec3c56a17ca8f2813bc68a53777dcdbb133",
+            "raw_verified": true,
+            "stored": [
+              "ok",
+              0.03333333333333333,
+              5
+            ],
+            "replayed": [
+              "ok",
+              0.03333333333333333,
+              5
+            ],
+            "verdict": "healthy",
+            "reason": "0.03333333333333333 within healthy bound [0.0, +inf]"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,1434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident a6c68a1d-399d-53bf-8432-49909b61a84f</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a>
+    <span class="muted">· signed in as <code>demo</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>a6c68a1d-399d-53bf-8432-49909b61a84f</code></h1>
+<p>
+  lifecycle <span class="badge">open</span>
+  · mode <span class="badge" id="incident-mode">automatic</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">1</strong>
+  · run <code>a4968097-4721-55ba-8957-ecc3df3eb995</code> <span class="badge" id="run-state">queued</span>
+  · epoch 0
+  · budget 0 spent / 0 reserved / 0 unknown of 100
+  · deadline 2026-10-08 19:23:35.913515-07:00
+</p>
+
+<p>Target request: <code>checkout-lab</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>F6 step 4 (continued_degradation): checkout shows elevated PlaceOrder errors in the lab; the investigation Run stays queued (no worker in this acceptance), the human handles it outside.</pre>
+
+
+<h2>Human control</h2>
+<p class="muted">Every action is a conditional update against generation 1. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="cancel-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="correct-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="follow_up-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="new_run">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="new_run-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+  <button type="submit">new_run</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="pause-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="register_remediation">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="register_remediation-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  
+  <button type="submit">register_remediation</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="resume-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+  <button type="submit">resume</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/control">
+  <input type="hidden" name="action" value="takeover">
+  <input type="hidden" name="expected_generation" value="1">
+  <input type="hidden" name="idempotency_key" value="takeover-1-2819dfd44a834b61b4e50aeeffc69e4f">
+  
+  <button type="submit">takeover</button>
+</form>
+
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation under HealthProfile <code>otel-demo-checkout@8f91519db7fa</code>. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+
+<table id="observation-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td><code>f0337ba0-aab4-5778-a090-64e03a685456</code></td>
+    <td><span class="badge">expired</span> <span class="muted">max_samples_exhausted</span></td>
+    <td>control 1 · observation 1</td>
+    <td><code>otel-demo-checkout@8f91519db7fa</code></td>
+    <td><code>otel-demo-0.37.8</code></td>
+    <td>2026-10-08 17:25:37.090141-07:00 by <code>demo</code></td>
+    <td>2026-10-08 18:25:37.077584-07:00</td>
+    <td>11 / 11 adopted</td>
+  </tr>
+  
+  </tbody>
+</table>
+<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report below does not certify recovery.</p>
+
+<section id="recovery-verdict">
+<h3>Recovery verdict <span class="muted">(independent observation; not the investigation's conclusion)</span></h3>
+
+<div class="recovery-session">
+  <p>
+    session <code>f0337ba0-aab4-5778-a090-64e03a685456</code> · <span class="badge">expired</span> <span class="muted">max_samples_exhausted</span>
+    · verdict <span class="badge">degraded</span>
+    <span class="muted">not confirmed</span>
+    · healthy window 0 s
+    · profile <code>otel-demo-checkout@8f91519db7fa</code>
+    · handled at 2026-10-08T17:25:37.090141-07:00
+    · offline replay:
+    <span class="badge">replay consistent</span>
+    <br><span class="muted">reasons:</span> max_samples_exhausted; required signals outside their healthy bound: dependency_error_ratio, error_ratio
+    <br><span class="muted">lifecycle implied by replay:</span> <code>open</code> <span class="muted">· recorded with the samples:</span> <code>open</code>
+  </p>
+  
+  <table class="recovery-basis" id="recovery-basis">
+    <thead><tr><th>#</th><th>Window</th><th>Outcome stored → replayed</th><th>Decision stored</th><th>Replay</th></tr></thead>
+    <tbody>
+    
+    <tr>
+      <td>1</td>
+      <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00<br><span class="muted">submitted 2026-10-08T17:26:37.301143-07:00</span></td>
+      <td><span class="badge">stale</span> <span class="muted">required missing</span>
+        → <span class="badge">stale</span> <span class="muted">required missing</span>
+        <br><span class="muted">required signals without a usable reading: dependency_error_ratio, error_ratio, latency_p95_milliseconds, request_rate_per_second</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>836eae9dd8b8421a2c9a223412868d9fa4b6f2358553e314afa08bee5f60e1b0</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1900807b5a595c028ef3bb1f6c3c650c87bc243a6993414e90ef82f09d084336</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9b151a96911bf088e8fa5667a681d1cea7401cb0abc2de4cf0431c0dd9236cab</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>ec4716864952fd963850d8d2d60acfe92d02f2860bdeb2a074f30276611f7525</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f34c3dd2bcce0a5f2b52784d49c391d85abe7bea988924213ab7cb9775939a5c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>d6fbc1c3cae6bdf9292f35549c702b824901e899d42ee6727a18c4fb7b47613d</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>6fd281217151b18dfff17c4e7795592527021e3c2cf6ab25b512d9250df7093c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:21:37.130871-07:00 → 2026-10-08T17:26:37.130871-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>0a2c5b170c5e613b9b996318674c2ea201f7e30be59334d8226ca5e4de703baf</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>2</td>
+      <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00<br><span class="muted">submitted 2026-10-08T17:27:37.522150-07:00</span></td>
+      <td><span class="badge">stale</span> <span class="muted">required missing</span>
+        → <span class="badge">stale</span> <span class="muted">required missing</span>
+        <br><span class="muted">required signals without a usable reading: dependency_error_ratio, error_ratio, latency_p95_milliseconds, request_rate_per_second</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>71e83a7a2d8fd1659111db052b8dfabfb60e87edd7680f270a8fae4e5ce69e59</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>2cfed0bad126fac41e95b81e3afb0394849c1a36cdd08fcf64aa8ab3bc0a1fb1</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>93176bc2dcc2db0b42753e4bf9af46ea4ab48814c9124e0c70819644125315c2</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>6f12a17a77e502c589a0f7227ae43ca18b1e1dfc82c59f201d094730c54ff021</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>e4b760a30428bd5fe3909b975b4ae6e00dab82e396ce57e73433dace38f6a694</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>5aa24c958700f91e864c99b6b3a7613cc1c166484d0f69c0affb4cb82a80199b</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>b03dd40340901b28aa3e29ba1f77695df353a2f3971e65790991ef4818d03266</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>stale / – / –
+              → stale / – / –</td>
+            <td><span class="badge">stale</span> <span class="muted">reading status is stale</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:22:37.422854-07:00 → 2026-10-08T17:27:37.422854-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>5faff1466cb63fc0eaf48eed00f18207e9a1a062189c349ba379e21c658ef1b9</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>3</td>
+      <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00<br><span class="muted">submitted 2026-10-08T17:28:37.737888-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>340025cd5c3ff6944f41f38bec6339443302b5c40dba9abbb1835e10f2647aa7</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9e5a4b7777afce540efea40df3aadb4a214d3722c3b97ccb5ac148b5c481b794</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>a85a3d3647ba5d492dee6048f3e688724c01f798959d2ee4577ebeff1a6a77b6</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>6512579ff3584845c8ae7271344591a80d9293b87ae8ca10e99d85051c1fc847</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>e24b11500c2d4ce355676b73b4117763eac0fecba9d4c469f9072151773a90df</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1a9a97a3d7c0363916445554b9649a1bda5d810313c022fbdee4b54cf25b00d1</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 84.77333333333333 / 5
+              → ok / 84.77333333333333 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">84.77333333333333 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>4b2d099ee3aa008e7f3ba9b9f658f5227548973a1887befbf25c4accb7818a87</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.020362666666666668 / 5
+              → ok / 0.020362666666666668 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.020362666666666668 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:23:37.679092-07:00 → 2026-10-08T17:28:37.679092-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>d86057c12c1216d450bea247026e8bba67a704fff975e46470404b962708f742</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>4</td>
+      <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00<br><span class="muted">submitted 2026-10-08T17:29:37.894266-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>41e53eeb4e0b224644680077d3b2fd0c202faccd6957da1765b6174901f2fdd0</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>fd439e7fa5ffa3d6589789a8e9f8fc64eb2579239a444ad0d42a0dd2ec46383f</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>d9536f21690296d063cfac34e8084c21060bf4ed9ceddb7d83fe8c63e416565c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1927310a443d9f38912fd631ec8ae60a364be5d9dd6c0523456ab2a62c5e8893</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>e0c46ac4c1979c38b1f6f2bb1eccc84370fb556bae8bd85ba9a2260d16c2caea</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f5b9b3cea2f9d5528d68313734df4bc7c2992691a64bd911f27bd9d7814df149</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f3ad82631ce643f19281a2a15ade20544c21afaead78c572dbd9720a246d16f7</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.020833159723668972 / 5
+              → ok / 0.020833159723668972 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.020833159723668972 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:24:37.849208-07:00 → 2026-10-08T17:29:37.849208-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>a945cc128442eb7dbb28c43bee313457454d6cc3ef0792d1c58d052482014f4c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>5</td>
+      <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00<br><span class="muted">submitted 2026-10-08T17:30:38.137551-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9ef39cf013a678ace485f7d332e55fa94f65e0f0e6a470dbd48c4dade42e87b4</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>c8db50ec8676f66842dbca23f39f5fd496f8ff546546bcaa8627534e69cb9d02</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>02c260864b9b9d14d8ff7f088609d58215284116c42fb816b05cfd64f4929bb0</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>7662e3f1e570acf2687579b447dcb88fae71a578f5f108bcbab2ae2260d2cb12</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>4631d9e42abd53ff641bc9830e460aeebf1f9a320882376f6e891a93f5830ba1</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>d762ea7f605eb0c1f95f2f88c1b8ed6cdf889d2f173ed9c0dc58031e9d71bf75</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>b682842cd8741ea178b7f05ff1da73705377f7823aaeb47bade5ffe834c19492</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.029166666666666674 / 5
+              → ok / 0.029166666666666674 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.029166666666666674 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:25:38.059119-07:00 → 2026-10-08T17:30:38.059119-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>bf538550658789adcfc7172b92d956c07ae42990d4e693e6e07662127e9b44be</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>6</td>
+      <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00<br><span class="muted">submitted 2026-10-08T17:31:38.372763-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>17b9782bbc8b736287117507c01086aabb5c9a44fc73a48c9c293a1b06e30d82</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>6fbf298775b988940eaabd4d3c58977253b46d95a7352d40a7d946e7c4580137</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f05ef885c1f25253073b00c453ed0b9d10bb9479286ec21da4b019cad6c1d60b</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>d4e072379bc73e399d494cbd1a55bd78641f1f526648f18e81fd4cf8483181be</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>308b762d8a00f6508f4bfab3b6dda9db843ae59575ebc48c5319cfa685f1b091</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>e4e4adee844e3d6dd14c2695405d428de42d75e53a074efc6d46ce5e332bd90e</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>ab3a9d0231fdc6efcdf0ca986c115cca6492e98c7bd972471c95025b203e1bde</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.024999895833767362 / 5
+              → ok / 0.024999895833767362 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.024999895833767362 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:26:38.300875-07:00 → 2026-10-08T17:31:38.300875-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>16c6529bf6610e27d6c80a91fc4f0cbd4b7c5009d6b49a46cba3f204676e9531</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>7</td>
+      <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00<br><span class="muted">submitted 2026-10-08T17:32:38.587458-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>3054e8d07dba7ac1b1ad8c6b7a4d12969d5369944ed9068940ba04548024d6bf</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1835329d1e6145958cced22d85920e9685cd594cfa3e2282fe6d9f9bcd6c447e</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>b73c395908333742533522c21838899855e4b87643c8c07e76f42f0b4b9edbf7</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>e273782b201154fc4d1981ab0d1d0c7a530653ec0385473f472a14b1a25841a6</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>c7dd3493e003325885f55de83bd0328a957d0660e9fb67eb9947067165c958d3</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>c11494f67e2f3018741a926d46ed6134a2991ec9914d809b83d6bdec4437c53c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f9207d58606194c0e8ff6b9867d1b270f0a941de80ac2a02015b8ad425b9fd98</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.0375 / 5
+              → ok / 0.0375 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.0375 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:27:38.522898-07:00 → 2026-10-08T17:32:38.522898-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>c34d47b30772d5360cd1014f08fce64585382b5b52f9b32a5c57b2e29b15574d</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>8</td>
+      <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00<br><span class="muted">submitted 2026-10-08T17:33:38.836454-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9f5e8a1830fa8ad3c42f5f49556ff34c9c146a6e3f4654d1bd1b2b3143cd6745</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>77b8a93e3aa10ee0418bce5e5cac2b0410b19911173a8c642c4c2fb62e3922c9</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>b3b778796096106194bb8f18ccb44e7de53479b2b4c1e51e0cfe01460991c0d3</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>718e228c984cab0f1bb28723d741b071aa485d54e30535a9f032fd2682995a96</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>3d08865187cfc44337b2ad93cb87568fb9cdfacb74ee2532b5a5221e2de212c9</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>941fde9fcc8d3477209ae10823e5e8d03a1d1fb9d839f412978b45762c723bf5</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 47.99999999999999 / 5
+              → ok / 47.99999999999999 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">47.99999999999999 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>62514332649e1d6bb83722d095fad0891ba77a8d2a0910e042d08fbd1eca4461</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.0333337500052084 / 5
+              → ok / 0.0333337500052084 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.0333337500052084 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:28:38.740400-07:00 → 2026-10-08T17:33:38.740400-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>bca365bedab1273e26289c2c4ed25bcc7f20f49114f66a513ef043a070ed9eb8</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>9</td>
+      <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00<br><span class="muted">submitted 2026-10-08T17:34:39.005281-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1142a75e35535c9454e8cabdaca138527cf90ab136fdab773c6514c229d5e7bd</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>1575ee4fb409280650835ad84a2ed65d00fabbd0443aee1b53de9a8ac734706f</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>69e41441bef49c83a857878f46793bee32dfa4b80974c93472f90591bfc234b0</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9efd3c1359d5d78ff407c84294ee3d4d5b363082078f04b59b6de994fd324111</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>477178c5c1c0b1c65f553ebae7a23e052767f1fd4798e3e49f55974603c84b06</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>68e3ca223981e80fc700f30ab8d1a53f4863e383efba077ef9a066109eadbf09</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>cdc0024bf8bf3cdab2c67ae62ca022847b91582276fa44f47233287befde3590</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.029166666666666667 / 5
+              → ok / 0.029166666666666667 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.029166666666666667 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:29:38.947602-07:00 → 2026-10-08T17:34:38.947602-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>8a7de42a67ba814cbdb8620a6c957f3d7aa8284f11b8de024dd4dd73312bed78</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>10</td>
+      <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00<br><span class="muted">submitted 2026-10-08T17:35:39.208665-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>70f8863c1bc116bac0fee3edd9dd48dfd2318341f9e8ab781343bb28cd5d53b5</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>57c34bb93b4bda0857513db650710e19f924e25aa28be40f4b929a099243e073</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>475dcb7934e8fba242d7610b40ec31bb97d3029f5aeffcfae98a11d67f4f2b2c</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>582653e96100e0322e8455c61d8c09efd380e131d55a13cca1bac50da5d25a08</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>bb1b0b8e3e6d77bc8412532676cb7abd07daa916890531e4779f94adc41911a0</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>f8e0b34514242837b09d95b4930b58d75a5b351a2a621df4a5efc709bde8b57e</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>71d5fe114c8ccf7eb45cbe1f25d9bd49526bb342787673d15290e01ed1b3b918</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.020833420139250575 / 5
+              → ok / 0.020833420139250575 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.020833420139250575 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:30:39.142426-07:00 → 2026-10-08T17:35:39.142426-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>5cc375c0c9e21ce61ea736a9148a7b97b5f4d25836a75581a5c196e73698eba5</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>11</td>
+      <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00<br><span class="muted">submitted 2026-10-08T17:36:39.460250-07:00</span></td>
+      <td><span class="badge">degraded</span> required present
+        → <span class="badge">degraded</span> required present
+        <br><span class="muted">required signals outside their healthy bound: dependency_error_ratio, error_ratio</span></td>
+      <td><code>adopted</code> · adopted · no health <span class="muted">(outcome_not_healthy)</span><br>transition <code>observation_ended_unconfirmed</code></td>
+      <td><span class="badge">consistent</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">
+        <table class="recovery-readings">
+          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
+          <tbody>
+          
+          <tr>
+            <td><code>dependency_deployments_available</code></td>
+            <td>ok / 8.0 / 5
+              → ok / 8.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">8.0 within healthy bound [8.0, 8.0]</span></td>
+            <td><code>count(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=~&#34;payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd&#34;} &gt;= 1)</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>94814dc73a6772be2c9cf609a0cc18d8f203e7925abea85e3e6c43d0ab035383</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>dependency_error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_CLIENT&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>2a52c084eb65cd7ca76cf6accd26f0ceef0d9db4369261a763c505f30ab4ee71</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>9c36f1a9b1f22a27e6198d92f1d0d73a4d2e96bc26e4bd725c21e93d42a20cc1</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_available_replicas_min_in_window</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(min_over_time(kube_deployment_status_replicas_available{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>2a0f83f4148b8297afb00d1ce6aba140868106d9e5fb97329bc1eb3ae3e1f170</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>deployment_ready_replicas</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">1.0 within healthy bound [1.0, +inf]</span></td>
+            <td><code>min(kube_deployment_status_replicas_ready{namespace=&#34;otel-demo&#34;,deployment=&#34;checkout&#34;})</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>2b7569aa6f5239b257906bef4c7c7a18ad727c2cd90b8d854912fd706c209296</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>error_ratio</code></td>
+            <td>ok / 1.0 / 5
+              → ok / 1.0 / 5</td>
+            <td><span class="badge">degraded</span> <span class="muted">1.0 outside healthy bound [0.0, 0.01]</span></td>
+            <td><code>(sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>94711870780ccd9f0477e6d61827171db7242e8d9d22925160dae4870b0e94b6</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>latency_p95_milliseconds</code></td>
+            <td>ok / 48.0 / 5
+              → ok / 48.0 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">48.0 within healthy bound [0.0, 500.0]</span></td>
+            <td><code>histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m])))</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>a1d923903b0ebd2dd94e502591b35167eb867c133888daaed5ae35c5e2b29bf9</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          <tr>
+            <td><code>request_rate_per_second</code></td>
+            <td>ok / 0.012500052083550348 / 5
+              → ok / 0.012500052083550348 / 5</td>
+            <td><span class="badge">healthy</span> <span class="muted">0.012500052083550348 within healthy bound [0.0, +inf]</span></td>
+            <td><code>sum(rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))</code></td>
+            <td>2026-10-08T17:31:39.364948-07:00 → 2026-10-08T17:36:39.364948-07:00</td>
+            <td><code>prometheus</code></td>
+            <td><code>b091686831b49496f20bfe9815586e7a99a492626482e0cc5382279806109453</code> <span class="muted">verified</span></td>
+          </tr>
+          
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    
+    </tbody>
+  </table>
+  
+</div>
+
+</section>
+
+
+<h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  </p>
+  
+
+
+
+
+
+
+<h2>Steps</h2>
+
+<p class="muted">No committed steps.</p>
+
+
+<h2>Human decisions</h2>
+
+<table>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <tbody>
+  
+  <tr><td>2</td><td><code>register_remediation</code></td><td><code>demo</code></td>
+      <td>0 → 1</td><td></td></tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 2)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "demo", "channel": "ui_basic", "question": "F6 step 4 (continued_degradation): checkout shows elevated PlaceOrder errors in the lab; the investigation Run stays queued (no worker in this acceptance), the human handles it outside.", "received_at": "2026-10-08T17:23:35.910222-07:00", "request_id": "aa1cdf09-8e5b-4c98-ac1f-25677ba0de9b", "run_id": "a4968097-4721-55ba-8957-ecc3df3eb995", "target_id": "checkout-lab"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>control_applied</strong> <span class="muted">{"action": "register_remediation", "actor_id": "demo", "expected_generation": 0, "generation": 1, "revision": "otel-demo-0.37.8"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 2;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var source = new EventSource("/incidents/a6c68a1d-399d-53bf-8432-49909b61a84f/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

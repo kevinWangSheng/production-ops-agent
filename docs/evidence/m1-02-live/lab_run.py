@@ -46,8 +46,7 @@ from opspilot.acceptance import (  # noqa: E402
     recovery_outcome,
 )
 from opspilot.observation import ObservationStore  # noqa: E402
-
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+from scripts.kind_lab import OPENER  # noqa: E402  (no proxy, no redirects: #131)
 
 
 def _auth(user_file: Path) -> str:
@@ -68,6 +67,8 @@ def _post(web: str, path: str, fields: dict[str, str], user_file: Path) -> dict:
     )
     try:
         with OPENER.open(request, timeout=30) as response:
+            if 300 <= response.status < 400:
+                return {"status": response.status, "body": "REDIRECT_REFUSED"}
             return {"status": response.status, "body": json.loads(response.read())}
     except urllib.error.HTTPError as error:
         body = error.read().decode(errors="replace")
@@ -93,7 +94,24 @@ def _now() -> str:
 
 def intake(args: argparse.Namespace) -> int:
     record = _load(args.scenario)
-    key = f"f6-live-{args.step}-{args.kind}-{args.experiment_id}"
+    # the experiment id is fixed on the first attempt and reused by every
+    # retry, so a retried intake replays the same key instead of opening a
+    # second incident (issue #157 item 1)
+    experiment_id = record.get("experiment_id") or args.experiment_id
+    key = f"f6-live-{args.step}-{args.kind}-{experiment_id}"
+    # the id and the scenario's identity are persisted before the POST, so
+    # a request that reached the server but lost its response is replayed
+    # under the same key by the next invocation (bot review P2 on #161)
+    record.update(
+        {
+            "experiment_id": experiment_id,
+            "scenario_id": f"F6:{args.step}:{args.kind}",
+            "acceptance_step": str(args.step),
+            "kind": args.kind,
+            "target_id": args.target_id,
+        }
+    )
+    _save(args.scenario, record)
     result = _post(
         args.web,
         "/intake/ui",
@@ -108,25 +126,22 @@ def intake(args: argparse.Namespace) -> int:
         | {"idempotency_key": key},
         args.user_file,
     )
-    record.update(
-        {
-            "experiment_id": args.experiment_id,
-            "scenario_id": f"F6:{args.step}:{args.kind}",
-            "acceptance_step": str(args.step),
-            "kind": args.kind,
-            "target_id": args.target_id,
-            "intake": {
-                "at": _now(),
-                "status": result["status"],
-                "body": result["body"],
-            },
-        }
-    )
-    if result["status"] in (200, 201):
-        record["incident_id"] = result["body"]["incident_id"]
+    attempt = {"at": _now(), "status": result["status"], "body": result["body"]}
+    ok = result["status"] in (200, 201) and isinstance(result["body"], dict)
+    if not ok:
+        # a failed attempt is logged and no incident id survives it: the
+        # record never points at an incident this response did not confirm
+        # (item 2; Codex review P2 on #161)
+        record.pop("incident_id", None)
+        record.pop("intake", None)
+        record.setdefault("intake_failures", []).append(attempt)
+        _save(args.scenario, record)
+        print(json.dumps(attempt, indent=2))
+        return 1
+    record.update({"intake": attempt, "incident_id": result["body"]["incident_id"]})
     _save(args.scenario, record)
     print(json.dumps(record["intake"], indent=2))
-    return 0 if "incident_id" in record else 1
+    return 0
 
 
 def register(args: argparse.Namespace) -> int:
@@ -139,7 +154,16 @@ def register(args: argparse.Namespace) -> int:
                 "SELECT control_generation, lifecycle FROM opspilot_incidents WHERE incident_id=%s",
                 (incident,),
             ).fetchone()
-        generation = int(row["control_generation"])
+        # the generation this decision was taken against is persisted before
+        # the POST and reused by a retry (same key, same intent), so a
+        # registration whose response was lost is confirmed by the replay
+        # instead of refused as CONTROL_KEY_CONFLICT (item 4)
+        pending = record.get("register_pending")
+        if pending is None:
+            pending = {"expected_generation": int(row["control_generation"])}
+            record["register_pending"] = pending
+            _save(args.scenario, record)
+        generation = int(pending["expected_generation"])
         result = _post(
             args.web,
             f"/incidents/{incident}/control",
@@ -162,10 +186,12 @@ def register(args: argparse.Namespace) -> int:
         "status": result["status"],
         "body": result["body"],
     }
-    if sessions:
-        latest = sessions[-1]
-        record["session_id"] = str(latest["session_id"])
-        record["health_profile_revision"] = latest["health_profile_revision"]
+    if result["status"] == 200:
+        record.pop("register_pending", None)
+        if sessions:
+            latest = sessions[-1]
+            record["session_id"] = str(latest["session_id"])
+            record["health_profile_revision"] = latest["health_profile_revision"]
     _save(args.scenario, record)
     print(json.dumps(record["register"], indent=2))
     return 0 if result["status"] == 200 else 1
@@ -425,6 +451,8 @@ def page(args: argparse.Namespace) -> int:
         headers={"Authorization": _auth(args.user_file)},
     )
     with OPENER.open(request, timeout=30) as response:
+        if 300 <= response.status < 400:
+            raise SystemExit(f"redirect refused: {response.status}")
         html = response.read().decode()
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(html)
