@@ -45,49 +45,58 @@ down_revision: str | Sequence[str] | None = "0005_incident_mode"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_OPEN_SESSIONS = (
-    "SELECT s.session_id, s.incident_id, i.lifecycle "
-    "FROM opspilot_observation_sessions s "
-    "JOIN opspilot_incidents i ON i.incident_id = s.incident_id "
-    "WHERE s.state='authorized' ORDER BY s.incident_id, s.session_id"
+_OPEN_INCIDENTS = (
+    "SELECT DISTINCT incident_id FROM opspilot_observation_sessions "
+    "WHERE state='authorized' ORDER BY incident_id"
+)
+_LOCK_INCIDENT = (
+    "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE"
+)
+_OPEN_SESSIONS_OF = (
+    "SELECT session_id FROM opspilot_observation_sessions "
+    "WHERE incident_id=%s AND state='authorized' ORDER BY session_id FOR UPDATE"
 )
 
 
 def end_open_sessions(conn: Any) -> int:
     """End every ``authorized`` session (``authority_revoked``, lifecycle
     unchanged). ``conn`` is a DB-API connection (psycopg) inside the caller's
-    transaction, which holds the table lock until it ends. Returns the number
-    of sessions ended."""
+    transaction. Returns the number of sessions ended.
+
+    Locking follows the product's own order and granularity, row locks on
+    the incident first and then on its sessions (``_lock_incident`` ->
+    session ``FOR UPDATE`` in ``submit_sample``, ``register_remediation``,
+    pause and takeover), so an in-flight product transaction either commits
+    before this one takes its rows or waits behind it, never the reverse.
+    ``claim_due_samples`` takes no row lock it would wait for (``SKIP
+    LOCKED``) and only table-level ROW SHARE locks, which row locks do not
+    conflict with; a table-level ACCESS EXCLUSIVE lock here would instead
+    deadlock against its join order (Codex recheck of PR #161, P2). A
+    session authorized concurrently for an incident not in the initial scan
+    was authorized under the new code and is left alone."""
     with conn.cursor() as cursor:
-        # Serialize against the Observer: ``submit_sample`` locks the session
-        # row and would otherwise adopt a sample into a session this
-        # transaction is ending (Codex recheck of PR #161, P1). ACCESS
-        # EXCLUSIVE makes every in-flight submission commit before the read
-        # or wait until this transaction ends; the lock is released with the
-        # migration's own transaction.
-        # Incident first, then sessions: the lock order every product path
-        # keeps (``register_remediation``, pause, takeover and the Observer
-        # lock the incident row before they touch its sessions), so a
-        # control transaction that already holds an incident row makes this
-        # lock wait instead of deadlocking on the ending's incident foreign
-        # key (bot review and Codex recheck of PR #161, P2).
-        cursor.execute("LOCK TABLE opspilot_incidents IN ACCESS EXCLUSIVE MODE")
-        cursor.execute(
-            "LOCK TABLE opspilot_observation_sessions IN ACCESS EXCLUSIVE MODE"
-        )
-        cursor.execute(_OPEN_SESSIONS)
-        rows = cursor.fetchall()
-    for session_id, incident_id, lifecycle in rows:
-        end_session(
-            conn,
-            session_id,
-            incident_id,
-            ended_reason="authority_revoked",
-            transition=None,
-            lifecycle_before=str(lifecycle),
-            lifecycle_after=str(lifecycle),
-        )
-    return len(rows)
+        cursor.execute(_OPEN_INCIDENTS)
+        incidents = [row[0] for row in cursor.fetchall()]
+        ended = 0
+        for incident_id in incidents:
+            cursor.execute(_LOCK_INCIDENT, (incident_id,))
+            locked = cursor.fetchone()
+            if locked is None:
+                continue
+            lifecycle = str(locked[0])
+            cursor.execute(_OPEN_SESSIONS_OF, (incident_id,))
+            for (session_id,) in cursor.fetchall():
+                end_session(
+                    conn,
+                    session_id,
+                    incident_id,
+                    ended_reason="authority_revoked",
+                    transition=None,
+                    lifecycle_before=lifecycle,
+                    lifecycle_after=lifecycle,
+                )
+                ended += 1
+    return ended
 
 
 def _dbapi_connection() -> Any:
