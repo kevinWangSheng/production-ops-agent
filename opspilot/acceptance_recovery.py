@@ -184,6 +184,8 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "sample_id",
             "lifecycle_before",
             "lifecycle_after",
+            "job_id",
+            "job_sequence",
         ),
     },
 }
@@ -647,6 +649,17 @@ def _sample_jobs(sessions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
                     int(row["active_sample_sequence"]),
                 )
             )
+        # a job an ending closed before it produced a sample (revoked or
+        # expired with the result still out): its identity is on the ending
+        for ending in history.get("endings") or ():
+            if ending.get("job_id") is not None:
+                jobs.add(
+                    (
+                        str(ending["job_id"]),
+                        str(row["session_id"]),
+                        int(ending["job_sequence"]),
+                    )
+                )
     return tuple(
         {"job_id": job_id, "session_id": session_id, "sequence": sequence}
         for job_id, session_id, sequence in sorted(jobs)

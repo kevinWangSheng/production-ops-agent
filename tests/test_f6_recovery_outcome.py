@@ -450,9 +450,13 @@ def test_the_expected_observer_grants_are_the_migrations():
     assert OBSERVER_GRANTS["opspilot_observation_samples"]["INSERT"] == tuple(
         samples.split(",")
     )
+    later = (path.parent / "0007_ending_job_identity.py").read_text()
+    job_columns = re.search(
+        r"GRANT INSERT \(([^)]*)\) ON opspilot_observation_endings", later
+    ).group(1)
     assert OBSERVER_GRANTS["opspilot_observation_endings"]["INSERT"] == tuple(
         endings.split(",")
-    )
+    ) + tuple(name.strip() for name in job_columns.split(","))
     assert "GRANT UPDATE (lifecycle) ON opspilot_incidents" in source
 
 
@@ -757,3 +761,35 @@ def test_a_bundle_instant_without_a_timezone_is_not_trusted():
         for signal in sample.signals.values()
     )
     assert "read_only_query" in outcome.actions
+
+
+def test_a_job_closed_by_an_ending_keeps_its_identity_in_sample_jobs():
+    """#164: a session revoked or expired with a job still out leaves no
+    sample; the ending record names the job, so the projection shows "the
+    old job" before its late result arrives, not only after."""
+    history = healthy_history(count=1)
+    job = uuid4()
+    history["endings"] = [
+        {
+            "ending_id": uuid4(),
+            "session_id": history["session"]["session_id"],
+            "incident_id": history["session"]["incident_id"],
+            "ended_reason": "authority_revoked",
+            "transition": None,
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "observing_recovery",
+            "recorded_at": NOW + timedelta(seconds=1),
+            "job_id": job,
+            "job_sequence": 2,
+        }
+    ]
+    jobs = recovery_outcome(_scenario(history), _records(history)).sample_jobs
+    assert {
+        "job_id": str(job),
+        "session_id": str(history["session"]["session_id"]),
+        "sequence": 2,
+    } in jobs
+    history["endings"][0].update(job_id=None, job_sequence=None)
+    bare = recovery_outcome(_scenario(history), _records(history)).sample_jobs
+    assert len(bare) == len(jobs) - 1

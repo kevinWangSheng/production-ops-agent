@@ -42,11 +42,23 @@ def end_session(
     lifecycle_after: str,
     sample_id: UUID | None = None,
     watermark: dict[str, Any] | None = None,
+    record_job: bool = True,
 ) -> None:
     """Close a session: state by the session state machine, job slot cleared,
     and the ending recorded (the row the lifecycle evidence trigger looks for
     when the Observer changes the incident). The caller holds the incident
-    row lock and the session row lock, in that order."""
+    row lock and the session row lock, in that order.
+
+    The closed slot's job identity goes on the ending record (migration
+    0007; ``record_job=False`` is for migrations that run before it)."""
+    job: Any = (None, None)
+    if record_job:
+        slot = conn.execute(
+            "SELECT active_sample_job_id,active_sample_sequence FROM opspilot_observation_sessions WHERE session_id=%s",
+            (session_id,),
+        ).fetchone()
+        if slot is not None:
+            job = tuple(slot.values()) if isinstance(slot, dict) else tuple(slot)
     state = OBSERVATION_SESSION.fire("authorized", _SESSION_TRIGGER[ended_reason])
     marks = watermark or {}
     conn.execute(
@@ -62,18 +74,23 @@ def end_session(
             session_id,
         ),
     )
+    columns = "ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after"
+    values = [
+        uuid4(),
+        session_id,
+        incident_id,
+        ended_reason,
+        transition,
+        sample_id,
+        lifecycle_before,
+        lifecycle_after,
+    ]
+    if record_job:
+        columns += ",job_id,job_sequence"
+        values += list(job)
     conn.execute(
-        "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
-        (
-            uuid4(),
-            session_id,
-            incident_id,
-            ended_reason,
-            transition,
-            sample_id,
-            lifecycle_before,
-            lifecycle_after,
-        ),
+        f"INSERT INTO opspilot_observation_endings({columns}) VALUES({','.join(['%s'] * len(values))})",
+        values,
     )
 
 

@@ -91,7 +91,7 @@ _SAMPLE_COLUMNS = (
 )
 _ENDING_COLUMNS = (
     "ending_id,session_id,incident_id,ended_reason,transition,sample_id,"
-    "lifecycle_before,lifecycle_after,recorded_at"
+    "lifecycle_before,lifecycle_after,recorded_at,job_id,job_sequence"
 )
 _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"

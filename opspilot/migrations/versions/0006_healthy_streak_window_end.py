@@ -94,6 +94,7 @@ def end_open_sessions(conn: Any) -> int:
                     transition=None,
                     lifecycle_before=lifecycle,
                     lifecycle_after=lifecycle,
+                    record_job=False,  # 0007 adds the columns
                 )
                 ended += 1
     return ended

@@ -853,6 +853,12 @@ def test_a_revoked_session_adopts_nothing(
     assert (receipt.accepted, receipt.reason) == (False, "lease_revoked")
     row = controller.session(session)
     assert (row["state"], row["ended_reason"]) == ("revoked", "authority_revoked")
+    # the ending keeps the identity of the job whose slot it closed (#164)
+    (ending,) = controller.session_history(session)["endings"]
+    assert (ending["job_id"], ending["job_sequence"]) == (
+        lease.job_id,
+        lease.sequence,
+    )
     assert _lifecycle(owner, incident) == "observing_recovery"
     # A new session can be authorized on the still-observing incident.
     assert controller.authorize_session(
