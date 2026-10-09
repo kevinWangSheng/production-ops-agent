@@ -36,6 +36,7 @@ from opspilot.web import (
     create_app,
     hash_password,
 )
+from scripts.m0.postgres_lab import DSN
 from tests.f13_acceptance_support import (
     HUMAN_NOTE,
     CountingModel,
@@ -55,7 +56,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def dsn():
     """自建自删隔离临时库；迁移只使用产品既有 schema。"""
-    admin = os.environ["OPSPILOT_LAB_DSN"]
+    admin = DSN
     name = f"opspilot_f13_accept_{uuid4().hex[:12]}"
     with psycopg.connect(admin, autocommit=True) as conn:
         conn.execute(
