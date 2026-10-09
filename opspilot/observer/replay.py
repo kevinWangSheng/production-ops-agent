@@ -36,10 +36,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, TextIO
 from uuid import UUID
 
@@ -340,6 +341,61 @@ def _basis_codes(
     return codes
 
 
+#: How far a request's ``sent_at`` (Observer wall clock) may lie after the
+#: sample's ``sample_time`` (database clock) before the bundle is refused:
+#: the same minute of clock skew and transaction latency the deadline check
+#: allows (``_DEADLINE_SKEW_SECONDS``; issue #156 decision 2).
+SENT_AT_SKEW = timedelta(seconds=60)
+#: RFC 3339 date-time with an explicit offset, as ``datetime.isoformat``
+#: writes an aware instant. ``fromisoformat`` alone would also accept a bare
+#: date, a naive time or the compact ISO forms.
+_RFC3339 = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})",
+    re.ASCII,
+)
+_REQUEST_ORDER = ("query", "coverage", "freshness")
+
+
+def _sent_at_codes(
+    name: str, bundle: Mapping[str, Any], sample_time: datetime
+) -> list[str]:
+    """The send times one reading's bundle records (issue #156), checked
+    against what the Observer can have written: an RFC 3339 UTC instant
+    (``Z`` or a zero offset), only on a request that went out (a ``LEASE_BUDGET`` part was
+    never sent), non-decreasing in request order, and not after the
+    ``sample_time`` read once every request had returned (within
+    ``SENT_AT_SKEW``). A part without the key is a request with no recorded
+    send time (an older bundle, or one that never reached the socket): it
+    is not checked and the audit orders it by an approximate time."""
+    codes: list[str] = []
+    previous: datetime | None = None
+    for kind in _REQUEST_ORDER:
+        part = bundle.get(kind)
+        if not isinstance(part, Mapping) or "sent_at" not in part:
+            continue
+        value = part["sent_at"]
+        if not isinstance(value, str) or not _RFC3339.fullmatch(value):
+            codes.append(f"SENT_AT_INVALID:{name}:{kind}")
+            continue
+        try:
+            at = datetime.fromisoformat(value)
+        except ValueError:
+            codes.append(f"SENT_AT_INVALID:{name}:{kind}")
+            continue
+        if at.utcoffset() != timedelta(0):
+            # the Observer writes UTC; another offset is not its value
+            codes.append(f"SENT_AT_INVALID:{name}:{kind}")
+            continue
+        if part.get("detail") == "LEASE_BUDGET":
+            codes.append(f"SENT_AT_UNSENT:{name}:{kind}")
+        if previous is not None and at < previous:
+            codes.append(f"SENT_AT_ORDER:{name}:{kind}")
+        if at > sample_time + SENT_AT_SKEW:
+            codes.append(f"SENT_AT_AFTER_SAMPLE_TIME:{name}:{kind}")
+        previous = at
+    return codes
+
+
 def _bundle_time_codes(
     rows: Sequence[Mapping[str, Any]],
     verified: Mapping[str, bool | None],
@@ -353,7 +409,8 @@ def _bundle_time_codes(
     that carry no window (construction failure, too large) are filed
     ``failed`` and bind only their ``sample_time``: they are told apart by
     carrying none of the three query sections (a ``reading_error`` marker
-    alone exempts nothing: the rebuild ignores it)."""
+    alone exempts nothing: the rebuild ignores it). The send time of each
+    request is bound to the same ``sample_time`` (``_sent_at_codes``)."""
     codes: list[str] = []
     instants: dict[str, datetime] = {}
     for row in rows:
@@ -375,6 +432,7 @@ def _bundle_time_codes(
                 ):
                     codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_evaluated_at")
             instants[name] = datetime.fromisoformat(str(bundle["sample_time"]))
+            codes.extend(_sent_at_codes(name, bundle, instants[name]))
         except (ValueError, KeyError, TypeError):
             codes.append(f"READING_BASIS_MISMATCH:{name}:bundle_time")
     if len(set(instants.values())) > 1:

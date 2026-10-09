@@ -79,6 +79,23 @@ def test_current_sample_is_adopted_and_advances_watermarks(session, sample, stat
     assert session.model_dump() == before
 
 
+def test_sent_at_projection_contract_exports_typed_action_metadata():
+    """#156 public projection fields carry source and approximation metadata."""
+    from datetime import UTC, datetime
+
+    from opspilot.acceptance import RecoveryAction
+
+    event = RecoveryAction(
+        action="read_only_query",
+        at=datetime(2026, 10, 9, 12, tzinfo=UTC),
+        time_source="sent_at",
+    )
+    assert event.action == "read_only_query"
+    assert event.time_source == "sent_at"
+    assert event.approximate is False
+    assert event.order_uncertain is False
+
+
 @pytest.mark.parametrize(
     "change,reason",
     [

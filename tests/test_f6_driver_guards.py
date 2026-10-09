@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from datetime import timedelta
 from hashlib import sha256
 from types import SimpleNamespace
 from uuid import uuid4
@@ -34,7 +35,8 @@ def test_source_queries_harness_for_value_coverage_and_freshness():
     boundaries = RecoveryBoundaries()
     supplied = with_raw_payloads(observations(1))
     boundaries.configure_telemetry(supplied)
-    source = BoundarySource(boundaries, native)
+    sent_at = supplied[0]["window_end"] + timedelta(seconds=1)
+    source = BoundarySource(boundaries, native, clock=lambda: sent_at)
     signal = native.signals[0]
     for kind, expr in (
         ("query", signal.query),
@@ -48,6 +50,7 @@ def test_source_queries_harness_for_value_coverage_and_freshness():
                 "raw_payload" if kind == "query" else f"{kind}_payload"
             ]
         )
+        assert result.sent_at == sent_at
     assert {row[3] for row in boundaries.telemetry_calls} == {
         "query",
         "coverage",

@@ -161,3 +161,27 @@ M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55671 dbname=m0_budg
 - `UV_CACHE_DIR=tmp/uv-cache make check` 退出0：锁检查、Ruff lint/format、mypy（77源文件）通过；pytest **3389 passed、524 skipped、2既有架构债xfailed、0 failed**（88.76秒）。默认非PG，新增10例在此skip，不能替代上面的PG证据。检查日志 `/private/tmp/f6-164-check.log`；`git diff --check` 通过。
 - 旧说明核查：允许范围内的当前口径已更正；历史运行数字保持原值并标明已被本轮取代。范围外仍有 `ROADMAP.md` 的2例接口冲突/验收阻塞口径、`docs/tasks/2026-10-03-m1-02-recovery-observation.md` 第177行当前状态与第186行历史记录/第312行待作者改标记描述，以及 `docs/evidence/m1-02-recovery-outcome/run.md` 第26行旧投影来源表。依本轮只改指定路径限制未改这些文件，交由 lead 收口。
 - 全新上下文独立 Agent 静态审查与最终文档复核完成，无未处置合同/正确性缺口；确认 witness 来自 fault 前的 held lease。审查者未运行PG，运行数字来自作者实际命令。
+
+## #156 查询实际发出时间（sent_at）
+
+本轮把 F6 的时间证据收紧到请求实际交给传输层的时刻。`BoundarySource` 现在接收与场景窗口末尾同步的合成 `clock`，因此注入 opener 的 `sent_at` 不会被开发机墙钟污染，重放的 `sample_time` 约束仍由产品验证。验收驱动逐 bundle 检查 `query`、`coverage`、`freshness` 子对象：每个已见证的请求必须有带时区的 RFC3339 `sent_at`，`LEASE_BUDGET` 必须没有该字段，`evaluated_at` 仍等于 `window_end`，并且见证请求数等于带时间戳的子对象数。
+
+动作顺序断言改用 `RecoveryOutcome.action_events`。每个 `read_only_query` 事件按自己的 `sent_at` 排入控制、持久化和结束记录；数据库时间与发送时间相差不超过 60 秒时保持快照顺序并标记 `order_uncertain`。没有 `sent_at` 的旧 bundle 回退 `evaluated_at`、再回退 `submitted_at`，事件标记 `approximate`；`actions` 必须恒等于事件动作元组。
+
+测试驱动在转换产品投影时保留 `RecoveryAction` 事件对象，并把产品 `RecoverySignal.sent_at` 映射到测试信号视图；这两项是表示转换，不能改变合同语义。
+
+第 5 步新增四类只改 `sent_at` 并重算 raw hash 的重放负向：非法格式/时区、`LEASE_BUDGET` 却带时间、同一读数递减顺序、晚于 `sample_time + 60s`。四类都要求 `unknown`、`incident_lifecycle=unverified`、`STORED_OBSERVATION_INTEGRITY_MISMATCH` 及对应完整性码；合法时间戳的重放判定保持一致，旧形状仍可重放但查询动作标记近似。
+
+本轮实际运行：
+
+```sh
+.venv/bin/python -m pytest tests/test_f6_recovery_outcome.py tests/test_f6_driver_guards.py -q --tb=short
+```
+
+在 issue #156 实现尚未合入的 `main`（072bf78）上，该命令为 **35 passed、9 failed、42 skipped**；9 个失败分别是缺少 `PrometheusReadOnlySource.clock`、`RecoveryOutcome.action_events` 和 `sent_at` 完整性校验，均对应本合同新增接口/行为。PG 定向命令按本文件约定在实现分支提供 PostgreSQL 后运行；本工作区没有把预期红改成绿，也未修改既有五步判定或 `read_only_query` 次数合同。
+
+按用户提供的 PG 命令实际运行结果为 **73 passed、77 failed、0 skipped**。其中大部分场景在驱动注入 `clock` 处因 main 缺少 `PrometheusReadOnlySource.clock` 提前失败，合同导出测试因缺少 `RecoveryAction` 失败；其余新断言失败来自 `action_events`、`sent_at` 和重放完整性行为尚未实现，未发现与测试改写自身有关的失败。
+
+```sh
+M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55711 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short
+```

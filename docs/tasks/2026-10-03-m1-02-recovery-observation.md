@@ -311,3 +311,16 @@
   - P2 旧文本行（无键）同 text 两键仍可虚报重放——已修：无键文本行只在「同动作/操作者/期望代际且同 text 的待确认意图唯一」时匹配（`_same_text`），重试路径与页面调和共用；歧义时两键重试都得 `CONTROL_CONFLICT`，不写确认。web `test_a_text_audit_row_without_a_key_is_ambiguous_between_same_text_intents[follow_up|correct]`。理由①改为：旧行能证明归属的才确认，其余 fail-closed。
   - 复验数字：`make check` 3208 passed / 500 skipped / 2 xfailed；临时 PG 55611 全套 `tests/integration` 399 passed / 38 skipped。
 - 已结束任务身份（#164，分支 `feature/F6-ended-job-identity`，用户决定 2026-10-08）：迁移 0007 给 `opspilot_observation_endings` 加可空 `job_id`/`job_sequence`，`end_session` 关闭任务槽时记入结束记录，`recovery_outcome().sample_jobs` 并入。理由：结束记录本就是追加式、每会话一条的事实表，不改既有字段含义（不保留 `active_sample_job_id`，避免改 claim/授权投影语义）；旧结束记录这两列为空。0006 是已发布迁移：机器人 P1 指出 0005→head 直升时 0006 先清空任务槽、0007 来不及记身份，故 0006 升级在锁定全部候选事故行之后、结束会话之前幂等装上同样两列（共用 `ENDING_JOB_IDENTITY_DDL`；机器人第二条 P1：先拿表锁会与持事故锁等插入结束记录的产品事务死锁），0007 重复执行同一 DDL；降级先结束会话（`record_job=False`）再删列。另采纳 P2：`sample_jobs` 按（job_id，会话）去重，以结束记录捕获的 sequence 为准；PG 迁移测试覆盖 0005 含在途任务→head 的结束记录与降级后 dump 复原。测试侧去掉 2 个 sample_jobs strict xfail 由独立测试作者改。
+
+## 查询实际发出时间 sent_at（2026-10-09，#156，分支 `feature/F6-sent-at`，worktree `../production-ops-agent-f6-sent-at`）
+
+- 目标：按用户 2026-10-09 裁决（#156 评论），把 `read_only_query` 的动作时间从 `evaluated_at`（窗口末尾）改为每个请求实际离开 Observer 的时刻，只增强审计证据，不改判定、窗口、预算、权限、动作次数与 F6 五步。
+- 行为：真实 socket 路径在 `endheaders()` 返回（请求行与头已进 socket）后读 Observer UTC 墙钟；连不上、`IN_FLIGHT_LIMIT`、`LEASE_BUDGET` 无时间，已发出后超时保留。注入 opener（测试接缝）看不到 socket 写入，取 opener 返回响应/HTTPError 之后的时刻（只会偏晚，接管不会被藏到查询之后）。时间写入 bundle 的 query/coverage/freshness 子对象 `sent_at`，raw hash 覆盖，无迁移。重放新增 `SENT_AT_INVALID / SENT_AT_UNSENT / SENT_AT_ORDER / SENT_AT_AFTER_SAMPLE_TIME`（60 s 容差），任一出现即 unknown + 完整性不一致。投影新增 `action_events`（时间、来源、`approximate`、`order_uncertain`）与 `RecoverySignal.sent_at`；`actions` 由其派生，次数不变。
+- 自行决定（可逆）：① 墙钟读取在产品代码里加一处 `noqa: TID251`（规则是「产品只读数据库时钟」，用户裁决明确选 Observer 墙钟，只用于审计排序）。② 容差内「快照记录顺序」取投影已有的记录位置（控制行在前、各会话采样按序、每个采样先查询后持久化、再结束记录）；查询插入数据库时钟序列的位置 = 最后一个「早于 sent_at−60 s 或在带内且记录位置更前」的事件之后。只有控制行与结束记录在带内时标 `order_uncertain`；查询与本采样持久化、下一采样之间是因果顺序（一个会话同时只有一个采样任务），不标。③ 已尝试但未到 socket 的请求（连不上）仍按原规则计入 `read_only_query`，时间回退并标近似——合同要求次数不变。
+- 证据：实现者红绿 `tests/test_m1_02_sent_at.py` 23 例（base 上 19 failed / 4 passed，实现后 23 passed）；`make check` 3414 passed / 525 skipped / 2 xfailed；临时 PG 55711 上 observer/recovery 集成 126 passed。F6 验收驱动的合成时钟需注入 `clock`（未注入时全部场景因 sent_at 晚于合成 sample_time 报不一致，已用临时补丁确认是唯一原因，149 passed），由独立测试作者改写。
+- 待决/未执行：未在 kind 实验环境做真实采样运行（Observer 无模型调用，无 LangSmith trace）；`docs/evidence/m1-02-live-2/` 未改，用归档库对旧数据重投影的兼容复核未执行。
+- 独立审查（2026-10-09，Codex 全新会话，只读，结论「修复后可合并」，1 P1 / 2 P2 / 1 可选）：
+  - P1 截止时刻的发送竞态——已修：超时路径切断 socket 后，若连接已建立则等待 worker 至多 0.5 s 记下「截止前已写入 socket」的发送；仍在连接的 worker 被 `_arm` 拒绝发送。复现测试 `test_a_send_that_finishes_right_at_the_deadline_keeps_its_send_time`（修复前失败）。
+  - P2 非 UTC 偏移被接受——已修：`sent_at` 偏移非零即 `SENT_AT_INVALID`（Observer 只写 UTC），补 `+08:00` 负例（修复前失败）。
+  - P2 注入 opener 的取时点——不改：生产唯一构造点 `observer/__main__.py` 不注入 opener，opener 只是测试接缝；其取时点（opener 返回之后，只会偏晚）已在 `_fetch_via_opener` 文档写明为限制。真实 socket 路径另有直接测试。
+  - 可选：RFC3339 小数位上限 6 位——保留，与 Observer 自身 `isoformat()` 输出一致。

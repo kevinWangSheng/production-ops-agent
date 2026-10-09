@@ -119,9 +119,10 @@ class BoundarySource:
     No structured observation enters the sampler or store.
     """
 
-    def __init__(self, boundaries, profile):
+    def __init__(self, boundaries, profile, *, clock=None):
         self.boundaries = boundaries
         self.profile = profile
+        self.clock = clock
 
     def open(self, request, timeout=None):
         if request.get_method() != "GET":
@@ -156,7 +157,9 @@ class BoundarySource:
     def instant(self, expr, *, at, timeout_seconds):
         # Product decoding both online and on replay; this opener is the
         # sole transport, with no live endpoint or fallback.
-        return PrometheusReadOnlySource("http://f6.invalid", opener=self).instant(
+        return PrometheusReadOnlySource(
+            "http://f6.invalid", opener=self, clock=self.clock
+        ).instant(
             expr,
             at=at,
             timeout_seconds=timeout_seconds,
@@ -303,7 +306,8 @@ class ProductRecoveryRuntime:
             ]
         )
         loop = ObserverLoop(
-            store=self.observer, source=BoundarySource(self.boundaries, native)
+            store=self.observer,
+            source=BoundarySource(self.boundaries, native, clock=lambda: self.clock),
         )
         for entry in schedule:
             if entry["window_end"] > until:
@@ -525,6 +529,7 @@ class ProductRecoveryRuntime:
                     source="prometheus:" + signal.source,
                     query=f"synthetic_{name}{{service='checkout'}}",
                     observed_at=signal.observed_at,
+                    sent_at=dict(signal.sent_at),
                     evidence_id=signal.evidence_id,
                     raw_sha256=signal.body_sha256,
                 )
@@ -533,6 +538,13 @@ class ProductRecoveryRuntime:
 
     def _normalize(self, subject_id, projected, *, records=None, reader=None):
         result = asdict(projected)
+        # ``asdict`` recursively turns RecoveryAction dataclasses into plain
+        # dictionaries. Keep the public event objects in the harness view so
+        # acceptance assertions exercise the action-event contract.
+        result["action_events"] = tuple(
+            SimpleNamespace(**event) if isinstance(event, dict) else event
+            for event in projected.action_events
+        )
         self._assert_subject(subject_id, projected.subject_id)
         profiles = {}
         session_rows = {

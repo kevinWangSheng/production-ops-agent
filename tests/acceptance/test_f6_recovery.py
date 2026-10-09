@@ -204,6 +204,7 @@ def assert_readonly(outcome, driver, subject_id="incident-f6"):
     assert "read_only" in outcome.permissions
     assert set(outcome.permissions) <= {"read_only", "human_control"}
     assert set(outcome.actions) <= READONLY_ACTIONS
+    assert outcome.actions == tuple(event.action for event in outcome.action_events)
     # Tightened frozen contract: a permitted but missing/truncated audit
     # is not evidence that the handling, queries or persistence happened.
     handling = sum(
@@ -256,6 +257,13 @@ def assert_signal_basis(row, original, driver):
         assert sha256(payload).hexdigest() == signal["raw_sha256"]
         assert len(signal["raw_sha256"]) == 64
         assert set(signal["raw_sha256"]) <= set("0123456789abcdef")
+        assert isinstance(signal["sent_at"], dict)
+        assert set(signal["sent_at"]) <= {"query", "coverage", "freshness"}
+        assert signal["sent_at"]
+        assert all(
+            isinstance(value, datetime) and value.tzinfo is not None
+            for value in signal["sent_at"].values()
+        )
     return evidence_ids
 
 
@@ -288,6 +296,32 @@ def assert_saved_basis(outcome, supplied, profile, driver):
             "failed",
         }
         evidence_ids.extend(assert_signal_basis(row, original, driver))
+
+    # Raw bundles witness every transport request. LEASE_BUDGET is the
+    # explicit unsent case and must not acquire a synthetic timestamp.
+    for session_id in {row["session_id"] for row in saved}:
+        persisted = driver.persisted_replay_input(outcome.subject_id, session_id)
+        for sample_row in persisted["history"]["samples"]:
+            emitted = driver.boundaries.sample_query_counts[
+                str(sample_row["sample_id"])
+            ]
+            sent = 0
+            for reading in sample_row["readings"]:
+                bundle = json.loads(bytes(reading["raw"]))
+                assert bundle["evaluated_at"] == bundle["window_end"]
+                sample_time = datetime.fromisoformat(bundle["sample_time"])
+                for kind in ("query", "coverage", "freshness"):
+                    child = bundle[kind]
+                    if child.get("detail") == "LEASE_BUDGET":
+                        assert "sent_at" not in child
+                        continue
+                    value = child.get("sent_at")
+                    assert isinstance(value, str)
+                    parsed = datetime.fromisoformat(value)
+                    assert parsed.tzinfo is not None
+                    assert parsed <= sample_time + timedelta(seconds=60)
+                    sent += 1
+            assert sent == emitted
 
     assert len(set(evidence_ids)) == len(evidence_ids)
 
