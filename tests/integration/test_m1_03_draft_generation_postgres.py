@@ -655,3 +655,18 @@ def test_an_evidence_commit_and_a_takeover_mark_stale_in_their_transactions(
         "stale",
         "control_generation_changed",
     )
+
+
+def test_credential_shaped_model_text_is_scrubbed_before_it_is_stored(
+    stores, dsn
+) -> None:
+    knowledge, _, _ = stores
+    incident_id = _seed(dsn)
+    reply = _reply(incident_id)
+    reply["narrative_sections"][0]["body"] = (
+        "Error ratio 0.4; header was Authorization: Bearer abcdefghijklmnop"
+    )
+    _worker(stores, ScriptedModel(reply)).generate(incident_id)
+    version = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][0]
+    impact = next(c for c in version["conclusions"] if c["conclusion_key"] == "impact")
+    assert "abcdefghijklmnop" not in impact["body"] and "[REDACTED]" in impact["body"]

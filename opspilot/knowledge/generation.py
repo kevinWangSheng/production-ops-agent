@@ -875,9 +875,17 @@ def assemble(
     errors: Mapping[str, Sequence[str]],
     *,
     record: Mapping[str, Any],
+    secrets: Sequence[str] | None = None,
 ) -> Draft:
     """The version to write: code sections first (deterministic), then the
-    model's statements with their resolved evidence references."""
+    model's statements with their resolved evidence references. Model text
+    is scrubbed like the input (D21): the model saw no credential, but it
+    may still write credential-shaped text."""
+    secrets = _secret_values() if secrets is None else list(secrets)
+
+    def clean(text: str) -> str:
+        return redact(text, secrets)
+
     known = {entry["evidence_id"]: entry for entry in built.catalog}
 
     def refs(ids: Sequence[str]) -> list[dict[str, Any]]:
@@ -920,7 +928,7 @@ def assemble(
             ConclusionDraft(
                 key=statement.key,
                 section=statement.section,
-                body=statement.body,
+                body=clean(statement.body),
                 author="model",
                 certainty="supported"
                 if valid and statement.claim == "fact"
@@ -932,18 +940,20 @@ def assemble(
     proposals = tuple(
         ProposalDraft(
             key=p.key,
-            name=p.name,
+            name=clean(p.name),
             tags=list(p.tags),
             content={
-                "symptoms": list(p.symptoms),
-                "checks": list(p.checks),
+                "symptoms": [clean(t) for t in p.symptoms],
+                "checks": [clean(t) for t in p.checks],
                 "evidence_refs": refs(p.evidence_ids),
             },
             supersedes_entry_id=built.published_entries.get(p.key),
         )
         for p in output.proposals
     )
-    disputes = tuple(DisputeDraft(key, reason) for key, reason in output.disputes)
+    disputes = tuple(
+        DisputeDraft(key, clean(reason)) for key, reason in output.disputes
+    )
     citations_valid = not errors
     content = {
         "schema_version": POSTMORTEM_CONTENT_SCHEMA_VERSION,
