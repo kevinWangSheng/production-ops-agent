@@ -190,7 +190,7 @@ def _entry(store: KnowledgeStore, postmortem_id: UUID) -> UUID:
 
 def test_migration_and_owner_append_only_guards(scratch_dsn: str) -> None:
     with psycopg.connect(scratch_dsn) as conn:
-        assert schema.current_revision(conn) == "0008_postmortem_knowledge"
+        assert schema.current_revision(conn) == schema.head_revision()
         for table in (
             "opspilot_postmortems",
             "opspilot_postmortem_versions",
