@@ -671,3 +671,15 @@ def test_several_citation_failed_drafts_then_a_reviewable_version(env) -> None:
         )
         assert 'id="no-review"' in version.text and "<form" not in version.text
     assert _review(env, third, "approve").status == 200
+
+
+def test_a_reason_of_invisible_characters_is_blank(env) -> None:
+    incident_id, watermark = _incident(env)
+    draft = _draft(env, incident_id, watermark)
+    for reason in ("​", "⁠ ​", "﻿"):
+        response = _review(env, draft, "reject", reason=reason)
+        assert response.status == 400, reason
+        assert response.json()["fields"] == ["reason"]
+    assert (
+        env["knowledge"].postmortem(draft.object_id)["generation"] == draft.generation
+    )

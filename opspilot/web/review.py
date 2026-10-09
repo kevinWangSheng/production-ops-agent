@@ -27,6 +27,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
+from unicodedata import category
 from uuid import UUID
 
 from opspilot.intake import _reject_ambiguous_identifier, _reject_ambiguous_text
@@ -162,7 +163,12 @@ def check_reason(value: str | None) -> str | None:
     if value is None:
         return None
     try:
-        if not value.strip() or len(value) > MAX_REASON_CHARS:
+        # zero-width (``Cf``) characters survive ``strip()`` and render as
+        # nothing: such a reason is blank, as an intake question is
+        if (
+            all(char.isspace() or category(char) == "Cf" for char in value)
+            or len(value) > MAX_REASON_CHARS
+        ):
             raise ValueError
         _reject_ambiguous_text(value)
     except ValueError:
