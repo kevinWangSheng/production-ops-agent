@@ -183,6 +183,9 @@ class KnowledgeRevisionOutcome:
     approved_by: str
     approved_by_kind: str
     approved_at: datetime
+    # the knowledge entry's audit event (``publish`` / ``supersede``) the
+    # approval request wrote with this revision; the postmortem's own
+    # ``approve`` row is another event of the same request
     approval_event_id: UUID
     revoked_reason: str | None
     revoked_by: str | None
