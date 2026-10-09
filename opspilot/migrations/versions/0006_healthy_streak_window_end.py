@@ -1,4 +1,4 @@
-"""0006 healthy streak from the window end: convert the mark of every open session.
+"""0006 healthy streak from the window end: end every open observation session.
 
 Revision ID: 0006_healthy_streak_window_end
 Revises: 0005_incident_mode
@@ -10,18 +10,27 @@ longer from its start. ``opspilot_observation_sessions.healthy_since`` is
 that start under the previous code, and the fold only assigns it for a new
 or gapped streak, so a session authorized before this change would keep
 the old mark and could still confirm recovery under the shorter rule (bot
-review of PR #161, P1). The mark is recomputed from the session's own
-adopted samples, which carry both window bounds: the trailing run of
-consecutive adopted samples that confirm health, stopped by a gap (a later
-window starting after the earlier one ended, as the fold does), gives the
-first sample of the streak, whose window end is the new mark (``upgrade``)
-and whose window start was the old one (``downgrade``). Only sessions still
-``authorized`` are converted: an ended session's row is the record of the
-decisions taken under the rule in force at the time, so it keeps its
-marks; the offline replay recomputes such a session under the new rule and
-reports ``WATERMARK_MISMATCH`` for a streak that started at a window start,
-which is the documented limit of this change (no production data exists at
-this stage; the superseded lab evidence says so).
+review of PR #161, P1). C3 section 10: "规则变化后，如仍获授权则创建新版本观察
+会话，否则保持停止" -- a migration cannot authorize on a human's behalf, so
+it does the second half (user decision B, 2026-10-08): every session that is
+still ``authorized`` is ended with ``authority_revoked`` through the same
+``end_session`` the human-control paths use (state ``revoked``, task slot
+cleared, watermarks kept, one ending record with the incident lifecycle
+unchanged, as a pause does), and the incident stays ``observing_recovery``
+until a human registers the remediation again, which opens a new session
+that accumulates under the new rule. ``authority_revoked`` is the existing
+reason that says exactly this: the authorization this session ran under no
+longer holds; ``binding_stale`` and ``scope_suspended`` name other causes.
+Ended sessions are the record of decisions taken under the rule in force at
+the time and are left alone; the offline replay recomputes such a session
+under the new rule and reports ``WATERMARK_MISMATCH`` for a streak that
+started at a window start, which is the documented limit of this change.
+
+``downgrade()`` is the same action in the other direction: moving back to
+the window-start rule is a rule change too, so every session still
+``authorized`` under the new rule is ended the same way and a human
+re-registers; the sessions ``upgrade()`` ended stay ended (their ending
+record says why). No mark is rewritten in either direction.
 """
 
 from collections.abc import Sequence
@@ -29,60 +38,49 @@ from typing import Any
 
 from alembic import op
 
+from opspilot.observation.revocation import end_session
+
 revision: str = "0006_healthy_streak_window_end"
 down_revision: str | Sequence[str] | None = "0005_incident_mode"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _OPEN_SESSIONS = (
-    "SELECT session_id FROM opspilot_observation_sessions WHERE state='authorized'"
-)
-_ADOPTED_SAMPLES = (
-    "SELECT confirms_health, window_start, window_end "
-    "FROM opspilot_observation_samples "
-    "WHERE session_id=%s AND disposition='adopted' ORDER BY sequence DESC"
-)
-_SET_MARK = (
-    "UPDATE opspilot_observation_sessions "
-    "SET healthy_since=%s, updated_at=clock_timestamp() WHERE session_id=%s"
+    "SELECT s.session_id, s.incident_id, i.lifecycle "
+    "FROM opspilot_observation_sessions s "
+    "JOIN opspilot_incidents i ON i.incident_id = s.incident_id "
+    "WHERE s.state='authorized' ORDER BY s.incident_id, s.session_id"
 )
 
 
-def recompute_open_streaks(conn: Any, *, from_window_end: bool) -> int:
-    """Set ``healthy_since`` of every ``authorized`` session from its adopted
-    samples: the first sample of the trailing healthy streak, its window end
-    (``from_window_end``) or its window start (the previous rule); ``NULL``
-    when the latest adopted sample does not confirm health. ``conn`` is a
-    DB-API connection (psycopg) inside the caller's transaction, which holds
-    the table lock until it ends. Returns the number of sessions written."""
+def end_open_sessions(conn: Any) -> int:
+    """End every ``authorized`` session (``authority_revoked``, lifecycle
+    unchanged). ``conn`` is a DB-API connection (psycopg) inside the caller's
+    transaction, which holds the table lock until it ends. Returns the number
+    of sessions ended."""
     with conn.cursor() as cursor:
         # Serialize against the Observer: ``submit_sample`` locks the session
-        # row and writes the mark the fold derived from the row it read, so
-        # a submission between this read and this write would be overwritten
-        # with a stale mark (Codex recheck of PR #161, P1). ACCESS EXCLUSIVE
-        # makes every in-flight submission commit before the read or wait
-        # until this transaction ends; the lock is released with the
+        # row and would otherwise adopt a sample into a session this
+        # transaction is ending (Codex recheck of PR #161, P1). ACCESS
+        # EXCLUSIVE makes every in-flight submission commit before the read
+        # or wait until this transaction ends; the lock is released with the
         # migration's own transaction.
         cursor.execute(
             "LOCK TABLE opspilot_observation_sessions IN ACCESS EXCLUSIVE MODE"
         )
         cursor.execute(_OPEN_SESSIONS)
-        sessions = [row[0] for row in cursor.fetchall()]
-        written = 0
-        for session_id in sessions:
-            cursor.execute(_ADOPTED_SAMPLES, (session_id,))
-            mark = None
-            newer_start = None
-            for confirms, window_start, window_end in cursor.fetchall():
-                if not confirms:
-                    break
-                if newer_start is not None and newer_start > window_end:
-                    break  # a gap: the streak started with the newer sample
-                mark = window_end if from_window_end else window_start
-                newer_start = window_start
-            cursor.execute(_SET_MARK, (mark, session_id))
-            written += 1
-    return written
+        rows = cursor.fetchall()
+    for session_id, incident_id, lifecycle in rows:
+        end_session(
+            conn,
+            session_id,
+            incident_id,
+            ended_reason="authority_revoked",
+            transition=None,
+            lifecycle_before=str(lifecycle),
+            lifecycle_after=str(lifecycle),
+        )
+    return len(rows)
 
 
 def _dbapi_connection() -> Any:
@@ -91,8 +89,9 @@ def _dbapi_connection() -> Any:
 
 
 def upgrade() -> None:
-    recompute_open_streaks(_dbapi_connection(), from_window_end=True)
+    end_open_sessions(_dbapi_connection())
 
 
 def downgrade() -> None:
-    recompute_open_streaks(_dbapi_connection(), from_window_end=False)
+    # the rule changes back: open sessions stop the same way (module docstring)
+    end_open_sessions(_dbapi_connection())
