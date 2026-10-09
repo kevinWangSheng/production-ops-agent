@@ -597,7 +597,8 @@ def test_a_stale_version_shows_its_reason_and_offers_no_review(env) -> None:
 def test_a_moved_watermark_refuses_approval_with_an_explanation(env) -> None:
     incident_id, watermark = _incident(env)
     draft = _draft(env, incident_id, watermark)
-    # a Run added without the synchronous stale marking (D18's crash window)
+    # a Run added outside the business transaction that marks stale (D18):
+    # a missed marking, which only the store's watermark check catches
     run_id = uuid4()
     with psycopg.connect(env["dsn"]) as conn:
         conn.execute(
