@@ -307,18 +307,21 @@ def build_input(
         if len(canonical_json(projected).encode("utf-8")) > MAX_VIEW_BYTES:
             raise InputTooLarge("MAX_VIEW_BYTES")
         views.append(projected)
-        raw_window = view.get("window")
+        # catalog fields come from the scrubbed projection, never the raw
+        # view: they reach the model too (PR #174 bot review)
+        scrubbed_window = projected.get("window")
         window: Mapping[str, Any] = (
-            raw_window if isinstance(raw_window, Mapping) else {}
+            scrubbed_window if isinstance(scrubbed_window, Mapping) else {}
         )
         observed = _iso(row["observed_at"]) or "unknown"
+        scope = f"{projected.get('tool') or 'tool'}:{projected.get('target_id') or 'unknown'}"
         catalog.append(
             {
                 "evidence_id": row["evidence_id"],
                 "kind": "investigation",
-                "scope": f"{view.get('tool') or 'tool'}:{view.get('target_id') or 'unknown'}",
-                "window_start": str(window.get("start") or observed),
-                "window_end": str(window.get("end") or observed),
+                "scope": redact(scope, secrets),
+                "window_start": redact(str(window.get("start") or observed), secrets),
+                "window_end": redact(str(window.get("end") or observed), secrets),
                 "citable_as_fact": bool(
                     row["adopted"]
                     and row["status"] == "ok"

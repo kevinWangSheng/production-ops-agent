@@ -670,3 +670,19 @@ def test_credential_shaped_model_text_is_scrubbed_before_it_is_stored(
     version = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][0]
     impact = next(c for c in version["conclusions"] if c["conclusion_key"] == "impact")
     assert "abcdefghijklmnop" not in impact["body"] and "[REDACTED]" in impact["body"]
+
+
+def test_catalog_metadata_reaching_the_model_is_scrubbed(stores, dsn) -> None:
+    _, jobs, _ = stores
+    incident_id = _seed(dsn)
+    _set(
+        dsn,
+        "UPDATE opspilot_evidence SET view = view || "
+        "jsonb_build_object('tool', 'token=abcdef123456', "
+        "'window', jsonb_build_object('start', 'password=hunter2hunter2', 'end', 'x')) "
+        "WHERE evidence_id=%s",
+        (_evidence(incident_id),),
+    )
+    built = build_input(jobs.read_input(incident_id), secrets=[])
+    assert "abcdef123456" not in built.payload_text
+    assert "hunter2hunter2" not in built.payload_text
