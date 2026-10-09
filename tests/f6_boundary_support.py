@@ -9,10 +9,6 @@ from collections import Counter
 from copy import deepcopy
 
 
-class ContractInterfaceConflict(AssertionError):
-    """Only a reproduced interface mismatch, never an unrelated failure."""
-
-
 class RecoveryBoundaries:
     def __init__(self):
         self.telemetry_responses = {}

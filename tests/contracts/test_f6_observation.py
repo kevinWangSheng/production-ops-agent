@@ -21,7 +21,6 @@ from opspilot.domain.observation import (
     may_schedule_sample,
 )
 from opspilot.domain.subjects import Incident, SubjectRef, advance_incident
-from tests.f6_boundary_support import ContractInterfaceConflict
 
 END = datetime(2026, 10, 7, 12, tzinfo=UTC)
 TARGET = Target(
@@ -266,11 +265,6 @@ def test_human_close_is_closed_and_reopen_needs_a_new_stage():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ContractInterfaceConflict,
-    reason="合同/接口冲突: 产品 sample_jobs 缺已结束且无样本的任务身份，见 opspilot/acceptance_recovery.py:616、opspilot/observation/revocation.py:53",
-)
 @pytest.mark.parametrize("fault", ["revoke", "expire"])
 def test_persisted_authority_guard_keeps_late_result_only_as_history(
     recovery_driver, f6_profile, fault
@@ -329,15 +323,9 @@ def test_persisted_authority_guard_keeps_late_result_only_as_history(
     assert_signal_basis(sample, supplied[0], recovery_driver)
     assert outcome.recovery_confirmed is False
     assert_readonly(outcome, recovery_driver)
-    try:
-        assert after["sample_jobs"] == before["sample_jobs"], "sample_jobs"
-    except AssertionError as exc:
-        # The external lease witness identifies the OLD job. It is never
-        # inserted into, or described as, the persistent snapshot.
-        if before["sample_jobs"] == () and after["sample_jobs"] == (
-            recovery_driver.submitted_job_witness(),
-        ):
-            raise ContractInterfaceConflict(
-                "ended job identity absent until history is stored"
-            ) from exc
-        raise
+    # The held lease witnesses the submitted job independently of the projection.
+    witness = recovery_driver.submitted_job_witness()
+    assert witness["session_id"] == before["observation_authorization"]["session_id"]
+    assert witness["sequence"] == supplied[0]["sequence"]
+    assert before["sample_jobs"] == (witness,), "ended job identity"
+    assert after["sample_jobs"] == before["sample_jobs"], "sample_jobs"
