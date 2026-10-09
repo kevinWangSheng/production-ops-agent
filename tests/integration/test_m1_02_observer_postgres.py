@@ -14,6 +14,7 @@ no further request, the session ends; continued degradation -> stays
 import json
 import os
 import threading
+import time
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -328,6 +329,12 @@ def test_healthy_lab_sustained_over_the_window_resolves_the_incident(
     session = _authorize(controller, incident, target, sustained=1)
     _backdate_authorization(owner, session)
 
+    first = _only(observer_loop.poll_once(), session)
+    assert first.accepted and first.confirms_health and first.transition is None
+    assert _lifecycle(owner, incident) == "observing_recovery"
+    # #157: one healthy sample spans zero; a second end must be >=1 s later.
+    time.sleep(1.05)
+    _due_now(owner, session)
     receipt = _only(observer_loop.poll_once(), session)
 
     assert receipt.accepted and receipt.confirms_health
@@ -347,8 +354,8 @@ def test_healthy_lab_sustained_over_the_window_resolves_the_incident(
         bundle = json.loads(bytes(row["raw"]))
         assert bundle["freshness"]["expr"] == signal.freshness_query
     # three instant queries per signal, all at the window end
-    assert len(state.requests) == 3 * len(SHIPPED.signals)
-    assert len({at for _, at in state.requests}) == 1
+    assert len(state.requests) == 6 * len(SHIPPED.signals)  # #157: two polls
+    assert len({at for _, at in state.requests}) == 2  # #157: distinct healthy ends
     assert abs(sample["window_end"].timestamp() - state.requests[0][1]) < 0.01
     assert controller.replay_session(session).consistent
 
@@ -381,6 +388,11 @@ def test_stopped_scrapes_are_stale_samples_that_never_confirm(
     )
     # fresh scrapes again: the streak starts from here, nothing before counts
     state.age_seconds = 20.0
+    _due_now(owner, session)
+    receipt = _only(observer_loop.poll_once(), session)
+    assert receipt.confirms_health and receipt.transition is None
+    # #157: stale resets the streak; the first fresh sample has zero duration.
+    time.sleep(1.05)
     _due_now(owner, session)
     receipt = _only(observer_loop.poll_once(), session)
     assert receipt.confirms_health and receipt.transition == "recovery_confirmed"

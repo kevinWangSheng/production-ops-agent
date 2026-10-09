@@ -42,9 +42,9 @@ class _UnitTargets(TargetRegistry):
         )
 
 
-def _observing_incident(kind: str = "healthy", count: int = 6):
+def _observing_incident(kind: str = "healthy", count: int = 11):
     """An incident whose remediation was registered and whose session holds
-    ``count`` stored samples of ``kind`` (healthy ones confirm at the sixth)."""
+    ``count`` stored samples of ``kind`` (healthy ones confirm at the eleventh, #157)."""
     app, workbench, clock = build_workbench(
         health_profile=PROFILE, targets=_UnitTargets()
     )
@@ -129,7 +129,7 @@ def test_the_page_separates_the_recovery_verdict_from_the_report_and_shows_the_b
     assert recovery["replay"]["recovery_verdict"] == "healthy"
     assert recovery["replay"]["recovery_confirmed"] is True
     assert recovery["replay"]["healthy_window_seconds"] == 600
-    assert len(recovery["samples"]) == 6
+    assert len(recovery["samples"]) == 11  # #157: ten intervals
     last = recovery["samples"][-1]
     assert last["stored_outcome"] == last["replayed_outcome"] == "healthy"
     assert last["transition"] == "recovery_confirmed"

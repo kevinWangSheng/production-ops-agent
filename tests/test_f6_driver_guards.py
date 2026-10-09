@@ -389,7 +389,7 @@ def test_replay_earlier_session_excludes_later_handling_and_lifecycle(
     session_id = first.recovery_samples[0]["session_id"]
     updated = deepcopy(f6_profile)
     updated["target"] = {**TARGET, "revision": "second-revision"}
-    later_rows = observations(3)
+    later_rows = observations(4)  # #157: three intervals for 180 s
     for row in later_rows:
         row["target"] = updated["target"]
         for key in ("window_start", "window_end"):
@@ -552,7 +552,9 @@ def test_action_contract_rejects_surplus_handoff_or_inexact_lifecycle(
 
     rows = with_raw_payloads(
         observations(
-            {"observing": 1, "resolved": 3, "handoff": 5}[state],
+            {"observing": 1, "resolved": 4, "handoff": 5}[
+                state
+            ],  # #157: three healthy intervals
             traffic=0 if state == "handoff" else 200,
         )
     )
@@ -600,7 +602,7 @@ def test_non_handoff_result_after_prior_handoff_has_no_handoff_action(
     updated = deepcopy(f6_profile)
     shift = timedelta(seconds=300)
     updated["deadline"] += shift
-    later_rows = observations(3)
+    later_rows = observations(4)  # #157: three intervals for 180 s
     for row in later_rows:
         for key in ("window_start", "window_end"):
             row[key] += shift

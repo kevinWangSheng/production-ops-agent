@@ -52,7 +52,7 @@
     "description": "Observe recovery after human handling using independent service evidence; never execute recovery actions.",
     "priority": "high",
     "steps": [
-      "After external human remediation, require deployment state, request volume, error, latency, pod health, relevant dependencies and a sustained observation window before reporting recovery",
+      "After external human remediation, require deployment state, request volume, error, latency, pod health, relevant dependencies and a sustained observation window before reporting recovery; the sustained window is measured from the end of the first healthy sample's evaluation window and must not overlap any non-healthy sample's window",
       "Remove traffic while error rate falls and verify recovery is not confirmed",
       "Remove required telemetry and verify an unknown or ambiguous result with human handoff",
       "Cause continued degradation and verify the incident remains open or is reopened according to the reviewed policy, without deployment, rollback or release-gate changes",

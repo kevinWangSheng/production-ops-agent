@@ -12,6 +12,7 @@ verdict of its own.
 # then named again as test parameters, which is how pytest binds them
 
 import os
+import time
 from datetime import timedelta
 from uuid import uuid4
 
@@ -142,6 +143,11 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1)
     _backdate_authorization(owner, session)
+    first = _only(observer_loop.poll_once(), session)
+    assert first.accepted and first.confirms_health and first.transition is None
+    # #157: one healthy sample has zero span, so collect another after >=1 s.
+    time.sleep(1.05)
+    _due_now(owner, session)
     receipt = _only(observer_loop.poll_once(), session)
     assert receipt.transition == "recovery_confirmed"
     requests = len(state.requests)
@@ -153,8 +159,13 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
     assert outcome.incident_lifecycle == "resolved"
     assert outcome.recovery_confirmed and outcome.recovery_verdict == "healthy"
     assert outcome.latest_sample_verdict == "healthy"
-    assert outcome.healthy_window_seconds == SHIPPED.evaluation_window_seconds
-    assert outcome.used_sample_count == 1
+    # #157: duration comes from window ends, never the look-back length.
+    assert outcome.healthy_window_seconds >= 1
+    elapsed = (
+        outcome.recovery_samples[-1].window_end - outcome.recovery_samples[0].window_end
+    ).total_seconds()
+    assert outcome.healthy_window_seconds == int(elapsed)  # #157: whole seconds
+    assert outcome.used_sample_count == 2  # #157
     assert outcome.observation_ended and outcome.human_interaction is None
     assert outcome.replay is not None and outcome.replay.consistent
     assert outcome.target == controller.session(session)["target"]
@@ -163,7 +174,8 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
         outcome.recovery_profile_revision
         == controller.session(session)["health_profile_revision"]
     )
-    (sample,) = outcome.recovery_samples
+    assert len(outcome.recovery_samples) == 2  # #157
+    sample = outcome.recovery_samples[-1]
     assert set(sample.signals) == {s.name for s in SHIPPED.signals}
     assert all(
         sig.evidence_id == f"{sample.sample_id}:{name}"
@@ -173,8 +185,10 @@ def test_a_confirmed_recovery_projects_the_committed_rows(
         sig.status == "ok" and sig.body_sha256 for sig in sample.signals.values()
     )
     # three instant queries per signal, every one actually sent
-    assert outcome.actions.count("read_only_query") == 3 * len(SHIPPED.signals)
-    assert outcome.actions.count("persist_observation") == 1
+    assert outcome.actions.count("read_only_query") == 6 * len(
+        SHIPPED.signals
+    )  # #157: two samples
+    assert outcome.actions.count("persist_observation") == 2  # #157
     assert outcome.actions[-1] == "advance_incident_lifecycle"
     # no human control row on this incident: the authority exercised is the
     # Observer login's, measured on this connection (PUBLIC's default TEMP

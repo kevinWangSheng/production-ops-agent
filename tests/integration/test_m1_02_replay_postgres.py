@@ -18,6 +18,7 @@ mismatch with an ``unknown`` verdict. The CLI runs under the Observer login
 import io
 import json
 import os
+import time
 from datetime import timedelta
 
 import pytest
@@ -97,6 +98,8 @@ def _run(loop_state, owner_store, session, times):
     receipts = []
     for index in range(times):
         if index:
+            # #157: 1 s sustained means distinct healthy window ends >=1 s apart.
+            time.sleep(1.05)
             _due_now(owner_store, session)
         receipts.append(_only(observer_loop.poll_once(), session))
     return receipts
@@ -109,7 +112,8 @@ def test_recovery_replays_consistently_from_stored_rows(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1)
     _backdate_authorization(owner, session)
-    (receipt,) = _run(loop, owner, session, 1)
+    first_receipt, receipt = _run(loop, owner, session, 2)  # #157
+    assert first_receipt.transition is None
     assert receipt.transition == "recovery_confirmed"
     requests_before = len(state.requests)
 
@@ -192,7 +196,8 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1)
     _backdate_authorization(owner, session)
-    (receipt,) = _run(loop, owner, session, 1)
+    first_receipt, receipt = _run(loop, owner, session, 2)  # #157
+    assert first_receipt.transition is None
     assert receipt.transition == "recovery_confirmed"
     assert replay_stored_session(controller, session).consistent
 
@@ -200,7 +205,7 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     with owner.transaction() as conn:
         conn.execute(
             "UPDATE opspilot_observation_samples SET outcome='degraded' WHERE sample_id=%s",
-            (receipt.sample_id,),
+            (first_receipt.sample_id,),
         )
     result = replay_stored_session(controller, session)
     assert not result.consistent and INTEGRITY_MISMATCH in result.integrity
@@ -215,7 +220,7 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     with owner.transaction() as conn:
         conn.execute(
             "UPDATE opspilot_observation_samples SET outcome='healthy' WHERE sample_id=%s",
-            (receipt.sample_id,),
+            (first_receipt.sample_id,),
         )
     assert replay_stored_session(controller, session).consistent
 
@@ -223,12 +228,12 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     with owner.transaction() as conn:
         kept = conn.execute(
             "SELECT raw FROM opspilot_observation_signal_readings WHERE sample_id=%s AND signal_name='error_ratio'",
-            (receipt.sample_id,),
+            (first_receipt.sample_id,),
         ).fetchone()
         assert kept is not None
         conn.execute(
             "UPDATE opspilot_observation_signal_readings SET raw=%s WHERE sample_id=%s AND signal_name='error_ratio'",
-            (b"{}", receipt.sample_id),
+            (b"{}", first_receipt.sample_id),
         )
     result = replay_stored_session(controller, session)
     assert not result.consistent and result.recovery_verdict == "unknown"
@@ -236,7 +241,7 @@ def test_tampered_verdict_bundle_or_profile_is_an_integrity_mismatch(
     with owner.transaction() as conn:
         conn.execute(
             "UPDATE opspilot_observation_signal_readings SET raw=%s WHERE sample_id=%s AND signal_name='error_ratio'",
-            (bytes(kept["raw"]), receipt.sample_id),
+            (bytes(kept["raw"]), first_receipt.sample_id),
         )
     assert replay_stored_session(controller, session).consistent
 
@@ -277,10 +282,11 @@ def test_deleted_rows_and_rewritten_watermarks_are_integrity_mismatches(
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1, max_samples=3)
     _backdate_authorization(owner, session)
-    (receipt,) = _run(loop, owner, session, 1)
+    first_receipt, receipt = _run(loop, owner, session, 2)  # #157
+    assert first_receipt.transition is None
     assert receipt.transition == "recovery_confirmed"
     assert replay_stored_session(controller, session).consistent
-    first = receipt.sample_id
+    first = first_receipt.sample_id
 
     with owner.transaction() as conn:
         conn.execute(
@@ -332,8 +338,8 @@ def test_a_transient_profile_read_failure_is_filed_with_its_reason_and_replays(
     loop: tuple, owner: DurableStore, controller: ObservationStore, monkeypatch
 ) -> None:
     """Codex recheck of PR #139, P2-4: one poll cannot read the profile row
-    (store error) and files ``failed`` with a sentinel reading; the next
-    poll confirms recovery; the replay accepts the recorded reason."""
+    (store error) and files ``failed`` with a sentinel reading; the next two
+    healthy polls confirm recovery (#157); the replay accepts the recorded reason."""
     observer_loop, state = loop
     incident, _, target = _incident(owner)
     session = _authorize(controller, incident, target, sustained=1, max_samples=3)
@@ -348,8 +354,9 @@ def test_a_transient_profile_read_failure_is_filed_with_its_reason_and_replays(
     assert first.accepted and not first.confirms_health
     monkeypatch.setattr(observer_loop.store, "health_profile", original)
     _due_now(owner, session)
-    (second,) = _run(loop, owner, session, 1)
-    assert second.transition == "recovery_confirmed"
+    second, third = _run(loop, owner, session, 2)  # #157: failed then two healthy
+    assert second.transition is None
+    assert third.transition == "recovery_confirmed"
 
     result = replay_stored_session(controller, session)
     assert result.consistent, result.integrity

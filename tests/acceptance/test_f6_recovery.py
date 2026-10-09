@@ -284,7 +284,10 @@ def assert_saved_basis(outcome, supplied, profile, driver):
     assert len(set(evidence_ids)) == len(evidence_ids)
 
 
-@pytest.mark.parametrize("count,expected", [(2, "observing_recovery"), (3, "resolved")])
+@pytest.mark.parametrize(
+    "count,expected",
+    [(1, "observing_recovery"), (3, "observing_recovery"), (4, "resolved")],
+)  # #157
 def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     recovery_driver, profile, count, expected
 ):
@@ -301,7 +304,7 @@ def test_f6_step1_requires_all_signals_and_sustained_post_handling_window(
     assert outcome.recovery_confirmed is (expected == "resolved")
     if expected == "resolved":
         assert outcome.recovery_verdict == "healthy"
-    assert outcome.healthy_window_seconds == count * 60
+    assert outcome.healthy_window_seconds == (count - 1) * 60  # #157: end to end
     assert outcome.observation_ended is (expected == "resolved")
     assert outcome.human_interaction != "handoff"
     assert not outcome.handoff_reasons
@@ -401,7 +404,7 @@ def test_f6_step4_continued_dependency_degradation_stays_open_without_actuation(
 @pytest.mark.parametrize(
     "kind,options,count,verdict,lifecycle",
     [
-        ("recovered", {}, 3, "healthy", "resolved"),
+        ("recovered", {}, 4, "healthy", "resolved"),  # #157: three intervals
         ("no-traffic", {"traffic": 0, "error_ratio": 0}, 5, "unknown", "open"),
         ("missing", {"missing": "pods"}, 5, "unknown", "open"),
         ("degraded", {"degraded": True}, 5, "degraded", "open"),
@@ -517,7 +520,7 @@ def test_f6_step1_stale_or_discontinuous_data_is_saved_without_confirming_recove
 def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
     recovery_driver, profile
 ):
-    supplied = observations(3)
+    supplied = observations(4)  # #157: three intervals for 180 s
     supplied = with_raw_payloads(supplied)
     original = recovery_driver.run(
         scenario(5, "verdict-integrity"),
@@ -558,7 +561,7 @@ def test_f6_step5_replay_recomputes_instead_of_trusting_saved_verdict(
 
 
 @pytest.mark.parametrize("subject_id", ["incident-f6", "incident-other"])
-@pytest.mark.parametrize("count", [2, 3])
+@pytest.mark.parametrize("count", [3, 4])  # #157: before/at 180 s
 def test_f6_step1_same_target_incidents_only_handled_subject_changes(
     recovery_driver, profile, subject_id, count
 ):
@@ -584,9 +587,9 @@ def test_f6_step1_same_target_incidents_only_handled_subject_changes(
     )
     assert outcome.subject_id == requested.subject_id
     assert outcome.incident_lifecycle == (
-        "resolved" if count == 3 else "observing_recovery"
+        "resolved" if count == 4 else "observing_recovery"
     )
-    assert outcome.recovery_confirmed is (count == 3)
+    assert outcome.recovery_confirmed is (count == 4)
     assert_saved_basis(outcome, supplied, profile, recovery_driver)
     changed = recovery_driver.snapshot_incident(subject_id)
     assert changed["incident_lifecycle"] == outcome.incident_lifecycle
@@ -623,7 +626,9 @@ def test_f6_step1_degradation_resets_continuous_healthy_window(
         assert outcome.human_interaction == "handoff"
         assert outcome.handoff_reasons
     assert outcome.recovery_confirmed is False
-    assert outcome.healthy_window_seconds == (0 if count == 3 else 120)
+    assert outcome.healthy_window_seconds == (
+        0 if count == 3 else 60
+    )  # #157: two healthy samples span one interval
     assert_saved_basis(outcome, supplied, profile, recovery_driver)
     assert_readonly(outcome, recovery_driver)
 
@@ -646,7 +651,9 @@ def test_f6_step2_traffic_withdrawal_after_healthy_samples_never_confirms_recove
     assert outcome.incident_lifecycle == "open"
     assert outcome.recovery_confirmed is False
     assert outcome.recovery_verdict == "unknown"
-    assert 0 <= outcome.healthy_window_seconds <= 120
+    assert (
+        outcome.healthy_window_seconds == 0
+    )  # #157: traffic withdrawal resets the streak
     assert "INSUFFICIENT_TRAFFIC" in outcome.recovery_reasons
     assert "INSUFFICIENT_TRAFFIC" in outcome.handoff_reasons
     assert outcome.human_interaction == "handoff"
@@ -715,11 +722,11 @@ def test_f6_step1_before_handling_data_cannot_confirm_recovery(
     assert_readonly(outcome, recovery_driver)
 
 
-@pytest.mark.parametrize("count", [5, 6])
+@pytest.mark.parametrize("count", [6, 7])  # #157: three/four healthy samples after D
 def test_f6_step1_healthy_window_rebuilds_after_degradation_and_can_resolve(
     recovery_driver, profile, count
 ):
-    # Make room for H,H,D,H,H,H within the ORIGINAL frozen budget, without
+    # Make room for H,H,D,H,H,H,H within (#157) the ORIGINAL frozen budget, without
     # extending deadline or resetting used samples once observation starts.
     longer_profile = deepcopy(profile)
     longer_profile["deadline"] = HANDLED + timedelta(seconds=420)
@@ -735,13 +742,15 @@ def test_f6_step1_healthy_window_rebuilds_after_degradation_and_can_resolve(
         until=supplied[-1]["window_end"],
     )
     assert outcome.incident_lifecycle == (
-        "resolved" if count == 6 else "observing_recovery"
+        "resolved" if count == 7 else "observing_recovery"
     )
-    assert outcome.recovery_confirmed is (count == 6)
-    assert outcome.observation_ended is (count == 6)
-    assert outcome.healthy_window_seconds == (180 if count == 6 else 120)
+    assert outcome.recovery_confirmed is (count == 7)
+    assert outcome.observation_ended is (count == 7)
+    assert outcome.healthy_window_seconds == (
+        180 if count == 7 else 120
+    )  # #157: only intervals after reset
     assert outcome.used_sample_count == count
-    if count == 6:
+    if count == 7:
         assert outcome.recovery_verdict == "healthy"
     assert outcome.human_interaction != "handoff"
     assert not outcome.handoff_reasons
@@ -814,7 +823,7 @@ def test_f6_step1_target_identity_reregistration_is_rejected_and_sampling_stays_
     assert outcome.observation_ended is False
     assert outcome.human_interaction != "handoff"
     assert not outcome.handoff_reasons
-    assert outcome.healthy_window_seconds == 60
+    assert outcome.healthy_window_seconds == 0  # #157: a single healthy sample
     assert outcome.used_sample_count == 1
     assert len(outcome.recovery_samples) == 1
     saved = outcome.recovery_samples[0]

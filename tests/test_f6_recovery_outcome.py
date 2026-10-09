@@ -123,7 +123,9 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     assert outcome.recovery_verdict == "healthy"
     assert outcome.latest_sample_verdict == "healthy"
     assert outcome.healthy_window_seconds == 600
-    assert outcome.used_sample_count == 6
+    assert (
+        outcome.used_sample_count == 11
+    )  # #157: 600 s requires eleven healthy samples
     assert outcome.observation_ended is True
     assert outcome.observation_ended_reason == "recovery_confirmed"
     assert outcome.human_interaction is None
@@ -135,10 +137,14 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     assert outcome.model_requests == ()
     # the target is the session's immutable binding, never telemetry content
     assert outcome.target == history["session"]["target"]
-    assert len(outcome.recovery_samples) == 6
+    assert (
+        len(outcome.recovery_samples) == 11
+    )  # #157: 600 s requires eleven healthy samples
     sample = outcome.recovery_samples[-1]
     assert sample.subject_id == outcome.subject_id
-    assert sample.sequence == 6 and sample.disposition == "adopted"
+    assert (
+        sample.sequence == 11 and sample.disposition == "adopted"
+    )  # #157: ten intervals
     assert sample.outcome == "healthy" and sample.confirms_health is True
     assert sample.target == history["session"]["target"]
     assert sample.health_profile_revision == PROFILE.revision
@@ -160,9 +166,13 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
     assert errors.observed_at == sample.window_end - timedelta(seconds=30)
     # actions are the audit of what the product did, in record order
     assert outcome.actions[:2] == ("record_handling", "advance_incident_lifecycle")
-    assert outcome.actions.count("persist_observation") == 6
+    assert (
+        outcome.actions.count("persist_observation") == 11
+    )  # #157: 600 s requires eleven healthy samples
     # three instant queries per reading, each actually sent
-    assert outcome.actions.count("read_only_query") == 36
+    assert (
+        outcome.actions.count("read_only_query") == 66
+    )  # #157: six queries per sample
     assert outcome.actions[-1] == "advance_incident_lifecycle"
     assert "human_handoff" not in outcome.actions
     assert outcome.permissions == ("read_only", "human_control")
@@ -184,7 +194,7 @@ def test_a_confirmed_recovery_is_projected_from_the_committed_rows():
         "adopted_window_end",
         "active_sample_job_id",
     }
-    assert len(outcome.sample_jobs) == 6
+    assert len(outcome.sample_jobs) == 11  # #157: 600 s requires eleven healthy samples
     assert outcome.observation_authorization["session_id"] == session["session_id"]
     assert outcome.handling_audit[0]["action"] == "register_remediation"
 
@@ -288,7 +298,7 @@ def test_a_session_still_observing_is_not_ended_and_not_a_handoff():
     assert outcome.observation_ended_reason is None
     assert outcome.recovery_confirmed is False and outcome.recovery_verdict == "unknown"
     assert outcome.latest_sample_verdict == "healthy"
-    assert outcome.healthy_window_seconds == 420
+    assert outcome.healthy_window_seconds == 120  # #157: two intervals
     assert outcome.human_interaction is None and outcome.handoff_reasons == ()
 
 
