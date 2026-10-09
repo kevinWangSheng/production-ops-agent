@@ -10,6 +10,12 @@ profile's ``query`` carries its own range selector, so an instant evaluation
 at ``window_end`` aggregates exactly ``[window_end - range, window_end]``;
 ``coverage_query`` counts the raw points in that range and
 ``freshness_query`` returns the newest raw sample's timestamp.
+
+Every result also says *when* the request left the Observer (``sent_at``,
+issue #156): the Observer's UTC wall clock read right after the request
+bytes were handed to the socket. A request that never got that far -- the
+connection could not be made, the in-flight limit refused it -- carries
+none. The time is an audit fact only; no verdict reads it.
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.client import (
@@ -67,6 +74,9 @@ class InstantResult:
     ``body_complete`` is False when ``body`` is a truncated prefix (the
     response exceeded the limit or the read was cut by the deadline): such a
     result is never ``ok`` and the stored bundle says so.
+
+    ``sent_at`` is the source's wall clock (aware UTC) right after the
+    request was handed to the transport, ``None`` when it never was.
     """
 
     expr: str
@@ -77,6 +87,7 @@ class InstantResult:
     # fixed codes only: never a provider message
     detail: str = ""
     body_complete: bool = True
+    sent_at: datetime | None = None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -94,6 +105,7 @@ class PrometheusReadOnlySource:
         token: str | None = None,
         basic_auth: tuple[str, str] | None = None,
         opener: urllib.request.OpenerDirector | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not isinstance(base_url, str) or not base_url.startswith(
             ("http://", "https://")
@@ -116,6 +128,9 @@ class PrometheusReadOnlySource:
         # ``None``: the deadline-bounded ``_fetch`` path (no proxy, no
         # redirects by construction). An injected opener is the test seam.
         self._opener = opener
+        # the wall clock ``sent_at`` is read from (aware UTC); injectable so
+        # a harness with a synthetic sample clock can keep the two aligned
+        self._clock = clock or _utc_now
 
     @property
     def base_url(self) -> str:
@@ -157,15 +172,19 @@ class PrometheusReadOnlySource:
             headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
         elif self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+        sent = _Sent(self._clock)
         try:
             if self._opener is not None:
                 http_status, body, complete = self._fetch_via_opener(
-                    url, headers, timeout_seconds
+                    url, headers, timeout_seconds, sent
                 )
             else:
-                http_status, body, complete = _fetch(url, headers, timeout_seconds)
+                http_status, body, complete = _fetch(
+                    url, headers, timeout_seconds, sent
+                )
         except _Timeout as cut:
-            # what arrived before the deadline is kept, marked incomplete
+            # what arrived before the deadline is kept, marked incomplete;
+            # a timeout after the request went out keeps its send time
             return InstantResult(
                 expr,
                 "timeout",
@@ -174,6 +193,7 @@ class PrometheusReadOnlySource:
                 None,
                 "TIMEOUT",
                 body_complete=False,
+                sent_at=sent.close(),
             )
         except _Overloaded:
             return InstantResult(expr, "failed", None, b"", None, "IN_FLIGHT_LIMIT")
@@ -195,9 +215,19 @@ class PrometheusReadOnlySource:
                 cut.http_status,
                 "UNREACHABLE",
                 body_complete=cut.body_complete,
+                sent_at=sent.close(),
             )
         except (urllib.error.URLError, OSError):
-            return InstantResult(expr, "failed", None, b"", None, "UNREACHABLE")
+            return InstantResult(
+                expr,
+                "failed",
+                None,
+                b"",
+                None,
+                "UNREACHABLE",
+                sent_at=sent.close(),
+            )
+        sent_at = sent.close()
         if http_status != 200:
             return InstantResult(
                 expr,
@@ -207,6 +237,7 @@ class PrometheusReadOnlySource:
                 http_status,
                 "HTTP",
                 body_complete=complete,
+                sent_at=sent_at,
             )
         if not complete or len(body) > RESPONSE_LIMIT_BYTES:
             return InstantResult(
@@ -217,14 +248,24 @@ class PrometheusReadOnlySource:
                 http_status,
                 "TOO_LARGE",
                 body_complete=False,
+                sent_at=sent_at,
             )
         status, value, detail = _single_value(body)
-        return InstantResult(expr, status, value, body, http_status, detail)
+        return InstantResult(
+            expr, status, value, body, http_status, detail, sent_at=sent_at
+        )
 
     def _fetch_via_opener(
-        self, url: str, headers: dict[str, str], timeout_seconds: int
+        self, url: str, headers: dict[str, str], timeout_seconds: int, sent: _Sent
     ) -> tuple[int, bytes, bool]:
-        """The injected-opener path (tests): same deadline on the body read."""
+        """The injected-opener path (tests): same deadline on the body read.
+
+        An opener sends and awaits the response in one call, so its socket
+        write cannot be seen from here: the send time is read once the
+        opener answered (a response or an HTTP error status), the latest
+        instant the request is known to have gone out. Later than the true
+        write, never earlier -- a takeover between the two is shown after the
+        query, not hidden before it."""
         assert self._opener is not None
         deadline = time.monotonic() + timeout_seconds
         request = urllib.request.Request(url, headers=headers, method="GET")
@@ -233,12 +274,14 @@ class PrometheusReadOnlySource:
         try:
             response: HTTPResponse
             with self._opener.open(request, timeout=timeout_seconds) as response:
+                sent.mark()
                 status = int(response.status)
                 complete = _read_until(
                     response, deadline, RESPONSE_LIMIT_BYTES + 1, chunks
                 )
                 return status, b"".join(chunks), complete
         except urllib.error.HTTPError as error:
+            sent.mark()
             status = int(error.code)
             # the error body is read under the same deadline as any other, and
             # one byte past the keep limit tells "exactly the limit" from
@@ -258,6 +301,39 @@ class PrometheusReadOnlySource:
             raise
         except HTTPException as error:
             raise _Protocol.of(error, chunks, status) from None
+
+
+def _utc_now() -> datetime:
+    # The one wall-clock read in product code: a request's send time can
+    # only be read where the request is sent, without another database
+    # round trip between the scope check and the request. The user chose
+    # this clock for ``sent_at`` (issue #156, decision 2); it orders the
+    # audit within ``acceptance_recovery.ORDER_SKEW`` of database times and
+    # never enters a verdict, a deadline or a window.
+    return datetime.now(timezone.utc)  # noqa: TID251
+
+
+class _Sent:
+    """The send time of one request, written by whichever thread performs
+    it and read once by the caller. ``close`` freezes it: a worker that
+    finishes its write only after the caller gave up (the deadline cut)
+    records nothing the caller could still report."""
+
+    def __init__(self, clock: Callable[[], datetime]) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._at: datetime | None = None
+        self._closed = False
+
+    def mark(self) -> None:
+        with self._lock:
+            if not self._closed and self._at is None:
+                self._at = self._clock()
+
+    def close(self) -> datetime | None:
+        with self._lock:
+            self._closed = True
+            return self._at
 
 
 class _Timeout(Exception):
@@ -342,7 +418,7 @@ class _Overloaded(Exception):
 
 
 def _fetch(
-    url: str, headers: dict[str, str], timeout_seconds: int
+    url: str, headers: dict[str, str], timeout_seconds: int, sent: _Sent
 ) -> tuple[int, bytes, bool]:
     """One GET under one absolute deadline: connect, request, response headers
     and body (success or error) together may take ``timeout_seconds``.
@@ -359,7 +435,9 @@ def _fetch(
     bounded by ``IN_FLIGHT_LIMIT`` and a request beyond it fails at once.
     ``http.client`` is driven directly: no proxy, and a redirect is a
     non-200 status (never followed). Returns ``(status, body, complete)``;
-    ``complete`` is False when the body hit the read limit.
+    ``complete`` is False when the body hit the read limit. ``sent`` is
+    marked the moment ``endheaders()`` returned: the request line and headers
+    (a GET has no body) are then in the socket's send buffer.
     """
     parts = urlsplit(url)
     if parts.hostname is None:
@@ -375,7 +453,7 @@ def _fetch(
     def work() -> None:
         try:
             outcome["result"] = _perform(
-                conn, parts, headers, deadline, chunks, held, seen
+                conn, parts, headers, deadline, chunks, held, seen, sent
             )
         except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
             outcome["error"] = exc
@@ -443,6 +521,7 @@ def _perform(
     chunks: list[bytes],
     held: dict[str, socket.socket],
     seen: dict[str, int],
+    sent: _Sent,
 ) -> tuple[int, bytes, bool]:
     conn.connect()
     if conn.sock is not None:
@@ -456,6 +535,7 @@ def _perform(
     for name, value in headers.items():
         conn.putheader(name, value)
     conn.endheaders()
+    sent.mark()
     _arm(conn, deadline)
     # the status line is parsed before the headers: record it the moment it
     # is in, so a header that then breaks the protocol (``LineTooLong``,
