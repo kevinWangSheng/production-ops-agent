@@ -319,3 +319,8 @@
 - 自行决定（可逆）：① 墙钟读取在产品代码里加一处 `noqa: TID251`（规则是「产品只读数据库时钟」，用户裁决明确选 Observer 墙钟，只用于审计排序）。② 容差内「快照记录顺序」取投影已有的记录位置（控制行在前、各会话采样按序、每个采样先查询后持久化、再结束记录）；查询插入数据库时钟序列的位置 = 最后一个「早于 sent_at−60 s 或在带内且记录位置更前」的事件之后。只有控制行与结束记录在带内时标 `order_uncertain`；查询与本采样持久化、下一采样之间是因果顺序（一个会话同时只有一个采样任务），不标。③ 已尝试但未到 socket 的请求（连不上）仍按原规则计入 `read_only_query`，时间回退并标近似——合同要求次数不变。
 - 证据：实现者红绿 `tests/test_m1_02_sent_at.py` 23 例（base 上 19 failed / 4 passed，实现后 23 passed）；`make check` 3414 passed / 525 skipped / 2 xfailed；临时 PG 55711 上 observer/recovery 集成 126 passed。F6 验收驱动的合成时钟需注入 `clock`（未注入时全部场景因 sent_at 晚于合成 sample_time 报不一致，已用临时补丁确认是唯一原因，149 passed），由独立测试作者改写。
 - 待决/未执行：未在 kind 实验环境做真实采样运行（Observer 无模型调用，无 LangSmith trace）；`docs/evidence/m1-02-live-2/` 未改，用归档库对旧数据重投影的兼容复核未执行。
+- 独立审查（2026-10-09，Codex 全新会话，只读，结论「修复后可合并」，1 P1 / 2 P2 / 1 可选）：
+  - P1 截止时刻的发送竞态——已修：超时路径切断 socket 后，若连接已建立则等待 worker 至多 0.5 s 记下「截止前已写入 socket」的发送；仍在连接的 worker 被 `_arm` 拒绝发送。复现测试 `test_a_send_that_finishes_right_at_the_deadline_keeps_its_send_time`（修复前失败）。
+  - P2 非 UTC 偏移被接受——已修：`sent_at` 偏移非零即 `SENT_AT_INVALID`（Observer 只写 UTC），补 `+08:00` 负例（修复前失败）。
+  - P2 注入 opener 的取时点——不改：生产唯一构造点 `observer/__main__.py` 不注入 opener，opener 只是测试接缝；其取时点（opener 返回之后，只会偏晚）已在 `_fetch_via_opener` 文档写明为限制。真实 socket 路径另有直接测试。
+  - 可选：RFC3339 小数位上限 6 位——保留，与 Observer 自身 `isoformat()` 输出一致。

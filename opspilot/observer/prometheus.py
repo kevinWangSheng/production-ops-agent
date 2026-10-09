@@ -380,6 +380,10 @@ class _Protocol(Exception):
 #: process bounded. Past the limit a request fails immediately without a
 #: thread (C3 section 8: cleanup within bounded time; PR #119 recheck 2).
 IN_FLIGHT_LIMIT = 4
+#: How long a timed-out request waits, after cutting its socket, for the
+#: worker to report a send that finished right at the deadline. The sample
+#: budget is tracked on the monotonic clock, so this is absorbed by it.
+_CUT_GRACE_SECONDS = 0.5
 
 
 class _InFlight:
@@ -485,7 +489,14 @@ def _fetch(
         raise OSError(f"worker start failed: {type(exc).__name__}") from None
     worker.join(max(0.0, deadline - time.monotonic()))
     if worker.is_alive():
-        _close(held.get("sock"))
+        sock = held.get("sock")
+        _close(sock)
+        if sock is not None:
+            # A send that completed just before the cut is still a send
+            # (codex review of #156, P1): the shutdown unblocks the worker,
+            # which records it within a moment. A worker still connecting
+            # sends nothing -- ``_arm`` refuses to start past the deadline.
+            worker.join(_CUT_GRACE_SECONDS)
         raise _Timeout(b"".join(chunks))
     error = outcome.get("error")
     if isinstance(error, (TimeoutError, socket.timeout)):

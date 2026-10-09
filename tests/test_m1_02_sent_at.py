@@ -255,9 +255,10 @@ def test_a_send_time_within_the_skew_after_sample_time_is_accepted():
         ("2026-10-07", "SENT_AT_INVALID"),
         ("20261007T120001Z", "SENT_AT_INVALID"),
         (1759838401, "SENT_AT_INVALID"),
+        ("2026-10-07T20:00:01+08:00", "SENT_AT_INVALID"),
         (NOW + timedelta(seconds=62), "SENT_AT_AFTER_SAMPLE_TIME"),
     ],
-    ids=["naive", "date-only", "compact", "number", "after-sample-time"],
+    ids=["naive", "date-only", "compact", "number", "non-utc", "after-sample-time"],
 )
 def test_a_send_time_the_observer_cannot_have_written_is_an_integrity_mismatch(
     value, code
@@ -432,3 +433,31 @@ def test_a_tampered_send_time_falls_back_and_the_outcome_is_unverified():
     assert outcome.recovery_verdict == "unknown"
     first = [e for e in outcome.action_events if e.action == "read_only_query"][:3]
     assert all(e.approximate and e.time_source == "evaluated_at" for e in first)
+
+
+def test_a_send_that_finishes_right_at_the_deadline_keeps_its_send_time(
+    monkeypatch,
+):
+    """Codex review of #156, P1: the request bytes reached the socket before
+    the deadline cut, but ``endheaders()`` returned only after it."""
+    from http.client import HTTPConnection
+
+    original = HTTPConnection.endheaders
+
+    def slow_return(self, *args, **kwargs):
+        original(self, *args, **kwargs)  # the bytes are in the socket
+        time.sleep(1.2)  # ... and the call returns past the 1 s deadline
+
+    monkeypatch.setattr(HTTPConnection, "endheaders", slow_return)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        source = PrometheusReadOnlySource(
+            f"http://127.0.0.1:{listener.getsockname()[1]}", clock=lambda: NOW
+        )
+        result = source.instant("up", at=NOW, timeout_seconds=1)
+    finally:
+        listener.close()
+    assert (result.status, result.detail) == ("timeout", "TIMEOUT")
+    assert result.sent_at == NOW

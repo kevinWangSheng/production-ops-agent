@@ -360,8 +360,8 @@ def _sent_at_codes(
     name: str, bundle: Mapping[str, Any], sample_time: datetime
 ) -> list[str]:
     """The send times one reading's bundle records (issue #156), checked
-    against what the Observer can have written: an RFC 3339 instant with an
-    offset, only on a request that went out (a ``LEASE_BUDGET`` part was
+    against what the Observer can have written: an RFC 3339 UTC instant
+    (``Z`` or a zero offset), only on a request that went out (a ``LEASE_BUDGET`` part was
     never sent), non-decreasing in request order, and not after the
     ``sample_time`` read once every request had returned (within
     ``SENT_AT_SKEW``). A part without the key is a request with no recorded
@@ -380,6 +380,10 @@ def _sent_at_codes(
         try:
             at = datetime.fromisoformat(value)
         except ValueError:
+            codes.append(f"SENT_AT_INVALID:{name}:{kind}")
+            continue
+        if at.utcoffset() != timedelta(0):
+            # the Observer writes UTC; another offset is not its value
             codes.append(f"SENT_AT_INVALID:{name}:{kind}")
             continue
         if part.get("detail") == "LEASE_BUDGET":
