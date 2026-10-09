@@ -634,35 +634,30 @@ def _session_projection(subject_id: str, row: Mapping[str, Any]) -> dict[str, An
 
 
 def _sample_jobs(sessions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
-    jobs: set[tuple[str, str, int]] = set()
+    # one entry per logical job (job id within its session); a job an ending
+    # closed before it produced a sample (revoked or expired with the result
+    # still out) is named by the ending, and the ending's captured sequence
+    # is the canonical one (a late result may carry another one as history)
+    jobs: dict[tuple[str, str], int] = {}
     for history in sessions:
         row = history["session"]
+        session_id = str(row["session_id"])
         for stored in history["samples"]:
-            jobs.add(
-                (str(stored["job_id"]), str(row["session_id"]), int(stored["sequence"]))
+            jobs.setdefault(
+                (str(stored["job_id"]), session_id), int(stored["sequence"])
             )
         if row.get("active_sample_job_id") is not None:
-            jobs.add(
-                (
-                    str(row["active_sample_job_id"]),
-                    str(row["session_id"]),
-                    int(row["active_sample_sequence"]),
-                )
+            jobs[(str(row["active_sample_job_id"]), session_id)] = int(
+                row["active_sample_sequence"]
             )
-        # a job an ending closed before it produced a sample (revoked or
-        # expired with the result still out): its identity is on the ending
         for ending in history.get("endings") or ():
             if ending.get("job_id") is not None:
-                jobs.add(
-                    (
-                        str(ending["job_id"]),
-                        str(row["session_id"]),
-                        int(ending["job_sequence"]),
-                    )
-                )
+                jobs[(str(ending["job_id"]), session_id)] = int(ending["job_sequence"])
     return tuple(
         {"job_id": job_id, "session_id": session_id, "sequence": sequence}
-        for job_id, session_id, sequence in sorted(jobs)
+        for (job_id, session_id), sequence in sorted(
+            jobs.items(), key=lambda item: (item[0][0], item[0][1], item[1])
+        )
     )
 
 

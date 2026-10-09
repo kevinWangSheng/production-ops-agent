@@ -58,13 +58,19 @@ _OPEN_INCIDENTS = (
 _LOCK_INCIDENT = (
     "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE"
 )
+_GRANT_ENDING_JOB_COLUMNS = (
+    "GRANT INSERT (job_id, job_sequence) ON opspilot_observation_endings "
+    "TO opspilot_observer"
+)
 _OPEN_SESSIONS_OF = (
     "SELECT session_id FROM opspilot_observation_sessions "
     "WHERE incident_id=%s AND state='authorized' ORDER BY session_id FOR UPDATE"
 )
 
 
-def end_open_sessions(conn: Any, *, record_job: bool = True) -> int:
+def end_open_sessions(
+    conn: Any, *, record_job: bool = True, prepare: bool = False
+) -> int:
     """End every ``authorized`` session (``authority_revoked``, lifecycle
     unchanged). ``conn`` is a DB-API connection (psycopg) inside the caller's
     transaction. Returns the number of sessions ended.
@@ -79,17 +85,30 @@ def end_open_sessions(conn: Any, *, record_job: bool = True) -> int:
     conflict with; a table-level ACCESS EXCLUSIVE lock here would instead
     deadlock against its join order (Codex recheck of PR #161, P2). A
     session authorized concurrently for an incident not in the initial scan
-    was authorized under the new code and is left alone."""
+    was authorized under the new code and is left alone.
+
+    ``prepare`` installs 0007's ending columns (an ``ACCESS EXCLUSIVE``
+    table lock on the endings table) AFTER every candidate incident row is
+    locked and BEFORE any session is ended: taking that table lock first, or
+    between incident locks, could deadlock against a product transaction
+    that holds an incident lock and waits to insert its ending (bot review of
+    PR #165, P1). With all candidate incidents locked up front, no such
+    transaction exists for them; the order among incident locks is the
+    ascending id order the scan already uses."""
     with conn.cursor() as cursor:
         cursor.execute(_OPEN_INCIDENTS)
         incidents = [row[0] for row in cursor.fetchall()]
-        ended = 0
+        locked_lifecycles: dict[Any, str] = {}
         for incident_id in incidents:
             cursor.execute(_LOCK_INCIDENT, (incident_id,))
             locked = cursor.fetchone()
-            if locked is None:
-                continue
-            lifecycle = str(locked[0])
+            if locked is not None:
+                locked_lifecycles[incident_id] = str(locked[0])
+        if prepare and locked_lifecycles:
+            cursor.execute(ENDING_JOB_IDENTITY_DDL)
+            cursor.execute(_GRANT_ENDING_JOB_COLUMNS)
+        ended = 0
+        for incident_id, lifecycle in locked_lifecycles.items():
             cursor.execute(_OPEN_SESSIONS_OF, (incident_id,))
             for (session_id,) in cursor.fetchall():
                 end_session(
@@ -112,20 +131,18 @@ def _dbapi_connection() -> Any:
 
 
 def upgrade() -> None:
-    # install 0007's columns first so the jobs these endings close are kept
-    # (PR #165 bot P1); 0007 repeats the same idempotent DDL
-    op.execute(ENDING_JOB_IDENTITY_DDL)
-    op.execute(
-        "GRANT INSERT (job_id, job_sequence) ON opspilot_observation_endings TO opspilot_observer"
-    )
-    end_open_sessions(_dbapi_connection())
+    # 0007's columns are installed inside the data step, after the incident
+    # locks, so the jobs these endings close are kept (PR #165 bot P1); with
+    # nothing to end, 0007 installs them
+    end_open_sessions(_dbapi_connection(), prepare=True)
 
 
 def downgrade() -> None:
     # the rule changes back: open sessions stop the same way (module docstring);
     # 0007 downgraded first and dropped the columns; drop what 0006's own
-    # upgrade installed so 0005 is exactly what it was
+    # upgrade installed so 0005 is exactly what it was. End the sessions
+    # first (incident locks), then take the table lock for the DDL
+    end_open_sessions(_dbapi_connection(), record_job=False)
     op.execute(
         "ALTER TABLE opspilot_observation_endings DROP COLUMN IF EXISTS job_id, DROP COLUMN IF EXISTS job_sequence"
     )
-    end_open_sessions(_dbapi_connection(), record_job=False)

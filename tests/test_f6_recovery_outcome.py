@@ -793,3 +793,33 @@ def test_a_job_closed_by_an_ending_keeps_its_identity_in_sample_jobs():
     history["endings"][0].update(job_id=None, job_sequence=None)
     bare = recovery_outcome(_scenario(history), _records(history)).sample_jobs
     assert len(bare) == len(jobs) - 1
+
+
+def test_an_ended_job_and_its_late_sample_are_one_logical_job():
+    """A late result may carry a sequence other than the lease's; the job is
+    still one entry, with the ending's captured sequence."""
+    history = healthy_history(count=1)
+    sample_job = history["samples"][0]["job_id"]
+    history["endings"] = [
+        {
+            "ending_id": uuid4(),
+            "session_id": history["session"]["session_id"],
+            "incident_id": history["session"]["incident_id"],
+            "ended_reason": "authority_revoked",
+            "transition": None,
+            "sample_id": None,
+            "lifecycle_before": "observing_recovery",
+            "lifecycle_after": "observing_recovery",
+            "recorded_at": NOW + timedelta(seconds=1),
+            "job_id": sample_job,
+            "job_sequence": history["samples"][0]["sequence"] + 5,
+        }
+    ]
+    jobs = recovery_outcome(_scenario(history), _records(history)).sample_jobs
+    assert [j for j in jobs if j["job_id"] == str(sample_job)] == [
+        {
+            "job_id": str(sample_job),
+            "session_id": str(history["session"]["session_id"]),
+            "sequence": history["samples"][0]["sequence"] + 5,
+        }
+    ]
