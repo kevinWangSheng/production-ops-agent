@@ -859,3 +859,41 @@ def test_the_repair_call_does_not_echo_credentials(stores, dsn) -> None:
         assert secret_value not in _exported_text(tracer, exporter)
     finally:
         tracing.reset()
+
+
+def test_a_citation_failed_regeneration_keeps_the_return_and_its_cap(
+    stores, dsn
+) -> None:
+    """D19 + D31 + R7: regenerating a returned version that fails its
+    citations keeps the regeneration marker; the retries of that returned
+    version share one count of three, with backoff."""
+    knowledge, jobs, _ = stores
+    incident_id, version = _generated(stores, dsn)
+    snapshot = knowledge.incident_postmortem(incident_id)["postmortem"]
+    knowledge.return_for_revision(
+        snapshot["postmortem_id"],
+        version,
+        reason="cite better",
+        expected_generation=snapshot["generation"],
+        idempotency_key=f"ret-{uuid4()}",
+        actor=REVIEWER,
+    )
+    bad = _reply(incident_id, cite="ev-ghost")
+    worker = _worker(stores, ScriptedModel())
+    for count in range(1, MAX_ATTEMPTS_PER_WATERMARK + 1):
+        assert incident_id in jobs.candidates(limit=50)
+        worker.model = ScriptedModel(bad, bad)
+        outcome = worker.generate(incident_id)
+        assert outcome is not None and outcome.state == "draft"
+        schedule = knowledge.incident_postmortem(incident_id)["schedule"]
+        assert schedule["pending_regeneration_version"] == version
+        assert schedule["consecutive_failures"] == count
+        # backoff holds the next attempt; never an immediate retry
+        assert incident_id not in jobs.candidates(limit=50)
+        if count < MAX_ATTEMPTS_PER_WATERMARK:
+            assert schedule["next_attempt_at"] is not None
+            _ready(dsn, incident_id)
+        else:
+            assert schedule["next_attempt_at"] is None
+    versions = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
+    assert [v["revises_version"] for v in versions[1:]] == [version] * 3

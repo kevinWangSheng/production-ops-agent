@@ -629,8 +629,11 @@ class KnowledgeStore(_StoreBase):
                     raise PersistenceError("ILLEGAL_TRANSITION")
             postmortem_id = head["postmortem_id"]
             version = head["latest_version"] + 1
-            if revises_version is not None:
-                # D19: the regeneration the return asked for is done
+            if revises_version is not None and reviewable:
+                # D19: the regeneration the return asked for is done once a
+                # reviewable version exists; a citation-failed draft is a
+                # failed attempt (D31) and leaves the marker, so the retry
+                # still regenerates the returned version under R7's count
                 conn.execute(
                     "UPDATE opspilot_postmortem_generation_jobs SET "
                     "pending_regeneration_version=NULL, updated_at=clock_timestamp() "
