@@ -122,6 +122,84 @@
 </section>
 {% else %}<p class="muted" id="observation-none">No recovery observation authorized.</p>{% endif %}
 
+{% if postmortem %}
+<section id="postmortem">
+<h2>Postmortem <span class="muted">(draft until a human approves it; only approved versions become knowledge)</span></h2>
+<p>
+  status <span class="badge" id="postmortem-status">{{ postmortem.status }}</span>
+  {% if postmortem.postmortem_id %}· postmortem generation <strong id="postmortem-generation">{{ postmortem.generation }}</strong>{% endif %}
+  {% set latest = postmortem.latest %}
+  {% if latest %}· latest <a id="postmortem-latest" href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ latest.version }}">version {{ latest.version }}</a>
+    <span class="badge">{{ latest.state }}</span>
+    {% if latest.stale_reason %} stale: <code class="stale-reason">{{ latest.stale_reason }}</code>{% endif %}
+    {% if latest.citation_failures %} · <strong class="citation-failures">citations failed: {{ latest.citation_failures | join(", ") }}</strong>{% endif %}
+    {% if latest.disputes %} · <strong class="disputed">disputed ({{ latest.disputes | length }})</strong>{% endif %}
+    {% if latest.uncertain %} · {{ latest.uncertain }} uncertain{% endif %}
+  {% endif %}
+</p>
+{% if postmortem.status == "not_generated" %}<p class="muted">No postmortem generated yet: one is drafted after the recovery observation has ended.</p>
+{% elif postmortem.status == "generation_failed" %}<p><strong>The latest generation attempt failed before writing a version</strong>{% if postmortem.attempts %} (<code>{{ postmortem.attempts[0].error_code or "unknown" }}</code>){% endif %}.</p>
+{% elif postmortem.status == "citations_failed" %}<p><strong>The latest draft failed its citation check</strong>; it cannot be reviewed.</p>
+{% endif %}
+{% set sch = postmortem.schedule %}
+{% if postmortem.status in ("generation_failed", "citations_failed") and sch %}
+  {% if sch.lease_active or sch.next_attempt_at %}<p class="muted" id="postmortem-retry">The worker retries at this watermark ({{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }} so far{% if sch.next_attempt_at %}, next at {{ sch.next_attempt_at }}{% endif %}).</p>
+  {% else %}<p id="postmortem-exhausted"><strong>Generation stopped at this watermark after {{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }}</strong>; a new version is generated only when the incident moves past it or a version is returned.</p>{% endif %}
+{% endif %}
+{% if postmortem.status == "under_review" %}<p>Version {{ latest.version }} waits for review.</p>
+{% elif postmortem.status in ("returned", "stale") %}<p class="muted">The worker regenerates a new version{% if postmortem.status == "stale" %}: the incident moved past this version's watermark{% endif %}.</p>
+{% endif %}
+{% set schedule = postmortem.schedule %}
+{% if schedule %}
+<p class="muted" id="postmortem-schedule">
+  {% if schedule.lease_active %}generating now · {% endif %}
+  {% if schedule.pending_regeneration_version %}regeneration pending for returned version {{ schedule.pending_regeneration_version }} · {% endif %}
+  consecutive failures {{ schedule.consecutive_failures }}
+  {% if schedule.last_error_code %}· last error <code>{{ schedule.last_error_code }}</code>{% endif %}
+  {% if schedule.next_attempt_at %}· next attempt {{ schedule.next_attempt_at }}{% endif %}
+</p>
+{% endif %}
+{% if postmortem.versions %}
+<table id="postmortem-versions">
+  <thead><tr><th>Version</th><th>State</th><th>Revises</th><th>Conclusions</th><th>Disputes</th><th>Proposals</th><th>Generated</th></tr></thead>
+  <tbody>
+  {% for v in postmortem.versions %}
+  <tr>
+    <td><a href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ v.version }}">{{ v.version }}</a></td>
+    <td><span class="badge">{{ v.state }}</span>{% if v.stale_reason %} <code>{{ v.stale_reason }}</code>{% endif %}</td>
+    <td>{{ v.revises_version or "" }}</td>
+    <td>{{ v.conclusions }}{% if v.uncertain %} ({{ v.uncertain }} uncertain){% endif %}{% if v.citation_failures %} <strong>citations failed</strong>{% endif %}</td>
+    <td>{% if v.disputes %}<strong>{{ v.disputes | length }}</strong>{% else %}0{% endif %}</td>
+    <td>{{ v.proposals }}{% if v.replaces %} ({{ v.replaces }} replace existing){% endif %}</td>
+    <td>{{ v.created_at }} by <code>{{ v.generated_by }}</code> ({{ v.generated_by_kind }})</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if postmortem.attempts %}
+<table id="postmortem-attempts">
+  <thead><tr><th>Attempt</th><th>Status</th><th>Error</th><th>Version</th><th>Model requests</th><th>Started → finished</th></tr></thead>
+  <tbody>
+  {% for a in postmortem.attempts %}
+  <tr><td><code>{{ a.attempt_id }}</code></td><td><span class="badge">{{ a.status }}</span></td><td><code>{{ a.error_code or "" }}</code></td>
+      <td>{{ a.version or "" }}{% if a.revises_version %} <span class="muted">revises {{ a.revises_version }}</span>{% endif %}</td>
+      <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td><td>{{ a.started_at }} → {{ a.finished_at or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if postmortem.knowledge %}
+<h3>Knowledge revisions published from this postmortem <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
+<ul id="postmortem-knowledge">
+  {% for k in postmortem.knowledge %}
+  <li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %} <span class="muted">from version {{ k.source_version }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+</section>
+{% endif %}
+
 <h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
 {% set report = snapshot.report %}
 {% if report is none %}
@@ -244,10 +322,12 @@
   var cursor = {{ snapshot.latest_sequence }};
   var list = document.getElementById("progress");
   var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var postmortemKinds = {{ postmortem_kinds | list | tojson }};
+  postmortemKinds.forEach(function (kind) { reloadKinds[kind] = 1; });
   var source = new EventSource("/incidents/{{ inc.incident_id }}/events?cursor=" + cursor);
   source.onmessage = function () {};
   ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
-   "run_completed", "run_handoff", "control_applied", "reload"].forEach(function (kind) {
+   "run_completed", "run_handoff", "control_applied", "reload"].concat(postmortemKinds).forEach(function (kind) {
     source.addEventListener(kind, function (event) {
       var item = document.createElement("li");
       var seq = event.lastEventId || "";

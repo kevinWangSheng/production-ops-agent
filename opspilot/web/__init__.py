@@ -21,6 +21,7 @@ from .evidence import (
     MemoryEvidenceStore,
     StoredEvidence,
 )
+from .review import KnowledgeReview, PostmortemReview, ReviewError
 from .service import (
     CONTROL_ACTIONS,
     ControlResult,
@@ -58,10 +59,13 @@ __all__ = [
     "IncidentStore",
     "IncidentSummary",
     "IntakeResult",
+    "KnowledgeReview",
     "Investigator",
     "MemoryEventLog",
     "MemoryEvidenceStore",
     "MemoryWebLedger",
+    "PostmortemReview",
+    "ReviewError",
     "RunContext",
     "StoredEvidence",
     "SubjectEvent",

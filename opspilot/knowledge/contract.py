@@ -393,6 +393,24 @@ class IncidentPostmortemView(TypedDict):
 
 ATTEMPTS_SHOWN = 10
 
+
+class PublishedRevisionView(TypedDict):
+    """``KnowledgeStore.knowledge_from_postmortem(postmortem_id)``: one
+    knowledge revision an approval of the postmortem published, with its
+    current state. Review navigation and acceptance projection (D11), not a
+    knowledge read: superseded and revoked revisions are included (D3's read
+    is ``active_revision``). Appended after the D26 freeze (lead-approved,
+    read-only, steps 3 and 4)."""
+
+    entry_id: UUID
+    revision: int
+    name: str
+    source_version: int
+    source_proposal_key: str
+    supersedes_revision: int | None
+    state: Literal["active", "superseded", "revoked"]
+
+
 # --- review command (step 3 consumes; D5, D6, D9, D25) -----------------------
 
 
@@ -516,6 +534,7 @@ __all__ = [
     "PostmortemSnapshot",
     "PrincipalKind",
     "ProposalView",
+    "PublishedRevisionView",
     "ReviewAction",
     "ReviewCommand",
     "ReviewErrorClass",

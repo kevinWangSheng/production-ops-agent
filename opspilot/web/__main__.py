@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 
 from opspilot.investigation.limits import RUN_WALL_SECONDS
+from opspilot.knowledge import KnowledgeStore
 from opspilot.observer.health_profile import (
     PROFILE_DIRECTORY,
     HealthProfile,
@@ -49,6 +50,7 @@ from opspilot.web.app import create_app
 from opspilot.web.auth import AuthConfig, Authenticator, hash_password, token_digest
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
+from opspilot.web.review import PostmortemReview
 from opspilot.web.service import Workbench
 from opspilot.web.store import (
     DurableClock,
@@ -147,11 +149,18 @@ def _serve() -> int:
         tool_face=profile.face(clock),
         run_seconds=_run_seconds(),
     )
-    app = create_app(workbench, Authenticator(config), clock)
+    knowledge = KnowledgeStore(dsn)
+    app = create_app(
+        workbench,
+        Authenticator(config),
+        clock,
+        review=PostmortemReview(knowledge=knowledge, events=events),
+    )
     host, _, port = bind.rpartition(":")
     try:
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
     finally:
+        knowledge.close()
         store.close()
     return 0
 

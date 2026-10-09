@@ -1102,6 +1102,22 @@ class KnowledgeStore(_StoreBase):
                 raise PersistenceError("NOT_FOUND")
             return self._postmortem_snapshot(conn, head)
 
+    def knowledge_from_postmortem(self, postmortem_id: UUID) -> list[dict[str, Any]]:
+        """``PublishedRevisionView`` rows (``opspilot.knowledge.contract``):
+        the knowledge revisions approvals of this postmortem published, with
+        their current state (review navigation, not a knowledge read)."""
+        _require_uuid(postmortem_id)
+        with self.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT r.entry_id, r.revision, r.name, r.source_version, "
+                "r.source_proposal_key, r.supersedes_revision, s.state "
+                "FROM opspilot_knowledge_revisions r "
+                "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
+                "WHERE r.source_postmortem_id=%s "
+                "ORDER BY r.source_version, r.source_proposal_key",
+                (postmortem_id,),
+            ).fetchall()
+
     def audit_trail(
         self, object_kind: Literal["postmortem", "knowledge_entry"], object_id: UUID
     ) -> list[dict[str, Any]]:

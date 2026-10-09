@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set e = page.entry %}
+{% block title %}Knowledge entry {{ e.entry_id }}{% endblock %}
+{% block body %}
+<h1>Knowledge entry <code>{{ e.entry_id }}</code></h1>
+<p>
+  entry generation <strong id="entry-generation">{{ e.generation }}</strong>
+  · latest revision {{ e.latest_revision }}
+  · {% if page.active %}active revision <strong id="active-revision">{{ page.active.revision }}</strong>{% else %}<strong id="no-active">no active revision</strong> <span class="muted">(nothing is returned to a knowledge read)</span>{% endif %}
+</p>
+<p class="muted">Review history of this entry, not a knowledge search. Every revision is immutable; a revocation only adds a tombstone.</p>
+
+{% if error %}
+<div id="review-error" class="unknown">
+  <p><strong>Refused: <code>{{ error.code }}</code></strong> ({{ error.error_class }})
+  {% if error.error_class == "conflict" %}— the page is out of date{% if error.current_generation is not none %} (current entry generation {{ error.current_generation }}){% endif %}. <a href="/knowledge/{{ e.entry_id }}">Reload</a> and try again.
+  {% elif error.error_class == "refused" %}— the revision cannot be revoked in its current state.
+  {% elif error.error_class == "invalid" %}— check {{ error.fields | join(", ") if error.fields else "the form" }}.
+  {% elif error.error_class == "unavailable" %}— storage is unavailable; retry the same form.
+  {% endif %}</p>
+</div>
+{% endif %}
+
+{% if page.active %}
+<h2>Revoke</h2>
+<form method="post" action="/knowledge/{{ e.entry_id }}/revoke" id="form-revoke">
+  <input type="hidden" name="revision" value="{{ page.active.revision }}">
+  <input type="hidden" name="expected_generation" value="{{ e.generation }}">
+  <input type="hidden" name="idempotency_key" value="revoke-{{ e.generation }}-{{ form_nonce }}">
+  <input name="reason" placeholder="why revoke revision {{ page.active.revision }}" required maxlength="8192">
+  <button type="submit">revoke revision {{ page.active.revision }}</button>
+</form>
+<p class="muted">Revocation keeps the revision and its history; reports that cited it are not rewritten.</p>
+{% endif %}
+
+<h2>Revisions</h2>
+<table id="revisions">
+  <thead><tr><th>Revision</th><th>State</th><th>Name / tags</th><th>Source</th><th>Approved</th><th>Supersedes</th><th>Tombstone</th><th>Content</th></tr></thead>
+  <tbody>
+  {% for r in page.revisions %}
+  <tr class="revision-{{ r.state }}">
+    <td>{{ r.revision }}</td>
+    <td><span class="badge">{{ r.state }}</span></td>
+    <td>{{ r.name }}<br>{% for t in r.tags %}<code>{{ t }}</code> {% endfor %}</td>
+    <td><a href="/postmortems/{{ r.source_postmortem_id }}/versions/{{ r.source_version }}">version {{ r.source_version }}</a> <span class="muted">proposal <code>{{ r.source_proposal_key }}</code></span></td>
+    <td>{{ r.approved_at }} by <code>{{ r.approved_by }}</code> ({{ r.approved_by_kind }})</td>
+    <td>{{ r.supersedes_revision or "" }}</td>
+    <td>{% if r.revoked_at %}revoked {{ r.revoked_at }} by <code>{{ r.revoked_by }}</code> ({{ r.revoked_by_kind }}): {{ r.revoked_reason }}{% endif %}</td>
+    <td><pre>{{ r.content }}</pre><span class="muted">sha256 <code>{{ r.content_sha256 }}</code></span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Audit</h2>
+{% if page.audit %}
+<table id="entry-audit">
+  <thead><tr><th>When</th><th>Action</th><th>Revision</th><th>Actor</th><th>Generation</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for a in page.audit %}
+  <tr><td>{{ a.recorded_at }}</td><td><code>{{ a.action }}</code></td><td>{{ a.revision or "" }}</td><td><code>{{ a.actor_id }}</code> ({{ a.principal_kind }})</td>
+      <td>{{ a.expected_generation }} → {{ a.resulting_generation }}</td><td>{{ a.reason or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="muted">none</p>{% endif %}
+{% endblock %}

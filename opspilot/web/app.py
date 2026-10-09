@@ -37,10 +37,12 @@ from pydantic import ValidationError
 from opspilot.domain.base import DomainError
 from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
+from opspilot.knowledge.contract import ReviewCommand
 from opspilot.persistence import PersistenceError
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
+from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.service import CONTROL_ACTIONS, Workbench, WorkbenchError
 
 MAX_BODY_BYTES = 64 * 1024
@@ -113,6 +115,17 @@ _WORKBENCH_STATUS = {
 }
 
 
+#: R3: a conflict asks for a reload, a refusal is final for this request.
+_REVIEW_STATUS = {
+    "conflict": 409,
+    "refused": 422,
+    "invalid": 400,
+    "not_found": 404,
+    "unavailable": 503,
+}
+_ENTRY_GENERATION_FIELD = "entry_generation:"
+
+
 class _Refusal(Exception):
     def __init__(self, status: int, code: str, **extra: Any) -> None:
         super().__init__(code)
@@ -129,6 +142,7 @@ def create_app(
     sse_poll_seconds: float = 0.5,
     sse_idle_seconds: float | None = 30.0,
     sse_repair_seconds: float = 5.0,
+    review: PostmortemReview | None = None,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -262,6 +276,19 @@ def create_app(
             # Never render the failure: it may quote the rejected input.
             raise _Refusal(400, "INVALID_INPUT") from None
 
+    async def reviewed(func: Any, /, *args: Any) -> Any:
+        try:
+            return await asyncio.to_thread(func, *args)
+        except ReviewError as exc:
+            raise _Refusal(
+                _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+            ) from None
+
+    def review_of() -> PostmortemReview:
+        if review is None:
+            raise _Refusal(404, "NOT_FOUND")
+        return review
+
     # -- pages ----------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
@@ -273,16 +300,157 @@ def create_app(
     @app.get("/incidents/{incident_id}", response_class=HTMLResponse)
     async def incident_page(request: Request, incident_id: str) -> Response:
         principal = await ui(request)
-        snapshot = await in_thread(workbench.snapshot, incident_of(incident_id))
+        subject = incident_of(incident_id)
+        snapshot = await in_thread(workbench.snapshot, subject)
+        postmortem = None
+        if review is not None:
+            postmortem = await reviewed(review.incident_view, subject)
         return render(
             "incident.html",
             principal=principal,
             snapshot=snapshot,
+            postmortem=postmortem,
+            postmortem_kinds=EVENT_KINDS,
             actions=sorted(CONTROL_ACTIONS),
             # One fresh key per rendered form: two operators on the same page
             # state must not share an idempotency key.
             form_nonce=uuid4().hex,
         )
+
+    # -- postmortem review (M1-03 step 3) ----------------------------------
+
+    def render_version(
+        principal: Principal,
+        page: Mapping[str, Any],
+        *,
+        error: Any = None,
+        status: int = 200,
+    ) -> HTMLResponse:
+        response = render(
+            "postmortem.html",
+            principal=principal,
+            page=page,
+            error=error,
+            postmortem_kinds=EVENT_KINDS,
+            form_nonce=uuid4().hex,
+        )
+        response.status_code = status
+        return response
+
+    def render_entry(
+        principal: Principal,
+        page: Mapping[str, Any],
+        *,
+        error: Any = None,
+        status: int = 200,
+    ) -> HTMLResponse:
+        response = render(
+            "knowledge.html",
+            principal=principal,
+            page=page,
+            error=error,
+            form_nonce=uuid4().hex,
+        )
+        response.status_code = status
+        return response
+
+    @app.get(
+        "/postmortems/{postmortem_id}/versions/{version}", response_class=HTMLResponse
+    )
+    async def version_page(
+        request: Request, postmortem_id: str, version: str
+    ) -> Response:
+        principal = await ui(request)
+        subject, number = _postmortem_path(postmortem_id, version)
+        page = await reviewed(review_of().version_page, subject, number)
+        return render_version(principal, page)
+
+    @app.get("/knowledge/{entry_id}", response_class=HTMLResponse)
+    async def entry_page(request: Request, entry_id: str) -> Response:
+        principal = await ui(request)
+        page = await reviewed(review_of().entry_page, _uuid_path(entry_id))
+        return render_entry(principal, page)
+
+    @app.post("/postmortems/{postmortem_id}/versions/{version}/review")
+    async def review_version(
+        request: Request, postmortem_id: str, version: str
+    ) -> Response:
+        principal = await ui_mutation(request)
+        service = review_of()
+        subject, number = _postmortem_path(postmortem_id, version)
+        fields = await form_of(request)
+        action = fields.get("action", "")
+        if action not in ("approve", "supersede", "reject", "return"):
+            raise _invalid("action")
+        try:
+            entries = {
+                UUID(name[len(_ENTRY_GENERATION_FIELD) :]): _generation(value)
+                for name, value in fields.items()
+                if name.startswith(_ENTRY_GENERATION_FIELD)
+            }
+        except ValueError:
+            raise _invalid("entry_generations") from None
+        reason = fields.get("reason")
+        command = ReviewCommand(
+            action=action,  # type: ignore[arg-type]
+            idempotency_key=fields.get("idempotency_key", ""),
+            expected_generation=_expected(fields),
+            postmortem_id=subject,
+            version=number,
+            reason=reason if reason else None,
+            entry_generations=entries,
+        )
+        try:
+            result = await asyncio.to_thread(
+                service.review, command, principal.actor_id
+            )
+        except ReviewError as exc:
+            if not wants_html(request):
+                raise _Refusal(
+                    _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+                ) from None
+            page = await reviewed(service.version_page, subject, number)
+            return render_version(
+                principal, page, error=exc, status=_REVIEW_STATUS[exc.error_class]
+            )
+        if wants_html(request):
+            return RedirectResponse(
+                f"/postmortems/{subject}/versions/{number}", status_code=303
+            )
+        return JSONResponse(result)
+
+    @app.post("/knowledge/{entry_id}/revoke")
+    async def revoke_entry(request: Request, entry_id: str) -> Response:
+        principal = await ui_mutation(request)
+        service = review_of()
+        subject = _uuid_path(entry_id)
+        fields = await form_of(request)
+        raw_revision = fields.get("revision", "")
+        reason = fields.get("reason")
+        command = ReviewCommand(
+            action="revoke",
+            idempotency_key=fields.get("idempotency_key", ""),
+            expected_generation=_expected(fields),
+            entry_id=subject,
+            revision=int(raw_revision) if raw_revision.isdigit() else 0,
+            reason=reason if reason else None,
+        )
+        try:
+            result = await asyncio.to_thread(
+                service.review, command, principal.actor_id
+            )
+        except ReviewError as exc:
+            if not wants_html(request):
+                raise _Refusal(
+                    _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+                ) from None
+            page = await reviewed(service.entry_page, subject)
+            return render_entry(
+                principal, page, error=exc, status=_REVIEW_STATUS[exc.error_class]
+            )
+        if wants_html(request):
+            return RedirectResponse(f"/knowledge/{subject}", status_code=303)
+        return JSONResponse(result)
 
     # -- intake ---------------------------------------------------------
 
@@ -444,6 +612,43 @@ def create_app(
         )
 
     return app
+
+
+def _review_extra(exc: ReviewError) -> dict[str, Any]:
+    extra = exc.payload()
+    extra.pop("code")
+    return extra
+
+
+def _invalid(name: str) -> _Refusal:
+    """A malformed review form field, in the shape of ``ReviewError`` (R3)."""
+    return _Refusal(400, "INVALID_INPUT", error_class="invalid", fields=[name])
+
+
+def _uuid_path(raw: str) -> UUID:
+    try:
+        return UUID(raw)
+    except ValueError:
+        raise _Refusal(404, "NOT_FOUND") from None
+
+
+def _postmortem_path(raw_id: str, raw_version: str) -> tuple[UUID, int]:
+    if not raw_version.isdigit() or int(raw_version) < 1:
+        raise _Refusal(404, "NOT_FOUND")
+    return _uuid_path(raw_id), int(raw_version)
+
+
+def _generation(value: str) -> int:
+    if not value.isdigit():
+        raise ValueError(value)
+    return int(value)
+
+
+def _expected(fields: Mapping[str, str]) -> int:
+    raw = fields.get("expected_generation", "")
+    if not raw.isdigit():
+        raise _invalid("expected_generation")
+    return int(raw)
 
 
 def _text(fields: Mapping[str, Any], name: str) -> str:
