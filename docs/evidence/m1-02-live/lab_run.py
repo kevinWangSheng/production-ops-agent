@@ -99,6 +99,19 @@ def intake(args: argparse.Namespace) -> int:
     # second incident (issue #157 item 1)
     experiment_id = record.get("experiment_id") or args.experiment_id
     key = f"f6-live-{args.step}-{args.kind}-{experiment_id}"
+    # the id and the scenario's identity are persisted before the POST, so
+    # a request that reached the server but lost its response is replayed
+    # under the same key by the next invocation (bot review P2 on #161)
+    record.update(
+        {
+            "experiment_id": experiment_id,
+            "scenario_id": f"F6:{args.step}:{args.kind}",
+            "acceptance_step": str(args.step),
+            "kind": args.kind,
+            "target_id": args.target_id,
+        }
+    )
+    _save(args.scenario, record)
     result = _post(
         args.web,
         "/intake/ui",
@@ -116,23 +129,16 @@ def intake(args: argparse.Namespace) -> int:
     attempt = {"at": _now(), "status": result["status"], "body": result["body"]}
     ok = result["status"] in (200, 201) and isinstance(result["body"], dict)
     if not ok:
-        # a failed attempt is logged but changes nothing else: no stale
-        # incident_id survives, no metadata is overwritten (item 2)
+        # a failed attempt is logged and no incident id survives it: the
+        # record never points at an incident this response did not confirm
+        # (item 2; Codex review P2 on #161)
+        record.pop("incident_id", None)
+        record.pop("intake", None)
         record.setdefault("intake_failures", []).append(attempt)
         _save(args.scenario, record)
         print(json.dumps(attempt, indent=2))
         return 1
-    record.update(
-        {
-            "experiment_id": experiment_id,
-            "scenario_id": f"F6:{args.step}:{args.kind}",
-            "acceptance_step": str(args.step),
-            "kind": args.kind,
-            "target_id": args.target_id,
-            "intake": attempt,
-            "incident_id": result["body"]["incident_id"],
-        }
-    )
+    record.update({"intake": attempt, "incident_id": result["body"]["incident_id"]})
     _save(args.scenario, record)
     print(json.dumps(record["intake"], indent=2))
     return 0
