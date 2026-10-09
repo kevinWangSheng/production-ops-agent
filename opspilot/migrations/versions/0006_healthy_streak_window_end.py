@@ -65,6 +65,13 @@ def end_open_sessions(conn: Any) -> int:
         # EXCLUSIVE makes every in-flight submission commit before the read
         # or wait until this transaction ends; the lock is released with the
         # migration's own transaction.
+        # Incident first, then sessions: the lock order every product path
+        # keeps (``register_remediation``, pause, takeover and the Observer
+        # lock the incident row before they touch its sessions), so a
+        # control transaction that already holds an incident row makes this
+        # lock wait instead of deadlocking on the ending's incident foreign
+        # key (bot review and Codex recheck of PR #161, P2).
+        cursor.execute("LOCK TABLE opspilot_incidents IN ACCESS EXCLUSIVE MODE")
         cursor.execute(
             "LOCK TABLE opspilot_observation_sessions IN ACCESS EXCLUSIVE MODE"
         )

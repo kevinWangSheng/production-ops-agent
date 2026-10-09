@@ -37,6 +37,7 @@ from tests.integration.test_m1_02_observation_store_postgres import (
     _backdate_authorization,
     _incident,
 )
+from tests.target_support import identity_of
 
 MIGRATION = (
     Path(schema.__file__).parent
@@ -246,10 +247,46 @@ def test_the_migration_ends_open_sessions_and_a_new_registration_starts_over(
             if lease.session_id == open_session
         ] == []
 
-        # a human registers the remediation again: a new session under the
-        # new rule, whose streak starts at its own first healthy window END
-        new_session = _authorize(controller, incident, target.revision)
+        # a human registers the remediation again (the step 3 action, the
+        # store primitive the workbench calls): a new session under the new
+        # rule, whose streak starts at its own first healthy window END
+        with controller.transaction() as conn:
+            generation = int(
+                conn.execute(
+                    "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s",
+                    (incident,),
+                ).fetchone()["control_generation"]
+            )
+        assert (
+            controller.register_remediation(
+                incident,
+                expected_generation=generation,
+                actor="operator",
+                revision=target.revision,
+                deadline_at=_now() + timedelta(hours=1),
+                max_samples=10,
+                sample_interval_seconds=15,
+                sustained_window_seconds=3600,
+                health_profile_revision=PROFILE,
+                health_profile=PROFILE_CONTENT,
+                identity=identity_of(target.resource_uid),
+                payload={"channel": "test"},
+            )
+            == generation + 1
+        )
+        sessions = controller.incident_sessions(incident)
+        assert [str(row["session_id"]) for row in sessions][0] == str(open_session)
+        new_session = UUID(str(sessions[-1]["session_id"]))
         assert new_session != open_session
+        assert _lifecycle(controller, incident) == "observing_recovery"
+        _backdate_authorization(controller, new_session)
+        with controller.transaction() as conn:
+            # the registration schedules the first sample an interval ahead;
+            # bring it forward so the Observer can claim it now
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET active_sample_due_at=clock_timestamp() - interval '1 minute' WHERE session_id=%s",
+                (new_session,),
+            )
         window = (_now() - timedelta(minutes=5), _now())
         _healthy_sample(observer, new_session, window)
         row = _session_row(controller, new_session)
