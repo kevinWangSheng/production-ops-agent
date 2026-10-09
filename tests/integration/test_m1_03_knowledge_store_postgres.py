@@ -613,6 +613,20 @@ def test_invalid_input_is_reported_as_such_not_as_an_outage(store, dsn) -> None:
             incident_id,
             Watermark(**{**watermark.__dict__, "evidence_snapshot_sha256": "x"}),
         )
+    # malformed containers are refused as input, never escape as TypeError
+    for kwargs in (
+        {"proposals": [ProposalDraft("p", "n", None, {})]},  # type: ignore[arg-type]
+        {"proposals": None},
+        {"disputes": None},
+        {"conclusions": None},
+        {
+            "conclusions": [
+                ConclusionDraft("k", "s", "b", "model", "supported", True, None)  # type: ignore[arg-type]
+            ]
+        },
+    ):
+        with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
+            _draft(store, incident_id, watermark, **kwargs)
     draft = _draft(store, incident_id, watermark)
     with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
         store.mark_stale(

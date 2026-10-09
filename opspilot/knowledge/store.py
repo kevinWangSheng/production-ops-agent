@@ -296,7 +296,7 @@ def _validate_proposal(proposal: object) -> ProposalDraft:
         raise PersistenceError("INVALID_INPUT")
     _require_text(proposal.key)
     _require_text(proposal.name)
-    if isinstance(proposal.tags, (str, bytes)) or not all(
+    if not isinstance(proposal.tags, (list, tuple)) or not all(
         isinstance(tag, str) and tag for tag in proposal.tags
     ):
         raise PersistenceError("INVALID_INPUT")
@@ -362,7 +362,13 @@ class KnowledgeStore(_StoreBase):
         _require_uuid(incident_id)
         expected = _require_generation(expected_generation)
         _validate_watermark(watermark)
-        if not isinstance(content, Mapping) or not conclusions:
+        if (
+            not isinstance(content, Mapping)
+            or not isinstance(conclusions, (list, tuple))
+            or not isinstance(proposals, (list, tuple))
+            or not isinstance(disputes, (list, tuple))
+            or not conclusions
+        ):
             raise PersistenceError("INVALID_INPUT")
         for conclusion in conclusions:
             _validate_conclusion(conclusion)
