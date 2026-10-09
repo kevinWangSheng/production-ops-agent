@@ -823,3 +823,15 @@ def test_an_ended_job_and_its_late_sample_are_one_logical_job():
             "sequence": history["samples"][0]["sequence"] + 5,
         }
     ]
+
+
+def test_a_retried_job_reports_the_sequence_of_its_lease_matched_sample():
+    history = healthy_history(count=1)
+    good = history["samples"][0]
+    bad = {**good, "sample_id": uuid4(), "sequence": good["sequence"] + 7}
+    bad.update(lease_stamps_match=False, readings=[])
+    history["samples"] = [bad, good]
+    jobs = recovery_outcome(_scenario(history), _records(history)).sample_jobs
+    assert [j["sequence"] for j in jobs if j["job_id"] == str(good["job_id"])] == [
+        good["sequence"]
+    ]
