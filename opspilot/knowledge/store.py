@@ -640,6 +640,8 @@ class KnowledgeStore(_StoreBase):
         version's watermark (``WATERMARK_MOVED``, D1: such a draft is stale
         and only a new version can be reviewed).
         """
+        if entry_generations is not None and not isinstance(entry_generations, Mapping):
+            raise PersistenceError("INVALID_INPUT")
         return self._transition(
             "approve",
             postmortem_id,

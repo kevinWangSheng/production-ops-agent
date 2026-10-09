@@ -653,6 +653,16 @@ def test_invalid_input_is_reported_as_such_not_as_an_outage(store, dsn) -> None:
         with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
             _draft(store, incident_id, watermark, **kwargs)
     draft = _draft(store, incident_id, watermark)
+    for malformed in ([1], "bad", 3):
+        with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
+            store.approve(
+                draft.object_id,
+                1,
+                expected_generation=2,
+                idempotency_key=_key(),
+                actor=REVIEWER,
+                entry_generations=malformed,  # type: ignore[arg-type]
+            )
     with pytest.raises(PersistenceError, match="^INVALID_INPUT$"):
         store.mark_stale(
             draft.object_id,
