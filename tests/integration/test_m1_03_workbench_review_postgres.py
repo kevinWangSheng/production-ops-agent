@@ -10,8 +10,11 @@ entry page and the five review actions (D5, D6, D9, D25, R2-R6).
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -347,6 +350,125 @@ def test_unknown_or_malformed_paths_are_404_and_pages_need_auth(env) -> None:
     ):
         assert call(env["app"], "GET", path, headers=basic()).status == 404, path
     assert call(env["app"], "GET", f"/knowledge/{uuid4()}").status == 401
+
+
+def _recovery_reading(env, watermark: Watermark, raw: bytes) -> str:
+    """One adopted sample with one signal reading in the incident's
+    observation session; returns the reading's catalog id (D2, as F6's
+    ``recovery_outcome``: ``<sample_id>:<signal_name>``)."""
+    sample_id = uuid4()
+    start = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+    with psycopg.connect(env["dsn"]) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_observation_samples(sample_id, session_id, job_id, "
+            "sequence, epoch, window_start, window_end, outcome, required_signals_present, "
+            "subject_control_generation, observation_generation, disposition, reason, "
+            "confirms_health, health_basis, subject_lifecycle, incident_control_generation, "
+            "incident_observation_generation, scope_suspended, global_generation, "
+            "target_generation, within_deadline, lease_valid, lease_stamps_match, "
+            "readings_consistent, transition) VALUES (%s,%s,%s,1,1,%s,%s,'healthy',true,"
+            "0,1,'adopted','adopted',true,'confirmed','observing_recovery',0,1,false,0,0,"
+            "true,true,true,true,NULL)",
+            (
+                sample_id,
+                watermark.observation_session_id,
+                uuid4(),
+                start,
+                start + timedelta(minutes=5),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_observation_signal_readings(sample_id, signal_name, "
+            "status, value, sample_count, query, window_start, window_end, source, "
+            "raw_sha256, raw) VALUES (%s, 'error_rate', 'ok', 0.01, 5, "
+            "'sum(rate(errors[5m]))', %s, %s, 'prometheus', %s, %s)",
+            (
+                sample_id,
+                start,
+                start + timedelta(minutes=5),
+                hashlib.sha256(raw).hexdigest(),
+                raw,
+            ),
+        )
+    return f"{sample_id}:error_rate"
+
+
+def test_a_cited_recovery_reading_link_resolves_to_the_stored_reading(env) -> None:
+    """PRODUCT-CONSTRAINTS: a report link resolves to the actual captured
+    evidence. A conclusion may cite a recovery reading; the version page's
+    link for it must open that stored reading, bound to its incident."""
+    incident_id, watermark = _incident(env)
+    raw = b'{"status":"success","data":{"result":[]}}'
+    reading_id = _recovery_reading(env, watermark, raw)
+    conclusions = [
+        ConclusionDraft(
+            key="recovery-1",
+            section="recovery",
+            body="error rate back under the threshold",
+            author="code",
+            certainty="deterministic",
+            citations_valid=True,
+            evidence_refs=[
+                {
+                    "evidence_id": reading_id,
+                    "scope": "recovery:error_rate",
+                    "window_start": "2026-10-09T12:00:00+00:00",
+                    "window_end": "2026-10-09T12:05:00+00:00",
+                    "citable_as_fact": True,
+                }
+            ],
+        )
+    ]
+    draft = _draft(env, incident_id, watermark, conclusions=conclusions)
+    page = call(
+        env["app"], "GET", f"/postmortems/{draft.object_id}/versions/1", headers=basic()
+    )
+    assert page.status == 200
+    links = re.findall(r'href="(/incidents/[^"]+/evidence/[^"]+)"', page.text)
+    assert links == [f"/incidents/{incident_id}/evidence/{reading_id}"]
+
+    opened = call(env["app"], "GET", links[0], headers=basic())
+    assert opened.status == 200, opened.text
+    body = opened.json()
+    assert body["evidence_id"] == reading_id
+    assert body["kind"] == "recovery"
+    assert body["session_id"] == str(watermark.observation_session_id)
+    assert body["signal_name"] == "error_rate"
+    assert body["status"] == "ok" and body["value"] == 0.01
+    assert body["query"] == "sum(rate(errors[5m]))"
+    assert body["source"] == "prometheus"
+    assert datetime.fromisoformat(body["window_start"]) == datetime(
+        2026, 10, 9, 12, 0, tzinfo=UTC
+    )
+    assert body["disposition"] == "adopted"
+    assert body["target"] == {} and body["submitted_at"] is not None
+    assert body["raw_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert body["hashes_verified"] is True
+    assert body["raw_utf8"] == raw.decode()
+
+    # bound to its incident, behind the same auth as investigation evidence
+    other_incident, _ = _incident(env)
+    assert (
+        call(
+            env["app"],
+            "GET",
+            f"/incidents/{other_incident}/evidence/{reading_id}",
+            headers=basic(),
+        ).status
+        == 404
+    )
+    sample_id = reading_id.split(":")[0]
+    for missing in (f"{sample_id}:latency_p99", f"{uuid4()}:error_rate", sample_id):
+        assert (
+            call(
+                env["app"],
+                "GET",
+                f"/incidents/{incident_id}/evidence/{missing}",
+                headers=basic(),
+            ).status
+            == 404
+        ), missing
+    assert call(env["app"], "GET", links[0]).status == 401
 
 
 # --- actions

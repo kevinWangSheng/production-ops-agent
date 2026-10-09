@@ -1118,6 +1118,36 @@ class Workbench:
             return None
         return record
 
+    def recovery_reading_for(
+        self, incident_id: UUID, evidence_id: str
+    ) -> dict[str, Any] | None:
+        """The stored observation reading a postmortem cites as recovery
+        evidence (``<sample_id>:<signal_name>``, the catalog id of D2), looked
+        up only among this incident's sessions. Read-only; ``None`` when the
+        id is malformed or names no reading of this incident."""
+        raw_sample, sep, signal_name = evidence_id.partition(":")
+        if not sep or not signal_name:
+            return None
+        try:
+            sample_id = UUID(raw_sample)
+        except ValueError:
+            return None
+        for session in self.incidents.observation_sessions(incident_id):
+            history = self.incidents.observation_history(session["session_id"])
+            for sample in history["samples"]:
+                if sample["sample_id"] != sample_id:
+                    continue
+                for reading in sample.get("readings", ()):
+                    if reading["signal_name"] == signal_name:
+                        return {
+                            "session_id": session["session_id"],
+                            "target": session["target"],
+                            "sample": sample,
+                            "reading": reading,
+                        }
+                return None
+        return None
+
     # -- one bounded attempt --------------------------------------------
 
     def run_once(
