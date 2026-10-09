@@ -856,10 +856,9 @@ class KnowledgeStore(_StoreBase):
             return self._postmortem_snapshot(conn, head)
 
     def knowledge_from_postmortem(self, postmortem_id: UUID) -> list[dict[str, Any]]:
-        """The knowledge revisions approvals of this postmortem published,
-        with their current state (review navigation, not a knowledge read):
-        ``entry_id``, ``revision``, ``name``, ``source_version``,
-        ``source_proposal_key``, ``supersedes_revision``, ``state``."""
+        """``PublishedRevisionView`` rows (``opspilot.knowledge.contract``):
+        the knowledge revisions approvals of this postmortem published, with
+        their current state (review navigation, not a knowledge read)."""
         _require_uuid(postmortem_id)
         with self.transaction(snapshot=True) as conn:
             return conn.execute(

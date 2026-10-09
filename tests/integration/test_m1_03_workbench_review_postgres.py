@@ -29,7 +29,7 @@ from opspilot.knowledge import (
     ProposalDraft,
     Watermark,
 )
-from opspilot.knowledge.contract import EVENT_PAYLOAD_KEYS
+from opspilot.knowledge.contract import EVENT_PAYLOAD_KEYS, PublishedRevisionView
 from opspilot.persistence import DurableStore, PoolConfig
 from opspilot.web import (
     AuthConfig,
@@ -639,3 +639,6 @@ def test_superseded_knowledge_is_shown_as_not_retrievable(env) -> None:
     assert done.status == 200
     page = call(env["app"], "GET", f"/incidents/{first_incident}", headers=basic())
     assert "superseded</span> not retrievable" in page.text
+    (row,) = env["knowledge"].knowledge_from_postmortem(first.object_id)
+    assert set(row) == set(PublishedRevisionView.__annotations__)
+    assert row["state"] == "superseded"
