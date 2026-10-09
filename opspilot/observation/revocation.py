@@ -31,6 +31,30 @@ _SESSION_TRIGGER = {
 }
 
 
+#: Migration 0007's columns, idempotent: 0006 (which ends open sessions and so
+#: clears their task slots) installs them first, so an upgrade through both
+#: still records the in-flight jobs; 0007 runs it again for databases already
+#: at 0006.
+ENDING_JOB_IDENTITY_DDL = """
+ALTER TABLE opspilot_observation_endings
+  ADD COLUMN IF NOT EXISTS job_id uuid,
+  ADD COLUMN IF NOT EXISTS job_sequence integer;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'opspilot_observation_endings_job_check'
+      AND conrelid = 'opspilot_observation_endings'::regclass
+  ) THEN
+    ALTER TABLE opspilot_observation_endings
+      ADD CONSTRAINT opspilot_observation_endings_job_check
+      CHECK ((job_id IS NULL) = (job_sequence IS NULL));
+  END IF;
+END
+$$;
+"""
+
+
 def end_session(
     conn: Connection,
     session_id: UUID,
@@ -50,7 +74,7 @@ def end_session(
     row lock and the session row lock, in that order.
 
     The closed slot's job identity goes on the ending record (migration
-    0007; ``record_job=False`` is for migrations that run before it)."""
+    0007; ``record_job=False`` is for callers on a schema without the columns)."""
     job: Any = (None, None)
     if record_job:
         slot = conn.execute(

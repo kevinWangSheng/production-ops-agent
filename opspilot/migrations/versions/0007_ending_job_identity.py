@@ -20,6 +20,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
+from opspilot.observation.revocation import ENDING_JOB_IDENTITY_DDL
+
 OBSERVER_ROLE = "opspilot_observer"
 
 revision: str = "0007_ending_job_identity"
@@ -29,15 +31,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # idempotent: 0006 already installed the columns on the way here when it
+    # ended open sessions (its docstring); this covers databases at 0006
+    op.execute(ENDING_JOB_IDENTITY_DDL)
     op.execute(
-        f"""
-        ALTER TABLE opspilot_observation_endings
-          ADD COLUMN job_id uuid,
-          ADD COLUMN job_sequence integer,
-          ADD CONSTRAINT opspilot_observation_endings_job_check
-            CHECK ((job_id IS NULL) = (job_sequence IS NULL));
-        GRANT INSERT (job_id, job_sequence) ON opspilot_observation_endings TO {OBSERVER_ROLE};
-        """
+        f"GRANT INSERT (job_id, job_sequence) ON opspilot_observation_endings TO {OBSERVER_ROLE}"
     )
 
 

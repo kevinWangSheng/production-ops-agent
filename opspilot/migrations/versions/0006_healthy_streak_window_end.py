@@ -26,6 +26,12 @@ the time and are left alone; the offline replay recomputes such a session
 under the new rule and reports ``WATERMARK_MISMATCH`` for a streak that
 started at a window start, which is the documented limit of this change.
 
+Besides the data step, ``upgrade()`` installs 0007's two ending columns
+(idempotent DDL shared with 0007) before ending the sessions, so the jobs
+those endings close are recorded and a direct 0005 -> head upgrade loses no
+in-flight job identity (bot review of PR #165, P1); ``downgrade()`` removes
+them again.
+
 ``downgrade()`` is the same action in the other direction: moving back to
 the window-start rule is a rule change too, so every session still
 ``authorized`` under the new rule is ended the same way and a human
@@ -38,7 +44,7 @@ from typing import Any
 
 from alembic import op
 
-from opspilot.observation.revocation import end_session
+from opspilot.observation.revocation import ENDING_JOB_IDENTITY_DDL, end_session
 
 revision: str = "0006_healthy_streak_window_end"
 down_revision: str | Sequence[str] | None = "0005_incident_mode"
@@ -58,7 +64,7 @@ _OPEN_SESSIONS_OF = (
 )
 
 
-def end_open_sessions(conn: Any) -> int:
+def end_open_sessions(conn: Any, *, record_job: bool = True) -> int:
     """End every ``authorized`` session (``authority_revoked``, lifecycle
     unchanged). ``conn`` is a DB-API connection (psycopg) inside the caller's
     transaction. Returns the number of sessions ended.
@@ -94,7 +100,7 @@ def end_open_sessions(conn: Any) -> int:
                     transition=None,
                     lifecycle_before=lifecycle,
                     lifecycle_after=lifecycle,
-                    record_job=False,  # 0007 adds the columns
+                    record_job=record_job,
                 )
                 ended += 1
     return ended
@@ -106,9 +112,20 @@ def _dbapi_connection() -> Any:
 
 
 def upgrade() -> None:
+    # install 0007's columns first so the jobs these endings close are kept
+    # (PR #165 bot P1); 0007 repeats the same idempotent DDL
+    op.execute(ENDING_JOB_IDENTITY_DDL)
+    op.execute(
+        "GRANT INSERT (job_id, job_sequence) ON opspilot_observation_endings TO opspilot_observer"
+    )
     end_open_sessions(_dbapi_connection())
 
 
 def downgrade() -> None:
-    # the rule changes back: open sessions stop the same way (module docstring)
-    end_open_sessions(_dbapi_connection())
+    # the rule changes back: open sessions stop the same way (module docstring);
+    # 0007 downgraded first and dropped the columns; drop what 0006's own
+    # upgrade installed so 0005 is exactly what it was
+    op.execute(
+        "ALTER TABLE opspilot_observation_endings DROP COLUMN IF EXISTS job_id, DROP COLUMN IF EXISTS job_sequence"
+    )
+    end_open_sessions(_dbapi_connection(), record_job=False)
