@@ -551,6 +551,12 @@ def test_sustained_healthy_window_confirms_recovery(
     samples = controller.session_history(session)["samples"]
     assert [s["transition"] for s in samples] == [None, "recovery_confirmed"]
     assert all(s["subject_lifecycle"] == "observing_recovery" for s in samples)
+    # the confirming ending names the same logical job as its sample (#164)
+    (ending,) = controller.session_history(session)["endings"]
+    assert (ending["job_id"], ending["job_sequence"]) == (
+        samples[-1]["job_id"],
+        samples[-1]["sequence"],
+    )
     _assert_replay_consistent(controller, session)
 
 
@@ -853,6 +859,12 @@ def test_a_revoked_session_adopts_nothing(
     assert (receipt.accepted, receipt.reason) == (False, "lease_revoked")
     row = controller.session(session)
     assert (row["state"], row["ended_reason"]) == ("revoked", "authority_revoked")
+    # the ending keeps the identity of the job whose slot it closed (#164)
+    (ending,) = controller.session_history(session)["endings"]
+    assert (ending["job_id"], ending["job_sequence"]) == (
+        lease.job_id,
+        lease.sequence,
+    )
     assert _lifecycle(owner, incident) == "observing_recovery"
     # A new session can be authorized on the still-observing incident.
     assert controller.authorize_session(

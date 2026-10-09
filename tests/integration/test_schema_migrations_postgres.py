@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0006_healthy_streak_window_end"
+HEAD = "0007_ending_job_identity"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings).
 TABLES_AT_HEAD = 20
@@ -384,6 +384,40 @@ def test_upgrade_downgrade_upgrade_round_trip(scratch_dsn: str) -> None:
     assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == head_dump
     assert _check_constraints(scratch_dsn) == EXPECTED_CHECKS
     _install_all(scratch_dsn)
+
+
+def test_upgrade_through_0006_keeps_the_job_of_a_session_it_ends(
+    scratch_dsn: str,
+) -> None:
+    """0006 ends open sessions and clears their task slots; 0007's columns
+    exist by then, so a direct 0005 -> head upgrade records the in-flight job
+    (bot review of PR #165, P1). Downgrading to 0005 leaves no trace."""
+    schema.upgrade_to(scratch_dsn, "0005_incident_mode")
+    before_dump = schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP)
+    incident, target, session, job = uuid4(), uuid4(), uuid4(), uuid4()
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
+            (target, f"uid-{target}"),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,target_id) VALUES(%s,%s,'queued','observing_recovery',%s)",
+            (incident, f"seed-{incident}", target),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,authorized_global_generation,authorized_target_generation,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,'{}',0,1,'t',0,0,clock_timestamp()+interval '1 hour',10,30,60,3,%s,3,clock_timestamp())",
+            (session, incident, target, job),
+        )
+    assert schema.migrate(scratch_dsn, pg_dump=PG_DUMP) == schema.MigrateResult(
+        "upgraded", HEAD
+    )
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            "SELECT ended_reason, job_id, job_sequence FROM opspilot_observation_endings WHERE session_id=%s",
+            (session,),
+        ).fetchall() == [("authority_revoked", job, 3)]
+    schema.command.downgrade(schema._config(scratch_dsn), "0005_incident_mode")
+    assert schema.schema_dump(scratch_dsn, pg_dump=PG_DUMP) == before_dump
 
 
 # --- 0003_observation_store (M1-02 step 2, issue #84) ---

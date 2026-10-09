@@ -926,8 +926,8 @@ def test_f6_step1_revision_rehandling_fences_old_session_result(
     assert len(set(assert_signal_basis(saved, supplied[0], recovery_driver))) == len(
         REQUIRED
     )
-    # Old claimed job becomes visible when history is filed; no new logical
-    # work is scheduled by that rejection (the latest active slot is stable).
+    # The ending already preserves the old claimed job identity before history
+    # is filed; rejection must not schedule any new logical work.
     assert set(
         tuple(row[key] for key in ("job_id", "session_id", "sequence"))
         for row in after["sample_jobs"]

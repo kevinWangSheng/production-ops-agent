@@ -631,3 +631,40 @@ def test_non_handoff_result_after_prior_handoff_keeps_the_prior_handoff_in_the_a
         )
         with pytest.raises(AssertionError):
             assert_readonly(altered, recovery_driver)
+
+
+@pytest.mark.parametrize("fault", ["revoke", "expire"])
+@pytest.mark.parametrize(
+    "mutation", ["missing", "extra", "wrong-job", "wrong-session", "wrong-sequence"]
+)
+def test_ended_job_identity_contract_rejects_stable_but_false_projection(
+    recovery_driver, f6_profile, monkeypatch, fault, mutation
+):
+    from tests.contracts.test_f6_observation import (
+        test_persisted_authority_guard_keeps_late_result_only_as_history as contract,
+    )
+
+    snapshots = recovery_driver.submission_snapshots
+
+    def corrupted_snapshots():
+        before, after = snapshots()
+        jobs = list(deepcopy(before["sample_jobs"]))
+        assert len(jobs) == 1
+        if mutation == "missing":
+            jobs.clear()
+        elif mutation == "extra":
+            jobs.append({**jobs[0], "job_id": str(uuid4())})
+        elif mutation == "wrong-job":
+            jobs[0]["job_id"] = str(uuid4())
+        elif mutation == "wrong-session":
+            jobs[0]["session_id"] = str(uuid4())
+        else:
+            jobs[0]["sequence"] += 1
+        # Equality alone would accept each false projection, including empty.
+        before["sample_jobs"] = tuple(jobs)
+        after["sample_jobs"] = deepcopy(before["sample_jobs"])
+        return before, after
+
+    monkeypatch.setattr(recovery_driver, "submission_snapshots", corrupted_snapshots)
+    with pytest.raises(AssertionError, match="ended job identity"):
+        contract(recovery_driver, f6_profile, fault)

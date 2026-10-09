@@ -31,6 +31,30 @@ _SESSION_TRIGGER = {
 }
 
 
+#: Migration 0007's columns, idempotent: 0006 (which ends open sessions and so
+#: clears their task slots) installs them first, so an upgrade through both
+#: still records the in-flight jobs; 0007 runs it again for databases already
+#: at 0006.
+ENDING_JOB_IDENTITY_DDL = """
+ALTER TABLE opspilot_observation_endings
+  ADD COLUMN IF NOT EXISTS job_id uuid,
+  ADD COLUMN IF NOT EXISTS job_sequence integer;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'opspilot_observation_endings_job_check'
+      AND conrelid = 'opspilot_observation_endings'::regclass
+  ) THEN
+    ALTER TABLE opspilot_observation_endings
+      ADD CONSTRAINT opspilot_observation_endings_job_check
+      CHECK ((job_id IS NULL) = (job_sequence IS NULL));
+  END IF;
+END
+$$;
+"""
+
+
 def end_session(
     conn: Connection,
     session_id: UUID,
@@ -42,11 +66,23 @@ def end_session(
     lifecycle_after: str,
     sample_id: UUID | None = None,
     watermark: dict[str, Any] | None = None,
+    record_job: bool = True,
 ) -> None:
     """Close a session: state by the session state machine, job slot cleared,
     and the ending recorded (the row the lifecycle evidence trigger looks for
     when the Observer changes the incident). The caller holds the incident
-    row lock and the session row lock, in that order."""
+    row lock and the session row lock, in that order.
+
+    The closed slot's job identity goes on the ending record (migration
+    0007; ``record_job=False`` is for callers on a schema without the columns)."""
+    job: Any = (None, None)
+    if record_job:
+        slot = conn.execute(
+            "SELECT active_sample_job_id,active_sample_sequence FROM opspilot_observation_sessions WHERE session_id=%s",
+            (session_id,),
+        ).fetchone()
+        if slot is not None:
+            job = tuple(slot.values()) if isinstance(slot, dict) else tuple(slot)
     state = OBSERVATION_SESSION.fire("authorized", _SESSION_TRIGGER[ended_reason])
     marks = watermark or {}
     conn.execute(
@@ -62,18 +98,23 @@ def end_session(
             session_id,
         ),
     )
+    columns = "ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after"
+    values = [
+        uuid4(),
+        session_id,
+        incident_id,
+        ended_reason,
+        transition,
+        sample_id,
+        lifecycle_before,
+        lifecycle_after,
+    ]
+    if record_job:
+        columns += ",job_id,job_sequence"
+        values += list(job)
     conn.execute(
-        "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,transition,sample_id,lifecycle_before,lifecycle_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
-        (
-            uuid4(),
-            session_id,
-            incident_id,
-            ended_reason,
-            transition,
-            sample_id,
-            lifecycle_before,
-            lifecycle_after,
-        ),
+        f"INSERT INTO opspilot_observation_endings({columns}) VALUES({','.join(['%s'] * len(values))})",
+        values,
     )
 
 
