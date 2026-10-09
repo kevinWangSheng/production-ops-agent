@@ -117,6 +117,10 @@ def _seed_incident(dsn: str) -> tuple[UUID, Watermark]:
             (run_id, incident_id),
         )
         conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (run_id, incident_id),
+        )
+        conn.execute(
             "INSERT INTO opspilot_observation_sessions(session_id, incident_id, purpose, "
             "target_id, target, subject_control_generation, observation_generation, "
             "authorized_by, state, ended_reason, authorized_global_generation, "
@@ -219,14 +223,21 @@ def _approved(store, dsn, proposals=None, entry_generations=None):
     )
 
 
-def _add_run(dsn: str, incident_id: UUID) -> None:
+def _add_run(dsn: str, incident_id: UUID) -> UUID:
+    """A new Run becomes the incident's current Run, as ``new_run`` does."""
+    run_id = uuid4()
     with psycopg.connect(dsn) as conn:
         conn.execute(
             "INSERT INTO opspilot_runs(run_id, incident_id, state, control_generation, "
             "budget_limit, deadline, versions) "
             "VALUES (%s, %s, 'queued', 0, 1, clock_timestamp(), '{}')",
-            (uuid4(), incident_id),
+            (run_id, incident_id),
         )
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (run_id, incident_id),
+        )
+    return run_id
 
 
 # --- version chain, generations, audit
@@ -550,7 +561,7 @@ def test_a_moved_incident_refuses_drafts_and_approvals_of_the_old_watermark(
 ) -> None:
     incident_id, watermark = _seed_incident(dsn)
     draft = _draft(store, incident_id, watermark)
-    _add_run(dsn, incident_id)
+    new_run = _add_run(dsn, incident_id)
     # D1: the version no longer describes the incident; it cannot be approved
     with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
         store.approve(
@@ -576,11 +587,16 @@ def test_a_moved_incident_refuses_drafts_and_approvals_of_the_old_watermark(
             "WHERE incident_id=%s",
             (incident_id,),
         )
-    moved = Watermark(**{**watermark.__dict__, "run_count": 2})
+    moved = Watermark(**{**watermark.__dict__, "run_count": 2, "last_run_id": new_run})
     with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
         _draft(store, incident_id, moved, generation=3)
     current = Watermark(
-        **{**watermark.__dict__, "run_count": 2, "incident_control_generation": 1}
+        **{
+            **watermark.__dict__,
+            "run_count": 2,
+            "last_run_id": new_run,
+            "incident_control_generation": 1,
+        }
     )
     assert _draft(store, incident_id, current, generation=3).version == 2
 
@@ -969,6 +985,35 @@ def test_new_committed_evidence_moves_the_watermark(store, dsn) -> None:
         )
     moved = store.evidence_snapshot_sha256(incident_id)
     assert moved != EVIDENCE_HASH
+    with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
+        store.approve(
+            draft.object_id,
+            1,
+            expected_generation=2,
+            idempotency_key=_key(),
+            actor=REVIEWER,
+        )
+
+
+def test_an_older_run_with_the_current_run_count_is_not_the_watermark(
+    store, dsn
+) -> None:
+    """D1: the watermark names the Run its count ends at -- the incident's
+    current Run -- not any earlier Run of the incident."""
+    incident_id, watermark = _seed_incident(dsn)
+    latest = _add_run(dsn, incident_id)
+    older = Watermark(**{**watermark.__dict__, "run_count": 2})
+    with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
+        _draft(store, incident_id, older)
+    current = Watermark(**{**older.__dict__, "last_run_id": latest})
+    draft = _draft(store, incident_id, current)
+    assert draft.state == "under_review"
+    # an approval re-checks it: the Run named by the version is still current
+    with psycopg.connect(dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (watermark.last_run_id, incident_id),
+        )
     with pytest.raises(PersistenceError, match="^WATERMARK_MOVED$"):
         store.approve(
             draft.object_id,

@@ -1098,7 +1098,8 @@ class KnowledgeStore(_StoreBase):
     ) -> dict[str, Any]:
         row = conn.execute(
             "SELECT state, incident_control_generation, observation_generation, run_count, "
-            "input_watermark, evidence_snapshot_sha256 FROM opspilot_postmortem_versions "
+            "last_run_id, input_watermark, evidence_snapshot_sha256 "
+            "FROM opspilot_postmortem_versions "
             "WHERE postmortem_id=%s AND version=%s",
             (postmortem_id, version),
         ).fetchone()
@@ -1147,11 +1148,13 @@ class KnowledgeStore(_StoreBase):
         conn: Connection, incident_id: UUID, watermark: Mapping[str, Any]
     ) -> bool:
         """Has the incident moved past ``watermark`` (D1)? Control and
-        observation generations, Run count, input watermark and the evidence
-        snapshot are compared under a share lock on the incident row, so a
-        concurrent control action or Run is ordered after this transaction."""
+        observation generations, Run count, the last Run (the incident's
+        current Run, which every new Run replaces), input watermark and the
+        evidence snapshot are compared under a share lock on the incident
+        row, so a concurrent control action or Run is ordered after this
+        transaction."""
         current = conn.execute(
-            "SELECT i.control_generation, i.observation_generation, "
+            "SELECT i.control_generation, i.observation_generation, i.current_run_id, "
             "(SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id) AS run_count, "
             "(SELECT COALESCE(max(n.sequence), 0) FROM opspilot_inputs n "
             "WHERE n.incident_id = i.incident_id) AS input_watermark "
@@ -1164,6 +1167,7 @@ class KnowledgeStore(_StoreBase):
             current["control_generation"] != watermark["incident_control_generation"]
             or current["observation_generation"] != watermark["observation_generation"]
             or current["run_count"] != watermark["run_count"]
+            or current["current_run_id"] != watermark["last_run_id"]
             or current["input_watermark"] != watermark["input_watermark"]
             or KnowledgeStore._evidence_snapshot(conn, incident_id)
             != watermark["evidence_snapshot_sha256"]
