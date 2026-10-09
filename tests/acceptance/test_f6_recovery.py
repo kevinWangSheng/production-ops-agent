@@ -228,10 +228,18 @@ def assert_readonly(outcome, driver, subject_id="incident-f6"):
     assert actual == changes, (
         f"lifecycle action count: actual={actual}, expected={changes}"
     )
+    # actions is the complete audit in this snapshot's scope; the latest
+    # session's human_interaction cannot erase earlier committed handoffs.
+    handoffs = sum(
+        reason in {"deadline_expired", "max_samples_exhausted"}
+        for reason in outcome.ending_reasons
+    )
+    actual_handoffs = outcome.actions.count("human_handoff")
+    assert actual_handoffs == handoffs, (
+        f"handoff action count: actual={actual_handoffs}, expected={handoffs}"
+    )
     if outcome.human_interaction == "handoff":
-        assert outcome.actions.count("human_handoff") >= 1
-    else:
-        assert outcome.actions.count("human_handoff") == 0
+        assert handoffs >= 1
 
 
 def assert_signal_basis(row, original, driver):
