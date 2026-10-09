@@ -351,6 +351,33 @@ def _run_attributes(
     return attributes
 
 
+# Version keys of a postmortem generation (M1-03 D20) that travel as
+# ``langsmith.metadata.*``.
+_GENERATION_VERSION_KEYS = (
+    "model",
+    "model_profile",
+    "prompt_version",
+    "output_schema_version",
+    "input_policy_version",
+)
+
+
+def _generation_attributes(
+    *, incident_id: str, attempt_id: str, versions: Mapping[str, str]
+) -> dict[str, AttrValue]:
+    attributes: dict[str, AttrValue] = {
+        "langsmith.span.kind": "chain",
+        "langsmith.metadata.incident_id": incident_id,
+        "langsmith.metadata.postmortem_attempt_id": attempt_id,
+        "opspilot.trace.mode": "lab",
+    }
+    for key in _GENERATION_VERSION_KEYS:
+        value = versions.get(key)
+        if isinstance(value, str):
+            attributes[f"langsmith.metadata.{key}"] = _bounded(value)
+    return attributes
+
+
 def _model_call_attributes(call: ModelCall, *, seq: int) -> dict[str, AttrValue]:
     from opspilot.investigation.loop import ModelCall
 
@@ -670,6 +697,11 @@ class NullTracer:
     ) -> _NullSpan | _RefusedRunSpan:
         return _NULL_SPAN
 
+    def generation(
+        self, *, incident_id: object, attempt_id: object, versions: Mapping[str, str]
+    ) -> _NullSpan | _RefusedRunSpan:
+        return _NULL_SPAN
+
     def model_call(self, call: ModelCall) -> _NullSpan:
         return _NULL_SPAN
 
@@ -734,6 +766,29 @@ class Tracer:
         span = self._otel.start_span("opspilot.run")
         for key, value in _run_attributes(
             incident_id=str(incident_id), run_id=str(run_id), versions=versions
+        ).items():
+            _write(span, key, value)
+        wrapped = _RunSpan(span, self)
+        self._last_trace_id = wrapped.trace_id
+        return wrapped
+
+    def generation(
+        self, *, incident_id: object, attempt_id: object, versions: Mapping[str, str]
+    ) -> _RunSpan | _RefusedRunSpan:
+        """Root span of one postmortem generation attempt (M1-03 D24): the
+        same per-attempt lab proof as ``run``; its model spans are children
+        like a Run's."""
+        failures = check_lab_target(self._env)
+        if failures:
+            _log.warning(
+                "trace export disabled for postmortem attempt=%s: %s",
+                attempt_id,
+                ",".join(failures),
+            )
+            return _RefusedRunSpan(self)
+        span = self._otel.start_span("opspilot.postmortem_generation")
+        for key, value in _generation_attributes(
+            incident_id=str(incident_id), attempt_id=str(attempt_id), versions=versions
         ).items():
             _write(span, key, value)
         wrapped = _RunSpan(span, self)

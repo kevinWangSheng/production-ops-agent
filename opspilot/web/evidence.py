@@ -218,6 +218,21 @@ class DurableEvidenceStore:
                     evidence_id,
                 ),
             )
+            # M1-03 D18: committed evidence moves the incident's evidence
+            # snapshot; a draft assembled before it is stale.
+            run = conn.execute(
+                "SELECT incident_id FROM opspilot_runs WHERE run_id::text=%s",
+                (row["run_id"],),
+            ).fetchone()
+            if run is not None:
+                from opspilot.knowledge.store import mark_stale_in
+
+                mark_stale_in(
+                    conn,
+                    run["incident_id"],
+                    reason="evidence_changed",
+                    source="evidence.commit",
+                )
 
     def get(self, evidence_id: str) -> StoredEvidence | None:
         if not isinstance(evidence_id, str) or not evidence_id:

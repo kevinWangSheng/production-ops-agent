@@ -123,6 +123,12 @@ class _RunOps(_StoreBase):
                     Jsonb(payload) if payload is not None else None,
                 ),
             )
+            # M1-03 D18: a postmortem draft of the run that ended is stale now.
+            from opspilot.knowledge.store import mark_stale_in
+
+            mark_stale_in(
+                conn, incident_id, reason="incident_reopened", source="new_run"
+            )
             return nxt
 
     def claim(

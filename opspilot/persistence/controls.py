@@ -261,6 +261,15 @@ class _ControlOps(_StoreBase):
                         Jsonb(payload) if payload is not None else None,
                     ),
                 )
+                # M1-03 D18: the control generation moved.
+                from opspilot.knowledge.store import mark_stale_in
+
+                mark_stale_in(
+                    conn,
+                    incident_id,
+                    reason="control_generation_changed",
+                    source="control.takeover",
+                )
                 return nxt
             # 连 incident_id 一起查：状态判定读的是这一行，而下面的状态推进按
             # incident_id 作用于本 incident 真正的 run。两者指向不同的行时，一个
@@ -434,6 +443,22 @@ class _ControlOps(_StoreBase):
                     "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,%s,%s,%s,%s)",
                     (uuid4(), incident_id, seq, action, Jsonb(content), actor, nxt),
                 )
+            # M1-03 D18: the control generation (and possibly the Run or the
+            # inputs) moved; drafts behind it are stale in this transaction.
+            from opspilot.knowledge.store import mark_stale_in
+
+            mark_stale_in(
+                conn,
+                incident_id,
+                reason="run_added"
+                if renew
+                else (
+                    "input_added"
+                    if action in {"follow_up", "correct"}
+                    else "control_generation_changed"
+                ),
+                source=f"control.{action}",
+            )
             return nxt
 
     def append_input(
@@ -481,6 +506,12 @@ class _ControlOps(_StoreBase):
                     actor,
                     row["control_generation"],
                 ),
+            )
+            # M1-03 D18: a new input moves the input watermark.
+            from opspilot.knowledge.store import mark_stale_in
+
+            mark_stale_in(
+                conn, incident_id, reason="input_added", source="append_input"
             )
             return int(seq)
 
