@@ -32,10 +32,12 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0007_ending_job_identity"
+HEAD = "0008_postmortem_knowledge"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
-# sessions, samples, readings, endings).
-TABLES_AT_HEAD = 20
+# sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
+# conclusions, disputes, proposals, knowledge entries/revisions/revocations,
+# requests, audit).
+TABLES_AT_HEAD = 30
 
 
 @pytest.fixture
@@ -641,13 +643,15 @@ def test_0005_downgrade_waits_for_an_in_flight_takeover_and_then_refuses(
         in_flight.execute("UPDATE opspilot_incidents SET mode='human_owned'")
         worker = threading.Thread(target=downgrade)
         worker.start()
-        # The downgrade is blocked on the table lock behind the open write.
+        # The downgrade is blocked on the table lock behind the open write
+        # (0008's downgrade, dropping a table that references incidents, is
+        # the first statement to wait; 0005's LOCK TABLE would be next).
         deadline = __import__("time").monotonic() + 10
         waiting = False
         while __import__("time").monotonic() < deadline and not waiting:
             with psycopg.connect(scratch_dsn) as probe:
                 waiting = probe.execute(
-                    "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query ILIKE 'LOCK TABLE opspilot_incidents%'"
+                    "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND datname=current_database()"
                 ).fetchone() == (1,)
             if not waiting:
                 __import__("time").sleep(0.1)
