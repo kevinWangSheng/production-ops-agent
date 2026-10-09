@@ -16,8 +16,8 @@ F13 第 4 步（后续调查使用知识）属 M2，不测；F13 `passes` 保持
 | `generation_status`、`schedule`、`recent_attempts` | `incident_postmortem`（R10；尝试只是最近 10 次窗口，R9） |
 | `versions[*]`：状态、陈旧原因、水位、内容哈希、代码段、证据目录、生成/校验记录、结论（certainty、引用、争议）、提议、该版本审核动作 | `incident_postmortem` 快照 + 复盘审计（R8 时间原样） |
 | `review_actions` | `audit_trail("postmortem", id)` |
-| `knowledge[*]`：来源版本/提议、审核者类型与 ID、批准时间、内容哈希、替换、墓碑、`retrievable`、`freshness` | `knowledge_from_postmortem` 导航 + `knowledge_history` + `active_revision`（D3：`retrievable` 指知识读取实际返回该 revision） |
-| `knowledge_actions` | 每个条目的 `audit_trail("knowledge_entry", id)` |
+| `knowledge[*]`（只含本复盘发布的 revision，带当前状态）：来源版本/提议、审核者类型与 ID、批准时间、内容哈希、替换、墓碑、`retrievable`、`freshness` | `knowledge_from_postmortem` 导航 + `knowledge_history` + `active_revision`（D3：`retrievable` 指知识读取实际返回该 revision） |
+| `knowledge_actions` | 这些条目的完整 `audit_trail("knowledge_entry", id)` |
 | 主体错绑 | 任一层记录不属于该事故 → `generation_status="unknown"`、`unknown_reasons=("SUBJECT_MISMATCH",)`，不投影部分记录（D11） |
 | 一致性 | `postmortem_records` 读完后复读复盘与相关条目代际，变化则重读（最多 3 次，否则 `RECORDS_UNSTABLE`）；调度与尝试不带代际，不在边界内（D34） |
 
