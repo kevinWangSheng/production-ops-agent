@@ -1,5 +1,7 @@
 # M1-02 第 6 步：F6 真实环境验收（kind 实验环境，#88）
 
+> **已被替代**（2026-10-09）：本记录的判定基于「健康窗从首个健康采样的窗口起点起算」（#157 所述语义）。用户 2026-10-08 决定改为从窗口末尾起算后，第 6 步在新规则下重跑，当前有效证据是 [m1-02-live-2/run.md](../m1-02-live-2/run.md)。本目录保留作为变更前的对照（场景 1 在旧规则下 10 个采样即 `resolved`，新规则下需要第 15 个）；驱动脚本 `lab_run.py` 由两次运行共用（#157 ①–④ 修复后的版本）。
+
 - 日期：2026-10-08 17:13–18:10 UTC（四场景）与 18:18–19:03 UTC（Codex 审查后重跑第 2 步，见「场景 2（重跑）」）；issue #88；任务记录 [2026-10-03-m1-02-recovery-observation.md](../../tasks/2026-10-03-m1-02-recovery-observation.md)「第 6 步执行」。
 - 分支 `feature/F6-live-acceptance`（worktree `../production-ops-agent-f6-live`，基于 main `510dcd3`）。
 - 费用：本步按任务记录计划第 6 项**不调用模型**（Observer 进程无模型客户端，`tests/test_m1_observer.py` 的子进程 import 校验；调查 Run 保持 `queued`，未起 worker），供应商余额不变；费用只有实验环境资源。没有 LangSmith trace：本 PR 不改调查 loop、报告校验或恢复路径的代码（只加证据），观察路径按 D3 不经调查 worker、没有模型调用，也没有 OTel 埋点，因此没有可附的 trace——这是如实披露的缺口，不是豁免。
