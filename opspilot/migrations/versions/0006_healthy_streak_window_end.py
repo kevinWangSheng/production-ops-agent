@@ -53,9 +53,19 @@ def recompute_open_streaks(conn: Any, *, from_window_end: bool) -> int:
     samples: the first sample of the trailing healthy streak, its window end
     (``from_window_end``) or its window start (the previous rule); ``NULL``
     when the latest adopted sample does not confirm health. ``conn`` is a
-    DB-API connection (psycopg) inside the caller's transaction. Returns the
-    number of sessions written."""
+    DB-API connection (psycopg) inside the caller's transaction, which holds
+    the table lock until it ends. Returns the number of sessions written."""
     with conn.cursor() as cursor:
+        # Serialize against the Observer: ``submit_sample`` locks the session
+        # row and writes the mark the fold derived from the row it read, so
+        # a submission between this read and this write would be overwritten
+        # with a stale mark (Codex recheck of PR #161, P1). ACCESS EXCLUSIVE
+        # makes every in-flight submission commit before the read or wait
+        # until this transaction ends; the lock is released with the
+        # migration's own transaction.
+        cursor.execute(
+            "LOCK TABLE opspilot_observation_sessions IN ACCESS EXCLUSIVE MODE"
+        )
         cursor.execute(_OPEN_SESSIONS)
         sessions = [row[0] for row in cursor.fetchall()]
         written = 0
