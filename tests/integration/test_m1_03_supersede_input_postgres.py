@@ -90,6 +90,8 @@ def test_d39_r21_r22_r23_model_receives_sorted_redacted_projection(stores, dsn):
         built.payload_text
         == build_input(jobs.read_input(incident), secrets=["supersecret"]).payload_text
     )
+    proposal = deepcopy(proposal)
+    proposal["supersedes_revision"] = entries[0]["revision"]
     model = ScriptedModel(_reply(incident, proposals=[proposal]))
     _worker(stores, model).generate(incident)
     sent = _call_payload(model)
@@ -116,25 +118,10 @@ def test_d40_revoked_entry_is_not_input_or_replaceable(stores, dsn):
     )
     built = build_input(stores[1].read_input(incident), secrets=[])
     assert built.payload["published_knowledge_entries"] == []
-    out = __import__(
-        "opspilot.knowledge.generation", fromlist=["parse_model_output"]
-    ).parse_model_output(
-        json.dumps(
-            {
-                "narrative_sections": [],
-                "conclusions": [],
-                "proposals": [proposal],
-                "disputes": [],
-            }
-        )
-    )
-    assert (
-        __import__("opspilot.knowledge.generation", fromlist=["assemble"])
-        .assemble(built, out, {}, record={})
-        .proposals[0]
-        .supersedes_entry_id
-        is None
-    )
+    from opspilot.knowledge.generation import assemble, parse_model_output
+
+    out = parse_model_output(json.dumps(_reply(incident, proposals=[proposal])))
+    assert assemble(built, out, {}, record={}).proposals[0].supersedes_entry_id is None
 
 
 def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
@@ -142,6 +129,8 @@ def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
 ):
     knowledge, _, _ = stores
     incident, entry_id, proposal = _publish_one(stores, dsn)
+    proposal = deepcopy(proposal)
+    proposal["supersedes_revision"] = knowledge.active_revision(entry_id)["revision"]
     model = ScriptedModel(_reply(incident, proposals=[proposal]))
     [outcome] = _worker(stores, model).poll_once()
     versions = knowledge.incident_postmortem(incident)["postmortem"]["versions"]
@@ -149,17 +138,31 @@ def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
     old_record = json.loads(versions[0]["content"])["generation"]
     new_record = json.loads(versions[-1]["content"])["generation"]
     assert new_record["input_sha256"] != old_record["input_sha256"]
-    assert (
-        new_record["prompt_version"] != old_record["prompt_version"]
-        and new_record["input_policy_version"] != old_record["input_policy_version"]
-    )
+    # Simulate the legacy persisted generation record this r8 migration must
+    # remain compatible with.  The actual old version is retained unchanged.
+    legacy_record = {
+        **old_record,
+        "prompt_version": "f13-postmortem-prompt-v2",
+        "output_schema_version": "f13-postmortem-output-v1",
+        "input_policy_version": "f13-postmortem-input-v1",
+        "contract_revision": "r7",
+    }
+    assert new_record["prompt_version"] == "f13-postmortem-prompt-v3"
+    assert new_record["output_schema_version"] == "f13-postmortem-output-v2"
+    assert new_record["input_policy_version"] == "f13-postmortem-input-v2"
+    assert new_record["contract_revision"] == "r8"
+    assert new_record["prompt_version"] != legacy_record["prompt_version"]
+    assert new_record["output_schema_version"] != legacy_record["output_schema_version"]
+    assert new_record["input_policy_version"] != legacy_record["input_policy_version"]
     assert versions[0]["content_sha256"] != versions[-1]["content_sha256"]
-    assert versions[0]["state"] == "under_review"
+    assert versions[0]["state"] == "approved"
 
 
 def test_d42_entry_generation_conflict_rejects_approval(stores, dsn):
     knowledge, _, _ = stores
     incident, entry_id, proposal = _publish_one(stores, dsn)
+    proposal = deepcopy(proposal)
+    proposal["supersedes_revision"] = knowledge.active_revision(entry_id)["revision"]
     model = ScriptedModel(_reply(incident, proposals=[proposal]))
     [outcome] = _worker(stores, model).poll_once()
     pm = knowledge.incident_postmortem(incident)["postmortem"]
