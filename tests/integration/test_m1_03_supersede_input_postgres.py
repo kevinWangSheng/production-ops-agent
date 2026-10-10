@@ -125,12 +125,58 @@ def test_d40_revoked_entry_is_not_input_or_replaceable(stores, dsn):
 
 
 def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
-    stores, dsn
+    stores, dsn, monkeypatch
 ):
-    knowledge, _, _ = stores
-    incident, entry_id, proposal = _publish_one(stores, dsn)
-    proposal = deepcopy(proposal)
-    proposal["supersedes_revision"] = knowledge.active_revision(entry_id)["revision"]
+    knowledge, jobs, durable = stores
+    incident = _seed(dsn)
+
+    # Persist a genuine r7 version through the public generation path.
+    import opspilot.knowledge.generation as generation
+
+    r7 = {
+        "POSTMORTEM_PROMPT_VERSION": "f13-postmortem-prompt-v2",
+        "POSTMORTEM_OUTPUT_SCHEMA_VERSION": "f13-postmortem-output-v1",
+        "POSTMORTEM_INPUT_POLICY_VERSION": "f13-postmortem-input-v1",
+        "CONTRACT_REVISION": "r7",
+    }
+    old_proposal = {
+        "key": "checkout-errors",
+        "name": "token=supersecret",
+        "tags": [],
+        "symptoms": ["5xx"],
+        "checks": ["error ratio"],
+        "evidence_ids": [_evidence(incident)],
+    }
+    with monkeypatch.context() as patch:
+        for name, value in r7.items():
+            patch.setattr(generation, name, value)
+        [old_outcome] = _worker(
+            stores, ScriptedModel(_reply(incident, proposals=[old_proposal]))
+        ).poll_once()
+    old_view = knowledge.incident_postmortem(incident)["postmortem"]
+    old_postmortem_id = old_view["postmortem_id"]
+    old_version = knowledge.postmortem(old_postmortem_id)["versions"][0]
+    assert old_outcome.version == 1
+    assert json.loads(old_version["content"])["contract_revision"] == "r7"
+
+    knowledge.approve(
+        old_postmortem_id,
+        1,
+        expected_generation=old_view["generation"],
+        idempotency_key=str(uuid4()),
+        actor=REVIEWER,
+    )
+    entry_id = knowledge.knowledge_from_postmortem(old_postmortem_id)[0]["entry_id"]
+    durable.append_input(incident, uuid4(), {"text": "new input"})
+    proposal = {
+        "key": "checkout-errors",
+        "name": "token=supersecret",
+        "tags": [],
+        "symptoms": ["5xx"],
+        "checks": ["error ratio"],
+        "evidence_ids": [_evidence(incident)],
+        "supersedes_revision": knowledge.active_revision(entry_id)["revision"],
+    }
     model = ScriptedModel(_reply(incident, proposals=[proposal]))
     [outcome] = _worker(stores, model).poll_once()
     versions = knowledge.incident_postmortem(incident)["postmortem"]["versions"]
@@ -138,24 +184,17 @@ def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
     old_record = json.loads(versions[0]["content"])["generation"]
     new_record = json.loads(versions[-1]["content"])["generation"]
     assert new_record["input_sha256"] != old_record["input_sha256"]
-    # Simulate the legacy persisted generation record this r8 migration must
-    # remain compatible with.  The actual old version is retained unchanged.
-    legacy_record = {
-        **old_record,
-        "prompt_version": "f13-postmortem-prompt-v2",
-        "output_schema_version": "f13-postmortem-output-v1",
-        "input_policy_version": "f13-postmortem-input-v1",
-        "contract_revision": "r7",
-    }
+    assert json.loads(versions[0]["content"])["contract_revision"] == "r7"
     assert new_record["prompt_version"] == "f13-postmortem-prompt-v3"
     assert new_record["output_schema_version"] == "f13-postmortem-output-v2"
     assert new_record["input_policy_version"] == "f13-postmortem-input-v2"
-    assert new_record["contract_revision"] == "r8"
-    assert new_record["prompt_version"] != legacy_record["prompt_version"]
-    assert new_record["output_schema_version"] != legacy_record["output_schema_version"]
-    assert new_record["input_policy_version"] != legacy_record["input_policy_version"]
+    assert json.loads(versions[-1]["content"])["contract_revision"] == "r8"
     assert versions[0]["content_sha256"] != versions[-1]["content_sha256"]
     assert versions[0]["state"] == "approved"
+    reread = knowledge.postmortem(old_postmortem_id)["versions"][0]
+    assert reread["content_sha256"] == old_version["content_sha256"]
+    assert reread["state"] == "approved"
+    assert incident not in jobs.candidates(limit=50)
 
 
 def test_d42_entry_generation_conflict_rejects_approval(stores, dsn):
