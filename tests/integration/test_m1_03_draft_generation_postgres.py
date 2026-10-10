@@ -326,7 +326,7 @@ def test_generation_writes_a_reviewable_version_with_its_record(stores, dsn) -> 
     [version] = view["postmortem"]["versions"]
     document = json.loads(version["content"])
     record = document["generation"]
-    assert record["prompt_version"] == "f13-postmortem-prompt-v1"
+    assert record["prompt_version"] == "f13-postmortem-prompt-v2"
     assert record["model"] == "deepseek-flash" and record["model_requests"] == 1
     assert record["model_profile"].startswith("deepseek-flash/")
     assert document["validation"] == {"citations_valid": True, "errors": {}}

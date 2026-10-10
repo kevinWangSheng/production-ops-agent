@@ -120,7 +120,7 @@ def test_d21_redaction_removes_credentials_from_text():
 
 
 def test_d26_contract_constants_and_event_payload_allowlist_are_frozen():
-    assert CONTRACT_REVISION == "r5"
+    assert CONTRACT_REVISION == "r7"
     assert RETRYABLE_ATTEMPT_ERRORS == {
         "MODEL_UNAVAILABLE",
         "MODEL_REJECTED",
