@@ -448,26 +448,32 @@ def main() -> int:
         resolves over the workbench's evidence link to the captured record;
         a recovery reading to the stored reading of the same signal and
         window the catalog bound."""
+        # keyed by version and id: each version binds its own catalog entry;
+        # the HTTP answer for an id is fetched once
         checked: dict[str, Any] = {}
+        fetched: dict[str, tuple[int, Any]] = {}
         for version in outcome.versions:
             catalog = {e["evidence_id"]: e for e in version.evidence_catalog}
             for conclusion in version.conclusions:
                 for ref in conclusion.evidence_refs:
                     evidence_id = ref["evidence_id"]
-                    if evidence_id in checked:
-                        continue
+                    key = f"v{version.version}:{evidence_id}"
                     if evidence_id not in catalog:
                         # only a failed citation may name an id outside the
                         # generation input (D2); a valid one never may
-                        checked[evidence_id] = {
+                        checked[key] = {
                             "kind": None,
                             "http_status": None,
                             "resolved": False,
                         }
                         if conclusion.citations_valid:
-                            failures.append(f"EVIDENCE_NOT_IN_CATALOG:{evidence_id}")
+                            failures.append(f"EVIDENCE_NOT_IN_CATALOG:{key}")
                         continue
-                    status, body = web.evidence(args.incident, evidence_id)
+                    if key in checked:
+                        continue
+                    if evidence_id not in fetched:
+                        fetched[evidence_id] = web.evidence(args.incident, evidence_id)
+                    status, body = fetched[evidence_id]
                     entry = catalog[evidence_id]
                     ok = status == 200 and isinstance(body, dict)
                     if ok and entry.get("kind") == "recovery":
@@ -479,13 +485,13 @@ def main() -> int:
                             and body.get("window_end") == entry["window_end"]
                             and body.get("hashes_verified") is not False
                         )
-                    checked[evidence_id] = {
+                    checked[key] = {
                         "kind": entry.get("kind"),
                         "http_status": status,
                         "resolved": ok,
                     }
                     if not ok:
-                        failures.append(f"EVIDENCE_LINK:{evidence_id}:{status}")
+                        failures.append(f"EVIDENCE_LINK:{key}:{status}")
         if not checked:
             failures.append("NO_CITED_EVIDENCE_CHECKED")
         return checked
