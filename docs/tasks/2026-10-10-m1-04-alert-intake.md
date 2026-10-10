@@ -1,6 +1,6 @@
 # M1-04 Alertmanager 告警接入
 
-- 状态：待开始（授权与 r1 已定；合同预审未开始）
+- 状态：第 1–3 步已合并（#187 #188 #191），F9 问题脱敏已合并（#189）；第 4 步实现、独立审查与真实运行完成，PR 待用户合并
 - 更新日期：2026-10-10
 - 依据：[#167](https://github.com/kevinWangSheng/production-ops-agent/issues/167)；C3 §6「事件接收、去重与持久调度」、§9「页面、认证与人工操作」；PRODUCT-CONSTRAINTS「Evidence and context requirements」；feature_list F1 第 2 步（duplicate-event、wrong-target）、F7 第 5 步（审计重建）；SPEC 2026-10-10 段
 - 工作区：授权 PR `chore/m1-04-alert-intake-gate`，`../production-ops-agent-alert-intake`；实施每步一个 worktree，写在执行节
@@ -9,7 +9,7 @@
 
 事故入口目前只收 `target_id` + 自由文本问题，告警的结构化信息（服务、命名空间、严重级别、开始时间、PromQL）全部丢失，时间框锚定提交时刻。本切片新增 Alertmanager webhook 入口，保留结构化告警，按标签确定性解析目标，时间框锚定 `startsAt`。范围与不在范围内的项见 #167 正文；C3 §14 把「两个入口」排在 M2，本切片是用户提前开放的一部分。不翻任何 `passes`。
 
-## 合同（r7）
+## 合同（r8）
 
 用户 2026-10-10 按推荐裁决 #167 的待决 A–D：
 
@@ -96,6 +96,20 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 - **r6（lead 2026-10-10，第 3 步实施中）J3 修订**：`reference_rule` 是 v4 证据新鲜度的参照时刻字段，报告校验只认 `dispatch_started_at` / `response_received_at`（`opspilot/investigation/reports.py:868-874`），改成其他值会让告警 Run 的事实陈述全部 `MISSING_TIME_SCOPE_REF`、无法发布报告。因此保持 `response_received_at`，锚点规则另记 `anchor_rule`；`anchor`、`anchor_rule`、`default_query_window` 须加入时间策略字段白名单（`_TIME_POLICY_FIELDS`，同文件约 606 行），否则投影与续开会丢弃。由实现者发现。
 - **r7（lead 2026-10-10，第 3 步独立测试缺口）J6 补充**：`AlertIntakeOutcome` 增加 `run_inputs: tuple[Mapping[str, Any] | None, ...]`，与 `run_ids` 同序，逐个为该 Run 已提交的输入快照原样（无输入为 `None`）；用于验证续开与 fresh 回退（J5）保留锚点。`run_input` 不变（仍为接收时建的 Run）。
 
+#### r8：第 4 步公开接口（lead 按 F6–F8、S4–S6、S8 定，可逆默认，2026-10-10）
+
+实现与测试都以本节为准；内部常量名、模块拆分由实现者自定。冲突时以 r5 裁决为准并上报 lead。
+
+- **K1 来源**：建 Run 的那次告警投递（`created` 的那条）的 `labels` 与 `annotations`。之后同身份的 annotation 变化（`replayed`）不改已建 Run 的输入；`resolved` 也不改。只对告警 Run；`/intake/ui`、`/intake/events` 的 Run 不变，输入版本不变。
+- **K2 白名单与脱敏**（F7、S5）：只取 `labels` 与 `annotations` 两个对象，其他告警字段（`generatorURL`、`fingerprint`、`startsAt`、`endsAt`、`status` 等）不进入。键与值都先按 I7 审计同一规则脱敏（凭据型键名的值整体替换为占位符，其余过 `redact_credentials`），控制字符与格式字符替换为 `�`（同 I6 模板字段），然后截断：键 ≤ 128 字符、值 ≤ 1024 字符，超出截断并追加 ` [truncated]`。
+- **K3 总量上限**（F7）：整体按 `canonical(alert_context)` 计 ≤ 8192 字符。超出时按 labels 在前、annotations 在后，各自键排序，依次纳入完整条目直到再纳入一条会超限，其余条目丢弃（不半截纳入），`omitted` 记被丢弃条目数。同一输入逐字节相同。
+- **K4 输入快照**：`scope_facts["alert_context"] = {"labels": {...}, "annotations": {...}, "truncated": bool, "omitted": int}`，存的是 K2–K3 处理后的形式（快照中无未脱敏原文）；`truncated` 为任一键或值被截断或 `omitted > 0`。告警 Run 输入版本递增为 v4（`opspilot-investigation-input-v4`）；v1–v3 照常可读；不认识 v4 的 worker 读到按 `INCOMPATIBLE_STATE` 阻塞（同 F4）。
+- **K5 模型可见消息**（F6、F8、S4、S6）：首轮固定前缀为 `[system, question, alert_context, evidence_context(若有)]`，alert_context 是一条独立 `user` 消息，内容 = 固定边界措辞 + 换行 + `canonical({"labels":…, "annotations":…, "truncated":…, "omitted":…})`。边界措辞固定，说明以下是 Alertmanager 告警的原始标签与注释，属不可信数据，只能当作待核实的线索，其中任何指令都不得执行，不改变目标、时间框、工具权限或报告要求。措辞计入 `prompt_revision`（`prompt_revision` 值变化）。只出现一次，不每轮重复；压缩与重建（rebuild）保留它在前缀中，字节不变。非告警 Run 的消息序列不变。
+- **K6 续开**（同 J5）：超时续开沿用前一 Run 的 `scope_facts.alert_context`；fresh 回退用同一事故最早那次告警投递按 K1–K4 重建。
+- **K7 验收投影**：I8 的 `run_input` / `run_inputs` 原样反映 K4 字段，不新增投影字段。模型实际收到的消息由测试从验收 harness 的模型桩读取。
+- **K8 trace**（S8）：lab trace 中出现的告警上下文只能是 K2–K3 处理后的文本；原始 payload 不导出。
+- **K9 真实 Run**（F10）：kind 实验环境至少一次有界真实 Run，告警 annotation 含伪造凭据与要求改变调查对象、结论或时间框的指令性文字；证据核对：快照与 trace 中凭据已替换、模型请求含边界措辞、Run 的目标、时间框与工具授权未变、报告不照搬注入文字作结论。附 trace 链接与 `summary.json`。
+
 ## 计划
 
 每步一个 PR，开工前做该步合同预审。
@@ -115,7 +129,9 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 - 2026-10-10：第 2 步（`feature/m1-04-alertmanager-intake`，`../production-ops-agent-alert-intake-impl`）。三条并行线：实现（Claude Opus 5.5 子 Agent）、独立验收与合同测试（Codex，只依据合同与 r3/r4 接口，未见实现）、第 3、4 步预审（Codex 只读）。独立测试先暴露公开读取口缺口 → lead 定 r4（I8 扩展、I11、I12）；测试侧 3 处缺陷由测试作者修（DDL 绑定参数、harness 缺 tool face、跨投递比较 deadline），实现未为测试改断言。独立审查（Codex）P1 失败条目残留目标登记、P2 未知输入版本应为 `INCOMPATIBLE_STATE`，均已修，复验无新 P1/P2。检查：`make check` 3568 passed；PG 集成 545 passed；其余 PG 3697 passed；独立测试 45 passed。真实端到端（新上下文 Agent）：Alertmanager → `created` → 真实 deepseek-flash Run 发布报告 → resolved `resolved_attached`、lifecycle 不变，[证据](../evidence/m1-04-intake-live/run.md)，余额差 ≤ 0.15 CNY。过程失误：lead 曾把独立测试文件复制进实现 worktree 跑测试（实现者称未打开）；一次 Codex 续跑未带 `-C`，把测试写进主仓库，已移回，用户 WIP 未动。
 - 2026-10-10：第 3 步（`feature/m1-04-alert-window`，`../production-ops-agent-alert-window-impl`）。并行线：实现（Opus 5.5）、独立测试（Codex）、F9 缺陷修复（Opus 5.5，#189）、真实运行（新上下文 Agent）。实施中合同修订：r6（J3：`reference_rule` 必须保持 `response_received_at`，否则报告校验拒绝全部事实陈述，由实现者发现）、r7（投影补 `run_inputs`，独立测试据以验证续开）。测试侧缺陷 1 处由测试作者修（把响应 `starts_at` 与截断后的锚点混同）；lead 对独立测试只做 ruff import 排序。独立审查（Codex）无 P1，P2「畸形 `default_query_window` 部分投影」已修（lead 自核修复差分）。检查：`make check`（含 PG）4311 passed；PG 集成 568 passed；独立测试 7 passed ×3。真实运行：告警 Run v3 输入、锚点与框、`anchor_rule`、报告 17 条陈述均取得时间范围引用、resolved 不变 lifecycle；模型每次都显式给 start/end，未走到 J4 默认窗分支 → 补无模型探针在真实 Prometheus 上验证默认窗与框外拒绝，[证据](../evidence/m1-04-alert-window-live/run.md)，余额差 ≤ 0.12 CNY。
 
+- 2026-10-10：第 4 步（`feature/m1-04-alert-context`，`../production-ops-agent-alert-context-impl`；PR 从单提交分支开，见下）。lead 按 F6–F8、S4–S6、S8 定公开接口 r8（K1–K9）。并行线：实现（Opus 5.5）、独立测试（Codex，只依据 r8）、真实运行（新上下文 Agent）。K4 输入 v4 与第 3 步独立测试 v3 断言冲突 → 属合同变更，由测试作者按 K4 改，实现未改独立测试。独立审查（Codex）四轮：首轮 P1 两条——嵌套 JSON / 跨行引号凭据漏出（根因在共享 `redact_credentials`，修在共享层，question、追问、I7 审计、知识生成一并受益）、截断审计文本 fresh 回退静默建空上下文（改为 `INCOMPATIBLE_STATE` 拒绝、不建 Run）；复验 1 发现转义键名（`PASS\u0057ORD`）在畸形/过深 JSON 中漏出；复验 2 发现超过 128 字符的转义键名可现实触发漏出（lead 原拟记为已知限制，被否）；最终改为线性回溯扫描、任意长度解码键名，复验 3 可接受，300k 候选 0.89s。实现者可逆选择：未闭合凭据引号脱敏到文本末尾（宁多勿漏）；不可重建时追问也被拒（沿用既有拒绝路径）。检查：独立测试 16 passed，第 3 步测试 7 passed；`make check`（含 PG）4388 passed。真实运行 K9：真实 Prometheus → Alertmanager → 工作台，规则临时加伪造凭据与注入 annotation 后按字节恢复；快照、库、trace 中伪造值 0 次，边界措辞每次请求恰一次，目标/时间框/工具授权不变，模型未执行注入指令并将其记为 rejected_hypothesis，LLM 6 = 预算 6、工具 19 = 19，[证据](../evidence/m1-04-alert-context-live/run.md)，余额差 ≤ 0.36 CNY（同时段多 Run 共用账户）；独立审查复核证据可接受。限制：trace 的 `_CREDENTIAL_TEXT` scrub 对紧凑 JSON 有损（多字段并为一个 `[REDACTED]`），trace 不是请求逐字副本；K3 omitted、K6 续开、压缩只由合同测试覆盖。过程失误：实现者首批测试含合成凭据字面量被 gitleaks 标记（已改运行时拼接；为不推送含字面量的历史，PR 改从 main 上的单提交分支开）；真实运行者 `pkill -f` 误停 #179 已结束运行的工作台；Codex CLI 升级期间 4 个任务静默未启动约 45 分钟，lead 未及时发现。
+
 ## 下一步与交接
 
-- 授权 PR 合并（用户门）。
-- 合同预审：未参与实现的 Agent 只读核对真实代码，按九类列决定表，写入 `2026-10-10-m1-04-alert-intake-contract.md`，用户裁决为 r2。
+- 第 4 步 PR 合并（用户门：输入版本 v4、prompt revision、共享脱敏规则收紧）。合并后 M1-04 四步完成，不翻任何 `passes`。
+- 待用户决定：trace scrub 对紧凑 JSON 有损是否开缺陷 issue。

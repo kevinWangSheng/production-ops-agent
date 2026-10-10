@@ -18,6 +18,7 @@ on, as labelled untrusted context.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -28,6 +29,12 @@ from urllib.parse import parse_qs, urlsplit
 
 from opspilot.domain.intake import delivery_key
 from opspilot.intake import _reject_ambiguous_identifier
+from opspilot.investigation.context import (
+    ALERT_CONTEXT_KEY_CHARS,
+    ALERT_CONTEXT_TOTAL_CHARS,
+    ALERT_CONTEXT_UNPRINTABLE,
+    ALERT_CONTEXT_VALUE_CHARS,
+)
 from opspilot.tools.registry import (
     _AUTHENTICATION_KEYS,
     REDACTED_CREDENTIAL,
@@ -254,6 +261,11 @@ class AlertRecord:
 
 
 def _redacted(value: Any, key: str | None = None) -> Any:
+    """``value`` with every credential-named key's value replaced whole --
+    a string, number or nested object alike (M1-04 step 4 review P1-1) --
+    and every other string passed through ``redact_credentials``."""
+    if key is not None and value is not None and _credential_key(key):
+        return REDACTED_CREDENTIAL
     if isinstance(value, dict):
         return {
             k: _redacted(v, k if isinstance(k, str) else None) for k, v in value.items()
@@ -261,10 +273,6 @@ def _redacted(value: Any, key: str | None = None) -> Any:
     if isinstance(value, list):
         return [_redacted(item) for item in value]
     if isinstance(value, str):
-        if key is not None and (
-            key.lower() in _AUTHENTICATION_KEYS or _authentication_name(key)
-        ):
-            return REDACTED_CREDENTIAL
         return redact_credentials(value)
     return value
 
@@ -289,3 +297,142 @@ def record_of(alert: Alert) -> AlertRecord:
         raw_sha256=canonical_hash(dict(alert.raw)),
         annotations_sha256=canonical_hash(dict(alert.annotations)),
     )
+
+
+# -- untrusted alert context (step 4, K1-K4) -------------------------------
+
+
+def _credential_key(key: str) -> bool:
+    return key.lower() in _AUTHENTICATION_KEYS or _authentication_name(key)
+
+
+def _json_redacted(text: str) -> str:
+    """``text`` that is a JSON object or array, redacted by key like the
+    audit record (``_redacted``): a key the text rules cannot see (spelled
+    with a ``\\u`` escape) still names a credential once parsed. Re-written
+    canonically only when that changed something; any other text as is.
+    A function of the already ``redact_credentials``-ed text, so the
+    fallback rebuild from the audit record reaches the same bytes (K6).
+
+    JSON-looking text that does not parse (cut, malformed, nested too deep)
+    is kept as the shared text rules left it: they redact a credential key's
+    value in any spelling, escaped or not, without parsing (M1-04 step 4
+    recheck P1-1)."""
+    if not text.lstrip().startswith(("{", "[")):
+        return text
+    try:
+        parsed = json.loads(text)
+    except (ValueError, RecursionError):
+        return text
+    if not isinstance(parsed, dict | list):
+        return text
+    try:
+        redacted = _redacted(parsed)
+    except RecursionError:
+        return REDACTED_CREDENTIAL  # too deep to check: fail closed
+    return text if redacted == parsed else canonical(redacted)
+
+
+def _context_text(text: str, limit: int) -> tuple[str, bool]:
+    """K2: redacted, made printable (I6 rule), then bounded; and whether cut."""
+    printable = "".join(
+        "\ufffd" if category(char) in ALERT_CONTEXT_UNPRINTABLE else char
+        for char in _json_redacted(redact_credentials(text))
+    )
+    if len(printable) > limit:
+        return printable[:limit] + TRUNCATED, True
+    return printable, False
+
+
+def _context_entries(
+    entries: Mapping[str, str],
+) -> tuple[list[tuple[str, str]], bool, int]:
+    """One object's processed entries in key order, whether any was cut, and
+    how many collided with an earlier entry's processed key (dropped)."""
+    processed: list[tuple[str, str, str]] = []
+    cut = False
+    for raw_key, raw_value in entries.items():
+        key, key_cut = _context_text(raw_key, ALERT_CONTEXT_KEY_CHARS)
+        if _credential_key(raw_key):
+            value, value_cut = REDACTED_CREDENTIAL, False
+        else:
+            value, value_cut = _context_text(raw_value, ALERT_CONTEXT_VALUE_CHARS)
+        cut = cut or key_cut or value_cut
+        processed.append((key, raw_key, value))
+    processed.sort()
+    kept: list[tuple[str, str]] = []
+    collided = 0
+    for key, _raw_key, value in processed:
+        if kept and kept[-1][0] == key:
+            collided += 1
+            continue
+        kept.append((key, value))
+    return kept, cut, collided
+
+
+def alert_context(
+    labels: Mapping[str, str], annotations: Mapping[str, str]
+) -> dict[str, Any]:
+    """The ``alert_context`` scope fact of an alert Run (K2-K4).
+
+    Only ``labels`` and ``annotations``. Keys and values are redacted by the
+    audit record's rule (a credential-named key's value is the placeholder,
+    everything else passes ``redact_credentials``), unprintable characters
+    become U+FFFD, then keys are cut at 128 and values at 1024 characters
+    with the truncation marker. Whole entries are then taken, labels first
+    and annotations after, each in key order, until the next one would put
+    ``canonical`` of the fact over 8192 characters; the rest are dropped and
+    counted in ``omitted``. Two raw keys that process to the same key keep
+    the one whose raw key sorts first; the other counts as omitted.
+    Deterministic: the same maps give the same bytes.
+    """
+    label_entries, label_cut, label_collided = _context_entries(labels)
+    note_entries, note_cut, note_collided = _context_entries(annotations)
+    ordered = [("labels", entry) for entry in label_entries] + [
+        ("annotations", entry) for entry in note_entries
+    ]
+    collided = label_collided + note_collided
+    cut = label_cut or note_cut
+
+    def fact(count: int) -> dict[str, Any]:
+        chosen: dict[str, dict[str, str]] = {"labels": {}, "annotations": {}}
+        for name, (key, value) in ordered[:count]:
+            chosen[name][key] = value
+        omitted = collided + len(ordered) - count
+        return {**chosen, "truncated": cut or omitted > 0, "omitted": omitted}
+
+    count = 0
+    while count < len(ordered) and (
+        len(canonical(fact(count + 1))) <= ALERT_CONTEXT_TOTAL_CHARS
+    ):
+        count += 1
+    return fact(count)
+
+
+def alert_context_of_record(alert_json: str) -> dict[str, Any] | None:
+    """K6: the alert context rebuilt from a delivery's stored audit text.
+
+    The audit record keeps the alert redacted by the same rule, which K2
+    applies again without changing it, so this equals ``alert_context`` of
+    the alert as received. ``None`` when the record was cut at its byte
+    bound (it is then not JSON) or lacks the two objects.
+    """
+    try:
+        alert = json.loads(alert_json)
+    except ValueError:
+        return None
+    if not isinstance(alert, dict):
+        return None
+    labels = alert.get("labels")
+    annotations = alert.get("annotations")
+    if annotations is None:
+        annotations = {}
+    if not isinstance(labels, dict) or not isinstance(annotations, dict):
+        return None
+    if any(
+        not isinstance(k, str) or not isinstance(v, str)
+        for entries in (labels, annotations)
+        for k, v in entries.items()
+    ):
+        return None
+    return alert_context(labels, annotations)

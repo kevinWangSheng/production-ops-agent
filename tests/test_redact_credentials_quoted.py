@@ -79,16 +79,16 @@ def test_a_quoted_credential_in_the_question_or_a_note_never_reaches_the_model()
     assert projected == {"text": f"retry with password: '{R}'"}
 
 
-def test_an_unclosed_quoted_credential_is_redacted_to_the_line_end():
+def test_an_unclosed_quoted_credential_is_redacted_to_the_end():
     """PR #189 bot re-review P1: no closing quote before the line end fails
-    closed -- the rest of that line goes, the next line is kept."""
+    closed. M1-04 step 4 review P1-1: the value may continue on the next
+    line (``password="a\nb"``), so everything after the opening quote goes,
+    not only the rest of that line."""
     cases = {
         'password: "hunter2fake': f'password: "{R}',
         '{"api_key":"AKIAFAKE1234': f'{{"api_key":"{R}',
-        "token='abcfake\nnext line": f"token='{R}\nnext line",
-        'password: "hunter2fake tail\napi_key="k2fake"': (
-            f'password: "{R}\napi_key="{R}"'
-        ),
+        "token='abcfake\nnext line": f"token='{R}",
+        'password: "hunter2fake tail\napi_key="k2fake"': f'password: "{R}',
         'password: "esc\\"aped-fake': f'password: "{R}',
     }
     for text, expected in cases.items():
@@ -102,6 +102,8 @@ def test_an_unclosed_ordinary_or_empty_quote_is_unchanged():
         'note: "hello world\nnext line',
         "title: 'Token rotation plan",
         'password: "',
-        'password: "\nnext line',
     ):
         assert redact_credentials(text) == text, text
+    # A credential quote opened right before a line break may continue on
+    # the next line: it fails closed too (M1-04 step 4 review P1-1).
+    assert redact_credentials('password: "\nnext line') == f'password: "{R}'
