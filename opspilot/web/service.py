@@ -450,7 +450,6 @@ class Workbench:
             "incident_id": incident_id,
             "intake_key": intake_key,
             "run_id": run_id,
-            "target_id": self.incidents.register_target(resolution.target_id),
             "resource_uid": resolution.target_id,
             "namespace": resolution.namespace,
             "workload": resolution.workload,

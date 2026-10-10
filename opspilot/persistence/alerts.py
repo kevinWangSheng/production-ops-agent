@@ -13,8 +13,8 @@ workbench hands both in.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
-from uuid import UUID
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
@@ -36,7 +36,7 @@ class _AlertOps(_IncidentOps):
         ``raw_sha256``, ``annotations_sha256``, ``alert_json``,
         ``truncated``. ``opening`` (firing only): the incident to open when
         the identity is new -- ``incident_id``, ``intake_key``, and either
-        ``run_id`` with ``target_id`` (the registered target uuid),
+        ``run_id`` with
         ``resource_uid``, ``namespace``, ``workload``, ``deadline``,
         ``budget_limit``, ``versions``, ``input`` and ``ledger`` rows
         ``(namespace, key, value)``, or ``handoff_reason``.
@@ -104,6 +104,29 @@ class _AlertOps(_IncidentOps):
             "annotation_revision": revision,
         }
 
+    def _alert_target(self, conn: Connection, resource_uid: str) -> UUID:
+        """Register the bound target inside the alert's transaction, so a
+        failed alert leaves no target row either (independent review P1).
+        Same rows as ``register_target``; a concurrent first registration of
+        the same uid is waited for and reused instead of failing."""
+        inserted = conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s) ON CONFLICT (resource_uid) DO NOTHING RETURNING target_id",
+            (uuid4(), resource_uid),
+        ).fetchone()
+        if inserted is not None:
+            conn.execute(
+                "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+                (inserted["target_id"],),
+            )
+            return cast(UUID, inserted["target_id"])
+        existing = self._require_row(
+            conn.execute(
+                "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                (resource_uid,),
+            )
+        )
+        return cast(UUID, existing["target_id"])
+
     def _open(
         self,
         conn: Connection,
@@ -122,7 +145,7 @@ class _AlertOps(_IncidentOps):
                 budget_limit=opening["budget_limit"],
                 versions=dict(opening["versions"]),
                 input=opening.get("input"),
-                target_id=opening["target_id"],
+                target_id=self._alert_target(conn, opening["resource_uid"]),
             )
             _ledger(conn, opening.get("ledger") or ())
         else:
