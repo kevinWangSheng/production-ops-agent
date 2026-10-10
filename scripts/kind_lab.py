@@ -5,10 +5,13 @@ directory no longer exists) for decision D2/D4 of
 ``docs/tasks/2026-10-03-m1-02-recovery-observation.md``: a kind cluster on its
 own colima profile, the official OTel Demo Helm chart at a pinned version
 trimmed to the checkout fault path (``scripts/kind_lab/values.yaml``), and
-kube-state-metrics so Prometheus carries deployment and pod state.
+kube-state-metrics so Prometheus carries deployment and pod state. M1-04
+(``docs/tasks/2026-10-10-m1-04-alert-intake.md``) adds a pinned Alertmanager
+release, one checkout alert rule in the demo's Prometheus and a webhook to
+the workbench on the host with a bearer token (``webhook_token``).
 
 ``up`` checks host memory, starts the colima profile, creates the kind
-cluster and installs or upgrades the two Helm releases, then waits for the
+cluster and installs or upgrades the three Helm releases, then waits for the
 backends; ``health`` checks what the product profile and the Observer read
 (Prometheus span metrics, kube-state-metrics series, Jaeger lists
 ``checkout``, frontend answers); Prometheus requires basic auth since M1-02
@@ -63,6 +66,10 @@ DEMO_CHART_VERSION = "0.37.8"
 KSM_REPO = "https://prometheus-community.github.io/helm-charts"
 KSM_CHART_VERSION = "8.6.0"
 KSM_RELEASE = "kube-state-metrics"
+# M1-04 (E15): its own pinned release, the version the demo chart's
+# Prometheus subchart bundles (alertmanager 1.24.0, appVersion v0.28.1).
+AM_CHART_VERSION = "1.24.0"
+AM_RELEASE = "alertmanager"
 COLIMA_CPU = "4"
 COLIMA_MEMORY_GIB = "8"
 COLIMA_DISK_GIB = "30"
@@ -113,6 +120,13 @@ AUTH_FILE = LAB_DIR / "prometheus-auth.json"
 PROMETHEUS_ACCOUNTS = ("observer", "investigator", "collector", "lab")
 WEB_CONFIG_SECRET = "prometheus-web-config"
 COLLECTOR_AUTH_SECRET = "prometheus-web-auth"
+# M1-04 (E13): Alertmanager's bearer token for the workbench webhook. The
+# token stays in the engineer-only file and the Secret Alertmanager mounts;
+# the workbench only gets its sha256 under the dedicated actor.
+WEBHOOK_TOKEN_FILE = LAB_DIR / "alertmanager-webhook-token"
+WEBHOOK_SECRET = "alertmanager-opspilot-webhook"
+WEBHOOK_ACTOR = "alertmanager"
+WORKBENCH_EVENT_ENV = LAB_DIR / "workbench-alertmanager.env"
 # The variables each product role reads (only its own; no fallback).
 ROLE_ENV_VARS = {
     "observer": (
@@ -298,6 +312,39 @@ def web_config_yaml(accounts: dict[str, str], hasher=bcrypt_hash) -> str:
     return "\n".join(lines) + "\n"
 
 
+def webhook_token(path: Path | None = None) -> str:
+    """Alertmanager's webhook bearer token from its private file, created on
+    first use (mode 600, like the Prometheus auth file)."""
+    path = WEBHOOK_TOKEN_FILE if path is None else path
+    if path.exists():
+        if stat.S_IMODE(path.stat().st_mode) & 0o077:
+            raise SystemExit(f"{path} must not be group/world readable; refusing")
+        token = path.read_text().strip()
+        if not token:
+            raise SystemExit(f"{path} is empty; refusing")
+        return token
+    token = secrets.token_urlsafe(32)
+    _private_write(path, token + "\n")
+    return token
+
+
+def workbench_event_env(token: str, path: Path | None = None) -> Path:
+    """``OPSPILOT_EVENT_TOKENS`` entry (sha256 of the token = the dedicated
+    ``alertmanager`` actor) for the workbench, sourced with ``set -a; . <file>``.
+    It appends to an ``OPSPILOT_EVENT_TOKENS`` already in the environment
+    instead of replacing it (the workbench parses ``,``-separated pairs into
+    a map, so sourcing twice is harmless). Holds the hash only."""
+    path = WORKBENCH_EVENT_ENV if path is None else path
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    entry = f"{digest}={WEBHOOK_ACTOR}"
+    _private_write(
+        path,
+        "OPSPILOT_EVENT_TOKENS="
+        f'"${{OPSPILOT_EVENT_TOKENS:+$OPSPILOT_EVENT_TOKENS,}}{entry}"\n',
+    )
+    return path
+
+
 def role_env_file(role: str, accounts: dict[str, str], path: Path) -> Path:
     """One ``KEY=value`` file (mode 600) a product role sources or points its
     ``*_ENV_FILE`` at: only that role's variable names, only its account."""
@@ -333,34 +380,101 @@ def apply_prometheus_auth_secrets(accounts: dict[str, str]) -> int:
                 f"--from-file=PROMETHEUS_COLLECTOR_PASSWORD={push}",
             ),
         ):
-            rendered = capture(
-                kubectl(
-                    "-n",
-                    NAMESPACE,
-                    "create",
-                    "secret",
-                    "generic",
-                    secret,
-                    source,
-                    "--dry-run=client",
-                    "-o",
-                    "yaml",
-                )
-            )
-            if rendered.returncode != 0:
-                print(rendered.stderr, file=sys.stderr)
-                return rendered.returncode
-            applied = subprocess.run(
-                kubectl("apply", "-f", "-"),
-                input=rendered.stdout,
-                text=True,
-                capture_output=True,
-            )
-            if applied.returncode != 0:
-                print(applied.stderr, file=sys.stderr)
-                return applied.returncode
-            print(f"+ kubectl apply secret/{secret} (values not shown)")
+            code = _apply_secret(secret, source)
+            if code != 0:
+                return code
     return 0
+
+
+def _apply_secret(secret: str, source: str) -> int:
+    """``kubectl create secret generic --dry-run -o yaml | kubectl apply``;
+    ``source`` is a ``--from-file`` argument naming a private file."""
+    rendered = capture(
+        kubectl(
+            "-n",
+            NAMESPACE,
+            "create",
+            "secret",
+            "generic",
+            secret,
+            source,
+            "--dry-run=client",
+            "-o",
+            "yaml",
+        )
+    )
+    if rendered.returncode != 0:
+        print(rendered.stderr, file=sys.stderr)
+        return rendered.returncode
+    applied = subprocess.run(
+        kubectl("apply", "-f", "-"),
+        input=rendered.stdout,
+        text=True,
+        capture_output=True,
+    )
+    if applied.returncode != 0:
+        print(applied.stderr, file=sys.stderr)
+        return applied.returncode
+    print(f"+ kubectl apply secret/{secret} (values not shown)")
+    return 0
+
+
+CONFIG_HASH_ANNOTATION = "opspilot.lab/config-sha256"
+
+
+def config_sha256(configmap: dict[str, object]) -> str:
+    data = configmap.get("data") or {}
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+def roll_prometheus_on_config_change() -> int:
+    """Stamp the Prometheus ConfigMap's hash on the Deployment's pod template.
+
+    The chart's pod template carries no config checksum and the lab turns the
+    configmap-reload sidecar off, so ``helm upgrade`` changes the ConfigMap
+    without Prometheus loading it (seen 2026-10-10 adding the M1-04 alert
+    rule). A changed hash rolls the pod; the same hash patches nothing.
+    """
+    proc = capture(
+        kubectl("-n", NAMESPACE, "get", "configmap", "prometheus", "-o", "json")
+    )
+    if proc.returncode != 0:
+        print(proc.stderr, file=sys.stderr)
+        return proc.returncode
+    try:
+        configmap = json.loads(proc.stdout)
+    except ValueError:
+        print("configmap/prometheus: kubectl returned no JSON", file=sys.stderr)
+        return 1
+    patch = {
+        "spec": {
+            "template": {
+                "metadata": {
+                    "annotations": {CONFIG_HASH_ANNOTATION: config_sha256(configmap)}
+                }
+            }
+        }
+    }
+    return run(
+        kubectl(
+            "-n",
+            NAMESPACE,
+            "patch",
+            "deployment",
+            "prometheus",
+            "-p",
+            json.dumps(patch),
+        )
+    ).returncode
+
+
+def apply_webhook_secret(token: str) -> int:
+    """The Secret Alertmanager reads its bearer token from
+    (``credentials_file``, scripts/kind_lab/alertmanager-values.yaml)."""
+    with tempfile.TemporaryDirectory(prefix="am-webhook-") as scratch:
+        source = Path(scratch) / "token"
+        _private_write(source, token)
+        return _apply_secret(WEBHOOK_SECRET, f"--from-file=token={source}")
 
 
 def basic_auth_header(accounts: dict[str, str], account: str) -> str:
@@ -457,7 +571,10 @@ def prom_instant(expr: str) -> tuple[int, list[object]]:
 
 
 def deployments_not_ready() -> list[str] | None:
-    proc = capture(kubectl("-n", NAMESPACE, "get", "deployments", "-o", "json"))
+    """Deployments and StatefulSets (Alertmanager) below their spec replicas."""
+    proc = capture(
+        kubectl("-n", NAMESPACE, "get", "deployments,statefulsets", "-o", "json")
+    )
     if proc.returncode != 0:
         return None
     pending = []
@@ -607,6 +724,11 @@ def cmd_up(args: argparse.Namespace) -> int:
     for role in ROLE_ENV_VARS:
         role_env_file(role, accounts, LAB_DIR / f"prometheus-{role}.env")
     print(f"+ wrote {LAB_DIR}/prometheus-<role>.env for {sorted(ROLE_ENV_VARS)}")
+    token = webhook_token()
+    code = apply_webhook_secret(token)
+    if code != 0:
+        return code
+    print(f"+ wrote {workbench_event_env(token)} (token hash only)")
     # Helm repo config and chart cache stay under LAB_DIR (``lab_env``).
     for repo, url in (
         ("open-telemetry", DEMO_REPO),
@@ -653,6 +775,9 @@ def cmd_up(args: argparse.Namespace) -> int:
     )
     if proc.returncode != 0:
         return proc.returncode
+    code = roll_prometheus_on_config_change()
+    if code != 0:
+        return code
     proc = run(
         helm(
             "upgrade",
@@ -665,6 +790,25 @@ def cmd_up(args: argparse.Namespace) -> int:
             NAMESPACE,
             "--values",
             str(CONFIG / "kube-state-metrics-values.yaml"),
+            "--timeout",
+            "5m",
+        ),
+        env=env,
+    )
+    if proc.returncode != 0:
+        return proc.returncode
+    proc = run(
+        helm(
+            "upgrade",
+            "--install",
+            AM_RELEASE,
+            "prometheus-community/alertmanager",
+            "--version",
+            AM_CHART_VERSION,
+            "--namespace",
+            NAMESPACE,
+            "--values",
+            str(CONFIG / "alertmanager-values.yaml"),
             "--timeout",
             "5m",
         ),

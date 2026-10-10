@@ -1,0 +1,57 @@
+# Alertmanager for the M1-04 lab (chart prometheus-community/alertmanager
+# 1.24.0, appVersion v0.28.1 -- the version the demo chart's Prometheus
+# subchart bundles, installed as its own pinned release per decision E15 in
+# docs/tasks/2026-10-10-m1-04-alert-intake.md). The demo's Prometheus sends
+# alerts here (values.yaml ``prometheus.server.alertmanagers``); this sends
+# every group to the OpsPilot workbench on the host as an Alertmanager
+# webhook v4 POST.
+#
+# The bearer token is the Secret ``alertmanager-opspilot-webhook`` that
+# ``kind_lab.py up`` renders from the engineer-only token file (E13); it is
+# read through ``credentials_file`` and never appears in these values.
+
+persistence:
+  # Lab state (silences, notification log) may be lost on restart.
+  enabled: false
+
+resources:
+  limits:
+    memory: 64Mi
+  requests:
+    cpu: 10m
+    memory: 32Mi
+
+extraSecretMounts:
+  - name: opspilot-webhook
+    mountPath: /etc/alertmanager/opspilot
+    subPath: ""
+    secretName: alertmanager-opspilot-webhook
+    readOnly: true
+
+config:
+  enabled: true
+  global: {}
+  templates: []
+  receivers:
+    - name: opspilot
+      webhook_configs:
+        # The workbench on the host. Under colima (vz, user-mode network)
+        # 192.168.5.2 is host.lima.internal and reaches the host loopback, so
+        # the workbench keeps its default 127.0.0.1 bind (E14; the path is
+        # verified by ``kind_lab.py webhook-probe``). Port 8080 is the
+        # workbench default OPSPILOT_BIND.
+        - url: http://192.168.5.2:8080/intake/alertmanager
+          send_resolved: true
+          max_alerts: 0
+          http_config:
+            authorization:
+              type: Bearer
+              credentials_file: /etc/alertmanager/opspilot/token
+  route:
+    receiver: opspilot
+    group_by: [alertname, namespace, service]
+    group_wait: 10s
+    group_interval: 1m
+    # A repeated notification of a firing alert keeps fingerprint and
+    # startsAt, which OpsPilot treats as a replay (decision B).
+    repeat_interval: 1h
