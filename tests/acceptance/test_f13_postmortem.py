@@ -19,7 +19,13 @@ from psycopg.conninfo import make_conninfo
 from opspilot import schema, tracing
 from opspilot.acceptance import postmortem_outcome, postmortem_records
 from opspilot.investigation.loop import ModelError
-from opspilot.knowledge import KnowledgeStore
+from opspilot.knowledge import (
+    Actor,
+    ConclusionDraft,
+    KnowledgeStore,
+    ProposalDraft,
+    Watermark,
+)
 from opspilot.knowledge.contract import CODE_SECTIONS
 from opspilot.knowledge.jobs import GenerationStore
 from opspilot.persistence import DurableStore
@@ -321,12 +327,20 @@ def assert_pages(h, incident, result):
         active = [k for k in result.knowledge if k.entry_id == entry and k.retrievable]
         if active:
             assert detail.text("active-revision") == str(active[0].revision)
-        else:
+        elif "no-active" in detail.texts:
             assert detail.text("no-active") == "no active revision"
         revisions = [k for k in result.knowledge if k.entry_id == entry]
-        assert len(detail.rows["revisions"]) == len(revisions)
+        assert len(detail.rows["revisions"]) >= len(revisions)
         revisions_by_number = {k.revision: k for k in revisions}
-        for cells in detail.rows["revisions"]:
+        for cells, hrefs in zip(
+            detail.rows["revisions"], detail.row_links["revisions"], strict=True
+        ):
+            if int(cells[0]) not in revisions_by_number:
+                assert all(
+                    f"/postmortems/{result.postmortem_id}/" not in (href or "")
+                    for href in hrefs
+                )
+                continue
             k = revisions_by_number[int(cells[0])]
             assert cells[:3] == [
                 str(k.revision),
@@ -604,6 +618,75 @@ def test_http_approval_records_reviewer_provenance_and_idempotency(h, monkeypatc
         publish.actor_id,
         publish.principal_kind,
     )
+
+
+def test_cross_postmortem_supersede_pages_match_each_source_subset(h, monkeypatch):
+    """D11/D34/R14：跨复盘替换时页面保留完整历史，投影按来源取子集。"""
+    first, first_ev, _, _ = h.seed()
+    first_model = CountingModel(output(first_ev))
+    h.generate(first, first_model)
+    assert h.review(first).status == 200
+    first_result = checked(h, first, first_model, monkeypatch)
+    [published] = first_result.knowledge
+    entry = published.entry_id
+    second, second_ev, _, _ = h.seed()
+    second_model = CountingModel(output(second_ev))
+    view = h.generate(second, second_model)["postmortem"]
+    assert h.review(second, "return", reason="确定性替换场景").status == 200
+    draft = project(h, second, second_model, monkeypatch)
+    [version] = draft.versions
+    h.knowledge.record_draft(
+        second,
+        expected_generation=draft.postmortem_generation,
+        idempotency_key=uuid4().hex,
+        actor=Actor("f13-page-fixture", "worker"),
+        content=json.loads(view["versions"][0]["content"]),
+        watermark=Watermark(**version.watermark),
+        conclusions=[
+            ConclusionDraft(
+                key=c.conclusion_key,
+                section=c.section,
+                body=c.body,
+                author=c.author,
+                certainty=c.certainty,
+                citations_valid=c.citations_valid,
+                evidence_refs=list(c.evidence_refs),
+            )
+            for c in version.conclusions
+        ],
+        proposals=[
+            ProposalDraft(
+                key="checkout-errors",
+                name="跨复盘更新",
+                tags=["checkout"],
+                content={"checks": ["核对窗口"]},
+                supersedes_entry_id=entry,
+            )
+        ],
+        revises_version=1,
+    )
+    assert (
+        h.review(
+            second,
+            "supersede",
+            **{
+                f"entry_generation:{entry}": str(
+                    h.knowledge.knowledge_history(entry)["generation"]
+                )
+            },
+        ).status
+        == 200
+    )
+    first_result = project(h, first, first_model, monkeypatch)
+    second_result = project(h, second, second_model, monkeypatch)
+    [old] = first_result.knowledge
+    [new] = second_result.knowledge
+    assert (old.revision, old.state, old.retrievable) == (1, "superseded", False)
+    assert (new.revision, new.state, new.retrievable) == (2, "active", True)
+    assert old.source_postmortem_id == first_result.postmortem_id
+    assert new.source_postmortem_id == second_result.postmortem_id
+    checked(h, first, first_model, monkeypatch)
+    checked(h, second, second_model, monkeypatch)
 
 
 def test_http_supersede_and_revoke_preserve_immutable_history(h, monkeypatch):
