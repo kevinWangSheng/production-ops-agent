@@ -35,6 +35,7 @@ from fastapi.responses import (
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
+from opspilot.alertmanager import parse_payload
 from opspilot.domain.base import DomainError
 from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
@@ -47,6 +48,9 @@ from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.service import CONTROL_ACTIONS, Workbench, WorkbenchError
 
 MAX_BODY_BYTES = 64 * 1024
+#: One Alertmanager webhook carries a whole group of alerts (each recorded up
+#: to 16 KiB); a 4xx is never retried by Alertmanager, so the cap is wider.
+ALERTMANAGER_MAX_BODY_BYTES = 1024 * 1024
 _TEMPLATES = Path(__file__).with_name("templates")
 _FORM = "application/x-www-form-urlencoded"
 #: Refuse to be framed, on every response. A framed page submits the control
@@ -105,6 +109,7 @@ _WORKBENCH_STATUS = {
     "TARGET_IDENTITY_MISSING": 409,
     "HEALTH_PROFILE_TARGET_MISMATCH": 409,
     "INTAKE_KEY_CONFLICT": 409,
+    "HANDOFF_ONLY": 409,
     "CONTROL_KEY_CONFLICT": 409,
     "CONTROL_CONFLICT": 409,
     "ILLEGAL_TRANSITION": 409,
@@ -161,7 +166,9 @@ def create_app(
     @app.exception_handler(_Refusal)
     async def refused(request: Request, exc: _Refusal) -> Response:
         headers = {}
-        if exc.status == 401 and not request.url.path.startswith("/intake/events"):
+        if exc.status == 401 and not request.url.path.startswith(
+            ("/intake/events", "/intake/alertmanager")
+        ):
             headers["WWW-Authenticate"] = 'Basic realm="opspilot"'
         return JSONResponse(
             {"code": exc.code, **exc.extra}, status_code=exc.status, headers=headers
@@ -193,20 +200,16 @@ def create_app(
         except DomainError:
             raise _Refusal(403, "CHANNEL_MISMATCH") from None
 
-    async def body_of(request: Request) -> bytes:
+    async def body_of(request: Request, limit: int = MAX_BODY_BYTES) -> bytes:
         declared = request.headers.get("content-length")
-        if (
-            declared is not None
-            and declared.isdigit()
-            and int(declared) > MAX_BODY_BYTES
-        ):
+        if declared is not None and declared.isdigit() and int(declared) > limit:
             raise _Refusal(413, "BODY_TOO_LARGE")
         # Stream so an undeclared or chunked body is capped, not buffered.
         chunks: list[bytes] = []
         size = 0
         async for chunk in request.stream():
             size += len(chunk)
-            if size > MAX_BODY_BYTES:
+            if size > limit:
                 raise _Refusal(413, "BODY_TOO_LARGE")
             chunks.append(chunk)
         return b"".join(chunks)
@@ -303,6 +306,10 @@ def create_app(
         principal = await ui(request)
         subject = incident_of(incident_id)
         snapshot = await in_thread(workbench.snapshot, subject)
+        if snapshot.get("handoff_only"):
+            return render(
+                "incident_handoff.html", principal=principal, snapshot=snapshot
+            )
         postmortem = None
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
@@ -512,6 +519,34 @@ def create_app(
                 "delivery_key": key,
             },
             status_code=200 if result.replayed else 201,
+        )
+
+    @app.post("/intake/alertmanager")
+    async def intake_alertmanager(request: Request) -> Response:
+        """Alertmanager webhook v4 (M1-04 step 2, contract r3 I1-I2).
+
+        Each alert is its own transaction, in payload order; the answer
+        lists every alert's outcome. Any ``failed`` alert makes it a 503 so
+        Alertmanager retries the group (it retries 5xx only); the alerts
+        already committed then come back as replays.
+        """
+        principal = await event_channel(request)
+        body = await body_of(request, ALERTMANAGER_MAX_BODY_BYTES)
+        try:
+            alerts = parse_payload(json.loads(body.decode("utf-8")))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            return JSONResponse(
+                {"error": "INVALID_ALERTMANAGER_PAYLOAD"}, status_code=400
+            )
+        received = await in_thread(clock.now)
+        results = []
+        for item in alerts:
+            result = await in_thread(workbench.intake_alert, principal, item, received)
+            results.append(result)
+        failed = any(result.outcome == "failed" for result in results)
+        return JSONResponse(
+            {"results": [result.as_json() for result in results]},
+            status_code=503 if failed else 200,
         )
 
     # -- human control --------------------------------------------------

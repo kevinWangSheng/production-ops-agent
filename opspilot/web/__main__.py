@@ -15,8 +15,10 @@ Configuration comes from the environment only, and only as hashes:
   match the worker (``opspilot.tools.profiles``).
 * ``OPSPILOT_TARGET_IDENTITIES`` JSON file mapping an operator
   ``target_id`` to its immutable identity (``opspilot.schema
-  .load_target_identities``); read when a remediation is registered,
-  optional (without it registrations are refused for lack of identity).
+  .load_target_identities``); read when a remediation is registered and
+  to bind an Alertmanager alert by an entry's ``match`` labels; optional
+  (without it registrations are refused for lack of identity and every
+  alert is handed to a human without a Run).
 * ``OPSPILOT_HEALTH_PROFILE``  path of the HealthProfile JSON the
   "register remediation" action fixes an observation session by (default:
   the shipped ``otel-demo-checkout`` profile).
@@ -84,9 +86,11 @@ def _run_seconds() -> float:
 
 
 def _target_registry() -> MappingTargetRegistry | None:
-    """The deployment's target identities (migration 0004), used only when a
-    remediation is registered; without the file every registration is
-    refused for lack of identity, intake is unaffected."""
+    """The deployment's target identities (migration 0004), used when a
+    remediation is registered and to bind an Alertmanager alert by its
+    labels; without the file every registration is refused for lack of
+    identity, every alert is handed to a human and UI/event intake is
+    unaffected."""
     path = os.environ.get(TARGET_IDENTITIES_ENV)
     if not path:
         return None

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% set inc = snapshot.incident %}
+{% block title %}Incident {{ inc.incident_id }}{% endblock %}
+{% block body %}
+<h1>Incident <code>{{ inc.incident_id }}</code></h1>
+<p>
+  lifecycle <span class="badge">{{ inc.lifecycle }}</span>
+  · <span class="badge" id="handoff-only">handed to a human</span>
+  · reason <code id="handoff-reason">{{ inc.handoff_reason }}</code>
+  · no Run
+</p>
+<p class="muted">The alert's labels matched {% if inc.handoff_reason == "TARGET_AMBIGUOUS" %}more than one{% else %}no{% endif %} registered target, so nothing was investigated automatically and no target was assumed. Handle it outside the system; repeated notifications of the same alert are recorded below.</p>
+{% include "_alert.html" %}
+{% endblock %}

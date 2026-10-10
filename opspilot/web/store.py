@@ -20,10 +20,15 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
+from opspilot.acceptance_alert import AlertIntakeRecords, alert_intake_records
 from opspilot.investigation.store import DurableStepStore, StepCommitter
 from opspilot.observation.store import ObservationStore
 from opspilot.persistence import DurableStore, Lease, PersistenceError
-from opspilot.schema import load_target_identities
+from opspilot.schema import (
+    TARGET_MATCH_FIELD,
+    load_target_identities,
+    target_match,
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +44,15 @@ class IncidentSummary:
     run_state: str | None = None
     #: ``automatic`` or ``human_owned`` (C3 section 10; migration 0005).
     mode: str = "automatic"
+    #: Why an alert intake handed this incident to a human without a Run
+    #: (``TARGET_UNRESOLVED`` / ``TARGET_AMBIGUOUS``; M1-04 E5, migration
+    #: 0010); ``None`` for every incident that has a Run.
+    handoff_reason: str | None = None
+
+    @property
+    def handoff_only(self) -> bool:
+        """An alert incident handed to a human at intake: it has no Run."""
+        return self.handoff_reason is not None
 
     @property
     def control(self) -> str | None:
@@ -108,7 +122,7 @@ class MappingTargetRegistry:
     """The deployment's target registry: the ``OPSPILOT_TARGET_IDENTITIES``
     file (``opspilot.schema.load_target_identities``) read once at start."""
 
-    def __init__(self, identities: Mapping[str, Mapping[str, str]]) -> None:
+    def __init__(self, identities: Mapping[str, Mapping[str, Any]]) -> None:
         self._targets = {
             uid: TargetIdentity(
                 integration_id=entry["integration_id"],
@@ -120,6 +134,13 @@ class MappingTargetRegistry:
             )
             for uid, entry in identities.items()
         }
+        # Alertmanager label matches (M1-04 I4), validated here as well so a
+        # registry built from a mapping is held to the file's rule.
+        self._matches = {
+            uid: dict(target_match(entry[TARGET_MATCH_FIELD])["labels"])
+            for uid, entry in identities.items()
+            if TARGET_MATCH_FIELD in entry
+        }
 
     @classmethod
     def from_file(cls, path: str) -> MappingTargetRegistry:
@@ -127,6 +148,15 @@ class MappingTargetRegistry:
 
     def resolve(self, target_id: str) -> TargetIdentity | None:
         return self._targets.get(target_id)
+
+    def match_alert(self, labels: Mapping[str, str]) -> tuple[TargetIdentity, ...]:
+        """Every entry whose ``match.labels`` the alert's labels contain, in
+        ``resource_uid`` order; the caller binds only a single hit (I4)."""
+        return tuple(
+            self._targets[uid]
+            for uid in sorted(self._matches)
+            if all(labels.get(k) == v for k, v in self._matches[uid].items())
+        )
 
 
 class IncidentStore(Protocol):
@@ -269,6 +299,21 @@ class IncidentStore(Protocol):
         ...
 
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]: ...
+
+    def record_alert(
+        self,
+        delivery: Mapping[str, Any],
+        *,
+        opening: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Commit one Alertmanager delivery, opening its incident when it is
+        the identity's first firing one (``DurableStore.record_alert``)."""
+        ...
+
+    def alert_records(self, incident_id: UUID) -> AlertIntakeRecords | None:
+        """The incident's alert intake records in one snapshot, ``None``
+        when no alert opened it."""
+        ...
 
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None: ...
 
@@ -639,7 +684,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
@@ -647,10 +692,23 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at FROM opspilot_incidents i WHERE i.incident_id=%s",
+                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
+
+    def record_alert(
+        self,
+        delivery: Mapping[str, Any],
+        *,
+        opening: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._store.record_alert(delivery, opening=opening)
+
+    def alert_records(self, incident_id: UUID) -> AlertIntakeRecords | None:
+        with self._store.transaction(snapshot=True) as conn:
+            records = alert_intake_records(conn, incident_id)
+        return None if records.identity is None else records
 
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
@@ -695,4 +753,5 @@ def _summary(row: Mapping[str, Any]) -> IncidentSummary:
         created_at=row["created_at"],
         run_state=row["run_state"],
         mode=str(row.get("mode", "automatic")),
+        handoff_reason=row.get("handoff_reason"),
     )

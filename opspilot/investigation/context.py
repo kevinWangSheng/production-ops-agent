@@ -48,6 +48,12 @@ INITIAL_SEGMENT = "ctx0"
 CONCLUSION_KIND = "conclusion"
 COMPACTION_KIND = "compaction"
 INPUT_VERSION = "opspilot-investigation-input-v1"
+#: An input whose scope facts carry ``affected_service`` (M1-04 E11: the
+#: alert's namespace + workload, focus only, never authorization). A worker
+#: that predates it refuses the row (``INPUT_INVALID``) instead of dropping
+#: the fact; a v1 row reads exactly as before.
+INPUT_VERSION_AFFECTED_SERVICE = "opspilot-investigation-input-v2"
+AFFECTED_SERVICE = "affected_service"
 
 # --- context policy (HolmesGPT's two mechanisms, C3 §5 constraints) ---------
 #
@@ -357,6 +363,20 @@ class InvestigationInput:
             raise ContextError("INPUT_INVALID")
         if not isinstance(self.scope_facts, Mapping):
             raise ContextError("INPUT_INVALID")
+        if AFFECTED_SERVICE in self.scope_facts:
+            service = self.scope_facts[AFFECTED_SERVICE]
+            if (
+                not isinstance(service, Mapping)
+                or set(service) != {"namespace", "workload"}
+                or any(not isinstance(v, str) or not v for v in service.values())
+            ):
+                raise ContextError("INPUT_INVALID")
+
+    @property
+    def version(self) -> str:
+        if AFFECTED_SERVICE in self.scope_facts:
+            return INPUT_VERSION_AFFECTED_SERVICE
+        return INPUT_VERSION
 
     @property
     def tool_face_sha256(self) -> str:
@@ -366,7 +386,7 @@ class InvestigationInput:
 
     def as_json(self) -> dict[str, Any]:
         return {
-            "version": INPUT_VERSION,
+            "version": self.version,
             "question": self.question,
             "model_requests": self.model_requests,
             "limits": self.limits.as_json(),
@@ -382,7 +402,10 @@ class InvestigationInput:
 
     @classmethod
     def from_json(cls, value: object) -> InvestigationInput:
-        if not isinstance(value, Mapping) or value.get("version") != INPUT_VERSION:
+        if not isinstance(value, Mapping) or value.get("version") not in (
+            INPUT_VERSION,
+            INPUT_VERSION_AFFECTED_SERVICE,
+        ):
             raise ContextError("INPUT_INVALID")
         schemas = value.get("tool_schemas")
         if not isinstance(schemas, list):
@@ -404,6 +427,9 @@ class InvestigationInput:
             )
         except ContextError:
             raise
+        if value.get("version") != parsed.version:
+            # A v1 row carrying the v2 fact, or a v2 row without it.
+            raise ContextError("INPUT_INVALID")
         if value.get("tool_face_sha256") != parsed.tool_face_sha256:
             # The recorded face and the recorded schemas disagree: the row was
             # edited or partially written. Refuse rather than pick one.
