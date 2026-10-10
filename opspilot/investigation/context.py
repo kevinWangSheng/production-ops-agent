@@ -933,10 +933,11 @@ def messages_hash(messages: Sequence[Mapping[str, Any]]) -> str:
 # allowlist drops everything else, including a dict/list value smuggled under
 # an allowed key, before it can reach the outbound prompt. ``read_inputs()``
 # (human playback, not the model path) intentionally stays unfiltered -- this
-# projection only guards what the loop sends to the model. Known limit, not a
-# gap this projection can close: a credential pasted directly into the
-# ``text`` free-text string itself still reaches the model -- only
-# structured-field smuggling is in scope here. ``question`` is included
+# projection only guards what the loop sends to the model. A credential
+# pasted into an allowlisted free-text value is handled separately:
+# ``project_input_content`` redacts those values with ``redact_credentials``,
+# as ``initial_messages`` does for the Run's question; the allowlist itself
+# only stops structured-field smuggling. ``question`` is included
 # alongside ``text``/``channel`` because it is the payload shape the
 # follow_up path persists and reads back (``IntakeRequest.question``);
 # dropping it would silently empty out a real follow-up's content instead of
