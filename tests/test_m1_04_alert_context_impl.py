@@ -456,3 +456,59 @@ def test_trace_attributes_carry_only_the_processed_context():
     assert attributes["gen_ai.prompt.2.content"] == messages[2]["content"]
     assert SECRET not in exported
     assert "\n".join(("checkout errors", "above 5%")) not in exported
+
+
+# -- review P2: a persisted fact must be consistent with K2-K4 ------------------
+
+_MARK = " [truncated]"
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        # Over the limit without the marker, at the old length ceiling.
+        {**_GOOD, "annotations": {"k": "v" * 1036}},
+        {**_GOOD, "labels": {"k" * 140: "v"}},
+        # Over the limit, marker present but cut at the wrong length.
+        {**_GOOD, "truncated": True, "annotations": {"k": "v" * 1025 + _MARK}},
+        {**_GOOD, "truncated": True, "annotations": {"k": "v" * 1000 + _MARK}},
+        # A cut entry under ``truncated: false``.
+        {**_GOOD, "annotations": {"k": "v" * 1024 + _MARK}},
+        {**_GOOD, "labels": {"k" * 128 + _MARK: "v"}},
+        # ``truncated`` with nothing cut and nothing omitted.
+        {**_GOOD, "truncated": True},
+    ],
+)
+def test_a_persisted_fact_inconsistent_with_its_limits_is_invalid(fact):
+    with pytest.raises(ContextError, match="INPUT_INVALID"):
+        _input(fact)
+    raw = _input().as_json()
+    raw["scope_facts"]["alert_context"] = fact
+    with pytest.raises(ContextError, match="INPUT_INVALID"):
+        InvestigationInput.from_json(raw)
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        {**_GOOD, "truncated": True, "annotations": {"k": "v" * 1024 + _MARK}},
+        {**_GOOD, "truncated": True, "labels": {"k" * 128 + _MARK: "v"}},
+        {**_GOOD, "truncated": True, "omitted": 3},
+        # A short value that happens to end with the marker text is not a cut.
+        {**_GOOD, "annotations": {"k": "short" + _MARK}},
+    ],
+)
+def test_a_consistent_persisted_fact_is_accepted(fact):
+    fresh = _input(fact)
+    assert InvestigationInput.from_json(fresh.as_json()) == fresh
+
+
+def test_every_fact_the_intake_builds_is_accepted():
+    for labels, notes in (
+        (LABELS, ANNOTATIONS),
+        ({"k" * 200: "v"}, {"note": "x" * 2000}),
+        (LABELS, {f"n{i:03d}": "y" * 300 for i in range(60)}),
+        ({}, {"a\u0000": "first", "a\u0001": "second"}),
+    ):
+        fact = alert_context(labels, notes)
+        assert _input(fact).scope_facts["alert_context"] == fact

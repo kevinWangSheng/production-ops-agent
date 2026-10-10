@@ -368,8 +368,15 @@ class ContextError(Exception):
 
 
 def _valid_alert_context(value: object) -> bool:
-    """Whether ``value`` has the shape K2-K4 produce: two string maps within
-    the per-entry and total bounds, no unprintable character, the flags."""
+    """Whether ``value`` is a fact K2-K4 could have produced: two string
+    maps of printable text, every key or value either within its limit or
+    cut at exactly its limit plus the marker, ``truncated`` true exactly
+    when an entry was cut or ``omitted > 0``, and the total within bound.
+
+    Checked by these rules rather than by re-running the intake processing
+    on the stored fact: that processing is not idempotent (a cut value is
+    longer than its limit and would be cut again), so a fixed point would
+    refuse every fact that carries a cut."""
     if not isinstance(value, Mapping) or set(value) != {
         "labels",
         "annotations",
@@ -379,23 +386,31 @@ def _valid_alert_context(value: object) -> bool:
         return False
     if type(value["truncated"]) is not bool or type(value["omitted"]) is not int:
         return False
-    if value["omitted"] < 0 or (value["omitted"] > 0 and not value["truncated"]):
+    if value["omitted"] < 0:
         return False
-    marker = len(ALERT_CONTEXT_TRUNCATED)
+    cut = False
     for name in ("labels", "annotations"):
         entries = value[name]
         if not isinstance(entries, Mapping):
             return False
         for key, text in entries.items():
-            if (
-                not isinstance(key, str)
-                or not isinstance(text, str)
-                or len(key) > ALERT_CONTEXT_KEY_CHARS + marker
-                or len(text) > ALERT_CONTEXT_VALUE_CHARS + marker
-                or _unprintable(key)
-                or _unprintable(text)
-            ):
+            if not isinstance(key, str) or not isinstance(text, str):
                 return False
+            if _unprintable(key) or _unprintable(text):
+                return False
+            for item, limit in (
+                (key, ALERT_CONTEXT_KEY_CHARS),
+                (text, ALERT_CONTEXT_VALUE_CHARS),
+            ):
+                if len(item) <= limit:
+                    continue
+                if len(item) != limit + len(
+                    ALERT_CONTEXT_TRUNCATED
+                ) or not item.endswith(ALERT_CONTEXT_TRUNCATED):
+                    return False
+                cut = True
+    if value["truncated"] != (cut or value["omitted"] > 0):
+        return False
     try:
         return len(canonical(dict(value))) <= ALERT_CONTEXT_TOTAL_CHARS
     except (TypeError, ValueError):
