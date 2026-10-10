@@ -82,6 +82,7 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 - 2026-10-10：授权 PR（SPEC 段、ROADMAP 行、本记录）。
 
 - 2026-10-10：第 1 步实验环境（`chore/m1-04-lab-alertmanager`，`../production-ops-agent-lab-alertmanager`）：独立 Alertmanager release 1.24.0 / v0.28.1、checkout 错误率规则、经 `credentials_file` 带 bearer 的 webhook、Prometheus 配置哈希滚动。真实运行：firing 与 resolved 两次 webhook 送达宿主，bearer 匹配 `alertmanager` actor，[证据](../evidence/m1-04-lab/run.md)。实验环境动作：otel-collector 重启一次（计数器停滞）。
+- 2026-10-10：第 2 步（`feature/m1-04-alertmanager-intake`，`../production-ops-agent-alert-intake-impl`）。三条并行线：实现（Claude Opus 5.5 子 Agent）、独立验收与合同测试（Codex，只依据合同与 r3/r4 接口，未见实现）、第 3、4 步预审（Codex 只读）。独立测试先暴露公开读取口缺口 → lead 定 r4（I8 扩展、I11、I12）；测试侧 3 处缺陷由测试作者修（DDL 绑定参数、harness 缺 tool face、跨投递比较 deadline），实现未为测试改断言。独立审查（Codex）P1 失败条目残留目标登记、P2 未知输入版本应为 `INCOMPATIBLE_STATE`，均已修，复验无新 P1/P2。检查：`make check` 3568 passed；PG 集成 545 passed；其余 PG 3697 passed；独立测试 45 passed。真实端到端（新上下文 Agent）：Alertmanager → `created` → 真实 deepseek-flash Run 发布报告 → resolved `resolved_attached`、lifecycle 不变，[证据](../evidence/m1-04-intake-live/run.md)，余额差 ≤ 0.15 CNY。过程失误：lead 曾把独立测试文件复制进实现 worktree 跑测试（实现者称未打开）；一次 Codex 续跑未带 `-C`，把测试写进主仓库，已移回，用户 WIP 未动。
 
 ## 下一步与交接
 
