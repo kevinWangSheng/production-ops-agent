@@ -87,6 +87,15 @@ _DEFAULT_LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
 # no limit, so this is the project's own bound on one attribute value.
 _MAX_ATTR_CHARS = 20_000
 _TRUNCATED = "...[truncated]"
+# Attribute count per span (the SDK default, pinned so ``OTEL_*_COUNT_LIMIT``
+# cannot lower it). When a span is full the SDK evicts the *oldest* key, which
+# on an llm span is ``langsmith.span.kind`` then ``model_call_seq`` (#190). An
+# llm span therefore carries at most ``_MAX_PROMPT_MESSAGES`` prompt messages:
+# 10 call + 8 reply + 1 ``error.type`` + 2 * 48 messages = 115 <= 128.
+_MAX_SPAN_ATTRIBUTES = 128
+_MAX_PROMPT_MESSAGES = 48
+# Always kept at the head of a condensed prompt: system prompt and question.
+_PROMPT_HEAD = 2
 # Export bounds: queue, batch cadence and the per-export HTTP timeout. The
 # queue drops when full; the exporter wrapper below counts what was lost.
 _MAX_QUEUE = 2048
@@ -395,7 +404,17 @@ def _model_call_attributes(call: ModelCall, *, seq: int) -> dict[str, AttrValue]
         if call.tools is None
         else len(call.tools),
     }
-    for index, message in enumerate(call.messages):
+    messages = call.messages
+    omitted = max(0, len(messages) - _MAX_PROMPT_MESSAGES)
+    if omitted:
+        # Head and newest tail: a message added in one round is in the tail
+        # of the next llm span, so a dropped middle message was exported on
+        # an earlier span unless one round added more than the tail holds.
+        tail = _MAX_PROMPT_MESSAGES - _PROMPT_HEAD
+        messages = messages[:_PROMPT_HEAD] + messages[-tail:]
+    attributes["opspilot.model.prompt_message_count"] = len(call.messages)
+    attributes["opspilot.model.prompt_messages_omitted"] = omitted
+    for index, message in enumerate(messages):
         role, content = _message_view(message)
         attributes[f"gen_ai.prompt.{index}.role"] = role
         attributes[f"gen_ai.prompt.{index}.content"] = content
@@ -954,7 +973,7 @@ def configure(
 
 def _lab_tracer(env: Mapping[str, str], exporter: SpanExporter | None) -> Tracer:
     from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace import SpanLimits, TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     counting = _CountingExporter(
@@ -963,7 +982,10 @@ def _lab_tracer(env: Mapping[str, str], exporter: SpanExporter | None) -> Tracer
     # ``Resource(...)``, not ``Resource.create()``: the latter merges
     # ``OTEL_RESOURCE_ATTRIBUTES``/``OTEL_SERVICE_NAME`` and SDK detectors,
     # which are outside the allowlist (independent review, PR #108 #6).
-    provider = TracerProvider(resource=Resource({"service.name": "opspilot"}))
+    provider = TracerProvider(
+        resource=Resource({"service.name": "opspilot"}),
+        span_limits=SpanLimits(max_span_attributes=_MAX_SPAN_ATTRIBUTES),
+    )
     # Every bound explicit: the processor otherwise reads ``OTEL_BSP_*`` and
     # raises on an invalid value at startup (independent review #7).
     provider.add_span_processor(
