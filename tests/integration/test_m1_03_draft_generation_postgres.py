@@ -22,7 +22,7 @@ from psycopg.conninfo import make_conninfo
 from opspilot import schema
 from opspilot.investigation.loop import ModelCall, ModelError, ModelReply
 from opspilot.knowledge import Actor, KnowledgeStore
-from opspilot.knowledge.generation import build_input
+from opspilot.knowledge.generation import SYSTEM_PROMPT, build_input
 from opspilot.knowledge.jobs import MAX_ATTEMPTS_PER_WATERMARK, GenerationStore
 from opspilot.knowledge.worker import PostmortemWorker
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
@@ -242,6 +242,21 @@ class ScriptedModel:
         )
 
 
+def _assert_v2_system_message(call: ModelCall) -> None:
+    """R17: inspect the prompt actually handed to the model, not messages()."""
+    system = call.messages[0]
+    assert system["role"] == "system"
+    assert system["content"] == SYSTEM_PROMPT
+    normalized = " ".join(system["content"].lower().split())
+    assert "at least two" in normalized
+    assert "both evidence ids" in normalized
+    disputes = normalized[normalized.index("disputes") :]
+    assert "hypothes" in disputes
+    assert "unresolved" in disputes or "not proven" in disputes
+    assert "counter_evidence" in disputes
+    assert "leaves open" not in normalized
+
+
 def _evidence(incident_id: UUID) -> str:
     return f"ev-{incident_id}"
 
@@ -321,6 +336,7 @@ def test_generation_writes_a_reviewable_version_with_its_record(stores, dsn) -> 
     )
     [call] = model.calls
     assert call.json_mode and call.tools is None and call.model == "deepseek-flash"
+    _assert_v2_system_message(call)
     view = knowledge.incident_postmortem(incident_id)
     assert view["status"] == "under_review"
     [version] = view["postmortem"]["versions"]
@@ -403,6 +419,8 @@ def test_a_repair_that_fixes_the_reply_enters_review(stores, dsn) -> None:
     model = ScriptedModel("not json", _reply(incident_id))
     [outcome] = _worker(stores, model).poll_once()
     assert (outcome.state, outcome.model_requests) == ("under_review", 2)
+    _assert_v2_system_message(model.calls[0])
+    _assert_v2_system_message(model.calls[1])
     version = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][0]
     assert json.loads(version["content"])["generation"]["repaired"] is True
 

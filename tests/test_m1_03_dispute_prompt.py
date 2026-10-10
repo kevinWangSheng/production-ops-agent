@@ -39,7 +39,13 @@ def _built() -> GenerationInput:
         expected_generation=0,
         revises_version=None,
         return_reason=None,
-        facts={"incident": {}, "timeline": {}, "runs": {}, "human_actions": {}, "recovery": {}},
+        facts={
+            "incident": {},
+            "timeline": {},
+            "runs": {},
+            "human_actions": {},
+            "recovery": {},
+        },
         catalog=[
             {
                 "evidence_id": "ev-1",
@@ -92,7 +98,7 @@ def test_system_prompt_contains_narrow_dispute_and_hypothesis_rules() -> None:
     normalized = " ".join(SYSTEM_PROMPT.lower().split())
     assert "at least two" in normalized
     assert "both evidence ids" in normalized
-    disputes = normalized[normalized.index("disputes"):]
+    disputes = normalized[normalized.index("disputes") :]
     assert "hypothes" in disputes
     assert "unresolved" in disputes or "not proven" in disputes
     assert "counter_evidence" in disputes
