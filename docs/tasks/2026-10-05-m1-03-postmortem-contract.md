@@ -1,9 +1,9 @@
-# M1-03 合同决定表（第 2–4 步与 #181，合同 r3–r7，当前 r7）
+# M1-03 合同决定表（第 2–4 步、#181 与 #179，合同 r3–r8，当前 r8）
 
 - 来源：第 2、3 步合同预审（Codex 只读，2026-10-09，18 项 + 3 处权威来源冲突；预审原文为本地工件，未入库）；lead 按 [合同预审](README.md#合同预审) 必答类别补「旧数据」一项（D27）。
 - 第 4 步来源（r6）：另一轮独立预审（Codex 只读，2026-10-09，按 README 九类作答；需用户裁决 4 项、可逆默认 8 项），见下文「第 4 步」节；上一行的 18 项只指第 2、3 步预审。
 - 裁决：用户 2026-10-09 全部按推荐采纳。
-- 修订：r1 = D1–D13（第 1 步前预审）；r2 = D8 修订、D14–D16 与 D2/D3/D4/D9 字段补全（第 1 步实施中）；r3 = 本表 D17–D27 与可逆默认 R1–R7（R7 与 D22 调用次数说明由 #173 机器人分诊补）；r4 = D28–D30（第 2 步实施中补）；r5 = D31 与 D29 修订（#173 机器人分诊发现，用户 2026-10-09 裁决）；r6 = D32–D35 与可逆默认 R8–R15（第 4 步预审，用户 2026-10-09 全部按推荐采纳）；r7 = D36–D38 与可逆默认 R16–R20（#181 争议定义预审，用户 2026-10-09 全部按推荐采纳）。D1–D16 见[任务记录](2026-10-05-m1-03-postmortem.md)。
+- 修订：r1 = D1–D13（第 1 步前预审）；r2 = D8 修订、D14–D16 与 D2/D3/D4/D9 字段补全（第 1 步实施中）；r3 = 本表 D17–D27 与可逆默认 R1–R7（R7 与 D22 调用次数说明由 #173 机器人分诊补）；r4 = D28–D30（第 2 步实施中补）；r5 = D31 与 D29 修订（#173 机器人分诊发现，用户 2026-10-09 裁决）；r6 = D32–D35 与可逆默认 R8–R15（第 4 步预审，用户 2026-10-09 全部按推荐采纳）；r7 = D36–D38 与可逆默认 R16–R20（#181 争议定义预审，用户 2026-10-09 全部按推荐采纳）；r8 = D39–D46 与可逆默认 R21–R28（#179 替换可达预审，用户 2026-10-10 全部按推荐采纳）。D1–D16 见[任务记录](2026-10-05-m1-03-postmortem.md)。
 
 ## 需用户裁决（已裁决）
 
@@ -85,3 +85,32 @@
 | R18 | 补验收一次，全部生成尝试合计最多 8 次、模型请求最多 16 次（含失败与退回重生成），用尽照实结束；全局上限加在实验驱动；费用按余额差对账 |
 | R19 | #179 不并入本 PR；补验收照实记录替换结果（无争议且无替换目标记 `SUPERSEDE_NOT_PROPOSED`） |
 | R20 | 旧摘要只有争议计数，具体理由记「未确认」；新摘要增加脱敏后的争议结论 key、reason、引用 ID 与 prompt 版本，支撑 D38 逐条判断；原始 ledger 不入库 |
+
+## #179 替换在真实链路可达（r8）
+
+来源：独立预审（Codex 只读，2026-10-10，按 README 九类作答；需用户裁决 8 项、可逆默认 8 项）。现状：`GenerationStore.read_input()` 已读出本复盘 active 条目 `source_proposal_key -> entry_id`（`opspilot/knowledge/jobs.py:423-473`），`build_input()` 存入 `GenerationInput.published_entries` 但不进模型 payload（`opspilot/knowledge/generation.py:492-513`），只有输出 key 等于其中 key 才设 `supersedes_entry_id`（同文件 `:980-992`），模型看不到旧 key，真实补验收记 `SUPERSEDE_NOT_PROPOSED`（`docs/evidence/m1-03-review-acceptance/run-181.md`）。上游 HolmesGPT 有按名称/描述匹配 runbook/skill，未确认有审核后版本替换，未照搬。
+
+| 编号 | 问题 | 裁决 | 主要代价 | 影响面 |
+|---|---|---|---|---|
+| D39 | 模型如何选替换目标 | 本复盘 active 条目的 `key`、`name`、`revision` 作为 D21 白名单字段进入模型输入；匹配仍是精确 key | payload 变大 | D21、prompt、输入哈希、trace 脱敏 |
+| D40 | 输入哪些条目 | 只输入 active；revoked/superseded 不输入、不可被替换。恢复撤销条目另立合同 | 已撤销条目不能经替换复活 | 生成候选、状态机 |
+| D41 | 目标是否带 revision | 模型替换提议须同时给出目标 `key` 与生成时看到的 `revision`；代码校验与生成输入中该 key 的 revision 一致，不一致按现有输出校验拒绝 | 输出 schema 变化 | 输出 schema、旧 prompt 兼容、并发 |
+| D42 | 生成后目标条目变化 | 审核时按当前代际处理，沿用现有审核代际冲突（审核提交带 `entry_generations`）；不另设 stale 规则 | 一致性只到审核时 | 审核冲突、用户可见错误 |
+| D43 | `name` 是否参与匹配 | 只按 key 精确匹配；name 只供模型理解 | 名称相同 key 不同不替换 | schema 校验 |
+| D44 | 版本 | 新 prompt 与 input-policy 版本（输出形状变化则 output 版本同步递增）；旧记录原样保留，不使旧版本陈旧 | 版本数增加 | 生成记录、trace |
+| D45 | 真实验收判据 | 一次有界真实生成对本复盘已有 active 条目提出相同 key（与 revision），经真实 HTTP「替换」批准后新 revision active、旧 revision superseded、`supersedes_revision` 正确，读取只返回新 revision、历史保留；上限内未提出照实记 `SUPERSEDE_NOT_PROPOSED`，不改输出、不补造提议、不无限重试；附 trace 与 `summary.json` | 只证明可达 | `docs/evidence`、验收脚本 |
+| D46 | `passes` | 只新增 #179 补验收，不改 F13 步骤、不翻 `passes` | — | `feature_list.json` 不动 |
+
+可逆默认：
+
+| 编号 | 内容 |
+|---|---|
+| R21 | payload 字段名 `published_knowledge_entries`，每项 `key`、脱敏后 `name`、`revision`，不含 entry UUID |
+| R22 | 按 key 字典序排序后序列化，输入哈希可复现 |
+| R23 | key/name/revision 复用现有递归脱敏与总字节上限 |
+| R24 | 无 active 条目时发送空列表，首次发布语义不变 |
+| R25 | 未知、重复或非法目标继续按现有输出校验拒绝，不新增隐式映射 |
+| R26 | 旧版本读取保持兼容；只有新生成记录写新版本号 |
+| R27 | 纯函数测试：payload 含目标、排序稳定、超限拒绝、key+revision 精确绑定；保留现有 PG supersede 测试 |
+| R29 | （lead 2026-10-10，独立测试作者指出 D41 未定字段名）输出提议增加 `supersedes_revision: int \| null`（≥1；解析时可省略，省略视为 null，prompt 始终要求给出）。key 等于输入中 active 条目时 `supersedes_revision` 必须等于该条目 revision；为 null 或不等、或给了 revision 但 key 不在输入中，均按输出问题处理：一次修正调用后 `OUTPUT_INVALID`（D30）；只有 key 与 revision 都匹配才设 `supersedes_entry_id`。目标 revision 只在生成时校验，不入库（R28） |
+| R28 | 不加表或迁移，除非持久化目标 revision 确需新列（D41）；若需迁移，按用户门 PR 处理并在任务记录写理由 |
