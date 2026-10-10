@@ -63,3 +63,8 @@ DeepSeek 余额 4.46 → 4.29 CNY（差 0.17 CNY），取于 14:03:24Z 与 14:08
 ## 凭据
 
 证据中无真实 token、口令或 API key，也无本次合成凭据：gitleaks 8.30.1 `dir` 扫描本目录 `no leaks found`；另以 DeepSeek/LangSmith key、Prometheus investigator 口令、实验 UI 口令的原值和四个合成值逐一在本目录做字面匹配，均 0 次（不打印原值）。
+
+## 运行之后的提交（lead 注，2026-10-10）
+
+本次真实运行使用 `2ffe5e9`（上文）。之后 PR #189 依机器人审查加入两处 `redact_credentials` 修正：带引号的值（`5a6c3ca`）、缺少闭合引号时脱敏到行尾（`495f9fa`）。二者只改纯函数 `opspilot/tools/registry.py` 的匹配规则，不改调查 loop 的调用路径（`initial_messages` → `redact_credentials` 不变），由 `tests/test_redact_credentials_quoted.py` 的确定性测试覆盖（含红绿）；本次运行的问题不含带引号形式，其冻结结果不受影响。未为这两处修正另做真实运行。
+
