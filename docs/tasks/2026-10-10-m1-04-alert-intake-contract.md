@@ -126,3 +126,91 @@
 未确认项：#167 GitHub API 在原工作阶段不可访问；OTel Demo 0.37.8 是否自带 Alertmanager 子 chart、最终 Alertmanager 镜像版本、webhook 从 pod 到宿主工作台的实际路由，需要实施前由实验配置和冻结证据确认。官方 Alertmanager 已确认 2xx/5xx/4xx 重试语义，见 `notify/util.go:189-227` 与 `webhook.go:121-125`；Bearer 可通过 `authorization.credentials_file` 配置，见 Prometheus Alertmanager configuration webhook `http_config` 文档。
 
 已核对文件列表：`AGENTS.md`、`docs/tasks/README.md`、`SPEC.md`、`docs/tasks/2026-10-10-m1-04-alert-intake.md`、`PRODUCT-CONSTRAINTS.md`、`docs/design/technical-proposal-2026-09-07.md`、`docs/adr/0005-handoff-and-deadline-terminal.md`、`feature_list.json`、`opspilot/intake.py`、`opspilot/domain/intake.py`、`opspilot/web/app.py`、`opspilot/web/auth.py`、`opspilot/web/store.py`、`opspilot/schema.py`、`opspilot/persistence/incidents.py`、`opspilot/persistence/runs.py`、`opspilot/persistence/controls.py`、`opspilot/investigation/inputs.py`、`opspilot/investigation/context.py`、`opspilot/tools/executor.py`、`opspilot/tools/otel_demo.py`、`opspilot/tools/registry.py`、`opspilot/acceptance.py`、`opspilot/migrations/versions/0001_baseline.py`、`0002_state_checks.py`、`0004_target_identity.py`、`0005_incident_mode.py`、`scripts/kind_lab.py`、`scripts/kind_lab/values.yaml`、`scripts/kind_lab/kind-config.yaml`、`docs/development.md`、`opspilot/observer/profiles/otel-demo-checkout.json`、`tests/test_m1_web_workbench.py`、`tests/test_m1_intake_auth.py`、`tests/test_m1_otel_demo_contract.py`、`tests/test_m1_tool_boundaries.py`、`tests/test_m1_investigation_context.py`。
+
+## 第 3、4 步（预审 Codex 只读，2026-10-10；裁决 r5）
+
+结论：第 3、4 步均可实施，但以下合同点尚未由 r2 或现有代码决定，不能直接开工。当前工作树已有用户改动 `docs/tasks/2026-09-27-m1-01-report-contract.md` 与未跟踪 `.playwright-mcp/`，本次未修改。
+
+### 九类必答
+
+1. **时间：待决（第 3 步）**
+
+   已定：当前 OTel Demo 授权框为 24 小时，`OBSERVATION_SECONDS = 24*3600`（`opspilot/tools/otel_demo.py:202,752-764`）；入口注入 `DurableClock`，其 `now()` 使用数据库 `clock_timestamp()`（`opspilot/web/__main__.py:136-149`、`opspilot/web/store.py:394-406`）。  
+   待决：回看值是否固定 24 小时；`startsAt` 未来、缺失、非法、超过 24 小时如何处理；`startsAt` 是否规范到 UTC 秒级。  
+   非告警入口保持现状：`/intake/events` 的 comparator 不应改变（合同表 r2、`opspilot/domain/intake.py:63-115`）；`/intake/ui` 继续由提交时钟建窗。
+
+2. **计数与口径：待决（第 3、4 步）**
+
+   已定：每 Run 一个反循环上限；当前默认模型请求上限 100（`opspilot/investigation/limits.py:22-34`），模型请求超时 360 秒、Run backstop 7200 秒（同文件 `:87-93`）；工具请求上限 30 秒、结果 2 MiB（`opspilot/tools/registry.py:64-65`）。  
+   待决：回看是否始终 24 小时，还是允许告警字段指定但受 24 小时上限约束；原始告警字段和消息限长采用字符、字节或双上限。
+
+3. **状态转移：待决（第 3、4 步）**
+
+   已定：授权窗口从输入快照读取，不能由模型或告警文本重新决定（`opspilot/tools/otel_demo.py:777-792`）；超时续开正常沿用前一 Run 的 `time_policies`（`tests/test_m1_investigation_continuation.py:73-88`）。  
+   已定：只有旧 Run 缺少输入快照时才 fresh input；其他无法继续的 `ContextError` 拒绝控制动作（`opspilot/web/service.py:573-593`）。  
+   待决：续开 fresh input 时是否必须沿用原告警 `startsAt`；`startsAt` 早于授权上限时是拒绝、截断还是交接。
+
+4. **主体与权限：已定**
+
+   告警使用 `event_token` Principal（`opspilot/web/auth.py:122-134`）；工具目标授权仍由注册表和 Run scope 控制（`opspilot/tools/executor.py:639-678`）。原始告警不得改变目标、时间框、预算或权限（`PRODUCT-CONSTRAINTS.md:26-38`）。受影响服务仍仅为 `scope_facts.affected_service` 焦点信息，不能缩小工具授权（任务记录 r2 E11、`opspilot/investigation/context.py:326-381`）。
+
+5. **数据合同：待决（第 3、4 步）**
+
+   已定：锚点应进入输入快照；当前快照字段为 `evidence_context`、`scope_facts` 等（`opspilot/investigation/context.py:326-381`）。  
+   已定：工具 schema revision 由内容哈希生成（`opspilot/tools/otel_demo.py:630-647`）；调查 loop 版本含 prompt 与 context policy revision（`opspilot/investigation/loop.py:140-147`）。  
+   待决：锚点字段具体名称和结构；是否递增 `INPUT_VERSION`、tool schema revision、projection revision。`PROJECTION_REVISION` 当前为 `m1-01-tool-view-v7`（`opspilot/tools/outcomes.py:52-61`），与输入锚点不是同一层。
+
+6. **旧数据与已归档证据：待决（第 3 步）**
+
+   当前 `InvestigationInput.from_json()` 只接受精确 `INPUT_VERSION`，失败为 `INPUT_INVALID`（`opspilot/investigation/context.py:383-411`）；claim 阶段版本字典不一致才标记 `INCOMPATIBLE_STATE`（`opspilot/persistence/runs.py:175-211`）。  
+   因此“递增 INPUT_VERSION 后旧 Run 按既有 `INCOMPATIBLE_STATE` 阻塞”目前不会自动成立，需明确迁移或 claim 映射。  
+   推荐保持旧 Run 不猜测迁移；不能解析的旧 Run 显式阻塞并交接。无锚点旧 Run 的具体恢复行为仍待决。
+
+7. **并发与水位：待决（第 3、4 步）**
+
+   已定：每次尝试从 Run 自己的快照建 executor；目标 registry 或 tool registry revision 变化会拒绝（`opspilot/investigation/runner.py:241-267`、`opspilot/tools/executor.py:643-647`）。  
+   待决：`startsAt` 锚点与输入快照写入是否必须和 Run 创建同一事务；第 4 步原始告警是否在每轮重复注入。  
+   推荐只在首轮固定前缀注入，压缩时保留该前缀；不要让每轮重复扩大上下文。
+
+8. **外部调用：待决（第 4 步）**
+
+   已定：原始告警必须先 `redact_credentials` 再截断（任务记录 r2 E10、`opspilot/investigation/context.py:916-937`）；现有规则是每字段最多 8192 字符，先脱敏后截断。  
+   已定：当前 trace 只在 synthetic lab 导出，字段经过 allowlist，凭据和 provider 私有字段被丢弃（`opspilot/tracing.py:235-334`；ADR-0006）。  
+   待决：原始告警消息角色、位置、字段白名单、整体字节上限、是否保留 annotation key；注入文本的防护措辞若改变模型可见模板，必须 bump `prompt_revision`。  
+   当前首轮 `question` 直接作为 user 消息，未脱敏（`opspilot/investigation/context.py:445-464`）；这是独立缺陷，应另开 PR，不与原始告警上下文合同混在同一 PR。
+
+9. **验收投影与 `passes`：已定范围，验收细节待决**
+
+   外部入口是 `IncidentScenario -> IncidentOutcome`（`opspilot/acceptance.py:74-117`）；本切片不翻 F1/F2/F7 的 `passes`（任务记录 r2、`feature_list.json:1-15`）。  
+   确定性断言：窗口边界、UTC 规范化、未来/过旧处理、输入快照字段、旧入口兼容、消息角色/字段/限长/脱敏顺序、压缩保留、版本不兼容状态。  
+   真实 Run 才能证明：实际模型收到的消息、工具授权仍受锚定窗口约束、上下文压缩后仍保留告警、LangSmith trace 与 `summary.json` 可复核。每步至少一条有界真实 Run；摘要需含 trace ID/链接、版本、脱敏输入摘要、结果和 ledger hash，不提交原始 ledger（ADR-0006:14-20）。
+
+### 需用户裁决
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| F1（第3步） | 回看默认值与上限 | 固定 24h；可配置但上限 24h；沿用模型查询窗。固定最简单；可配置增加合同面 | 固定 24h 授权框，模型只能在框内选窄窗 | 输入、工具授权、验收 || 采纳推荐（用户 2026-10-10） |
+| F2（第3步） | `startsAt` 未来或超过 24h | 拒绝该告警；截断到 `[now-24h, now]`；接收但交接无 Run。拒绝最明确，截断会改变告警语义 | 未来/非法拒绝；过旧截断并记录原值，或统一交接（需选定） | intake、状态、审计 || 采纳推荐（用户 2026-10-10） |
+| F3（第3步） | 时间精度与末端 | UTC 秒；UTC 微秒；数据库时钟或接收进程时钟 | UTC 秒；数据库 `clock_timestamp()` | 去重、窗口、重放 || 采纳推荐（用户 2026-10-10） |
+| F4（第3步） | 锚点版本兼容 | 只递增 `INPUT_VERSION`；加入 versions 比对；显式迁移旧快照。前者当前会报 `INPUT_INVALID` | 新字段 + versions 变更，旧 Run `INCOMPATIBLE_STATE` 阻塞 | 恢复、部署顺序、审计 || 采纳推荐（用户 2026-10-10） |
+| F5（第3步） | 续开与锚点 | 始终沿用前一 Run；fresh fallback 重新取窗；fresh fallback 沿用告警 `startsAt` | 沿用告警 `startsAt`，不得重新按提交时刻取窗 | 超时续开、输入重建 || 采纳推荐（用户 2026-10-10） |
+| F6（第4步） | 不可信消息角色与位置 | `user` 首轮固定消息；system 附注；每轮重复。system 会改变提示层，重复会放大预算 | 独立 `user` 消息，紧随 question，仅首轮固定前缀 | prompt、压缩、预算 || 采纳推荐（用户 2026-10-10） |
+| F7（第4步） | 字段白名单与限长 | 仅 labels/annotations；加 alertname/summary 等结构字段；按字段或整体限长 | 结构字段进入确定性模板；labels/annotations 单独 allowlist，先脱敏后双上限截断 | 安全、上下文预算、trace || 采纳推荐（用户 2026-10-10） |
+| F8（第4步） | 防注入措辞是否 bump prompt | 不加措辞；加入固定数据边界措辞。加入会改变 prompt bytes | 加入固定措辞并 bump `prompt_revision` | 旧 Run、trace、验收 || 采纳推荐（用户 2026-10-10） |
+| F9（第4步） | 首轮 question 脱敏归属 | 本 PR 修；单独缺陷 PR。混做会违反“一 PR 一个合同条款/明确缺陷” | 单独缺陷 PR，现 issue 保持原始告警合同范围 | 安全、审查、PR 边界 || 采纳推荐（用户 2026-10-10） |
+| F10（第3、4步） | 真实 Run 证据门槛 | 两步合并后一次 Run；每步各一次 Run。后者证据归属清晰但成本更高 | 每步至少一次独立有界 Run；每 Run 一个反循环上限 | LangSmith、summary、费用 || 采纳推荐（用户 2026-10-10） |
+
+### 可逆默认
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| S1（第3步） | `ToolFace` 接口形状 | 可选 `starts_at`/`lookback` 参数；新增锚点对象；保留兼容默认 | 新增可选锚点参数，旧调用按现有提交时钟，便于旧 Run 兼容 | `inputs.py`、`otel_demo.py` || 按推荐（可逆默认） |
+| S2（第3步） | 输入字段名 | `scope_facts.alert_starts_at`；顶层字段；嵌入 time policy | `scope_facts.alert_starts_at` + time policy 的实际窗口，最少扩展 | 快照、重建、投影 || 按推荐（可逆默认） |
+| S3（第3步） | 旧入口行为 | 改共享 helper；告警专用 helper | 告警专用 helper；`/intake/ui`、`/intake/events` 不变 | 兼容测试 || 按推荐（可逆默认） |
+| S4（第4步） | 原始告警编码 | canonical JSON；逐字段文本；两者并存 | canonical JSON，固定 key 顺序，便于 hash、重建和限长 | prompt、trace、审计 || 按推荐（可逆默认） |
+| S5（第4步） | annotation key 处理 | 保留 key；仅保留值；正则过滤 key | 保留 key，值先脱敏并限长；key 也纳入长度预算 | 注入防护、可读性 || 按推荐（可逆默认） |
+| S6（第4步） | 压缩策略 | 保留完整消息；摘要替换；每轮重新注入 | 作为固定前缀保留；压缩只替换前缀之后的历史，符合 `context.py:743-746` | 恢复、prompt revision || 按推荐（可逆默认） |
+| S7（第3、4步） | 实施顺序 | 并行；先第3后第4 | 先第3步，再第4步。两步都会触及输入/消息版本与真实 Run 证据，顺序可避免冲突 | worktree、revision、测试 || 按推荐（可逆默认） |
+| S8（第3、4步） | trace 内容 | 原始 payload；脱敏限长上下文；只摘要 | 仅导出脱敏限长上下文和摘要，保留原始 hash | ADR-0006、隐私、审查 || 按推荐（可逆默认） |
+
+已核对文件：`AGENTS.md`、`docs/tasks/README.md`、`docs/tasks/2026-10-10-m1-04-alert-intake.md`、`docs/tasks/2026-10-10-m1-04-alert-intake-contract.md`、`SPEC.md`、`PRODUCT-CONSTRAINTS.md`、`docs/design/technical-proposal-2026-09-07.md`、`docs/adr/0006-trace-evidence-and-backlog.md`、`ROADMAP.md`、`opspilot/investigation/inputs.py`、`opspilot/investigation/context.py`、`opspilot/investigation/loop.py`、`opspilot/investigation/runner.py`、`opspilot/tools/otel_demo.py`、`opspilot/tools/executor.py`、`opspilot/tools/outcomes.py`、`opspilot/tools/registry.py`、`opspilot/tools/profiles.py`、`opspilot/tracing.py`、`opspilot/web/service.py`、`opspilot/web/store.py`、`opspilot/web/__main__.py`、`opspilot/web/auth.py`、`opspilot/persistence/runs.py`、相关 `tests/`。
