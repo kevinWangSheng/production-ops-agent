@@ -1,6 +1,6 @@
 # M1-04 告警接入：合同决定表
 
-- 修订：r1 = A–D（用户 2026-10-10，见[任务记录](2026-10-10-m1-04-alert-intake.md)）；本表 E1–E15、R1–R12 为第 1、2 步预审结果，**待用户裁决**，裁决后记为 r2。
+- 修订：r1 = A–D（用户 2026-10-10，见[任务记录](2026-10-10-m1-04-alert-intake.md)）；r2 = E1–E15（用户 2026-10-10 全部按推荐采纳）与 R1–R12（可逆默认，按推荐）。
 - 预审：Codex（只读，2026-10-10），未参与实现。lead 复核：E5 依据属实——`accept()` 建事故必同时插 Run（`opspilot/persistence/incidents.py:38-58`），工作台快照经 `rebuild()` 读 Run（`opspilot/web/service.py:910-925`）。
 - 与 r1 的张力：A「建事故不绑目标、无 Run」在现有模型下需要新的「仅交接」事故语义（E5），含迁移与页面改动；E7（多目标命中）推荐走同一路径。
 
@@ -90,38 +90,38 @@
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| E1 | 部分成功如何回应 | 统一 2xx：避免重试但可能丢失败；统一 5xx：整组重试但依赖幂等；逐条结果协议：Alertmanager 不支持 | 失败任一条返回 5xx，成功条幂等 | webhook、重试、审计 |  |
-| E2 | `startsAt` 规范化 | UTC 秒；UTC 微秒；保留原字符串 | UTC 秒级规范值并保留原始值 | 去重、时间框 |  |
-| E3 | AlertManager 身份索引存储 | 新表；现有 ledger 前缀；事故表新列 | 新表或 ledger+唯一索引，需原子关联 | 迁移、并发、resolved |  |
-| E4 | 旧 `/intake/events` comparator | 全局修改；Alertmanager 专用 comparator；扩展 classify 类型 | 专用 comparator | 兼容性、旧测试 |  |
-| E5 | 无目标事故如何持久化 | 允许 null Run；新增 handoff-only 主体；拒绝入库 | 新增明确 handoff-only 事故语义 | schema、页面、人工交接 |  |
-| E6 | 标签注册表合同 | 平面标签；版本化匹配集合；独立 target-matcher 表 | 版本化 `match_labels` | 配置、迁移、部署 |  |
-| E7 | 多目标命中 | 拒绝并交接；优先级选一个；建立多绑定 | 拒绝歧义并交接 | 权限、目标绑定 |  |
-| E8 | resolved 关联规则 | 同 fingerprint+startsAt；同 fingerprint 不同 startsAt；同目标最近开放事故；找不到仅记录 | 同身份精确关联；找不到仅记录 | 生命周期、页面、审计 |  |
-| E9 | annotation 更新记录 | 覆盖最新值；追加版本事件；只 hash 不存正文 | 追加版本事件并索引最新值 | ledger、重建、保留 |  |
-| E10 | 原始 payload 限制 | 仅 hash；脱敏后限长 JSON；原文限长 | 脱敏后限长 JSON + 原始 hash | F7、trace、隐私 |  |
-| E11 | 受影响服务字段 | scope_facts；独立 input 字段；事件 metadata | `scope_facts.affected_service` 并版本化输入 | Run、页面、观察预填 |  |
-| E12 | 验收投影新增字段 | 不扩展；增加 per-alert 结果；增加服务/身份/审计引用 | 增加可观察 per-alert 结果和审计引用 | 独立测试、F1/F7 |  |
-| E13 | webhook token | 复用 actor；Alertmanager 专用 actor/token | 专用 token，配置为 `credentials_file` | 认证、审计、轮换 |  |
-| E14 | kind lab 网络路径 | Alertmanager 访问宿主 NodePort；host gateway；workbench 入集群 | 明确、可验证的 NodePort/宿主回环路径 | 实验可重复性 |  |
-| E15 | 实验 Alertmanager 版本与 chart | OTel Demo 子 chart；独立 pinned chart；镜像手工部署 | 独立 pinned Alertmanager/chart，并记录版本 | 供应链、重现 |  |
+| E1 | 部分成功如何回应 | 统一 2xx：避免重试但可能丢失败；统一 5xx：整组重试但依赖幂等；逐条结果协议：Alertmanager 不支持 | 失败任一条返回 5xx，成功条幂等 | webhook、重试、审计 || 采纳推荐（用户 2026-10-10） |
+| E2 | `startsAt` 规范化 | UTC 秒；UTC 微秒；保留原字符串 | UTC 秒级规范值并保留原始值 | 去重、时间框 || 采纳推荐（用户 2026-10-10） |
+| E3 | AlertManager 身份索引存储 | 新表；现有 ledger 前缀；事故表新列 | 新表或 ledger+唯一索引，需原子关联 | 迁移、并发、resolved || 采纳推荐（用户 2026-10-10） |
+| E4 | 旧 `/intake/events` comparator | 全局修改；Alertmanager 专用 comparator；扩展 classify 类型 | 专用 comparator | 兼容性、旧测试 || 采纳推荐（用户 2026-10-10） |
+| E5 | 无目标事故如何持久化 | 允许 null Run；新增 handoff-only 主体；拒绝入库 | 新增明确 handoff-only 事故语义 | schema、页面、人工交接 || 采纳推荐（用户 2026-10-10） |
+| E6 | 标签注册表合同 | 平面标签；版本化匹配集合；独立 target-matcher 表 | 版本化 `match_labels` | 配置、迁移、部署 || 采纳推荐（用户 2026-10-10） |
+| E7 | 多目标命中 | 拒绝并交接；优先级选一个；建立多绑定 | 拒绝歧义并交接 | 权限、目标绑定 || 采纳推荐（用户 2026-10-10） |
+| E8 | resolved 关联规则 | 同 fingerprint+startsAt；同 fingerprint 不同 startsAt；同目标最近开放事故；找不到仅记录 | 同身份精确关联；找不到仅记录 | 生命周期、页面、审计 || 采纳推荐（用户 2026-10-10） |
+| E9 | annotation 更新记录 | 覆盖最新值；追加版本事件；只 hash 不存正文 | 追加版本事件并索引最新值 | ledger、重建、保留 || 采纳推荐（用户 2026-10-10） |
+| E10 | 原始 payload 限制 | 仅 hash；脱敏后限长 JSON；原文限长 | 脱敏后限长 JSON + 原始 hash | F7、trace、隐私 || 采纳推荐（用户 2026-10-10） |
+| E11 | 受影响服务字段 | scope_facts；独立 input 字段；事件 metadata | `scope_facts.affected_service` 并版本化输入 | Run、页面、观察预填 || 采纳推荐（用户 2026-10-10） |
+| E12 | 验收投影新增字段 | 不扩展；增加 per-alert 结果；增加服务/身份/审计引用 | 增加可观察 per-alert 结果和审计引用 | 独立测试、F1/F7 || 采纳推荐（用户 2026-10-10） |
+| E13 | webhook token | 复用 actor；Alertmanager 专用 actor/token | 专用 token，配置为 `credentials_file` | 认证、审计、轮换 || 采纳推荐（用户 2026-10-10） |
+| E14 | kind lab 网络路径 | Alertmanager 访问宿主 NodePort；host gateway；workbench 入集群 | 明确、可验证的 NodePort/宿主回环路径 | 实验可重复性 || 采纳推荐（用户 2026-10-10） |
+| E15 | 实验 Alertmanager 版本与 chart | OTel Demo 子 chart；独立 pinned chart；镜像手工部署 | 独立 pinned Alertmanager/chart，并记录版本 | 供应链、重现 || 采纳推荐（用户 2026-10-10） |
 
 ## 可逆默认
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| R1 | webhook JSON 解析 | 只接受 object；接受 object/list | 只接受 v4 object，版本不符 400 | 入口校验 |  |
-| R2 | 空字段处理 | 缺失即失败；填默认值 | fingerprint、startsAt、labels 缺失即逐条失败；annotation 可空 | 失败分类 |  |
-| R3 | 模板字段 | 仅 alertname/summary/description/severity/startsAt/PromQL；加入全部 annotation | 仅合同字段；annotation 只进不可信上下文 | prompt 安全 |  |
-| R4 | 模板长度 | 固定字符上限；按 token 估算 | 固定字节/字符双上限，超限拒绝或截断并记录 | 输入预算 |  |
-| R5 | 多告警处理顺序 | payload 顺序；按 fingerprint 排序 | 保留 payload 顺序，事件序号单调递增 | 审计重建 |  |
-| R6 | 失败分类 | 400/409/422 混用；统一 `ALERT_INVALID` | 解析错误 400，目标歧义/缺失按 E5 规则 | 客户端重试 |  |
-| R7 | raw ledger namespace | `intake`；`alertmanager_raw`；独立表 | `alertmanager_raw` namespace，key 为规范身份+版本 | F7 重建 |  |
-| R8 | 脱敏实现 | 复用 `redact_credentials`；新增规则 | 复用现有函数并增加测试样本 | 安全、维护 |  |
-| R9 | 时钟来源 | 接收进程；数据库 `clock_timestamp()` | 数据库时钟作为提交与窗口末端 | 一致性 |  |
-| R10 | Alertmanager webhook 配置 | token 写 values；Secret 挂载文件；环境变量模板 | Secret 挂载文件，`authorization.credentials_file` | 凭据不入库 |  |
-| R11 | PromQL 规则 | 直接使用 checkout 错误率；固定录制规则 | 固定 selector、阈值、for、labels，并用 promtool 校验 | 实验稳定性 |  |
-| R12 | 旧 Run 兼容 | 自动迁移输入；revision 不变；阻塞旧 Run | 输入版本变化即按既有 `INCOMPATIBLE_STATE` 阻塞 | 恢复与审计 |  |
+| R1 | webhook JSON 解析 | 只接受 object；接受 object/list | 只接受 v4 object，版本不符 400 | 入口校验 || 按推荐（可逆默认） |
+| R2 | 空字段处理 | 缺失即失败；填默认值 | fingerprint、startsAt、labels 缺失即逐条失败；annotation 可空 | 失败分类 || 按推荐（可逆默认） |
+| R3 | 模板字段 | 仅 alertname/summary/description/severity/startsAt/PromQL；加入全部 annotation | 仅合同字段；annotation 只进不可信上下文 | prompt 安全 || 按推荐（可逆默认） |
+| R4 | 模板长度 | 固定字符上限；按 token 估算 | 固定字节/字符双上限，超限拒绝或截断并记录 | 输入预算 || 按推荐（可逆默认） |
+| R5 | 多告警处理顺序 | payload 顺序；按 fingerprint 排序 | 保留 payload 顺序，事件序号单调递增 | 审计重建 || 按推荐（可逆默认） |
+| R6 | 失败分类 | 400/409/422 混用；统一 `ALERT_INVALID` | 解析错误 400，目标歧义/缺失按 E5 规则 | 客户端重试 || 按推荐（可逆默认） |
+| R7 | raw ledger namespace | `intake`；`alertmanager_raw`；独立表 | `alertmanager_raw` namespace，key 为规范身份+版本 | F7 重建 || 按推荐（可逆默认） |
+| R8 | 脱敏实现 | 复用 `redact_credentials`；新增规则 | 复用现有函数并增加测试样本 | 安全、维护 || 按推荐（可逆默认） |
+| R9 | 时钟来源 | 接收进程；数据库 `clock_timestamp()` | 数据库时钟作为提交与窗口末端 | 一致性 || 按推荐（可逆默认） |
+| R10 | Alertmanager webhook 配置 | token 写 values；Secret 挂载文件；环境变量模板 | Secret 挂载文件，`authorization.credentials_file` | 凭据不入库 || 按推荐（可逆默认） |
+| R11 | PromQL 规则 | 直接使用 checkout 错误率；固定录制规则 | 固定 selector、阈值、for、labels，并用 promtool 校验 | 实验稳定性 || 按推荐（可逆默认） |
+| R12 | 旧 Run 兼容 | 自动迁移输入；revision 不变；阻塞旧 Run | 输入版本变化即按既有 `INCOMPATIBLE_STATE` 阻塞 | 恢复与审计 || 按推荐（可逆默认） |
 
 未确认项：#167 GitHub API 在原工作阶段不可访问；OTel Demo 0.37.8 是否自带 Alertmanager 子 chart、最终 Alertmanager 镜像版本、webhook 从 pod 到宿主工作台的实际路由，需要实施前由实验配置和冻结证据确认。官方 Alertmanager 已确认 2xx/5xx/4xx 重试语义，见 `notify/util.go:189-227` 与 `webhook.go:121-125`；Bearer 可通过 `authorization.credentials_file` 配置，见 Prometheus Alertmanager configuration webhook `http_config` 文档。
 
