@@ -461,44 +461,54 @@ def main() -> int:
         fetched: dict[str, tuple[int, Any]] = {}
         for version in outcome.versions:
             catalog = {e["evidence_id"]: e for e in version.evidence_catalog}
-            for conclusion in version.conclusions:
-                for ref in conclusion.evidence_refs:
-                    evidence_id = ref["evidence_id"]
-                    key = f"v{version.version}:{evidence_id}"
-                    if evidence_id not in catalog:
-                        # only a failed citation may name an id outside the
-                        # generation input (D2); a valid one never may
-                        checked[key] = {
-                            "kind": None,
-                            "http_status": None,
-                            "resolved": False,
-                        }
-                        if conclusion.citations_valid:
-                            failures.append(f"EVIDENCE_NOT_IN_CATALOG:{key}")
-                        continue
-                    if key in checked:
-                        continue
-                    if evidence_id not in fetched:
-                        fetched[evidence_id] = web.evidence(args.incident, evidence_id)
-                    status, body = fetched[evidence_id]
-                    entry = catalog[evidence_id]
-                    ok = status == 200 and isinstance(body, dict)
-                    if ok and entry.get("kind") == "recovery":
-                        ok = (
-                            body.get("kind") == "recovery"
-                            and body.get("evidence_id") == evidence_id
-                            and f"recovery:{body.get('signal_name')}" == entry["scope"]
-                            and body.get("window_start") == entry["window_start"]
-                            and body.get("window_end") == entry["window_end"]
-                            and body.get("hashes_verified") is not False
-                        )
+            # what the version cites: conclusions (a failed citation may name
+            # an id outside the input, D2) and proposals, the provenance of
+            # reusable knowledge (an unknown id there is refused at generation)
+            cited = [
+                (ref["evidence_id"], conclusion.citations_valid)
+                for conclusion in version.conclusions
+                for ref in conclusion.evidence_refs
+            ] + [
+                (ref["evidence_id"], True)
+                for proposal in version.proposals
+                for ref in json.loads(proposal["content"]).get("evidence_refs") or ()
+            ]
+            for evidence_id, valid in cited:
+                key = f"v{version.version}:{evidence_id}"
+                if evidence_id not in catalog:
+                    # only a failed citation may name an id outside the
+                    # generation input (D2); a valid one never may
                     checked[key] = {
-                        "kind": entry.get("kind"),
-                        "http_status": status,
-                        "resolved": ok,
+                        "kind": None,
+                        "http_status": None,
+                        "resolved": False,
                     }
-                    if not ok:
-                        failures.append(f"EVIDENCE_LINK:{key}:{status}")
+                    if valid:
+                        failures.append(f"EVIDENCE_NOT_IN_CATALOG:{key}")
+                    continue
+                if key in checked:
+                    continue
+                if evidence_id not in fetched:
+                    fetched[evidence_id] = web.evidence(args.incident, evidence_id)
+                status, body = fetched[evidence_id]
+                entry = catalog[evidence_id]
+                ok = status == 200 and isinstance(body, dict)
+                if ok and entry.get("kind") == "recovery":
+                    ok = (
+                        body.get("kind") == "recovery"
+                        and body.get("evidence_id") == evidence_id
+                        and f"recovery:{body.get('signal_name')}" == entry["scope"]
+                        and body.get("window_start") == entry["window_start"]
+                        and body.get("window_end") == entry["window_end"]
+                        and body.get("hashes_verified") is not False
+                    )
+                checked[key] = {
+                    "kind": entry.get("kind"),
+                    "http_status": status,
+                    "resolved": ok,
+                }
+                if not ok:
+                    failures.append(f"EVIDENCE_LINK:{key}:{status}")
         if not checked:
             failures.append("NO_CITED_EVIDENCE_CHECKED")
         return checked
