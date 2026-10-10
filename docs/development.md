@@ -137,10 +137,10 @@ python3 scripts/otel_demo_observe.py <start_iso> <end_iso> <out.json> [--expect 
 
 ### kind 实验环境（M1-02 第 0 步起）
 
-Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-kind`（4 CPU / 8 GiB）上的 kind 集群 `opspilot-m1`，装锁定版本的 OTel Demo Helm chart（0.37.8，appVersion 2.0.2，按 `scripts/kind_lab/values.yaml` 精简）和 kube-state-metrics 8.6.0；Prometheus / Jaeger / frontend 经 NodePort 发布到与 Compose 相同的 127.0.0.1:19090 / 16686 / 18080，产品 profile 的默认地址不变。证据与实测见 [docs/evidence/m1-02-lab/run.md](evidence/m1-02-lab/run.md)。
+Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-kind`（4 CPU / 8 GiB）上的 kind 集群 `opspilot-m1`，装锁定版本的 OTel Demo Helm chart（0.37.8，appVersion 2.0.2，按 `scripts/kind_lab/values.yaml` 精简）、kube-state-metrics 8.6.0 和 Alertmanager（chart 1.24.0，appVersion v0.28.1，M1-04 起）；Prometheus / Jaeger / frontend 经 NodePort 发布到与 Compose 相同的 127.0.0.1:19090 / 16686 / 18080，产品 profile 的默认地址不变。证据与实测见 [docs/evidence/m1-02-lab/run.md](evidence/m1-02-lab/run.md)。
 
 ```sh
-.venv/bin/python scripts/kind_lab.py up        # 查宿主可回收内存 ≥ 3 GiB → colima start → kind create → helm upgrade --install ×2 → 等 Deployment 就绪（首次拉镜像约 20 分钟）
+.venv/bin/python scripts/kind_lab.py up        # 查宿主可回收内存 ≥ 3 GiB → colima start → kind create → helm upgrade --install ×3 → Prometheus 配置哈希变化时滚动重启 → 等 Deployment/StatefulSet 就绪（首次拉镜像约 20 分钟）
 .venv/bin/python scripts/kind_lab.py health    # span metrics、kube-state-metrics series、Jaeger 列出 checkout、Deployment 全就绪
 .venv/bin/python scripts/kind_lab.py fault inject --experiment-id <id>    # patch flagd-config ConfigMap：paymentFailure → 100%（指标上约 3 分钟后可见）
 .venv/bin/python scripts/kind_lab.py fault restore --experiment-id <id>
@@ -150,6 +150,8 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-kind-lab/prometheus-auth.json`（600，四个账号 observer / investigator / collector / lab 的口令），把 bcrypt 哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`）、把 collector 推送用的口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展），并写 `prometheus-observer.env` / `prometheus-investigator.env`（600，各只含该角色自己的变量名）；`kind_lab.py env-file <role>` 可重写。口令不进仓库、values、日志与证据。限制：Prometheus 自带 basic auth 对所有账号权限相同，合同要求的是独立凭据而非不同权限；Prometheus 探针改为 TCP、configmap-reload 侧车关闭（二者否则需要凭据或会 401）。工程脚本（`kind_lab.py health`、`scripts/otel_demo_observe.py`、`docs/evidence/m1-02-health-profile/collect_baseline.py`）经 `kind_lab.lab_authorization()` 用 `lab` 账号：优先 `OPSPILOT_LAB_PROMETHEUS_USERNAME/_PASSWORD`（`kind_lab.py env-file lab`），否则读 auth 文件；都没有时请求匿名、401 如实报出。
 
 脚本在宿主上只写 git 忽略的 `tmp/m1-kind-lab/`：故障历史（`engineer-only/<experiment-id>/`，越出该目录的 id 或符号链接被拒绝）、实验环境专用 kubeconfig（kubectl/helm/kind 都显式用它，不碰 `~/.kube/config` 的当前上下文）和 Helm 的仓库配置与 chart 缓存（`HELM_CONFIG_HOME`/`HELM_CACHE_HOME`/`HELM_DATA_HOME`）。`fault` 在 patch 后重新读取 ConfigMap 比对 SHA-256，不一致则非零退出。
+告警（M1-04 第 1 步，#167）：Prometheus 加载一条规则 `CheckoutPlaceOrderErrorRatioHigh`（checkout HealthProfile 的 `error_ratio`，> 0.5 持续 2 分钟，标签 `namespace` / `service` / `cluster` / `severity`），发往同命名空间的 Alertmanager release；Alertmanager 把每组告警（含 resolved）以 webhook v4 POST 到 `http://192.168.5.2:8080/intake/alertmanager`——colima（vz、用户态网络）下 192.168.5.2 即 `host.lima.internal`，落到宿主回环，工作台保持默认 `127.0.0.1:8080` 即可。bearer token 由 `up` 首次生成到 `tmp/m1-kind-lab/alertmanager-webhook-token`（600），渲染成 Secret `alertmanager-opspilot-webhook` 经 `credentials_file` 读取；工作台侧只拿哈希：`up` 写 `tmp/m1-kind-lab/workbench-alertmanager.env`（`OPSPILOT_EVENT_TOKENS=<sha256>=alertmanager`，专用 actor，E13），与其他事件 token 用 `,` 合并。`fault inject` 后约 5–7 分钟收到 firing，`restore` 后规则清除再收到 resolved。Prometheus 的 chart 不带配置校验和、configmap-reload 侧车又关闭，`up` 因此把 ConfigMap 哈希写到 Deployment 的 pod 注解 `opspilot.lab/config-sha256`，配置变了才滚动。证据见 [docs/evidence/m1-04-lab/run.md](evidence/m1-04-lab/run.md)。
+
 刚启动的环境要过几分钟才有足够样本（`increase(...[5m])` 需要两个以上采样点）。然后按上一节的三进程流程运行，只把 web 与 worker 都加上 `OPSPILOT_TOOL_PROFILE=otel-demo`，提交时 `target_id=m0-otel-20260909`。
 
 ### 独立 Observer 进程（M1-02 第 4 步起）

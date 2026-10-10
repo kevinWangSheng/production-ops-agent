@@ -51,6 +51,8 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 
 - 2026-10-10：授权 PR（SPEC 段、ROADMAP 行、本记录）。
 
+- 2026-10-10：第 1 步实验环境（`chore/m1-04-lab-alertmanager`，`../production-ops-agent-lab-alertmanager`）：独立 Alertmanager release 1.24.0 / v0.28.1、checkout 错误率规则、经 `credentials_file` 带 bearer 的 webhook、Prometheus 配置哈希滚动。真实运行：firing 与 resolved 两次 webhook 送达宿主，bearer 匹配 `alertmanager` actor，[证据](../evidence/m1-04-lab/run.md)。实验环境动作：otel-collector 重启一次（计数器停滞）。
+
 ## 下一步与交接
 
 - 授权 PR 合并（用户门）。

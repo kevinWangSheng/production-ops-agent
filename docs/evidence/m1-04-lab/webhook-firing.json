@@ -1,0 +1,32 @@
+{
+  "received_at": "2026-10-10T10:42:03.888240+00:00",
+  "path": "/intake/alertmanager",
+  "bearer_matches_actor": "alertmanager",
+  "user_agent": "Alertmanager/0.28.1",
+  "version": "4",
+  "status": "firing",
+  "groupKey": "{}:{alertname=\"CheckoutPlaceOrderErrorRatioHigh\", namespace=\"otel-demo\", service=\"checkout\"}",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "CheckoutPlaceOrderErrorRatioHigh",
+        "cluster": "opspilot-m1",
+        "k8s_namespace_name": "otel-demo",
+        "namespace": "otel-demo",
+        "opspilot_integration_id": "m0-otel-20260909",
+        "service": "checkout",
+        "service_name": "checkout",
+        "severity": "critical"
+      },
+      "annotations": {
+        "description": "100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.",
+        "summary": "checkout PlaceOrder error ratio above 50%"
+      },
+      "startsAt": "2026-10-10T10:41:54.365Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "fingerprint": "83f7541ae0105d42",
+      "generatorURL": "http://prometheus-67f446f574-b6fmt:9090/graph?g0.expr=label_replace%28label_replace%28%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%2Cstatus_code%3D%22STATUS_CODE_ERROR%22%7D%5B5m%5D%29%29%29+%2F+%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%7D%5B5m%5D%29%29%29%2C+%22namespace%22%2C+%22%241%22%2C+%22k8s_namespace_name%22%2C+%22%28.%2A%29%22%29%2C+%22service%22%2C+%22%241%22%2C+%22service_name%22%2C+%22%28.%2A%29%22%29+%3E+0.5&g0.tab=1"
+    }
+  ]
+}

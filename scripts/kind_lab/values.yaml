@@ -129,6 +129,12 @@ prometheus:
       type: NodePort
       servicePort: 9090
       nodePort: 30090
+    # M1-04: alerts go to the separately installed, pinned Alertmanager
+    # release (scripts/kind_lab/alertmanager-values.yaml); the chart's own
+    # alertmanager subchart stays disabled.
+    alertmanagers:
+      - static_configs:
+          - targets: ["alertmanager.otel-demo.svc:9093"]
     resources:
       limits:
         memory: 700Mi
@@ -158,6 +164,36 @@ prometheus:
         - k8s.statefulset.name
         - container.name
         - host.name
+
+  serverFiles:
+    # M1-04 lab alert (#167): the PlaceOrder error ratio of the checkout
+    # HealthProfile (opspilot/observer/profiles/otel-demo-checkout.json,
+    # signal error_ratio), aggregated by the span series' namespace and
+    # service and relabelled to the ``namespace``/``service`` labels the
+    # workbench's target registry matches (E6). The demo's paymentFailure
+    # fault (kind_lab.py fault inject) fails every order, so the ratio goes
+    # to 1; steady state is 0. Traffic is about 0.0125 orders/s, hence the
+    # 5m rate window.
+    alerting_rules.yml:
+      groups:
+        - name: opspilot-lab
+          rules:
+            - alert: CheckoutPlaceOrderErrorRatioHigh
+              expr: |
+                label_replace(label_replace(
+                  (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name="otel-demo",service_name="checkout",span_kind="SPAN_KIND_SERVER",span_name=~".*CheckoutService/PlaceOrder",status_code="STATUS_CODE_ERROR"}[5m])))
+                  /
+                  (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name="otel-demo",service_name="checkout",span_kind="SPAN_KIND_SERVER",span_name=~".*CheckoutService/PlaceOrder"}[5m])))
+                , "namespace", "$1", "k8s_namespace_name", "(.*)"), "service", "$1", "service_name", "(.*)")
+                > 0.5
+              for: 2m
+              labels:
+                severity: critical
+                cluster: opspilot-m1
+                opspilot_integration_id: m0-otel-20260909
+              annotations:
+                summary: "checkout PlaceOrder error ratio above 50%"
+                description: "{{ $value | humanizePercentage }} of checkout PlaceOrder server spans ended in error over the last 5 minutes."
 
 grafana:
   enabled: false
