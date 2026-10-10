@@ -601,7 +601,7 @@ _TARGET_CATALOG_ENTRY_FIELDS: dict[str, Callable[[object], bool]] = {
     "service_identity": _is_str,
     "observed_services": _is_list_of_str,
 }
-# ``window`` (and ``default_query_window``) is handled the same way as the
+# ``window`` and ``default_query_window`` are handled the same way as the
 # container fields above, never through this map.
 _TIME_POLICY_FIELDS: dict[str, Callable[[object], bool]] = {
     "id": _is_str,
@@ -673,18 +673,28 @@ def _project_time_policy(policy: object) -> dict[str, Any]:
         if key in policy and not is_valid(policy[key]):
             return {}
     projected = _project_fields(policy, _TIME_POLICY_FIELDS)
-    # ``default_query_window`` (M1-04 J3) has the window's shape and the
-    # same drop-whole-policy rule.
-    for name in ("window", "default_query_window"):
-        if name not in policy:
-            continue
-        window = policy[name]
+    window = policy.get("window")
+    if "window" in policy:
         if not isinstance(window, Mapping) or any(
             key in window and not is_valid(window[key])
             for key, is_valid in _TIME_WINDOW_FIELDS.items()
         ):
             return {}
-        projected[name] = _project_fields(window, _TIME_WINDOW_FIELDS)
+        projected["window"] = _project_fields(window, _TIME_WINDOW_FIELDS)
+    if "default_query_window" in policy:
+        # M1-04 J3: written only by the product, so held strictly -- exactly
+        # ``start`` and ``end``, both aware ISO instants -- and anything else
+        # drops the whole policy rather than projecting a partial window.
+        default = policy["default_query_window"]
+        if (
+            not isinstance(default, Mapping)
+            or set(default) != set(_TIME_WINDOW_FIELDS)
+            or any(_aware(default[key]) is None for key in _TIME_WINDOW_FIELDS)
+        ):
+            return {}
+        projected["default_query_window"] = {
+            key: default[key] for key in _TIME_WINDOW_FIELDS
+        }
     return projected
 
 

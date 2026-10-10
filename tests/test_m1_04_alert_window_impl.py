@@ -558,3 +558,43 @@ def test_the_otel_demo_factory_scopes_an_alert_run_with_its_default(monkeypatch)
         model_requests=4,
     )
     assert factory(store.lease, plain).scope.default_query_window is None
+
+
+@pytest.mark.parametrize(
+    "default",
+    [
+        {},
+        {"start": FRAME_START.isoformat()},
+        {"end": FRAME_END.isoformat()},
+        {
+            "start": FRAME_START.isoformat(),
+            "end": FRAME_END.isoformat(),
+            "step": "30s",
+        },
+        {"start": FRAME_START.isoformat(), "end": 1},
+        {"start": "yesterday", "end": FRAME_END.isoformat()},
+        # Naive instants are not absolute.
+        {"start": "2026-10-10T00:00:00", "end": FRAME_END.isoformat()},
+        [FRAME_START.isoformat(), FRAME_END.isoformat()],
+    ],
+)
+def test_any_incomplete_or_malformed_default_window_drops_the_policy(default):
+    """Independent review P2: never a partial default window."""
+    fresh = _alert_input(FRAME_END)
+    policy = {
+        **fresh.evidence_context["time_policies"][0],
+        "default_query_window": default,
+    }
+    context = {**fresh.evidence_context, "time_policies": [policy]}
+    projected = evidence_context_projection(context, run_id="run-1")
+    assert projected is not None and projected["time_policies"] == []
+
+
+def test_a_well_formed_default_window_is_projected_verbatim():
+    fresh = _alert_input(FRAME_END - timedelta(hours=2))
+    projected = evidence_context_projection(fresh.evidence_context, run_id="run-1")
+    assert projected is not None
+    assert (
+        projected["time_policies"][0]["default_query_window"]
+        == fresh.evidence_context["time_policies"][0]["default_query_window"]
+    )
