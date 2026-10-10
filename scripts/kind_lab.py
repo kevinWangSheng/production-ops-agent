@@ -330,11 +330,18 @@ def webhook_token(path: Path | None = None) -> str:
 
 def workbench_event_env(token: str, path: Path | None = None) -> Path:
     """``OPSPILOT_EVENT_TOKENS`` entry (sha256 of the token = the dedicated
-    ``alertmanager`` actor) for the workbench; merge it with any other entries
-    with ``,``. Holds the hash only."""
+    ``alertmanager`` actor) for the workbench, sourced with ``set -a; . <file>``.
+    It appends to an ``OPSPILOT_EVENT_TOKENS`` already in the environment
+    instead of replacing it (the workbench parses ``,``-separated pairs into
+    a map, so sourcing twice is harmless). Holds the hash only."""
     path = WORKBENCH_EVENT_ENV if path is None else path
     digest = hashlib.sha256(token.encode()).hexdigest()
-    _private_write(path, f"OPSPILOT_EVENT_TOKENS={digest}={WEBHOOK_ACTOR}\n")
+    entry = f"{digest}={WEBHOOK_ACTOR}"
+    _private_write(
+        path,
+        "OPSPILOT_EVENT_TOKENS="
+        f'"${{OPSPILOT_EVENT_TOKENS:+$OPSPILOT_EVENT_TOKENS,}}{entry}"\n',
+    )
     return path
 
 
@@ -434,13 +441,16 @@ def roll_prometheus_on_config_change() -> int:
     if proc.returncode != 0:
         print(proc.stderr, file=sys.stderr)
         return proc.returncode
+    try:
+        configmap = json.loads(proc.stdout)
+    except ValueError:
+        print("configmap/prometheus: kubectl returned no JSON", file=sys.stderr)
+        return 1
     patch = {
         "spec": {
             "template": {
                 "metadata": {
-                    "annotations": {
-                        CONFIG_HASH_ANNOTATION: config_sha256(json.loads(proc.stdout))
-                    }
+                    "annotations": {CONFIG_HASH_ANNOTATION: config_sha256(configmap)}
                 }
             }
         }
