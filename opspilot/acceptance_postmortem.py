@@ -416,6 +416,23 @@ def _revisions(
         active = records.active.get(entry_id)
         if active is not None:
             _same(active.get("entry_id"), entry_id)
+            # the knowledge read is one of the entry's own revisions, active
+            # in its history, with the same provenance and content
+            if not any(
+                r.get("revision") == active.get("revision")
+                and r.get("state") == "active"
+                and all(
+                    str(r.get(f)) == str(active.get(f))
+                    for f in (
+                        "source_postmortem_id",
+                        "source_version",
+                        "source_proposal_key",
+                        "content_sha256",
+                    )
+                )
+                for r in history.get("revisions") or ()
+            ):
+                raise _Mismatch
         for row in history.get("revisions") or ():
             _same(row.get("entry_id"), entry_id)
             if (str(entry_id), row["revision"]) not in ours:

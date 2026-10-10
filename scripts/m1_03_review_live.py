@@ -93,6 +93,7 @@ PASSWORD_ENV = "F13_LAB_UI_PASSWORD"
 # R7: at most three failed attempts per watermark; the backoff starts at 60 s
 MAX_GENERATIONS_PER_STEP = 3
 MAX_BACKOFF_WAIT_S = 300.0
+MAX_WAITS = MAX_GENERATIONS_PER_STEP
 # D16: a disputed version can only be returned; regenerate at most this often
 MAX_DISPUTE_RETURNS = 2
 
@@ -353,8 +354,10 @@ def main() -> int:
         return outcome
 
     def generate(name: str) -> PostmortemOutcome:
-        """Generate until a reviewable version or R7's three failures."""
-        for _ in range(MAX_GENERATIONS_PER_STEP):
+        """Generate until a reviewable version or R7's three failures; only
+        claimed attempts count, a wait for the backoff does not."""
+        claimed = waits = 0
+        while claimed < MAX_GENERATIONS_PER_STEP:
             calls_before = len(recorder.attempts)
             result = worker.generate(args.incident)
             if result is None:
@@ -365,11 +368,15 @@ def main() -> int:
                     if due is None
                     else (due - datetime.now(timezone.utc)).total_seconds()
                 )
-                if due is None or wait > MAX_BACKOFF_WAIT_S:
+                waits += 1
+                # nothing due, too far, or still unclaimable after waiting
+                # (e.g. R7's limit reached at this watermark): stop
+                if due is None or wait > MAX_BACKOFF_WAIT_S or waits > MAX_WAITS:
                     generations.append({"step": name, "claimed": False})
                     break
                 time.sleep(max(wait, 0.0) + 1.0)
                 continue
+            claimed += 1
             generations.append(
                 {
                     "step": name,

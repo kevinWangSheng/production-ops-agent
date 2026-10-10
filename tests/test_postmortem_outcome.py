@@ -331,6 +331,23 @@ def _corrupt(path: str):
             records.postmortem_audit,
             audit,
         )
+    elif path in ("active_unknown_revision", "active_other_source"):
+        # Codex review #180: the knowledge read must be a row of the entry's
+        # own history, with the same provenance
+        row = dict(records.active[ENTRY])
+        if path == "active_unknown_revision":
+            row["revision"] = 7
+        else:
+            row["source_postmortem_id"] = other
+        return PostmortemRecords(
+            INCIDENT,
+            view,
+            records.published,
+            records.entries,
+            {ENTRY: row},
+            records.postmortem_audit,
+            records.entry_audit,
+        )
     elif path == "active":
         active = {ENTRY: {"entry_id": other, "revision": 1, "freshness": {}}}
         return PostmortemRecords(
@@ -424,6 +441,8 @@ def _corrupt(path: str):
         "stray_entry_audit",
         "missing_active",
         "missing_entry_audit",
+        "active_unknown_revision",
+        "active_other_source",
     ],
 )
 def test_records_of_another_subject_project_unknown(path: str) -> None:
