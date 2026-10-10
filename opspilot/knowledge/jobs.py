@@ -426,8 +426,10 @@ class GenerationStore(_StoreBase):
         incident, its Runs, human controls and inputs, the committed
         evidence of its Runs, the ended observation with its samples and
         readings (raw bytes excluded), the return reason of the version to
-        regenerate (D19), and the entries this postmortem already published
-        by proposal key (for supersede proposals). Unfiltered: the input
+        regenerate (D19), and the active entries this postmortem already
+        published by proposal key, with their revision and name (supersede
+        targets, r8 D39 D40; revoked and superseded revisions are never
+        targets). Unfiltered: the input
         policy (``opspilot.knowledge.generation``) decides what reaches the
         model."""
         with self.transaction(snapshot=True) as conn:
@@ -454,7 +456,7 @@ class GenerationStore(_StoreBase):
             ).fetchone()
             pending = None if job is None else job["pending_regeneration_version"]
             return_reason = None
-            published: dict[str, UUID] = {}
+            published: dict[str, dict[str, Any]] = {}
             if head is not None:
                 if pending is not None:
                     reason = conn.execute(
@@ -464,13 +466,18 @@ class GenerationStore(_StoreBase):
                     ).fetchone()
                     return_reason = None if reason is None else reason["reason"]
                 for row in conn.execute(
-                    "SELECT r.source_proposal_key, r.entry_id FROM opspilot_knowledge_revisions r "
+                    "SELECT r.source_proposal_key, r.entry_id, r.revision, r.name "
+                    "FROM opspilot_knowledge_revisions r "
                     "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
                     "WHERE r.source_postmortem_id=%s AND s.state='active' "
-                    "ORDER BY r.approved_at",
+                    "ORDER BY r.approved_at, r.entry_id",
                     (head["postmortem_id"],),
                 ).fetchall():
-                    published[row["source_proposal_key"]] = row["entry_id"]
+                    published[row["source_proposal_key"]] = {
+                        "entry_id": row["entry_id"],
+                        "revision": row["revision"],
+                        "name": row["name"],
+                    }
             runs = conn.execute(
                 "SELECT run_id, state, control_generation, budget_limit, budget_spent, "
                 "deadline, input_watermark FROM opspilot_runs WHERE incident_id=%s "

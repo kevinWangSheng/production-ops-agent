@@ -86,12 +86,14 @@ def _reply(*, claim="hypothesis", extra=None):
     return json.dumps(value)
 
 
-def test_r7_versions_keep_schema_and_input_v1_values() -> None:
-    assert POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v2"
-    assert POSTMORTEM_OUTPUT_SCHEMA_VERSION == "f13-postmortem-output-v1"
+def test_versions_keep_the_content_schema_v1_value() -> None:
+    # r8 (#179, D44) moved prompt, output and input versions; the stored
+    # document's schema is unchanged
+    assert POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v3"
+    assert POSTMORTEM_OUTPUT_SCHEMA_VERSION == "f13-postmortem-output-v2"
     assert POSTMORTEM_CONTENT_SCHEMA_VERSION == "f13-postmortem-content-v1"
-    assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v1"
-    assert CONTRACT_REVISION == "r7"
+    assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v2"
+    assert CONTRACT_REVISION == "r8"
 
 
 def test_system_prompt_contains_narrow_dispute_and_hypothesis_rules() -> None:
