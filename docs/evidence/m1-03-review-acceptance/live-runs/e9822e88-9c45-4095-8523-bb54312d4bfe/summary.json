@@ -1,0 +1,6495 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-03-review-acceptance",
+  "run_id": "e9822e88-9c45-4095-8523-bb54312d4bfe",
+  "frozen_at": "2026-10-10T04:11:12.000576+00:00",
+  "incident_id": "0834af7e-0951-5850-a409-b1550255ee0a",
+  "environment": "lab: F6 archive database copy (synthetic OTel Demo lab data), not production",
+  "review_driver": "test-driven simulated review: a dedicated lab Basic Auth account posting the workbench forms over HTTP (D33); not a human review",
+  "started": "2026-10-10T04:05:05.491673+00:00",
+  "ended": "2026-10-10T04:11:10.577907+00:00",
+  "failures": [
+    "approve_v1:HTTP_422",
+    "approve_v1:STATE_under_review",
+    "APPROVAL_PUBLISHED_NOTHING_RETRIEVABLE",
+    "V4_STILL_DISPUTED",
+    "NOTHING_ACTIVE_TO_REVOKE"
+  ],
+  "evidence_links": {
+    "checked": 61,
+    "resolved": 61,
+    "by_kind": {
+      "investigation": 0,
+      "recovery": 61
+    }
+  },
+  "steps": [
+    {
+      "step": "before",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "not_generated",
+        "unknown_reasons": [],
+        "postmortem_generation": null,
+        "versions": [],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": []
+      }
+    },
+    {
+      "step": "generate_v1",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 2,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_approve_disputed_1",
+      "http_status": 422,
+      "version": 1,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 2,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_return_disputed_1",
+      "http_status": 200,
+      "version": 1,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 3,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_regenerate_1",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 5,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_approve_disputed_2",
+      "http_status": 422,
+      "version": 2,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 5,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_return_disputed_2",
+      "http_status": 200,
+      "version": 2,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 6,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v1_regenerate_2",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 8,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "approve_v1",
+      "http_status": 422,
+      "version": 3,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 8,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_1",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "stale",
+        "unknown_reasons": [],
+        "postmortem_generation": 9,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v2",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 11,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "return_v2",
+      "http_status": 200,
+      "version": 4,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 12,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v3",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 14,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "reject_v3",
+      "http_status": 200,
+      "version": 5,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 15,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_2",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 15,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v4",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 17,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_approve_disputed_1",
+      "http_status": 422,
+      "version": 6,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 17,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_return_disputed_1",
+      "http_status": 200,
+      "version": 6,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 18,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_regenerate_1",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 20,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 7,
+            "revises_version": 6,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_crosscheck",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_replica_intact",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 7,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_approve_disputed_2",
+      "http_status": 422,
+      "version": 7,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 20,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 7,
+            "revises_version": 6,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_crosscheck",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_replica_intact",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 7,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_return_disputed_2",
+      "http_status": 200,
+      "version": 7,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 21,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 7,
+            "revises_version": 6,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_crosscheck",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_replica_intact",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 7,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "v4_regenerate_2",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 23,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 7,
+            "revises_version": 6,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_crosscheck",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_replica_intact",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 8,
+            "revises_version": 7,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "3655c99178d30a5e370f596fb4058c9384ed55a836ea92817b21cc9185ebc47f",
+            "conclusions": 14,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "app_errors_healthy_deps",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_resolution",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 8,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 7,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "final",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 23,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+            "conclusions": 13,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_with_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_needs_sustained_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": 1,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_spike_intact_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_health_before_closure",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "stale",
+            "stale_reason": "run_added",
+            "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "prop_error_ratio_replica_check",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "prop_sustained_recovery_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "mark_stale",
+                "system:control.follow_up",
+                "worker"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+            "conclusions": 17,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 2,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "error_ratio_spike_replicas_stable",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_boundary_check",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 5,
+            "revises_version": 4,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_ratio_flat_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "reject",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 6,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+            "conclusions": 15,
+            "uncertain": 4,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_errors_with_stable_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_volume_error_ratio_caveat",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "overlapping_window_recovery_read",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 7,
+            "revises_version": 6,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_crosscheck",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_replica_intact",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "return",
+                "f13-lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 8,
+            "revises_version": 7,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "3655c99178d30a5e370f596fb4058c9384ed55a836ea92817b21cc9185ebc47f",
+            "conclusions": 14,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 1,
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "app_errors_healthy_deps",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_window_resolution",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 8,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 7,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 6,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 5,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    }
+  ],
+  "generations": [
+    {
+      "step": "generate_v1",
+      "claimed": true,
+      "attempt_id": "6d7c4111-7e21-480a-b26c-a9bd12c61e69",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 1,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "fb741e9481b0505891a4190f86c3662c",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-fbb5-1d58f7ee23eb",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-fbb5-1d58f7ee23eb?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "v1_regenerate_1",
+      "claimed": true,
+      "attempt_id": "225a1bbf-cbf7-4a55-bc68-cc74983c4fb6",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 2,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "a729251059ea3da69d120806b0eff72e",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-6d9a-85c57cfacb8c",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-6d9a-85c57cfacb8c?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "v1_regenerate_2",
+      "claimed": true,
+      "attempt_id": "118a9fc5-3abd-42af-830e-08f0881758f0",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 3,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "f8507c6c629e1e2fa8febd32f8e9b6ac",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-3206-6ae142382367",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-3206-6ae142382367?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v2",
+      "claimed": true,
+      "attempt_id": "e1905900-551c-4458-a3af-f3a6d644c752",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 4,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "2483c557d610c1759e17a06ef34a3498",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-4261-e054c424f15c",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-4261-e054c424f15c?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v3",
+      "claimed": true,
+      "attempt_id": "4e722908-5a29-45bd-bf03-e2625e742578",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 5,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "194d2f6eb651c25d1b44c50739244526",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-d388-10e98c92621f",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-d388-10e98c92621f?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v4",
+      "claimed": true,
+      "attempt_id": "eff46663-dee1-45d0-8fb5-771d827369bd",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 6,
+      "state": "under_review",
+      "model_requests_recorded": 2,
+      "model_requests_counted": 2,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "1cc92f74e66391beec630a2f5316b134",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-b593-3cdcc9edee52",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-b593-3cdcc9edee52?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "v4_regenerate_1",
+      "claimed": true,
+      "attempt_id": "90d36a52-aa55-4464-844a-f68cfb3a7773",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 7,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "e53b860fc4e6d7653954fb1939f142a4",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-18cb-0e1a237efa11",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-18cb-0e1a237efa11?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "v4_regenerate_2",
+      "claimed": true,
+      "attempt_id": "86891182-c815-407b-b899-0a3484dfabf1",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 8,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "7c5c0b7d771b85b5f42d4d77f01411d0",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-review-20261009",
+        "project_id": "30cc2335-3662-45df-b1c8-a641d9cfa147",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-0e8f-70aaa20560d5",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/30cc2335-3662-45df-b1c8-a641d9cfa147/r/00000000-0000-0000-0e8f-70aaa20560d5?poll=true",
+        "read_back": "found"
+      }
+    }
+  ],
+  "final": {
+    "generation_status": "under_review",
+    "unknown_reasons": [],
+    "postmortem_generation": 23,
+    "versions": [
+      {
+        "version": 1,
+        "revises_version": null,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "a95ac38ce5490a7c01b0291be1c0af07261a37ff83512f8f14eb70b2d8cda067",
+        "conclusions": 13,
+        "uncertain": 4,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_ratio_with_intact_replicas",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "recovery_needs_sustained_window",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "return",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 2,
+        "revises_version": 1,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "c892c07f97cef1c32a7bbdebf907fcabc657b1af8a4aeb9e6c9bf66ad70fdee9",
+        "conclusions": 13,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_ratio_spike_intact_replicas",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "sustained_health_before_closure",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "return",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 3,
+        "revises_version": 2,
+        "state": "stale",
+        "stale_reason": "run_added",
+        "content_sha256": "09068eba4cfc0040d028acf01e0d1f96f0cabbcb5b320a68dc6a6ee4774aa083",
+        "conclusions": 11,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "prop_error_ratio_replica_check",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "prop_sustained_recovery_confirmation",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "mark_stale",
+            "system:control.follow_up",
+            "worker"
+          ]
+        ]
+      },
+      {
+        "version": 4,
+        "revises_version": null,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "ad0266400be7857bd41d46f903fa310f7d0eeab5a881d1e6d6bd09edc254f709",
+        "conclusions": 17,
+        "uncertain": 5,
+        "citations_failed": 0,
+        "disputed": 2,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "error_ratio_spike_replicas_stable",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "recovery_window_boundary_check",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "return",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 5,
+        "revises_version": 4,
+        "state": "rejected",
+        "stale_reason": null,
+        "content_sha256": "4d7652de148489f2db0674c54683ada9f0c7223fe4a3b8b31907df26b9d10695",
+        "conclusions": 15,
+        "uncertain": 5,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_ratio_flat_replicas",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "reject",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 6,
+        "revises_version": null,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "34487828aa4e412b6daab2029ac8ca43c9b12341c0439dee6c68443934b55b58",
+        "conclusions": 15,
+        "uncertain": 4,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_errors_with_stable_replicas",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "low_volume_error_ratio_caveat",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "overlapping_window_recovery_read",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "return",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 7,
+        "revises_version": 6,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "e73f61cf596f2253278b7fc614789f6430257bd49f4ae4655fba70e248558575",
+        "conclusions": 12,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "dependency_signal_crosscheck",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "error_ratio_spike_replica_intact",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "return",
+            "f13-lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 8,
+        "revises_version": 7,
+        "state": "under_review",
+        "stale_reason": null,
+        "content_sha256": "3655c99178d30a5e370f596fb4058c9384ed55a836ea92817b21cc9185ebc47f",
+        "conclusions": 14,
+        "uncertain": 5,
+        "citations_failed": 0,
+        "disputed": 1,
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "app_errors_healthy_deps",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "recovery_window_resolution",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:03d0f418-8ed3-4f4a-b056-270400e74d65",
+            "worker"
+          ]
+        ]
+      }
+    ],
+    "knowledge": [],
+    "knowledge_actions": [],
+    "recent_attempts": [
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 8,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 7,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 6,
+        "model_requests": 2
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 5,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 4,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 3,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 2,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 1,
+        "model_requests": 1
+      }
+    ]
+  },
+  "counts": {
+    "model_requests_counted": 9,
+    "model_requests_recorded": 9,
+    "prompt_tokens": 272834,
+    "completion_tokens": 86105
+  },
+  "cost": {
+    "known_cost_cny_upper": 1.351786,
+    "balance_before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "5.23",
+          "granted_balance": "0.00",
+          "topped_up_balance": "5.23"
+        }
+      ]
+    },
+    "balance_after": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "5.05",
+          "granted_balance": "0.00",
+          "topped_up_balance": "5.05"
+        }
+      ]
+    }
+  },
+  "raw_ledger": {
+    "sha256": "03a9518bb77d172eb9da9644213555d108c3a5811c676bdf57a0279fa1ea8db9",
+    "bytes": 190524,
+    "path": "tmp/lab-ledgers/m1-03-review-acceptance/e9822e88-9c45-4095-8523-bb54312d4bfe/ledger.json",
+    "in_repository": false
+  }
+}
