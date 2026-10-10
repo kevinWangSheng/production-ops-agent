@@ -2,6 +2,7 @@
 
 import json
 import os
+from copy import deepcopy
 from uuid import uuid4
 
 import pytest
@@ -30,6 +31,22 @@ REVIEWER = Actor("alice", "basic_auth")
 
 def _call_payload(model):
     return json.loads(model.calls[0].messages[1]["content"])
+
+
+def _reply_r29(incident, *, revision, key="checkout-errors"):
+    reply = _reply(incident, proposals=[])
+    reply["proposals"] = [
+        {
+            "key": key,
+            "name": "token=supersecret",
+            "tags": [],
+            "symptoms": ["5xx"],
+            "checks": ["error ratio"],
+            "evidence_ids": [_evidence(incident)],
+            "supersedes_revision": revision,
+        }
+    ]
+    return reply
 
 
 def _publish_one(stores, dsn):
@@ -156,3 +173,52 @@ def test_d42_entry_generation_conflict_rejects_approval(stores, dsn):
             actor=REVIEWER,
             entry_generations={entry_id: current - 1},
         )
+
+
+def test_r29_matching_key_and_revision_binds_supersede_target(stores, dsn):
+    knowledge, _, _ = stores
+    incident, entry_id, _ = _publish_one(stores, dsn)
+    revision = knowledge.active_revision(entry_id)["revision"]
+    model = ScriptedModel(_reply_r29(incident, revision=revision))
+    outcomes = _worker(stores, model).poll_once()
+    assert model.calls
+    assert "supersedes_revision" in model.calls[0].messages[0]["content"]
+    [outcome] = outcomes
+    assert outcome.state == "under_review"
+    version = knowledge.incident_postmortem(incident)["postmortem"]["versions"][-1]
+    assert version["proposals"][0]["supersedes_entry_id"] == entry_id
+
+
+@pytest.mark.parametrize(
+    "revision,key",
+    [(99, "checkout-errors"), (None, "checkout-errors"), (2, "unknown-key")],
+)
+def test_r29_bad_target_revision_retries_once_then_output_invalid(
+    stores, dsn, revision, key
+):
+    incident, _, _ = _publish_one(stores, dsn)
+    bad = _reply_r29(incident, revision=revision, key=key)
+    model = ScriptedModel(bad, deepcopy(bad))
+    [outcome] = _worker(stores, model).poll_once()
+    assert (outcome.status, outcome.error_code, outcome.model_requests) == (
+        "failed",
+        "OUTPUT_INVALID",
+        2,
+    )
+
+
+def test_r29_repair_with_correct_revision_binds_target(stores, dsn):
+    knowledge, _, _ = stores
+    incident, entry_id, _ = _publish_one(stores, dsn)
+    revision = knowledge.active_revision(entry_id)["revision"]
+    first = _reply_r29(incident, revision=99)
+    repaired = _reply_r29(incident, revision=revision)
+    model = ScriptedModel(first, repaired)
+    [outcome] = _worker(stores, model).poll_once()
+    assert (outcome.status, outcome.state, outcome.model_requests) == (
+        "succeeded",
+        "under_review",
+        2,
+    )
+    version = knowledge.incident_postmortem(incident)["postmortem"]["versions"][-1]
+    assert version["proposals"][0]["supersedes_entry_id"] == entry_id

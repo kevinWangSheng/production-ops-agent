@@ -10,8 +10,10 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.knowledge.generation import (
+    SYSTEM_PROMPT,
     GenerationInput,
     InputTooLarge,
+    OutputInvalid,
     assemble,
     build_input,
     parse_model_output,
@@ -73,6 +75,29 @@ def _proposal(key, name="same name"):
     }
 
 
+def _proposal_with_revision(key, revision):
+    proposal = _proposal(key)
+    proposal["supersedes_revision"] = revision
+    return proposal
+
+
+def test_r29_prompt_requires_supersedes_revision_field():
+    assert "supersedes_revision" in SYSTEM_PROMPT
+
+
+def test_r29_omitted_revision_is_null():
+    parsed = parse_model_output(_output(_proposal("checkout-errors")))
+    assert getattr(parsed.proposals[0], "supersedes_revision") is None
+
+
+@pytest.mark.parametrize("revision", [True, False, 0, -1, "1", 1.5, [], {}])
+def test_r29_revision_must_be_integer_at_least_one_or_null(revision):
+    with pytest.raises(OutputInvalid):
+        parse_model_output(
+            _output(_proposal_with_revision("checkout-errors", revision))
+        )
+
+
 def test_r21_r22_r23_payload_projection_is_stable_and_uuid_free():
     entries = [
         {"key": "z-key", "name": "z [REDACTED]", "revision": 2},
@@ -89,12 +114,10 @@ def test_r24_empty_list_is_preserved():
     assert _built().payload["published_knowledge_entries"] == []
 
 
-def test_r25_r43_exact_key_maps_and_name_does_not():
+def test_r25_r29_missing_revision_does_not_implicitly_map_by_key_or_name():
     output = parse_model_output(_output(_proposal("checkout-errors", "different name")))
     draft = assemble(_built(), output, {}, record={})
-    assert draft.proposals[0].supersedes_entry_id == UUID(
-        "11111111-1111-1111-1111-111111111111"
-    )
+    assert draft.proposals[0].supersedes_entry_id is None
     unknown = parse_model_output(_output(_proposal("unknown-key", "same name")))
     assert (
         assemble(_built(), unknown, {}, record={}).proposals[0].supersedes_entry_id
