@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -54,6 +55,11 @@ INPUT_VERSION = "opspilot-investigation-input-v1"
 #: the fact; a v1 row reads exactly as before.
 INPUT_VERSION_AFFECTED_SERVICE = "opspilot-investigation-input-v2"
 AFFECTED_SERVICE = "affected_service"
+#: The input versions this build reads. A well-formed version string this
+#: build does not know is a Run written by another version: R12 blocks it as
+#: ``INCOMPATIBLE_STATE``; anything else in ``version`` is ``INPUT_INVALID``.
+KNOWN_INPUT_VERSIONS: tuple[str, ...] = (INPUT_VERSION, INPUT_VERSION_AFFECTED_SERVICE)
+_INPUT_VERSION_FORM = re.compile(r"opspilot-investigation-input-v[1-9][0-9]{0,8}")
 
 # --- context policy (HolmesGPT's two mechanisms, C3 §5 constraints) ---------
 #
@@ -402,10 +408,12 @@ class InvestigationInput:
 
     @classmethod
     def from_json(cls, value: object) -> InvestigationInput:
-        if not isinstance(value, Mapping) or value.get("version") not in (
-            INPUT_VERSION,
-            INPUT_VERSION_AFFECTED_SERVICE,
-        ):
+        if not isinstance(value, Mapping):
+            raise ContextError("INPUT_INVALID")
+        version = value.get("version")
+        if version not in KNOWN_INPUT_VERSIONS:
+            if isinstance(version, str) and _INPUT_VERSION_FORM.fullmatch(version):
+                raise ContextError("INCOMPATIBLE_STATE")
             raise ContextError("INPUT_INVALID")
         schemas = value.get("tool_schemas")
         if not isinstance(schemas, list):
