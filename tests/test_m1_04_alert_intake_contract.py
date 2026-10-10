@@ -59,12 +59,24 @@ def test_i4_legacy_registry_without_match_still_loads(tmp_path):
         None,
         [],
     ],
-    ids=["version", "empty", "number", "empty-value", "empty-key", "unknown",
-         "missing-labels", "missing-version", "null", "list"],
+    ids=[
+        "version",
+        "empty",
+        "number",
+        "empty-value",
+        "empty-key",
+        "unknown",
+        "missing-labels",
+        "missing-version",
+        "null",
+        "list",
+    ],
 )
 def test_i4_invalid_match_is_rejected_at_load(tmp_path, match):
     with pytest.raises(schema.TargetIdentityMissing):
-        schema.load_target_identities(write_registry(tmp_path, {**ENTRY, "match": match}))
+        schema.load_target_identities(
+            write_registry(tmp_path, {**ENTRY, "match": match})
+        )
 
 
 def test_i4_unknown_entry_key_is_rejected(tmp_path):
@@ -74,26 +86,42 @@ def test_i4_unknown_entry_key_is_rejected(tmp_path):
         )
 
 
-@pytest.mark.parametrize("headers", [basic(), bearer("unknown-alert-token")],
-                         ids=["ui-basic", "unknown-bearer"])
+@pytest.mark.parametrize(
+    "headers",
+    [basic(), bearer("unknown-alert-token")],
+    ids=["ui-basic", "unknown-bearer"],
+)
 def test_i1_i10_alert_endpoint_rejects_other_authentication(headers):
     app, _, _ = build_workbench()
     before = call(app, "GET", "/", headers=basic()).text
-    response = post_json(app, "/intake/alertmanager", {"version": "4", "alerts": []},
-                         headers=headers)
+    response = post_json(
+        app, "/intake/alertmanager", {"version": "4", "alerts": []}, headers=headers
+    )
     assert response.status == 401
     assert call(app, "GET", "/", headers=basic()).text == before
 
 
-@pytest.mark.parametrize("payload", [
-    {"version": "3", "alerts": []},
-    {"version": 4, "alerts": []},
-    {"version": "4", "alerts": {}},
-    {"version": "4", "alerts": None},
-    {"version": "4"},
-    [], None,
-], ids=["old-version", "numeric-version", "object-alerts", "null-alerts",
-        "missing-alerts", "list-body", "null-body"])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"version": "3", "alerts": []},
+        {"version": 4, "alerts": []},
+        {"version": "4", "alerts": {}},
+        {"version": "4", "alerts": None},
+        {"version": "4"},
+        [],
+        None,
+    ],
+    ids=[
+        "old-version",
+        "numeric-version",
+        "object-alerts",
+        "null-alerts",
+        "missing-alerts",
+        "list-body",
+        "null-body",
+    ],
+)
 def test_i1_invalid_envelope_is_400_without_visible_incidents(payload):
     app, _, _ = build_workbench()
     before = call(app, "GET", "/", headers=basic()).text
@@ -105,8 +133,12 @@ def test_i1_invalid_envelope_is_400_without_visible_incidents(payload):
 
 def test_i1_unparseable_json_is_400():
     app, _, _ = build_workbench()
-    response = call(app, "POST", "/intake/alertmanager",
-                    headers={**bearer(), "content-type": "application/json"},
-                    body=b"{broken")
+    response = call(
+        app,
+        "POST",
+        "/intake/alertmanager",
+        headers={**bearer(), "content-type": "application/json"},
+        body=b"{broken",
+    )
     assert response.status == 400
     assert response.json() == {"error": "INVALID_ALERTMANAGER_PAYLOAD"}
