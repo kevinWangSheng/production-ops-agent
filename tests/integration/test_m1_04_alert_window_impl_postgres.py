@@ -292,3 +292,68 @@ def test_fresh_fallback_rebuilds_from_the_earliest_delivery():
     for key in ("window", "anchor", "anchor_rule", "default_query_window"):
         assert fresh_policy[key] == old_policy[key], key
     assert successor["question"] == previous["question"]
+
+
+def _outcome(incident_id):
+    scenario = IncidentScenario(
+        scenario_id="window",
+        feature_id="F1",
+        acceptance_step="2",
+        kind="alert_intake",
+        subject_id=incident_id,
+    )
+    return alert_intake_outcome(scenario, _records(incident_id))
+
+
+def test_run_inputs_list_every_runs_committed_input_including_a_renewal():
+    """r7: ``run_inputs`` follows ``run_ids``; a timed-out Run's note renews
+    it and the successor's input keeps the alert frame and anchor (J5)."""
+    app, workbench, _ = _build()
+    result = _post_alert(app, "2026-10-10T10:41:54.365Z")
+    first = _outcome(result["incident_id"])
+    assert first.run_ids == (result["run_id"],)
+    assert first.run_inputs == (first.run_input,)
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET deadline = clock_timestamp() - interval '1 second' WHERE run_id=%s",
+            (UUID(result["run_id"]),),
+        )
+    generation = workbench.incidents.find_incident(
+        UUID(result["incident_id"])
+    ).control_generation
+    renewed = post_form(
+        app,
+        f"/incidents/{result['incident_id']}/control",
+        {
+            "action": "follow_up",
+            "text": "still failing?",
+            "expected_generation": str(generation),
+            "idempotency_key": f"renew-{uuid4()}",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert renewed.status in (200, 201), renewed.text
+    outcome = _outcome(result["incident_id"])
+    assert len(outcome.run_ids) == 2 and outcome.run_ids[0] == result["run_id"]
+    previous, successor = outcome.run_inputs
+    # ``run_input`` stays the intake Run's.
+    assert previous == outcome.run_input == first.run_input
+    assert successor is not None and successor["version"] == (
+        "opspilot-investigation-input-v3"
+    )
+    assert successor["evidence_context"]["run_id"] == outcome.run_ids[1]
+    assert (
+        successor["scope_facts"]["alert_starts_at"]
+        == previous["scope_facts"]["alert_starts_at"]
+    )
+    assert (
+        successor["evidence_context"]["time_policies"]
+        == previous["evidence_context"]["time_policies"]
+    )
+    # A Run recorded without an input reads as ``None`` in its place.
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET input=NULL WHERE run_id=%s",
+            (UUID(outcome.run_ids[0]),),
+        )
+    assert _outcome(result["incident_id"]).run_inputs == (None, successor)
