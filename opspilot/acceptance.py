@@ -18,6 +18,8 @@ from opspilot.acceptance_alert import (  # noqa: E402
     AlertDelivery,
     AlertIntakeOutcome,
     AlertIntakeRecords,
+    alert_deliveries_for_identity,
+    alert_delivery_count,
     alert_intake_outcome,
     alert_intake_records,
 )
@@ -70,6 +72,8 @@ __all__ = [
     "RecoverySample",
     "RecoverySignal",
     "ReviewRecord",
+    "alert_deliveries_for_identity",
+    "alert_delivery_count",
     "alert_intake_outcome",
     "alert_intake_records",
     "outcome_from_durable",
