@@ -64,7 +64,8 @@ class AlertIntakeRecords:
     identity: Mapping[str, Any] | None
     run: Mapping[str, Any] | None
     deliveries: tuple[Mapping[str, Any], ...]
-    #: Every Run of the incident (``run_id``, ``incident_id``) in creation order.
+    #: Every Run of the incident (``run_id``, ``incident_id``, ``input``) in
+    #: creation order.
     runs: tuple[Mapping[str, Any], ...] = ()
     #: Every observation session (``session_id``, ``incident_id``), oldest first.
     sessions: tuple[Mapping[str, Any], ...] = ()
@@ -107,6 +108,9 @@ class AlertIntakeOutcome:
     #: The committed input snapshot of the Run the intake opened, verbatim;
     #: ``None`` for a handoff-only incident (or a Run recorded without one).
     run_input: Mapping[str, Any] | None
+    #: r7: every Run's committed input snapshot, verbatim, in ``run_ids``
+    #: order; ``None`` for a Run recorded without one.
+    run_inputs: tuple[Mapping[str, Any] | None, ...] = ()
 
 
 @contextmanager
@@ -154,7 +158,7 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
         # Runs carry no creation time; each one's deadline is its creation
         # (database clock) plus the Run wall, so it orders them.
         runs = cur.execute(
-            "SELECT run_id,incident_id FROM opspilot_runs WHERE incident_id=%s ORDER BY deadline,run_id",
+            "SELECT run_id,incident_id,input FROM opspilot_runs WHERE incident_id=%s ORDER BY deadline,run_id",
             (subject,),
         ).fetchall()
         sessions = cur.execute(
@@ -265,4 +269,5 @@ def alert_intake_outcome(
             str(row["session_id"]) for row in records.sessions
         ),
         run_input=None if run is None or run["input"] is None else run["input"],
+        run_inputs=tuple(row.get("input") for row in records.runs),
     )

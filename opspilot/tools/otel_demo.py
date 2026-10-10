@@ -16,7 +16,10 @@ What a Run may read (technical plan §8):
   the Run's authorized frame (batch B, B2). ``start``/``end`` are optional
   tool parameters the model may use to pick a narrower window than the
   frame; omitted, the query defaults to the 1 hour ending at the frame's
-  end (upstream ``holmes/plugins/toolsets/utils.py:111-113`` semantics).
+  end (upstream ``holmes/plugins/toolsets/utils.py:111-113`` semantics),
+  or, for an alert Run, to its time policy's ``default_query_window``
+  (M1-04 J4: from an hour before the alert's ``startsAt`` to the frame's
+  end).
   A window outside the frame is refused before any request goes out and the
   refusal states the frame. The raw evidence is the exact Prometheus
   response; the model view is its leading ``data.result`` series. ``offset``,
@@ -38,7 +41,8 @@ What a Run may read (technical plan §8):
   is stated as such in the tool description.
 
 The authorized frame is fixed per Run when the workbench records the input
-(``otel_demo_face``): the 24 h ending at submission (batch B, B2; upstream
+(``otel_demo_face``; an alert Run's ends at the alert's receipt, M1-04 J1):
+the 24 h ending at submission (batch B, B2; upstream
 default lookback scaled to a runner-level authorization frame rather than a
 fixed 300 s v4 acceptance-packet window -- see ``OBSERVATION_SECONDS``). The
 executor factory re-reads that frame from the Run's recorded input rather
@@ -132,6 +136,7 @@ __all__ = [
     "project_traces",
     "promql_lookback_seconds",
     "promql_problem",
+    "scope_default_query_window",
     "scope_window",
 ]
 
@@ -341,8 +346,10 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                             "Absolute ISO-8601 end of the query window. "
                             "Give both start and end, or neither. "
                             "Omitted with start also omitted, the query "
-                            "window defaults to the 1 hour ending at the "
-                            "authorized window's end."
+                            "window is the time policy's "
+                            "default_query_window when it states one, "
+                            "otherwise the 1 hour ending at the authorized "
+                            "window's end."
                         ),
                     },
                 },
@@ -424,8 +431,10 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                             "Absolute ISO-8601 end of the query window. "
                             "Give both start and end, or neither. "
                             "Omitted with start also omitted, the query "
-                            "window defaults to the 1 hour ending at the "
-                            "authorized window's end."
+                            "window is the time policy's "
+                            "default_query_window when it states one, "
+                            "otherwise the 1 hour ending at the authorized "
+                            "window's end."
                         ),
                     },
                 },
@@ -452,9 +461,12 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "The authorized absolute query window, appended as {window}; "
                 "start/end/step are bound by the gateway, never by the query. "
                 "start/end tool parameters (batch B) pick a query window "
-                "inside it; omitted, the query window defaults to the 1 "
-                "hour ending at the authorized window's end, and a chosen "
-                "query window outside the authorized window is refused."
+                "inside it; omitted, the query window is the time "
+                "policy's default_query_window when it states one (an "
+                "alert Run's, from an hour before the alert's start), "
+                "otherwise the 1 hour ending at the authorized window's "
+                "end, and a chosen query window outside the authorized "
+                "window is refused."
             ),
             values_format=(
                 "The authorized target and service enumeration for this Run "
@@ -554,9 +566,12 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "The authorized absolute query window, appended as {window}; "
                 "the search start/end are bound by the gateway. "
                 "start/end tool parameters (batch B) pick a query window "
-                "inside it; omitted, the query window defaults to the 1 "
-                "hour ending at the authorized window's end, and a chosen "
-                "query window outside the authorized window is refused."
+                "inside it; omitted, the query window is the time "
+                "policy's default_query_window when it states one (an "
+                "alert Run's, from an hour before the alert's start), "
+                "otherwise the 1 hour ending at the authorized window's "
+                "end, and a chosen query window outside the authorized "
+                "window is refused."
             ),
             values_format=(
                 "The authorized service enumeration for this Run, appended as "
@@ -789,6 +804,28 @@ def scope_window(input: InvestigationInput) -> Window:
                 window = Window.parse(policy.get("window"))
                 if window is not None:
                     return window
+    raise ContextError("SCOPE_WINDOW_MISSING")
+
+
+def scope_default_query_window(input: InvestigationInput) -> Window | None:
+    """An alert Run's default query window (M1-04 J4), from its own input.
+
+    ``None`` when the Run's policy states none (every non-alert Run): the
+    transport keeps its hour-before-the-frame-end default. One that is
+    present but unusable or outside the frame blocks the Run like a missing
+    frame does, rather than silently falling back.
+    """
+    context = input.evidence_context
+    policies = context.get("time_policies") if isinstance(context, Mapping) else None
+    if isinstance(policies, Sequence):
+        for policy in policies:
+            if isinstance(policy, Mapping) and policy.get("id") == _TIME_POLICY:
+                if "default_query_window" not in policy:
+                    return None
+                window = Window.parse(policy.get("default_query_window"))
+                if window is None or not scope_window(input).contains(window):
+                    break
+                return window
     raise ContextError("SCOPE_WINDOW_MISSING")
 
 
@@ -1146,12 +1183,16 @@ def _query_window(
     Upstream default when both are omitted (``holmes/plugins/toolsets/utils
     .py:111-113``): the hour ending at the frame's end, clamped forward to
     the frame's own start so a frame narrower than an hour (a test fixture,
-    never a real Run post-B2) is unaffected.
+    never a real Run post-B2) is unaffected. An alert Run's scope carries
+    its own default (M1-04 J4, ``request.default_window``, already checked
+    to lie inside the frame), which replaces that hour.
     """
     frame = request.window
     start_text = request.params.get("start")
     end_text = request.params.get("end")
     if start_text is None and end_text is None:
+        if request.default_window is not None:
+            return request.default_window, None
         end = frame.end
         start = max(frame.start, end - timedelta(hours=1))
         return Window(start, end), None
@@ -1563,6 +1604,7 @@ def otel_demo_executor_factory(
             target_ids=frozenset({TARGET_ID}),
             tool_names=frozenset({METRICS_TOOL, TRACES_TOOL}),
             window=scope_window(input),
+            default_query_window=scope_default_query_window(input),
             deadline=run["deadline"],
         )
         return ReadOnlyToolExecutor(

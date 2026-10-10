@@ -601,8 +601,8 @@ _TARGET_CATALOG_ENTRY_FIELDS: dict[str, Callable[[object], bool]] = {
     "service_identity": _is_str,
     "observed_services": _is_list_of_str,
 }
-# ``window`` is handled the same way as the container fields above, never
-# through this map.
+# ``window`` and ``default_query_window`` are handled the same way as the
+# container fields above, never through this map.
 _TIME_POLICY_FIELDS: dict[str, Callable[[object], bool]] = {
     "id": _is_str,
     "revision": _is_str,
@@ -614,6 +614,10 @@ _TIME_POLICY_FIELDS: dict[str, Callable[[object], bool]] = {
     "target_refs": _is_list_of_str,
     "all_authorized_targets": _is_bool,
     "scope_revision": _is_str_or_none,
+    # M1-04 J3: an alert Run's anchor and the rule that set it. Focus for
+    # the model's default query window only; eligibility never reads them.
+    "anchor": _is_str,
+    "anchor_rule": _is_str,
 }
 _TIME_WINDOW_FIELDS: dict[str, Callable[[object], bool]] = {
     "start": _is_str,
@@ -677,6 +681,20 @@ def _project_time_policy(policy: object) -> dict[str, Any]:
         ):
             return {}
         projected["window"] = _project_fields(window, _TIME_WINDOW_FIELDS)
+    if "default_query_window" in policy:
+        # M1-04 J3: written only by the product, so held strictly -- exactly
+        # ``start`` and ``end``, both aware ISO instants -- and anything else
+        # drops the whole policy rather than projecting a partial window.
+        default = policy["default_query_window"]
+        if (
+            not isinstance(default, Mapping)
+            or set(default) != set(_TIME_WINDOW_FIELDS)
+            or any(_aware(default[key]) is None for key in _TIME_WINDOW_FIELDS)
+        ):
+            return {}
+        projected["default_query_window"] = {
+            key: default[key] for key in _TIME_WINDOW_FIELDS
+        }
     return projected
 
 

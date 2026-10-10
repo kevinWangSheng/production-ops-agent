@@ -9,7 +9,7 @@
 
 事故入口目前只收 `target_id` + 自由文本问题，告警的结构化信息（服务、命名空间、严重级别、开始时间、PromQL）全部丢失，时间框锚定提交时刻。本切片新增 Alertmanager webhook 入口，保留结构化告警，按标签确定性解析目标，时间框锚定 `startsAt`。范围与不在范围内的项见 #167 正文；C3 §14 把「两个入口」排在 M2，本切片是用户提前开放的一部分。不翻任何 `passes`。
 
-## 合同（r4）
+## 合同（r7）
 
 用户 2026-10-10 按推荐裁决 #167 的待决 A–D：
 
@@ -66,6 +66,36 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 - **I11 全局读取**（与事故无关）：`alert_deliveries_for_identity(conn, fingerprint, starts_at) -> tuple[AlertDelivery, ...]`（按接收顺序；`starts_at` 用 I3 规范形式；孤立 resolved 也能读到）与 `alert_delivery_count(conn) -> int`（已提交投递记录总数，用于断言 invalid/认证失败/400 不写记录）。两者从 `opspilot.acceptance` 再导出。
 - **I12 失败注入**：表名 `opspilot_alert_deliveries` 是测试接缝。测试可在该表上装 PostgreSQL 触发器，对指定 fingerprint 的 INSERT 抛异常，模拟逐条持久化失败；端点须把它记为该条 `outcome=failed`（`reason` 非空）、回滚该条事务（不留身份、事故、Run）、整体 503，其他条照常提交。
 
+### r5：第 3、4 步裁决（用户 2026-10-10 全部按推荐采纳 F1–F10；S1–S8 可逆默认按推荐）
+
+完整表见[合同决定表](2026-10-10-m1-04-alert-intake-contract.md)「第 3、4 步」节。
+
+- **F1** 授权框固定 24 小时；模型只在框内选更窄的查询窗。
+- **F2** `startsAt` 在未来或早于框起点时，按框截断并记录原值；第 2 步已接收的告警不因此被拒。
+- **F3** UTC 秒；时钟取数据库 `clock_timestamp()`。
+- **F4** 输入版本递增；不认识新版本的 worker 读到它时按 `INCOMPATIBLE_STATE` 阻塞（同 #188 P2 修复），新 worker 继续读旧版本。
+- **F5** 超时续开、fresh 回退都沿用告警的锚点，不按提交时刻重新取窗。
+- **F6**（第 4 步）原始告警作为独立 user 消息紧随问题，只在首轮作为固定前缀，压缩时保留。
+- **F7**（第 4 步）结构字段进确定性模板；labels/annotations 走白名单，先脱敏再按字段与总量双上限截断。
+- **F8**（第 4 步）加入固定的「不可信数据」边界措辞，递增 prompt revision。
+- **F9** 首轮 question 未脱敏单独开缺陷 PR，与第 3 步并行。
+- **F10** 第 3、4 步各至少一次有界真实 Run。
+- 顺序（S7）：第 3 步 → 第 4 步；F9 与第 3 步并行。
+
+#### 第 3 步公开接口（lead 按 F1–F5、S1–S3 定，可逆默认）
+
+- **J1 授权框**：告警建的 Run，框为 `[received_at − 24h, received_at]`（`received_at` 是该告警首次被接收、建出事故的数据库时刻，截到 UTC 秒），与现有提交框同长同位。告警的锚点只决定框内的默认查询窗，不扩大授权（F1、F2）。`/intake/ui`、`/intake/events` 建的 Run 不变（S3）。
+- **J2 锚点**：`a` = 规范化 `starts_at`，截进框内：`a > received_at` 时记为 `received_at`，`adjusted = "future"`；`a < 框起点` 时记为框起点，`adjusted = "before_frame"`；其他情况 `adjusted = null`。
+- **J3 输入快照**：
+  - `scope_facts["alert_starts_at"] = {"anchor": <a ISO>, "original": <告警原文 startsAt>, "adjusted": null|"future"|"before_frame"}`（S2）。
+  - `evidence_context.time_policies[0]` 增加 `"anchor": <a ISO>`、`"anchor_rule": "alert_starts_at"` 与 `"default_query_window": {"start": max(a − 1h, 框起点), "end": 框终点}`；`reference_rule` 保持 `"response_received_at"`（r6 修订，见下）。
+  - 输入版本递增为 v3（只对告警 Run；其他入口仍写现有版本）；v1/v2 照常可读。
+- **J4 默认查询窗**：工具调用没给 `start`/`end` 时，告警 Run 用 `default_query_window`，其他 Run 不变（框终点前 1 小时）。显式给出的查询窗仍须在框内，框外拒绝。
+- **J5 续开**（F5）：超时续开沿用前一 Run 的 `time_policies` 与 `scope_facts.alert_starts_at`；无法续接而 fresh 回退时，按 J1–J3 用同一事故最早那次告警投递的 `received_at` 与锚点重建，不用续开时刻。
+- **J6 验收投影**：I8 的 `run_input` 原样反映 J3 字段，不新增投影字段。
+- **r6（lead 2026-10-10，第 3 步实施中）J3 修订**：`reference_rule` 是 v4 证据新鲜度的参照时刻字段，报告校验只认 `dispatch_started_at` / `response_received_at`（`opspilot/investigation/reports.py:868-874`），改成其他值会让告警 Run 的事实陈述全部 `MISSING_TIME_SCOPE_REF`、无法发布报告。因此保持 `response_received_at`，锚点规则另记 `anchor_rule`；`anchor`、`anchor_rule`、`default_query_window` 须加入时间策略字段白名单（`_TIME_POLICY_FIELDS`，同文件约 606 行），否则投影与续开会丢弃。由实现者发现。
+- **r7（lead 2026-10-10，第 3 步独立测试缺口）J6 补充**：`AlertIntakeOutcome` 增加 `run_inputs: tuple[Mapping[str, Any] | None, ...]`，与 `run_ids` 同序，逐个为该 Run 已提交的输入快照原样（无输入为 `None`）；用于验证续开与 fresh 回退（J5）保留锚点。`run_input` 不变（仍为接收时建的 Run）。
+
 ## 计划
 
 每步一个 PR，开工前做该步合同预审。
@@ -83,6 +113,7 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 
 - 2026-10-10：第 1 步实验环境（`chore/m1-04-lab-alertmanager`，`../production-ops-agent-lab-alertmanager`）：独立 Alertmanager release 1.24.0 / v0.28.1、checkout 错误率规则、经 `credentials_file` 带 bearer 的 webhook、Prometheus 配置哈希滚动。真实运行：firing 与 resolved 两次 webhook 送达宿主，bearer 匹配 `alertmanager` actor，[证据](../evidence/m1-04-lab/run.md)。实验环境动作：otel-collector 重启一次（计数器停滞）。
 - 2026-10-10：第 2 步（`feature/m1-04-alertmanager-intake`，`../production-ops-agent-alert-intake-impl`）。三条并行线：实现（Claude Opus 5.5 子 Agent）、独立验收与合同测试（Codex，只依据合同与 r3/r4 接口，未见实现）、第 3、4 步预审（Codex 只读）。独立测试先暴露公开读取口缺口 → lead 定 r4（I8 扩展、I11、I12）；测试侧 3 处缺陷由测试作者修（DDL 绑定参数、harness 缺 tool face、跨投递比较 deadline），实现未为测试改断言。独立审查（Codex）P1 失败条目残留目标登记、P2 未知输入版本应为 `INCOMPATIBLE_STATE`，均已修，复验无新 P1/P2。检查：`make check` 3568 passed；PG 集成 545 passed；其余 PG 3697 passed；独立测试 45 passed。真实端到端（新上下文 Agent）：Alertmanager → `created` → 真实 deepseek-flash Run 发布报告 → resolved `resolved_attached`、lifecycle 不变，[证据](../evidence/m1-04-intake-live/run.md)，余额差 ≤ 0.15 CNY。过程失误：lead 曾把独立测试文件复制进实现 worktree 跑测试（实现者称未打开）；一次 Codex 续跑未带 `-C`，把测试写进主仓库，已移回，用户 WIP 未动。
+- 2026-10-10：第 3 步（`feature/m1-04-alert-window`，`../production-ops-agent-alert-window-impl`）。并行线：实现（Opus 5.5）、独立测试（Codex）、F9 缺陷修复（Opus 5.5，#189）、真实运行（新上下文 Agent）。实施中合同修订：r6（J3：`reference_rule` 必须保持 `response_received_at`，否则报告校验拒绝全部事实陈述，由实现者发现）、r7（投影补 `run_inputs`，独立测试据以验证续开）。测试侧缺陷 1 处由测试作者修（把响应 `starts_at` 与截断后的锚点混同）；lead 对独立测试只做 ruff import 排序。独立审查（Codex）无 P1，P2「畸形 `default_query_window` 部分投影」已修（lead 自核修复差分）。检查：`make check`（含 PG）4311 passed；PG 集成 568 passed；独立测试 7 passed ×3。真实运行：告警 Run v3 输入、锚点与框、`anchor_rule`、报告 17 条陈述均取得时间范围引用、resolved 不变 lifecycle；模型每次都显式给 start/end，未走到 J4 默认窗分支 → 补无模型探针在真实 Prometheus 上验证默认窗与框外拒绝，[证据](../evidence/m1-04-alert-window-live/run.md)，余额差 ≤ 0.12 CNY。
 
 ## 下一步与交接
 

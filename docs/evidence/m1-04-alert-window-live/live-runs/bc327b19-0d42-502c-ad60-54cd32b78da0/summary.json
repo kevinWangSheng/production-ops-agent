@@ -1,0 +1,460 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-04-alert-window-live",
+  "run_id": "bc327b19-0d42-502c-ad60-54cd32b78da0",
+  "frozen_at": "2026-10-10T14:24:57.500232+00:00",
+  "round": "m1-04-alert-window-20261010",
+  "versions": {
+    "branch": "feature/m1-04-alert-window",
+    "commit": "56c4007",
+    "model": "deepseek-flash",
+    "tool_profile": "otel-demo",
+    "worker_versions": null,
+    "worktree_diff_opspilot_sha256_16": "af8d4786038e74dd",
+    "alertmanager": "v0.28.1 (chart 1.24.0)",
+    "otel_demo_chart": "0.37.8"
+  },
+  "input_summary": {
+    "source": "real Alertmanager webhook v4 via 192.168.5.2:8080 -> 127.0.0.1:8080",
+    "actor": "alertmanager",
+    "alert_identity": {
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-10T14:17:54Z"
+    },
+    "question": "Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-10-10T14:17:54Z.\nAlert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))), \"namespace\", \"$1\", \"k8s_namespace_name\", \"(.*)\"), \"service\", \"$1\", \"service_name\", \"(.*)\") > 0.5\nInvestigate why this alert is firing.",
+    "scope_facts_affected_service": {
+      "workload": "checkout",
+      "namespace": "otel-demo"
+    },
+    "question_contains_annotation_text": false
+  },
+  "outcome": {
+    "alert_intake_before_resolved": {
+      "target_id": "m0-otel-20260909",
+      "run_id": "bc327b19-0d42-502c-ad60-54cd32b78da0",
+      "handoff": false,
+      "handoff_reason": null,
+      "affected_service": [
+        "otel-demo",
+        "checkout"
+      ],
+      "lifecycle": "open",
+      "run_ids": [
+        "bc327b19-0d42-502c-ad60-54cd32b78da0"
+      ],
+      "observation_session_ids": []
+    },
+    "alert_intake_after_resolved": {
+      "target_id": "m0-otel-20260909",
+      "run_id": "bc327b19-0d42-502c-ad60-54cd32b78da0",
+      "handoff": false,
+      "handoff_reason": null,
+      "affected_service": [
+        "otel-demo",
+        "checkout"
+      ],
+      "lifecycle": "open",
+      "run_ids": [
+        "bc327b19-0d42-502c-ad60-54cd32b78da0"
+      ],
+      "observation_session_ids": []
+    },
+    "deliveries": [
+      {
+        "fingerprint": "83f7541ae0105d42",
+        "starts_at": "2026-10-10T14:17:54Z",
+        "original_starts_at": "2026-10-10T14:17:54.365Z",
+        "status": "firing",
+        "outcome": "created",
+        "actor": "alertmanager",
+        "raw_sha256": "03f97b2f3877a581212caa3bbed3cbada6de44cd44679c97f61214b1e0d47466",
+        "annotation_revision": 1,
+        "truncated": false,
+        "received_at": "2026-10-10T14:18:04.769659Z"
+      },
+      {
+        "fingerprint": "83f7541ae0105d42",
+        "starts_at": "2026-10-10T14:17:54Z",
+        "original_starts_at": "2026-10-10T14:17:54.365Z",
+        "status": "resolved",
+        "outcome": "resolved_attached",
+        "actor": "alertmanager",
+        "raw_sha256": "e4e0997a465312887f85310c0c663bd7717a208fac568faee1c8f70167763160",
+        "annotation_revision": 2,
+        "truncated": false,
+        "received_at": "2026-10-10T14:24:04.806909Z"
+      }
+    ],
+    "delivery_count_total": 2,
+    "incident_outcome": {
+      "scenario_id": "m1-04-step3-live",
+      "final_state": "completed",
+      "evidence_ids": [
+        "5ace95d4-461d-4d53-9974-20fe6cd25ebd-t0:652f2198-8f79-4b83-b33a-78420f82ada1",
+        "5ace95d4-461d-4d53-9974-20fe6cd25ebd-t1:bd2c5889-fd50-45f2-a18b-4cdda9def884",
+        "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t0:02dd2fcf-3ee0-4a76-9b96-78727ab58917",
+        "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t1:435d57ed-19d5-4e25-9edd-345a9a291f9a",
+        "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5",
+        "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t0:4fbaa691-6163-4965-a499-dafa910b0466",
+        "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t1:feb212e0-1f58-4c3c-8dc2-a21dc8beda89",
+        "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t2:79bddb06-e68d-4358-8f98-470fe5bdf39b",
+        "fec85f3b-066b-49ab-8f2e-c745b179d05b-t0:c1aefa18-fbfb-4a24-9afe-93c0bde4f407",
+        "fec85f3b-066b-49ab-8f2e-c745b179d05b-t1:92892def-ceab-4b61-8843-c54020b74502",
+        "fec85f3b-066b-49ab-8f2e-c745b179d05b-t2:ce777f6c-ab6d-4345-a5ae-329a3bd89c45"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "run_state": "completed",
+    "report": {
+      "kind": "conclusion",
+      "assistant": {
+        "role": "assistant",
+        "content": null
+      },
+      "conclusion": {
+        "rounds": 6,
+        "handoff": false,
+        "segment": "ctx0",
+        "execution": "completed",
+        "calibration": 1.1856112997191834,
+        "compactions": 0,
+        "evidence_ids": [
+          "5ace95d4-461d-4d53-9974-20fe6cd25ebd-t0:652f2198-8f79-4b83-b33a-78420f82ada1",
+          "5ace95d4-461d-4d53-9974-20fe6cd25ebd-t1:bd2c5889-fd50-45f2-a18b-4cdda9def884",
+          "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t0:02dd2fcf-3ee0-4a76-9b96-78727ab58917",
+          "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t1:435d57ed-19d5-4e25-9edd-345a9a291f9a",
+          "be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5",
+          "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t0:4fbaa691-6163-4965-a499-dafa910b0466",
+          "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t1:feb212e0-1f58-4c3c-8dc2-a21dc8beda89",
+          "5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t2:79bddb06-e68d-4358-8f98-470fe5bdf39b",
+          "fec85f3b-066b-49ab-8f2e-c745b179d05b-t0:c1aefa18-fbfb-4a24-9afe-93c0bde4f407",
+          "fec85f3b-066b-49ab-8f2e-c745b179d05b-t1:92892def-ceab-4b61-8843-c54020b74502",
+          "fec85f3b-066b-49ab-8f2e-c745b179d05b-t2:ce777f6c-ab6d-4345-a5ae-329a3bd89c45"
+        ],
+        "report_content": "{\n  \"schema_version\": \"m0-report-v2\",\n  \"assessment_status\": \"completed\",\n  \"conclusion\": \"supported\",\n  \"summary\": \"The CheckoutPlaceOrderErrorRatioHigh alert is firing because the checkout service's server-side oteldemo.CheckoutService/PlaceOrder error ratio crossed 0.5. The metric series behind the alert rule evaluates to 0 at 13:22:54Z/13:23:54Z/13:24:54Z and then 0.591 at 14:15:54Z, 0.771 at 14:16:54Z and 1.0 at 14:17:54Z, while the total PlaceOrder server-span rate stayed flat (about 0.017-0.040 spans/s), so the rise is an error-fraction rise, not a traffic change. The failing step is the downstream payment call: checkout's client Charge calls switch from gRPC status 0 to status 2 (UNKNOWN) starting at 14:15:34Z, and payment's own grpc.oteldemo.PaymentService/Charge spans begin carrying STATUS_CODE_ERROR at 14:16:04Z and rise to 0.0265/s. Sampled traces corroborate: PlaceOrder fails with 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold' (rpc.grpc.status_code=13), the child oteldemo.PaymentService/Charge span carries rpc.grpc.status_code=2, and the payment service span shows an exception thrown at /usr/src/app/charge.js:37. The error propagates upward to frontend POST /api/checkout (HTTP 500), frontend-proxy ingress/router (500) and load-generator POST (500). Baseline points earlier in the hour show a 0 error ratio for both checkout PlaceOrder (server) and payment Charge, so the condition is new within this window. The mechanism is clear (payment Charge failing, surfaced as checkout INTERNAL and HTTP 500); the reason payment's Charge handler is rejecting charges is not established by the available evidence - the 'app.loyalty.level=gold' attribute in the error text and payment's newly-appearing flagd ResolveFloat span are noted only as an unverified hypothesis.\",\n  \"claims\": [\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The ratio used by the alert (checkout SPAN_KIND_SERVER PlaceOrder ERROR spans / all such spans, 5m rate) was 0 at 13:22:54Z, 13:23:54Z and 13:24:54Z, then 0.5911625701156192 at 14:15:54Z, 0.7711122636111167 at 14:16:54Z and 1 at 14:17:54Z, i.e. it crossed the 0.5 threshold only in the final minutes before the alert.\",\n      \"evidence_ids\": [\"5ace95d4-461d-4d53-9974-20fe6cd25ebd-t0:652f2198-8f79-4b83-b33a-78420f82ada1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The total rate of checkout oteldemo.CheckoutService/PlaceOrder server spans stayed roughly constant across the window (about 0.0167 to 0.0401 spans/s), so the error-ratio rise is not explained by a change in PlaceOrder request volume.\",\n      \"evidence_ids\": [\"5ace95d4-461d-4d53-9974-20fe6cd25ebd-t1:bd2c5889-fd50-45f2-a18b-4cdda9def884\", \"fec85f3b-066b-49ab-8f2e-c745b179d05b-t1:92892def-ceab-4b61-8843-c54020b74502\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Broken down by status, checkout PlaceOrder server spans show STATUS_CODE_UNSET (no error status) at about 0.017-0.041/s through the window, STATUS_CODE_ERROR at 0 at 13:23:04Z and 13:25:04Z, and STATUS_CODE_ERROR at 0.0297/s with UNSET down to 0.0083/s at 14:17:04Z - the same window in which the alert fired.\",\n      \"evidence_ids\": [\"fec85f3b-066b-49ab-8f2e-c745b179d05b-t1:92892def-ceab-4b61-8843-c54020b74502\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Checkout's client-side Charge calls (rpc_client_duration_milliseconds_count) show rpc_grpc_status_code=0 falling from about 0.0375/s at 14:10:04Z toward 0 by 14:17:54Z, while rpc_grpc_status_code=2 (UNKNOWN) first appears at 14:15:34Z (0.0181/s) and rises to about 0.0281/s by 14:17:04Z.\",\n      \"evidence_ids\": [\"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t0:4fbaa691-6163-4965-a499-dafa910b0466\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"In the same window, checkout's Charge client calls were the only checkout RPC client method showing a non-zero error status: Charge carried rpc_grpc_status_code=2, whereas Convert, EmptyCart, GetCart, GetProduct, GetQuote and ShipOrder returned only rpc_grpc_status_code=0.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t0:02dd2fcf-3ee0-4a76-9b96-78727ab58917\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Payment's own server spans show grpc.oteldemo.PaymentService/Charge STATUS_CODE_ERROR first appearing at 14:16:04Z (0.0197/s) and rising to 0.0297/s at 14:17:04Z and 0.0265/s at 14:18:04Z, while the STATUS_CODE_UNSET series for that span declines from 0.0208/s to 0.\",\n      \"evidence_ids\": [\"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t1:feb212e0-1f58-4c3c-8dc2-a21dc8beda89\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The payment Charge error ratio (ERROR spans / all Charge spans) was 0 at 13:23:04Z and 13:25:04Z and 0.7811315654677929 at 14:17:04Z, indicating the failure condition is new within the alert window rather than a constant baseline.\",\n      \"evidence_ids\": [\"fec85f3b-066b-49ab-8f2e-c745b179d05b-t0:c1aefa18-fbfb-4a24-9afe-93c0bde4f407\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Error spans across services in 14:15:34Z-14:18:04Z form one correlated set: checkout oteldemo.CheckoutService/PlaceOrder, checkout oteldemo.PaymentService/Charge, payment grpc.oteldemo.PaymentService/Charge, frontend POST and 'executing api route (pages) /api/checkout' and grpc.oteldemo.CheckoutService/PlaceOrder, frontend-proxy ingress and 'router frontend egress', and load-generator POST - all first non-zero at 14:15:34Z-14:16:04Z and rising together.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t1:435d57ed-19d5-4e25-9edd-345a9a291f9a\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"In two sampled checkout traces (14:17:41Z and 14:18:00Z), the oteldemo.CheckoutService/PlaceOrder span is ERROR with rpc.grpc.status_code=13 and otel.status_description 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold'; its child checkout oteldemo.PaymentService/Charge span is ERROR with rpc.grpc.status_code=2 and description 'Payment request failed. Invalid token.'\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\", \"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t2:79bddb06-e68d-4358-8f98-470fe5bdf39b\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The payment service span in those traces (grpc.oteldemo.PaymentService/Charge, service=payment) is ERROR with exception.message 'Payment request failed. Invalid token. app.loyalty.level=gold' and stacktrace 'Error: Payment request failed. Invalid token. ... at module.exports.charge (/usr/src/app/charge.js:37:13)', while its child internal 'charge' span is not_recorded.\",\n      \"evidence_ids\": [\"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t2:79bddb06-e68d-4358-8f98-470fe5bdf39b\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The same error propagates above checkout: frontend 'executing api route (pages) /api/checkout' carries exception message '13 INTERNAL: failed to charge card: could not charge the card ...', frontend POST /api/checkout and POST spans carry http.status_code=500, and frontend-proxy ingress/'router frontend egress' and load-generator POST carry error=true with http.status_code=500.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Within the sampled PlaceOrder traces, the other checkout dependencies succeeded: oteldemo.CartService/GetCart, oteldemo.CurrencyService/Convert, oteldemo.ProductCatalogService/GetProduct and oteldemo.ShippingService/GetQuote spans all carry rpc.grpc.status_code=0, and currency/shipping/product-catalog server spans return OK/200; no checkout span other than PlaceOrder and the Charge client span shows an error.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"A separate, pre-existing background signal exists throughout the window: flagd.evaluation.v1.Service/EventStream error spans on services ad, flagd and recommendation at low steady rates (about 0.004-0.008/s) from 14:13:04Z onward, unrelated in rate profile to the checkout/payment error onset at 14:15:34Z-14:16:04Z.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t1:435d57ed-19d5-4e25-9edd-345a9a291f9a\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"hypothesis\",\n      \"text\": \"The checkout PlaceOrder error ratio crossed 0.5 because the payment service's Charge handler began rejecting charges (returning an error surfaced as gRPC UNKNOWN/2 to checkout, which checkout re-emits as gRPC INTERNAL/13), so the error originates in the payment dependency rather than from a fault inside checkout's own PlaceOrder logic.\",\n      \"evidence_ids\": [\"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t0:4fbaa691-6163-4965-a499-dafa910b0466\", \"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t1:feb212e0-1f58-4c3c-8dc2-a21dc8beda89\", \"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"hypothesis\",\n      \"text\": \"The payment Charge rejections may be driven by a feature-flag / fault-injection path scoped by loyalty level: every sampled Charge error carries the attribute text 'app.loyalty.level=gold', and payment begins emitting a grpc.flagd.evaluation.v1.Service/ResolveFloat span (absent at 13:23:04Z, present at 0.0044/s at 14:18:04Z, and 0.0066/s at 14:16:04Z) coincident with the failure onset. This is correlation only; the flag definition and its evaluation are not observable with the available tools.\",\n      \"evidence_ids\": [\"fec85f3b-066b-49ab-8f2e-c745b179d05b-t2:ce777f6c-ab6d-4345-a5ae-329a3bd89c45\", \"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t1:feb212e0-1f58-4c3c-8dc2-a21dc8beda89\", \"5b849fb3-df88-45c1-a9f2-1f1ffb3a5182-t2:79bddb06-e68d-4358-8f98-470fe5bdf39b\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"counter_evidence\",\n      \"text\": \"Attributing the alert to a fault in checkout's own PlaceOrder implementation or to its other dependencies is not supported: the non-Charge checkout dependency spans in the sampled traces returned rpc.grpc.status_code=0, and checkout's PlaceOrder server-span throughput did not change, so the error is localized to the Charge step.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\", \"5ace95d4-461d-4d53-9974-20fe6cd25ebd-t1:bd2c5889-fd50-45f2-a18b-4cdda9def884\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"rejected_hypothesis\",\n      \"text\": \"The steady low-rate flagd.evaluation.v1.Service/EventStream ERROR spans on ad/flagd/recommendation (about 0.004-0.008/s from 14:13:04Z) are not the cause of the checkout PlaceOrder alert: they are present before and independent of the 14:15:34Z-14:16:04Z checkout/payment error onset, and no such span appears on the PlaceOrder path in the sampled traces.\",\n      \"evidence_ids\": [\"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t1:435d57ed-19d5-4e25-9edd-345a9a291f9a\", \"be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2:8132b170-c859-4ccc-874b-deadf39aa4f5\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    }\n  ],\n  \"gaps\": [\n    \"The root cause inside the payment service is not observable with these tools: there is no log, config, environment-variable or feature-flag evidence showing why Charge returns 'Payment request failed. Invalid token.', only the exception location /usr/src/app/charge.js:37.\",\n    \"Returned metric series are sparse in the middle of the hour: checkout PlaceOrder ERROR/UNSET is only returned at 13:23:04Z/13:25:04Z and 14:17:04Z (plus 14:13:04Z-14:18:04Z in the Charge-by-status series), so the exact onset minute is only bounded to roughly 14:14Z-14:16Z, and the intermediate ramp is unknown.\",\n    \"The trace evidence is a biased sample: the checkout trace query 5ace95d4-461d-4d53-9974-20fe6cd25ebd-t2 was refused as RESULT_TOO_LARGE and no spans were returned, and the usable checkout trace view (be69052f-e589-4dae-9eb8-af8aa4fc2a83-t2) is marked incomplete ('backend returned as many traces as requested; more may exist'), covering only 2 traces; failure rate and full call graph cannot be inferred from it.\",\n    \"Only 4 error spans (from 2 traces) were seen, all carrying 'app.loyalty.level=gold'; it is unknown whether all Charge failures share this attribute or whether failures are scoped to a subset of requests, and the flag definition itself was not retrievable.\",\n    \"No latency analysis was performed and no latency baseline for payment Charge was established, so any statement about latency degradation is unsupported.\",\n    \"Two metric queries were refused with INVALID_PARAMS (5m range selectors inside a 3m query window) so those particular label breakdowns were not observed.\",\n    \"It is unknown whether other services beyond the checkout/PlaceOrder path (e.g. direct payment callers or other endpoints) are affected, because only checkout and payment were sampled.\"\n  ],\n  \"next_steps\": [\n    \"Have a human inspect the payment service's configuration, environment variables, and flagd feature-flag definitions for anything keyed to a loyalty level ('gold'), given the 'app.loyalty.level=gold' text in every sampled Charge error.\",\n    \"Pull payment service logs for 14:10Z-14:18Z and correlate with the charge.js:37 'Invalid token' rejection to determine whether charges are being deliberately faulted or failing validation.\",\n    \"Check for deploy, config or flag-change events on the payment service (and flagd) shortly before the ~14:14Z-14:16Z onset.\",\n    \"Quantify the blast radius: determine the fraction of payment Charge calls failing and whether failures are limited to a request subset, using a non-sampled source such as app_payment_transactions_total or full span metrics by status code.\",\n    \"Confirm with the alert owner whether a payment-side dependency failure surfaced as checkout INTERNAL/HTTP 500 should page the checkout service or be routed to the payment service.\"\n  ]\n}",
+        "source_step_id": "96a2cd0e-c6f8-4ecd-af13-8e0b41e5ef6f",
+        "handoff_reasons": [],
+        "prompt_revision": "prompt-replay-candidate-bd28790117a0",
+        "question_sha256": "34fcfe76f190be8ce525a7f7c16a7bad6c5cbd6cc8ed3727a5b1fe1761f1d43d",
+        "model_seconds_used": 71.41658045700751,
+        "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+        "model_requests_used": 6,
+        "report_content_sha256": "fdb8565bbeefce2264ca2d726105508cf26f70b6a75f538c6db80b56670c0075",
+        "report_schema_version": "m0-report-v2"
+      }
+    }
+  },
+  "window_checks": {
+    "run_input_version": "opspilot-investigation-input-v3",
+    "time_policy_0": {
+      "id": "policy-window-1",
+      "mode": "historical_window",
+      "anchor": "2026-10-10T14:17:54+00:00",
+      "window": {
+        "end": "2026-10-10T14:18:04+00:00",
+        "start": "2026-10-09T14:18:04+00:00"
+      },
+      "anchor_rule": "alert_starts_at",
+      "reference_rule": "response_received_at",
+      "default_query_window": {
+        "end": "2026-10-10T14:18:04+00:00",
+        "start": "2026-10-10T13:17:54+00:00"
+      },
+      "all_authorized_targets": true
+    },
+    "frame": {
+      "end": "2026-10-10T14:18:04+00:00",
+      "start": "2026-10-09T14:18:04+00:00"
+    },
+    "default_query_window": {
+      "end": "2026-10-10T14:18:04+00:00",
+      "start": "2026-10-10T13:17:54+00:00"
+    },
+    "anchor": "2026-10-10T14:17:54+00:00",
+    "alert_starts_at": {
+      "anchor": "2026-10-10T14:17:54+00:00",
+      "adjusted": null,
+      "original": "2026-10-10T14:17:54.365Z"
+    },
+    "calls": [
+      {
+        "step": 0,
+        "ordinal": 0,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:17:54Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:17:54Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:17:54+00:00"
+        }
+      },
+      {
+        "step": 0,
+        "ordinal": 1,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:17:54Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:17:54Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:17:54+00:00"
+        }
+      },
+      {
+        "step": 0,
+        "ordinal": 2,
+        "tool": "traces_search",
+        "model_start": "2026-10-10T13:17:54Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "error",
+        "queried_start": "2026-10-10T13:17:54Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:17:54+00:00"
+        }
+      },
+      {
+        "step": 1,
+        "ordinal": 0,
+        "tool": "traces_search",
+        "model_start": "2026-10-10T14:15:00Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "error",
+        "queried_start": "2026-10-10T14:15:00Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:15:00+00:00"
+        }
+      },
+      {
+        "step": 1,
+        "ordinal": 1,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T14:15:00Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "error",
+        "queried_start": null,
+        "queried_end": null,
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-09T14:18:04+00:00"
+        }
+      },
+      {
+        "step": 1,
+        "ordinal": 2,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T14:15:00Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "error",
+        "queried_start": null,
+        "queried_end": null,
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-09T14:18:04+00:00"
+        }
+      },
+      {
+        "step": 2,
+        "ordinal": 0,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T14:08:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T14:08:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:08:04+00:00"
+        }
+      },
+      {
+        "step": 2,
+        "ordinal": 1,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T14:08:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T14:08:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:08:04+00:00"
+        }
+      },
+      {
+        "step": 2,
+        "ordinal": 2,
+        "tool": "traces_search",
+        "model_start": "2026-10-10T14:16:30Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T14:16:30Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:16:30+00:00"
+        }
+      },
+      {
+        "step": 3,
+        "ordinal": 0,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:48:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:48:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:48:04+00:00"
+        }
+      },
+      {
+        "step": 3,
+        "ordinal": 1,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T14:08:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T14:08:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:08:04+00:00"
+        }
+      },
+      {
+        "step": 3,
+        "ordinal": 2,
+        "tool": "traces_search",
+        "model_start": "2026-10-10T14:16:00Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T14:16:00Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T14:16:00+00:00"
+        }
+      },
+      {
+        "step": 4,
+        "ordinal": 0,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:18:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:18:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:18:04+00:00"
+        }
+      },
+      {
+        "step": 4,
+        "ordinal": 1,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:18:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:18:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:18:04+00:00"
+        }
+      },
+      {
+        "step": 4,
+        "ordinal": 2,
+        "tool": "metrics_range_query",
+        "model_start": "2026-10-10T13:18:04Z",
+        "model_end": "2026-10-10T14:18:04Z",
+        "status": "ok",
+        "queried_start": "2026-10-10T13:18:04Z",
+        "queried_end": "2026-10-10T14:18:04Z",
+        "result_window": {
+          "end": "2026-10-10T14:18:04+00:00",
+          "start": "2026-10-10T13:18:04+00:00"
+        }
+      }
+    ],
+    "calls_total": 15,
+    "calls_without_start_end": 0,
+    "defaulted_calls_using_default_window": 0,
+    "explicit_calls_inside_frame": true
+  },
+  "trace": {
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "mode": "lab",
+        "otel_trace_id": "04fd39b4db1dd31e76e48fc72af4a478",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-04-alert-window-20261010",
+        "project_id": "ab86fc17-c8b8-42bd-bd28-1d7cdf947e0e",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-b9e3-2847aa0ba2e5",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ab86fc17-c8b8-42bd-bd28-1d7cdf947e0e/r/00000000-0000-0000-b9e3-2847aa0ba2e5?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-10 14:18:05.809987+00:00",
+        "end_time": "2026-10-10 14:19:18.104212+00:00",
+        "prompt_tokens": 153472,
+        "completion_tokens": 17979,
+        "total_tokens": 171451,
+        "status": "success",
+        "span_kinds": [
+          "llm",
+          "tool"
+        ],
+        "child_runs": {
+          "llm": 6,
+          "tool": 15
+        }
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "4.15",
+        "granted_balance": "0.00",
+        "topped_up_balance": "4.15"
+      }
+    ],
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "4.03",
+        "granted_balance": "0.00",
+        "topped_up_balance": "4.03"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "922e67e8b72de025da01602a84c68003b0c010993e53a79e9767afed7b464a12",
+    "bytes": 925278,
+    "path": "tmp/lab-ledgers/m1-04-alert-window-live/bc327b19-0d42-502c-ad60-54cd32b78da0/ledger.json",
+    "in_repository": false
+  }
+}
