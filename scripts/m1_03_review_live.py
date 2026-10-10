@@ -96,6 +96,15 @@ MAX_BACKOFF_WAIT_S = 300.0
 MAX_WAITS = MAX_GENERATIONS_PER_STEP
 # D16: a disputed version can only be returned; regenerate at most this often
 MAX_DISPUTE_RETURNS = 2
+# R18 (r7, #181): claimed generation attempts across the whole run, failed
+# and regenerated ones included; each attempt makes at most two requests
+MAX_ATTEMPTS_TOTAL = 8
+MAX_MODEL_REQUESTS_TOTAL = 16
+
+
+class RunCapReached(Exception):
+    """R18: the run-wide attempt or request cap is spent; the run ends here
+    and the summary records what was done."""
 
 
 def _balance(key: str) -> dict | str:
@@ -169,6 +178,19 @@ def _brief(outcome: PostmortemOutcome) -> dict[str, Any]:
                 "uncertain": sum(c.certainty == "uncertain" for c in v.conclusions),
                 "citations_failed": sum(not c.citations_valid for c in v.conclusions),
                 "disputed": sum(c.dispute_state == "disputed" for c in v.conclusions),
+                "prompt_version": (v.generation_record or {}).get("prompt_version"),
+                # R20: what each dispute says and cites, so D38 can judge it
+                # against the input evidence
+                "disputes": [
+                    {
+                        "conclusion_key": c.conclusion_key,
+                        "section": c.section,
+                        "evidence_ids": [r["evidence_id"] for r in c.evidence_refs],
+                        "reasons": [d.get("reason") for d in c.disputes],
+                    }
+                    for c in v.conclusions
+                    if c.dispute_state == "disputed"
+                ],
                 "sections_present": sorted(
                     name for name, value in v.sections.items() if value
                 ),
@@ -358,6 +380,14 @@ def main() -> int:
         claimed attempts count, a wait for the backoff does not."""
         claimed = waits = 0
         while claimed < MAX_GENERATIONS_PER_STEP:
+            done = sum(1 for g in generations if g.get("claimed"))
+            if (
+                done >= MAX_ATTEMPTS_TOTAL
+                or len(recorder.attempts) + 2 > MAX_MODEL_REQUESTS_TOTAL
+            ):
+                failures.append(f"{name}:RUN_CAP_REACHED")
+                generations.append({"step": name, "claimed": False, "cap": True})
+                raise RunCapReached(name)
             calls_before = len(recorder.attempts)
             result = worker.generate(args.incident)
             if result is None:
@@ -553,129 +583,135 @@ def main() -> int:
             current = generate(f"{name}_regenerate_{round_}")
         return current
 
-    # 1. generate, approve, publish
-    current = settle("v1", generate("generate_v1"))
-    v1 = latest(current)
-    if v1 is None or v1.state != "under_review":
-        failures.append("V1_NOT_REVIEWABLE")
-    else:
-        if any(p["supersedes_entry_id"] for p in v1.proposals):
-            failures.append("V1_PROPOSES_SUPERSEDE")
-        current = review("approve_v1", current, "approve", expect_state="approved")
-        if not any(k.retrievable for k in current.knowledge):
-            failures.append("APPROVAL_PUBLISHED_NOTHING_RETRIEVABLE")
+    try:
+        # 1. generate, approve, publish
+        current = settle("v1", generate("generate_v1"))
+        v1 = latest(current)
+        if v1 is None or v1.state != "under_review":
+            failures.append("V1_NOT_REVIEWABLE")
+        else:
+            if any(p["supersedes_entry_id"] for p in v1.proposals):
+                failures.append("V1_PROPOSES_SUPERSEDE")
+            current = review("approve_v1", current, "approve", expect_state="approved")
+            if not any(k.retrievable for k in current.knowledge):
+                failures.append("APPROVAL_PUBLISHED_NOTHING_RETRIEVABLE")
 
-    # 2. move the watermark, generate, return; regenerate, reject
-    current = follow_up(
-        "follow_up_1",
-        "Lab acceptance follow-up: confirm the impact window against the recovery samples.",
-    )
-    current = generate("generate_v2")
-    v2 = latest(current)
-    if (
-        v2 is None
-        or (v1 is not None and v2.version <= v1.version)
-        or v2.state != "under_review"
-    ):
-        failures.append("V2_NOT_REVIEWABLE")
-    else:
-        current = review(
-            "return_v2",
-            current,
-            "return",
-            expect_state="returned",
-            reason="Lab review: tighten the timeline.",
+        # 2. move the watermark, generate, return; regenerate, reject
+        current = follow_up(
+            "follow_up_1",
+            "Lab acceptance follow-up: confirm the impact window against the recovery samples.",
         )
-        current = generate("generate_v3")
-        v3 = latest(current)
-        if v3 is None or v3.state != "under_review" or v3.revises_version is None:
-            failures.append("V3_NOT_REVIEWABLE_REVISION")
+        current = generate("generate_v2")
+        v2 = latest(current)
+        if (
+            v2 is None
+            or (v1 is not None and v2.version <= v1.version)
+            or v2.state != "under_review"
+        ):
+            failures.append("V2_NOT_REVIEWABLE")
         else:
             current = review(
-                "reject_v3",
+                "return_v2",
                 current,
-                "reject",
-                expect_state="rejected",
-                reason="Lab review: rejected to exercise the rejection path.",
+                "return",
+                expect_state="returned",
+                reason="Lab review: tighten the timeline.",
             )
+            current = generate("generate_v3")
+            v3 = latest(current)
+            if v3 is None or v3.state != "under_review" or v3.revises_version is None:
+                failures.append("V3_NOT_REVIEWABLE_REVISION")
+            else:
+                current = review(
+                    "reject_v3",
+                    current,
+                    "reject",
+                    expect_state="rejected",
+                    reason="Lab review: rejected to exercise the rejection path.",
+                )
 
-    # 3. move the watermark again; supersede only when actually proposed
-    current = follow_up(
-        "follow_up_2",
-        "Lab acceptance follow-up: re-check the dependency signals after recovery.",
-    )
-    current = settle("v4", generate("generate_v4"))
-    v4 = latest(current)
-    supersedes = (
-        []
-        if v4 is None or v4.state != "under_review"
-        else [
-            p["supersedes_entry_id"] for p in v4.proposals if p["supersedes_entry_id"]
-        ]
-    )
-    if v4 is None or v4.state != "under_review":
-        failures.append("V4_NOT_REVIEWABLE")
-    elif disputed(v4):
-        failures.append("V4_STILL_DISPUTED")
-    elif not supersedes:
-        failures.append("SUPERSEDE_NOT_PROPOSED")
-        steps.append({"step": "supersede_v4", "skipped": "no supersedes_entry_id"})
-    else:
-        entry_fields = {
-            f"entry_generation:{entry_id}": str(
-                knowledge.knowledge_history(entry_id)["generation"]
-            )
-            for entry_id in supersedes
-        }
-        current = review(
-            "supersede_v4",
-            current,
-            "supersede",
-            expect_state="approved",
-            **entry_fields,
+        # 3. move the watermark again; supersede only when actually proposed
+        current = follow_up(
+            "follow_up_2",
+            "Lab acceptance follow-up: re-check the dependency signals after recovery.",
         )
-        for entry_id in supersedes:
-            states = sorted(
-                (k.revision, k.state)
+        current = settle("v4", generate("generate_v4"))
+        v4 = latest(current)
+        supersedes = (
+            []
+            if v4 is None or v4.state != "under_review"
+            else [
+                p["supersedes_entry_id"]
+                for p in v4.proposals
+                if p["supersedes_entry_id"]
+            ]
+        )
+        if v4 is None or v4.state != "under_review":
+            failures.append("V4_NOT_REVIEWABLE")
+        elif disputed(v4):
+            failures.append("V4_STILL_DISPUTED")
+        elif not supersedes:
+            failures.append("SUPERSEDE_NOT_PROPOSED")
+            steps.append({"step": "supersede_v4", "skipped": "no supersedes_entry_id"})
+        else:
+            entry_fields = {
+                f"entry_generation:{entry_id}": str(
+                    knowledge.knowledge_history(entry_id)["generation"]
+                )
+                for entry_id in supersedes
+            }
+            current = review(
+                "supersede_v4",
+                current,
+                "supersede",
+                expect_state="approved",
+                **entry_fields,
+            )
+            for entry_id in supersedes:
+                states = sorted(
+                    (k.revision, k.state)
+                    for k in current.knowledge
+                    if k.entry_id == entry_id
+                )
+                if [state for _, state in states][-2:] != ["superseded", "active"]:
+                    failures.append(f"SUPERSEDE_STATES:{states}")
+
+        # 4. revoke the active revision
+        active = [k for k in current.knowledge if k.state == "active"]
+        if not active:
+            failures.append("NOTHING_ACTIVE_TO_REVOKE")
+        else:
+            target = active[-1]
+            status, body = web.post(
+                f"/knowledge/{target.entry_id}/revoke",
+                {
+                    "revision": str(target.revision),
+                    "idempotency_key": f"lab-{uuid4().hex}",
+                    "expected_generation": str(
+                        knowledge.knowledge_history(target.entry_id)["generation"]
+                    ),
+                    "reason": "Lab review: revoked to exercise reversibility.",
+                },
+            )
+            current = record(
+                "revoke", http_status=status, expect_status=200, http_body=body
+            )
+            if knowledge.active_revision(target.entry_id) is not None:
+                failures.append("REVOKED_STILL_RETRIEVABLE")
+            revoked = [
+                k
                 for k in current.knowledge
-                if k.entry_id == entry_id
-            )
-            if [state for _, state in states][-2:] != ["superseded", "active"]:
-                failures.append(f"SUPERSEDE_STATES:{states}")
+                if (k.entry_id, k.revision) == (target.entry_id, target.revision)
+            ]
+            if (
+                not revoked
+                or revoked[0].state != "revoked"
+                or not revoked[0].revoked_reason
+            ):
+                failures.append("REVOKE_TOMBSTONE_MISSING")
 
-    # 4. revoke the active revision
-    active = [k for k in current.knowledge if k.state == "active"]
-    if not active:
-        failures.append("NOTHING_ACTIVE_TO_REVOKE")
-    else:
-        target = active[-1]
-        status, body = web.post(
-            f"/knowledge/{target.entry_id}/revoke",
-            {
-                "revision": str(target.revision),
-                "idempotency_key": f"lab-{uuid4().hex}",
-                "expected_generation": str(
-                    knowledge.knowledge_history(target.entry_id)["generation"]
-                ),
-                "reason": "Lab review: revoked to exercise reversibility.",
-            },
-        )
-        current = record(
-            "revoke", http_status=status, expect_status=200, http_body=body
-        )
-        if knowledge.active_revision(target.entry_id) is not None:
-            failures.append("REVOKED_STILL_RETRIEVABLE")
-        revoked = [
-            k
-            for k in current.knowledge
-            if (k.entry_id, k.revision) == (target.entry_id, target.revision)
-        ]
-        if (
-            not revoked
-            or revoked[0].state != "revoked"
-            or not revoked[0].revoked_reason
-        ):
-            failures.append("REVOKE_TOMBSTONE_MISSING")
+    except RunCapReached as cap:
+        steps.append({"step": "run_cap", "ended_at": str(cap)})
 
     ended = datetime.now(timezone.utc)
     final = record("final")
@@ -714,6 +750,10 @@ def main() -> int:
             "started": started.isoformat(),
             "ended": ended.isoformat(),
             "failures": failures,
+            "caps": {
+                "attempts_total": MAX_ATTEMPTS_TOTAL,
+                "model_requests_total": MAX_MODEL_REQUESTS_TOTAL,
+            },
             "evidence_links": {
                 "checked": len(evidence_links),
                 "resolved": sum(1 for v in evidence_links.values() if v["resolved"]),

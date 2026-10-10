@@ -1,0 +1,2708 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-03-review-acceptance",
+  "run_id": "c71496dc-5d26-4af0-959b-ef7cfaac6c13",
+  "frozen_at": "2026-10-10T07:15:06.184489+00:00",
+  "incident_id": "0834af7e-0951-5850-a409-b1550255ee0a",
+  "environment": "lab: F6 archive database copy (synthetic OTel Demo lab data), not production",
+  "review_driver": "test-driven simulated review: a dedicated lab Basic Auth account posting the workbench forms over HTTP (D33); not a human review",
+  "started": "2026-10-10T07:12:48.049255+00:00",
+  "ended": "2026-10-10T07:15:05.188950+00:00",
+  "failures": [
+    "SUPERSEDE_NOT_PROPOSED"
+  ],
+  "caps": {
+    "attempts_total": 8,
+    "model_requests_total": 16
+  },
+  "evidence_links": {
+    "checked": 83,
+    "resolved": 83,
+    "by_kind": {
+      "investigation": 0,
+      "recovery": 83
+    }
+  },
+  "steps": [
+    {
+      "step": "before",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "not_generated",
+        "unknown_reasons": [],
+        "postmortem_generation": null,
+        "versions": [],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": []
+      }
+    },
+    {
+      "step": "generate_v1",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 2,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "approve_v1",
+      "http_status": 200,
+      "version": 1,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 3,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_1",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 3,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v2",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 5,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "return_v2",
+      "http_status": 200,
+      "version": 2,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 6,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v3",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 8,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "reject_v3",
+      "http_status": 200,
+      "version": 3,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 9,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_2",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 9,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v4",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 11,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a49ba23c4002fd7dc9991fd3d1dd63a027e5ba9a0373cf3543ea9d229fd9b9d1",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_after_recovery",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_sample_impact_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "supersede_v4",
+      "skipped": "no supersedes_entry_id"
+    },
+    {
+      "step": "revoke",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 11,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a49ba23c4002fd7dc9991fd3d1dd63a027e5ba9a0373cf3543ea9d229fd9b9d1",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_after_recovery",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_sample_impact_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "revoked",
+            "retrievable": false,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": "lab-reviewer",
+            "revoked_reason": "Lab review: revoked to exercise reversibility."
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "revoke",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "final",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 11,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+            "conclusions": 15,
+            "uncertain": 5,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "high_error_ratio_with_ready_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "sustained_healthy_window_confirmation",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_steady_replicas",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "low_traffic_ratio_context",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "bracket_impact_window_from_samples",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "error_ratio_spike_with_replicas_ready",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "a49ba23c4002fd7dc9991fd3d1dd63a027e5ba9a0373cf3543ea9d229fd9b9d1",
+            "conclusions": 11,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v2",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "dependency_signal_after_recovery",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "recovery_sample_impact_window",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "high_error_ratio_with_ready_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+            "revision": 1,
+            "state": "revoked",
+            "retrievable": false,
+            "source_version": 1,
+            "source_proposal_key": "sustained_healthy_window_confirmation",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+            "revoked_by": "lab-reviewer",
+            "revoked_reason": "Lab review: revoked to exercise reversibility."
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "revoke",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 2
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    }
+  ],
+  "generations": [
+    {
+      "step": "generate_v1",
+      "claimed": true,
+      "attempt_id": "c2d21de2-ffb9-424b-a06d-341c38b1a7ac",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 1,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "a0b8b6225839be7c085845b6dcfae55e",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-dispute-20261010",
+        "project_id": "46f81e97-6370-4b65-999b-32412a12c866",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-98c0-a4027c8ed154",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/46f81e97-6370-4b65-999b-32412a12c866/r/00000000-0000-0000-98c0-a4027c8ed154?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v2",
+      "claimed": true,
+      "attempt_id": "73c71181-cc45-457b-9345-342a6373b7e3",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 2,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "854e219262f68f7fac8923037068c0a3",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-dispute-20261010",
+        "project_id": "46f81e97-6370-4b65-999b-32412a12c866",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-8793-642d6735348f",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/46f81e97-6370-4b65-999b-32412a12c866/r/00000000-0000-0000-8793-642d6735348f?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v3",
+      "claimed": true,
+      "attempt_id": "5af5c7c9-f01a-451c-9889-73d55e9de6b0",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 3,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "7c7df68e29a5ad57b4493d9ad5a2e4bd",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-dispute-20261010",
+        "project_id": "46f81e97-6370-4b65-999b-32412a12c866",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-6a42-1602ad0a2657",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/46f81e97-6370-4b65-999b-32412a12c866/r/00000000-0000-0000-6a42-1602ad0a2657?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v4",
+      "claimed": true,
+      "attempt_id": "1504231c-a5f2-4a7e-a216-7d5ec5560ade",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 4,
+      "state": "under_review",
+      "model_requests_recorded": 2,
+      "model_requests_counted": 2,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "299345889ff046d6165e2664789c41be",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-dispute-20261010",
+        "project_id": "46f81e97-6370-4b65-999b-32412a12c866",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-178d-acfa5fadf4e3",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/46f81e97-6370-4b65-999b-32412a12c866/r/00000000-0000-0000-178d-acfa5fadf4e3?poll=true",
+        "read_back": "found"
+      }
+    }
+  ],
+  "final": {
+    "generation_status": "under_review",
+    "unknown_reasons": [],
+    "postmortem_generation": 11,
+    "versions": [
+      {
+        "version": 1,
+        "revises_version": null,
+        "state": "approved",
+        "stale_reason": null,
+        "content_sha256": "33f12d2e607f3b8dcb17757ad328a91c211d65a918f4ef9008fd5b0c65ff11a3",
+        "conclusions": 15,
+        "uncertain": 5,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v2",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "high_error_ratio_with_ready_replicas",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "sustained_healthy_window_confirmation",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "approve",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 2,
+        "revises_version": null,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "a2b7c3ba38e9417af8ba8b2f3ced5a0d7fdfc8670d2e07ad200420ba1db73ccf",
+        "conclusions": 12,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v2",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_spike_steady_replicas",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "low_traffic_ratio_context",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "return",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 3,
+        "revises_version": 2,
+        "state": "rejected",
+        "stale_reason": null,
+        "content_sha256": "e4023ca1a2bddeaa4a42ec6b90f74df7f1de1a7743ff195b9e9753b5abf95c59",
+        "conclusions": 12,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v2",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "bracket_impact_window_from_samples",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "error_ratio_spike_with_replicas_ready",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "reject",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 4,
+        "revises_version": null,
+        "state": "under_review",
+        "stale_reason": null,
+        "content_sha256": "a49ba23c4002fd7dc9991fd3d1dd63a027e5ba9a0373cf3543ea9d229fd9b9d1",
+        "conclusions": 11,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v2",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "dependency_signal_after_recovery",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "recovery_sample_impact_window",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:9435431a-7276-4633-a3cf-ffea5b2fbdfa",
+            "worker"
+          ]
+        ]
+      }
+    ],
+    "knowledge": [
+      {
+        "entry_id": "70ff410a-e09b-48af-af1e-f2c7135ba2dc",
+        "revision": 1,
+        "state": "active",
+        "retrievable": true,
+        "source_version": 1,
+        "source_proposal_key": "high_error_ratio_with_ready_replicas",
+        "supersedes_revision": null,
+        "approved_by": "lab-reviewer",
+        "approved_by_kind": "basic_auth",
+        "content_sha256": "9eb206a29ba189de15abd720c4a1f7f68203c39dc6fb76929707ac7ecb83bea9",
+        "revoked_by": null,
+        "revoked_reason": null
+      },
+      {
+        "entry_id": "42b13385-02f8-419b-8248-6e3b5a7d788c",
+        "revision": 1,
+        "state": "revoked",
+        "retrievable": false,
+        "source_version": 1,
+        "source_proposal_key": "sustained_healthy_window_confirmation",
+        "supersedes_revision": null,
+        "approved_by": "lab-reviewer",
+        "approved_by_kind": "basic_auth",
+        "content_sha256": "196632105c2e90805a0eef8c6e9dbd1117163facac3ea48ba1892862d488be9e",
+        "revoked_by": "lab-reviewer",
+        "revoked_reason": "Lab review: revoked to exercise reversibility."
+      }
+    ],
+    "knowledge_actions": [
+      [
+        "publish",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ],
+      [
+        "publish",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ],
+      [
+        "revoke",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ]
+    ],
+    "recent_attempts": [
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 4,
+        "model_requests": 2
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 3,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 2,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 1,
+        "model_requests": 1
+      }
+    ]
+  },
+  "counts": {
+    "model_requests_counted": 5,
+    "model_requests_recorded": 5,
+    "prompt_tokens": 151953,
+    "completion_tokens": 28216
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.57995,
+    "balance_before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "4.82",
+          "granted_balance": "0.00",
+          "topped_up_balance": "4.82"
+        }
+      ]
+    },
+    "balance_after": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "4.82",
+          "granted_balance": "0.00",
+          "topped_up_balance": "4.82"
+        }
+      ]
+    }
+  },
+  "raw_ledger": {
+    "sha256": "9e9a993f1f51be18467b5f832ff9a5ed0ef1a86d4d1973abc5c4a58299a7df46",
+    "bytes": 88768,
+    "path": "tmp/lab-ledgers/m1-03-review-acceptance/c71496dc-5d26-4af0-959b-ef7cfaac6c13/ledger.json",
+    "in_repository": false
+  }
+}
