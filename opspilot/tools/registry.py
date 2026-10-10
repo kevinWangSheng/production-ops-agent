@@ -294,6 +294,41 @@ _CREDENTIAL_SCHEME = re.compile(
 _AUTHORITY_USERINFO = re.compile(
     r"(?P<prefix>//)(?P<userinfo>[^\s/@]++)@(?P<host>[^\s/:?#]+)"
 )
+# The quoted forms the unquoted value above stops at: JSON ``"name":"v"``,
+# YAML ``name: "v"``, ``name='v'``. Only the name, separator and opening
+# quote are matched; the value is read up to its closing quote (same quote,
+# backslash escapes honoured, never past a line end) only when the name is an
+# authentication name. A non-credential name consumes nothing past its
+# opening quote, so an assignment nested inside an ordinary quoted string is
+# still examined, and each scan stops at the next quote (linear time).
+_QUOTED_ASSIGNMENT = re.compile(
+    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)"
+    r"(?P<sep>[\"']?\s*[:=]\s*)(?P<quote>[\"'])"
+)
+_QUOTED_VALUE = {
+    '"': re.compile(r'(?:[^"\\\n]|\\.)++"'),
+    "'": re.compile(r"(?:[^'\\\n]|\\.)++'"),
+}
+
+
+def _credential_name(name: str) -> bool:
+    return name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name)
+
+
+def _redact_quoted(text: str) -> str:
+    parts: list[str] = []
+    pos = 0
+    while (match := _QUOTED_ASSIGNMENT.search(text, pos)) is not None:
+        end = match.end()
+        parts.append(text[pos:end])
+        pos = end
+        if _credential_name(match.group("name")):
+            value = _QUOTED_VALUE[match.group("quote")].match(text, end)
+            if value is not None:
+                parts.append(REDACTED_CREDENTIAL + match.group("quote"))
+                pos = value.end()
+    parts.append(text[pos:])
+    return "".join(parts)
 
 
 def redact_credentials(text: str) -> str:
@@ -301,7 +336,7 @@ def redact_credentials(text: str) -> str:
 
     def assignment(match: re.Match[str]) -> str:
         name = match.group("name")
-        if name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name):
+        if _credential_name(name):
             return f"{name}{match.group('sep')}{REDACTED_CREDENTIAL}"
         return match.group(0)
 
@@ -309,6 +344,7 @@ def redact_credentials(text: str) -> str:
         lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}", text
     )
     redacted = _CREDENTIAL_ASSIGNMENT.sub(assignment, redacted)
+    redacted = _redact_quoted(redacted)
     return _CREDENTIAL_SCHEME.sub(
         lambda m: f"{m.group('scheme')} {REDACTED_CREDENTIAL}", redacted
     )
