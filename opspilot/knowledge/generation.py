@@ -152,8 +152,8 @@ recovery observation and all numbers; you write only:
   "hypothesis" or "counter_evidence"); one statement each.
 - proposals: reusable knowledge entries (name, tags, symptoms, checks) this
   incident teaches; may be empty.
-- disputes: only a conclusion whose cited evidence conflicts with itself (rule
-  6); usually empty.
+- disputes: only a conclusion that cites at least two different evidence
+  entries that conflict with each other (rule 6); usually empty.
 
 Rules:
 1. Cite evidence only by "evidence_id" values listed in "evidence_catalog".
