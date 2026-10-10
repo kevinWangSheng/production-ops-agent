@@ -27,7 +27,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 import psycopg
@@ -175,9 +175,14 @@ TARGET_IDENTITY_FIELDS = ("integration_id", "cluster_uid", "namespace")
 #: workload the profile observes and the profile that applies (an optional
 #: ``resource_uid`` may repeat the key).
 TARGET_ENTRY_FIELDS = ("workload", "health_profile_id")
+#: Optional on an entry: the versioned Alertmanager label match that binds an
+#: alert to this target (``target_match``; M1-04 contract I4). An entry
+#: without it never matches an alert.
+TARGET_MATCH_FIELD = "match"
+TARGET_MATCH_VERSION = 1
 
 
-def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
+def load_target_identities(path: str | Path) -> dict[str, dict[str, Any]]:
     """``resource_uid -> {integration_id, cluster_uid, namespace, workload,
     health_profile_id}`` from the ``OPSPILOT_TARGET_IDENTITIES`` file.
 
@@ -190,6 +195,10 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
     Both are required: an entry without them could never register a
     remediation, so the file is refused at load time, naming the entry,
     rather than every registration failing later (bot review, round 3).
+
+    An entry may also carry ``match`` (``target_match``), the versioned
+    Alertmanager label match; it is returned validated and is not part of
+    the identity.
 
     Shared by the workbench (intake resolves the operator's target id here)
     and migration 0004 (completing rows registered before the columns
@@ -215,7 +224,7 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
             set(entry)
             - set(TARGET_IDENTITY_FIELDS)
             - set(TARGET_ENTRY_FIELDS)
-            - {"resource_uid"}
+            - {"resource_uid", TARGET_MATCH_FIELD}
         )
         if unknown:
             raise TargetIdentityMissing(
@@ -230,11 +239,42 @@ def load_target_identities(path: str | Path) -> dict[str, dict[str, str]]:
             raise TargetIdentityMissing([uid], detail=f"missing or empty {missing}")
         if "resource_uid" in entry and entry["resource_uid"] != uid:
             raise TargetIdentityMissing([uid], detail="resource_uid differs from key")
-        identities[uid] = {
+        identity: dict[str, Any] = {
             field: entry[field]
             for field in TARGET_IDENTITY_FIELDS + TARGET_ENTRY_FIELDS
         }
+        identities[uid] = identity
+        if TARGET_MATCH_FIELD in entry:
+            try:
+                identity[TARGET_MATCH_FIELD] = target_match(entry[TARGET_MATCH_FIELD])
+            except ValueError as exc:
+                raise TargetIdentityMissing([uid], detail=str(exc)) from None
     return identities
+
+
+def target_match(value: object) -> dict[str, Any]:
+    """The validated ``match`` of an identity entry (M1-04 contract I4).
+
+    ``{"version": 1, "labels": {<non-empty str>: <non-empty str>, ...}}``
+    with at least one label; any other version, key or shape raises
+    ``ValueError`` naming the defect. An alert matches the entry when its
+    labels contain every one of these pairs.
+    """
+    if not isinstance(value, dict) or set(value) != {"version", "labels"}:
+        raise ValueError("match must be an object with version and labels")
+    if type(value["version"]) is not int or value["version"] != TARGET_MATCH_VERSION:
+        raise ValueError(f"match version must be {TARGET_MATCH_VERSION}")
+    labels = value["labels"]
+    if (
+        not isinstance(labels, dict)
+        or not labels
+        or any(
+            not isinstance(name, str) or not name or not isinstance(v, str) or not v
+            for name, v in labels.items()
+        )
+    ):
+        raise ValueError("match labels must be non-empty strings, at least one")
+    return {"version": TARGET_MATCH_VERSION, "labels": dict(labels)}
 
 
 @dataclass(frozen=True)

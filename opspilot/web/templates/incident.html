@@ -22,6 +22,7 @@
 <h2>Question</h2>
 <pre>{{ snapshot.question }}</pre>
 {% endif %}
+{% include "_alert.html" %}
 
 <h2>Human control</h2>
 <p class="muted">Every action is a conditional update against generation {{ inc.control_generation }}. A stale form is refused, never applied.</p>

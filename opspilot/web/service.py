@@ -16,15 +16,27 @@ projection.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4, uuid5
 
 from markupsafe import Markup
+from pydantic import ValidationError
 
+from opspilot.acceptance_alert import alert_intake_outcome
+from opspilot.alertmanager import (
+    Alert,
+    InvalidAlert,
+    parse_alert,
+    question_for,
+    record_of,
+    resolve_target,
+)
 from opspilot.intake import (
     IntakeEnvelope,
     IntakeRequest,
@@ -34,6 +46,7 @@ from opspilot.intake import (
     classify_intake_delivery,
 )
 from opspilot.investigation.context import (
+    AFFECTED_SERVICE,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     ContextError,
@@ -148,6 +161,23 @@ class IntakeResult:
     run_id: UUID
     replayed: bool
     sequence: int
+
+
+@dataclass(frozen=True)
+class AlertResult:
+    """One alert's answer in the ``/intake/alertmanager`` response (I2)."""
+
+    fingerprint: str | None
+    starts_at: str | None
+    status: str | None
+    outcome: str
+    incident_id: str | None
+    run_id: str | None
+    delivery_key: str | None
+    reason: str | None
+
+    def as_json(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -293,6 +323,156 @@ class Workbench:
         )
         return int(row["sequence"])
 
+    # -- Alertmanager intake (M1-04 step 2) -----------------------------
+
+    def intake_alert(
+        self, principal: Principal, item: object, received_at: datetime
+    ) -> AlertResult:
+        """Accept one alert of a webhook in its own transaction (I2, E1).
+
+        The identity ``fingerprint:startsAt`` alone decides a replay (r1-B):
+        a repeated notification, with or without changed annotations, adds
+        a delivery record and nothing else. A first firing alert opens an
+        incident: with a Run when exactly one registry entry matches its
+        labels, handed to a human without one otherwise (E5, E7). A
+        resolved alert is only recorded, attached to the incident of the
+        same identity when there is one (E8). A storage failure is
+        ``failed`` and the caller answers 5xx so Alertmanager retries.
+        """
+        try:
+            alert = parse_alert(item)
+        except InvalidAlert as exc:
+            return _invalid_alert(item, exc.code)
+        key = alert.delivery_key
+        record = record_of(alert)
+        delivery = {
+            "delivery_key": key,
+            "fingerprint": alert.fingerprint,
+            "starts_at": alert.starts_at_time,
+            "starts_at_raw": alert.starts_at_raw,
+            "status": alert.status,
+            "actor": principal.actor_id,
+            "raw_sha256": record.raw_sha256,
+            "annotations_sha256": record.annotations_sha256,
+            "alert_json": record.alert_json,
+            "truncated": record.truncated,
+        }
+
+        def answer(
+            outcome: str,
+            incident_id: object = None,
+            run_id: object = None,
+            reason: str | None = None,
+        ) -> AlertResult:
+            return AlertResult(
+                fingerprint=alert.fingerprint,
+                starts_at=alert.starts_at,
+                status=alert.status,
+                outcome=outcome,
+                incident_id=None if incident_id is None else str(incident_id),
+                run_id=None if run_id is None else str(run_id),
+                delivery_key=key,
+                reason=reason,
+            )
+
+        try:
+            opening = None
+            if alert.status == "firing":
+                try:
+                    opening = self._alert_opening(principal, alert, received_at)
+                except (ValidationError, ValueError):
+                    # Only a registry entry whose resource_uid is not a valid
+                    # target id gets here; a retry cannot repair it.
+                    return _invalid_alert(item, "TARGET_ID_INVALID")
+            committed = self.incidents.record_alert(delivery, opening=opening)
+            outcome = str(committed["outcome"])
+            if outcome in ("created", "replayed"):
+                # Exactly-once like ``submit``; a replay repairs an
+                # announcement a crash after the commit lost.
+                incident_id = cast(UUID, committed["incident_id"])
+                intake = self.ledger.get("intake", f"intake:{key}")
+                if intake is not None:
+                    self._announce_intake(
+                        incident_id,
+                        UUID(str(intake["run_id"])),
+                        _envelope_from_json(intake["envelope"]),
+                    )
+        except PersistenceError as exc:
+            _log.warning("alert intake failed key=%s code=%s", key, exc)
+            return answer("failed", reason=str(exc))
+        return answer(
+            outcome,
+            committed["incident_id"],
+            committed["run_id"],
+            committed.get("handoff_reason"),
+        )
+
+    def _alert_opening(
+        self, principal: Principal, alert: Alert, received_at: datetime
+    ) -> dict[str, Any]:
+        """The incident a first firing delivery of ``alert`` opens (I3-I6).
+
+        Ids derive from the delivery key exactly as ``submit`` derives them
+        from an idempotency key, so every later control (``new_run``, notes,
+        remediation) treats the incident like any other. The store uses
+        this only when the identity is new.
+        """
+        key = alert.delivery_key
+        intake_key = f"intake:{key}"
+        incident_id = uuid5(_INTAKE_NAMESPACE, intake_key)
+        matcher = getattr(self.targets, "match_alert", None)
+        resolution = resolve_target(() if matcher is None else matcher(alert.labels))
+        if resolution.target_id is None:
+            return {
+                "incident_id": incident_id,
+                "intake_key": intake_key,
+                "handoff_reason": resolution.handoff_reason,
+            }
+        run_id = uuid5(_INTAKE_NAMESPACE, f"{intake_key}:run:0")
+        request = IntakeRequest(
+            target_id=resolution.target_id,
+            question=question_for(alert, resolution),
+            idempotency_key=key,
+        )
+        envelope = IntakeEnvelope(
+            request_id=str(uuid4()),
+            principal=principal,
+            request=request,
+            received_at=received_at,
+        )
+        service = (
+            None
+            if resolution.namespace is None or resolution.workload is None
+            else {"namespace": resolution.namespace, "workload": resolution.workload}
+        )
+        deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        return {
+            "incident_id": incident_id,
+            "intake_key": intake_key,
+            "run_id": run_id,
+            "resource_uid": resolution.target_id,
+            "namespace": resolution.namespace,
+            "workload": resolution.workload,
+            "deadline": deadline,
+            "budget_limit": self.budget_limit,
+            "versions": dict(self.run_versions),
+            "input": self._fresh_input(
+                request, run_id, deadline, affected_service=service
+            ),
+            "ledger": [
+                (
+                    "intake",
+                    intake_key,
+                    {
+                        "incident_id": str(incident_id),
+                        "run_id": str(run_id),
+                        "envelope": _envelope_json(envelope),
+                        "source": "alertmanager",
+                    },
+                )
+            ],
+        }
+
     # -- human control --------------------------------------------------
 
     def control(
@@ -348,6 +528,10 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            # An alert handed to a human at intake (E5) has no Run to steer
+            # and no bound target to observe; the human handles it outside.
+            raise WorkbenchError("HANDOFF_ONLY")
         key = f"{incident_id}:{idempotency_key}"
         intent: dict[str, Any] = {
             "action": action,
@@ -534,18 +718,36 @@ class Workbench:
     # -- investigation inputs -------------------------------------------
 
     def _fresh_input(
-        self, request: IntakeRequest, run_id: UUID, deadline: datetime
+        self,
+        request: IntakeRequest,
+        run_id: UUID,
+        deadline: datetime,
+        *,
+        affected_service: Mapping[str, str] | None = None,
     ) -> dict[str, Any] | None:
-        """A first Run's input over the intake question (``None`` without a face)."""
+        """A first Run's input over the intake question (``None`` without a face).
+
+        ``affected_service`` (an alert's resolved namespace + workload, E11)
+        is recorded in the scope facts as focus; it grants nothing.
+        """
         if self.tool_face is None:
             return None
-        return self.tool_face.input_for(
+        fresh = self.tool_face.input_for(
             run_id=str(run_id),
             question=request.question,
             target_id=request.target_id,
             deadline=deadline,
             model_requests=self.budget_limit,
-        ).as_json()
+        )
+        if affected_service is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={
+                    **fresh.scope_facts,
+                    AFFECTED_SERVICE: dict(affected_service),
+                },
+            )
+        return fresh.as_json()
 
     def _successor_input(
         self, summary: IncidentSummary, run_id: UUID, deadline: datetime
@@ -912,6 +1114,14 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         if summary is None:
             raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            return {
+                "incident": summary,
+                "handoff_only": True,
+                "alert": self._alert_view(incident_id),
+                "events": [],
+                "latest_sequence": self.events.latest(incident_id),
+            }
         self.reconcile(incident_id)
         try:
             rebuilt = self.incidents.rebuild(incident_id)
@@ -979,6 +1189,52 @@ class Workbench:
             "latest_sequence": events[-1].sequence
             if events
             else self.events.latest(incident_id),
+            "handoff_only": False,
+            "alert": self._alert_view(incident_id),
+        }
+
+    def _alert_view(self, incident_id: UUID) -> dict[str, Any] | None:
+        """The alert section of the page (I9): the acceptance projection
+        (``opspilot.acceptance_alert``) of the same committed records, plus
+        the stored redacted annotations of the latest delivery and every
+        resolved notification. ``None`` for an incident no alert opened."""
+        reader = getattr(self.incidents, "alert_records", None)
+        records = None if reader is None else reader(incident_id)
+        if records is None:
+            return None
+        outcome = alert_intake_outcome(
+            SimpleNamespace(scenario_id="workbench", subject_id=str(incident_id)),
+            records,
+        )
+        rows = records.deliveries
+        latest = rows[-1] if rows else None
+        return {
+            "outcome": outcome,
+            "fingerprint": records.identity["fingerprint"]
+            if records.identity
+            else None,
+            "starts_at_raw": records.identity["starts_at_raw"]
+            if records.identity
+            else None,
+            "latest": None
+            if latest is None
+            else {
+                "annotation_revision": int(latest["annotation_revision"]),
+                "received_at": latest["received_at"],
+                "truncated": bool(latest["truncated"]),
+                **_stored_alert(latest["alert_json"]),
+            },
+            "resolved": [
+                {
+                    "received_at": row["received_at"],
+                    "actor": row["actor"],
+                    "annotation_revision": int(row["annotation_revision"]),
+                    "raw_sha256": row["raw_sha256"],
+                    **_stored_alert(row["alert_json"]),
+                }
+                for row in rows
+                if row["status"] == "resolved"
+            ],
         }
 
     def _recovery_view(self, session_id: UUID) -> dict[str, Any]:
@@ -1359,6 +1615,42 @@ class Workbench:
 
 
 # -- views ----------------------------------------------------------------
+
+
+def _invalid_alert(item: object, code: str) -> AlertResult:
+    """R2: an alert that cannot be identified; nothing is recorded for it.
+    Echoes the identity fields only when they are well-formed strings."""
+    fields = item if isinstance(item, dict) else {}
+    fingerprint = fields.get("fingerprint")
+    status = fields.get("status")
+    return AlertResult(
+        fingerprint=fingerprint
+        if isinstance(fingerprint, str) and 0 < len(fingerprint) <= 256
+        else None,
+        starts_at=None,
+        status=status if status in ("firing", "resolved") else None,
+        outcome="invalid",
+        incident_id=None,
+        run_id=None,
+        delivery_key=None,
+        reason=code,
+    )
+
+
+def _stored_alert(alert_json: str) -> dict[str, Any]:
+    """The stored (redacted, bounded) alert for display: its annotations and
+    ``endsAt`` when the record is whole JSON, else the cut text as is."""
+    try:
+        stored = json.loads(alert_json)
+    except ValueError:
+        return {"annotations": None, "ends_at": None, "record_text": alert_json}
+    annotations = stored.get("annotations") if isinstance(stored, dict) else None
+    ends_at = stored.get("endsAt") if isinstance(stored, dict) else None
+    return {
+        "annotations": annotations if isinstance(annotations, dict) else None,
+        "ends_at": ends_at if isinstance(ends_at, str) else None,
+        "record_text": None,
+    }
 
 
 def _compose_question(original: str, notes: list[dict[str, Any]]) -> str:

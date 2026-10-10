@@ -1,0 +1,59 @@
+{# Alertmanager intake (M1-04 I9): the acceptance projection of the committed
+   alert records. Annotations are untrusted text: autoescaped, never markup. #}
+{% set alert = snapshot.alert %}
+{% if alert %}
+{% set ao = alert.outcome %}
+<section id="alert-intake">
+<h2>Alert</h2>
+<p>
+  Alertmanager identity <code id="alert-fingerprint">{{ alert.fingerprint }}</code>
+  · starts at <code id="alert-starts-at">{{ ao.deliveries[0].starts_at if ao.deliveries else "" }}</code>
+  <span class="muted">(received as <code>{{ alert.starts_at_raw }}</code>)</span>
+  {% if ao.handoff %}
+  · <strong id="alert-handoff">handed to a human without a Run</strong> <code id="alert-handoff-reason">{{ ao.handoff_reason }}</code>
+  {% else %}
+  · target <code id="alert-target">{{ ao.target_id }}</code>
+  {% endif %}
+</p>
+{% if ao.affected_service %}
+<p>Affected service <code id="alert-affected-service">{{ ao.affected_service[0] }}/{{ ao.affected_service[1] }}</code>
+  <span class="muted">(focus for the investigation; it does not narrow what the tools may query)</span></p>
+{% endif %}
+{% if alert.latest %}
+<h3>Annotations <span class="muted">(revision {{ alert.latest.annotation_revision }}, untrusted alert text, credentials redacted)</span></h3>
+{% if alert.latest.annotations is not none %}
+<table id="alert-annotations">
+  <tbody>
+  {% for name, value in alert.latest.annotations | dictsort %}
+  <tr><td><code>{{ name }}</code></td><td><pre>{{ value }}</pre></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<pre id="alert-record-text">{{ alert.latest.record_text }}</pre>
+{% endif %}
+{% if alert.latest.truncated %}<p class="muted">The stored record was cut at 16 KiB.</p>{% endif %}
+{% endif %}
+{% if alert.resolved %}
+<h3>Resolved notifications</h3>
+<table id="alert-resolved">
+  <thead><tr><th>Received</th><th>Ends at</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
+  <tbody>
+  {% for r in alert.resolved %}
+  <tr><td>{{ r.received_at }}</td><td><code>{{ r.ends_at or "" }}</code></td><td><code>{{ r.actor }}</code></td><td>{{ r.annotation_revision }}</td><td><code>{{ r.raw_sha256 }}</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Recorded only: a resolved notification does not close the incident or start a recovery observation.</p>
+{% endif %}
+<h3>Deliveries</h3>
+<table id="alert-deliveries">
+  <thead><tr><th>#</th><th>Status</th><th>Outcome</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
+  <tbody>
+  {% for d in ao.deliveries %}
+  <tr><td>{{ loop.index }}</td><td>{{ d.status }}</td><td><code>{{ d.outcome }}</code></td><td><code>{{ d.actor }}</code></td><td>{{ d.annotation_revision }}{% if d.truncated %} <span class="muted">(cut)</span>{% endif %}</td><td><code>{{ d.raw_sha256 }}</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</section>
+{% endif %}

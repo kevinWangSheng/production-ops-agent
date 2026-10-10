@@ -12,6 +12,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
+# The Alertmanager alert intake seam (M1-04, contract r3 I8): per-alert
+# deliveries and the target resolution of the incident they opened.
+from opspilot.acceptance_alert import (  # noqa: E402
+    AlertDelivery,
+    AlertIntakeOutcome,
+    AlertIntakeRecords,
+    alert_deliveries_for_identity,
+    alert_delivery_count,
+    alert_intake_outcome,
+    alert_intake_records,
+)
+
 # The postmortem and reviewed-knowledge seam (F13, M1-03 step 4, R13): its
 # own type again, because the postmortem's state machine and records are
 # neither the investigation Run's nor the recovery observation's.
@@ -44,6 +56,9 @@ from opspilot.investigation.context import pending_conclusion
 from opspilot.investigation.loop import LoopOutcome
 
 __all__ = [
+    "AlertDelivery",
+    "AlertIntakeOutcome",
+    "AlertIntakeRecords",
     "IncidentOutcome",
     "IncidentScenario",
     "KnowledgeRevisionOutcome",
@@ -57,6 +72,10 @@ __all__ = [
     "RecoverySample",
     "RecoverySignal",
     "ReviewRecord",
+    "alert_deliveries_for_identity",
+    "alert_delivery_count",
+    "alert_intake_outcome",
+    "alert_intake_records",
     "outcome_from_durable",
     "outcome_from_live_record",
     "outcome_from_loop",

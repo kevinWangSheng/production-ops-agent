@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from opspilot.persistence.base import PersistenceError, _StoreBase
+from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 from opspilot.persistence.steps import _completed_tool_ordinals, _tool_plan
 
 
@@ -33,75 +33,104 @@ class _IncidentOps(_StoreBase):
         run the investigation loop (M0 harness, control tests) unchanged.
         """
         with self.transaction() as conn:
-            scope = self._lock_scope(conn, None)
-            if (
-                target_id is not None
-                and not conn.execute(
-                    "SELECT 1 FROM opspilot_targets WHERE target_id=%s", (target_id,)
-                ).fetchone()
-            ):
-                raise PersistenceError("UNKNOWN_TARGET")
-            if target_id is not None:
-                target_scope = self._require_row(
-                    conn.execute(
-                        "SELECT suspended FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
-                        (target_id,),
-                    )
-                )
-                scope["target_suspended"] = target_scope["suspended"]
-            row = conn.execute(
-                "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
-                (intake_key,),
-            ).fetchone()
-            if row:
-                if (
-                    row["incident_id"] != incident_id
-                    or row["current_run_id"] != run_id
-                    or row["target_id"] != target_id
-                ):
-                    raise PersistenceError("IDENTITY_CONFLICT")
-                return
-            inserted = conn.execute(
-                # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
-                # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'queued','open',%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
-                (incident_id, intake_key, run_id, target_id),
-            ).fetchone()
-            existing = conn.execute(
-                "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
-                (intake_key,),
-            ).fetchone()
-            if existing is None:
-                # 插入被主键冲突吞掉：这个 incident_id 已经绑定到别的 intake_key。
-                # 存储本身一致，是调用方给了冲突的身份。
-                raise PersistenceError("IDENTITY_CONFLICT")
-            if (
-                existing["incident_id"] != incident_id
-                or existing["current_run_id"] != run_id
-                or existing["target_id"] != target_id
-            ):
-                raise PersistenceError("IDENTITY_CONFLICT")
-            if inserted is None:
-                return
-            conn.execute(
-                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',0,%s,%s,%s,%s)",
-                (
-                    run_id,
-                    incident_id,
-                    budget_limit,
-                    deadline,
-                    Jsonb(versions),
-                    None if input is None else Jsonb(input),
-                ),
+            self._accept_in(
+                conn,
+                incident_id,
+                run_id,
+                intake_key,
+                deadline=deadline,
+                budget_limit=budget_limit,
+                versions=versions,
+                input=input,
+                target_id=target_id,
             )
-            if scope["global_suspended"] or scope["target_suspended"]:
+
+    def _accept_in(
+        self,
+        conn: Connection,
+        incident_id: UUID,
+        run_id: UUID,
+        intake_key: str,
+        *,
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+        target_id: UUID | None,
+    ) -> bool:
+        """``accept()`` inside the caller's transaction (the alert intake
+        commits the incident with its alert identity, M1-04 E3); returns
+        whether this call created the incident."""
+        scope = self._lock_scope(conn, None)
+        if (
+            target_id is not None
+            and not conn.execute(
+                "SELECT 1 FROM opspilot_targets WHERE target_id=%s", (target_id,)
+            ).fetchone()
+        ):
+            raise PersistenceError("UNKNOWN_TARGET")
+        if target_id is not None:
+            target_scope = self._require_row(
                 conn.execute(
-                    "UPDATE opspilot_incidents SET state='paused' WHERE incident_id=%s",
-                    (incident_id,),
+                    "SELECT suspended FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                    (target_id,),
                 )
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='paused' WHERE run_id=%s", (run_id,)
-                )
+            )
+            scope["target_suspended"] = target_scope["suspended"]
+        row = conn.execute(
+            "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
+            (intake_key,),
+        ).fetchone()
+        if row:
+            if (
+                row["incident_id"] != incident_id
+                or row["current_run_id"] != run_id
+                or row["target_id"] != target_id
+            ):
+                raise PersistenceError("IDENTITY_CONFLICT")
+            return False
+        inserted = conn.execute(
+            # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
+            # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'queued','open',%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+            (incident_id, intake_key, run_id, target_id),
+        ).fetchone()
+        existing = conn.execute(
+            "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
+            (intake_key,),
+        ).fetchone()
+        if existing is None:
+            # 插入被主键冲突吞掉：这个 incident_id 已经绑定到别的 intake_key。
+            # 存储本身一致，是调用方给了冲突的身份。
+            raise PersistenceError("IDENTITY_CONFLICT")
+        if (
+            existing["incident_id"] != incident_id
+            or existing["current_run_id"] != run_id
+            or existing["target_id"] != target_id
+        ):
+            raise PersistenceError("IDENTITY_CONFLICT")
+        if inserted is None:
+            return False
+        conn.execute(
+            "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',0,%s,%s,%s,%s)",
+            (
+                run_id,
+                incident_id,
+                budget_limit,
+                deadline,
+                Jsonb(versions),
+                None if input is None else Jsonb(input),
+            ),
+        )
+        if scope["global_suspended"] or scope["target_suspended"]:
+            conn.execute(
+                "UPDATE opspilot_incidents SET state='paused' WHERE incident_id=%s",
+                (incident_id,),
+            )
+            conn.execute(
+                "UPDATE opspilot_runs SET state='paused' WHERE run_id=%s", (run_id,)
+            )
+        return True
 
     def register_target(
         self, resource_uid: str, *, target_id: UUID | None = None

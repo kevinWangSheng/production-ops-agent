@@ -20,7 +20,7 @@
   {% for item in incidents %}
     <tr>
       <td><a href="/incidents/{{ item.incident_id }}"><code>{{ item.incident_id }}</code></a></td>
-      <td>{{ item.run_state or "" }}</td>
+      <td>{% if item.handoff_only %}<span class="badge">handed to a human</span> <code>{{ item.handoff_reason or "" }}</code>{% else %}{{ item.run_state or "" }}{% endif %}</td>
       <td>{% if item.control %}<span class="badge">{{ item.control }}</span>{% endif %}</td>
       <td>{{ item.lifecycle }}</td>
       <td>{{ item.control_generation }}</td>
