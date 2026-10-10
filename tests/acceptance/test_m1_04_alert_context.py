@@ -9,6 +9,7 @@ K3 is checked with an independent whole-entry prefix oracle, not a sanitizer.
 from __future__ import annotations
 
 import json
+import os
 from copy import deepcopy
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -44,6 +45,11 @@ V4 = "opspilot-investigation-input-v4"
 # Reuse the established isolated PostgreSQL and HTTP fixtures without copying
 # their setup into this independent contract module.
 pytest_plugins = ["tests.acceptance.test_m1_04_alert_window"]
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("M1_DURABLE_POSTGRES") != "1",
+    reason="explicit PG opt-in required: M1_DURABLE_POSTGRES=1",
+)
 
 
 def _create(app, database, **changes):

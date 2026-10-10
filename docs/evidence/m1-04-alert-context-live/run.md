@@ -1,6 +1,7 @@
 # M1-04 第 4 步：原始告警作为不可信模型上下文的真实端到端运行（K9）
 
 - 日期：2026-10-10 17:39–18:00Z；分支 `feature/m1-04-alert-context`，commit `152ccd1`。运行期间 `opspilot/` 无未提交改动（`git diff HEAD -- opspilot` 为空），HEAD 也没有变化
+- 代码可核对性：`152ccd1` 只存在于本地原分支（PR 从 main 上的单提交分支开，原分支历史含被 gitleaks 标记的合成凭据字面量，不推送）。运行代码与本 PR 一致的依据：`152ccd1:opspilot` 的 git tree 为 `049d846a40e4a4bb4789d32a5b008ced78dedc23`，与本 PR 提交的 `opspilot/` tree 相同；`scripts/` tree 同为 `12855d60fff51441323014b05e41e67b6547970d`。可用 `git rev-parse <PR 提交>:opspilot` 复核。`summary.json` 冻结时记录的 commit 字段保持原值不改
 - 合同：[任务记录](../../tasks/2026-10-10-m1-04-alert-intake.md) r8 K1–K9（同时适用 r5 F6–F8 与第 3 步 J1–J4）
 - 冻结摘要：[live-runs/293bcbc5-542d-597a-87c7-627409fba630/summary.json](live-runs/293bcbc5-542d-597a-87c7-627409fba630/summary.json)。原始 ledger 包括 resolved 前后两次库投影、trace 完整回读、fault log 与规则哈希，不入库；sha256 `282ab896…a2cf78e5`，992095 字节（ADR-0006）
 - 类别：有界真实软件环境运行加真实模型调用。告警走真实路径 Prometheus 规则 → Alertmanager → 工作台，没有回放 payload。伪造凭据与指令性文字是临时加进实验环境告警规则 annotation 的，运行后已原样恢复。这不是生产证明
