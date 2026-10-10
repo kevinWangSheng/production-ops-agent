@@ -342,6 +342,18 @@ def _corrupt(path: str):
             records.postmortem_audit,
             records.entry_audit,
         )
+    elif path in ("missing_active", "missing_entry_audit"):
+        # Codex review #180: a published entry without its knowledge read or
+        # audit trail is an incomplete record set, not "not retrievable"
+        return PostmortemRecords(
+            INCIDENT,
+            view,
+            records.published,
+            records.entries,
+            {} if path == "missing_active" else records.active,
+            records.postmortem_audit,
+            {} if path == "missing_entry_audit" else records.entry_audit,
+        )
     elif path == "stray_active":
         active = {**records.active, other: None}
         return PostmortemRecords(
@@ -410,6 +422,8 @@ def _corrupt(path: str):
         "extra_entry",
         "stray_active",
         "stray_entry_audit",
+        "missing_active",
+        "missing_entry_audit",
     ],
 )
 def test_records_of_another_subject_project_unknown(path: str) -> None:

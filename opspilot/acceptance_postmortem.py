@@ -526,8 +526,14 @@ def _project(
         for row in records.postmortem_audit
     )
     published = {row["entry_id"] for row in records.published}
-    if set(records.entries) != published or not (
-        set(records.active) <= published and set(records.entry_audit) <= published
+    # every published entry carries its history, knowledge read and audit
+    # trail (``postmortem_records`` reads all three); a missing or extra key
+    # is an incomplete or foreign record set
+    if not (
+        set(records.entries)
+        == set(records.active)
+        == set(records.entry_audit)
+        == published
     ):
         raise _Mismatch
     knowledge_actions = tuple(

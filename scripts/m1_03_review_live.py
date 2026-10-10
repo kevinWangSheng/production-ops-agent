@@ -454,7 +454,18 @@ def main() -> int:
             for conclusion in version.conclusions:
                 for ref in conclusion.evidence_refs:
                     evidence_id = ref["evidence_id"]
-                    if evidence_id in checked or evidence_id not in catalog:
+                    if evidence_id in checked:
+                        continue
+                    if evidence_id not in catalog:
+                        # only a failed citation may name an id outside the
+                        # generation input (D2); a valid one never may
+                        checked[evidence_id] = {
+                            "kind": None,
+                            "http_status": None,
+                            "resolved": False,
+                        }
+                        if conclusion.citations_valid:
+                            failures.append(f"EVIDENCE_NOT_IN_CATALOG:{evidence_id}")
                         continue
                     status, body = web.evidence(args.incident, evidence_id)
                     entry = catalog[evidence_id]
