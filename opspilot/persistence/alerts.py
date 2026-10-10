@@ -34,7 +34,9 @@ class _AlertOps(_IncidentOps):
         ``delivery``: ``delivery_key``, ``fingerprint``, ``starts_at``
         (aware datetime), ``starts_at_raw``, ``status``, ``actor``,
         ``raw_sha256``, ``annotations_sha256``, ``alert_json``,
-        ``truncated``. ``opening`` (firing only): the incident to open when
+        ``truncated`` and optionally ``received_at`` (the intake's database
+        instant, which an opening delivery's Run frame ends at; the
+        database clock when absent). ``opening`` (firing only): the incident to open when
         the identity is new -- ``incident_id``, ``intake_key``, and either
         ``run_id`` with
         ``resource_uid``, ``namespace``, ``workload``, ``deadline``,
@@ -79,7 +81,7 @@ class _AlertOps(_IncidentOps):
                 revision = int(last["annotation_revision"]) + 1
             incident_id = None if identity is None else identity["incident_id"]
             conn.execute(
-                "INSERT INTO opspilot_alert_deliveries(delivery_key,fingerprint,starts_at,starts_at_raw,status,outcome,incident_id,actor,raw_sha256,annotations_sha256,annotation_revision,alert_json,truncated) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO opspilot_alert_deliveries(delivery_key,fingerprint,starts_at,starts_at_raw,status,outcome,incident_id,actor,raw_sha256,annotations_sha256,annotation_revision,alert_json,truncated,received_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s,clock_timestamp()))",
                 (
                     key,
                     delivery["fingerprint"],
@@ -94,6 +96,7 @@ class _AlertOps(_IncidentOps):
                     revision,
                     delivery["alert_json"],
                     delivery["truncated"],
+                    delivery.get("received_at"),
                 ),
             )
         return {

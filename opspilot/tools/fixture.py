@@ -28,10 +28,14 @@ must supply a real ``ControlSnapshot`` source as well as a real transport.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from opspilot.investigation.context import InvestigationInput
+from opspilot.investigation.context import (
+    ALERT_STARTS_AT,
+    ContextError,
+    InvestigationInput,
+)
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
 from opspilot.investigation.runner import ExecutorFactory
@@ -78,6 +82,7 @@ WINDOW_START = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
 WINDOW_END = datetime(2026, 9, 14, 1, 0, tzinfo=timezone.utc)
 TOOL_SCHEMA_REVISION = "fixture-2"
 _TIME_POLICY = "policy-window-1"
+_MAX_WINDOW_SECONDS = 3600
 _CANNED_BODY = b'{"data": {"result": [{"metric": "http_errors_rate", "value": 0.042}]}}'
 
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
@@ -153,7 +158,7 @@ def _registration() -> ToolRegistration:
         max_result_bytes=4096,
         # Same limit as the shipped OTel Demo tools (upstream's 25,000 tokens).
         max_view_tokens=25_000,
-        max_window_seconds=3600,
+        max_window_seconds=_MAX_WINDOW_SECONDS,
         error_classes={"503": "SOURCE_UNAVAILABLE", "400": "INVALID_PARAMS"},
         incomplete_marker="partial",
     )
@@ -203,6 +208,31 @@ def fixture_face() -> ToolFace:
         variant_id=DISCIPLINE_VARIANT,
         evidence_context=_evidence_context,
     )
+
+
+def _scope_window(input: InvestigationInput) -> Window:
+    """The fixed fixture hour, or an hour of an alert Run's own frame.
+
+    An alert Run (M1-04 J1) is framed at the alert's receipt, not at the
+    fixture hour, so its views must lie inside that frame to bind to its
+    time policy. This one-tool profile reads at most an hour
+    (``_MAX_WINDOW_SECONDS``): the alert's default query window, cut to an
+    hour from its start. The canned sample is unchanged either way.
+    """
+    if ALERT_STARTS_AT not in input.scope_facts:
+        return Window(WINDOW_START, WINDOW_END)
+    context = input.evidence_context
+    policies = context.get("time_policies") if isinstance(context, Mapping) else None
+    if isinstance(policies, list):
+        for policy in policies:
+            if isinstance(policy, Mapping) and policy.get("id") == _TIME_POLICY:
+                frame = Window.parse(policy.get("window"))
+                default = Window.parse(policy.get("default_query_window"))
+                if frame is None or default is None or not frame.contains(default):
+                    break
+                cap = default.start + timedelta(seconds=_MAX_WINDOW_SECONDS)
+                return Window(default.start, min(default.end, cap))
+    raise ContextError("SCOPE_WINDOW_MISSING")
 
 
 def fixture_versions() -> dict[str, str]:
@@ -259,7 +289,7 @@ def fixture_executor_factory(
             tool_registry_revision=tools.revision,
             target_ids=frozenset({FIXTURE_TARGET}),
             tool_names=frozenset({FIXTURE_TOOL}),
-            window=Window(WINDOW_START, WINDOW_END),
+            window=_scope_window(input),
             deadline=run["deadline"],
         )
         return ReadOnlyToolExecutor(

@@ -55,10 +55,23 @@ INPUT_VERSION = "opspilot-investigation-input-v1"
 #: the fact; a v1 row reads exactly as before.
 INPUT_VERSION_AFFECTED_SERVICE = "opspilot-investigation-input-v2"
 AFFECTED_SERVICE = "affected_service"
+#: An alert Run's input (M1-04 J1-J3): scope facts carry ``alert_starts_at``
+#: (the alert's anchor inside the 24 h frame, its original ``startsAt`` and
+#: how it was clamped) and the time policy the anchored default query
+#: window. Only the Alertmanager intake writes it; v1/v2 rows read as before.
+INPUT_VERSION_ALERT_ANCHOR = "opspilot-investigation-input-v3"
+ALERT_STARTS_AT = "alert_starts_at"
+#: ``alert_starts_at.adjusted``: ``None`` when the anchor is the alert's own
+#: ``startsAt``, else which frame edge it was clamped to (F2, J2).
+ALERT_ANCHOR_ADJUSTMENTS: tuple[str | None, ...] = (None, "future", "before_frame")
 #: The input versions this build reads. A well-formed version string this
 #: build does not know is a Run written by another version: R12 blocks it as
 #: ``INCOMPATIBLE_STATE``; anything else in ``version`` is ``INPUT_INVALID``.
-KNOWN_INPUT_VERSIONS: tuple[str, ...] = (INPUT_VERSION, INPUT_VERSION_AFFECTED_SERVICE)
+KNOWN_INPUT_VERSIONS: tuple[str, ...] = (
+    INPUT_VERSION,
+    INPUT_VERSION_AFFECTED_SERVICE,
+    INPUT_VERSION_ALERT_ANCHOR,
+)
 _INPUT_VERSION_FORM = re.compile(r"opspilot-investigation-input-v[1-9][0-9]{0,8}")
 
 # --- context policy (HolmesGPT's two mechanisms, C3 §5 constraints) ---------
@@ -377,9 +390,22 @@ class InvestigationInput:
                 or any(not isinstance(v, str) or not v for v in service.values())
             ):
                 raise ContextError("INPUT_INVALID")
+        if ALERT_STARTS_AT in self.scope_facts:
+            anchor = self.scope_facts[ALERT_STARTS_AT]
+            if (
+                not isinstance(anchor, Mapping)
+                or set(anchor) != {"anchor", "original", "adjusted"}
+                or not isinstance(anchor["anchor"], str)
+                or not anchor["anchor"]
+                or not isinstance(anchor["original"], str)
+                or anchor["adjusted"] not in ALERT_ANCHOR_ADJUSTMENTS
+            ):
+                raise ContextError("INPUT_INVALID")
 
     @property
     def version(self) -> str:
+        if ALERT_STARTS_AT in self.scope_facts:
+            return INPUT_VERSION_ALERT_ANCHOR
         if AFFECTED_SERVICE in self.scope_facts:
             return INPUT_VERSION_AFFECTED_SERVICE
         return INPUT_VERSION
@@ -436,7 +462,8 @@ class InvestigationInput:
         except ContextError:
             raise
         if value.get("version") != parsed.version:
-            # A v1 row carrying the v2 fact, or a v2 row without it.
+            # A row whose version and facts disagree (a v1 row carrying the
+            # v2 fact, a v2 row without it or with the v3 one, ...).
             raise ContextError("INPUT_INVALID")
         if value.get("tool_face_sha256") != parsed.tool_face_sha256:
             # The recorded face and the recorded schemas disagree: the row was

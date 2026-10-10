@@ -52,7 +52,7 @@ from opspilot.investigation.context import (
     ContextError,
     conclusion_publishable,
 )
-from opspilot.investigation.inputs import ToolFace, continuation_input
+from opspilot.investigation.inputs import AlertAnchor, ToolFace, continuation_input
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -356,6 +356,9 @@ class Workbench:
             "annotations_sha256": record.annotations_sha256,
             "alert_json": record.alert_json,
             "truncated": record.truncated,
+            # The instant an opening delivery's frame ends at (J1), stored
+            # so a fresh rebuild finds the same one (J5).
+            "received_at": received_at,
         }
 
         def answer(
@@ -457,7 +460,15 @@ class Workbench:
             "budget_limit": self.budget_limit,
             "versions": dict(self.run_versions),
             "input": self._fresh_input(
-                request, run_id, deadline, affected_service=service
+                request,
+                run_id,
+                deadline,
+                affected_service=service,
+                alert=AlertAnchor(
+                    received_at=received_at,
+                    starts_at=alert.starts_at_time,
+                    original=alert.starts_at_raw,
+                ),
             ),
             "ledger": [
                 (
@@ -724,11 +735,14 @@ class Workbench:
         deadline: datetime,
         *,
         affected_service: Mapping[str, str] | None = None,
+        alert: AlertAnchor | None = None,
     ) -> dict[str, Any] | None:
         """A first Run's input over the intake question (``None`` without a face).
 
         ``affected_service`` (an alert's resolved namespace + workload, E11)
         is recorded in the scope facts as focus; it grants nothing.
+        ``alert`` frames an alert Run at the alert's receipt and anchors its
+        default query window at ``startsAt`` (J1-J3).
         """
         if self.tool_face is None:
             return None
@@ -738,6 +752,7 @@ class Workbench:
             target_id=request.target_id,
             deadline=deadline,
             model_requests=self.budget_limit,
+            alert=alert,
         )
         if affected_service is not None:
             fresh = replace(
@@ -792,10 +807,37 @@ class Workbench:
                 summary.incident_id,
                 exc.code,
             )
-            return self._fresh_input(request, run_id, deadline)
+            service, alert = self._alert_rebuild(summary.incident_id)
+            return self._fresh_input(
+                request, run_id, deadline, affected_service=service, alert=alert
+            )
         # A PersistenceError (storage outage, lock timeout) propagates: the
         # control action fails closed and the operator retries (bot review,
         # PR #52).
+
+    def _alert_rebuild(
+        self, incident_id: UUID
+    ) -> tuple[Mapping[str, str] | None, AlertAnchor | None]:
+        """What a fresh rebuild of an alert incident's Run keeps (F5, J5):
+        its affected service and the anchor of the incident's earliest
+        delivery, never the renewal instant. ``(None, None)`` for an
+        incident no alert opened."""
+        reader = getattr(self.incidents, "alert_records", None)
+        records = None if reader is None else reader(incident_id)
+        if records is None or records.identity is None or not records.deliveries:
+            return None, None
+        identity = records.identity
+        first = records.deliveries[0]
+        service = (
+            None
+            if identity["namespace"] is None or identity["workload"] is None
+            else {"namespace": identity["namespace"], "workload": identity["workload"]}
+        )
+        return service, AlertAnchor(
+            received_at=first["received_at"],
+            starts_at=identity["starts_at"],
+            original=identity["starts_at_raw"],
+        )
 
     def _audit_matches(
         self,

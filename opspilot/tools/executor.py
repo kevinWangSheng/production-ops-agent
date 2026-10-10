@@ -213,6 +213,10 @@ class QueryScope:
     deadline: datetime
     max_operations: int = MAX_OPERATIONS_PER_RUN
     max_tool_seconds: float = MAX_TOOL_SECONDS_PER_RUN
+    # M1-04 J4: the query window a call that names none reads, inside
+    # ``window`` (an alert Run's anchored hour onward). ``None`` leaves the
+    # transport's own default. A default, never an authorization.
+    default_query_window: Window | None = None
 
     def __post_init__(self) -> None:
         if not all(
@@ -237,6 +241,11 @@ class QueryScope:
             if type(value) is not int or value < 0:
                 raise ToolContractError("INVALID_CONTROL_GENERATION")
         if not isinstance(self.window, Window):
+            raise ToolContractError("INVALID_SCOPE_WINDOW")
+        if self.default_query_window is not None and (
+            not isinstance(self.default_query_window, Window)
+            or not self.window.contains(self.default_query_window)
+        ):
             raise ToolContractError("INVALID_SCOPE_WINDOW")
         if (
             not isinstance(self.deadline, datetime)
@@ -329,6 +338,9 @@ class TransportRequest:
     # through more than one backend (the OTel Demo: Prometheus and Jaeger)
     # routes on it; ``params`` alone cannot say which tool a call is for.
     tool: str = ""
+    # The scope's ``default_query_window`` when it lies inside ``window``
+    # (M1-04 J4); a transport that picks a default query window uses it.
+    default_window: Window | None = None
 
     def __post_init__(self) -> None:
         if self.read_only is not True or self.verb not in READ_ONLY_VERBS:
@@ -816,6 +828,12 @@ class ReadOnlyToolExecutor:
             max_result_bytes=plan.registration.max_result_bytes,
             credential_ref=plan.target.credential_ref,
             tool=plan.registration.name,
+            default_window=(
+                default
+                if (default := self._scope.default_query_window) is not None
+                and plan.window.contains(default)
+                else None
+            ),
         )
         # Count the operation durably *before* the read goes out: if the
         # process dies while the request is in flight, the next attempt still
