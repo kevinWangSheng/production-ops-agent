@@ -8,24 +8,28 @@ revisions, the redacted bounded record and the projection the page uses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
 import threading
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import psycopg
 import pytest
 
 from opspilot.acceptance import (
     IncidentScenario,
+    alert_deliveries_for_identity,
+    alert_delivery_count,
     alert_intake_outcome,
     alert_intake_records,
 )
+from opspilot.alertmanager import parse_alert
 from opspilot.investigation.context import InvestigationInput
 from opspilot.persistence import DurableStore
 from opspilot.tools.fixture import fixture_face, fixture_versions
-from opspilot.tools.registry import canonical_hash
+from opspilot.tools.registry import canonical, canonical_hash
 from opspilot.web import (
     AuthConfig,
     Authenticator,
@@ -39,6 +43,7 @@ from opspilot.web import (
     hash_password,
     token_digest,
 )
+from opspilot.web.service import _INTAKE_NAMESPACE
 from opspilot.web.store import MappingTargetRegistry
 from scripts.m0.postgres_lab import DSN
 from tests.m1_web_support import (
@@ -212,6 +217,31 @@ def test_first_firing_opens_incident_and_run_replays_keep_it():
     assert [d.annotation_revision for d in outcome.deliveries] == [1, 2, 2]
     assert {d.actor for d in outcome.deliveries} == {ACTOR}
     assert outcome.deliveries[0].raw_sha256 == canonical_hash(alert)
+    # r4 fields.
+    assert (
+        outcome.deliveries[0].raw_sha256
+        == hashlib.sha256(canonical(alert).encode("utf-8")).hexdigest()
+    )
+    assert outcome.lifecycle == "open"
+    assert outcome.run_ids == (run,)
+    assert outcome.observation_session_ids == ()
+    assert outcome.run_input is not None
+    assert outcome.run_input["scope_facts"]["affected_service"] == {
+        "namespace": "otel-demo",
+        "workload": "checkout",
+    }
+    assert outcome.run_input["bound_target_id"] == "checkout-prod"
+    first = outcome.deliveries[0]
+    assert first.original_starts_at == "2026-10-10T10:41:54.365Z"
+    assert first.received_at.endswith("Z")
+    assert json.loads(first.audit_json)["fingerprint"] == alert["fingerprint"]
+    assert outcome.deliveries[1].received_at >= first.received_at
+    assert (
+        alert_deliveries_for_identity(
+            store, alert["fingerprint"], "2026-10-10T10:41:54Z"
+        )
+        == outcome.deliveries
+    )
     assert (
         _count(
             "SELECT count(*) FROM opspilot_runs WHERE incident_id=%s", UUID(incident)
@@ -284,6 +314,7 @@ def test_unresolved_and_ambiguous_alerts_are_handoff_only_incidents():
         assert subject not in store.claimable_incidents(limit=1000)
     outcome = _outcome(store, first["incident_id"])
     assert outcome.handoff and outcome.run_id is None and outcome.target_id is None
+    assert outcome.run_input is None and outcome.run_ids == ()
     assert outcome.affected_service is None
     assert [d.outcome for d in outcome.deliveries] == [
         "handoff_created",
@@ -340,6 +371,11 @@ def test_resolved_attaches_to_the_same_identity_or_is_only_recorded():
         == 1
     )
 
+    with psycopg.connect(DSN) as conn:
+        [orphaned] = alert_deliveries_for_identity(
+            conn, orphan["fingerprint"], "2026-10-10T10:41:54Z"
+        )
+    assert orphaned.outcome == "resolved_recorded"
     outcome = _outcome(store, created["incident_id"])
     assert [
         (d.status, d.outcome, d.annotation_revision) for d in outcome.deliveries
@@ -366,7 +402,8 @@ def test_a_group_is_answered_per_alert_in_payload_order_and_invalid_writes_nothi
     no_fingerprint = _alert()
     del no_fingerprint["fingerprint"]
     naive = _alert(startsAt="2026-10-10T10:41:54")
-    deliveries_before = _count("SELECT count(*) FROM opspilot_alert_deliveries")
+    with psycopg.connect(DSN) as conn:
+        deliveries_before = alert_delivery_count(conn)
     response = _post(app, _webhook(good, no_fingerprint, naive, "not-an-alert"))
     assert response.status == 200
     results = response.json()["results"]
@@ -450,9 +487,11 @@ def test_concurrent_first_deliveries_open_one_incident():
     )
 
 
-def test_a_storage_failure_is_503_and_the_retry_replays_what_committed():
+@pytest.mark.parametrize("unresolved", [False, True])
+def test_a_storage_failure_is_503_and_the_retry_replays_what_committed(unresolved):
     app, _, store = _build()
-    ok, boom = _alert(), _alert(f"boom{uuid4().hex[:12]}")
+    labels = {"alertname": "X", "namespace": "nowhere"} if unresolved else None
+    ok, boom = _alert(), _alert(f"boom{uuid4().hex[:12]}", labels=labels)
     with psycopg.connect(DSN, autocommit=True) as conn:
         conn.execute(
             "CREATE OR REPLACE FUNCTION impl_test_boom() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.fingerprint LIKE 'boom%' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$"
@@ -479,9 +518,34 @@ def test_a_storage_failure_is_503_and_the_retry_replays_what_committed():
         )
         == 0
     )
+    for table in ("opspilot_alert_identities", "opspilot_alert_deliveries"):
+        assert (
+            _count(
+                f"SELECT count(*) FROM {table} WHERE fingerprint=%s",
+                boom["fingerprint"],
+            )
+            == 0
+        )
+    intake_key = f"intake:{parse_alert(boom).delivery_key}"
+    assert (
+        _count(
+            "SELECT count(*) FROM opspilot_incidents WHERE intake_key=%s", intake_key
+        )
+        == 0
+    )
+    assert (
+        _count(
+            "SELECT count(*) FROM opspilot_runs WHERE incident_id=%s",
+            uuid5(_INTAKE_NAMESPACE, intake_key),
+        )
+        == 0
+    )
     retry = _post(app, _webhook(ok, boom))
     assert retry.status == 200
-    assert [r["outcome"] for r in retry.json()["results"]] == ["replayed", "created"]
+    assert [r["outcome"] for r in retry.json()["results"]] == [
+        "replayed",
+        "handoff_created" if unresolved else "created",
+    ]
 
 
 def test_record_is_redacted_bounded_and_rendered_as_text():
