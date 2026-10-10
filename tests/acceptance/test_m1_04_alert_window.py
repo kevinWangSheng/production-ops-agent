@@ -286,7 +286,7 @@ def test_j1_j2_j3_alert_run_frame_anchor_and_input_snapshot(
     assert outcome.run_input is not None
     assert len(outcome.run_ids) == len(outcome.run_inputs)
     run_input = outcome.run_input
-    assert run_input["version"] == "opspilot-investigation-input-v3"
+    assert run_input["version"] == "opspilot-investigation-input-v4"
 
     delivery = outcome.deliveries[0]
     received = _instant(delivery.received_at).replace(microsecond=0)
@@ -480,7 +480,7 @@ def test_j5_timeout_continuation_and_fresh_fallback_keep_alert_anchor(
     successor = after.run_inputs[1]
     assert successor is not None
     assert _time_contract(successor) == _time_contract(first_input)
-    assert successor["version"] == "opspilot-investigation-input-v3"
+    assert successor["version"] == "opspilot-investigation-input-v4"
     assert successor["evidence_context"]["run_id"] == after.run_ids[1]
     assert successor["question"].startswith(first_input["question"])
 

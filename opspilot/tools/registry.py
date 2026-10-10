@@ -294,52 +294,202 @@ _CREDENTIAL_SCHEME = re.compile(
 _AUTHORITY_USERINFO = re.compile(
     r"(?P<prefix>//)(?P<userinfo>[^\s/@]++)@(?P<host>[^\s/:?#]+)"
 )
-# The quoted forms the unquoted value above stops at: JSON ``"name":"v"``,
-# YAML ``name: "v"``, ``name='v'``. Only the name, separator and opening
-# quote are matched; the value is read up to its closing quote (same quote,
-# backslash escapes honoured, never past a line end) only when the name is an
-# authentication name. A credential value whose closing quote never comes
-# before the line end fails closed: the rest of that line is redacted (the
-# next line is left alone). A non-credential name consumes nothing past its
-# opening quote, so an assignment nested inside an ordinary quoted string is
-# still examined, and each scan stops at the next quote or line end (linear
-# time).
+# The forms the unquoted value above stops at: JSON ``"name":"v"``, YAML
+# ``name: "v"``, ``name='v'``, and a JSON value that is an object, an array
+# (``"name":{...}``) or, after a quoted name, a bare scalar
+# (``"name": 4711``). Only the name, separator and the value's first
+# character are matched; the value is read only when the name is an
+# authentication name. A quoted value runs to its closing quote (same quote,
+# backslash escapes honoured) on the same line; one that does not close on
+# its line fails closed and everything after the opening quote is redacted,
+# since its end cannot be told from text that follows it (M1-04 step 4
+# review P1-1: a value continued on the next line leaked). An object or array
+# is replaced whole, as a quoted marker, up to its balancing bracket (strings
+# and escapes honoured), or to the end of the text when it never balances. A
+# non-credential name consumes nothing past its separator, so an assignment
+# nested inside an ordinary value is still examined. Each scan is a single
+# forward pass (linear time).
 _QUOTED_ASSIGNMENT = re.compile(
-    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)"
-    r"(?P<sep>[\"']?\s*[:=]\s*)(?P<quote>[\"'])"
+    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
+    r"(?:(?P<sep>\s*[:=]\s*)(?P<quote>[\"'{\[])"
+    r"|(?P<scalar_sep>\s*:\s*)(?P<scalar>[^\s\"'{\[\],}]++))"
 )
+# A quoted key spelled with escapes (``"PASS\u0057ORD":``) is the same key to
+# any JSON reader, so its value gets the same redaction once the escapes are
+# decoded (M1-04 step 4 recheck P1-1), whatever the key's length. Found from
+# its end: every quote followed by a separator is a candidate closing quote,
+# and its opening quote is the nearest unescaped same quote before it on the
+# same line. That backward walk never goes below the previous candidate of
+# the same quote (a key cannot contain one), so each character is walked a
+# bounded number of times and the pass stays linear. When the walk reaches
+# that previous candidate without a quote between, the candidate itself
+# opens the key -- in malformed text this may over-redact, never under.
+_KEY_END = re.compile(r"[\"'](?=\s*+[:=])")
+_KEY_SEP = re.compile(r"\s*+[:=]\s*+")
+_SCALAR_VALUE = re.compile(r"[^\s\"'{\[\],}]++")
+_JSON_ESCAPE = re.compile(r"\\(?:u(?P<hex>[0-9A-Fa-f]{4})|(?P<char>.))", re.DOTALL)
 _QUOTED_VALUE = {
     '"': re.compile(r'(?:[^"\\\n]|\\.)++"'),
     "'": re.compile(r"(?:[^'\\\n]|\\.)++'"),
 }
+_CLOSERS = {"{": "}", "[": "]"}
 
 
 def _credential_name(name: str) -> bool:
     return name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name)
 
 
+def _container_end(text: str, start: int) -> int:
+    """Index after the object or array opening at ``start``, or ``len(text)``
+    when it never balances. JSON strings (either quote) are skipped whole."""
+    stack: list[str] = []
+    quote: str | None = None
+    index = start
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                quote = None
+        elif char in "\"'":
+            quote = char
+        elif char in _CLOSERS:
+            stack.append(_CLOSERS[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+            if not stack:
+                return index + 1
+        index += 1
+    return len(text)
+
+
+def _decoded_name(quoted: str) -> str:
+    """A quoted key's text with JSON escapes (``\\uXXXX``, ``\\/`` ...) decoded."""
+    return _JSON_ESCAPE.sub(
+        lambda m: chr(int(m.group("hex"), 16)) if m.group("hex") else m.group("char"),
+        quoted,
+    )
+
+
+def _escaped(text: str, index: int) -> bool:
+    """Whether the character at ``index`` follows an odd run of backslashes."""
+    run = 0
+    while index - run - 1 >= 0 and text[index - run - 1] == "\\":
+        run += 1
+    return run % 2 == 1
+
+
+def _value_redaction(text: str, start: int) -> tuple[str, int] | None:
+    """The marker for a credential value starting at ``start`` and where the
+    value ends, by the rules of ``_redact_quoted``; ``None`` when there is
+    nothing to hide (empty, or already the marker)."""
+    if start >= len(text) or text.startswith(REDACTED_CREDENTIAL, start):
+        return None
+    char = text[start]
+    if char in "\"'":
+        if text[start + 1 : start + 2] in (char, ""):
+            return None
+        value = _QUOTED_VALUE[char].match(text, start + 1)
+        if value is None:
+            return char + REDACTED_CREDENTIAL, len(text)
+        return char + REDACTED_CREDENTIAL + char, value.end()
+    if char in _CLOSERS:
+        return f'"{REDACTED_CREDENTIAL}"', _container_end(text, start)
+    scalar = _SCALAR_VALUE.match(text, start)
+    return None if scalar is None else (REDACTED_CREDENTIAL, scalar.end())
+
+
+def _redact_escaped_keys(text: str) -> str:
+    if "\\" not in text:
+        return text  # nothing is spelled with an escape
+    parts: list[str] = []
+    pos = 0
+    previous: dict[str, int] = {}
+    for match in _KEY_END.finditer(text):
+        end = match.start()
+        quote = text[end]
+        if end < pos or _escaped(text, end):
+            continue
+        floor = max(previous.get(quote, -1), pos - 1)
+        previous[quote] = end
+        opening = None
+        index = end - 1
+        while index > floor:
+            char = text[index]
+            if char == "\n":
+                break
+            if char == quote and not _escaped(text, index):
+                opening = index
+                break
+            index -= 1
+        else:
+            # Reached the previous candidate (a quote of this kind) with no
+            # quote between: it opens this key. A floor at the end of the
+            # last redaction is not a quote that may open anything.
+            if floor >= pos and text[floor] == quote:
+                opening = floor
+        if opening is None:
+            continue
+        name = text[opening + 1 : end]
+        if "\\" not in name or not _credential_name(_decoded_name(name)):
+            continue  # unescaped names are ``_redact_quoted``'s
+        separator = _KEY_SEP.match(text, end + 1)
+        if separator is None:
+            continue
+        redaction = _value_redaction(text, separator.end())
+        if redaction is None:
+            continue
+        marker, value_end = redaction
+        parts.append(text[pos : separator.end()] + marker)
+        pos = value_end
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
 def _redact_quoted(text: str) -> str:
     parts: list[str] = []
     pos = 0
     while (match := _QUOTED_ASSIGNMENT.search(text, pos)) is not None:
+        credential = _credential_name(match.group("name"))
+        if match.group("scalar") is not None:
+            if not match.group("close"):
+                # ``name: value`` unquoted is the assignment rule's; only a
+                # quoted name takes a bare JSON scalar here.
+                parts.append(text[pos : match.start("scalar")])
+                pos = match.start("scalar")
+                continue
+            if credential and match.group("scalar") != REDACTED_CREDENTIAL:
+                parts.append(text[pos : match.start("scalar")] + REDACTED_CREDENTIAL)
+            else:
+                parts.append(text[pos : match.end()])
+            pos = match.end()
+            continue
+        quote = match.group("quote")
+        if quote in _CLOSERS:
+            opened = match.start("quote")
+            parts.append(text[pos:opened])
+            if credential and not text.startswith(REDACTED_CREDENTIAL, opened):
+                parts.append(f'"{REDACTED_CREDENTIAL}"')
+                pos = _container_end(text, opened)
+            else:
+                pos = opened  # examined from the bracket on
+            if pos == opened:
+                parts.append(text[pos])
+                pos += 1
+            continue
         end = match.end()
         parts.append(text[pos:end])
         pos = end
-        quote = match.group("quote")
-        if not _credential_name(match.group("name")) or text[end : end + 1] in (
-            quote,
-            "\n",
-            "",
-        ):
+        if not credential or text[end : end + 1] in (quote, ""):
             continue  # ordinary name, or an empty value: nothing to hide
         value = _QUOTED_VALUE[quote].match(text, end)
         if value is not None:
             parts.append(REDACTED_CREDENTIAL + quote)
             pos = value.end()
         else:
-            line_end = text.find("\n", end)
             parts.append(REDACTED_CREDENTIAL)
-            pos = len(text) if line_end < 0 else line_end
+            pos = len(text)
     parts.append(text[pos:])
     return "".join(parts)
 
@@ -357,6 +507,7 @@ def redact_credentials(text: str) -> str:
         lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}", text
     )
     redacted = _CREDENTIAL_ASSIGNMENT.sub(assignment, redacted)
+    redacted = _redact_escaped_keys(redacted)
     redacted = _redact_quoted(redacted)
     return _CREDENTIAL_SCHEME.sub(
         lambda m: f"{m.group('scheme')} {REDACTED_CREDENTIAL}", redacted

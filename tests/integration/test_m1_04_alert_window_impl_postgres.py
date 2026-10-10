@@ -159,7 +159,7 @@ def test_alert_run_is_framed_at_receipt_and_anchored_at_starts_at():
     # the receipt is the intake's database clock, not the webhook's.
     assert abs((end - now).total_seconds()) < 60
     anchor = starts.replace(microsecond=0)
-    assert raw["version"] == "opspilot-investigation-input-v3"
+    assert raw["version"] == "opspilot-investigation-input-v4"
     assert raw["scope_facts"]["alert_starts_at"] == {
         "anchor": _iso(anchor),
         "original": original,
@@ -249,7 +249,7 @@ def test_renewal_keeps_the_alert_frame_and_anchor():
     result = _post_alert(app, "2026-10-10T10:41:54.365Z")
     previous = _records(result["incident_id"]).run["input"]
     successor, deadline = _successor(workbench, result["incident_id"])
-    assert successor["version"] == "opspilot-investigation-input-v3"
+    assert successor["version"] == "opspilot-investigation-input-v4"
     assert (
         successor["scope_facts"]["alert_starts_at"]
         == (previous["scope_facts"]["alert_starts_at"])
@@ -278,7 +278,7 @@ def test_fresh_fallback_rebuilds_from_the_earliest_delivery():
             (UUID(result["run_id"]),),
         )
     successor, _ = _successor(workbench, result["incident_id"])
-    assert successor["version"] == "opspilot-investigation-input-v3"
+    assert successor["version"] == "opspilot-investigation-input-v4"
     assert (
         successor["scope_facts"]["alert_starts_at"]
         == (previous["scope_facts"]["alert_starts_at"])
@@ -339,7 +339,7 @@ def test_run_inputs_list_every_runs_committed_input_including_a_renewal():
     # ``run_input`` stays the intake Run's.
     assert previous == outcome.run_input == first.run_input
     assert successor is not None and successor["version"] == (
-        "opspilot-investigation-input-v3"
+        "opspilot-investigation-input-v4"
     )
     assert successor["evidence_context"]["run_id"] == outcome.run_ids[1]
     assert (

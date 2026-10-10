@@ -227,7 +227,7 @@ def test_an_unknown_later_version_is_incompatible(monkeypatch):
     raw = _alert_input(FRAME_END).as_json()
     with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
         InvestigationInput.from_json(
-            {**raw, "version": "opspilot-investigation-input-v4"}
+            {**raw, "version": "opspilot-investigation-input-v5"}
         )
     # F4: a worker that predates v3 blocks the row instead of dropping facts.
     monkeypatch.setattr(
