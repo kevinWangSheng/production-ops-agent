@@ -2,7 +2,7 @@
 
 只保留当前状态表；更新时替换对应行，不追加段落。历史叙述见 [ROADMAP 历史归档](docs/archive/roadmap-history-2026-09-21.md)。
 
-## 当前状态（2026-10-09）
+## 当前状态（2026-10-10）
 
 | 项目 | 状态 | 证据 / 下一步 |
 |---|---|---|
@@ -13,8 +13,8 @@
 | M1-01 已决（2026-09-24） | ① 交接不发布、事故保持开放；⑦ 过期 Run 由清扫写超时交接（两项见 ADR-0005）；② 追问累计重发保持现状；③ 网页追问上限改 8192 并提示；④ `web` 依赖默认安装；⑤ 不做按事故授权（单团队）；⑥ close/reopen、重绑定、合并/拆分移出 M1-01。已知限制：合格结论发布后不可再追问；携带证据无观测载荷、时间策略双标准、intake 非同事务、C3 §5 按 ID 读证据降为已知偏离 | [ADR-0005](docs/adr/0005-handoff-and-deadline-terminal.md)；原则：优先对标上游 HolmesGPT |
 | M1-01 剩余工作 | 无。1–8 已完成（明细见 `docs/tasks/` 下 2026-09-24 至 09-29 的 m1-01 任务记录，收口见 [收口记录](docs/tasks/2026-09-28-m1-01-closure.md)）；收口后续项 1–4 已完成（#61–#65）；2026-10-01 批次已完成（#67–#71）：[交接补写](docs/tasks/2026-10-01-m1-01-handoff-backfill.md)、[列表页 Run 状态](docs/tasks/2026-10-01-m1-01-list-run-state.md)、[series_note](docs/tasks/2026-10-01-m1-01-series-note.md)、[估算器对账](docs/tasks/2026-10-01-m1-01-token-estimator.md)（实测少算约 11–20%，校准后仍可能残余约 6%，用户决定不改代码）、[覆盖摘要](docs/tasks/2026-10-01-m1-01-coverage-refusals.md)（只随强制最终报告轮发送，被拒调用列入放弃）。后续改进（不属 M1-01）：#94 #95 #96 #97 | 下一步：M1-02（见下行） |
 | M1 基础设施准备 | 实现已合并（2026-10-07），trace 完成条件未全部达成：① 数据访问层标准化（ADR-0007：保留参数化 SQL）——Alembic 基线与接管 #104、状态 CHECK 约束 #106、拆分 `persistence.py` #107、`psycopg_pool` #109；② OTel 埋点接 LangSmith（仅 lab，失败即关闭）#108，实验证据改为平台 trace + 仓库冻结摘要 `summary.json` #110。未执行：全新上下文审查凭 API 读 trace 并写判定、`otel-demo` profile 下的 lab Run（见 trace 记录）；实验证据脚本两处改进 #116 | [数据访问层](docs/tasks/2026-10-05-m1-prep-schema-migrations.md)、[ADR-0007](docs/adr/0007-data-access-raw-sql-with-standard-tools.md)、[trace](docs/tasks/2026-10-05-m1-prep-trace-langsmith.md)、[ADR-0006](docs/adr/0006-trace-evidence-and-backlog.md) |
-| M1-02 独立恢复观察（F6） | 已完成：F6 `passes` = true（#166，2026-10-09）。真实运行 `3bbad40`（kind 实验环境，五步 + 离线重放），经 main `0336c04` 对同批数据重新投影与重放确认兼容，独立审查无阻塞。主要 PR：#111 #113 #114 #119 #120 #123 #130–#132 #137 #139 #143 #147 #148 #150 #152 #158 #160 #161 #163 #165 #166。遗留限制：真实环境未等会话期限到期、未测 pod 重启、实验环境计数器停滞原因未查。进行中：#156（查询实际发出时间，用户 2026-10-09 已裁决）。其余跟踪：#124（暂不做）、#117、#134、#159（Observer trace 缺口，暂不补） | [任务记录](docs/tasks/2026-10-03-m1-02-recovery-observation.md)、[F6 测试映射](docs/testing/f6-acceptance-tests.md)、证据 `docs/evidence/m1-02-live-2/` |
-| M1-03 复盘与知识（F13） | 进行中：第 1–3 步已合并（#171 持久化 0008、#175 草稿生成 0009、#176 工作台审核）；合同 r6（D1–D35、R1–R15，2026-10-09）已裁决，第 4 步验收投影与真实验收开工，D35 恢复读数证据链接缺陷先修；M1 只做 F13 第 1–3 步、`passes` 保持 false；调查侧角色拆分 #169 | [任务记录](docs/tasks/2026-10-05-m1-03-postmortem.md)、[合同决定表](docs/tasks/2026-10-05-m1-03-postmortem-contract.md) |
+| M1-02 独立恢复观察（F6） | 已完成：F6 `passes` = true（#166，2026-10-09）。真实运行 `3bbad40`（kind 实验环境，五步 + 离线重放），经 main `0336c04` 对同批数据重新投影与重放确认兼容，独立审查无阻塞。主要 PR：#111 #113 #114 #119 #120 #123 #130–#132 #137 #139 #143 #147 #148 #150 #152 #158 #160 #161 #163 #165 #166。遗留限制：真实环境未等会话期限到期、未测 pod 重启、实验环境计数器停滞原因未查。#156（查询实际发出时间）已关闭。其余跟踪：#124（暂不做）、#117、#134、#159（Observer trace 缺口，暂不补） | [任务记录](docs/tasks/2026-10-03-m1-02-recovery-observation.md)、[F6 测试映射](docs/testing/f6-acceptance-tests.md)、证据 `docs/evidence/m1-02-live-2/` |
+| M1-03 复盘与知识（F13） | 进行中：第 1–4 步已合并（#171 持久化 0008、#175 草稿生成 0009、#176 工作台审核、#178 D35 证据链接、#180 验收投影与真实验收）；#181 争议定义收窄（prompt v2，合同 r7）待合并，补验收批准 → 发布 → 撤销走通；替换真实链路不可达 #179；验收断言 #182；M1 只做 F13 第 1–3 步、`passes` 保持 false；调查侧角色拆分 #169 | [任务记录](docs/tasks/2026-10-05-m1-03-postmortem.md)、[合同决定表](docs/tasks/2026-10-05-m1-03-postmortem-contract.md) |
 | DurableStore 加固 | A 类已合并（#26）；B2/C1/C2 随 M1 基础设施准备完成（#104 #106 #107 #109）；B1、C3 待决（#98 #99） | [任务记录](docs/tasks/2026-09-15-durable-store-hardening.md) |
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
 | LangGraph（ADR-0004） | 推迟，视为已决 | [ADR-0004](docs/adr/0004-langgraph-orchestration.md)；需要扩大比较时另立合同。 |
