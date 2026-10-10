@@ -112,4 +112,5 @@
 | R25 | 未知、重复或非法目标继续按现有输出校验拒绝，不新增隐式映射 |
 | R26 | 旧版本读取保持兼容；只有新生成记录写新版本号 |
 | R27 | 纯函数测试：payload 含目标、排序稳定、超限拒绝、key+revision 精确绑定；保留现有 PG supersede 测试 |
+| R29 | （lead 2026-10-10，独立测试作者指出 D41 未定字段名）输出提议增加 `supersedes_revision: int \| null`（≥1；解析时可省略，省略视为 null，prompt 始终要求给出）。key 等于输入中 active 条目时 `supersedes_revision` 必须等于该条目 revision；为 null 或不等、或给了 revision 但 key 不在输入中，均按输出问题处理：一次修正调用后 `OUTPUT_INVALID`（D30）；只有 key 与 revision 都匹配才设 `supersedes_entry_id`。目标 revision 只在生成时校验，不入库（R28） |
 | R28 | 不加表或迁移，除非持久化目标 revision 确需新列（D41）；若需迁移，按用户门 PR 处理并在任务记录写理由 |
