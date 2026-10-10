@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from opspilot.persistence.alerts import _AlertOps
 from opspilot.persistence.base import (
     Connection,
     Lease,
@@ -26,5 +27,5 @@ __all__ = [
 ]
 
 
-class DurableStore(_IncidentOps, _RunOps, _ControlOps, _BudgetOps, _StepOps):
+class DurableStore(_AlertOps, _IncidentOps, _RunOps, _ControlOps, _BudgetOps, _StepOps):
     """Small transactional store; callers only observe committed business rows."""
