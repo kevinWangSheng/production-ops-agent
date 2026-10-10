@@ -777,6 +777,8 @@ def test_http_supersede_and_revoke_preserve_immutable_history(h, monkeypatch):
         },
     )
     assert response.status == 200, response.text
+    active_revision = before.active[entry_id]["revision"]
+    model.payload = output(ev, supersedes_revision=active_revision)
     view = h.generate(incident, model)["postmortem"]
     assert view["versions"][-1]["proposals"][0]["supersedes_entry_id"] == entry_id, (
         "worker 没有产生合法替换目标；不补造版本"
