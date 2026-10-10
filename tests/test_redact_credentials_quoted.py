@@ -77,3 +77,31 @@ def test_a_quoted_credential_in_the_question_or_a_note_never_reaches_the_model()
     assert messages[1]["content"] == f'checkout fails; config was {{"api_key":"{R}"}}'
     projected = project_input_content({"text": "retry with password: 'hunter2fake'"})
     assert projected == {"text": f"retry with password: '{R}'"}
+
+
+def test_an_unclosed_quoted_credential_is_redacted_to_the_line_end():
+    """PR #189 bot re-review P1: no closing quote before the line end fails
+    closed -- the rest of that line goes, the next line is kept."""
+    cases = {
+        'password: "hunter2fake': f'password: "{R}',
+        '{"api_key":"AKIAFAKE1234': f'{{"api_key":"{R}',
+        "token='abcfake\nnext line": f"token='{R}\nnext line",
+        'password: "hunter2fake tail\napi_key="k2fake"': (
+            f'password: "{R}\napi_key="{R}"'
+        ),
+        'password: "esc\\"aped-fake': f'password: "{R}',
+    }
+    for text, expected in cases.items():
+        assert redact_credentials(text) == expected, text
+        assert redact_credentials(expected) == expected  # idempotent
+
+
+def test_an_unclosed_ordinary_or_empty_quote_is_unchanged():
+    for text in (
+        'note "hello world',
+        'note: "hello world\nnext line',
+        "title: 'Token rotation plan",
+        'password: "',
+        'password: "\nnext line',
+    ):
+        assert redact_credentials(text) == text, text
