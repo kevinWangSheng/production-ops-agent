@@ -1,0 +1,233 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-04-question-redaction-live",
+  "run_id": "92fdbc19-1b42-5204-8310-8eaf00862a2f",
+  "frozen_at": "2026-10-10T14:09:12.654488+00:00",
+  "round": "m1-04-question-redaction-20261010",
+  "versions": {
+    "branch": "feature/m1-04-question-redaction",
+    "commit": "2ffe5e9",
+    "model": "deepseek-flash",
+    "tool_profile": "otel-demo",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-bd28790117a0",
+      "tool_schema_revision": "otel-demo-34bc78980747",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    }
+  },
+  "input_summary": {
+    "source": "POST /intake/ui (Basic Auth lab account), target m0-otel-20260909",
+    "question": "<synthetic: raw question withheld; contains four synthetic credential shapes from tests/test_m1_question_redaction.py>",
+    "question_sha256": "da4b85fa2d5dbd0db61a1688b322a1b8184e617de1f28c5881004dcdfbb3a6cb"
+  },
+  "checks": {
+    "pg_model_request": {
+      "rebuild_transcript_hash_checks": "passed (no INCOMPATIBLE_STATE)",
+      "steps": 18,
+      "first_user_message_redacted": "Checkout appears to show elevated HTTP errors since about 13:50Z; the external probe used Authorization: [REDACTED_CREDENTIAL] against https://[REDACTED_CREDENTIAL]@metrics.internal/api?api_key=[REDACTED_CREDENTIAL]&q=1 and token=[REDACTED_CREDENTIAL] -- query the authorized metrics and return a json investigation report for the authorized window: is checkout failing, and why?",
+      "first_user_message_secret_hits": [],
+      "first_user_message_has_marker": true,
+      "first_step_prefix_messages": 3,
+      "first_step_recorded_input_snapshot_hash": "3de7260ebc66868a21212b4b1b5b0d98eeca865fe3540c32c3d51737112e3683",
+      "hash_of_prefix_with_redacted_question": "3de7260ebc66868a21212b4b1b5b0d98eeca865fe3540c32c3d51737112e3683",
+      "hash_of_prefix_with_raw_question": "a7d917c50b726019c0c98fa33c27f172c29ac6012f40b20c5140d09e04b20bfa",
+      "recorded_equals_redacted": true,
+      "recorded_equals_raw": false,
+      "all_rebuilt_messages_secret_hits": [],
+      "all_step_rows_secret_hits": []
+    },
+    "stored_input": {
+      "stored_question_sha256": "da4b85fa2d5dbd0db61a1688b322a1b8184e617de1f28c5881004dcdfbb3a6cb",
+      "submitted_question_sha256": "da4b85fa2d5dbd0db61a1688b322a1b8184e617de1f28c5881004dcdfbb3a6cb",
+      "stored_question_secret_count": 4,
+      "matches": true
+    },
+    "trace": {
+      "all_children_secret_hits": [
+        []
+      ],
+      "first_llm_has_product_marker": [
+        true
+      ]
+    },
+    "summary_secret_hits": []
+  },
+  "outcome": {
+    "incident_outcome": {
+      "scenario_id": "m1-04-question-redaction-live",
+      "final_state": "completed",
+      "evidence_ids": [
+        "c51778ed-98d4-4fab-a592-940327be54e9-t0:9d725caa-3dba-47e7-b272-2c5c937fe023",
+        "c51778ed-98d4-4fab-a592-940327be54e9-t1:d6dc3cf1-6e32-4e1e-85dc-d86c40015fd8",
+        "5f8a397f-d09e-414a-80fb-83410a42e485-t0:0c7c0bb4-2dcb-4afa-9e4e-a3d44e98c8f4",
+        "5f8a397f-d09e-414a-80fb-83410a42e485-t1:3af9d189-396e-4a88-8c08-5a51d4c27efa",
+        "e5226363-2562-48fd-9ee1-3e2f5f9ccf8f-t1:455cd47c-a55a-440d-91d1-2dfb2a9922c4",
+        "e5226363-2562-48fd-9ee1-3e2f5f9ccf8f-t2:deb7e3cf-178f-4f1e-9257-55bbd792b4fd",
+        "085b8679-f030-4ba4-824f-68be12a5db14-t0:2f4ec979-2ae8-4a25-9c5d-9f071756d54a",
+        "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t0:e033ed93-d4f8-480f-8b5e-0375cf97de1d",
+        "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t1:e448dacb-c7b1-4d0b-a975-a55eec87b057",
+        "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t2:9909a9f0-06c4-4956-9104-d753a6524d36",
+        "874d9765-c8f7-4d0a-9b78-3a906349b94e-t0:fe38d7ef-8fec-487d-8064-8283dd107420",
+        "874d9765-c8f7-4d0a-9b78-3a906349b94e-t1:416bfcd8-8ab7-46d2-b683-f21e0629c3dc",
+        "874d9765-c8f7-4d0a-9b78-3a906349b94e-t2:7341f374-f878-4428-9276-3ff218be78fa",
+        "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t0:b47c6402-fc66-4874-af36-84d308be469b",
+        "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t1:bee72bd1-d8da-412a-9c79-62b1c2518870",
+        "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t2:dbc07e93-b3db-40d1-b56e-9203d93a83a8",
+        "833e7c30-f3f7-4af0-916a-b3bf322f8824-t0:b369b38c-eff5-46fb-9e68-5e3382078c0b",
+        "833e7c30-f3f7-4af0-916a-b3bf322f8824-t1:dc7cb0d0-1c64-41df-b743-4c0fced111ad",
+        "833e7c30-f3f7-4af0-916a-b3bf322f8824-t2:173de9b7-52b7-49b2-af2d-2be406313e6b",
+        "fdd75021-7b9a-4194-8cff-c02f1644bb79-t0:e0358dea-c5b4-4ccc-b32b-02a490d45587",
+        "fdd75021-7b9a-4194-8cff-c02f1644bb79-t1:8240799f-9eff-46f2-8574-d3c130883e29",
+        "fdd75021-7b9a-4194-8cff-c02f1644bb79-t2:0e897fc6-d2d2-4a7c-bc0e-b7cfd0169ce5",
+        "3deac030-254d-4021-ba4f-11673275ddeb-t0:7f0894bb-4d24-4d7c-8d6a-479108aa78c2",
+        "3deac030-254d-4021-ba4f-11673275ddeb-t1:af0ab84c-8564-4bd6-8030-c7bb5a34d3d6",
+        "a14c8b89-c564-4fb0-912f-02e375def325-t0:5bf84ad2-c469-44e7-b64a-2d7829a3efa6",
+        "a14c8b89-c564-4fb0-912f-02e375def325-t1:1182c274-50ae-4027-bfdf-63c185ef478e",
+        "a14c8b89-c564-4fb0-912f-02e375def325-t2:d8243570-fc21-4012-8b2a-1f94ba9a840d",
+        "ea605d0c-5133-4ad6-982c-f7d449aa1909-t0:ca3b8df7-40af-4ea8-bd20-fed00df78321",
+        "ea605d0c-5133-4ad6-982c-f7d449aa1909-t1:d3f17d68-29b0-4043-bc5d-52a703fdd34c",
+        "86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1",
+        "86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3",
+        "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1",
+        "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t1:da5b4cab-464a-40ca-ab72-ce3f4480323f",
+        "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t2:5607e7eb-3730-4969-b75b-94bd4e20e144",
+        "5823c28a-68e9-4886-9a95-336fe7770cda-t0:11fe393a-0663-48f8-ac6b-502e9408e500",
+        "5823c28a-68e9-4886-9a95-336fe7770cda-t1:d360099a-af16-4602-9fa4-aec439116084",
+        "23e92bed-8bc1-449c-bc0a-ca526d1fee00-t0:62be9ec3-b557-4b63-bdf7-029ebd6ec245",
+        "23e92bed-8bc1-449c-bc0a-ca526d1fee00-t1:43b92c47-4654-42df-a91a-b78cb257689b"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "run_state": "completed",
+    "budget_spent": 17,
+    "tool_operations_used": 41,
+    "report": {
+      "kind": "conclusion",
+      "assistant": {
+        "role": "assistant",
+        "content": null
+      },
+      "conclusion": {
+        "rounds": 17,
+        "handoff": false,
+        "segment": "ctx0",
+        "execution": "completed",
+        "calibration": 1.2607333431242962,
+        "compactions": 0,
+        "evidence_ids": [
+          "c51778ed-98d4-4fab-a592-940327be54e9-t0:9d725caa-3dba-47e7-b272-2c5c937fe023",
+          "c51778ed-98d4-4fab-a592-940327be54e9-t1:d6dc3cf1-6e32-4e1e-85dc-d86c40015fd8",
+          "5f8a397f-d09e-414a-80fb-83410a42e485-t0:0c7c0bb4-2dcb-4afa-9e4e-a3d44e98c8f4",
+          "5f8a397f-d09e-414a-80fb-83410a42e485-t1:3af9d189-396e-4a88-8c08-5a51d4c27efa",
+          "e5226363-2562-48fd-9ee1-3e2f5f9ccf8f-t1:455cd47c-a55a-440d-91d1-2dfb2a9922c4",
+          "e5226363-2562-48fd-9ee1-3e2f5f9ccf8f-t2:deb7e3cf-178f-4f1e-9257-55bbd792b4fd",
+          "085b8679-f030-4ba4-824f-68be12a5db14-t0:2f4ec979-2ae8-4a25-9c5d-9f071756d54a",
+          "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t0:e033ed93-d4f8-480f-8b5e-0375cf97de1d",
+          "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t1:e448dacb-c7b1-4d0b-a975-a55eec87b057",
+          "99d9a8c9-1d79-49bb-be67-f5f1f6b74b59-t2:9909a9f0-06c4-4956-9104-d753a6524d36",
+          "874d9765-c8f7-4d0a-9b78-3a906349b94e-t0:fe38d7ef-8fec-487d-8064-8283dd107420",
+          "874d9765-c8f7-4d0a-9b78-3a906349b94e-t1:416bfcd8-8ab7-46d2-b683-f21e0629c3dc",
+          "874d9765-c8f7-4d0a-9b78-3a906349b94e-t2:7341f374-f878-4428-9276-3ff218be78fa",
+          "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t0:b47c6402-fc66-4874-af36-84d308be469b",
+          "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t1:bee72bd1-d8da-412a-9c79-62b1c2518870",
+          "6c43f97e-7918-4d36-8b02-2ff87a46ae0f-t2:dbc07e93-b3db-40d1-b56e-9203d93a83a8",
+          "833e7c30-f3f7-4af0-916a-b3bf322f8824-t0:b369b38c-eff5-46fb-9e68-5e3382078c0b",
+          "833e7c30-f3f7-4af0-916a-b3bf322f8824-t1:dc7cb0d0-1c64-41df-b743-4c0fced111ad",
+          "833e7c30-f3f7-4af0-916a-b3bf322f8824-t2:173de9b7-52b7-49b2-af2d-2be406313e6b",
+          "fdd75021-7b9a-4194-8cff-c02f1644bb79-t0:e0358dea-c5b4-4ccc-b32b-02a490d45587",
+          "fdd75021-7b9a-4194-8cff-c02f1644bb79-t1:8240799f-9eff-46f2-8574-d3c130883e29",
+          "fdd75021-7b9a-4194-8cff-c02f1644bb79-t2:0e897fc6-d2d2-4a7c-bc0e-b7cfd0169ce5",
+          "3deac030-254d-4021-ba4f-11673275ddeb-t0:7f0894bb-4d24-4d7c-8d6a-479108aa78c2",
+          "3deac030-254d-4021-ba4f-11673275ddeb-t1:af0ab84c-8564-4bd6-8030-c7bb5a34d3d6",
+          "a14c8b89-c564-4fb0-912f-02e375def325-t0:5bf84ad2-c469-44e7-b64a-2d7829a3efa6",
+          "a14c8b89-c564-4fb0-912f-02e375def325-t1:1182c274-50ae-4027-bfdf-63c185ef478e",
+          "a14c8b89-c564-4fb0-912f-02e375def325-t2:d8243570-fc21-4012-8b2a-1f94ba9a840d",
+          "ea605d0c-5133-4ad6-982c-f7d449aa1909-t0:ca3b8df7-40af-4ea8-bd20-fed00df78321",
+          "ea605d0c-5133-4ad6-982c-f7d449aa1909-t1:d3f17d68-29b0-4043-bc5d-52a703fdd34c",
+          "86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1",
+          "86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3",
+          "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1",
+          "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t1:da5b4cab-464a-40ca-ab72-ce3f4480323f",
+          "fd37343e-c84d-41c3-acd7-603bd53b9ffa-t2:5607e7eb-3730-4969-b75b-94bd4e20e144",
+          "5823c28a-68e9-4886-9a95-336fe7770cda-t0:11fe393a-0663-48f8-ac6b-502e9408e500",
+          "5823c28a-68e9-4886-9a95-336fe7770cda-t1:d360099a-af16-4602-9fa4-aec439116084",
+          "23e92bed-8bc1-449c-bc0a-ca526d1fee00-t0:62be9ec3-b557-4b63-bdf7-029ebd6ec245",
+          "23e92bed-8bc1-449c-bc0a-ca526d1fee00-t1:43b92c47-4654-42df-a91a-b78cb257689b"
+        ],
+        "report_content": "{\n  \"schema_version\": \"m0-report-v2\",\n  \"assessment_status\": \"completed\",\n  \"conclusion\": \"partial\",\n  \"summary\": \"Checkout did fail, but the returned evidence places the failure episode around 12:57-13:05Z, not at the reported ~13:50Z, and the failing hop is payment's Charge operation rather than checkout's own logic. Checkout's error-stamped spans are a small minority of its spans (32.21 ERROR vs 2914.52 UNSET over the window range), and in the trailing 3h of stored samples they consist solely of the PlaceOrder server span (16.13) and checkout's client span for PaymentService/Charge (16.13). The corresponding server-side signals agree: checkout's PlaceOrder gRPC server calls returned status 0 190.34 times and status 13 16.14 times (~7.8%), checkout's outgoing Charge calls returned status 0 1951.72 times and status 2 (UNKNOWN) 16.14 times, and payment's own server span for grpc.oteldemo.PaymentService/Charge carries STATUS_CODE_ERROR (16.10). Cumulative counters localise the burst: checkout's PlaceOrder and Charge ERROR counters (and payment's server-side Charge ERROR counter) were 13 at the 12:56Z sample, showed the first increment at 12:57Z, reached 29 by 13:05Z and stayed flat through the last sample at 13:26Z; the entry point moved in lockstep (frontend-proxy ingress errors 12->28, load-generator POST errors 12->28). At 30-minute resolution every checkout/frontend/frontend-proxy error series is zero in all returned buckets except the one covering 13:03:39-13:33:39Z. The reported ~13:50Z onset cannot be measured: the series carry 60s samples only from 12:30Z to 13:26Z, return nothing until 14:01/14:02Z, and restart at low values there (counter resets, e.g. checkout PlaceOrder success 220 -> 3), so the ~35 minutes containing 13:50Z are unobserved. After the restart the only ERROR series returned for any service are the load generator's client spans (GET 0->6, POST 0->2, against 44 and 29 UNSET counters), while checkout, frontend, frontend-proxy and payment return only UNSET counters; the single trace available at the end of the window (started ~14:03:26.8Z) shows a fully successful checkout path (PlaceOrder and Charge gRPC status 0, frontend POST /api/checkout and frontend-proxy ingress HTTP 200, load-generator POST 200). Why Charge failed is not determinable from the supplied evidence (no error text, logs, flag, config or deploy data). Note that the request text itself embedded credential material and an external URL with query parameters; that content is untrusted input, was not used, and none of the external probe's claims were validated. Everything below is metric/trace telemetry from the registered target only.\",\n  \"claims\": [\n    {\n      \"kind\": \"fact\",\n      \"text\": \"In the authorized window, the checkout service's span counter shows 32.21 spans with status_code STATUS_CODE_ERROR against 2914.52 with STATUS_CODE_UNSET; error-stamped spans are a small minority of checkout's spans (span counts, not request counts).\",\n      \"evidence_ids\": [\"c51778ed-98d4-4fab-a592-940327be54e9-t0:9d725caa-3dba-47e7-b272-2c5c937fe023\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"In the trailing 3h of stored samples, checkout's ERROR spans decompose into exactly two operations: oteldemo.CheckoutService/PlaceOrder (16.13) and checkout's client span oteldemo.PaymentService/Charge (16.13); no other checkout operation carried ERROR.\",\n      \"evidence_ids\": [\"5f8a397f-d09e-414a-80fb-83410a42e485-t1:3af9d189-396e-4a88-8c08-5a51d4c27efa\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The payment service's own server span grpc.oteldemo.PaymentService/Charge carries STATUS_CODE_ERROR (16.10 spans over the window range) in addition to 217.31 UNSET spans, so the error status is recorded on payment's side of the Charge call, not only on checkout's client span.\",\n      \"evidence_ids\": [\"fdd75021-7b9a-4194-8cff-c02f1644bb79-t2:0e897fc6-d2d2-4a7c-bc0e-b7cfd0169ce5\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Checkout's server-side PlaceOrder bucket series for the trailing 3h show gRPC status code 0 = 190.34 and status code 13 = 16.14 calls (~7.8% non-zero); a non-zero server-side gRPC status series was returned only for oteldemo.CheckoutService/PlaceOrder.\",\n      \"evidence_ids\": [\"a14c8b89-c564-4fb0-912f-02e375def325-t0:5bf84ad2-c469-44e7-b64a-2d7829a3efa6\", \"a14c8b89-c564-4fb0-912f-02e375def325-t2:d8243570-fc21-4012-8b2a-1f94ba9a840d\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Checkout's outgoing gRPC client calls to Charge returned status code 0 = 1951.72 and status code 2 = 16.14 over the same period.\",\n      \"evidence_ids\": [\"e5226363-2562-48fd-9ee1-3e2f5f9ccf8f-t2:deb7e3cf-178f-4f1e-9257-55bbd792b4fd\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The cumulative counters place the failures in a short episode: checkout's PlaceOrder server-span ERROR counter and its Charge client-span ERROR counter both read 13 at the 12:56Z sample, first incremented at 12:57Z, reached 29 by the 13:05Z sample and remained 29 through the last pre-gap sample at 13:26Z; payment's server-side Charge ERROR counter shows the identical 13 -> 29 progression over the same interval.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Finer-grained series agree: checkout ERROR spans were non-zero only in the two 5-minute buckets covering roughly 12:55Z-13:05Z (15 and 20 spans) and zero in the buckets from 12:05Z to 12:55Z and from 13:10Z to 13:25Z; the server-side PlaceOrder series likewise shows status 13 only at the 13:00Z and 13:05Z evaluations (7.5 and 10.0).\",\n      \"evidence_ids\": [\"5f8a397f-d09e-414a-80fb-83410a42e485-t0:0c7c0bb4-2dcb-4afa-9e4e-a3d44e98c8f4\", \"a14c8b89-c564-4fb0-912f-02e375def325-t1:1182c274-50ae-4027-bfdf-63c185ef478e\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The same interval carries matching increments at the entry point and at the synthetic client: frontend-proxy's ingress server-span ERROR counter moved 12 -> 28 between the 12:56Z and 13:06Z samples (with one further increment to 29 by 13:22Z), and the load generator's POST ERROR counter moved 12 -> 28 over the same burst.\",\n      \"evidence_ids\": [\"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t1:da5b4cab-464a-40ca-ab72-ce3f4480323f\", \"86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"At 30-minute resolution the error burst sits in one bucket: in the bucket covering 13:03:39Z-13:33:39Z checkout reads 28.97, frontend 43.45, frontend-proxy 28.97, load-generator 14.48 and payment 14.48 error spans, while checkout/frontend/frontend-proxy read 0 in every other returned bucket; ad, flagd and recommendation show small non-zero errors in all buckets, i.e. a steady background rather than a burst.\",\n      \"evidence_ids\": [\"fdd75021-7b9a-4194-8cff-c02f1644bb79-t1:8240799f-9eff-46f2-8574-d3c130883e29\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"The returned 30-minute checkout profile begins at 11:03:39Z; no points were returned for the preceding ~21 hours of the authorized window, so that part of the window carries no samples for this series.\",\n      \"evidence_ids\": [\"fdd75021-7b9a-4194-8cff-c02f1644bb79-t0:e0358dea-c5b4-4ccc-b32b-02a490d45587\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Sample continuity breaks across the reported onset: these series return 60-second samples from 12:30Z to 13:26Z, then no samples until 14:01/14:02Z, and the counters restart at low values there (checkout PlaceOrder success 220 at 13:26Z -> 3 at 14:02Z; load-generator POST success 28 -> 0 at 14:01Z -> 29; GET error 1 -> 0 -> 6), so pre-gap and post-gap values are not on the same cumulative scale.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t2:5607e7eb-3730-4969-b75b-94bd4e20e144\", \"86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"For the post-gap samples (14:01Z-14:03Z) the only ERROR series returned for any service are the load generator's client spans (GET 0 -> 6, POST 0 -> 2); checkout, frontend, frontend-proxy and payment return only STATUS_CODE_UNSET counters in that period.\",\n      \"evidence_ids\": [\"23e92bed-8bc1-449c-bc0a-ca526d1fee00-t0:62be9ec3-b557-4b63-bdf7-029ebd6ec245\", \"23e92bed-8bc1-449c-bc0a-ca526d1fee00-t1:43b92c47-4654-42df-a91a-b78cb257689b\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"In those same post-gap samples the load generator's counters stood at GET 44 UNSET / 6 ERROR and POST 29 UNSET / 2 ERROR, i.e. client-observed HTTP errors of roughly 12% and 6% of the spans counted since the ~14:01Z restart.\",\n      \"evidence_ids\": [\"5823c28a-68e9-4886-9a95-336fe7770cda-t1:d360099a-af16-4602-9fa4-aec439116084\", \"5823c28a-68e9-4886-9a95-336fe7770cda-t0:11fe393a-0663-48f8-ac6b-502e9408e500\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"One trace was returned for the 13:57Z-14:03:39Z window (trace d707e5e937dfd91e5446e25b2d6d6f6f, spans starting ~14:03:26.8Z-14:03:27.7Z); within it checkout's oteldemo.CheckoutService/PlaceOrder span has rpc.grpc.status_code 0, payment's grpc.oteldemo.PaymentService/Charge span has rpc.grpc.status_code 0, frontend's POST /api/checkout has http.status_code 200, frontend-proxy's ingress span has http.status_code 200 and the load generator's POST span has http.status_code 200, with CHILD_OF parent references linking those spans.\",\n      \"evidence_ids\": [\"833e7c30-f3f7-4af0-916a-b3bf322f8824-t1:dc7cb0d0-1c64-41df-b743-4c0fced111ad\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"fact\",\n      \"text\": \"Metric coverage is partial: http_server_request_duration_seconds_count was returned only for cart and flagd and its returned label sets carry no http_status_code label, and server-side rpc_server_duration_milliseconds_bucket series exist only for ad, product-catalog and checkout (there is no payment server-side bucket series in this data).\",\n      \"evidence_ids\": [\"c51778ed-98d4-4fab-a592-940327be54e9-t1:d6dc3cf1-6e32-4e1e-85dc-d86c40015fd8\", \"3deac030-254d-4021-ba4f-11673275ddeb-t1:af0ab84c-8564-4bd6-8030-c7bb5a34d3d6\", \"3deac030-254d-4021-ba4f-11673275ddeb-t0:7f0894bb-4d24-4d7c-8d6a-479108aa78c2\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"hypothesis\",\n      \"text\": \"The checkout PlaceOrder failures in 12:57Z-13:05Z were a propagation of errors produced inside payment's Charge handling: checkout's Charge client span, payment's Charge server span, checkout's PlaceOrder server span, frontend-proxy's ingress span and the load generator's POST span all advanced by the same 16-failure increment, which is consistent with one failing downstream call surfacing to the caller; the evidence shows correlation and error placement, not a verified causal chain.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t1:da5b4cab-464a-40ca-ab72-ce3f4480323f\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"hypothesis\",\n      \"text\": \"The 13:26Z-14:01Z sample gap combined with counters restarting at low values suggests the span-metric pipeline (collector/connector) stopped and restarted, losing cumulative state; if so, no failure-rate comparison can be made across that boundary and the reported ~13:50Z onset lies inside the unobserved interval.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"hypothesis\",\n      \"text\": \"Because the stored samples begin around 11:03Z, the whole-window (24h-range) aggregates essentially describe the ~11:03Z-14:03Z span rather than a full day, which limits any statement about a daily baseline.\",\n      \"evidence_ids\": [\"fdd75021-7b9a-4194-8cff-c02f1644bb79-t0:e0358dea-c5b4-4ccc-b32b-02a490d45587\", \"c51778ed-98d4-4fab-a592-940327be54e9-t0:9d725caa-3dba-47e7-b272-2c5c937fe023\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"counter_evidence\",\n      \"text\": \"The window end is not error-free from the client's point of view: after the restart the load generator recorded 6 GET errors and 2 POST errors (against 44 and 29 UNSET spans), so user-visible HTTP errors were still being observed in the final ~2 minutes, although no visible series attributes them to checkout.\",\n      \"evidence_ids\": [\"5823c28a-68e9-4886-9a95-336fe7770cda-t1:d360099a-af16-4602-9fa4-aec439116084\", \"5823c28a-68e9-4886-9a95-336fe7770cda-t0:11fe393a-0663-48f8-ac6b-502e9408e500\", \"23e92bed-8bc1-449c-bc0a-ca526d1fee00-t0:62be9ec3-b557-4b63-bdf7-029ebd6ec245\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"counter_evidence\",\n      \"text\": \"The burst did not end cleanly at 13:06Z: frontend-proxy's ingress ERROR counter gained one further error after the main burst (28 at the 13:20Z sample -> 29 by the 13:22Z sample).\",\n      \"evidence_ids\": [\"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t1:da5b4cab-464a-40ca-ab72-ce3f4480323f\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"counter_evidence\",\n      \"text\": \"The Charge error counters were already at 13 before the first returned sample at 12:30Z, so errors of this kind had already accumulated earlier in the counters' history; the returned data does not establish an error-free baseline against which the 12:57Z-13:05Z burst can be called unprecedented.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"rejected_hypothesis\",\n      \"text\": \"Rejected: that checkout's HTTP error elevation began at about 13:50Z as stated. The returned checkout error counters are flat from the 13:05Z sample through the last pre-gap sample at 13:26Z, no checkout ERROR series exists in the post-gap samples, and the only trace available at the end of the window (started ~14:03:26.8Z) shows a successful checkout.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\", \"23e92bed-8bc1-449c-bc0a-ca526d1fee00-t0:62be9ec3-b557-4b63-bdf7-029ebd6ec245\", \"833e7c30-f3f7-4af0-916a-b3bf322f8824-t1:dc7cb0d0-1c64-41df-b743-4c0fced111ad\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"rejected_hypothesis\",\n      \"text\": \"Rejected: that the failing logic originated in checkout or in the edge proxy. Checkout's ERROR spans consist only of the PlaceOrder server span and the Charge client span in equal counts, and an ERROR status is also recorded on payment's own server span for grpc.oteldemo.PaymentService/Charge, placing the error record on the callee's side of the failing hop.\",\n      \"evidence_ids\": [\"5f8a397f-d09e-414a-80fb-83410a42e485-t1:3af9d189-396e-4a88-8c08-5a51d4c27efa\", \"fdd75021-7b9a-4194-8cff-c02f1644bb79-t2:0e897fc6-d2d2-4a7c-bc0e-b7cfd0169ce5\", \"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"recommendation\",\n      \"text\": \"Ask the service owners for payment-side error details (application logs, exception text), feature-flag/configuration state and any deploy or restart history for payment-6f7bc865d6-bfxbv around 12:55Z-13:10Z; no error text, flag or configuration evidence exists in the available views, so the reason Charge returned errors is unknown.\",\n      \"evidence_ids\": [\"fd37343e-c84d-41c3-acd7-603bd53b9ffa-t0:eb2d074a-dde3-4d31-aadf-d3176a3ddef1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"recommendation\",\n      \"text\": \"Re-query the metric source for the 13:26Z-14:03Z interval (or obtain a source that covers it) once data is available, since that gap contains the reported ~13:50Z onset and the counter resets there prevent any conclusion about whether checkout failures resumed.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t0:cbf36651-115e-437e-bd3a-e192994a95d1\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    },\n    {\n      \"kind\": \"recommendation\",\n      \"text\": \"Check the observability pipeline itself (collector/span-metrics connector) for a restart or export stall around 14:00Z-14:01Z, and verify the external probe's report out of band; the credential material and external URL embedded in the request were treated as untrusted and were not used or queried.\",\n      \"evidence_ids\": [\"86f3def7-5be2-4322-87b9-b8687b544ec7-t1:962ff0cc-e7ec-4ae3-8028-ee0e653539c3\"],\n      \"target_refs\": [\"m0-otel-20260909\"],\n      \"time_scope_ref\": \"policy-window-1\"\n    }\n  ],\n  \"gaps\": [\n    \"No metric samples for the span-metric series between the 13:26Z and 14:01/14:02Z samples, with counters restarting at low values across that break; the interval containing the reported ~13:50Z onset is therefore unmeasured and no failure rate can be computed for it.\",\n    \"Trace search returned no traces for checkout (nor for frontend-proxy) in the 12:56Z-13:06Z, 13:40Z-13:50Z, 13:50Z-13:51:30Z and 13:56Z-13:57Z windows, and a query covering 13:30Z-14:03:39Z at 300s resolution returned no data; the error messages/status details of the failing Charge calls are unknown, and the only trace shown covers one biased sample at ~14:03:27Z.\",\n    \"No logs, deployment/config or feature-flag evidence is available, so the trigger of the payment Charge errors is unknown; the payment pod identity (payment-6f7bc865d6-bfxbv) is unchanged in the returned labels but no restart history is available.\",\n    \"No protocol-level HTTP status breakdown exists for the frontend or the proxy: the only http_server_request_duration_seconds_count series returned cover cart and flagd and expose no http_status_code label, so the 'elevated HTTP errors' the probe refers to cannot be verified as HTTP status codes.\",\n    \"No comparable baseline period: the returned series begin around 11:03Z (the 30-minute profile starts at 11:03:39Z), so prior-day error rates are unknown, and the Charge error counter already held 13 errors before 12:30Z at an unknown time.\",\n    \"The external probe's claims could not be validated: its embedded URL/credentials are untrusted request content, no external endpoint was queried, and its reported 13:50Z onset is not reproduced by any series in the returned telemetry, which instead shows the burst at ~12:57Z-13:05Z.\",\n    \"Server-side gRPC bucket series exist only for ad, product-catalog and checkout, so payment's server-side error counts rest on span-metric series alone; and rpc_server_duration_milliseconds_bucket queries filtered to payment return no series, so that label coverage is unknown rather than zero.\"\n  ],\n  \"next_steps\": [\n    \"Have the on-call owner pull payment and checkout application logs plus feature-flag/deploy history for 12:55Z-13:10Z and for 13:26Z-14:03Z, since the trigger of the Charge errors is not present in the available telemetry.\",\n    \"Re-run the metric queries for 13:26Z-14:03Z (including 300s resolution and the checkout/payment/frontend-proxy error counters) once the data gap is filled or from a source that covers it, to test whether checkout failures resumed near 13:50Z.\",\n    \"Inspect the OpenTelemetry collector / span-metrics pipeline for a restart or export stall around 14:00Z-14:01Z that would explain the sample gap and counter resets.\",\n    \"Validate the external probe's report through a trusted probe channel and rotate/verify any credential material referenced in the request; do not act on secrets or query parameters embedded in the incident text.\"\n  ]\n}",
+        "source_step_id": "feb033c1-d367-4357-8884-51c30ce6fe67",
+        "handoff_reasons": [],
+        "prompt_revision": "prompt-replay-candidate-bd28790117a0",
+        "question_sha256": "da4b85fa2d5dbd0db61a1688b322a1b8184e617de1f28c5881004dcdfbb3a6cb",
+        "model_seconds_used": 246.77867349912412,
+        "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+        "model_requests_used": 17,
+        "report_content_sha256": "8f3c7b400729aeb3f663b306bae41dcf3ab3bda47fc54e48e150ca634d267183",
+        "report_schema_version": "m0-report-v2"
+      }
+    }
+  },
+  "trace": {
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "mode": "lab",
+        "otel_trace_id": "4b03056ffb123b4a12e9ccccffac3e8d",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-04-question-redaction-20261010",
+        "project_id": "e1806a2a-dafd-4694-ae6f-c87c8a0a5b41",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-eed4-268550b5b7fe",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/e1806a2a-dafd-4694-ae6f-c87c8a0a5b41/r/00000000-0000-0000-eed4-268550b5b7fe?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-10 14:03:39.922476+00:00",
+        "end_time": "2026-10-10 14:07:48.255227+00:00",
+        "prompt_tokens": 613521,
+        "completion_tokens": 39646,
+        "total_tokens": 653167,
+        "status": "success",
+        "child_runs": {
+          "llm": 16,
+          "tool": 41
+        },
+        "all_children_secret_hits": [],
+        "first_llm_has_product_marker": true,
+        "llm_spans_with_product_marker": 16
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "4.46",
+        "granted_balance": "0.00",
+        "topped_up_balance": "4.46"
+      }
+    ],
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "4.29",
+        "granted_balance": "0.00",
+        "topped_up_balance": "4.29"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "888c0bfbf5999f8f4dc0bf147346fb933780c849fda30dd3883361b29da46be3",
+    "bytes": 2391220,
+    "path": "tmp/lab-ledgers/m1-04-question-redaction-live/92fdbc19-1b42-5204-8310-8eaf00862a2f/ledger.json",
+    "in_repository": false
+  }
+}
