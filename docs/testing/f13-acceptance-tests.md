@@ -47,4 +47,8 @@ M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 \
 ```
 
 CI `m0-postgres` 作业已包含 `tests/acceptance/test_f13_postmortem.py`。
-这些是确定性合同与集成测试，不是真实模型或生产证明；真实验收见任务记录（D32、D24）。
+这些是确定性合同与集成测试，不是真实模型或生产证明。
+
+## 真实验收（D32、D24）
+
+[记录](../evidence/m1-03-review-acceptance/run.md)：F6 归档副本 + 真实 `deepseek-flash` + 真实工作台 HTTP，**测试驱动模拟审核**（D33）；每步用本套件的 `assert_pages` 在稳定代际边界内比较真实页面与投影，并逐个解析被引用的证据链接（D35）。覆盖 F13 第 1–2 步与第 3 步的驳回、退回、拒绝批准；**真实链路批准不可达**（模型每个版本都自提争议，D16），批准、发布、替换、撤销只有本套件的确定性证据，见 [#181](https://github.com/kevinWangSheng/production-ops-agent/issues/181)、[#179](https://github.com/kevinWangSheng/production-ops-agent/issues/179)。
