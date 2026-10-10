@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
@@ -587,7 +588,14 @@ def create_app(
         subject = incident_of(incident_id)
         record = await in_thread(workbench.evidence_for, subject, evidence_id)
         if record is None:
-            raise _Refusal(404, "UNKNOWN_EVIDENCE")
+            # A postmortem may cite a recovery reading; its link resolves to
+            # the stored observation row, bound to the same incident.
+            found = await in_thread(
+                workbench.recovery_reading_for, subject, evidence_id
+            )
+            if found is None:
+                raise _Refusal(404, "UNKNOWN_EVIDENCE")
+            return JSONResponse(_recovery_reading(evidence_id, found))
         try:
             raw: dict[str, Any] = {"raw_utf8": record.raw.decode("utf-8")}
         except UnicodeDecodeError:
@@ -612,6 +620,52 @@ def create_app(
         )
 
     return app
+
+
+def _raw_fields(raw: bytes) -> dict[str, str]:
+    try:
+        return {"raw_utf8": raw.decode("utf-8")}
+    except UnicodeDecodeError:
+        return {"raw_base64": base64.b64encode(raw).decode("ascii")}
+
+
+def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, Any]:
+    """One stored signal reading of an observation sample, as captured."""
+    sample, reading = found["sample"], found["reading"]
+    raw = reading.get("raw")
+    raw_sha256 = reading.get("raw_sha256")
+    return {
+        "evidence_id": evidence_id,
+        "kind": "recovery",
+        "session_id": str(found["session_id"]),
+        "target": dict(found["target"]),
+        "sample_id": str(sample["sample_id"]),
+        "sample_sequence": int(sample["sequence"]),
+        "health_profile_revision": sample.get("health_profile_revision"),
+        "submitted_at": (
+            None
+            if sample.get("submitted_at") is None
+            else sample["submitted_at"].isoformat()
+        ),
+        "disposition": str(sample["disposition"]),
+        "readings_consistent": bool(sample["readings_consistent"]),
+        "signal_name": reading["signal_name"],
+        "status": reading["status"],
+        "value": reading["value"],
+        "sample_count": reading["sample_count"],
+        "query": reading["query"],
+        "window_start": reading["window_start"].isoformat(),
+        "window_end": reading["window_end"].isoformat(),
+        "source": reading["source"],
+        "raw_sha256": raw_sha256,
+        # None: no raw bundle was stored for this reading
+        "hashes_verified": (
+            None
+            if raw is None
+            else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
+        ),
+        **({} if raw is None else _raw_fields(bytes(raw))),
+    }
 
 
 def _review_extra(exc: ReviewError) -> dict[str, Any]:
