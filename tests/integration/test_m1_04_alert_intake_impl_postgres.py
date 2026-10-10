@@ -643,3 +643,81 @@ def test_the_worker_claims_and_completes_an_alert_run():
     snapshot = workbench.snapshot(subject)
     assert snapshot["run"]["state"] == "completed"
     assert snapshot["alert"]["outcome"].run_id == result["run_id"]
+
+
+def test_a_failed_alert_leaves_no_target_registration():
+    """Independent review P1: the target row commits with the alert or not at all."""
+    uid = f"fresh-{uuid4().hex[:12]}"
+    store = DurableStore(DSN)
+    store.install()
+    workbench = Workbench(
+        incidents=DurableIncidentStore(store),
+        events=DurableEventLog(store),
+        evidence=DurableEvidenceStore(store),
+        ledger=DurableWebLedger(store),
+        run_versions=fixture_versions(),
+        run_seconds=600,
+        targets=MappingTargetRegistry(
+            {uid: {**IDENTITY, "match": {"version": 1, "labels": {"fresh": uid}}}}
+        ),
+    )
+    config = AuthConfig(
+        ui_users={UI_USER: hash_password(UI_PASSWORD)},
+        event_tokens={token_digest(EVENT_TOKEN): ACTOR},
+        auth_revision="auth-rev-pg",
+        allowed_origins=frozenset({ORIGIN}),
+    )
+    app = create_app(workbench, Authenticator(config), DurableClock(store))
+    boom = _alert(f"boom{uuid4().hex[:12]}", labels={"alertname": "F", "fresh": uid})
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            "CREATE OR REPLACE FUNCTION impl_test_boom() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.fingerprint LIKE 'boom%' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$"
+        )
+        conn.execute(
+            "CREATE TRIGGER impl_test_boom BEFORE INSERT ON opspilot_alert_deliveries FOR EACH ROW EXECUTE FUNCTION impl_test_boom()"
+        )
+    try:
+        failed = _post(app, _webhook(boom))
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute("DROP TRIGGER impl_test_boom ON opspilot_alert_deliveries")
+            conn.execute("DROP FUNCTION impl_test_boom()")
+    assert failed.status == 503
+    assert failed.json()["results"][0]["outcome"] == "failed"
+    assert (
+        _count("SELECT count(*) FROM opspilot_targets WHERE resource_uid=%s", uid) == 0
+    )
+    retry = _post(app, _webhook(boom))
+    assert retry.json()["results"][0]["outcome"] == "created"
+    assert (
+        _count("SELECT count(*) FROM opspilot_targets WHERE resource_uid=%s", uid) == 1
+    )
+    assert (
+        _count(
+            "SELECT count(*) FROM opspilot_target_suspensions s JOIN opspilot_targets t USING (target_id) WHERE t.resource_uid=%s",
+            uid,
+        )
+        == 1
+    )
+
+
+def test_a_worker_without_v2_support_blocks_a_v2_run_as_incompatible(monkeypatch):
+    """R12: a Run whose input version this worker does not know is blocked
+    ``INCOMPATIBLE_STATE``, not run and not reported as malformed."""
+    from opspilot.investigation import context
+    from tests.integration.test_m1_loop_resume_postgres import Harness, _input
+    from tests.m1_investigation_support import report_from_transcript
+
+    v2 = {
+        **_input(uuid4()),
+        "version": "opspilot-investigation-input-v2",
+        "scope_facts": {
+            "target_ids": ["checkout-prod"],
+            "affected_service": {"namespace": "otel-demo", "workload": "checkout"},
+        },
+    }
+    monkeypatch.setattr(context, "KNOWN_INPUT_VERSIONS", (context.INPUT_VERSION,))
+    h = Harness(input=v2)
+    outcome = h.runner([report_from_transcript]).resume(h.incident)
+    assert outcome.status == "blocked" and outcome.reason == "INCOMPATIBLE_STATE"
+    assert h.rows()["run"]["state"] == "blocked"

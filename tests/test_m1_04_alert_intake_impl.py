@@ -338,3 +338,24 @@ def test_migration_vocabulary_matches_the_code():
         "resolved_attached",
         "resolved_recorded",
     }
+
+
+# -- R12: an input version this build does not know blocks as INCOMPATIBLE_STATE
+
+
+def test_an_unknown_input_version_is_incompatible_a_malformed_one_invalid(monkeypatch):
+    from opspilot.investigation import context
+
+    service = {"namespace": "otel-demo", "workload": "checkout"}
+    v2 = _input(affected_service=service).as_json()
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        InvestigationInput.from_json(
+            {**v2, "version": "opspilot-investigation-input-v3"}
+        )
+    for bad in ("bogus", None, 2, "opspilot-investigation-input-v0"):
+        with pytest.raises(ContextError, match="INPUT_INVALID"):
+            InvestigationInput.from_json({**v2, "version": bad})
+    # A worker built before v2 existed reads a v2 row.
+    monkeypatch.setattr(context, "KNOWN_INPUT_VERSIONS", (context.INPUT_VERSION,))
+    with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
+        InvestigationInput.from_json(v2)
