@@ -205,6 +205,7 @@ class Page(HTMLParser):
         self.stack = []
         self.texts = {}
         self.rows = {}
+        self.row_links = {}
         self.links = set()
         self.all_text = ""
         self.table = None
@@ -222,10 +223,13 @@ class Page(HTMLParser):
             self.rows.setdefault(ident, [])
         if tag == "tr":
             self.row = []
+            self.row_hrefs = []
         if tag == "td":
             self.cell = ""
         if tag == "a":
             self.links.add(attrs.get("href"))
+            if self.row is not None:
+                self.row_hrefs.append(attrs.get("href"))
         if tag == "br":
             self.handle_data(" ")
         if tag not in {"input", "br", "hr", "img", "meta", "link"}:
@@ -245,6 +249,7 @@ class Page(HTMLParser):
             self.cell = None
         if tag == "tr" and self.row:
             self.rows[self.table].append(self.row)
+            self.row_links.setdefault(self.table, []).append(self.row_hrefs)
         if tag == "table":
             self.table = None
         for i in range(len(self.stack) - 1, -1, -1):
