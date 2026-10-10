@@ -119,6 +119,16 @@ class Web:
         response = self.client.get(path, headers={"accept": "text/html"})
         return response.status_code, response.text
 
+    def evidence(self, incident_id: UUID, evidence_id: str) -> tuple[int, Any]:
+        response = self.client.get(
+            f"/incidents/{incident_id}/evidence/{evidence_id}",
+            headers={"accept": "application/json"},
+        )
+        try:
+            return response.status_code, response.json()
+        except ValueError:
+            return response.status_code, None
+
     def post(self, path: str, fields: dict[str, str]) -> tuple[int, Any]:
         response = self.client.post(
             path, data=fields, headers={"accept": "application/json"}
@@ -433,6 +443,42 @@ def main() -> int:
         )
         return record(name, http_status=status, expect_status=200, http_body=body)
 
+    def check_evidence_links(outcome: PostmortemOutcome) -> dict[str, Any]:
+        """PRODUCT-CONSTRAINTS line 28, D35: every evidence id a version cites
+        resolves over the workbench's evidence link to the captured record;
+        a recovery reading to the stored reading of the same signal and
+        window the catalog bound."""
+        checked: dict[str, Any] = {}
+        for version in outcome.versions:
+            catalog = {e["evidence_id"]: e for e in version.evidence_catalog}
+            for conclusion in version.conclusions:
+                for ref in conclusion.evidence_refs:
+                    evidence_id = ref["evidence_id"]
+                    if evidence_id in checked or evidence_id not in catalog:
+                        continue
+                    status, body = web.evidence(args.incident, evidence_id)
+                    entry = catalog[evidence_id]
+                    ok = status == 200 and isinstance(body, dict)
+                    if ok and entry.get("kind") == "recovery":
+                        ok = (
+                            body.get("kind") == "recovery"
+                            and body.get("evidence_id") == evidence_id
+                            and f"recovery:{body.get('signal_name')}" == entry["scope"]
+                            and body.get("window_start") == entry["window_start"]
+                            and body.get("window_end") == entry["window_end"]
+                            and body.get("hashes_verified") is not False
+                        )
+                    checked[evidence_id] = {
+                        "kind": entry.get("kind"),
+                        "http_status": status,
+                        "resolved": ok,
+                    }
+                    if not ok:
+                        failures.append(f"EVIDENCE_LINK:{evidence_id}:{status}")
+        if not checked:
+            failures.append("NO_CITED_EVIDENCE_CHECKED")
+        return checked
+
     balance_before = _balance(key)
     started = datetime.now(timezone.utc)
 
@@ -599,6 +645,7 @@ def main() -> int:
 
     ended = datetime.now(timezone.utc)
     final = record("final")
+    evidence_links = check_evidence_links(final)
     tracing.shutdown()
     balance_after = _balance(key)
     del key
@@ -616,6 +663,7 @@ def main() -> int:
         "incident_id": str(args.incident),
         "steps": steps,
         "generations": generations,
+        "evidence_links": evidence_links,
         "http": recorder.attempts,
         "balance_before": balance_before,
         "balance_after": balance_after,
@@ -632,6 +680,14 @@ def main() -> int:
             "started": started.isoformat(),
             "ended": ended.isoformat(),
             "failures": failures,
+            "evidence_links": {
+                "checked": len(evidence_links),
+                "resolved": sum(1 for v in evidence_links.values() if v["resolved"]),
+                "by_kind": {
+                    kind: sum(1 for v in evidence_links.values() if v["kind"] == kind)
+                    for kind in ("investigation", "recovery")
+                },
+            },
             "steps": [{k: v for k, v in s.items() if k != "http_body"} for s in steps],
             "generations": generations,
             "final": _brief(final),
