@@ -249,14 +249,15 @@ def test_first_firing_opens_incident_and_run_replays_keep_it():
         == 1
     )
 
-    # The Run input: v2 with the affected service, authorization unchanged,
-    # the question built from labels only.
+    # The Run input: v3 (r5 J3: an alert Run also carries its anchor) with
+    # the affected service, authorization unchanged, the question built from
+    # labels only.
     with psycopg.connect(DSN) as conn:
         raw = conn.execute(
             "SELECT input FROM opspilot_runs WHERE run_id=%s", (UUID(run),)
         ).fetchone()[0]
     parsed = InvestigationInput.from_json(raw)
-    assert raw["version"] == "opspilot-investigation-input-v2"
+    assert raw["version"] == "opspilot-investigation-input-v3"
     assert parsed.scope_facts["affected_service"] == {
         "namespace": "otel-demo",
         "workload": "checkout",
