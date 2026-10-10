@@ -483,6 +483,17 @@ def initial_messages(
 
     ``evidence_context`` is the already projected context (the caller
     projects once, with the Run identity, before anything reads it).
+
+    The question is human or alert free text (with any confirmed notes and a
+    continuation's handoff note folded in), so it passes the registry's
+    credential rules (``redact_credentials``) first, as
+    ``project_input_content`` does for later inputs: PRODUCT-CONSTRAINTS,
+    "Credentials and secret-bearing raw inputs must not enter prompts or
+    exported traces". Model-facing only -- the input snapshot keeps the raw
+    question. Live run, rebuild and compaction all take the prefix from here,
+    so their bytes agree; a Run recorded before this redaction whose question
+    carried a credential no longer matches its ``input_snapshot_hash``, and
+    its rebuild fails closed (``INCOMPATIBLE_STATE``).
     """
     system = render(
         input.variant_id,
@@ -491,7 +502,7 @@ def initial_messages(
     )
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": input.question},
+        {"role": "user", "content": redact_credentials(input.question)},
     ]
     if evidence_context is not None:
         messages.append({"role": "user", "content": canonical(evidence_context)})
